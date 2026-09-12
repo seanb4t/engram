@@ -9,6 +9,13 @@ that server. The three client verbs — `engram search`, `engram list`, and
 over the Connect API, with no MCP client involved: a subagent with a closed
 tool list, a CI step, or a cron loop.
 
+Get the binary through [Install](/guides/install/). To register an MCP connection
+for an agent, follow [Agent Setup](/guides/agent-setup/) and its release
+availability notice. MCP setup uses `--url` / `ENGRAM_URL`; the Connect commands
+below use `--server` / `ENGRAM_SERVER_URL` and the credential precedence described
+here. Setup's generic-only `--token-file` behavior does not apply to these
+Connect commands.
+
 The server must be running with the Connect lane mounted (`connect.headless:
 true`, or a UI-enabled deployment) — see [Configuration](/guides/configure/).
 
@@ -116,10 +123,8 @@ Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
 |-------|----------|
 | `json` | Write exactly one JSON document to stdout. |
 | `text` | Render a one-line prose headline followed by one aligned line per field of the same document `json` emits. This is a human-readable view, not a stable interface, and is not intended to be parsed. |
-| *(absent)* | Detect from the command's own configured output writer: a human
-terminal renders `text`; anything else (a pipe, a file redirect) renders `json`. |
-| anything else | Rejected as a usage error (exit `2`), naming `--output` and its
-legal values — the same validator the three client verbs use. |
+| *(absent)* | Detect from the command's own configured output writer: a human terminal renders `text`; anything else (a pipe, a file redirect) renders `json`. |
+| anything else | Rejected as a usage error (exit `2`), naming `--output` and its legal values — the same validator the three client verbs use. |
 
 As with the client tier, the JSON document goes to stdout and any warning or
 diagnostic goes to stderr, so `engram <operator-command> --output json | jq .`

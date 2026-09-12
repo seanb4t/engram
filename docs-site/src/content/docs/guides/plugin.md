@@ -9,7 +9,10 @@ The engram Claude Code plugin lives in `skill/engram/` and ships:
 - A `SessionStart` hook that surfaces stored memories at the start of every session
 - A `PostToolUse` hook that nudges memory capture after you change repo state
 
-**There is no bundled MCP server.** engram is self-hosted and OAuth-gated; the plugin ships no connection definition. `/engram-setup` is the only registration path.
+**There is no bundled MCP server.** Connect the plugin to your own engram
+deployment. [Install](/guides/install/) covers obtaining the binary;
+[Agent Setup](/guides/agent-setup/) covers MCP registration and curation skills
+across supported runtimes. The standalone plugin adds the hooks described below.
 
 ## Install the plugin
 
@@ -27,32 +30,46 @@ claude plugin install /path/to/engram/skill/engram
 
 Run `/engram-setup` in Claude Code (with an optional URL argument):
 
-```
-/engram-setup https://engram.example.com
-```
-
-The command determines your server URL and auth mode, then runs the matching `claude mcp add` invocation. For example, for OAuth (direct OIDC) or no-auth:
-
-```sh
-claude mcp add --transport http engram <url> --scope user
+```text
+/engram-setup https://engram.example.com/mcp
 ```
 
-This writes a **user-scope** server entry (available in every project). The `--scope user` flag is intentional: a self-hosted, OAuth-gated server outranks any per-project `.mcp.json` definition.
+Supply the complete MCP endpoint, including its configured path. The command
+gathers the endpoint and one of four auth choices: OAuth, pre-registered OAuth
+client, bearer token, or none.
 
-### Auth modes
+:::caution[Binary delegation requires unreleased setup]
+As of September 12, 2026, the published **v0.15.1 binary lacks `setup`**.
+The current source command delegates whenever it finds `engram` on `PATH`; it
+does not fall back automatically when that binary lacks the command. Installing
+v0.15.1 through Homebrew does not enable delegation. To use it, follow the
+[source-build route](/guides/install/#build-unreleased-setup-from-source) and make
+that executable available on `PATH`.
+:::
 
-`/engram-setup` supports four modes:
+With a setup-capable binary present, `/engram-setup` previews across detected
+runtimes, shows every registration and skills result, and asks for confirmation
+before applying the same inputs. It reports failures without automatically
+retrying or switching to fallback. See [Agent Setup](/guides/agent-setup/) for
+runtime support and credential requirements.
 
-| Mode | Command run |
-|------|------------|
-| OAuth (direct or gateway-fronted) | `claude mcp add --transport http engram <url> --scope user` |
-| Pre-registered OAuth client | `claude mcp add --transport http engram <url> --scope user --client-id <id> --client-secret --callback-port 8765` |
-| Bearer token | `claude mcp add --transport http engram <url> --scope user --header "Authorization: Bearer <token>"` |
-| None (local / no-auth) | `claude mcp add --transport http engram <url> --scope user` |
+With **no `engram` binary on `PATH`**, the standalone command retains its
+Claude-only fallback through Claude's own CLI. That registers a user-scope server
+available in every project. It does not perform the binary's cross-runtime skill
+installation. Exact native commands and the fallback procedure live in the
+[generated setup command reference](https://github.com/seanb4t/engram/blob/main/skill/engram/commands/engram-setup.md#generated-command-reference).
 
-After running the command, complete the OAuth flow via `/mcp` (select `engram` → Authenticate) if using OAuth.
+For a pre-registered OAuth client, provide the non-secret client ID and make
+`MCP_CLIENT_SECRET` available in the scripted Claude process's inherited
+environment; there is no interactive stdin. For bearer mode, supply `ENGRAM_TOKEN`
+in the runtime environment and keep command references literal. Do not paste
+secret values into commands or chat. Native registration does not use
+`--token-file`.
 
-To change the URL later:
+After successful OAuth registration, run `/mcp`, select `engram`, and authenticate
+in the browser. Registration alone does not complete that login.
+
+To change the URL later on the standalone fallback path:
 
 ```sh
 claude mcp remove engram --scope user
