@@ -46,7 +46,7 @@ covered_files:
   - internal/skills/install.go
   - internal/skills/install_test.go
   - internal/skills/inventory.go
-covered_digest: "v1:sha256:7d02d93bc521928020aa34e2ad8e142c86151a917d9ac41e612bbf69f4d6ab80"
+covered_digest: "v1:sha256:7d35d101cd76789664350332e14cf73271015d0cf4b34b76aeb1c1fcd1255116"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
