@@ -177,7 +177,7 @@ func TestCheckReadOnly(t *testing.T) {
 	valid := start + body + end
 	for _, tc := range []struct {
 		name, content string
-		wantError bool
+		wantError     bool
 	}{
 		{"exact", valid, false},
 		{"one-byte-drift", start + "X" + body[1:] + end, true},
@@ -194,12 +194,20 @@ func TestCheckReadOnly(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "command.md")
 			before := "Authored prefix.\n" + tc.content + "Authored suffix.\n"
-			if err := os.WriteFile(path, []byte(before), 0o600); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+				t.Fatal(err)
+			}
 			err := Check(path)
-			if (err != nil) != tc.wantError { t.Fatalf("Check error = %v, wantError %v", err, tc.wantError) }
-			if err != nil && (!strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "task surfaces:gen")) { t.Fatalf("error lacks target or remedy: %v", err) }
+			if (err != nil) != tc.wantError {
+				t.Fatalf("Check error = %v, wantError %v", err, tc.wantError)
+			}
+			if err != nil && (!strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "task surfaces:gen")) {
+				t.Fatalf("error lacks target or remedy: %v", err)
+			}
 			after, err := os.ReadFile(path)
-			if err != nil || string(after) != before { t.Fatalf("check changed file: %v", err) }
+			if err != nil || string(after) != before {
+				t.Fatalf("check changed file: %v", err)
+			}
 		})
 	}
 }

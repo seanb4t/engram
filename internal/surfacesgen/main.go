@@ -202,8 +202,19 @@ func run() error {
 	return nil
 }
 
+// dispatch selects validation before any production writer can be reached.
+func dispatch(args []string) error {
+	if len(args) == 1 && args[0] == "--check-setup" {
+		return setupgen.Check(setupgen.Path)
+	}
+	if len(args) != 0 {
+		return fmt.Errorf("surfacesgen: usage: surfacesgen [--check-setup]")
+	}
+	return run()
+}
+
 func main() {
-	if err := run(); err != nil {
+	if err := dispatch(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
