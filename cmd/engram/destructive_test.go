@@ -428,9 +428,9 @@ var mutatingFlagCases = []struct {
 	// addApplyFlag call adds "apply" to their own {output, timeout}.
 	{migrateCmd, []string{"apply", "output", "timeout"}},
 	{backfillShortIDsCmd, []string{"apply", "output", "timeout"}},
-	// 02-01-PLAN.md Task 1: setupCmd's row — its own six flags plus
+	// 02-01-PLAN.md Task 1: setupCmd's row — its own seven flags plus
 	// "apply" once registerDestructive's addApplyFlag adds it.
-	{setupCmd, []string{"apply", "auth", "output", "runtime", "token-file", "url"}},
+	{setupCmd, []string{"apply", "auth", "client-id", "output", "runtime", "token-file", "url"}},
 }
 
 // TestDestructiveCommandsExactFlagSet is the "no escape hatch exists"
