@@ -1,20 +1,20 @@
 ---
-gsd_state_version: "1.0"
+gsd_state_version: 1.0
 milestone: 2026-08-23.01
-current_phase: 5
-current_phase_name: Slash Command Delegation
-status: planning
-stopped_at: Phase 4 complete, ready to plan Phase 5
-last_updated: "2026-09-11T23:45:57.228Z"
-last_activity: 2026-09-11
-last_activity_desc: Phase 4 complete, transitioned to Phase 5
-state_head: a2ba45a957df91dcfb7957c62c656d57ae52b6a0
-progress:
-  total_phases: 6
-  completed_phases: 4
-  total_plans: 15
-  completed_plans: 15
 milestone_name: Distribution & Agent Bootstrap
+current_phase: 05
+current_phase_name: slash-command-delegation
+status: executing
+stopped_at: Phase 4 complete, ready to plan Phase 5
+last_updated: "2026-09-12T14:42:39.788Z"
+last_activity: 2026-09-12
+last_activity_desc: Phase 05 execution started
+progress:
+  total_phases: 5
+  completed_phases: 4
+  total_plans: 18
+  completed_plans: 15
+state_head: a2ba45a957df91dcfb7957c62c656d57ae52b6a0
 ---
 
 # Project State
@@ -24,14 +24,14 @@ milestone_name: Distribution & Agent Bootstrap
 See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-08-23.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 04 — Skills Distribution
+**Current focus:** Phase 05 — slash-command-delegation
 
 ## Current Position
 
-Phase: 5 — Slash Command Delegation
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-11 — Phase 4 complete, transitioned to Phase 5
+Phase: 05 (slash-command-delegation) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 05
+Last activity: 2026-09-12 — Phase 05 execution started
 
 ## Deferred Items
 
@@ -249,6 +249,7 @@ milestone needs in working memory.
   tracks touch unrelated files and can execute in parallel; Phases 3→4→5 are strict-order
   (registration → skills → delegation), and Phase 6 (docs) depends on both Phase 1 and Phase 5 so
   it documents final shipped behavior.
+
 - [Phase 03]: Deleted Action.Command as a settable field (D-01), forcing a mechanical content-identical Args conversion of claudecode.go/opencode.go even though neither is in 03-01's files_modified list. — Action.Command must never be authored by hand anywhere (Task 1 acceptance criterion); the field's deletion is repo-wide, not per-file.
 - [Phase 03]: A Plan with no Probe wired degrades safely under the shared executor to never claiming OutcomeAlreadyCorrect, applying D-08's ambiguity-resolves-to-wrote invariant to the zero-signal case. — claude-code/opencode have no Probe this wave; treating that as a safe degradation avoids special-casing runtimes by name in the shared executor.
 - [Phase 03]: opencode's bearer header fixed to KEY=VALUE form (Authorization=Bearer {env:ENGRAM_TOKEN}), replacing the confirmed-broken colon-space HTTP-header-string form
