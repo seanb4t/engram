@@ -500,10 +500,11 @@ equivalent to).
 **Success criteria:**
 
 1. `/engram-setup` detects the `engram` binary on PATH and delegates to `engram setup` when it is
-   present.
+   present, including pre-registered OAuth through a validated CLI client-ID input.
 
 2. When the binary is absent, `/engram-setup` completes setup for the current agent using its own
-   instructions, unchanged from today's first-class prose path.
+   instructions, preserving all four auth choices and the first-class Claude Code path while
+   using the same credential-safe registration argv as the binary.
 
 3. The mechanical parts of `/engram-setup`'s prose are generated from the same source of truth
    `engram setup` reads, and CI fails on any difference between the generated content and what's

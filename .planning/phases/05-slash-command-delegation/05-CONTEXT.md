@@ -103,6 +103,33 @@ REQ-delegation-equivalence-derived.
 - **D-16:** No vendoring of `commands/` into the binary. Phase 4 embeds `skills/` only; the slash
   command exists solely inside the Claude plugin, so there is one file and one gate.
 
+### Scope amendment — 2026-09-12
+
+The following amendment takes precedence over conflicting original decisions above.
+
+- **D-17 (explicit user decision):** Expand Phase 5 to add a CLI client-ID input and
+  delegate all four auth modes. The user selected: "Expand Phase 5 to add a CLI client-ID
+  input and delegate all four modes". Add the missing input through the CLI and setup plan
+  options to replace the nonfunctional OAuth-client placeholder. Include validation, help,
+  relevant generated surfaces and tests. This narrowly overrides the original prohibition
+  on changing setup argv/options; preserve unrelated runtime semantics and exit classes.
+- **D-18 (implementation reconciliation):** Keep bearer credentials off argv. Document
+  ENGRAM_TOKEN for native runtime delegation, honoring Phase 3's generic-only token-file
+  contract; never claim token-file configures a native runtime. The derived fallback uses
+  the same environment-reference command with explicit instructions for supplying it.
+  Preserve four auth choices and a working Claude-only fallback, not the old literal-token
+  command text. Never read or print a real credential during generation or tests.
+- **D-19 (implementation reconciliation):** Equivalence covers authored registration argv
+  and auth inputs. Keep the binary's tolerant remove/add orchestration separate from the
+  fallback's existing registration flow. Derive the command table from real Plan actions;
+  derive delegation inputs from the shared option values and verify its flags against the
+  actual CLI. Do not claim Plan() supplies engram CLI flag names when it does not.
+- **D-20 (implementation reconciliation):** Keep task surfaces:gen as the sole production
+  regeneration path and the existing CI regenerate/diff gate. The task lint check must
+  render/compare without mutating repository files, as required by the existing Taskfile
+  contract. Both checks fail on the same generated-region drift; mutation fixtures prove
+  each failure path. This refines D-13's mechanism for local lint only.
+
 ### Claude's Discretion
 
 - The anchor ID for the generated region (must be unique among existing rule IDs).

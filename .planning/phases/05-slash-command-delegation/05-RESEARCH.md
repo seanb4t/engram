@@ -127,7 +127,12 @@ leaf-purity, and anchor tests passed during this research; no runtime registrati
 [VERIFIED: skill/engram/commands/engram-setup.md:38-59; internal/setup/claudecode.go:123-165;
 internal/setup/runtime.go:25-29; focused go test result, 2026-09-12]
 
-**Primary recommendation:** Obtain a narrow amendment preserving the four visible auth choices
+**Resolution update (2026-09-12):** The user explicitly chose to expand Phase 5 with a CLI
+client-ID input and delegate all four auth modes. CONTEXT.md D-17 through D-20 supersede the
+research recommendations below where they conflict. The OAuth-client limitation must be fixed
+in this phase, not deferred or routed away from delegation.
+
+**Original research recommendation (superseded):** Obtain a narrow amendment preserving the four visible auth choices
 and Claude-only fallback scope, while explicitly allowing the bearer reference change and
 defining the limits of equivalence. Keep pre-registered OAuth-client delegation visibly blocked
 until its existing input limitation is addressed separately.
