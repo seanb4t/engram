@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.0](https://github.com/seanb4t/engram/compare/v0.15.1...v0.16.0) (2026-09-12)
+
+
+### Features
+
+* **setup:** bootstrap agent runtimes with bundled curation skills ([#557](https://github.com/seanb4t/engram/issues/557)) ([efcfb0a](https://github.com/seanb4t/engram/commit/efcfb0ad6fcf929dbfd0de195ec04d2eadfa612c))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/cenkalti/backoff/v5 to v7 ([#386](https://github.com/seanb4t/engram/issues/386)) ([b269d06](https://github.com/seanb4t/engram/commit/b269d065d51027f7a58ac53bca094494a35dbad1))
+* **deps:** update module github.com/testcontainers/testcontainers-go/modules/qdrant to v0.44.0 ([#493](https://github.com/seanb4t/engram/issues/493)) ([1115c6a](https://github.com/seanb4t/engram/commit/1115c6aea2a9a1765dd671ea37ccb0cd2881e69e))
+* **deps:** update module google.golang.org/grpc to v1.83.1 [security] ([#525](https://github.com/seanb4t/engram/issues/525)) ([baf585e](https://github.com/seanb4t/engram/commit/baf585e3bc91edb9d460f5818a7659d0aa4439e3))
+* **deps:** update opentelemetry-go core + contrib together ([#532](https://github.com/seanb4t/engram/issues/532)) ([35ba31e](https://github.com/seanb4t/engram/commit/35ba31e354522c22643afa7a011574f41a43df8c))
+* **deps:** update protobuf, go-oidc, qdrant-client; move buf plugin pin ([#534](https://github.com/seanb4t/engram/issues/534)) ([181712c](https://github.com/seanb4t/engram/commit/181712c4d606da22edaef40047e95419b54f9680))
+
 ## [0.15.1](https://github.com/seanb4t/engram/compare/v0.15.0...v0.15.1) (2026-09-09)
 
 
