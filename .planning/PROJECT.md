@@ -6,32 +6,76 @@ engram is a self-hosted, correctable, OAuth-secured memory MCP server for coding
 backed by Qdrant. It exposes an explicit, zero-junk memory contract (store / schedule /
 search / list / get / update / delete plus discovery and rule kinds) over MCP, with a
 ConnectRPC read API, a SvelteKit operator console, and an Astro Starlight docs site. It is
-distributed as a container image and a Helm chart (server + Qdrant) for Kubernetes.
+distributed as a container image and a Helm chart (server + Qdrant) for Kubernetes, and — since
+v0.16.0 — as a Homebrew cask (`brew install seanb4t/tap/engram`) whose `engram setup` subcommand
+registers the server with Claude Code, Codex, and opencode through their own `mcp add` CLIs and
+installs the five curation skills in each runtime's native format.
 
 This is a **retrospective baseline** extended by GSD-tracked milestones: engram is already
 shipped. Every locked decision and every routed requirement below is **implemented and merged
 to main**. This document records the as-built state so future milestones build on an accurate
 foundation.
 
-**Latest milestone — v0.11.x — Capture & Service Identity — ✅ SHIPPED 2026-07-26** (archival
-PR #434; opened 2026-07-16): moved authorization onto a real ABAC policy engine without changing a
-single observable behavior, gave headless service principals a first-class isolated identity, and
-made programmatic capture correct and re-runnable (idempotency keys, history-preserving
-supersession, structured citations, category filtering). Five phases (22–26); 19 plans, 46 tasks,
-11/11 requirements verified, audit PASSED. Full detail in `.planning/milestones/v0.11.x-ROADMAP.md`.
+**Latest milestone — 2026-08-23.01 — Distribution & Agent Bootstrap — ✅ SHIPPED 2026-09-12 as
+v0.16.0:** engram became installable in one command and self-configuring across every agent
+runtime it targets. Six phases (1–6); 21 plans, 49 tasks, 25/25 requirements verified, audit
+`tech_debt` (0 blockers, Nyquist 6/6). Full detail in `.planning/milestones/2026-08-23.01-ROADMAP.md`.
 
-**Active milestone — v0.12.x — Headless Reach & Diagnosability** (opened 2026-07-29): make engram
-usable by agents that are **not** a top-level MCP client, and make what the server decides and
-rejects legible to whoever is on the other end. Give the Connect lane a bearer-token identity
-reusing the shipped `auth.ChainVerifier`, mount it headless (opt-in), and ship `engram
-search|store|list` client subcommands (#343); reach memories across spines with `cross_spine` on
-`search_memory` (#344); find and fix why rule capture never fires (#351). Then make the system
-legible: wire `authz.Decision.diag` to debug logging (#394), surface provider error bodies on
-failed embeds (#347), and stop misreporting an over-long `summary` as a missing `content` (#360).
-Plus the completion tail — per-lane API key (#350), `reindex --resume` tag-only staleness (#345),
-and UI/proto type drift (#356). See `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`.
+**Active milestone — none.** The next one opens with `/gsd-new-milestone` (remember
+`--reset-phase-numbers`, rule `rvmts69cz1`); candidates live in **Deferred** below and
+`.planning/BACKLOG.md`.
 
-## Current State: 2026-08-12.01 — Record State & Schema Evolution ✅ SHIPPED (2026-08-22)
+## Current State: 2026-08-23.01 — Distribution & Agent Bootstrap ✅ SHIPPED (2026-09-12, v0.16.0)
+
+**Delivered:** engram is installable in one command and self-configuring across every agent
+runtime it targets. `brew install seanb4t/tap/engram` installs an unsigned static binary through a
+cask whose post-install hook strips quarantine *before* the version gate can be SIGKILLed by
+Gatekeeper, then asserts `engram version --output json` matches the declared artifact. `engram
+setup` detects runtimes by their own binaries, previews the exact argv it would issue, and under
+`--apply` registers the server with Claude Code, Codex, and opencode through their own `mcp add`
+CLIs — engram parses or writes no third-party config format — converging on re-run and reporting
+per-runtime rows with a three-way exit taxonomy. The five curation skills ride inside the binary,
+byte-identical to the plugin, and land natively in each runtime (plus a delimited, re-detectable
+AGENTS.md index for Codex). `/engram-setup` delegates to the binary when present and keeps a
+first-class prose path when absent, the mechanical prose generated from the same Plans the CLI
+executes with a CI gate that fails on drift. 6 phases (1–6), 21 plans, 49 tasks, 25/25
+requirements. Audit `tech_debt` — 12/12 cross-phase seams wired, 8/8 E2E flows complete, 0
+blockers, Nyquist 6/6 COMPLIANT. Full detail archived at
+`milestones/2026-08-23.01-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT,INTEGRATION}.md`.
+
+**What shipped:**
+- **Homebrew cask, correct by construction** — `homebrew_casks:` (not the deprecated `brews:`) publishing to `seanb4t/homebrew-tap` via a dedicated tap-publisher App whose token is the bare `{{ .Env.HOMEBREW_TAP_TOKEN }}` form GoReleaser's raw-string regex requires (#516 — the v0.15.0 tap push failed on a conditional, invisible to `goreleaser check` and `--snapshot`). A newest-tag `skip_upload` guard computed in the workflow keeps a `workflow_dispatch` backfill from regressing the tap (D-15: accepted by construction, no staged rehearsal), and a read-only `verify-tap-credential.yaml` probe proves push access without a release. Observed live for v0.16.0 on all four platform archives plus a tagged `go install`.
+- **`engram version --output json` and a real dev version** — the machine-readable install-time contract, pinned byte-equal to the text lane; local builds report `X.Y.Z-dev.0+g<hash>[.dirty]` from `debug.ReadBuildInfo` with the release-please-managed `lastRelease` const drift-tested against the manifest.
+- **`engram setup` core** — env-first through `config.Load`, preview-by-default with `--apply` behind `registerDestructive`, exit 0 / 8 (partial) / 9 (failed) with every runtime's outcome reported independently, and `--help` naming every runtime and auth mode (D-00 correct-by-reading).
+- **Runtime registration via the runtime's own CLI** — Codex and opencode through `mcp add` with read-verb probes for wrote/already-correct; Claude Code through a tolerant `mcp remove` clearing the slot before a fatal `mcp add` (its `add` refuses on existing, live-verified at both scopes); opencode's `Authorization=Bearer {env:…}` KEY=VALUE header replacing a confirmed-broken colon-space form; a `generic` opt-in pseudo-runtime emitting a portable `mcpServers` document with zero actions and no subprocess. Four auth modes (`oauth`, `oauth-client` + validated `--client-id`, `bearer`, `none`) with secrets only ever as env-var references, never on argv. A CLI that is absent or answers with an unexpected surface fails naming the runtime and what was expected.
+- **Skills distribution from the binary** — `task skills:vendor` + `//go:embed all:data` with a byte-equality drift gate against `skill/engram/skills`; native installs for Claude Code (`~/.claude/skills`), Codex (`$HOME/.agents/skills`, human-confirmed its selector reads there), and opencode (XDG-aware config root); every SKILL.md carrying a `metadata.engram-summary` index entry; Codex's AGENTS.md index spliced in place through symlinks, hard-failing with byte offsets on any ambiguous prior state, and — after audit blocker B01 (#559) — preserving an unreadable index with zero writes, with only `fs.ErrNotExist` as the create case.
+- **Slash-command delegation, equivalent by construction** — `/engram-setup`'s four-mode delegation tables and Claude-only fallback are generated from real setup Plans through `internal/setupgen`, exercised against actual Cobra, and guarded by a read-only local drift comparator plus a CI regenerate-and-diff gate whose both failure paths were proven.
+- **Install documentation on shipped behavior** — canonical `guides/install.md` and `guides/agent-setup.md`, Quickstart/CLI/plugin entry points reconciled, and a D-10 post-release handoff that recorded the qualifying v0.16.0 observations before the requirement was checked off.
+
+**Standing constraints held:** zero new Go dependencies (only `go.yaml.in/yaml/v3` promoted from
+indirect to direct for skill frontmatter); every runtime writer is a shell-out to the runtime's
+own CLI, so no TOML/JSONC parser entered the tree; verification never invoked a real third-party
+CLI or touched the operator's `$HOME` from a test (rule `m45p2b4bp7`).
+
+**Carried tech debt:** W01 — `osRun` converts a deadline-killed subprocess's `*exec.ExitError` to
+exit -1 / nil error without consulting `ctx.Err()`, bypassing the executor's timeout path (the
+process is still killed) — #560; a duplicate failed-count calculation, auth/runtime validation
+ordered before the missing-URL check, and a stale "verbatim" capture comment in the setup core;
+the "emits no warning" half of the native-format human check was never captured. Cursor support
+(`REQ-register-cursor`), drift detection, hand-edit reconciliation, and shell completions /
+man pages via the cask are carried as v2 candidates.
+
+**Closeout:** `override_closeout` — 2 open artifacts acknowledged at close, 0 carried forward, both
+Phase 04 deferred-items entries that no longer describe a live condition (a keylinks gate that now
+passes; a one-run testcontainer flake). Full disclosure in STATE.md `## Deferred Items`.
+
+**Carried caveat:** the deployed engram server still predates v0.11.x, so nothing from the last
+five milestones is callable in practice until the next rollout — `engram setup` registers a client
+against whatever server URL it is given, so the bootstrap works today; the server-side features do
+not.
+
+<details>
+<summary>Previous: 2026-08-12.01 — Record State & Schema Evolution ✅ SHIPPED (2026-08-22)</summary>
 
 **Delivered:** a record's full state — supersession, scheduling, archival, and its own schema
 version — is now reachable and legible on every lane, and payload evolution has a real mechanism
@@ -72,6 +116,8 @@ server plus Qdrant). Full disclosure in STATE.md `## Deferred Items`.
 
 **Carried caveat:** the deployed engram server still predates v0.11.x, so nothing from the last four
 milestones is callable in practice until the next rollout.
+
+</details>
 
 <details>
 <summary>Previous: v0.13.x — Curation & Self-Evidence ✅ SHIPPED (2026-08-12)</summary>
@@ -197,53 +243,6 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 - **CI / maintenance hygiene** — Renovate vendored-SPA self-heal (#301, live obs pending #369), Phase-11 review residuals (#335), `.rumdl.toml` `.planning` exclude.
 
 </details>
-
-## Current Milestone: 2026-08-23.01 Distribution & Agent Bootstrap
-
-**Goal:** engram is installable in one command and configures itself across every agent runtime —
-`brew install engram`, then `engram setup` detects what is on the machine, shows what it would
-write, and wires it up.
-
-**Progress:** Implementation released as v0.16.0 and Phase 6 guides deployed on 2026-09-12. The milestone audit's AGENTS.md preservation defect (#559) was closed the same day by Phase 4 gap-closure plan 04-05 (Phase 4 re-verified 53/53); all 25 requirements are now marked satisfied and the audit needs a re-run before archival. See `.planning/2026-08-23.01-MILESTONE-AUDIT.md`.
-
-**Target features:**
-
-- **Homebrew cask** — `homebrew_casks:` in `.goreleaser.yaml` publishing to `seanb4t/homebrew-tap`,
-  joining the existing `Casks/codegraph.rb`. GoReleaser **deprecated `brews:`** in favour of
-  `homebrew_casks:`, so a cask is the current shape for a pre-built Go binary, not a compromise.
-  Carries three setup costs: a cross-repo PAT (the default `GITHUB_TOKEN` is scoped to this repo
-  only), a `postflight`/`hooks.post.install` quarantine strip (`CGO_ENABLED=0` with no signing or
-  notarization step), and an install-time gate.
-- **`engram version --json`** — prerequisite, not polish. `version.go:16` prints a bare string
-  today, so the codegraph cask's postflight version assertion does not port. The gate cannot be
-  delegated to `generate_completions_from_executable`: Homebrew's `write_completion` wraps binary
-  execution in `rescue => e; opoo e`, so a broken binary installs green.
-- **`engram setup`** — an executable CLI subcommand that detects installed runtimes, shows what it
-  would write, and applies on confirmation. Preview-by-default, matching the `engram migrate`
-  convention; correct-by-reading per D-00, so the invocation is learnable from help text rather
-  than from interpreting a failure.
-- **Multi-runtime config writers** — Claude Code (plugin + skills + hooks + MCP registration),
-  generic MCP clients (portable config), Codex / AGENTS.md, and Cursor / opencode.
-- **Skills distribution** — install the five curation skills in each runtime's native format where
-  one exists, falling back to AGENTS.md-appended guidance where none does.
-- **Idempotent re-install as the update path** — re-running `engram setup` converges config. No
-  drift detection, no binary-vs-plugin-vs-server version skew reasoning this milestone.
-- **`/engram-setup` conditionally delegates** — hands off to `engram setup` when the binary is on
-  PATH, and otherwise keeps its current prose bootstrap for the current agent. The plugin installs
-  standalone via `claude plugin install`, so the binary is never guaranteed present and the prose
-  path stays first-class. Both paths must agree; the equivalence needs a derived gate rather than
-  two hand-maintained instruction sets.
-- **Install documentation** — a real install path on docs-site. `guides/quickstart.md` documents
-  Docker only, and `guides/cli.md` describes the binary at length without ever saying how to get it.
-
-**Key context:** this is not four greenfield builds. The Claude plugin and its five skills already
-ship (`.claude-plugin/marketplace.json` → `skill/engram`, version release-please-synced); the
-milestone unifies them under one entry point rather than building them. The bootstrap is circular
-today — `/engram-setup` ships *inside* the plugin, so a cold-start user must already know the
-marketplace URL to reach the thing that configures the server; a brew-installed binary inverts
-that. Standing constraint: zero new Go dependencies. Milestone labels are CalVer and decoupled
-from release-please's SemVer (rules `e325awbf7x` / `0v4249kc9d`); phase numbering restarts at 1
-(rule `rvmts69cz1`).
 
 ## Core Value
 
@@ -400,18 +399,40 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **REQ-docs-record-state** — `reference/memory-record.md` covers all 28 wire-visible keys (proven by set difference), plus a new evergreen `guides/migrate.md` — 2026-08-12.01 Phase 8
 - ✓ **REQ-claude-md-migrations-convention** — CLAUDE.md now describes the schema-version registry instead of denying migrations exist, with derived (not hardcoded) verification gates — 2026-08-12.01 Phase 8
 
+**2026-08-23.01 — Distribution & Agent Bootstrap (Phases 1–6; shipped 2026-09-12 as v0.16.0):**
+
+- ✓ **REQ-version-json** — `engram version --output json` emits `{"version":"…"}`, text lane unchanged and pinned byte-equal; `--output bogus` exits 2 — 2026-08-23.01 Phase 1
+- ✓ **REQ-cask-install-gate** — cask hook order OS-guard → `xattr` quarantine strip → version assertion → completions, never delegated to Homebrew's rescuing `generate_completions_from_executable`; pinned by `TestReleaseConfigCaskInstallGate` — 2026-08-23.01 Phase 1
+- ✓ **REQ-cask-credential-verified** — dedicated tap-publisher App, `repositories: homebrew-tap` on the mint, read-only `workflow_dispatch`-only probe; probe passed from main (run 32860661930) — 2026-08-23.01 Phase 1
+- ✓ **REQ-cask-reship-recovery** — newest-tag `SKIP_HOMEBREW_UPLOAD` guard templated into `skip_upload` via the guarded optional-env idiom; accepted by construction under D-15, no rehearsal — 2026-08-23.01 Phase 1
+- ✓ **REQ-setup-detects-runtimes** — the runtime's own binary is the signal; a leftover config directory never reads as installed — 2026-08-23.01 Phase 2
+- ✓ **REQ-setup-previews-by-default** — no runtime CLI executes without `--apply`; the preview shows the exact argv, not a summary — 2026-08-23.01 Phase 2
+- ✓ **REQ-setup-non-interactive** — `--runtime` selection, no confirmation, `--output json`; scriptable without a TTY — 2026-08-23.01 Phase 2
+- ✓ **REQ-setup-partial-failure-legible** — per-runtime rows and exit 0 / 8 / 9 via an exhaustively tested `Classify` — 2026-08-23.01 Phase 2
+- ✓ **REQ-setup-correct-by-reading** — `--help` names every runtime and auth mode; the advertised `ENGRAM_URL`/`ENGRAM_AUTH` defaults actually reach the command (CR-01) — 2026-08-23.01 Phase 2
+- ✓ **REQ-setup-idempotent** — second `--apply` reports `already-correct` on every native runtime via before/after read-verb probes; opencode degrades only in the safe direction — 2026-08-23.01 Phase 3
+- ✓ **REQ-register-claude-code** — `claude mcp add` via a tolerant `remove` → fatal `add` sequence; `~/.claude.json` never hand-written — 2026-08-23.01 Phase 3
+- ✓ **REQ-register-codex** — `codex mcp add` / `mcp get`; `~/.codex/config.toml` never read, parsed, or written — 2026-08-23.01 Phase 3
+- ✓ **REQ-register-opencode** — `opencode mcp add` with the `KEY=VALUE` header form its CLI accepts; its config file never touched — 2026-08-23.01 Phase 3
+- ✓ **REQ-register-generic-mcp** — opt-in `generic` pseudo-runtime printing a portable minified `mcpServers` document, zero actions, no subprocess — 2026-08-23.01 Phase 3
+- ✓ **REQ-register-auth-modes** — `oauth`, `oauth-client`, `bearer`, `none` on every path or an explicit unsupported row; `TestNoSecretInArgs` proves no secret literal on any argv — 2026-08-23.01 Phase 3
+- ✓ **REQ-register-cli-surface-drift-legible** — an absent or drifted CLI fails naming the runtime, argv, and stderr; never silently writes nothing — 2026-08-23.01 Phase 3
+- ✓ **REQ-skills-embedded-in-binary** — vendor → `//go:embed all:data` with `TestSkillsEmbedMatchesVendored` byte-equality against the plugin — 2026-08-23.01 Phase 4
+- ✓ **REQ-skills-native-format** — native installs for Claude Code, Codex (`$HOME/.agents/skills`, human-confirmed), and opencode; every SKILL.md carries `metadata.engram-summary` — 2026-08-23.01 Phase 4
+- ✓ **REQ-skills-agents-md-fallback** — delimited re-detectable AGENTS.md index spliced in place through symlinks; unreadable index preserved with zero writes (B01 / #559 closed by 04-05) — 2026-08-23.01 Phase 4
 - ✓ **REQ-engram-setup-delegates** — validated client-ID input and four-mode CLI delegation — 2026-08-23.01 Phase 5
 - ✓ **REQ-engram-setup-prose-fallback** — first-class Claude fallback with credential-safe registration commands — 2026-08-23.01 Phase 5
 - ✓ **REQ-delegation-equivalence-derived** — Plan-derived commands with read-only lint and CI drift checks — 2026-08-23.01 Phase 5
+- ✓ **REQ-docs-install-path** — `guides/install.md` with the exact working Homebrew invocation; Quickstart and CLI guides now say how to get the binary — 2026-08-23.01 Phase 6
+- ✓ **REQ-docs-setup-documented** — `guides/agent-setup.md` covers every runtime, preview/`--apply`, and the manual generic path — 2026-08-23.01 Phase 6
+- ✓ **REQ-homebrew-cask-published** — v0.16.0 published `Casks/engram.rb` to `seanb4t/homebrew-tap`; four actual installs (macOS/Linux × amd64/arm64) recorded in the D-10 post-release handoff — 2026-08-23.01 Phase 6
 
 ### Active
 
-Milestone `2026-08-23.01` (Distribution & Agent Bootstrap) is open — see **Current Milestone**
-above for its goal and target features. Scoped requirements with REQ-IDs live in
-`.planning/REQUIREMENTS.md`, written by `/gsd-new-milestone` and mapped to phases by the roadmap.
-`2026-08-12.01` shipped 2026-08-22 with all 27 requirements verified and moved to **Validated**
-above. Candidates not taken into this milestone remain in **Deferred** below and
-`.planning/BACKLOG.md`.
+No milestone is open. `2026-08-23.01` shipped 2026-09-12 with all 25 requirements verified and
+moved to **Validated** above; `.planning/REQUIREMENTS.md` is archived at
+`milestones/2026-08-23.01-REQUIREMENTS.md` and a fresh one is written by `/gsd-new-milestone`.
+Candidates for the next milestone live in **Deferred** below and `.planning/BACKLOG.md`.
 
 ### Deferred (carry-forward for next milestone)
 
@@ -428,6 +449,11 @@ above. Candidates not taken into this milestone remain in **Deferred** below and
 - [ ] **Narrow CLAUDE.md's "every surface" record-state claim** (2026-08-12.01) — the MCP lane exposes `SupersededBy`/`ArchivedAt` as raw fields but derives no state words, so the sentence overstates. Backlog phase 999.3.
 - [ ] **Unify `schema_version` proto typing** (2026-08-12.01) — typed three ways in one file: `schema_version` uint32 (`:52`), `version` int32 (`:186`), `current_version` int32 (`:204`). Backlog phase 999.4.
 - [ ] **`ui/` toolchain gaps** (2026-08-12.01) — `npm run check` crashes on a pinned `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility, and `ui/package.json` has no `lint` script, so plan verification lines naming it cannot run as written.
+- [ ] **`osRun` deadline classification** (2026-08-23.01, W01) — a deadline-killed subprocess's `*exec.ExitError` becomes exit -1 / nil error without checking `ctx.Err()`, so the executor's timeout path is bypassed; the process is still killed. GitHub #560.
+- [ ] **`REQ-register-cursor`** (2026-08-23.01 v2) — Cursor is the one target needing a config-file writer (`~/.cursor/mcp.json`, top-level `mcpServers`) and merge-never-replace is a real reachable defect: a real machine's file already held three unrelated servers. Its CLI surface was unverifiable on the researching machine.
+- [ ] **`REQ-shell-completions-and-manpages`** (2026-08-23.01 v2) — zero new Go dependencies (cobra auto-registers `completion`; `cobra/doc` is already indirect); deferred on scope, a cheap early candidate.
+- [ ] **`REQ-setup-drift-detection` / `REQ-setup-reconcile-hand-edits`** (2026-08-23.01 v2) — binary/plugin/server version-skew reporting, and reconciling an engram MCP entry a user hand-edited away from what `engram setup` writes. The update path today is idempotent re-install.
+- [ ] **Setup-core maintenance observations** (2026-08-23.01) — duplicate failed-count calculation, auth/runtime validation ordered before the missing-URL check, a capture-display comment that says "verbatim" although output is quoted, and the never-captured "emits no warning" half of the Phase 4 native-format human check.
 
 > **Closed by v0.13.x:** the two-tier CLI error model gap (Phase 1 unified the taxonomy rather than
 > documenting a boundary — what #467 actually asked for), the v0.12.x Nyquist `VALIDATION.md`
@@ -449,11 +475,15 @@ above. Candidates not taken into this milestone remain in **Deferred** below and
 - **cocogitto, viper** — not used in this project.
 - **Automatic migrations** — payload migrations exist as of `2026-08-12.01` (`internal/migrate` + `engram migrate`), but none ever runs on its own: not on startup, not on failure. Startup's read-only probe may warn; it never sweeps and never gates boot.
 - **Separate Qdrant collections per memory kind** — discovery/rule/scheduled all live in the single Memory collection (DEC-2bv).
+- **Parsing or writing a third-party agent runtime's config file** — every `engram setup` writer shells out to the runtime's own `mcp add`; building a TOML/JSONC parser or a marker-bounded editor for `~/.codex/config.toml` / opencode's config would be work for a problem that does not exist (2026-08-23.01). Cursor, the one target that would need it, is deferred, not exempted.
+- **Auto-running `engram setup` from a `brew install` hook, or configuring a runtime the user did not select** — Homebrew swallows postflight failures as warnings, so a broken auto-setup would be invisible; and mutating an unselected runtime's config is the cardinal sin every comparable tool avoids. Detection reports; the user chooses (2026-08-23.01).
+- **Signing / notarizing the macOS binary, and telemetry on detected runtimes** — the former costs a GoReleaser Pro licence plus Apple Developer membership rather than a code change and the tap is third-party, so quarantine stripping in the cask is the sanctioned shape; the latter contradicts the self-hosted, no-phone-home posture (2026-08-23.01).
 
 ## Context
 
 - **Ecosystem:** Go 1.26 static binary (`CGO_ENABLED=0`, distroless), Qdrant gRPC vector store, OpenAI-compatible embeddings/chat gateway. UI/docs built with pnpm + Node (not in the server image).
 - **Surfaces:** MCP tool server (primary, StreamableHTTP at `/mcp`), ConnectRPC `EngramService` v1 (5 read + 6 write RPCs), the `engram search|store|list` headless CLI over the generated Connect stubs, SvelteKit adapter-static operator console vendored via `go:embed`, Astro Starlight docs site on Cloudflare Workers.
+- **Distribution & agent bootstrap (2026-08-23.01, shipped 2026-09-12 as v0.16.0):** the binary ships as a Homebrew cask (`seanb4t/homebrew-tap`, `Casks/engram.rb`) published by GoReleaser's `homebrew_casks:` through a dedicated tap-publisher App — the token field MUST stay the bare `{{ .Env.HOMEBREW_TAP_TOKEN }}` form, since GoReleaser regex-matches it on the raw string and only a real tag exercises it. `internal/setup` is a stdlib-only leaf: a `Runtime` interface authoring `Plan`s of argv `Action`s executed through an injectable `Environment.Run` seam, with Claude Code / Codex / opencode as shell-out writers and `generic` as an opt-in zero-action portable-config emitter; secrets are env-var references, never argv. `internal/skills` embeds the five curation skills (`//go:embed all:data`, drift-gated byte-for-byte against `skill/engram/skills`) and installs them natively per runtime, with Codex additionally getting a delimited AGENTS.md index spliced in place (only `fs.ErrNotExist` is the create case). `internal/setupgen` renders `/engram-setup`'s mechanical prose from real Plans; `surfacesgen --check-setup` and CI's regenerate-and-diff keep it equal. `cmd/engram/releaseconfig_test.go` pins the cask hook ordering, the `SKIP_HOMEBREW_UPLOAD` guard, and the credential shape as own-config text assertions.
 - **Identity:** OIDC bearer tokens on the MCP lane become the memory `actor`; the authz `owner` key is a configurable claim (default `email`). No issuer → single anonymous empty-owner bucket.
 - **VCS/build:** git (branch + PR; never push to `main` directly); `task` runner; buf-generated `gen/` tree committed and CI-checked; release-please-driven releases (binary + image via goreleaser, OCI Helm chart).
 - **Connect observe lane:** authenticated via the cookie/OIDC lane (sealed session → verified `sub`); mounted only when the UI is enabled, headless by default (R1–R4 shipped in PR #248/#266, reconciled 2026-07-08). The MCP lane's no-issuer anonymous empty-owner bucket is unaffected.
@@ -745,6 +775,14 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | `spine-review` extends the Subject-less operator tier; it is never a new authz path (v0.13.x) | Composing the Subject-gated `Search`/`List` would silently scope an operator sweep to one actor — authorization stays in `internal/store` or the feature does not ship | ✓ Good — sixth instance of the existing tier |
 | `consolidate` reports near-duplicates; it never merges them (v0.13.x Phase 3) | Every system surveyed showed threshold auto-merge silently destroys provenance, exceptions, and version distinctions | ✓ Good — no clustering, no default threshold, no mutation on any path |
 | Record an adversarial non-result as NOT-OBTAINED rather than convert it to pass or fail (v0.13.x Phase 4) | The 3-run cap produced only *correct* verdicts, so the criterion's confidently-wrong case was never observed; scoring that as a pass would have made the artifact claim a proof it does not have | ⚠️ Revisit — honest, but `REQ-consent-adversarial-proof` stays unmet (`WINDOWS.md` id 3) |
+| Every v1 runtime writer is a shell-out to the runtime's own `mcp add`; engram parses no third-party config format (2026-08-23.01 scoping) | Live post-synthesis verification showed `codex mcp add` and `opencode mcp add` both exist, so the proposed marker-bounded TOML/JSONC editing was work for a problem that does not exist and the one thing that would have pressured zero-new-deps; a CLI-contract dependency that breaks loudly beats a config-format dependency that drifts silently | ✓ Good — zero parsers; drift surfaces as a named failure (REQ-register-cli-surface-drift-legible) |
+| Quarantine strip is the literal first cask-hook statement, and the gate is never delegated to `generate_completions_from_executable` (2026-08-23.01 Phase 1, D-09) | engram ships unsigned; invoking the binary before stripping gets it SIGKILLed by Gatekeeper instead of failing legibly, and Homebrew rescues `write_completion` failures to a warning so a broken binary would install green | ✓ Good — ordering now pinned by `TestReleaseConfigCaskInstallGate`; four live installs on v0.16.0 |
+| Dedicated tap-publisher App with a bare `{{ .Env.HOMEBREW_TAP_TOKEN }}` token; never re-widen the release App to the tap (#516) | One App, one purpose: the credential that writes the tap cannot cut a release and vice versa. GoReleaser regex-matches `repository.token` on the RAW string and rejects any conditional — which broke the v0.15.0 tap push and was invisible to `goreleaser check` and `--snapshot` | ✓ Good — v0.16.0 published; the publish-time-only field now has a test-time pin |
+| Accept the reship-recovery criterion by construction; never rehearse a backfill (2026-08-23.01 Phase 1, D-15) | A staged rehearsal would be a real `workflow_dispatch` against the real tap; the newest-tag `skip_upload` guard plus the read-only credential probe are the property, and asserting Homebrew's side of it would violate rule `m45p2b4bp7` | ✓ Good — guard step, both branches, and the guarded-env idiom pinned by `TestReleaseConfigCaskReshipRecovery` |
+| Secrets are env-var references on argv, never values; `--token-file` is provenance only (2026-08-23.01 Phase 3, D-16) | A shell history or process table captures anything on a command line; Claude/Codex/opencode each resolve `${VAR}` / `{env:VAR}` at connect time, so engram never needs to hold the value | ✓ Good — `TestNoSecretInArgs` across every auth mode × runtime |
+| Codex skills route `codex-native-plus-index`: native files at `$HOME/.agents/skills` plus a delimited AGENTS.md index (2026-08-23.01 Phase 4, checkpoint:decision) | All three v1 runtimes turned out to have a native skill format, so `REQ-skills-agents-md-fallback` had an empty trigger set; the developer chose to route Codex there so the index path has a live write and A1 (Codex's selector reads `$HOME/.agents/skills`) was human-confirmed rather than assumed | ✓ Good — surfaced as a blocking decision, not guessed; five skills listed on all three runtimes |
+| Verify `engram setup --apply` only against a fake `$HOME` / fake `Environment`, never the operator's (2026-08-23.01 Phase 4) | An agent ran the plan's own documented `--apply` with a placeholder URL and overwrote real MCP registrations for all three runtimes — the second hand-restore in one milestone; `--apply` always does registration AND skills with no opt-out (D-12) | ✓ Good — `withFakeSetupEnv` and the skills `Environment` seam are the only verification path (`ryr82bf2s2`) |
+| `/engram-setup`'s mechanical prose is generated from the same Plans the CLI executes, with a CI regenerate-and-diff gate (2026-08-23.01 Phase 5) | Two hand-maintained instruction sets diverge silently; a keyword or liveness check can pass while proving nothing — the failure shape this repo has hit before | ✓ Good — both gate failure paths (source mutation, committed-artifact corruption) proven RED |
 | Only confirmed nonexistence is the AGENTS.md create case (2026-08-23.01 Phase 4, 04-05 / #559) | `installAgentsMDIndex` treated every index read error as "no index" and overwrote the operator's file; read and write permission are independent, so an unreadable-but-writable index lost every byte outside the managed block with no error. D-15 already refuses to guess at a region engram did not author — an unreadable file is the most ambiguous state of all, so `errors.Is(err, fs.ErrNotExist)` is the only create path and any other read error preserves the file with zero writes and surfaces through the runtime row and the partial exit | ✓ Good — one predicate at one call site; package- and CLI-boundary regressions; found by the milestone audit, not by the phase's own tests |
 
 ## Evolution
@@ -766,4 +804,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-12 — after Phase 4 gap closure (04-05, #559) in milestone `2026-08-23.01`.*
+*Last updated: 2026-09-12 — after milestone `2026-08-23.01` (Distribution & Agent Bootstrap) shipped as v0.16.0.*

@@ -1,58 +1,37 @@
 ---
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
-current_phase: 06
-current_phase_name: Install Documentation
-status: ready_for_milestone_audit
-stopped_at: Phase 04 gap #559 closed and re-verified 53/53; ready to re-run milestone audit
-last_updated: "2026-09-12T20:28:15.582Z"
+status: Awaiting next milestone
+stopped_at: Milestone 2026-08-23.01 archived; awaiting /gsd-new-milestone
+last_updated: "2026-09-12T23:28:28.664Z"
 last_activity: 2026-09-12
-last_activity_desc: Phase 04 gap closure 04-05 executed and verified passed; #559 fixed
-state_head: ee9f91949c2c9528076c641f6910c21e031cf049
+last_activity_desc: Milestone 2026-08-23.01 completed and archived
+state_head: 3f82520cb1839d570abd4b2dd56b6f5c31842767
 progress:
   total_phases: 6
   completed_phases: 6
   total_plans: 21
   completed_plans: 21
 milestone_name: Distribution & Agent Bootstrap
+current_phase: 06
+current_phase_name: Install Documentation
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 4 gap closure, #559)
+See: .planning/PROJECT.md (updated 2026-09-12 — after milestone 2026-08-23.01 shipped as v0.16.0)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Milestone audit re-run — Phase 4 gap #559 closed
+**Current focus:** Planning next milestone (`/gsd-new-milestone --reset-phase-numbers`); candidates in PROJECT.md Deferred and BACKLOG.md
 
 ## Current Position
 
-Phase: 04 — Skills Distribution (gap closure complete; all 6 phases complete)
-Plan: 5 of 5 complete
-Status: Phase 4 re-verified passed (53/53); ready to re-run milestone audit
-Last activity: 2026-09-12 — 04-05 closed #559 (95daee01, bae018f2, c773d80e); verification passed; review clean
-
-The milestone audit found an existing AGENTS.md read-error preservation defect
-(B01, #559) and reopened Phase 4 as gaps_found. Gap-closure plan 04-05 fixed it:
-only `errors.Is(err, fs.ErrNotExist)` is the create case; any other index read
-error preserves the file with zero writes and surfaces through the codex row and
-the partial exit. Phase 4 re-verified passed 53/53; all 21 plan summaries exist.
-The audit (`.planning/2026-08-23.01-MILESTONE-AUDIT.md`) needs a re-run before
-archival. The three stale Phase 2 checkboxes were reconciled earlier.
-
-The qualifying-release checks passed for v0.16.0. See
-`.planning/phases/06-install-documentation/06-RELEASE-0.16.0.md` for publication,
-installed setup/client-ID help, completion and tagged Go-install evidence.
-The five-guide availability update merged as PR #558 and deployed through run
-
-34712224429. All five live guide routes now show v0.16.0. Issues #556 and #514
-
-are closed. The earlier recovery-rehearsal blocker was incorrect: Phase 1 D-15
-explicitly accepts that criterion by construction and prohibits a staged
-rehearsal; its verification report agrees. The requirement checkbox is now
-reconciled with the completed credential probe. The audit found a separate
-AGENTS.md preservation blocker (#559); no recovery rehearsal is required.
+Phase: Milestone 2026-08-23.01 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-12 — Milestone 2026-08-23.01 completed and archived
 
 ## Deferred Items
 
@@ -71,6 +50,13 @@ Items acknowledged and deferred at milestone close on 2026-08-12:
 | broken_window | WINDOWS.md id 1, id 2 (Phase 03 TDD RED+GREEN landed in combined commits) | Open — RED genuinely observed, commit granularity only |
 | code | internal/surfaces/toolclass.go:141-142 stale rationale comment contradicting shipped Phase 03.1 idempotency_key support | Open — annotation value correct, comment wrong |
 | test | TestExitCodeBaseline env-var fragility (ENGRAM_REINDEX_TARGET / ENGRAM_MIGRATE_OWNER) | Tracked upstream as #476 |
+
+Items acknowledged and deferred at milestone close on 2026-09-12 (milestone 2026-08-23.01, `override_closeout` — 2 newly acknowledged, 0 carried forward from a prior close):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_items | Phase 04 / 04-02: pre-existing `TestActiveMilestoneKeyLinksSatisfiable` failure against `04-01-PLAN.md` key_links entries authored as bare strings | acknowledged — no longer reproduces; `go test ./internal/keylinks/` passes at `3f82520c` and the entries now carry `from`/`to`/`pattern` mappings |
+| deferred_items | Phase 04 / 04-02: environmental `TestDialTestClientFailsWhenRequiredAndUnavailable` failure (Qdrant testcontainer mapped port "invalid port") | acknowledged — Docker/testcontainer flake on one run; not a code defect, not reproduced since |
 
 Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026-08-12.01, `override_closeout` — 8 newly acknowledged, 0 carried forward from a prior close):
 
@@ -449,6 +435,4 @@ Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Operator Next Steps
 
-- Resolve #559 with a scoped gap plan and re-verify Phase 4 and the affected integration flow.
-- Address timeout warning #560 and reconcile validation records for phases 1–4 (#561).
-- Rerun milestone audit before archival; Phase 1 D-15 still rules out a recovery rehearsal.
+- Start the next milestone with /gsd-new-milestone

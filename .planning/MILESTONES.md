@@ -1,5 +1,53 @@
 # Milestones — engram
 
+## 2026-08-23.01 Distribution & Agent Bootstrap (Shipped: 2026-09-12)
+
+**Phases completed:** 6 phases (1–6), 21 plans, 49 tasks
+**Requirements:** 25/25 verified · **Audit:** `tech_debt` (12/12 integration seams, 8/8 E2E flows, 0 blockers, Nyquist 6/6 COMPLIANT)
+**Git range:** `efcfb0ad^..HEAD` — 86 files, +13,278 / −85 (excluding `.planning/`); shipped to `main` as #557 (squash) + #558 (docs), released as **v0.16.0**
+**Timeline:** 2026-08-23 → 2026-09-12 (20 days) · **No git tag** — release-please owns the version namespace
+**Closeout:** `override_closeout` · **Known verification overrides:** 2 newly acknowledged, 0 carried forward from a prior close (see STATE.md Deferred Items)
+**Archived:** `milestones/2026-08-23.01-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT,INTEGRATION}.md` + `2026-08-23.01-phases/` + `2026-08-23.01-quick/`
+
+**Delivered:** engram became installable in one command and self-configuring across every
+agent runtime it targets. `brew install seanb4t/tap/engram` installs an unsigned binary through
+a cask whose post-install hook strips quarantine before the version gate can be SIGKILLed, and
+`engram setup` detects what is on the machine, previews the exact argv it would issue, and wires
+Claude Code, Codex, and opencode up through their own `mcp add` CLIs — engram parses no
+third-party config format. The five curation skills ride inside the binary, byte-identical to
+the plugin, and land in each runtime's native skill format. `/engram-setup` delegates to the
+binary when present and keeps a first-class prose path when absent, with the mechanical prose
+generated from the same Plans the CLI executes and a CI gate that fails on drift.
+
+**Key accomplishments:**
+
+1. **Homebrew cask distribution, correct by construction** — `engram version --output json` as the install-time contract, a three-step ordered cask hook (quarantine strip → version assertion → completions), a newest-tag `skip_upload` guard so a `workflow_dispatch` backfill can never regress the tap, and a dedicated tap-publisher App whose token is the bare `{{ .Env.HOMEBREW_TAP_TOKEN }}` form GoReleaser's raw-string regex requires (#516; the v0.15.0 tap push failed on a conditional). Observed live for v0.16.0 on all four platform archives.
+2. **`engram setup` core** — env-first config through `config.Load`, preview-by-default with `--apply` behind the `registerDestructive` gate, per-runtime rows with a three-way exit taxonomy (0 / 8 partial / 9 failed), and `--help` that names every runtime and auth mode it accepts.
+3. **Runtime registration through the runtime's own CLI** — Codex and opencode via `mcp add` with read-verb probes for wrote/already-correct convergence; Claude Code via a tolerant `remove` clearing the slot before a fatal `add` (its `mcp add` refuses on existing, live-verified); opencode's `KEY=VALUE` header form replacing a confirmed-broken colon-space form; a `generic` opt-in pseudo-runtime emitting a portable `mcpServers` document; and secrets only ever as env-var references, never on argv.
+4. **Skills distribution from the binary** — a vendor-then-`//go:embed` pipeline with a byte-equality drift gate against the plugin, native installs for Claude Code / Codex / opencode, and a delimited re-detectable AGENTS.md index for Codex that is spliced in place through symlinks and — after audit blocker B01 (#559) — preserves an unreadable index with zero writes, treating only `fs.ErrNotExist` as the create case.
+5. **Slash-command delegation proven equivalent by construction** — four-mode delegation tables and the Claude-only fallback generated from real setup Plans, exercised against actual Cobra, with a read-only local drift comparator and a CI regenerate-and-diff gate whose both failure paths were proven.
+6. **Install documentation on shipped behavior** — canonical Install and Agent Setup guides, Quickstart/CLI/plugin entry points reconciled, and a D-10 post-release handoff that recorded four actual Homebrew installs, a tagged `go install`, and five live guide routes for v0.16.0 before the requirement was checked off.
+
+### Known Tech Debt
+
+None blocks the milestone; #560 is the only open code item.
+
+- **W01 — `osRun` drops `ctx.Err()` on a deadline-killed subprocess** (Phase 3, `internal/setup/environment.go:84–103`) — an `*exec.ExitError` becomes exit -1 / nil error, bypassing the executor's timeout path. The process is still killed. [#560](https://github.com/seanb4t/engram/issues/560).
+- **Maintenance observations** (Phases 2–3) — duplicate failed-count calculation, auth/runtime validation ordered before the missing-URL check, and a capture-display comment that still says "verbatim" although output is quoted.
+- **Unclaimed half of a human check** (Phase 4) — all three runtimes tolerate the `metadata.engram-summary` frontmatter key and list the five skills; "emits no warning" was not captured.
+- **Bare `go vet` noise** — `cmd/engram/operator_view_test.go:441` deliberately repeats a json tag under `//nolint:govet`; `task lint` is the gate and is clean.
+
+### Known Verification Overrides
+
+2 open artifacts were acknowledged at close (`override_closeout`), 0 carried forward from a prior
+close. Both are Phase 04 `deferred-items.md` entries that no longer describe a live condition: the
+`TestActiveMilestoneKeyLinksSatisfiable` failure against `04-01-PLAN.md`'s `key_links` entries no
+longer reproduces (`go test ./internal/keylinks/` passes at `3f82520c`), and the
+`TestDialTestClientFailsWhenRequiredAndUnavailable` "invalid port" was a one-run Qdrant
+testcontainer flake. Full disclosure in STATE.md `## Deferred Items`.
+
+---
+
 ## 2026-08-12.01 Record State & Schema Evolution (Shipped: 2026-08-22)
 
 **Phases completed:** 9 phases (1–9), 46 plans, 121 tasks
