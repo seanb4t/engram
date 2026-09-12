@@ -5,12 +5,20 @@ description: Get engram running in minutes — Qdrant, embedder, Docker, and you
 
 Get the MCP server running locally in a few minutes.
 
+**Already have a server endpoint?** Go to [Install](/guides/install/) for the
+binary, then [Agent Setup](/guides/agent-setup/) to connect your agent. Check the
+setup availability notice there: v0.15.1 lacks `setup`, so that route currently
+requires a source build. For standalone Claude Code registration, see the
+[plugin guide](/guides/plugin/). Continue below if you need to provision a server.
+
 ## Prerequisites
 
 - **Qdrant** — a running Qdrant instance (gRPC port `6334`). The quickest path is Docker:
+
   ```sh
   docker run -d -p 6334:6334 qdrant/qdrant
   ```
+
 - **Embeddings endpoint** — an OpenAI-compatible embeddings endpoint. Options:
   - [LiteLLM](https://docs.litellm.ai/) in front of any model
   - OpenAI API directly (set `ENGRAM_OPENAI_BASE_URL=https://api.openai.com/v1` and `ENGRAM_EMBED_MODEL=text-embedding-3-small`)
@@ -42,15 +50,19 @@ Key environment variables (see [Configure](/guides/configure/) for the full list
 | `ENGRAM_OPENAI_BASE_URL` | Embeddings endpoint (OpenAI-compatible); default `http://localhost:4000` |
 | `ENGRAM_EMBED_MODEL` | Model name forwarded to the endpoint; default `ollama/bge-m3` |
 
-## Register with Claude Code
+## Connect your agent
 
-Once the server is running, add it to Claude Code with `/engram-setup`. See the [Claude Code Plugin guide](/guides/plugin/) for details.
+Once the server is running, [install the binary](/guides/install/) and follow
+[Agent Setup](/guides/agent-setup/) for runtime selection, authentication, and a
+preview before applying changes. Setup currently requires the unreleased source
+build described in Install. The [Claude Code Plugin guide](/guides/plugin/)
+also covers standalone registration when no binary is installed.
 
 ## Store and recall your first memory
 
 With the server registered, use `store_memory` to persist a fact and `search_memory` to retrieve it. See the [Tools reference](/reference/tools/) for full parameter docs.
 
-```
+```text
 store_memory — persist a decision, convention, preference, or gotcha
 search_memory — semantic search over stored memories
 ```
