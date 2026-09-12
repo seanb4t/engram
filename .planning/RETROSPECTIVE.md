@@ -455,22 +455,145 @@ hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
 
 ---
 
+## Milestone: 2026-08-23.01 — Distribution & Agent Bootstrap
+
+**Shipped:** 2026-09-12 (released as v0.16.0 on 2026-09-12)
+**Phases:** 6 (1–6) | **Plans:** 21 | **Tasks:** 49 | **Requirements:** 25/25
+**Git range:** `efcfb0ad^..HEAD` — 86 files, +13,278 / −85 (excluding `.planning/`); #557 (squash) + #558 (docs) + the closeout branch
+**Timeline:** 2026-08-23 → 2026-09-12 (20 days) · second CalVer-labeled milestone
+
+### What Was Built
+
+- **Homebrew cask distribution** — `homebrew_casks:` publishing to `seanb4t/homebrew-tap` through a
+  dedicated tap-publisher App, a three-step ordered post-install hook (quarantine strip → version
+  assertion → completions), a newest-tag `skip_upload` guard, and a read-only credential probe.
+  `engram version --output json` as the install-time contract; local builds report a real
+  `X.Y.Z-dev.0+g<hash>[.dirty]`.
+- **`engram setup`** — a stdlib-only `internal/setup` leaf: runtime detection by binary,
+  preview-by-default with `--apply` behind `registerDestructive`, per-runtime rows, exit 0/8/9.
+- **Runtime registration via the runtime's own CLI** — Claude Code (`remove` → `add`), Codex and
+  opencode (`mcp add` + read-verb probes), a `generic` portable-config emitter; four auth modes
+  with secrets only as env-var references.
+- **Skills from the binary** — `//go:embed` with a byte-equality drift gate against the plugin,
+  native installs for all three runtimes, a delimited AGENTS.md index for Codex that preserves an
+  unreadable file with zero writes (B01 / #559).
+- **`/engram-setup` delegation** — four-mode tables and the Claude-only fallback generated from real
+  Plans by `internal/setupgen`, with a read-only local comparator and a CI regenerate-and-diff gate.
+- **Install documentation** — canonical Install and Agent Setup guides with a D-10 post-release
+  handoff recording four live installs before the requirement was checked off.
+
+### What Worked
+
+- **Live verification retired the two highest-risk research items before roadmapping.** `codex
+  mcp add` and `opencode mcp add` both existed on the machine, so every v1 runtime became a
+  shell-out writer and the proposed marker-bounded TOML/JSONC editor — the one thing that would
+  have pressured zero-new-deps — was never built. Cursor, the one config-file target, was deferred
+  at scoping rather than half-built.
+- **Ordering by confidence gradient.** The near-execution-ready distribution track (Phase 1) ran
+  in parallel with the setup core (Phase 2); registration → skills → delegation ran strictly
+  ordered so delegation's generated-equivalence proof had a complete surface to generate against.
+- **The milestone audit earned its keep.** The integration checker reproduced B01 with a
+  temporary overlay against an unreadable-but-writable AGENTS.md — a defect none of Phase 4's
+  46 truths reached. Gap-closure plan 04-05 fixed exactly one predicate at one call site and
+  pinned it at both the package and CLI boundaries; the re-run audit confirmed 12/12 seams.
+- **Absence-triggered requirements were re-checked after capability research.** All three v1
+  runtimes turned out to have a native skill format, leaving `REQ-skills-agents-md-fallback` with
+  an empty trigger set. Surfacing it as a blocking `checkpoint:decision` (04-03) rather than
+  guessing produced the `codex-native-plus-index` route and a human-confirmed A1.
+- **D-15 accepted a criterion by construction instead of staging a rehearsal.** A literal
+  backfill rehearsal would have been a real `workflow_dispatch` against the real tap; the guard
+  plus the probe are the property, and rule `m45p2b4bp7` kept Homebrew's side out of the gate.
+
+### What Was Inefficient
+
+- **A verification agent ran the plan's own `engram setup --apply` against the operator's real
+  `$HOME`** and overwrote live MCP registrations for all three runtimes — the second hand-restore
+  of a real config in one milestone (Phase 3's was `eky6g0ajrf`). `--apply` does registration AND
+  skills with no opt-out (D-12); the plan's "how to verify" text was an attractive nuisance.
+- **`roadmap update-plan-progress` fired wrong-row / wrong-quantity seven times across the
+  milestone** — three in Phase 4 alone, twice corrupting a shipped v0.12.x row and once writing the
+  plan count into the requirements column. Forwarding the verbatim correct row, the collision set,
+  and the column denominator into every dispatch prompt caught it 2 of 3 times.
+- **Reopening a completed phase for `--gaps-only` hit four traps at once** (`q51bxfmwvp`): the
+  verifier listing its own VERIFICATION.md in `covered_files` (stale-on-write), `handle_branching`
+  switching to the squash-merged milestone branch that lacked the gap plan, `phase.complete`
+  advancing STATE to "plan phase 05" though 5–6 were done, and code-review cross-check pulling
+  ten unrelated release files.
+- **Plan-time `rg` acceptance gates never became durable tests.** Three Phase 1 cask/release
+  requirements were accepted with one-shot occurrence-count gates and sat as Manual-Only for three
+  weeks; `/gsd-validate-phase 1` at close converted them into `cmd/engram/releaseconfig_test.go`.
+- **GoReleaser's `homebrew_casks[].repository.token` rejects any conditional template**, regex-
+  matched on the raw string, invisible to `goreleaser check` and `--snapshot` — it broke the
+  v0.15.0 tap push and was only exercised by a real tag (`bkes2hette`, #516).
+- **The stalled-dependency backlog needed a detour** (#530): the self-hosted renovate bot had
+  regressed to committing `go.mod` without `go.sum`, its cache-prune had gutted the Go module
+  cache, and two otel PRs were one API-coupled upgrade split in half.
+
+### Patterns Established
+
+- **Verify a tool that writes to `$HOME` only against a fake `$HOME` or the fake seam.** Scope a
+  prohibition to the actual blast radius, not to "the repo".
+- **Own-config content is in scope; third-party behavior is not.** `m45p2b4bp7` / D-11 forbid
+  gating Homebrew, Gatekeeper, and GoReleaser's runtime — not pinning the literal ordering of
+  `.goreleaser.yaml` or `release.yaml`. Convert plan-time shell gates over own config into Go
+  tests at validate-phase; never file them as Manual-Only.
+- **A comment-stripper needs a known-survivor control.** Strip-from-first-`#` blanks Ruby `#{…}`
+  interpolation lines, so a count over the stripped text runs on empty strings (`6dt7nh9tse`).
+- **Re-check absence-triggered requirements after capability research**, and surface an empty
+  trigger set as a decision rather than a vacuous pass.
+- **Forward the collision set into the dispatch prompt.** A row-scoped guard cannot catch a
+  wrong-*what*; giving the executor the verbatim correct row plus every row that shares its prefix
+  is what actually caught the progress-table corruption.
+- **A publish-time-only field has no dry-run gate.** Pin it in a test that reads the config as
+  text, because the first execution is a real tag.
+
+### Key Lessons
+
+1. **The audit is where cross-phase defects live.** B01 was invisible to every phase-scoped test
+   because it sat on the seam between Phase 3's SkillTarget, Phase 4's installer, and Phase 2's
+   outcome report. Budget a re-run after closing an audit gap — the second pass here was ~2 min.
+2. **Sequencing a digest refresh matters.** Fingerprint a VERIFICATION.md only after the last
+   tracking edit it covers; the third audit pass found Phase 4 stale again purely because the audit
+   report was edited after its digest was computed.
+3. **A deferred-items entry does not self-clear.** Both items acknowledged at this close were
+   already resolved in fact; the entries kept surfacing until `audit-open acknowledge` set their
+   `status:`. Same lesson as 2026-08-12.01, still true.
+4. **Reopening a phase is its own workflow, not "execute-phase again".** The four `--gaps-only`
+   traps are all positional assumptions (last phase, active branch, self-referential digest) that a
+   linear run never violates.
+5. **Release-please, not the milestone, decides what a version means.** This milestone's code
+   shipped as v0.16.0 three days before the milestone closed; the label and the tag are
+   independent by design (`e325awbf7x`).
+
+### Cost / Process Observations
+
+- Merge shape: one squashed PR (#557) for phases 1–6 code, one docs PR (#558) for the qualifying
+  release observations, then a closeout branch carrying the 04-05 gap fix, the validate-phase
+  tests, three audit passes, and the archive — 25 commits, not yet on `main` at close.
+- Three audit passes: `gaps_found` (B01) → `tech_debt` (Nyquist 01–04 draft) → `tech_debt`
+  (Nyquist 6/6). Each re-run's integration check was scoped to the diff since the prior pass.
+- Two real-config restores (Phases 3 and 4) were the milestone's largest non-productive spend.
+- Closeout was `override_closeout` by the workflow's taxonomy — 2 acknowledged deferred-items
+  entries, both moot — with every phase verified and 25/25 requirements satisfied.
+
+---
+
 ## Cross-Milestone Trends
 
 Populated as milestones accumulate.
 
-| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | Notes |
-|-------|--------|---------|---------|---------|---------------|-------|
-| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
-| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | Stacked unmerged branch each time; cleared post-merge |
-| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | Applied within-milestone and captured for reuse |
-| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 3-source cross-referenced |
-| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
-| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | v0.13.x did not split per-phase |
-| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | Both v0.13.x cases were prose contradicting the code it described |
-| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
-| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | New trend — all four would have frozen into the immutable archive a day later |
-| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
+| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | 2026-08-23.01 | Notes |
+|-------|--------|---------|---------|---------|---------------|---------------|-------|
+| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | 0 (but 2 research risks retired live before roadmapping) | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
+| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | ok; reopened-phase branch trap instead (`q51bxfmwvp`) | Stacked unmerged branch each time; cleared post-merge |
+| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | fake-HOME-only verification, own-config-is-in-scope, known-survivor control for comment strippers, forward-the-collision-set | Applied within-milestone and captured for reuse |
+| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 25/25 | 3-source cross-referenced |
+| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | gaps_found → tech_debt (B01 closed by 04-05; 12/12 seams, 8/8 flows) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
+| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | 1 squashed PR (#557) + docs PR (#558) + closeout branch | v0.13.x did not split per-phase |
+| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | 1 by the milestone audit's integration checker (B01), 0 by review | Both v0.13.x cases were prose contradicting the code it described |
+| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | 2/6 at first audit → 6/6 COMPLIANT (3 Phase 1 gaps → Go tests) | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
+| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | 3 stale Phase 2 checkboxes + 7 progress-table misfires during execution | New trend — all four would have frozen into the immutable archive a day later |
+| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
 
 ---
 
