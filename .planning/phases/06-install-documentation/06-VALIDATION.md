@@ -2,8 +2,8 @@
 phase: 06
 slug: install-documentation
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-09-12
 ---
 
@@ -28,15 +28,26 @@ and installation observations separate from local documentation checks.
 
 ## Per-Task Verification Map
 
-The planner fills task IDs and exact commands after task decomposition. All three
-requirements must have an explicit verification path: install guide/build/link
-review; setup help/source/build review; real release and four-platform install
-observations. No prose-keyword tests or new test framework are required.
+| Task | Requirements | Verification | Evidence |
+| --- | --- | --- | --- |
+| 06-01-01 | REQ-docs-install-path, REQ-docs-setup-documented | `rumdl check docs-site/src/content/docs/guides/install.md docs-site/src/content/docs/guides/agent-setup.md docs-site/src/content/docs/guides/quickstart.md`; `pnpm --dir docs-site build`; rendered Quickstart → Install → Agent Setup review | 06-01-SUMMARY.md |
+| 06-01-02 | REQ-docs-setup-documented, REQ-docs-install-path | Targeted `rumdl check` on agent-setup.md, cli.md, plugin.md; `go run ./cmd/engram setup --help`; `task lint:setup`; `pnpm --dir docs-site build`; five rendered routes/link and auth contract review | 06-01-SUMMARY.md |
+| 06-02-01 | REQ-homebrew-cask-published, both docs requirements | `gh release view --repo seanb4t/engram --json tagName,publishedAt,url,assets`; release-run/tap audit; actual isolated `brew install seanb4t/tap/engram` per available target; installed absolute-path `version --output json` and `setup --help`; evidence Markdown lint | 06-RELEASE-OBSERVATIONS.md |
+| 06-02-02 | All three Phase 6 requirements | Evidence Markdown lint; conditional manual checkpoint for only missing host/release evidence after all feasible local work; approval alone is insufficient | Resolved observation rows or exact pending prerequisite |
+| 06-02-03 | All three Phase 6 requirements | Targeted `rumdl check` on install.md, agent-setup.md, plugin.md and evidence artifact; `task lint:setup`; `pnpm --dir docs-site build`; released help/provenance versus rendered availability review | 06-RELEASE-OBSERVATIONS.md and 06-02-SUMMARY.md |
+
+Task PLAN.md verification blocks carry exact executable commands. No prose-keyword
+tests or new test framework are required. Existing build commands may exceed one
+minute on a cold environment; collect actual duration and keep progress updates.
 
 ## Wave 0 Requirements
 
 Existing infrastructure covers local docs checks. Platform access is an execution
 prerequisite for actual install observations, not an automated-test dependency.
+No scaffold is missing, so Wave 0 is complete. `nyquist_compliant: true` describes
+the planned verification coverage only; it does not mean execution or release
+acceptance passed. Use the project pnpm pin and frozen existing lockfile when
+preparing dependencies, without adding packages or changing the lockfile.
 
 ## Manual-Only Verifications
 
@@ -49,3 +60,6 @@ prerequisite for actual install observations, not an automated-test dependency.
 
 Pending execution. A successful local build does not satisfy the four-platform
 release requirement. Preserve the known v0.15.1/setup availability boundary.
+Do not reopen passed Phases 1–5 or turn their delegated release handoff into new
+third-party CI tests. A successful actual install under Rosetta/container emulation
+must be identified as such, never described as native hardware verification.

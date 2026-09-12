@@ -545,7 +545,11 @@ and the delegation story settled).
    Linux — the end-to-end confirmation of the pipeline Phase 1 configures, and the prerequisite for
    documenting the exact working invocation in criterion 1.
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Canonical Install and Agent Setup guides with reconciled entry points
+- [ ] 06-02-PLAN.md — Release provenance, four-platform installation evidence and shipped availability
 
 ---
 

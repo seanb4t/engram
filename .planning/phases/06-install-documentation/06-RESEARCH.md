@@ -244,11 +244,14 @@ The relevant transition is repository-specific: published binary acquisition exi
 
 No unverified technical claim is used as a locked decision. Disposable Linux containers, alternate macOS prefixes, and Rosetta are only candidate observation mechanisms; execution must first establish the available environment and record what was actually observed. No native-platform equivalence or successful install is assumed. [VERIFIED: orchestrator research boundary; 06-CONTEXT.md D-08]
 
-## Open Questions
+## Resolved Planning Questions
 
-1. Which release first includes final setup/delegation? Current evidence only establishes that v0.15.1 does not. Keep the availability note and release acceptance checkpoint explicit. [VERIFIED: git tag tree check, 2026-09-12]
-2. Which environments can supply the three non-native target observations? This session established only the local Darwin arm64 host, not remote Intel Macs or Linux test hosts. This is an execution access gap, not a blocker to writing/building docs. [VERIFIED: uname -sm, 2026-09-12]
-3. Does the observed publishing run satisfy every #514 checklist detail? The cask exists, but its existence alone does not replace reading the publishing-run upload guard and log. Plan that read-only evidence collection before sealing the requirement. [VERIFIED: issue #514 checklist B; tap content API]
+1. **RESOLVED (planning route; release observation pending):** Which release first includes final setup/delegation? Plan 06-02 Task 1 identifies released source/artifact behavior; Task 2 holds the external prerequisite if none qualifies; Task 3 updates availability only from a qualifying observed release. v0.15.1 remains known not to contain setup. No future tag is guessed.
+2. **RESOLVED (verification procedure; host observations pending):** Which environments supply non-native targets? Plan 06-02 Task 1 inventories available disposable environments and attempts feasible actual installs; Task 2 records exact missing host/evidence prerequisites. No platform is counted without an actual installation and executable check; execution architecture and any virtualization/emulation must be recorded, and no access is assumed.
+3. **RESOLVED (evidence collection assigned; upload audit pending):** Does the publishing run satisfy #514 checklist B? Plan 06-02 Task 1 records the actual run, upload guard and cask outcome; Task 2 holds any missing evidence. Cask existence alone does not close the checklist, and Task 3 requires complete evidence before final availability wording.
+
+These resolutions make the execution path concrete. They do not claim release or
+installation success; those observations remain pending in Plan 06-02.
 
 ## Environment Availability
 
