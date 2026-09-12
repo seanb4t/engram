@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 )
 
@@ -125,9 +126,20 @@ func installFiles(env Environment, dir string, list []Skill) (wrote []string, al
 
 // installAgentsMDIndex performs FormatAgentsMD's second, independent
 // step: splicing the skills index block into target.IndexFile. It reads
-// the index file through the seam — ANY read error, not just "does not
-// exist", is treated as empty content (the create case), matching
-// installFiles' own ambiguity-resolves-to-wrote posture one layer up.
+// the index file through the seam and classifies the result two ways:
+// confirmed nonexistence (an errors.Is check against fs.ErrNotExist,
+// satisfied whether the error is bare or wrapped) is the create case and
+// proceeds with an empty document; any other read error — permission
+// denied, a transient I/O error, or anything else — preserves the file
+// untouched, accumulates a wrapped error naming the index path, and
+// returns before rendering, splicing, mkdir, or writing. This is
+// deliberately NOT installFiles' own
+// ambiguity-resolves-to-wrote posture: the index is a file engram does
+// not own, read and write permission are independent, and treating an
+// unreadable file as empty would silently replace the operator's own
+// guidance with the managed block alone while reporting success (issue
+// #559, REQ-skills-agents-md-fallback, D-15).
+//
 // Rendering and splicing is pure (agentsmd.go); this function's only job
 // is deciding whether that result needs writing, and doing so.
 //
@@ -151,6 +163,10 @@ func installAgentsMDIndex(
 ) ([]string, []string, []error) {
 	existing, readErr := env.ReadFile(target.IndexFile)
 	if readErr != nil {
+		if !errors.Is(readErr, fs.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("skills: read index %s: %w", target.IndexFile, readErr))
+			return wrote, alreadyCorrect, errs
+		}
 		existing = nil
 	}
 

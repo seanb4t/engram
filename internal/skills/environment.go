@@ -21,11 +21,19 @@ import "os"
 // keeps out of it.
 type Environment struct {
 	// ReadFile mirrors os.ReadFile: the whole file's content, or a
-	// non-nil error. Install treats ANY read error identically — a
-	// missing file and a permission error both mean "cannot prove this
-	// destination already matches," which resolves to the write case
-	// (D-08's ambiguity-resolves-to-wrote invariant, applied one layer
-	// down).
+	// non-nil error. Install's two consumers apply DIFFERENT rules to
+	// that error: installFiles (engram-owned skill files beneath a
+	// runtime's Dir) treats ANY read error identically — a missing file
+	// and a permission error both mean "cannot prove this destination
+	// already matches," which resolves to the write case (D-08's
+	// ambiguity-resolves-to-wrote invariant). installAgentsMDIndex (the
+	// operator-owned AGENTS.md-shaped index) is narrower: only
+	// errors.Is(err, fs.ErrNotExist) means "create a fresh document";
+	// every other read error preserves the existing file untouched and is
+	// reported, never silently treated as empty (issue #559). The
+	// production value is os.ReadFile, whose missing-file error satisfies
+	// errors.Is(err, fs.ErrNotExist) — any fake Environment must return
+	// that same sentinel for a missing file so the two agree.
 	ReadFile func(name string) ([]byte, error)
 	// WriteFile mirrors os.WriteFile, including its file-mode parameter.
 	WriteFile func(name string, data []byte, perm os.FileMode) error
