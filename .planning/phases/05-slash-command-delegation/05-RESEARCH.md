@@ -3,7 +3,7 @@
 **Researched:** 2026-09-12
 **Domain:** Go-driven Markdown generation, CLI handoff, derived conformance
 **Confidence:** HIGH for source findings; MEDIUM for external documentation
-**Planning readiness:** Resolve the explicit decision conflicts below before implementation.
+**Planning readiness:** Ready under CONTEXT.md D-17 through D-20; the original research conflicts below are resolved by those amendments.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
