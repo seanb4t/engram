@@ -1,17 +1,18 @@
 ---
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
-current_phase: 6
+current_phase: 04
+current_phase_name: skills-distribution
 status: milestone_audit_gaps_found
 stopped_at: milestone audit found AGENTS.md preservation gap 559; fix and re-verify Phase 4
-last_updated: "2026-09-12T19:11:20.121382+00:00"
+last_updated: "2026-09-12T19:45:20.696Z"
 last_activity: 2026-09-12
 last_activity_desc: milestone audit 24/25; preservation blocker 559, timeout warning 560, validation debt 561
-state_head: d205d4a361979ff318bb47adda278ab17d3672e5
+state_head: 9279f5dace43102271fc9c7edbc96b6693c63225
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 20
+  total_plans: 21
   completed_plans: 20
 milestone_name: Distribution & Agent Bootstrap
 ---
@@ -27,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 ## Current Position
 
-Phase: 06 — Install Documentation
+Phase: 04 (skills-distribution) — READY TO EXECUTE
 Plan: 2 of 2 complete
 Status: Milestone audit gaps_found — 24/25 requirements; fix #559 before archival
 Last activity: 2026-09-12 — PRs #557 and #533 merged; four Homebrew installs and tagged Go install passed
@@ -42,7 +43,9 @@ The qualifying-release checks passed for v0.16.0. See
 `.planning/phases/06-install-documentation/06-RELEASE-0.16.0.md` for publication,
 installed setup/client-ID help, completion and tagged Go-install evidence.
 The five-guide availability update merged as PR #558 and deployed through run
+
 34712224429. All five live guide routes now show v0.16.0. Issues #556 and #514
+
 are closed. The earlier recovery-rehearsal blocker was incorrect: Phase 1 D-15
 explicitly accepts that criterion by construction and prohibits a staged
 rehearsal; its verification report agrees. The requirement checkbox is now

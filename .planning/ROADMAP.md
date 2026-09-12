@@ -473,12 +473,25 @@ and detection Phase 3 established).
 **Plans:** 4/5 plans complete
 
 Plans:
+**Wave 1**
 
 - [x] 04-01-PLAN.md — Tracer: vendor → embed → inventory → native install → claude-code row, plus outcome aggregation and the import gate (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 04-02-PLAN.md — The `metadata` index entry, frontmatter parsing, and the AGENTS.md anchored-block scan, splice and symlink-preserving write (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [x] 04-03-PLAN.md — Codex and opencode skills destinations, with the AGENTS.md routing decision and the runtime-surfacing human verification (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [x] 04-04-PLAN.md — `generic`'s skills payload, `--help` correctness, and the four-runtime end-to-end report gate (wave 3)
-- [ ] 04-05-PLAN.md — Gap closure B01 / #559: an unreadable AGENTS.md index is preserved with zero writes, only `fs.ErrNotExist` is the create case, and the wrapped failure reaches the codex row and the partial exit (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 04-05-PLAN.md — Gap closure B01 / #559: an unreadable AGENTS.md index is preserved with zero writes, only `fs.ErrNotExist` is the create case, and the wrapped failure reaches the codex row and the partial exit (wave 5)
 
 ---
 
