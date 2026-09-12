@@ -1,9 +1,9 @@
 ---
 phase: 05
 slug: slash-command-delegation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-09-12
 ---
 
@@ -28,8 +28,8 @@ created: 2026-09-12
 
 ## Per-Task Verification Map
 
-Plans 01 and 02 have been reconciled against shipped tests using `go test -list` and verbose
-RUN/PASS evidence. Plan 03 remains pending until execution finishes.
+All three plans have been reconciled against shipped tests using `go test -list` and verbose
+RUN/PASS evidence. Final independent goal verification remains separate.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
@@ -38,8 +38,8 @@ RUN/PASS evidence. Plan 03 remains pending until execution finishes.
 | 05-01-03 | 01 | 1 | REQ-engram-setup-delegates | T-05-02 | Help describes non-secret ID and environment credential prerequisites | conformance | `go test ./cmd/engram -run 'Test(SetupHelp\|HelpGolden\|CatalogGolden)' -count=1 -v` | Existing tests extended | pass |
 | 05-02-01 | 02 | 2 | REQ-engram-setup-prose-fallback, REQ-delegation-equivalence-derived | T-05-04/05/06/07 | Four real Plan-derived auth rows; synthetic environment; invalid Plan shapes reject | unit/artifact | `go test ./internal/setupgen -count=1 -v` | New package | pass |
 | 05-02-02 | 02 | 2 | REQ-engram-setup-delegates | T-05-07 | Generated invocations reach actual Cobra input validation and fake execution | CLI integration | `go test ./cmd/engram -run '^TestSetupGeneratedInvocations$' -count=1 -v` | New file | pass |
-| 05-03-01 | 03 | 3 | REQ-delegation-equivalence-derived | T-05-08 | Check-only dispatch rejects drift and malformed anchors without writes | integration | `go test ./internal/setupgen ./internal/surfacesgen -count=1 -v` | New tests | pending |
-| 05-03-02 | 03 | 3 | REQ-delegation-equivalence-derived | T-05-09 | Mutation proves read-only and git-diff lanes reject stale bytes | integration | `go test ./internal/setupgen ./internal/surfacesgen -run 'Test(PlanMutationChangesRegion\|DriftChecks)' -count=1 -v` | New tests | pending |
+| 05-03-01 | 03 | 3 | REQ-delegation-equivalence-derived | T-05-08 | Check-only dispatch rejects drift and malformed anchors without writes | integration | `go test ./internal/setupgen ./internal/surfacesgen -count=1 -v` | Yes | pass |
+| 05-03-02 | 03 | 3 | REQ-delegation-equivalence-derived | T-05-09 | Mutation proves read-only and git-diff lanes reject stale bytes | integration | `go test ./internal/setupgen ./internal/surfacesgen -run 'Test(PlanMutationChangesRegion\|DriftChecks)' -count=1 -v` | Yes | pass |
 
 ## Wave 0 Requirements
 
@@ -56,12 +56,20 @@ recorded separately with its scope and evidence.
 
 ## Validation Sign-Off
 
-Pending implementation: reconcile task mapping, test references, RUN/PASS evidence, sampling
-continuity, and full quality gate before setting validated or nyquist_compliant.
+All seven tasks have concrete automated checks, resolved test names and passing execution evidence.
+Each wave passed full `task`; final merged-tree verification is recorded below. Third-party behavior
+is outside the automated gate by the accepted ownership boundary in CONTEXT.md.
 
 ## Execution evidence so far
 
 - Plans 01–02: actual test inventory in `/tmp/engram-05-test-inventory.log`; verbose passing client-ID, runtime, help/golden, generated invocation and unsupported-mode checks in `/tmp/engram-05-validation-client-delegation.log`.
 - Full `task surfaces:gen` and `task` passed for both implemented waves; merged wave 2 also passed `go build ./...` and `task` (`/tmp/engram-05-wave2-merged-quality.log`).
 - Exact new CLI tests are `TestSetupClientID`, `TestSetupHelpClientIDContract`, and `TestSetupGeneratedInvocations`; runtime tests are `TestClaudeCodeClientID` and `TestCodexClientID`. Plan 02 renderer/writer test names and evidence are recorded in its SUMMARY.
-- Plan 03 drift/mutation evidence and final sign-off remain pending.
+- Plan 03 verbose RUN/PASS evidence: `/tmp/engram-05-validation-drift.log`; all renderer, read-only, writer, mutation, scratch-git, dispatch and subprocess exit checks pass.
+
+## Final automation evidence
+
+- `go test ./internal/setupgen ./internal/surfacesgen -count=1 -v` passes all tests, including `TestPlanMutationChangesRegion`, `TestDriftChecks`, `TestCheckReadOnly`, `TestCheckSubprocessExit`, and `TestCheckDispatchWriterControl`. Source and artifact negative controls each observe `git diff --exit-code` exit 1, followed by clean restoration.
+- `task surfaces:gen` passed in the implementation worktree and after merge; the command/help/catalog generated files have no diff.
+- Full plan 03 `task` passed (`/tmp/engram-05-03-quality.log`), including all prior-phase Go tests and 33 Python tests.
+- The maximum observed focused feedback cycle remained under 60 seconds; full container-backed store tests are part of each wave gate.
