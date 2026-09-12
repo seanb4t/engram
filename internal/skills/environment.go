@@ -23,10 +23,11 @@ type Environment struct {
 	// ReadFile mirrors os.ReadFile: the whole file's content, or a
 	// non-nil error. Install's two consumers apply DIFFERENT rules to
 	// that error: installFiles (engram-owned skill files beneath a
-	// runtime's Dir) treats ANY read error identically — a missing file
-	// and a permission error both mean "cannot prove this destination
-	// already matches," which resolves to the write case (D-08's
-	// ambiguity-resolves-to-wrote invariant). installAgentsMDIndex (the
+	// runtime's Dir) treats every read error the same, without
+	// exception — a missing file and a permission error both mean
+	// "cannot prove this destination already matches," which resolves to
+	// the write case (D-08's ambiguity-resolves-to-wrote invariant).
+	// installAgentsMDIndex (the
 	// operator-owned AGENTS.md-shaped index) is narrower: only
 	// errors.Is(err, fs.ErrNotExist) means "create a fresh document";
 	// every other read error preserves the existing file untouched and is
