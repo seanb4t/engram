@@ -470,7 +470,7 @@ and detection Phase 3 established).
    AGENTS.md inside a delimited, re-detectable block; re-running replaces that block rather than
    appending a second copy, and content outside the block is left byte-for-byte untouched.
 
-**Plans:** 4/4 plans complete
+**Plans:** 4/5 plans complete
 
 Plans:
 
@@ -478,6 +478,7 @@ Plans:
 - [x] 04-02-PLAN.md — The `metadata` index entry, frontmatter parsing, and the AGENTS.md anchored-block scan, splice and symlink-preserving write (wave 2)
 - [x] 04-03-PLAN.md — Codex and opencode skills destinations, with the AGENTS.md routing decision and the runtime-surfacing human verification (wave 3)
 - [x] 04-04-PLAN.md — `generic`'s skills payload, `--help` correctness, and the four-runtime end-to-end report gate (wave 3)
+- [ ] 04-05-PLAN.md — Gap closure B01 / #559: an unreadable AGENTS.md index is preserved with zero writes, only `fs.ErrNotExist` is the create case, and the wrapped failure reaches the codex row and the partial exit (wave 4)
 
 ---
 
