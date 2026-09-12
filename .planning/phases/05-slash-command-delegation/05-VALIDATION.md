@@ -28,16 +28,16 @@ created: 2026-09-12
 
 ## Per-Task Verification Map
 
-Planned test names below are new outputs, not evidence of existing tests. The executor reconciles
-them against shipped tests with go test -list and verbose RUN/PASS evidence.
+Plans 01 and 02 have been reconciled against shipped tests using `go test -list` and verbose
+RUN/PASS evidence. Plan 03 remains pending until execution finishes.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 05-01-01 | 01 | 1 | REQ-engram-setup-delegates | T-05-01/02/03 | Required and irrelevant IDs fail before effects; opaque IDs remain one token | CLI integration | `go test ./cmd/engram -run '^TestSetupClientID$' -count=1 -v` | New tests in existing file | pending |
-| 05-01-02 | 01 | 1 | REQ-engram-setup-delegates | T-05-01 | Both supported runtimes consume actual client ID; unsupported pairs stay visible | unit/CLI | `go test ./internal/setup ./cmd/engram -run 'Test(ClaudeCodeClientID\|CodexClientID\|SetupClientID\|ClaudeCodePlan\|Plan.*OAuthClient\|SetupUnsupportedAuthMode)' -count=1 -v` | New and existing tests | pending |
-| 05-01-03 | 01 | 1 | REQ-engram-setup-delegates | T-05-02 | Help describes non-secret ID and environment credential prerequisites | conformance | `go test ./cmd/engram -run 'Test(SetupHelp\|HelpGolden\|CatalogGolden)' -count=1 -v` | Existing tests extended | pending |
-| 05-02-01 | 02 | 2 | REQ-engram-setup-prose-fallback, REQ-delegation-equivalence-derived | T-05-04/05/06/07 | Four real Plan-derived auth rows; synthetic environment; invalid Plan shapes reject | unit/artifact | `go test ./internal/setupgen -count=1 -v` | New package | pending |
-| 05-02-02 | 02 | 2 | REQ-engram-setup-delegates | T-05-07 | Generated invocations reach actual Cobra input validation and fake execution | CLI integration | `go test ./cmd/engram -run '^TestSetupGeneratedInvocations$' -count=1 -v` | New file | pending |
+| 05-01-01 | 01 | 1 | REQ-engram-setup-delegates | T-05-01/02/03 | Required and irrelevant IDs fail before effects; opaque IDs remain one token | CLI integration | `go test ./cmd/engram -run '^TestSetupClientID$' -count=1 -v` | New tests in existing file | pass |
+| 05-01-02 | 01 | 1 | REQ-engram-setup-delegates | T-05-01 | Both supported runtimes consume actual client ID; unsupported pairs stay visible | unit/CLI | `go test ./internal/setup ./cmd/engram -run 'Test(ClaudeCodeClientID\|CodexClientID\|SetupClientID\|ClaudeCodePlan\|Plan.*OAuthClient\|SetupUnsupportedAuthMode)' -count=1 -v` | New and existing tests | pass |
+| 05-01-03 | 01 | 1 | REQ-engram-setup-delegates | T-05-02 | Help describes non-secret ID and environment credential prerequisites | conformance | `go test ./cmd/engram -run 'Test(SetupHelp\|HelpGolden\|CatalogGolden)' -count=1 -v` | Existing tests extended | pass |
+| 05-02-01 | 02 | 2 | REQ-engram-setup-prose-fallback, REQ-delegation-equivalence-derived | T-05-04/05/06/07 | Four real Plan-derived auth rows; synthetic environment; invalid Plan shapes reject | unit/artifact | `go test ./internal/setupgen -count=1 -v` | New package | pass |
+| 05-02-02 | 02 | 2 | REQ-engram-setup-delegates | T-05-07 | Generated invocations reach actual Cobra input validation and fake execution | CLI integration | `go test ./cmd/engram -run '^TestSetupGeneratedInvocations$' -count=1 -v` | New file | pass |
 | 05-03-01 | 03 | 3 | REQ-delegation-equivalence-derived | T-05-08 | Check-only dispatch rejects drift and malformed anchors without writes | integration | `go test ./internal/setupgen ./internal/surfacesgen -count=1 -v` | New tests | pending |
 | 05-03-02 | 03 | 3 | REQ-delegation-equivalence-derived | T-05-09 | Mutation proves read-only and git-diff lanes reject stale bytes | integration | `go test ./internal/setupgen ./internal/surfacesgen -run 'Test(PlanMutationChangesRegion\|DriftChecks)' -count=1 -v` | New tests | pending |
 
@@ -58,3 +58,10 @@ recorded separately with its scope and evidence.
 
 Pending implementation: reconcile task mapping, test references, RUN/PASS evidence, sampling
 continuity, and full quality gate before setting validated or nyquist_compliant.
+
+## Execution evidence so far
+
+- Plans 01–02: actual test inventory in `/tmp/engram-05-test-inventory.log`; verbose passing client-ID, runtime, help/golden, generated invocation and unsupported-mode checks in `/tmp/engram-05-validation-client-delegation.log`.
+- Full `task surfaces:gen` and `task` passed for both implemented waves; merged wave 2 also passed `go build ./...` and `task` (`/tmp/engram-05-wave2-merged-quality.log`).
+- Exact new CLI tests are `TestSetupClientID`, `TestSetupHelpClientIDContract`, and `TestSetupGeneratedInvocations`; runtime tests are `TestClaudeCodeClientID` and `TestCodexClientID`. Plan 02 renderer/writer test names and evidence are recorded in its SUMMARY.
+- Plan 03 drift/mutation evidence and final sign-off remain pending.
