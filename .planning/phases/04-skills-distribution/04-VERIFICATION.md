@@ -1,44 +1,57 @@
 ---
 phase: 04-skills-distribution
-verified: 2026-09-10T16:30:00Z
+verified: 2026-09-12T15:41:47Z
 status: passed
 score: 46/46 must-haves verified
 covered_files:
-  - ".planning/REQUIREMENTS.md"
-  - ".planning/ROADMAP.md"
-  - ".planning/phases/04-skills-distribution/04-01-PLAN.md"
-  - ".planning/phases/04-skills-distribution/04-01-SUMMARY.md"
-  - ".planning/phases/04-skills-distribution/04-02-PLAN.md"
-  - ".planning/phases/04-skills-distribution/04-02-SUMMARY.md"
-  - ".planning/phases/04-skills-distribution/04-03-PLAN.md"
-  - ".planning/phases/04-skills-distribution/04-03-SUMMARY.md"
-  - ".planning/phases/04-skills-distribution/04-04-PLAN.md"
-  - ".planning/phases/04-skills-distribution/04-04-SUMMARY.md"
-  - ".planning/phases/04-skills-distribution/04-CONTEXT.md"
-  - ".planning/phases/04-skills-distribution/04-REVIEW.md"
-  - ".planning/phases/04-skills-distribution/04-VALIDATION.md"
-  - "cmd/engram/setup.go"
-  - "cmd/engram/testdata/help.golden"
-  - "go.mod"
-  - "internal/setup/aggregate.go"
-  - "internal/setup/apply.go"
-  - "internal/setup/claudecode.go"
-  - "internal/setup/codex.go"
-  - "internal/setup/generic.go"
-  - "internal/setup/opencode.go"
-  - "internal/setup/plan.go"
-  - "internal/skills/agentsmd.go"
-  - "internal/skills/drift_test.go"
-  - "internal/skills/embed.go"
-  - "internal/skills/environment.go"
-  - "internal/skills/frontmatter.go"
-  - "internal/skills/importgate_test.go"
-  - "internal/skills/install.go"
-  - "internal/skills/inventory.go"
-covered_digest: "v1:sha256:aee2a4779abccc5a90afa6e1a66950d8caae13d4072c7d29d2060e6074462e60"
+  - .planning/REQUIREMENTS.md
+  - .planning/ROADMAP.md
+  - .planning/phases/04-skills-distribution/04-01-PLAN.md
+  - .planning/phases/04-skills-distribution/04-01-SUMMARY.md
+  - .planning/phases/04-skills-distribution/04-02-PLAN.md
+  - .planning/phases/04-skills-distribution/04-02-SUMMARY.md
+  - .planning/phases/04-skills-distribution/04-03-PLAN.md
+  - .planning/phases/04-skills-distribution/04-03-SUMMARY.md
+  - .planning/phases/04-skills-distribution/04-04-PLAN.md
+  - .planning/phases/04-skills-distribution/04-04-SUMMARY.md
+  - .planning/phases/04-skills-distribution/04-CONTEXT.md
+  - .planning/phases/04-skills-distribution/04-REVIEW.md
+  - .planning/phases/04-skills-distribution/04-VALIDATION.md
+  - .planning/phases/05-slash-command-delegation/05-CONTEXT.md
+  - cmd/engram/setup.go
+  - cmd/engram/setup_delegation_test.go
+  - cmd/engram/setup_test.go
+  - cmd/engram/testdata/help.golden
+  - go.mod
+  - internal/setup/aggregate.go
+  - internal/setup/apply.go
+  - internal/setup/claudecode.go
+  - internal/setup/claudecode_test.go
+  - internal/setup/codex.go
+  - internal/setup/codex_test.go
+  - internal/setup/generic.go
+  - internal/setup/opencode.go
+  - internal/setup/plan.go
+  - internal/setup/plan_test.go
+  - internal/setup/runtime.go
+  - internal/skills/agentsmd.go
+  - internal/skills/drift_test.go
+  - internal/skills/embed.go
+  - internal/skills/environment.go
+  - internal/skills/frontmatter.go
+  - internal/skills/importgate_test.go
+  - internal/skills/install.go
+  - internal/skills/inventory.go
+covered_digest: "v1:sha256:795a5cd82187905f2d35338dc4f504424b0f132efbc2766d3edb3e2dcff8e41e"
 behavior_unverified: 0
 overrides_applied: 0
-human_verification:
+re_verification:
+  previous_status: stale
+  previous_score: 46/46
+  gaps_closed: []
+  gaps_remaining: []
+  regressions: []
+human_verification_evidence:
   - test: "Start Claude Code and opencode with the five curation skills installed via `engram setup --apply --runtime claude-code` and `--runtime opencode` (against a scratch/fake $HOME, never the operator's real one — see the incident recorded in 04-03-SUMMARY.md), then check each runtime's own skill list and startup/log output."
     expected: "All five skills appear in the runtime's skill list, and no warning is emitted about the unrecognized `metadata.engram-summary` frontmatter key."
     why_human: "Repo rule m45p2b4bp7 forbids an automated test asserting third-party runtime behavior."
@@ -54,9 +67,52 @@ re-detectable AGENTS.md block where none does — from a brew-installed binary t
 skill content itself, so a Claude-plugin-free install still teaches an agent how to curate. The
 embedded content is sourced from the same files the plugin ships, so the two cannot drift apart.
 
-**Verified:** 2026-09-10T16:30:00Z
+**Verified:** 2026-09-12T15:41:47Z
 **Status:** passed
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — scoped regression audit after Phase 05 changed covered inputs.
+
+## Current Regression Verdict — 2026-09-12
+
+**46/46 must-haves remain verified; no gaps, regressions, or pending human checks.**
+Compared Phase 05 against accepted baseline `259f22f994c4df896d70322ce9ab13de004453a1`
+and last Phase 04 report commit `849cc2f2`. Staleness reflects changed covered
+bytes, not observed behavioral failure.
+
+| Affected coverage | Current evidence | Status |
+|---|---|---|
+| setup.go input resolution | Only client-ID binding, validation, forwarding and auth help/example changed. Skills inventory, destination calculation, preview content, apply composition and aggregation functions are unchanged. Passing Phase 05 CLI tests cover invalid input before skills effects and valid fake installation. | VERIFIED |
+| Claude/Codex Plans | OAuth-client replaces the old placeholder with caller ClientID; SkillTarget format/directory/index declarations are unchanged. OpenCode and generic are byte-identical to baseline. | VERIFIED |
+| Embedded content and installation | No diff in internal/skills, skill/engram/skills, aggregate.go, apply.go, or plan.go from the accepted baseline. Native writes, AGENTS.md splice, convergence and set/byte drift mechanisms retain the verified implementation. | VERIFIED |
+| Report and failure aggregation | Independently reran TestSetupReportCoversEveryRuntimeShape (all five cases) and TestSetupSkillsFailureReachesPartialExit: pass. Tests exercise injected filesystem effects, complete row shape, selection, and partial/total/not-present outcomes. | VERIFIED |
+| Help and planning | Help advertises D-17's accepted non-secret client ID and inherited secret prerequisite; skills behavior/destinations are unchanged. ROADMAP/REQUIREMENTS diff marks Phase 05 complete only; Phase 04 criteria and requirements remain intact. | VERIFIED |
+
+Independently ran `go test ./cmd/engram -run '^TestSetupReportCoversEveryRuntimeShape$' -count=1 -v`
+and `go test ./cmd/engram -run '^TestSetupSkillsFailureReachesPartialExit$' -count=1 -v`:
+both exit 0 in under 10 seconds. The independently rerun runtime auth matrix also
+passes all 16 cases. Phase 05's independently executed client-ID, generated
+invocation, live help and read-only help/catalog golden tests passed.
+Inspected existing `/tmp/engram-05-wave3-merged-quality.log`: full Go package
+regressions (including internal/skills) and all 33 Python tests passed.
+No broad suite was repeated.
+
+Sean's 2026-09-10 evidence in this report and `04-VALIDATION.md:74–75` remains:
+all five skills loaded/listed across all three runtimes. Warning output was not
+captured and remains unclaimed. No skill bytes, destination or frontmatter changed
+in Phase 05; no new third-party rehearsal is required. The former body text
+describing pending observations is corrected to match the existing acceptance.
+
+Fingerprint recomputed with the newer installed
+`/Users/sean/.claude/gsd-core/bin/gsd-tools.cjs query verification.fingerprint`
+under GSD_RUNTIME=codex. Prior coverage is retained and relevant Phase 05
+context/input/regression tests added. No source, home configuration, tracking,
+or memory mutation was performed by this verifier.
+
+## Historical Verification Evidence
+
+Initial implementation checks below retain their original baseline and line-number
+context. Statements that Phase 04 left flags/catalog unchanged describe that
+phase; D-17 explicitly authorized Phase 05's client-ID extension, verified above.
+
 
 ## Goal Achievement
 
@@ -113,9 +169,9 @@ by architectural concern rather than repeated per-plan.
 | 25 | `setupCmd`'s short description and flag set are byte-identical; only `help.golden` moves, confined to added prose naming no destination path. | ✓ VERIFIED | `git diff --stat 788d7127 HEAD -- cmd/engram/testdata/catalog.golden` empty; `help.golden` diff confined to one added paragraph (verified directly, no path literal in it). |
 | 26 | A single invocation across all four runtimes renders one row each with per-facet fields, one aggregated outcome, exit code following the untouched classifier. | ✓ VERIFIED | `TestSetupReportCoversEveryRuntimeShape` — 5 subtests, all pass. |
 | 27 | No test invokes a real runtime binary or writes to a real home directory (except the one scoped symlink test). | ✓ VERIFIED | `setupE2ERecorder` structurally records/asserts zero real invocations; confirmed no `os.UserHomeDir`/real `$HOME` path leaks in the new test files (also the subject of WR-01, now fixed). |
-| 28 | Claude Code, Codex, and opencode each tolerate the new `metadata.engram-summary` frontmatter key without warning or dropping the skill. | ⚠️ PARTIALLY HUMAN-VERIFIED | Codex confirmed 2026-09-10 (human observation, 04-VALIDATION.md). Claude Code and opencode explicitly NOT yet observed — see Human Verification section below. This is the one open item preventing a `passed` status. |
+| 28 | Claude Code, Codex, and opencode tolerate metadata.engram-summary without dropping the skill. | ✓ VERIFIED | Existing Sean observation on 2026-09-10 in frontmatter and 04-VALIDATION.md:74–75: all five skills loaded/listed in all three runtimes. Warning output was not captured and is not claimed. |
 
-**Score:** 45/46 truths verified (1 explicitly routed to human verification, not failed — the code and mechanism are present and correctly wired; only the third-party tolerance observation for two of three runtimes remains outstanding, per repo rule `m45p2b4bp7`'s prohibition on gating on third-party behavior).
+**Score:** 46/46 truths verified, including existing human non-rejection evidence; no pending behavior-unverified item.
 
 ### Required Artifacts
 
@@ -193,39 +249,19 @@ No `TBD`/`FIXME`/`XXX`/`HACK`/`TODO` markers in any file this phase modified. Th
 
 ### Human Verification Required
 
-### 1. Claude Code and opencode frontmatter tolerance for `metadata.engram-summary`
-
-**Test:** Install the five skills via `engram setup --apply` against a scratch `$HOME` (never a
-real one — see the incident recorded in `04-03-SUMMARY.md`), start Claude Code and opencode, and
-check each runtime's own skill list and any startup/log output for a frontmatter warning.
-**Expected:** All five skills load and appear in each runtime's skill list; no warning about the
-unrecognized `metadata.engram-summary` key.
-**Why human:** Repo rule `m45p2b4bp7` forbids an automated test asserting third-party runtime
-behavior. Codex was confirmed 2026-09-10; Claude Code and opencode were explicitly left
-unconfirmed by 04-03 (04-VALIDATION.md's Manual-Only table still carries this as a pending
-half-row). This is a genuine, disclosed gap — not a fabricated pass — and per the phase's own
-`<critical_context_for_sc3>`/`<human_verified_facts>` framing must not be claimed as resolved.
+None pending. Existing evidence is preserved in human_verification_evidence and
+04-VALIDATION.md:74–75: Sean confirmed on 2026-09-10 that all five skills
+loaded/listed across all three runtimes. Warning output was not captured and is
+not claimed. This audit performed no new live observation.
 
 ## Gaps Summary
 
-No code-level gaps. All artifacts exist, are substantive, are wired, and the aggregated report's
-data flows to real embedded content — proven by both static reading of the source and passing
-tests (`go build ./...` and the full `internal/skills`/`internal/setup`/`cmd/engram` suite are
-green at HEAD). All 6 code-review warnings were independently re-confirmed fixed, not merely
-trusted from REVIEW.md. Pinned surfaces (`exit.go`, `exit_test.go`, `catalog.golden`) are
-byte-identical to the `788d7127` baseline; `help.golden`'s only movement is the one documented
-paragraph naming no destination path.
-
-The sole reason this phase is not `passed` is a disclosed, still-open manual verification item:
-Claude Code's and opencode's tolerance for the new `metadata.engram-summary` frontmatter key has
-not yet been observed on a real machine (only Codex has). This is exactly the class of item repo
-rule `m45p2b4bp7` requires to be verified by a human rather than gated automatically, and the
-phase's own SUMMARY and VALIDATION artifacts disclose it honestly rather than papering over it.
-It does not indicate a defect in engram's own code — the frontmatter is authored once and shipped
-identically to all three runtimes — but it is a stated precondition (D-14's "Research
-precondition") that remains partially unconfirmed.
+No Phase 05 regression in embedded content, destinations, installation,
+AGENTS.md splice, reporting or aggregation. All 46 accepted truths remain
+verified. The earlier 45/46 body text predated recorded human acceptance and is
+now reconciled with that existing evidence. Status: passed.
 
 ---
 
-_Verified: 2026-09-10T16:30:00Z_
-_Verifier: Claude (gsd-verifier)_
+_Verified: 2026-09-12T15:41:47Z_
+_Verifier: Codex (gsd-verifier); historical evidence retained_

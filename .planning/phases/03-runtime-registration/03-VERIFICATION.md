@@ -1,10 +1,9 @@
 ---
 phase: 03-runtime-registration
-verified: 2026-09-09T21:00:00Z
+verified: 2026-09-12T15:41:47Z
 status: passed
 score: 5/5 must-haves verified
 covered_files:
-
   - .planning/REQUIREMENTS.md
   - .planning/phases/03-runtime-registration/03-01-PLAN.md
   - .planning/phases/03-runtime-registration/03-01-SUMMARY.md
@@ -18,39 +17,52 @@ covered_files:
   - .planning/phases/03-runtime-registration/03-05-SUMMARY.md
   - .planning/phases/03-runtime-registration/03-REVIEW.md
   - .planning/phases/03-runtime-registration/03-SECURITY.md
+  - .planning/phases/03-runtime-registration/03-UAT.md
+  - .planning/phases/05-slash-command-delegation/05-CONTEXT.md
   - cmd/engram/setup.go
+  - cmd/engram/setup_delegation_test.go
+  - cmd/engram/setup_test.go
   - internal/keylinks/keylinks.go
   - internal/setup/apply.go
+  - internal/setup/apply_test.go
   - internal/setup/claudecode.go
+  - internal/setup/claudecode_test.go
   - internal/setup/codex.go
+  - internal/setup/codex_test.go
   - internal/setup/environment.go
   - internal/setup/generic.go
   - internal/setup/opencode.go
   - internal/setup/plan.go
+  - internal/setup/plan_test.go
   - internal/setup/quote.go
   - internal/setup/runtime.go
   - internal/surfaces/toolclass.go
-
-covered_digest: "v1:sha256:572082af3a0774a9fe6bbe21bd315d27b105587d9ce68bb633943529ef9e428e"
+covered_digest: "v1:sha256:50ebd88f493ea737cf53c6e15368e91a7d7beb97d19a2790678015d91598729e"
 behavior_unverified: 0
 overrides_applied: 0
 behavior_unverified_items: []
 re_verification:
-  previous_status: human_needed
+  previous_status: stale
   previous_score: 5/5
   gaps_closed: []
   gaps_remaining: []
   regressions: []
-human_verification:
+human_verification_evidence:
 
   - test: "Run `engram setup --apply --runtime claude-code` twice in a row against a real Claude Code install with no prior engram registration, then a third time after manually deleting the entry."
     expected: "Run 1: outcome=wrote. Run 2 (state unchanged): outcome=already-correct. Between runs 1 and 2 there is a real (tolerant-remove-then-fatal-add) window where the registration briefly does not exist — this is by design, not a bug."
+    status: satisfied
+    evidence: ".planning/phases/03-runtime-registration/03-UAT.md — existing 3/3 pass record, commit 806be1f7; not rerun during this audit."
     why_human: "Repo rule m45p2b4bp7 forbids any test in this repo from invoking a real third-party CLI; the mechanism is proven with a scripted fake (TestApplyConvergesClaudeCode). A real two-invocation --apply round trip against a live claude-code install is intentionally not run from inside automated verification because --apply is destructive against the verifier's own machine state."
   - test: "Run `engram setup --apply --runtime codex` twice, then `engram setup --apply --runtime opencode` twice, against real installs."
     expected: "codex: run 1 wrote, run 2 already-correct (its `mcp add` overwrites silently and `mcp get --json` is a pure local read, so already-correct should be the common case). opencode: run 2 is expected to report wrote far more often than already-correct, because `opencode mcp list` dials every registered server live and any one flip differs the two probe captures — this is documented as the safe-direction-only degradation, not a defect."
+    status: satisfied
+    evidence: ".planning/phases/03-runtime-registration/03-UAT.md — existing 3/3 pass record, commit 806be1f7; not rerun during this audit."
     why_human: "Same repo rule as above — no test may invoke a real third-party binary. Verified via scripted fakes (TestApplyConvergesCodex, TestApplyOpenCodeConvergence); the live --apply round trip itself was not run to avoid mutating the verifier's own MCP registrations."
   - test: "Point --runtime at a claude/codex/opencode binary that has since removed or renamed a flag this package depends on (e.g. an intentionally broken PATH entry pointing at a wrapper script that rejects `--transport` or `--bearer-token-env-var`), then run `engram setup --apply`."
     expected: "outcome=failed with Reason naming the runtime, the exact argv issued, the nonzero exit code, and the runtime's stderr (bounded, single-quoted for paste safety per T-03-04/commit 63bbb065) — never a silent no-op."
+    status: satisfied
+    evidence: ".planning/phases/03-runtime-registration/03-UAT.md — existing 3/3 pass record, commit 806be1f7; not rerun during this audit."
     why_human: "The mechanism is unit-tested end-to-end (TestDriftReportedLegibly, TestThirdPartyCaptureIsQuotedForDisplay) against a scripted fake; reproducing an actual drifted third-party flag surface requires a real modified binary, which repo rule m45p2b4bp7 precludes fabricating as an automated test."
 ---
 
@@ -63,11 +75,60 @@ command line, offers a portable config for unsupported clients, fails legibly on
 drifted CLI rather than silently writing nothing, and converges to a distinctly-reported
 "already correct" on a second `--apply`.
 
-**Verified:** 2026-09-09T21:00:00Z
-**Status:** human_needed
-**Re-verification:** Yes — after content drift (commit 63bbb065 modified `internal/setup/apply.go`,
-one of the prior report's `covered_files`, invalidating the prior `covered_digest`). No gaps were
-open in the prior report; this run re-verifies the delta and confirms no regression.
+**Verified:** 2026-09-12T15:41:47Z
+**Status:** passed
+**Re-verification:** Yes — scoped regression audit after Phase 05 changed covered inputs.
+
+## Current Regression Verdict — 2026-09-12
+
+**5/5 must-haves remain verified; no gaps, regressions, or pending human checks.**
+The canonical result was stale because covered file bytes changed, not because a
+previously passing behavior failed. The accepted pre-Phase-05 baseline is
+`259f22f994c4df896d70322ce9ab13de004453a1`. Earlier report commits
+`0eedd078` and `8cb0f41e` precede Phase 04 composition changes; this bounded
+audit uses the already accepted pre-Phase-05 state and verifies its Phase 05 delta.
+
+### Affected coverage
+
+| Change | Verification and effect on Phase 03 | Status |
+|---|---|---|
+| `setup.go` adds `--client-id`, common validation, Options forwarding and help | OAuth-client now requires a nonempty opaque client ID before effects. Other auth modes reject the flag. Both preview/apply share setupResolve. Phase 05's independently passing `TestSetupClientID` checks exact metacharacters, both runtimes, zero rejection effects and mixed outcomes. | VERIFIED |
+| `runtime.go`, `claudecode.go`, `codex.go` carry caller ID instead of `<id>` | The D-17 amendment fixes missing input without adding credential argv. All remove/add/probe structure, native bearer references, callback port and unsupported combinations remain intact. `TestPlanAuthModes` independently reran and passed all 16 runtime/auth cases. | VERIFIED |
+| Current generated inputs and execution | Phase 05's independently executed `TestSetupGeneratedInvocations` passes all four preview/fake-apply cases, exact full Plan call sequence, unsupported OpenCode OAuth-client, and unknown-flag rejection. | VERIFIED |
+| Registration execution, quoting, generic output and capability boundaries | `git diff --exit-code 259f22f9 HEAD -- internal/setup/apply.go internal/setup/environment.go internal/setup/generic.go internal/setup/opencode.go internal/setup/plan.go internal/setup/aggregate.go internal/setup/exit.go internal/setup/quote.go` is empty. No execution or error-reporting path changed. Claude and Codex named convergence tests independently reran and passed. | VERIFIED |
+| Requirements tracking | Diff changes only the three Phase 05 completion checkboxes/table statuses. Phase 03 requirements and their meanings remain unchanged. | VERIFIED |
+
+### Behavioral evidence and retained human acceptance
+
+Independently ran `go test ./internal/setup -run '^TestPlanAuthModes$' -count=1 -v`,
+`go test ./internal/setup -run '^TestApplyConvergesClaudeCode$' -count=1 -v`, and
+`go test ./internal/setup -run '^TestApplyConvergesCodex$' -count=1 -v`.
+All passed in under 10 seconds per command, using injected environments.
+Also reran `TestSetupReportCoversEveryRuntimeShape` and
+`TestSetupSkillsFailureReachesPartialExit` in `./cmd/engram`; all passed,
+confirming Phase 04 composition still preserves aggregate failure reporting.
+Inspected the existing merged full-regression evidence in
+`/tmp/engram-05-wave3-merged-quality.log`; all Go packages and 33 Python tests
+passed. No broad suite was repeated.
+
+The existing `03-UAT.md` is complete, with three passes and zero pending/issues
+(commit `806be1f7`). These are retained historical human results, not newly
+observed runtime behavior. The earlier prose below saying human_needed was stale
+after that acceptance; it is superseded by this verdict. The capture-quoting
+change was already separately verified before Phase 05. No live registration,
+real-home mutation, or third-party behavior gate was introduced.
+
+The fingerprint was recomputed with
+`GSD_RUNTIME=codex node /Users/sean/.claude/gsd-core/bin/gsd-tools.cjs query verification.fingerprint`
+over the declared files, retaining prior coverage and adding the relevant UAT,
+Phase 05 context, and input/regression tests. No debt marker or incomplete
+implementation was introduced by this delta.
+
+## Historical Verification Evidence
+
+The remaining implementation evidence records the earlier security delta and
+its original line numbers. “Unchanged” in those historical tables refers to
+that earlier delta, not to Phase 05. The current assessment above governs.
 
 ## What Changed Since the Prior Verification
 
@@ -215,26 +276,18 @@ plans nor the review reference probe scripts.
 
 ## Human Verification Required
 
-The same 3 items as the prior report (unchanged in substance, item 3's expected text now notes the
-capture is quoted for paste safety): full mutating `--apply`-twice round trips against real
-installed `claude`/`codex`/`opencode` CLIs, and a real drifted-flag-surface CLI. All three remain
-legitimately unrunnable from inside this repo's own test suite (repo rule m45p2b4bp7). The
-convergence and failure-legibility *mechanisms* are proven with scripted fakes, including the new
-quoting behavior added by `63bbb065`.
+None pending. The three previously requested observations are preserved in
+`human_verification_evidence` and the existing complete `03-UAT.md`.
+Their acceptance is inherited; this audit performed no new live observation.
 
 ## Gaps Summary
 
-None. The prior report's 5/5 score holds under re-verification. The single code change since the
-prior report (`63bbb065`) closes a real security threat (T-03-04: unquoted third-party captures
-reaching paste-visible report fields) via a RED/GREEN pair with a passing dedicated regression
-test, does not touch the convergence byte-compare's raw-capture guarantee (must-have 5), and does
-not weaken must-have 4's "names the runtime and what it expected" guarantee — it only changes HOW
-the stderr content is rendered (quoted, not stripped). One stale code comment (line 139,
-"verbatim") is flagged as an Info-level cosmetic finding, not a gap. Status remains `human_needed`
-for the same reason as before: a full mutating `--apply`-twice round trip against real third-party
-CLIs cannot be run inside this repo's own automated verification, not because any check failed.
+No Phase 05 regression in Phase 03's owned guarantees. The current score is 5/5,
+status passed. The historical capture-quoting comment remains an informational
+documentation observation, not a newly introduced gap.
+
 
 ---
 
-_Verified: 2026-09-09T21:00:00Z_
-_Verifier: Claude (gsd-verifier)_
+_Verified: 2026-09-12T15:41:47Z_
+_Verifier: Codex (gsd-verifier); historical evidence retained_
