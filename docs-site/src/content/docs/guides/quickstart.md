@@ -14,9 +14,11 @@ requires a source build. For standalone Claude Code registration, see the
 ## Prerequisites
 
 - **Qdrant** — a running Qdrant instance (gRPC port `6334`). The quickest path is Docker:
+
   ```sh
   docker run -d -p 6334:6334 qdrant/qdrant
   ```
+
 - **Embeddings endpoint** — an OpenAI-compatible embeddings endpoint. Options:
   - [LiteLLM](https://docs.litellm.ai/) in front of any model
   - OpenAI API directly (set `ENGRAM_OPENAI_BASE_URL=https://api.openai.com/v1` and `ENGRAM_EMBED_MODEL=text-embedding-3-small`)
@@ -60,7 +62,7 @@ also covers standalone registration when no binary is installed.
 
 With the server registered, use `store_memory` to persist a fact and `search_memory` to retrieve it. See the [Tools reference](/reference/tools/) for full parameter docs.
 
-```
+```text
 store_memory — persist a decision, convention, preference, or gotcha
 search_memory — semantic search over stored memories
 ```
