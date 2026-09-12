@@ -5,6 +5,12 @@ description: Get engram running in minutes — Qdrant, embedder, Docker, and you
 
 Get the MCP server running locally in a few minutes.
 
+**Already have a server endpoint?** Go to [Install](/guides/install/) for the
+binary, then [Agent Setup](/guides/agent-setup/) to connect your agent. Check the
+setup availability notice there: v0.15.1 lacks `setup`, so that route currently
+requires a source build. For standalone Claude Code registration, see the
+[plugin guide](/guides/plugin/). Continue below if you need to provision a server.
+
 ## Prerequisites
 
 - **Qdrant** — a running Qdrant instance (gRPC port `6334`). The quickest path is Docker:
@@ -42,9 +48,13 @@ Key environment variables (see [Configure](/guides/configure/) for the full list
 | `ENGRAM_OPENAI_BASE_URL` | Embeddings endpoint (OpenAI-compatible); default `http://localhost:4000` |
 | `ENGRAM_EMBED_MODEL` | Model name forwarded to the endpoint; default `ollama/bge-m3` |
 
-## Register with Claude Code
+## Connect your agent
 
-Once the server is running, add it to Claude Code with `/engram-setup`. See the [Claude Code Plugin guide](/guides/plugin/) for details.
+Once the server is running, [install the binary](/guides/install/) and follow
+[Agent Setup](/guides/agent-setup/) for runtime selection, authentication, and a
+preview before applying changes. Setup currently requires the unreleased source
+build described in Install. The [Claude Code Plugin guide](/guides/plugin/)
+also covers standalone registration when no binary is installed.
 
 ## Store and recall your first memory
 
