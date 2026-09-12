@@ -3,10 +3,11 @@ phase: "3"
 slug: "runtime-registration"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-09-08"
+validated: "2026-09-12"
 ---
 
 # Phase 3 — Validation Strategy
@@ -40,25 +41,36 @@ created: "2026-09-08"
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| {N}-01-01 | 01 | 1 | REQ-{XX} | T-{N}-01 / — | {expected secure behavior or "N/A"} | unit | `{command}` | ✅ / ❌ W0 | ⬜ pending |
+| 3-01-01 | 01 | 1 | REQ-register-codex | — | N/A | unit | `go test ./internal/setup/ -run 'TestApplyConvergesCodex' -count=1` | ✅ | ✅ green |
+| 3-01-02 | 01 | 1 | REQ-register-cli-surface-drift-legible | — | Nonzero exit + stderr yields a failed row naming runtime/argv/stderr | unit | `go test ./internal/setup/ -run 'TestDriftReportedLegibly' -count=1` | ✅ | ✅ green |
+| 3-01-03 | 01 | 1 | REQ-register-auth-modes | T-3-01 | No secret literal in any `Action.Args`; oauth/none author identical argv | unit | `go test ./internal/setup/ -run 'TestQuoteWord\|TestNoSecretInArgs\|TestOAuthAndNoneAuthorIdenticalArgs' -count=1` | ✅ | ✅ green |
+| 3-02-01 | 02 | 2 | REQ-setup-idempotent | — | Second `--apply` reports already-correct; tolerant clear-slot failure; fatal add failure | unit | `go test ./internal/setup/ -run 'TestApplyConvergesClaudeCode\|TestApplyToleratesClearSlotFailure\|TestApplyFailsWhenRegistrationActionFails' -count=1` | ✅ | ✅ green |
+| 3-02-02 | 02 | 2 | REQ-register-claude-code | T-3-01 | Bearer header is an env-var reference, never a value | unit | `go test ./internal/setup/ -run 'TestClaudeCodePlan\|TestClaudeCodeBearerHeaderIsAnEnvVarReference\|TestNoSecretInArgs' -count=1` | ✅ | ✅ green |
+| 3-02-03 | 02 | 2 | REQ-register-auth-modes | — | Action tolerance is authored, not positional | unit | `go test ./internal/setup/ -run 'TestActionToleranceIsAuthoredNotPositional' -count=1` | ✅ | ✅ green |
+| 3-03-01 | 03 | 2 | REQ-register-auth-modes | T-3-01 | opencode `KEY=VALUE` header syntax regression; header carries no secret; oauth-client rejected explicitly | unit | `go test ./internal/setup/ -run 'TestOpenCodePlan\|TestOpenCodeBearerHeaderSyntax\|TestOpenCodeBearerHeaderCarriesNoSecret' -count=1` | ✅ | ✅ green |
+| 3-03-02 | 03 | 2 | REQ-register-opencode / REQ-setup-idempotent | — | Safe-direction-only convergence (live `mcp list` dials servers) | unit | `go test ./internal/setup/ -run 'TestApplyOpenCodeConvergence' -count=1` | ✅ | ✅ green |
+| 3-04-01 | 04 | 3 | REQ-register-generic-mcp | — | Portable `mcpServers` JSON; starts no process | unit+integration | `go test ./internal/setup/ ./cmd/engram/ -run 'TestGenericConfig\|TestGenericStartsNoProcess\|TestSetupGenericRowCarriesPortableConfig' -count=1` | ✅ | ✅ green |
+| 3-04-02 | 04 | 3 | REQ-register-generic-mcp | — | Generic is opt-in; excluded from the bare default set | unit+integration | `go test ./internal/setup/ ./cmd/engram/ -run 'TestSelectDefaultSetExcludesOptInRuntimes\|TestSetupBareInvocationOmitsGeneric' -count=1` | ✅ | ✅ green |
+| 3-04-03 | 04 | 3 | REQ-register-auth-modes | T-3-01 | Generic config carries no secret; partial exit with a failing sibling | unit+integration | `go test ./internal/setup/ ./cmd/engram/ -run 'TestGenericConfigCarriesNoSecret\|TestNoSecretInArgs\|TestSetupGenericAndFailingRuntimeExitsPartial' -count=1` | ✅ | ✅ green |
+| 3-05-01 | 05 | 4 | REQ-setup-idempotent | — | Preview reports registered state; never classifies already-correct; probe failure is exit 0 in preview | unit+integration | `go test ./internal/setup/ ./cmd/engram/ -run 'TestPreviewReportsRegisteredState\|TestSetupPreviewExitsZeroWhenProbeFails\|TestSetupPreviewNeverClassifiesAlreadyCorrect' -count=1` | ✅ | ✅ green |
+| 3-05-02 | 05 | 4 | REQ-register-auth-modes | — | `token_file` marked ignored for native runtimes; path never duplicated into the marker | integration | `go test ./cmd/engram/ -run 'TestSetupTokenFileMarkedIgnoredForNativeRuntimes\|TestSetupNoTokenFileLeavesNoMarker\|TestSetupTokenFilePathNotDuplicatedIntoMarker\|TestSetupHelpNamesEveryRuntimeAndAuthMode' -count=1` | ✅ | ✅ green |
+| 3-05-03 | 05 | 4 | REQ-register-cli-surface-drift-legible | — | Partial exit is live-producible; destructive flag set pinned | integration | `go test ./cmd/engram/ -run 'TestSetupPartialExitIsLiveProducible\|TestDestructiveCommandsExactFlagSet' -count=1` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
-*Populated by `/gsd-validate-phase` once PLAN.md task IDs exist. Requirement→test mapping is pre-derived in `03-RESEARCH.md` § Validation Architecture.*
+*Populated by `/gsd-validate-phase` on 2026-09-12 from 03-01..03-05 PLAN/SUMMARY coverage blocks. Note: 03-05-SUMMARY cites `TestDestructiveCommandsExactFlagSet` under `cmd/engram/setup_test.go`; it lives in `cmd/engram/destructive_test.go` (same package, same `-run` reach).*
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] A fake `Environment.Run` seam and its test helper (mirroring `fakeEnv` in `detect_test.go`) — the shared prerequisite every other Wave 0 test in this phase depends on.
-- [ ] `TestApplyConverges` — two consecutive `--apply` runs, asserting `already-correct` on the second for **every** runtime including claude-code (REQ-setup-idempotent; the only shape that catches Pitfall 1).
-- [ ] `TestClaudeCodePlan` — the 2-action `remove`→`add` argv sequence per auth mode (REQ-register-claude-code).
-- [ ] `TestOpenCodeBearerHeaderSyntax` — regression test for the confirmed live `KEY=VALUE` bug; must assert `=` present and `: ` absent, not merely a URL substring (REQ-register-opencode).
-- [ ] `TestGenericConfig` — valid minified JSON matching the `mcpServers` shape (REQ-register-generic-mcp).
-- [ ] `TestNoSecretInArgs` — scans every `Action.Args` for the literal token value across every auth mode × runtime (REQ-register-auth-modes).
-- [ ] `TestDriftReportedLegibly` — nonzero exit + stderr from the fake yields an `OutcomeFailed` row naming runtime, argv, and stderr verbatim (REQ-register-cli-surface-drift-legible).
-
-*`TestCodexPlan` extends the existing `plan_test.go` (Command-string form) to the Args form — partial infrastructure exists.*
+- [x] A fake `Environment.Run` seam and its test helper (mirroring `fakeEnv` in `detect_test.go`) — the shared prerequisite every other Wave 0 test in this phase depends on.
+- [x] `TestApplyConverges*` — two consecutive `--apply` runs, asserting `already-correct` on the second for **every** runtime including claude-code (REQ-setup-idempotent; landed as `TestApplyConvergesCodex`, `TestApplyConvergesClaudeCode`, `TestApplyOpenCodeConvergence`).
+- [x] `TestClaudeCodePlan` — the 2-action `remove`→`add` argv sequence per auth mode (REQ-register-claude-code).
+- [x] `TestOpenCodeBearerHeaderSyntax` — regression test for the confirmed live `KEY=VALUE` bug (REQ-register-opencode).
+- [x] `TestGenericConfig` — valid minified JSON matching the `mcpServers` shape (REQ-register-generic-mcp).
+- [x] `TestNoSecretInArgs` — scans every `Action.Args` for the literal token value across every auth mode × runtime (REQ-register-auth-modes).
+- [x] `TestDriftReportedLegibly` — nonzero exit + stderr from the fake yields an `OutcomeFailed` row naming runtime, argv, and stderr verbatim (REQ-register-cli-surface-drift-legible).
 
 ---
 
@@ -73,11 +85,23 @@ created: "2026-09-08"
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-09-12 by `/gsd-validate-phase 3`
+
+---
+
+## Validation Audit 2026-09-12
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
+
+All 6 Phase 3 requirements are COVERED by committed tests; every SUMMARY-referenced test function exists and `go test ./internal/setup/ ./cmd/engram/ -count=1` is green at `e9cf19dd`. The two Manual-Only rows are retained: both require live third-party CLIs or a live MCP connection, which rule `m45p2b4bp7` keeps out of automated tests; the live `--apply` round trips are recorded in `03-UAT.md` (3/3). Open warning W01 (#560, `osRun` deadline classification) is a milestone-audit tech-debt item, not a coverage gap for any Phase 3 requirement.
