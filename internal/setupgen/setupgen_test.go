@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -210,4 +211,215 @@ func TestCheckReadOnly(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mutatedPlan changes one actual registration argv token in one auth mode.
+// Copy both slices so the injected author cannot change the baseline Plan.
+func mutatedPlan(env setup.Environment, opts setup.Options) (setup.Plan, error) {
+	plan, err := setup.ClaudeCode.Plan(env, opts)
+	if err != nil || opts.Auth != "oauth-client" {
+		return plan, err
+	}
+	plan.Actions = append([]setup.Action(nil), plan.Actions...)
+	for i, action := range plan.Actions {
+		if len(action.Args) < 3 || action.Args[0] != "claude" || action.Args[1] != "mcp" || action.Args[2] != "add" {
+			continue
+		}
+		plan.Actions[i].Args = append([]string(nil), action.Args...)
+		for j, arg := range action.Args {
+			if arg == opts.ClientID {
+				plan.Actions[i].Args[j] += "-mutation"
+				return plan, nil
+			}
+		}
+	}
+	return setup.Plan{}, errors.New("mutation fixture found no client-ID registration token")
+}
+
+func TestPlanMutationChangesRegion(t *testing.T) {
+	baseline, err := Render(setup.ClaudeCode.Plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutant, err := Render(mutatedPlan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, after := strings.Split(baseline, "\n"), strings.Split(mutant, "\n")
+	if len(before) != len(after) {
+		t.Fatal("mutation changed table shape")
+	}
+	changed := 0
+	for i := range before {
+		if before[i] == after[i] {
+			continue
+		}
+		changed++
+		if !strings.HasPrefix(after[i], "| `oauth-client` |") {
+			t.Fatalf("unrelated row changed: %s", after[i])
+		}
+		var opts setup.Options
+		for _, c := range Cases() {
+			if c.Options.Auth == "oauth-client" {
+				opts = c.Options
+			}
+		}
+		plan, err := mutatedPlan(setup.Environment{HomeDir: func() (string, error) { return "/synthetic/home", nil }}, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, action := range plan.Actions {
+			if len(action.Args) >= 3 && action.Args[2] == "add" {
+				want := "| `oauth-client` | " + commandCell(action.Command()) + " |"
+				if after[i] != want {
+					t.Fatalf("changed row = %q, want full mutated command %q", after[i], want)
+				}
+			}
+		}
+	}
+	if changed != 1 {
+		t.Fatalf("changed %d rows, want exactly one", changed)
+	}
+	again, err := Render(setup.ClaudeCode.Plan)
+	if err != nil || again != baseline {
+		t.Fatalf("mutant contaminated real Plan: %v", err)
+	}
+}
+
+func fixtureGit(t *testing.T, dir string, wantDiff bool, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-c", "user.name=Setup Fixture", "-c", "user.email=setup-fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=" + filepath.Join(dir, "empty-hooks")}, args...)...)
+	cmd.Dir = dir
+	// Exclude inherited repository/config overrides and user Git configuration.
+	for _, variable := range os.Environ() {
+		if !strings.HasPrefix(variable, "GIT_") {
+			cmd.Env = append(cmd.Env, variable)
+		}
+	}
+	cmd.Env = append(cmd.Env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+	out, err := cmd.CombinedOutput()
+	if wantDiff {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+			t.Fatalf("git %v must detect diff (exit 1): %v\n%s", args, err, out)
+		}
+		t.Logf("git %v detected drift (exit 1)", args)
+	} else if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestDriftChecks(t *testing.T) {
+	for _, sourceMutation := range []bool{true, false} {
+		name := "source-mutation"
+		if !sourceMutation {
+			name = "checked-in-artifact-drift"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "command.md")
+			prefix := "---\ndescription: scratch fixture\n---\nAuthored prefix.\n<!-- engram:rule:start setup-commands -->\n"
+			suffix := "\n<!-- engram:rule:end setup-commands -->\nAuthored suffix.\n"
+			put := func(content string) {
+				t.Helper()
+				if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			read := func() string {
+				t.Helper()
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.HasPrefix(string(data), prefix) || !strings.HasSuffix(string(data), suffix) {
+					t.Fatal("authored outside-region bytes changed")
+				}
+				return string(data)
+			}
+			put(prefix + "stale" + suffix)
+			if err := Write(path); err != nil {
+				t.Fatal(err)
+			}
+			baseline := read()
+			if err := Check(path); err != nil {
+				t.Fatal(err)
+			}
+			fixtureGit(t, dir, false, "init", "-q")
+			fixtureGit(t, dir, false, "add", "command.md")
+			fixtureGit(t, dir, false, "commit", "-qm", "baseline")
+			planFn := PlanFunc(mutatedPlan)
+			if !sourceMutation {
+				// Commit stale artifact bytes so the CI lane must detect the
+				// repair against a checked-in artifact, not an already-dirty tree.
+				put(prefix + "independent artifact corruption\n" + suffix)
+				fixtureGit(t, dir, false, "add", "command.md")
+				fixtureGit(t, dir, false, "commit", "-qm", "corrupt artifact")
+				planFn = setup.ClaudeCode.Plan
+			}
+			before := read()
+			if err := check(path, planFn); err == nil {
+				t.Fatal("read-only lane accepted drift")
+			}
+			if read() != before {
+				t.Fatal("failed check repaired its evidence")
+			}
+			fixtureGit(t, dir, false, "diff", "--exit-code", "--", "command.md")
+			if err := write(path, planFn); err != nil {
+				t.Fatal(err)
+			}
+			generated := read()
+			if generated == before {
+				t.Fatal("writer ignored changed source or stale artifact")
+			}
+			fixtureGit(t, dir, true, "diff", "--exit-code", "--", "command.md")
+			if err := check(path, planFn); err != nil {
+				t.Fatal(err)
+			}
+			if err := write(path, planFn); err != nil {
+				t.Fatal(err)
+			}
+			if read() != generated {
+				t.Fatal("repeat generation changed bytes")
+			}
+			if err := Write(path); err != nil {
+				t.Fatal(err)
+			}
+			if read() != baseline {
+				t.Fatal("authoritative restoration differs from baseline")
+			}
+			if !sourceMutation {
+				fixtureGit(t, dir, true, "diff", "--exit-code", "--", "command.md")
+				fixtureGit(t, dir, false, "add", "command.md")
+				fixtureGit(t, dir, false, "commit", "-qm", "restore authoritative artifact")
+			}
+			fixtureGit(t, dir, false, "diff", "--exit-code", "--", "command.md")
+			if err := Check(path); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	t.Run("invalid-anchors-never-repaired", func(t *testing.T) {
+		for _, content := range []string{
+			"missing\n",
+			"<!-- engram:rule:start setup-commands -->\nunterminated\n",
+			"<!-- engram:rule:end setup-commands -->\n<!-- engram:rule:start setup-commands -->\n",
+			"<!-- engram:rule:start setup-commands -->\nstale\n<!-- engram:rule:end setup-commands -->\n<!-- engram:rule:start setup-commands -->\nsecond stale\n<!-- engram:rule:end setup-commands -->\n",
+		} {
+			path := filepath.Join(t.TempDir(), "command.md")
+			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := Check(path); err == nil {
+				t.Fatal("check accepted invalid anchors")
+			}
+			if err := Write(path); err == nil {
+				t.Fatal("writer accepted invalid anchors")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != content {
+				t.Fatalf("invalid anchor evidence changed: %v", err)
+			}
+		}
+	})
 }
