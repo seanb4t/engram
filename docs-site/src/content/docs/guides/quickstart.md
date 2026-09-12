@@ -16,8 +16,12 @@ requires a source build. For standalone Claude Code registration, see the
 - **Qdrant** — a running Qdrant instance (gRPC port `6334`). The quickest path is Docker:
 
   ```sh
-  docker run -d -p 6334:6334 qdrant/qdrant
+  docker network create engram-local
+  docker run -d --name engram-qdrant --network engram-local qdrant/qdrant
   ```
+
+  This creates a network shared by the two containers. Qdrant is reachable
+  by engram without publishing its port on the host.
 
 - **Embeddings endpoint** — an OpenAI-compatible embeddings endpoint. Options:
   - [LiteLLM](https://docs.litellm.ai/) in front of any model
@@ -31,14 +35,19 @@ Pull and run the latest image from GHCR:
 ```sh
 docker run -d \
   --name engram \
-  -p 8080:8080 \
-  -e ENGRAM_QDRANT_ADDR=host.docker.internal:6334 \
+  --network engram-local \
+  -p 127.0.0.1:8080:8080 \
+  -e ENGRAM_QDRANT_ADDR=engram-qdrant:6334 \
   -e ENGRAM_OPENAI_BASE_URL=http://host.docker.internal:4000 \
   -e ENGRAM_EMBED_MODEL=ollama/bge-m3 \
   ghcr.io/seanb4t/engram:latest
 ```
 
 (`host.docker.internal` resolves on macOS and Windows; Linux users need `--add-host host.docker.internal:host-gateway` or replace with the host IP.)
+
+This example binds engram to host loopback for local use. For access from other
+machines, configure authentication and a protected deployment first; see
+[Configure](/guides/configure/).
 
 The MCP endpoint is served at **`http://localhost:8080/mcp`** by default. Set `ENGRAM_MCP_PATH=/` to restore the pre-0.7 behavior where the transport answered at the bare root.
 

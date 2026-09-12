@@ -17,13 +17,16 @@ across supported runtimes. The standalone plugin adds the hooks described below.
 ## Install the plugin
 
 ```sh
-claude plugin install https://github.com/seanb4t/engram
+claude plugin marketplace add seanb4t/engram
+claude plugin install engram@engram
 ```
 
-Or, if you have a local clone:
+Or, if you have a local clone, add its repository root (which contains the
+marketplace manifest):
 
 ```sh
-claude plugin install /path/to/engram/skill/engram
+claude plugin marketplace add /path/to/engram
+claude plugin install engram@engram
 ```
 
 ## Register your server with /engram-setup
