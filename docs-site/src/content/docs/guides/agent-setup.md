@@ -5,12 +5,9 @@ description: Preview MCP registration, choose runtimes and authentication, and i
 
 Connect your agent to a running engram server with `engram setup`.
 
-:::caution[Setup is unreleased]
-As of September 12, 2026, **v0.15.1 does not include `engram setup`**.
-These instructions describe unreleased source. Follow the
-[local-source build instructions](/guides/install/#build-unreleased-setup-from-source)
-before running them, and use that executable. Installing the published binary
-alone does not enable setup.
+:::note[Requires engram v0.16.0 or later]
+Follow [Install](/guides/install/) to obtain the released binary, then check
+`engram version --output json`. Upgrade older binaries before using setup.
 :::
 
 ## Before you start

@@ -1,18 +1,17 @@
 ---
 title: Install
-description: Install the engram binary with Homebrew or a release archive, or build unreleased setup from source.
+description: Install the engram binary with Homebrew or a release archive, or build from source.
 ---
 
 Install `engram` to use its command-line client or run a server.
 Obtaining the binary does not provision a server: connect to an existing deployment,
 or follow [Quickstart](/guides/quickstart/) to run one with Docker.
 
-:::caution[Setup is unreleased]
-As of September 12, 2026, the published release **v0.15.1 does not include
-`engram setup`**. Homebrew and the release archives below provide the released
-binary. To use [Agent Setup](/guides/agent-setup/) now, intentionally build the
-unreleased source as described below. No released minimum version for setup has
-been established.
+:::note[Setup requires v0.16.0 or later]
+[Agent Setup](/guides/agent-setup/) is available in **v0.16.0**, including
+pre-registered OAuth clients through `--auth oauth-client --client-id`.
+Install the released binary below and check its version before continuing.
+If you have an older binary on `PATH`, upgrade it first.
 :::
 
 ## Homebrew
@@ -33,21 +32,21 @@ the binary is unsigned.
 ## Release archives
 
 Download an archive and `checksums.txt` from the same
-[GitHub release](https://github.com/seanb4t/engram/releases/tag/v0.15.1).
-This example pins the published version `0.15.1`:
+[GitHub release](https://github.com/seanb4t/engram/releases/tag/v0.16.0).
+This example pins the published version `0.16.0`:
 
 | System | Processor | Archive |
 | --- | --- | --- |
-| macOS (`darwin`) | Intel (`amd64`) | `engram_0.15.1_darwin_amd64.tar.gz` |
-| macOS (`darwin`) | Apple silicon (`arm64`) | `engram_0.15.1_darwin_arm64.tar.gz` |
-| Linux (`linux`) | x86-64 (`amd64`) | `engram_0.15.1_linux_amd64.tar.gz` |
-| Linux (`linux`) | ARM64 (`arm64`) | `engram_0.15.1_linux_arm64.tar.gz` |
+| macOS (`darwin`) | Intel (`amd64`) | `engram_0.16.0_darwin_amd64.tar.gz` |
+| macOS (`darwin`) | Apple silicon (`arm64`) | `engram_0.16.0_darwin_arm64.tar.gz` |
+| Linux (`linux`) | x86-64 (`amd64`) | `engram_0.16.0_linux_amd64.tar.gz` |
+| Linux (`linux`) | ARM64 (`arm64`) | `engram_0.16.0_linux_arm64.tar.gz` |
 
 In a new download directory, set `archive` to the filename for your system:
 
 ```sh
-archive=engram_0.15.1_darwin_arm64.tar.gz
-release_url=https://github.com/seanb4t/engram/releases/download/v0.15.1
+archive=engram_0.16.0_darwin_arm64.tar.gz
+release_url=https://github.com/seanb4t/engram/releases/download/v0.16.0
 curl -fLO "$release_url/$archive"
 curl -fLO "$release_url/checksums.txt"
 awk -v file="$archive" '$2 == file { print }' checksums.txt > selected-checksum.txt
@@ -83,7 +82,7 @@ export PATH="$engram_bin_dir:$PATH"
 engram version --output json
 ```
 
-Expect `"version": "0.15.1"` for this archive. Add your chosen directory to your
+Expect `"version": "0.16.0"` for this archive. Add your chosen directory to your
 shell's `PATH` configuration if it is not already there.
 
 ### Unsigned binary on macOS
@@ -98,10 +97,13 @@ xattr -d com.apple.quarantine "$engram_bin_dir/engram"
 "$engram_bin_dir/engram" version --output json
 ```
 
-## Build unreleased setup from source
+<a id="build-unreleased-setup-from-source"></a>
 
-Use this route only if you want the unreleased setup command. Start from a local
-checkout of [engram](https://github.com/seanb4t/engram) that contains `setup`, with
+## Build from source
+
+Building from source is optional for development. Released binaries already
+include setup. Start from a local checkout of
+[engram](https://github.com/seanb4t/engram), with
 the Go version required by its `go.mod` (currently Go 1.26.3). Building may download
 the checkout's Go dependencies.
 
@@ -130,6 +132,6 @@ export PATH="$engram_build_dir:$PATH"
 
 ## Next steps
 
-- [Agent Setup](/guides/agent-setup/) — preview and apply MCP registration with a setup-capable source build.
+- [Agent Setup](/guides/agent-setup/) — preview and apply MCP registration with v0.16.0 or later.
 - [Headless CLI Client](/guides/cli/) — use the Connect API from a shell.
 - [Quickstart](/guides/quickstart/) — provision a server if you do not have one.

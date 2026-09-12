@@ -6,9 +6,8 @@ description: Get engram running in minutes — Qdrant, embedder, Docker, and you
 Get the MCP server running locally in a few minutes.
 
 **Already have a server endpoint?** Go to [Install](/guides/install/) for the
-binary, then [Agent Setup](/guides/agent-setup/) to connect your agent. Check the
-setup availability notice there: v0.15.1 lacks `setup`, so that route currently
-requires a source build. For standalone Claude Code registration, see the
+binary, then [Agent Setup](/guides/agent-setup/) to connect your agent with
+engram v0.16.0 or later. For standalone Claude Code registration, see the
 [plugin guide](/guides/plugin/). Continue below if you need to provision a server.
 
 ## Prerequisites
@@ -63,8 +62,8 @@ Key environment variables (see [Configure](/guides/configure/) for the full list
 
 Once the server is running, [install the binary](/guides/install/) and follow
 [Agent Setup](/guides/agent-setup/) for runtime selection, authentication, and a
-preview before applying changes. Setup currently requires the unreleased source
-build described in Install. The [Claude Code Plugin guide](/guides/plugin/)
+preview before applying changes. Setup requires engram v0.16.0 or later.
+The [Claude Code Plugin guide](/guides/plugin/)
 also covers standalone registration when no binary is installed.
 
 ## Store and recall your first memory
