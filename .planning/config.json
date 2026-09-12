@@ -7,9 +7,10 @@
     "use_worktrees": true
   },
   "git": {
-    "branching_strategy": "none",
+    "branching_strategy": "milestone",
     "phase_branch_template": "phase-{phase}-{slug}",
-    "create_tag": false
+    "create_tag": false,
+    "milestone_branch_template": "feat/{milestone}"
   },
   "review": {
     "models": {

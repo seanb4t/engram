@@ -19,6 +19,7 @@ Available Commands:
   reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
   search              Search memories on a remote engram server
   serve               Run the engram MCP server
+  setup               Detect installed agent runtimes and preview registering engram as an MCP server
   spine-review        Inventory, verify, and curate the memory spine
   store               Store a memory on a remote engram server
   summarize-missing   Fill empty recall summaries with the configured cheap model
@@ -284,6 +285,67 @@ Flags:
       --ui-enabled string               enable the web UI + login lane (empty=imply from creds; 'false'=hard off)
       --ui-issuer string                OIDC issuer for the web-UI login lane (empty=default to --oidc-issuer)
       --ui-redirect-url string          OIDC auth-code callback URL
+```
+
+## engram setup
+
+```
+Detect installed agent runtimes and preview registering engram as an MCP server.
+
+Targetable runtimes (select one or more with --runtime): claude-code, codex, opencode, generic. A bare
+invocation targets every detected runtime.
+
+A bare invocation (no --apply) contacts each present runtime's own CLI to
+read its current registration state for the report; nothing is written.
+For claude-code and opencode, that read dials the configured URL; for
+codex, it is a pure local read.
+
+a mutating operator command previews by default and mutates only when apply is set
+
+--apply also installs the engram curation skills into each present
+runtime's own user-scope skills location, in addition to registering the
+MCP server — the skills are carried inside the binary itself, so no
+separate plugin install is required. Each present runtime's row reports a
+registration result and a skills result as two separate fields under one
+aggregated outcome, with the full skill content available in the
+--output json lane.
+
+Accepted --auth modes:
+  oauth         OAuth via the runtime's own login/callback flow (default)
+  oauth-client  a pre-registered OAuth client; requires --client-id with a
+                non-secret client ID. Other auth modes reject --client-id.
+                For scripted Claude Code registration, supply MCP_CLIENT_SECRET
+                in the inherited environment; engram has no interactive stdin.
+  bearer        a static bearer token. A native runtime (claude-code, codex,
+                opencode) is registered with an environment-variable
+                REFERENCE naming ENGRAM_TOKEN, resolved by that runtime
+                itself at connect time — the token never appears on any
+                command line or in any config engram writes. --token-file
+                applies only to the portable configuration (--runtime
+                generic): it names that credential's PROVENANCE there,
+                carrying the path, never the secret — and has no effect on
+                a native runtime, whose row carries token_file=ignored
+                when the flag is supplied
+  none          a local / no-auth server
+
+Usage:
+  engram setup [flags]
+
+Examples:
+  engram setup --url https://engram.example.com/mcp
+  engram setup --url https://engram.example.com/mcp --runtime claude-code
+  engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
+  engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
+
+Flags:
+      --apply               a mutating operator command previews by default and mutates only when apply is set
+      --auth string         auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH) (default "oauth")
+      --client-id string    non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag
+  -h, --help                help for setup
+      --output string       output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
+      --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode, generic (default: ENGRAM_RUNTIME) (default )
+      --token-file string   path naming the bearer credential's provenance for the portable configuration (--runtime generic) — carries only the PATH, never the secret itself; has no effect for a natively-registered runtime (claude-code, codex, opencode), which resolves the credential itself from its own environment at connect time
+      --url string          MCP endpoint URL to register, used verbatim — never appended to or stripped (required) (default: ENGRAM_URL)
 ```
 
 ## engram spine-review

@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 4
+open_count: 5
 waived_count: 0
 fixed_count: 2
-total_count: 6
-last_updated: 2026-08-17T15:21:44.538Z
+total_count: 7
+last_updated: 2026-09-10T04:59:52.722Z
 ---
 
 # Broken Windows Ledger
@@ -21,6 +21,7 @@ last_updated: 2026-08-17T15:21:44.538Z
 | 4 | 05 | deviation | ui/src/routes/+page.svelte |  | Root route Recent-memories query (recentQ) calls listMemories with empty scope + no cross_spine, predating the scope-required-unless-cross-spine constraint (9ba6449b); always errors live. Discovered by 05-04's browser render test; fix deferred (out of 05-04 file scope). | open |  | 2026-08-16T14:04:38.627Z |  |
 | 5 | 06 | unmet-truth | cmd/engram/operator_output_test.go | 359 | TestOperatorOutputParity's spine-review archive/restore/purge subtests fail after 06-05's R1 headline trim; expected transitional gap per D-09, resolved when 06-07 retires the test | fixed |  | 2026-08-17T14:44:59.064Z | 2026-08-17T15:21:44.448Z |
 | 6 | 06 | deviation | cmd/engram/operator_output_test.go |  | TestOperatorOutputParity/migrate_status fails after 06-04's R1 trim of statusSummary's future-bucket enumeration loop; resolved when 06-07 deletes TestOperatorOutputParity/operatorParityRows (06-07 depends_on 06-04) | fixed |  | 2026-08-17T14:55:25.446Z | 2026-08-17T15:21:44.538Z |
+| 7 | 04 | stub | internal/skills/install.go |  | Install's FormatAgentsMD case returns 'not wired yet' (explicit, plan-specified — resolved by 04-02-PLAN.md) | open |  | 2026-09-10T04:59:52.722Z |  |
 
 ````json
 [
@@ -95,6 +96,18 @@ last_updated: 2026-08-17T15:21:44.538Z
     "reason": "",
     "recorded_at": "2026-08-17T14:55:25.446Z",
     "resolved_at": "2026-08-17T15:21:44.538Z"
+  },
+  {
+    "id": 7,
+    "kind": "stub",
+    "phase": "04",
+    "file": "internal/skills/install.go",
+    "line": null,
+    "description": "Install's FormatAgentsMD case returns 'not wired yet' (explicit, plan-specified — resolved by 04-02-PLAN.md)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-10T04:59:52.722Z",
+    "resolved_at": null
   }
 ]
 ````

@@ -272,12 +272,12 @@ mechanism instead of another one-shot operator command.
 
 </details>
 
-- [ ] **Phase 1: Version & Homebrew Distribution** - `engram version --output json` plus a published, credential-verified, recoverable Homebrew cask
-- [ ] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, converges idempotently, and is fully scriptable without a TTY
-- [ ] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, plus a generic-MCP fallback, across every auth mode
-- [ ] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise
-- [ ] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate
-- [ ] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup`
+- [x] **Phase 1: Version & Homebrew Distribution** - `engram version --output json` plus a published, credential-verified, recoverable Homebrew cask (completed 2026-08-25)
+- [x] **Phase 2: Setup Command Core** - `engram setup` detects runtimes, previews by default, declares its full outcome vocabulary, and is fully scriptable without a TTY (completed 2026-08-30)
+- [x] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode (completed 2026-09-09)
+- [x] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise (completed 2026-09-11)
+- [x] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate (completed 2026-09-12)
+- [x] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup` (completed 2026-09-12)
 
 ## Phase Details
 
@@ -318,7 +318,7 @@ membership).
 5. A rehearsed failure between tag creation and cask publication is recovered using this repo's
    existing `workflow_dispatch` re-ship path, with no hand-edit to the tap.
 
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -343,7 +343,7 @@ server-URL flag, it must not be spelled `--server`: `cmdwalk.go:118`'s `operator
 predicate excludes any command carrying a flag literally named `server`, which would silently drop
 `setup` out of operator-tier classification — the opposite of this milestone's intent.
 
-**Requirements:** REQ-setup-detects-runtimes, REQ-setup-previews-by-default, REQ-setup-idempotent, REQ-setup-non-interactive, REQ-setup-partial-failure-legible, REQ-setup-correct-by-reading
+**Requirements:** REQ-setup-detects-runtimes, REQ-setup-previews-by-default, REQ-setup-non-interactive, REQ-setup-partial-failure-legible, REQ-setup-correct-by-reading
 
 **Depends on:** Nothing (parallelizable with Phase 1 — touches unrelated files).
 
@@ -354,8 +354,10 @@ predicate excludes any command carrying a flag literally named `server`, which w
    runtime does not read as installed — and shows the exact command or content it would issue per
    runtime, changing nothing on disk.
 
-2. Running `engram setup --apply` twice converges to the same state on the second run, which
-   reports "already correct" distinctly from the first run's "wrote it".
+2. `engram setup` declares the full per-runtime outcome vocabulary — `not-present`,
+   `already-correct`, `would-write`, `wrote`, `failed` — as five distinct first-class values, and
+   classifies deterministically from a `Plan()`. Convergence of a real `--apply` across two runs is
+   proven in Phase 3, once `Apply()` executes (CONTEXT.md D-09 stubs it this phase).
 
 3. `engram setup` runs to completion without a TTY: a caller can select runtimes explicitly, skip
    confirmation, and receive machine-readable output — scriptable from CI or another agent.
@@ -367,7 +369,20 @@ predicate excludes any command carrying a flag literally named `server`, which w
 5. `engram setup --help` alone teaches which runtimes are targetable, what `--apply` does, and
    which auth modes are accepted, without the caller needing to run it and interpret a failure.
 
-**Plans:** TBD
+**Plans:** 3/3 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 02-01-PLAN.md — the `setup` command end to end: `internal/setup`'s `Runtime`/`Environment`/`Outcome` core, real `Detect()` and `Plan()` for claude-code, codex, and opencode across all four auth modes, its `internal/surfaces` row, and the full pinned-gate churn set in one commit
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 02-02-PLAN.md — the three-way exit-status taxonomy: `exitPartial = 8` and `exitSetupFailed = 9` published across all five sites, a pure `Classify` proven over the full outcome-combination table, and per-runtime legibility preserved on the failure path
+
+**Wave 3** *(gap closure — blocked on Wave 2 completion)*
+
+- [x] 02-03-PLAN.md — close CR-01: route `--url`/`--auth` through `config.Load(cmd.Flags())` so `ENGRAM_URL`/`ENGRAM_AUTH` actually reach `Plan()` (D-04), make a URL absent from both lanes a usage error instead of a malformed `would-write` (WR-01), and dedupe repeated `--runtime` names (WR-02)
 
 ---
 
@@ -381,7 +396,7 @@ post-synthesis verification confirmed `codex mcp add` (codex-cli 0.148.0) and `o
 already-shipped `/engram-setup` prose's `claude mcp add` path — no TOML or JSONC is ever parsed or
 written, and the zero-new-Go-dependencies constraint is under no pressure.
 
-**Requirements:** REQ-register-claude-code, REQ-register-codex, REQ-register-opencode, REQ-register-generic-mcp, REQ-register-auth-modes, REQ-register-cli-surface-drift-legible
+**Requirements:** REQ-setup-idempotent, REQ-register-claude-code, REQ-register-codex, REQ-register-opencode, REQ-register-generic-mcp, REQ-register-auth-modes, REQ-register-cli-surface-drift-legible
 
 **Depends on:** Phase 2 (the `Runtime` interface and the `setup` command must exist before any
 runtime writer plugs into it).
@@ -404,7 +419,29 @@ runtime writer plugs into it).
    fails with a message naming the runtime and what it expected, rather than silently writing
    nothing.
 
-**Plans:** TBD
+5. Running `engram setup --apply` twice converges to the same state on the second run, which
+   reports "already correct" distinctly from the first run's "wrote it" (moved here from Phase 2,
+   which stubs `Apply()` per its CONTEXT.md D-09).
+
+**Plans:** 5/5 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 03-01-PLAN.md — Shared executor tracer: `Args`/`Probe` model, `Environment.Run` seam, read→write→read convergence, and a real `--apply` for codex end-to-end
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 03-02-PLAN.md — claude-code's two-action write sequence, closing the refuse-on-exists gap that makes `already-correct` unreachable
+- [x] 03-03-PLAN.md — opencode's `KEY=VALUE` header fix and its `Args`/`Probe` conversion
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 03-04-PLAN.md — The `generic` opt-in pseudo-runtime and its portable `mcpServers` configuration
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 03-05-PLAN.md — Preview-side probe reporting, the `token_file` marker, help prose, and golden regeneration
 
 ---
 
@@ -433,7 +470,14 @@ and detection Phase 3 established).
    AGENTS.md inside a delimited, re-detectable block; re-running replaces that block rather than
    appending a second copy, and content outside the block is left byte-for-byte untouched.
 
-**Plans:** TBD
+**Plans:** 4/4 plans complete
+
+Plans:
+
+- [x] 04-01-PLAN.md — Tracer: vendor → embed → inventory → native install → claude-code row, plus outcome aggregation and the import gate (wave 1)
+- [x] 04-02-PLAN.md — The `metadata` index entry, frontmatter parsing, and the AGENTS.md anchored-block scan, splice and symlink-preserving write (wave 2)
+- [x] 04-03-PLAN.md — Codex and opencode skills destinations, with the AGENTS.md routing decision and the runtime-surfacing human verification (wave 3)
+- [x] 04-04-PLAN.md — `generic`'s skills payload, `--help` correctness, and the four-runtime end-to-end report gate (wave 3)
 
 ---
 
@@ -456,24 +500,32 @@ equivalent to).
 **Success criteria:**
 
 1. `/engram-setup` detects the `engram` binary on PATH and delegates to `engram setup` when it is
-   present.
+   present, including pre-registered OAuth through a validated CLI client-ID input.
 
 2. When the binary is absent, `/engram-setup` completes setup for the current agent using its own
-   instructions, unchanged from today's first-class prose path.
+   instructions, preserving all four auth choices and the first-class Claude Code path while
+   using the same credential-safe registration argv as the binary.
 
 3. The mechanical parts of `/engram-setup`'s prose are generated from the same source of truth
    `engram setup` reads, and CI fails on any difference between the generated content and what's
    committed — so the two paths cannot silently diverge.
 
-**Plans:** TBD
+**Plans:** 3/3 plans complete
+
+Plans:
+
+- [x] 05-01-PLAN.md — Add validated OAuth client-ID input through CLI and runtime argv.
+- [x] 05-02-PLAN.md — Generate four-mode slash delegation and Claude fallback from real Plans.
+- [x] 05-03-PLAN.md — Enforce read-only local drift checks and prove both gate failure paths.
 
 ---
 
 ### Phase 6: Install Documentation
 
 **Goal:** docs-site tells a new user how to actually obtain engram and how to run `engram setup`,
-reflecting the final, shipped behavior of every earlier phase rather than the Docker-only,
-binary-optional story it tells today.
+reflecting the final implemented behavior of earlier phases, with explicit released
+versus unreleased availability. New-release checks follow merge under the D-10
+post-release handoff, so pre-merge acceptance does not depend on shipping itself.
 
 **Requirements:** REQ-docs-install-path, REQ-docs-setup-documented, REQ-homebrew-cask-published
 
@@ -494,7 +546,17 @@ and the delegation story settled).
    Linux — the end-to-end confirmation of the pipeline Phase 1 configures, and the prerequisite for
    documenting the exact working invocation in criterion 1.
 
-**Plans:** TBD
+**Plans:** 2/2 plans complete
+
+Plans:
+
+- [x] 06-01-PLAN.md — Canonical Install and Agent Setup guides with reconciled entry points
+- [x] 06-02-PLAN.md — Release provenance, four-platform installation evidence and shipped availability
+
+Phase 6 pre-merge acceptance is verified. v0.15.1 publication and all four
+actual Homebrew installs passed. Qualifying setup/client-ID/delegation release
+checks and availability updates remain pending under D-10; see the
+[post-release handoff](phases/06-install-documentation/06-POST-RELEASE.md).
 
 ---
 
@@ -556,7 +618,7 @@ and the delegation story settled).
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
-| 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
+| 2. Headless CLI Client | v0.12.x | 4/4 | In Progress|  |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-08-16 |
@@ -576,12 +638,12 @@ and the delegation story settled).
 | 7. Console & CLI State Surfacing | 2026-08-12.01 | 3/3 | Complete | 2026-08-20 |
 | 8. Registry & Docs Tail | 2026-08-12.01 | 3/3 | Complete | 2026-08-22 |
 | 9. Report pending in migrate status | 2026-08-12.01 | 2/2 | Complete | 2026-08-22 |
-| 1. Version & Homebrew Distribution | 2026-08-23.01 | 0/5 | Not started | - |
-| 2. Setup Command Core | 2026-08-23.01 | 0/6 | Not started | - |
-| 3. Runtime Registration | 2026-08-23.01 | 0/6 | Not started | - |
-| 4. Skills Distribution | 2026-08-23.01 | 0/3 | Not started | - |
-| 5. Slash Command Delegation | 2026-08-23.01 | 0/3 | Not started | - |
-| 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |
+| 1. Version & Homebrew Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-08-25 |
+| 2. Setup Command Core | 2026-08-23.01 | 3/3 | Complete | 2026-08-30 |
+| 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
+| 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-10 |
+| 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
+| 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete (pre-merge) | 2026-09-12 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

@@ -406,6 +406,20 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		changes: true,
 		landed:  true,
 	},
+	{
+		// Introduced by this plan (02-02): `setup` did not exist before
+		// this phase, so there is no meaningful `before` -- exitPartial/
+		// exitSetupFailed (the codes its own --apply path can produce) have
+		// no meaningful before either, since --apply's classification is
+		// unit-tested directly against the injected Environment fake in
+		// setup_test.go instead of through this runClient-driven table
+		// (a real --apply row here would depend on which agent runtimes
+		// happen to be installed on the machine running the suite).
+		name:       "setup/bad-auth",
+		args:       []string{"setup", "--auth", "basic"},
+		after:      exitUsage,
+		introduced: true,
+	},
 }
 
 // TestExitCodeBaselineClaims is the memory nczgrtfec2 discipline applied to
@@ -446,7 +460,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 38
+	const wantRows = 39
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}

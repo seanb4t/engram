@@ -145,6 +145,15 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 		// recording this, so advertising the code here does not break that
 		// gate's set-equality derivation.
 		{Code: exitFindings, Meaning: "findings reported under an explicit opt-in flag (e.g. spine-review verify --fail-on); the command itself succeeded"},
+		// exitPartial/exitSetupFailed (D-06) also have NO connect-error
+		// producer -- engram setup's own classification of its per-runtime
+		// results raises them directly. catalog_test.go's
+		// nonConnectProducedCodes carries a named allowlist entry for each,
+		// naming "engram setup" as their producer, so
+		// TestCatalogExitCodesMatchMapper's set-equality derivation stays a
+		// real gate in both directions.
+		{Code: exitPartial, Meaning: "at least one runtime was registered successfully and at least one failed in the same engram setup invocation"},
+		{Code: exitSetupFailed, Meaning: "every runtime engram setup attempted failed; a runtime that is not installed does not count as an attempt"},
 	}
 
 	doc.Notes = []string{

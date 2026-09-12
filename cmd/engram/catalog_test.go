@@ -228,7 +228,7 @@ func TestCatalogEnumeratesEveryFlag(t *testing.T) {
 // what makes the next code addition (after D-06's exitTimeout) not repeat
 // the drift TestCatalogListsEveryExitCode's own hard-coded "6"/"0-5"
 // literals caused when exitTimeout was added.
-var wantExitCodes = []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout, exitFindings}
+var wantExitCodes = []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout, exitFindings, exitPartial, exitSetupFailed}
 
 // TestCatalogListsEveryExitCode asserts the catalog carries exactly one
 // entry per constant in wantExitCodes, with no duplicates and no code
@@ -345,7 +345,9 @@ func TestCatalogGoesToStdoutNotStderr(t *testing.T) {
 // decision: add exitFindings to the catalog AND edit this derivation, in
 // the same commit, rather than leaving the pair internally unsatisfiable).
 var nonConnectProducedCodes = map[int]string{
-	exitFindings: "spine-review verify --fail-on",
+	exitFindings:    "spine-review verify --fail-on",
+	exitPartial:     "setup (partial per-runtime failure)",
+	exitSetupFailed: "setup (all attempted runtimes failed)",
 }
 
 // TestCatalogExitCodesMatchMapper is the D-11 anti-drift gate: the set of

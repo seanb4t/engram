@@ -1,19 +1,18 @@
 ---
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
-current_phase: 01
-current_phase_name: Version & Homebrew Distribution
-status: "Phase 01 shipped — PR #515"
-stopped_at: Phase 1 context gathered
-last_updated: "2026-09-09T22:01:13.637Z"
-last_activity: 2026-09-09
-last_activity_desc: "Completed quick task 260909-ofg: serve RFC 9728 protected-resource metadata (GH-526)"
-state_head: d7a70ad64896e822183336c946e556fd5943cfc4
+current_phase: 6
+status: pr_open
+stopped_at: PR 557 open; review and CI pending; post-release handoff retained
+last_updated: "2026-09-12T17:50:59+00:00"
+last_activity: 2026-09-12
+last_activity_desc: PR 557 opened for agent bootstrap; release handoff remains pending
+state_head: d205d4a361979ff318bb47adda278ab17d3672e5
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 3
-  completed_plans: 0
+  completed_phases: 6
+  total_plans: 20
+  completed_plans: 20
 milestone_name: Distribution & Agent Bootstrap
 ---
 
@@ -21,17 +20,28 @@ milestone_name: Distribution & Agent Bootstrap
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-23 — after opening milestone 2026-08-23.01)
+See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 01 — Version & Homebrew Distribution
+**Current focus:** Phase 06 — Install Documentation
 
 ## Current Position
 
-Phase: 01 (Version & Homebrew Distribution) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 01
-Last activity: 2026-09-09 — Completed quick task 260909-ofg: serve RFC 9728 protected-resource metadata (GH-526)
+Phase: 06 — Install Documentation
+Plan: 2 of 2 complete
+Status: PR #557 open — https://github.com/seanb4t/engram/pull/557
+Last activity: 2026-09-12 — PR #557 opened; Phase 6 passed 7/7, security 8/8, full task passed
+
+All six phase reports pass. The three Phase 6 requirements are complete under
+D-10 pre-merge acceptance. GSD's phase-completion helper could not parse the
+repository's descriptive requirement IDs, so those verified entries were
+reconciled explicitly. Existing unrelated pending requirement entries are preserved.
+
+The release handoff remains pending in
+`.planning/phases/06-install-documentation/06-POST-RELEASE.md` and issue #514.
+Do not close the milestone's release work or remove unreleased notices until
+qualifying-release provenance and repeated four-target installs pass. Issue #556
+tracks the approved implementation and is separate from that release handoff.
 
 ## Deferred Items
 
@@ -64,7 +74,7 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
 
-Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own `- **Status:** Phase 01 shipped — PR #515
+Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own acknowledged status line.
 
 ## Accumulated Context
 
@@ -250,6 +260,22 @@ milestone needs in working memory.
   (registration → skills → delegation), and Phase 6 (docs) depends on both Phase 1 and Phase 5 so
   it documents final shipped behavior.
 
+- [Phase 03]: Deleted Action.Command as a settable field (D-01), forcing a mechanical content-identical Args conversion of claudecode.go/opencode.go even though neither is in 03-01's files_modified list. — Action.Command must never be authored by hand anywhere (Task 1 acceptance criterion); the field's deletion is repo-wide, not per-file.
+- [Phase 03]: A Plan with no Probe wired degrades safely under the shared executor to never claiming OutcomeAlreadyCorrect, applying D-08's ambiguity-resolves-to-wrote invariant to the zero-signal case. — claude-code/opencode have no Probe this wave; treating that as a safe degradation avoids special-casing runtimes by name in the shared executor.
+- [Phase 03]: opencode's bearer header fixed to KEY=VALUE form (Authorization=Bearer {env:ENGRAM_TOKEN}), replacing the confirmed-broken colon-space HTTP-header-string form
+- [Phase 03]: claude-code: tolerant remove-then-fatal-add (destructive window explicitly accepted); Action.Tolerant authored-per-action, not positional; toolclass.go setup-row comment corrected to real per-runtime overwrite/refuse behavior
+- [Phase 03]: generic pseudo-runtime opts out of the default (--runtime-less) selection via a self-declared optInOnlyRuntime predicate, not a by-name check — D-14's literal Detect()-based phrasing was unimplementable without a by-name check or an interface signature change; the structural predicate achieves the same operator-visible outcome (a bare invocation never claims presence for a no-binary pseudo-runtime)
+- [Phase 03]: bearer mode on generic falls back to bearerProvenance's path placeholder when --token-file is supplied, diverging from the native runtimes' ENGRAM_TOKEN-naming convention — generic has no CLI of its own that could resolve a ${...} substitution token on an arbitrary third-party client, so it cannot promise that reference will ever expand there
+- [Phase 03]: Preview's probe capture uses the SAME combined stdout+stderr shape apply's read #2 already uses, applied regardless of the probe's exit code (D-11 reports rather than diagnoses).
+- [Phase 03]: The token_file=ignored marker is set structurally (Plan carries at least one Action), never keyed on a runtime's name, and never carries the supplied --token-file path (D-07).
+- [Phase 03]: TestSetupPartialExitIsLiveProducible distinguishes runtimes inside its scripted Run fake by the LookPath-resolved binary path, never by a runtime-name branch in production code, proving exitPartial has a real two-native-runtime production path.
+- [Phase 04]: internal/skills' setupSkillsTarget returns (skills.Target, bool) rather than the plan's literal single-return signature, so an un-wired runtime (codex/opencode/generic this wave) is skipped rather than reaching Install with an empty destination.
+- [Phase 04]: cmd/engram/setup_test.go's withFakeSetupEnv now also fakes the skillsEnv seam by default, protecting every existing --apply test from a real filesystem write to $HOME/.claude/skills.
+- [Phase 04]: ParseFrontmatter parses name/metadata from isolated per-top-level-key YAML fragments, not the whole frontmatter document, because curating-spine's real description contains a bare colon-space YAML's plain-scalar grammar rejects.
+- [Phase 04]: Codex routing: codex-native-plus-index (native skills + AGENTS.md index); RESEARCH assumption A1 confirmed by human observation — Gives ROADMAP success criterion 3 a live --apply write path and hedges the one MEDIUM-confidence open question; Sean confirmed codex's skill selector surfaces the five skills
+- [Phase 04]: setupSkillsTarget widened to (skills.Target, error): every registered runtime now authors an explicit SkillFormat, so an unrecognized format is a failed row, never a silent skip
+- [Phase 04]: generic's Plan() authors the explicit no-destination SkillFormatNone, carrying the curation skills in its --output json deliverable with the install call explicitly skipped so it can never reach the filesystem
+
 ### Pending Todos
 
 [From .planning/todos/pending/ — ideas captured during sessions]
@@ -279,7 +305,6 @@ Both prior entries were delivered and had simply never been closed out:
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260909-ofg | fix gh issue 526: serve RFC 9728 protected-resource metadata at /.well-known/oauth-protected-resource | 2026-09-09 | d7a70ad6 | [260909-ofg-fix-gh-issue-526-serve-rfc-9728-protecte](./quick/260909-ofg-fix-gh-issue-526-serve-rfc-9728-protecte/) |
 
 ### Roadmap Evolution
 
@@ -294,9 +319,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-08-23T18:36:53.070Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-version-homebrew-distribution/01-CONTEXT.md
+Last session: 2026-09-12T16:44:40+00:00
+Stopped at: PR #557 open; review/CI pending
+Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Performance Metrics
 
@@ -400,7 +425,18 @@ Resume file: .planning/phases/01-version-homebrew-distribution/01-CONTEXT.md
 | Phase 08 P06 | 24min | 3 tasks | 2 files |
 | Phase 09 P01 | 20min | 2 tasks | 2 files |
 | Phase 09 P02 | 12min | 2 tasks | 2 files |
+| Phase 03 P01 | 95min | 3 tasks | 14 files |
+| Phase 03 P03 | 33min | 2 tasks | 4 files |
+| Phase 03 P02 | 15min | 3 tasks | 8 files |
+| Phase 03 P04 | 45min | 3 tasks | 11 files |
+| Phase 03 P05 | 19min | 3 tasks | 6 files |
+| Phase 04 P01 | 34min | 3 tasks | 23 files |
+| Phase 04-skills-distribution P02 | 35min | 3 tasks | 20 files |
+| Phase 04 P03 | 55min | 3 tasks | 6 files |
+| Phase 04 P04 | 25min | 3 tasks | 5 files |
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 1` to plan Phase 1 — Version & Homebrew Distribution.
+- Review the prepared PR, then follow the normal release-please process.
+- After a qualifying release, complete `06-POST-RELEASE.md` and reconcile #514
+  before milestone release closure.

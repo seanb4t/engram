@@ -88,6 +88,31 @@ const (
 	// content (nor, as a fallback, its to file's) — #479's second
 	// finding.
 	ShapeUnsatisfiable Shape = "unsatisfiable"
+
+	// ShapeMalformed marks a key_links entry that is not a structured
+	// from:/to:/via:/pattern: mapping at all — most often a bare prose
+	// string authored as a list item, which YAML accepts and which
+	// ParsePlanKeyLinks records as an entry with every field empty.
+	//
+	// Such an entry has nothing to compile and nothing to resolve, so
+	// reporting it as ShapeUnsatisfiable actively misleads: it prints an
+	// empty pattern and names the repo root as both the from and the to
+	// path (filepath.Join(repoRoot, "") is repoRoot), which reads as
+	// "your regex is wrong" when the real fault is "your YAML has no
+	// from/to/pattern keys".
+	//
+	// Scoped to ModeSatisfiability deliberately, NOT to the
+	// unconditional escaping half — even though well-formedness, like
+	// escaping, is true or false forever and needs no code to decide.
+	// The prose-string form was the repo-wide norm before this package
+	// existed: 239 of 447 entries, spread across 23 archived phase
+	// directories, carry it. Running this check repo-wide would go red
+	// for every one of them at once — a red that is not a defect, and
+	// that trains people to ignore the gate. That is the exact failure
+	// TestActiveMilestoneKeyLinksSatisfiable's narrow scope already
+	// exists to avoid, so this check inherits that scope rather than
+	// undoing it.
+	ShapeMalformed Shape = "malformed"
 )
 
 // Offender is one reported violation: where it was found, which shape it
@@ -204,7 +229,13 @@ func ParsePlanKeyLinks(path string) ([]KeyLink, error) {
 				}
 				if indent == listItemIndent {
 					flush()
-					current = &KeyLink{File: path}
+					// Seed Line with the entry's own "- " line so a
+					// malformed entry — which has no pattern: key to
+					// record one — still points a reader at itself
+					// rather than at line 0. A pattern: key, when
+					// present, overwrites this with the more precise
+					// line (see applyKeyLinkField).
+					current = &KeyLink{File: path, Line: i + 1}
 					applyKeyLinkField(current, strings.TrimSpace(trimmed[2:]), i+1)
 				}
 			} else if current != nil && indent > listItemIndent {
@@ -220,7 +251,9 @@ func ParsePlanKeyLinks(path string) ([]KeyLink, error) {
 // applyKeyLinkField parses one "key: value" line and, if key names a
 // KeyLink field, sets it. lineNum is the 1-based source line, recorded
 // onto link.Line only for the pattern: key, since that is the line an
-// offender must point a reader at.
+// offender must point a reader at. An entry with no pattern: key keeps
+// the line its "- " item was seeded with at construction, so every
+// entry — well-formed or not — reports a real line.
 func applyKeyLinkField(link *KeyLink, kv string, lineNum int) {
 	idx := strings.Index(kv, ":")
 	if idx == -1 {
@@ -299,6 +332,46 @@ func ValidatePattern(raw string) (*regexp.Regexp, *Offender) {
 	}
 
 	return re, nil
+}
+
+// CheckWellFormed reports a key_links entry that is not a structured
+// from/to/pattern mapping. It names the missing KEYS rather than any
+// value, because the fault is the entry's shape, not its content — a
+// reader told "pattern does not match" for an entry that has no pattern:
+// key at all looks for a regex bug that is not there.
+//
+// A nil return means the entry carries all three load-bearing keys and
+// is worth compiling and resolving.
+//
+// via: is deliberately not required. It records WHY two files are linked
+// and is load-bearing for a human reader, but nothing in this package
+// consumes it, so a missing via: is a review matter rather than a gate
+// failure.
+func CheckWellFormed(link KeyLink) *Offender {
+	var missing []string
+	if link.From == "" {
+		missing = append(missing, "from")
+	}
+	if link.To == "" {
+		missing = append(missing, "to")
+	}
+	if link.Pattern == "" {
+		missing = append(missing, "pattern")
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return &Offender{
+		File:  link.File,
+		Line:  link.Line,
+		Shape: ShapeMalformed,
+		Raw:   link.Pattern,
+		Fix: fmt.Sprintf(
+			"key_links entry is missing %s — author it as a mapping with from:, to:, via: and pattern: keys, not as a bare string; an invariant claim with no file pair belongs under must_haves.truths instead",
+			strings.Join(missing, ", "),
+		),
+	}
 }
 
 // CheckSatisfiable reports whether link's already-validated pattern re
@@ -454,6 +527,18 @@ func ScanPlansWithStats(repoRoot string, roots []string, mode Mode) ([]Offender,
 			stats.KeyLinks += len(links)
 
 			for _, link := range links {
+				// Well-formedness first, and only under
+				// ModeSatisfiability (see ShapeMalformed): a bare prose
+				// entry has an empty pattern, which compiles cleanly and
+				// matches everything, so it would otherwise sail through
+				// ValidatePattern and surface as a bogus unsatisfiable.
+				if mode == ModeSatisfiability {
+					if wOff := CheckWellFormed(link); wOff != nil {
+						offenders = append(offenders, *wOff)
+						continue
+					}
+				}
+
 				re, off := ValidatePattern(link.Pattern)
 				if off != nil {
 					off.File = link.File

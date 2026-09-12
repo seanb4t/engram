@@ -184,6 +184,35 @@ var operations = []Operation{
 		Class: Class{ReadOnly: false, Destructive: true, Idempotent: true, OpenWorld: false},
 	},
 	{
+		// setup detects installed agent runtimes and registers engram as
+		// an MCP server on each (02-CONTEXT.md D-13). The three runtime
+		// CLIs do NOT behave uniformly on an existing "engram" entry —
+		// live-probed 2026-09-08 (03-RESEARCH.md Pitfall 1) after this
+		// row previously (incorrectly) asserted all three overwrite:
+		// `codex mcp add` and `opencode mcp add` overwrite an existing
+		// entry silently (confirmed by config-file diff after a changed
+		// --url); `claude mcp add` REFUSES with exit 1 ("already exists")
+		// at every scope and has no --force/--overwrite/--replace flag.
+		// Because there is no non-destructive way to make claude-code's
+		// registration idempotent (no force flag, and reading a
+		// runtime's config file is forbidden by this phase's central
+		// constraint), engram clears claude-code's slot with a tolerant
+		// `claude mcp remove` before the fatal `claude mcp add`
+		// (internal/setup/claudecode.go). Destructive: true — a
+		// remove-then-add sequence is STRICTLY MORE destructive than a
+		// silent overwrite (it has a window with no registration at all),
+		// so the table's own conservative rule ("false only when EVERY
+		// valid invocation is purely additive") still forces true, now
+		// for a stronger reason than the original (false) uniform-
+		// overwrite claim. Idempotent: true — this is now REACHABLE
+		// rather than merely asserted: a re-run against an already-
+		// correct entry reports already-correct and writes nothing
+		// further, proven for claude-code by
+		// TestApplyConvergesClaudeCode (internal/setup/apply_test.go).
+		MCPTool: "", CLICommand: "setup",
+		Class: Class{ReadOnly: false, Destructive: true, Idempotent: true, OpenWorld: false},
+	},
+	{
 		MCPTool: "", CLICommand: "summarize-missing",
 		// Additive: only fills an EMPTY summary field; the command
 		// documents that "records that already have a summary ... are

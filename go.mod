@@ -35,6 +35,13 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.22.0
 	go.opentelemetry.io/otel/sdk/metric v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
+	// go.yaml.in/yaml/v3 is the maintained successor to the archived
+	// gopkg.in/yaml.v3 (unmaintained April 2025), promoted from indirect to
+	// direct here for internal/skills/frontmatter.go's SKILL.md parsing
+	// (repo rule xvqj44e5mk: prefer an established upstream over a
+	// hand-rolled parser). Already resolved in go.sum and reached
+	// transitively today by cobra/doc and buf — no new module is fetched.
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
@@ -142,7 +149,6 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
 	golang.org/x/mod v0.40.0 // indirect

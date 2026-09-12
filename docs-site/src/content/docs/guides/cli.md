@@ -9,6 +9,13 @@ that server. The three client verbs — `engram search`, `engram list`, and
 over the Connect API, with no MCP client involved: a subagent with a closed
 tool list, a CI step, or a cron loop.
 
+Get the binary through [Install](/guides/install/). To register an MCP connection
+for an agent, follow [Agent Setup](/guides/agent-setup/) and its release
+availability notice. MCP setup uses `--url` / `ENGRAM_URL`; the Connect commands
+below use `--server` / `ENGRAM_SERVER_URL` and the credential precedence described
+here. Setup's generic-only `--token-file` behavior does not apply to these
+Connect commands.
+
 The server must be running with the Connect lane mounted (`connect.headless:
 true`, or a UI-enabled deployment) — see [Configuration](/guides/configure/).
 
@@ -116,10 +123,8 @@ Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
 |-------|----------|
 | `json` | Write exactly one JSON document to stdout. |
 | `text` | Render a one-line prose headline followed by one aligned line per field of the same document `json` emits. This is a human-readable view, not a stable interface, and is not intended to be parsed. |
-| *(absent)* | Detect from the command's own configured output writer: a human
-terminal renders `text`; anything else (a pipe, a file redirect) renders `json`. |
-| anything else | Rejected as a usage error (exit `2`), naming `--output` and its
-legal values — the same validator the three client verbs use. |
+| *(absent)* | Detect from the command's own configured output writer: a human terminal renders `text`; anything else (a pipe, a file redirect) renders `json`. |
+| anything else | Rejected as a usage error (exit `2`), naming `--output` and its legal values — the same validator the three client verbs use. |
 
 As with the client tier, the JSON document goes to stdout and any warning or
 diagnostic goes to stderr, so `engram <operator-command> --output json | jq .`
@@ -347,11 +352,9 @@ signature; it is not shipped here.
 
 ## Exit codes
 
-Every command in the binary — the three client verbs and all eight operator
-commands (`serve`, `reindex`, `prune-expired`, `summarize-missing`,
-`backfill-short-ids`, `migrate-remap-owner` and its deprecated alias
-`migrate-set-owner`, and every `engram spine-review` leaf) — resolves
-through the same eight codes:
+The CLI uses the following exit-code meanings. Codes `8` and `9` belong to
+unreleased setup; the published v0.15.1 binary lacks that command. See
+[Agent Setup](/guides/agent-setup/) for availability and result handling.
 
 | Code | Meaning |
 |------|---------|
@@ -363,6 +366,10 @@ through the same eight codes:
 | 5 | Transport or server unavailable |
 | 6 | Request deadline exceeded — the server accepted the request but did not answer within `--timeout` |
 | 7 | Findings reported under an explicit opt-in flag (e.g. `spine-review verify --fail-on`) — the command itself succeeded; the data just didn't pass the check |
+| 8 | Setup partially failed: some attempted runtimes succeeded and some failed (unreleased) |
+| 9 | All attempted setup runtimes failed (unreleased) |
+
+Absent runtimes are skipped and do not count as failed setup attempts.
 
 :::caution[Only two paths still exit 1]
 Framework flag errors — an unknown flag, an unparseable flag value — and a

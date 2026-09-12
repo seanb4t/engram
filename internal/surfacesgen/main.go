@@ -2,11 +2,10 @@
 // Copyright 2026 Sean Brandt
 
 // Command surfacesgen regenerates every anchored interface-surface region
-// from the internal/surfaces rule registry — the single generator
-// `task surfaces:gen` runs (D-06/D-07). Its only content source is
-// surfaces.Rules(): it reads no environment variable, no flag, and no file
-// content other than the anchored target files it rewrites, so nothing a
-// caller supplies at generation time can reach a published surface.
+// from internal/surfaces registries and internal/setup Plans — the single
+// generator `task surfaces:gen` runs (D-06/D-07). Setup rendering uses only
+// synthetic options and a restricted environment; generation reads no real
+// credentials and executes no runtime registration commands.
 package main
 
 import (
@@ -15,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/seanb4t/engram/internal/setupgen"
 	"github.com/seanb4t/engram/internal/surfaces"
 )
 
@@ -177,6 +177,7 @@ func renderToolBlastRadius() string {
 // run regenerates every anchored region ruleTargets names, in
 // surfaces.Rules() declaration order so output is stable across runs, then
 // regenerates the tool-blast-radius region from surfaces.Operations().
+// Finally it renders setup command tables from runtime-authored Plans.
 func run() error {
 	if err := surfaces.ValidateRules(); err != nil {
 		return fmt.Errorf("surfacesgen: registry invalid: %w", err)
@@ -195,11 +196,25 @@ func run() error {
 	if err := surfaces.WriteRegion(toolBlastRadiusPath, toolBlastRadiusRegionID, renderToolBlastRadius()); err != nil {
 		return fmt.Errorf("surfacesgen: tool-blast-radius: %w", err)
 	}
+	if err := setupgen.Write(setupgen.Path); err != nil {
+		return fmt.Errorf("surfacesgen: setup commands: %w", err)
+	}
 	return nil
 }
 
+// dispatch selects validation before any production writer can be reached.
+func dispatch(args []string) error {
+	if len(args) == 1 && args[0] == "--check-setup" {
+		return setupgen.Check(setupgen.Path)
+	}
+	if len(args) != 0 {
+		return fmt.Errorf("surfacesgen: usage: surfacesgen [--check-setup]")
+	}
+	return run()
+}
+
 func main() {
-	if err := run(); err != nil {
+	if err := dispatch(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
