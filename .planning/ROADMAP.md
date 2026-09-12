@@ -523,8 +523,9 @@ Plans:
 ### Phase 6: Install Documentation
 
 **Goal:** docs-site tells a new user how to actually obtain engram and how to run `engram setup`,
-reflecting the final, shipped behavior of every earlier phase rather than the Docker-only,
-binary-optional story it tells today.
+reflecting the final implemented behavior of earlier phases, with explicit released
+versus unreleased availability. New-release checks follow merge under the D-10
+post-release handoff, so pre-merge acceptance does not depend on shipping itself.
 
 **Requirements:** REQ-docs-install-path, REQ-docs-setup-documented, REQ-homebrew-cask-published
 

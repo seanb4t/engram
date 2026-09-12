@@ -1,7 +1,9 @@
 # Phase 6 release and installation observations
 
-Observed 2026-09-12. Plan 06-02 Task 1 evidence collection is complete;
-Task 2 remains **pending: no qualifying setup release**. Task 3 has not begun.
+Observed 2026-09-12. Plan 06-02 Task 1 evidence collection is complete.
+The original Task 2 checkpoint below is retained as history; D-10 supersedes its
+pre-merge blocking role. Qualifying setup release checks remain pending in
+`06-POST-RELEASE.md` and existing issue #514. No released-setup claim is made.
 
 Root performed the network and disposable installation work and supplied
 `/tmp/engram-06-install-results.json` plus the transcripts cited below. This
@@ -244,7 +246,7 @@ This executor's focused artifact check passed:
 reported no issues in one file. `git diff --check` passed for tracked changes;
 the observation artifact is the sole untracked file and awaits root's commit.
 
-## Task 2 checkpoint and resume path
+## Original Task 2 checkpoint and resume path (superseded by D-10)
 
 **Gate: blocking; type: human-verify.** The unresolved prerequisite is an actual
 release-please release containing final setup, required OAuth-client `--client-id`

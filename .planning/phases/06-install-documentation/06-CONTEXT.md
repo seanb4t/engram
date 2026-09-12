@@ -107,3 +107,19 @@ None — discussion stayed within the existing phase scope. Unobserved installat
 requirements remain pending work, not implicitly deferred or waived.
 
 </deferred>
+
+## Shipping sequence correction — 2026-09-12
+
+The user invoked `$gsd-ship 6` after the proposed correction to the circular
+release gate. This authorizes completing pre-merge acceptance and preparing the
+PR while keeping new-release observations explicitly pending.
+
+- **D-10:** Phase 6 pre-merge acceptance covers the final source behavior documented
+  truthfully as unreleased, plus the already observed v0.15.1 cask publication and
+  four actual installations. It does not require releasing this branch before
+  opening its PR. This corrects the additional sequencing constraint introduced
+  in 06-02; it does not waive any failed install or claim shipped setup.
+- Final setup release provenance, repeated four-target installation checks and
+  removal of unreleased notices move to the explicit post-release handoff in
+  `06-POST-RELEASE.md`, tracked by existing issue #514. They remain pending until
+  a real qualifying release exists. Milestone release closure waits for them.
