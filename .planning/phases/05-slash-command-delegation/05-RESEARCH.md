@@ -545,23 +545,23 @@ These are phase-specific recommended mitigations, supported by the source confli
 
 ## Assumptions Log
 
-No unverified package, API, or runtime-behavior recommendation is required. The proposed
-decision amendments are explicitly unresolved; do not treat them as user approval.
+The original research conflicts are resolved by CONTEXT.md D-17 through D-20, recorded
+in commit 1b9cc034. D-17 is the explicit user choice to add the CLI client-ID input;
+D-18 through D-20 are implementation reconciliations within the authorized scope.
+Third-party live OAuth behavior is not inferred from fake execution tests.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. Accept the bearer environment-reference correction while preserving the fallback's four
-   auth choices and Claude-only scope?
-2. Accept registration-command equivalence as the precise gate scope, excluding remove-before-add,
-   skills distribution, and auth credential acquisition?
-3. Accept a visible OAuth-client delegation stop pending a separate prerequisite fix, or insert
-   that fix before Phase 05?
-4. Accept shared generator input values plus a single delegation template, with owned Cobra
-   source validation, instead of claiming Plan contains engram flag metadata?
-5. Accept read-only exact local comparison while retaining regeneration-and-diff in CI?
-
-The orchestrator should consolidate these into the smallest concrete user decision. Do not
-silently override locked decisions.
+1. Bearer environment-reference correction: resolved by D-18; preserve four auth choices
+   and Claude-only fallback while keeping credentials off argv.
+2. Equivalence scope: resolved by D-19; derive registration argv, without asserting that
+   fallback includes binary orchestration or skills installation.
+3. OAuth-client input: resolved by the user's explicit D-17 expansion; add the input in
+   Phase 05 and delegate all four modes. No stop or separate prerequisite phase.
+4. Delegation metadata: resolved by D-19; shared input values and one delegation template,
+   structurally validated against the actual Cobra command.
+5. Local lint: resolved by D-20; read-only exact comparison locally and the existing
+   regeneration/diff gate in CI.
 
 ## Sources and Metadata
 
