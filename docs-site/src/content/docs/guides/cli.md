@@ -353,7 +353,7 @@ signature; it is not shipped here.
 ## Exit codes
 
 The CLI uses the following exit-code meanings. Codes `8` and `9` belong to
-unreleased setup; the published v0.15.1 binary lacks that command. See
+setup, available from v0.16.0. See
 [Agent Setup](/guides/agent-setup/) for availability and result handling.
 
 | Code | Meaning |
@@ -366,8 +366,8 @@ unreleased setup; the published v0.15.1 binary lacks that command. See
 | 5 | Transport or server unavailable |
 | 6 | Request deadline exceeded — the server accepted the request but did not answer within `--timeout` |
 | 7 | Findings reported under an explicit opt-in flag (e.g. `spine-review verify --fail-on`) — the command itself succeeded; the data just didn't pass the check |
-| 8 | Setup partially failed: some attempted runtimes succeeded and some failed (unreleased) |
-| 9 | All attempted setup runtimes failed (unreleased) |
+| 8 | Setup partially failed: some attempted runtimes succeeded and some failed |
+| 9 | All attempted setup runtimes failed |
 
 Absent runtimes are skipped and do not count as failed setup attempts.
 

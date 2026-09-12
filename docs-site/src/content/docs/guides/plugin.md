@@ -41,13 +41,11 @@ Supply the complete MCP endpoint, including its configured path. The command
 gathers the endpoint and one of four auth choices: OAuth, pre-registered OAuth
 client, bearer token, or none.
 
-:::caution[Binary delegation requires unreleased setup]
-As of September 12, 2026, the published **v0.15.1 binary lacks `setup`**.
-The current source command delegates whenever it finds `engram` on `PATH`; it
-does not fall back automatically when that binary lacks the command. Installing
-v0.15.1 through Homebrew does not enable delegation. To use it, follow the
-[source-build route](/guides/install/#build-unreleased-setup-from-source) and make
-that executable available on `PATH`.
+:::note[Binary delegation requires engram v0.16.0 or later]
+The command delegates whenever it finds `engram` on `PATH`; it does not fall back
+automatically when that binary lacks `setup`. Follow [Install](/guides/install/)
+to obtain v0.16.0 or later, and check `engram version --output json`. Upgrade
+older binaries, including v0.15.1, before using delegation.
 :::
 
 With a setup-capable binary present, `/engram-setup` previews across detected
