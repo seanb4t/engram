@@ -53,7 +53,7 @@ func TestPlanPassesURLVerbatimGatewayRoute(t *testing.T) {
 	for _, rt := range Runtimes {
 		rt := rt
 		t.Run(rt.Name(), func(t *testing.T) {
-			plan, err := rt.Plan(OSEnvironment, Options{URL: url, Auth: "oauth"})
+			plan, err := rt.Plan(fakeEnv(), Options{URL: url, Auth: "oauth"})
 			if err != nil {
 				t.Fatalf("%s.Plan: %v", rt.Name(), err)
 			}
@@ -72,7 +72,7 @@ func TestPlanPassesURLVerbatimRootMounted(t *testing.T) {
 	for _, rt := range Runtimes {
 		rt := rt
 		t.Run(rt.Name(), func(t *testing.T) {
-			plan, err := rt.Plan(OSEnvironment, Options{URL: url, Auth: "oauth"})
+			plan, err := rt.Plan(fakeEnv(), Options{URL: url, Auth: "oauth"})
 			if err != nil {
 				t.Fatalf("%s.Plan: %v", rt.Name(), err)
 			}
@@ -118,7 +118,7 @@ func TestNoSecretInArgs(t *testing.T) {
 		for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
 			rt, auth := rt, auth
 			t.Run(rt.Name()+":"+auth, func(t *testing.T) {
-				plan, err := rt.Plan(env, Options{URL: "https://x", Auth: auth, TokenFile: "/home/u/.engram/token"})
+				plan, err := rt.Plan(env, Options{URL: "https://x", Auth: auth, ClientID: "test-client", TokenFile: "/home/u/.engram/token"})
 				if err != nil {
 					if errors.Is(err, ErrAuthModeUnsupported) {
 						return
@@ -153,11 +153,11 @@ func TestOAuthAndNoneAuthorIdenticalArgs(t *testing.T) {
 	for _, rt := range Runtimes {
 		rt := rt
 		t.Run(rt.Name(), func(t *testing.T) {
-			oauthPlan, err := rt.Plan(OSEnvironment, Options{URL: "https://x", Auth: "oauth"})
+			oauthPlan, err := rt.Plan(fakeEnv(), Options{URL: "https://x", Auth: "oauth"})
 			if err != nil {
 				t.Fatalf("oauth Plan: %v", err)
 			}
-			nonePlan, err := rt.Plan(OSEnvironment, Options{URL: "https://x", Auth: "none"})
+			nonePlan, err := rt.Plan(fakeEnv(), Options{URL: "https://x", Auth: "none"})
 			if err != nil {
 				t.Fatalf("none Plan: %v", err)
 			}
@@ -365,7 +365,7 @@ func TestPlanAuthModes(t *testing.T) {
 			rt, auth := rt, auth
 			key := rt.Name() + ":" + auth
 			t.Run(key, func(t *testing.T) {
-				plan, err := rt.Plan(OSEnvironment, Options{URL: url, Auth: auth, TokenFile: tokenFile})
+				plan, err := rt.Plan(fakeEnv(), Options{URL: url, Auth: auth, ClientID: "test-client", TokenFile: tokenFile})
 				if unsupported[key] {
 					unsupportedSeen++
 					if !errors.Is(err, ErrAuthModeUnsupported) {
@@ -415,7 +415,7 @@ func TestPlanBearerRedactsCredentialByProvenance(t *testing.T) {
 	for _, rt := range Runtimes {
 		rt := rt
 		t.Run(rt.Name(), func(t *testing.T) {
-			plan, err := rt.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: tokenFile})
+			plan, err := rt.Plan(fakeEnv(), Options{URL: "https://x", Auth: "bearer", TokenFile: tokenFile})
 			if err != nil {
 				t.Fatalf("Plan: %v", err)
 			}
@@ -447,7 +447,7 @@ func TestPlanBearerNeverReadsTokenFile(t *testing.T) {
 	const nonexistent = "/definitely/does/not/exist/token"
 
 	t.Run("claude-code", func(t *testing.T) {
-		plan, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: nonexistent})
+		plan, err := ClaudeCode.Plan(fakeEnv(), Options{URL: "https://x", Auth: "bearer", TokenFile: nonexistent})
 		if err != nil {
 			t.Fatalf("Plan: %v (a nonexistent token file must not cause Plan to fail — it never reads the file)", err)
 		}
@@ -457,7 +457,7 @@ func TestPlanBearerNeverReadsTokenFile(t *testing.T) {
 	})
 
 	t.Run("opencode", func(t *testing.T) {
-		plan, err := OpenCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: nonexistent})
+		plan, err := OpenCode.Plan(fakeEnv(), Options{URL: "https://x", Auth: "bearer", TokenFile: nonexistent})
 		if err != nil {
 			t.Fatalf("Plan: %v (a nonexistent token file must not cause Plan to fail — it never reads the file)", err)
 		}
@@ -476,11 +476,11 @@ func TestPlanBearerNeverReadsTokenFile(t *testing.T) {
 // TestPlanBearerEmptyTokenFileNamesEnvVar, which pinned the now-retired
 // bearerProvenance-based "Bearer <from ENGRAM_TOKEN>" fallback form.
 func TestPlanClaudeCodeBearerIgnoresTokenFile(t *testing.T) {
-	withFile, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: "/home/u/.engram/token"})
+	withFile, err := ClaudeCode.Plan(fakeEnv(), Options{URL: "https://x", Auth: "bearer", TokenFile: "/home/u/.engram/token"})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
-	withoutFile, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "bearer", TokenFile: ""})
+	withoutFile, err := ClaudeCode.Plan(fakeEnv(), Options{URL: "https://x", Auth: "bearer", TokenFile: ""})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -497,7 +497,7 @@ func TestPlanClaudeCodeBearerIgnoresTokenFile(t *testing.T) {
 // claude-code emits the --client-id / --client-secret / --callback-port
 // 8765 form from the shipped table.
 func TestPlanClaudeCodeOAuthClientForm(t *testing.T) {
-	plan, err := ClaudeCode.Plan(OSEnvironment, Options{URL: "https://x", Auth: "oauth-client"})
+	plan, err := ClaudeCode.Plan(fakeEnv(), Options{URL: "https://x", Auth: "oauth-client", ClientID: "test-client"})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}

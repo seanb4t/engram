@@ -1977,6 +1977,101 @@ func TestSetupClientID(t *testing.T) {
 		}
 	}
 
+	for _, selection := range []struct {
+		name    string
+		present []string
+		runtime string
+	}{
+		{"codex", []string{"codex"}, "codex"},
+		{"default_mixed", []string{"claude", "codex", "opencode"}, ""},
+	} {
+		for _, apply := range []bool{false, true} {
+			t.Run(selection.name+"/apply="+strconv.FormatBool(apply), func(t *testing.T) {
+				resetClientFlags(t)
+				resetCommandFlagState(t, setupCmd)
+				const id = "  mixed client; 'quoted' $(echo nope) &  "
+				var calls [][]string
+				withFakeSetupEnv(t, fakeSetupEnvWithRun(func(_ context.Context, path string, args []string) (setup.RunResult, error) {
+					calls = append(calls, append([]string{filepath.Base(path)}, args...))
+					return setup.RunResult{}, nil
+				}, selection.present...))
+				args := []string{"setup", "--url", url, "--auth", "oauth-client", "--client-id", id, "--output", "json"}
+				if selection.runtime != "" {
+					args = append(args, "--runtime", selection.runtime)
+				}
+				if apply {
+					args = append(args, "--apply")
+				}
+				stdout, stderr, err := runClient(t, args...)
+				wantExit := 0
+				if apply && selection.runtime == "" {
+					wantExit = exitPartial
+				}
+				if got := exitCodeFromError(err); got != wantExit {
+					t.Fatalf("exit=%d, want %d: %v (stderr=%q)", got, wantExit, err, stderr)
+				}
+				var doc setupReportDoc
+				if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+					t.Fatal(err)
+				}
+				if len(doc.Runtimes) != len(selection.present) {
+					t.Fatalf("rows = %+v", doc.Runtimes)
+				}
+				wantAdds := map[string][]string{
+					"claude-code": {"claude", "mcp", "add", "--transport", "http", "engram", url, "--scope", "user", "--client-id", id, "--client-secret", "--callback-port", "8765"},
+					"codex":       {"codex", "mcp", "add", "engram", "--url", url, "--oauth-client-id", id},
+				}
+				for _, row := range doc.Runtimes {
+					if row.Name == "opencode" {
+						if row.Outcome != "failed" || !strings.Contains(row.Reason, "oauth-client") {
+							t.Errorf("unsupported row = %+v", row)
+						}
+						continue
+					}
+					wantAdd, ok := wantAdds[row.Name]
+					if !ok {
+						t.Fatalf("unexpected runtime %q (generic must stay opt-in)", row.Name)
+					}
+					wantCommand := (setup.Action{Args: wantAdd}).Command()
+					if row.Name == "claude-code" {
+						wantCommand = "claude mcp remove engram --scope user; " + wantCommand
+					}
+					if row.Command != wantCommand {
+						t.Errorf("command = %q, want %q", row.Command, wantCommand)
+					}
+					wantOutcome := "would-write"
+					if apply {
+						wantOutcome = "wrote"
+					}
+					if row.Outcome != wantOutcome {
+						t.Errorf("%s outcome = %q, want %q", row.Name, row.Outcome, wantOutcome)
+					}
+					adds := 0
+					for _, call := range calls {
+						if len(call) > 2 && call[0] == wantAdd[0] && call[2] == "add" {
+							adds++
+							if !reflect.DeepEqual(call, wantAdd) {
+								t.Errorf("argv = %q, want %q", call, wantAdd)
+							}
+						}
+					}
+					wantCount := 0
+					if apply {
+						wantCount = 1
+					}
+					if adds != wantCount {
+						t.Errorf("%s add count=%d, want %d", row.Name, adds, wantCount)
+					}
+				}
+				for _, call := range calls {
+					if call[0] == "opencode" {
+						t.Errorf("unsupported runtime executed %q", call)
+					}
+				}
+			})
+		}
+	}
+
 	invalid := []struct {
 		name string
 		args []string
