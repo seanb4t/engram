@@ -2,13 +2,13 @@
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
 current_phase: 04
-current_phase_name: skills-distribution
-status: milestone_audit_gaps_found
+current_phase_name: Skills Distribution
+status: executing
 stopped_at: milestone audit found AGENTS.md preservation gap 559; fix and re-verify Phase 4
-last_updated: "2026-09-12T19:45:20.696Z"
+last_updated: "2026-09-12T20:00:49.462Z"
 last_activity: 2026-09-12
-last_activity_desc: milestone audit 24/25; preservation blocker 559, timeout warning 560, validation debt 561
-state_head: 9279f5dace43102271fc9c7edbc96b6693c63225
+last_activity_desc: Phase 04 execution started
+state_head: 7980593b4e338dba22592184d2a5809c55ba28e9
 progress:
   total_phases: 6
   completed_phases: 5
@@ -24,14 +24,14 @@ milestone_name: Distribution & Agent Bootstrap
 See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Milestone audit — close Phase 4 preservation gap #559
+**Current focus:** Phase 04 — Skills Distribution
 
 ## Current Position
 
-Phase: 04 (skills-distribution) — READY TO EXECUTE
-Plan: 2 of 2 complete
-Status: Milestone audit gaps_found — 24/25 requirements; fix #559 before archival
-Last activity: 2026-09-12 — PRs #557 and #533 merged; four Homebrew installs and tagged Go install passed
+Phase: 04 (Skills Distribution) — EXECUTING
+Plan: 5 of 5 complete
+Status: Executing Phase 04
+Last activity: 2026-09-12 — Phase 04 execution started
 
 The milestone audit found an existing AGENTS.md read-error preservation defect.
 Phase 4 is reopened as gaps_found; the other five canonical reports pass. All
