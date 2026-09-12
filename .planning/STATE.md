@@ -2,8 +2,8 @@
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
 current_phase: 6
-status: post_release_verification
-stopped_at: v0.16.0 installation verified; guide follow-up prepared; recovery rehearsal pending
+status: pr_open
+stopped_at: v0.16.0 installation verified; PR 558 open; recovery rehearsal pending
 last_updated: "2026-09-12T18:26:52.863429+00:00"
 last_activity: 2026-09-12
 last_activity_desc: PRs 557 and 533 merged; v0.16.0 four-target installation verified
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 Phase: 06 — Install Documentation
 Plan: 2 of 2 complete
-Status: v0.16.0 released; installation verified; guide follow-up prepared
+Status: v0.16.0 released and verified; docs PR #558 open — https://github.com/seanb4t/engram/pull/558
 Last activity: 2026-09-12 — PRs #557 and #533 merged; four Homebrew installs and tagged Go install passed
 
 All six phase reports pass. The three Phase 6 requirements are complete under
@@ -40,7 +40,8 @@ reconciled explicitly. Existing unrelated pending requirement entries are preser
 The qualifying-release checks passed for v0.16.0. See
 `.planning/phases/06-install-documentation/06-RELEASE-0.16.0.md` for publication,
 installed setup/client-ID help, completion and tagged Go-install evidence.
-The five-guide availability update is prepared on `docs/setup-release-0.16.0`.
+The five-guide availability update is open as PR #558 on
+`docs/setup-release-0.16.0`.
 Issue #556 closed with the implementation merge. Issue #514 and
 `REQ-cask-reship-recovery` remain open; the ordinary release does not prove the
 separate recovery rehearsal. Milestone release closure is still pending.
@@ -322,7 +323,7 @@ Both prior entries were delivered and had simply never been closed out:
 ## Session Continuity
 
 Last session: 2026-09-12T16:44:40+00:00
-Stopped at: v0.16.0 installation verified; guide follow-up prepared; recovery rehearsal pending
+Stopped at: v0.16.0 installation verified; PR 558 open; recovery rehearsal pending
 Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Performance Metrics
@@ -439,5 +440,5 @@ Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Operator Next Steps
 
-- Merge the follow-up availability-guide PR after CI passes.
+- Merge availability-guide PR #558 after CI passes.
 - Complete the recovery rehearsal and reconcile #514 before milestone release closure.
