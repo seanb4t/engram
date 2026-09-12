@@ -87,13 +87,16 @@ Raw local evidence (ephemeral, supplemented by the durable identities above):
 - `/tmp/engram-016-linux-{arm64,amd64}-install-bash.log` and result JSON.
 - `/tmp/engram-016-go-install.log` and `/tmp/engram-016-go-install-result.json`.
 
-Installation/publication and module-version checks pass. Issue #514's historical
-body and latest comment assign different meanings to checklist B; publication
-must not be treated as the separate `REQ-cask-reship-recovery` rehearsal.
-That requirement remains pending. No recovery dispatch or issue closure was
-performed. Runtime registration and production deployment were not tested here.
-The availability-guide update is prepared on a follow-up branch and becomes
-published documentation only after its normal merge/deployment.
+Installation/publication and module-version checks pass. No recovery dispatch,
+runtime registration or production deployment was performed by these checks.
+The guide update subsequently merged in PR #558 and deployed successfully.
+
+Correction after that merge: the initial handoff incorrectly said #514 remained
+open and a recovery rehearsal was required. GitHub records Sean closing #514 at
+2026-09-12T17:56:27Z. Phase 1 Context D-15 explicitly accepts recovery by
+construction and forbids the staged rehearsal. Its verification report already
+marks that criterion satisfied. See `06-POST-RELEASE.md` for reconciliation;
+ordinary release success is not being relabeled as a recovery rehearsal.
 
 ## Cleanup
 

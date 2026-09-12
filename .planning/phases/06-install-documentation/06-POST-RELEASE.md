@@ -1,16 +1,15 @@
 ---
 phase: 06-install-documentation
-status: release_verified_docs_prepared
+status: complete
 tracker: https://github.com/seanb4t/engram/issues/514
 ---
 
 # Post-release handoff
 
-This is the operational handoff for existing issue #514. The v0.16.0 publication,
-four installations, installed setup/client-ID help and tagged Go installation
-are verified in `06-RELEASE-0.16.0.md`. Availability-guide changes are prepared
-for a follow-up PR. Issue reconciliation and milestone release closure remain
-pending because the recovery rehearsal is a separate outstanding requirement.
+The Phase 6 release handoff is complete. Publication and installation evidence
+is in `06-RELEASE-0.16.0.md`. Availability guides merged in PR #558 and deployed
+successfully; all five live routes now describe setup as available from v0.16.0.
+Issue #514 is closed. Milestone audit/archive is the next lifecycle step.
 
 ## Trigger and ownership
 
@@ -44,12 +43,23 @@ not assert that a release occurred.
 installs. That release lacks setup. `06-REVIEW.md` records clean guide review;
 local source tests and docs checks support pre-merge acceptance only.
 
-## Current disposition — 2026-09-12
+## Current disposition — 2026-09-12 after PR #558
 
-Steps 1–3 are complete for v0.16.0, released through PR #533 after implementation
-PR #557 merged. Step 4 updates all five affected guides on the follow-up branch;
-its validation is recorded in `06-VERIFICATION.md`. Historical v0.15.1 evidence
-is unchanged. Step 5 remains open: `REQ-cask-reship-recovery` still needs its
-actual recovery rehearsal, and issue #514 has not been closed or edited. The
-successful tagged Go install satisfies the requested checklist C observation.
-Do not infer recovery or production deployment from the release success.
+Steps 1–4 are complete. PR #558 merged at `299d60e4b338b86acd23194a3678cb2b37984390`
+with passing CI. [Docs deployment 34712224429](https://github.com/seanb4t/engram/actions/runs/34712224429)
+succeeded. HTTP reads of Install, Agent Setup, Plugin, Quickstart and CLI confirmed
+v0.16.0 availability and absence of the old unreleased notices. Local evidence:
+`/tmp/engram-558-live-docs.json`.
+
+Issue reconciliation is complete: GitHub records Sean closing #514 at
+2026-09-12T17:56:27Z. The earlier handoff incorrectly repeated a comment's recovery
+rehearsal blocker. Phase 1 Context **D-15** explicitly says no backfill rehearsal
+will be performed and accepts criterion 5 by construction under D-14's guard
+and D-13's credential probe. Phase 1's verification report marks
+`REQ-cask-reship-recovery` satisfied on that basis, with its checkbox closing
+alongside the credential check. Probe run 32860661930 passed from main, and the
+credential requirement was already complete. REQUIREMENTS now reflects that
+accepted decision. No recovery dispatch was needed or performed.
+
+The milestone itself has not been archived; run its audit/closure workflow next.
+This record does not assert a production server rollout or new runtime login.

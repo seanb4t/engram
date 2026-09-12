@@ -2,11 +2,11 @@
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
 current_phase: 6
-status: pr_open
-stopped_at: v0.16.0 installation verified; PR 558 open; recovery rehearsal pending
-last_updated: "2026-09-12T18:26:52.863429+00:00"
+status: ready_for_milestone_audit
+stopped_at: PR 558 merged and docs deployed; ready for milestone audit
+last_updated: "2026-09-12T18:49:55.636624+00:00"
 last_activity: 2026-09-12
-last_activity_desc: PRs 557 and 533 merged; v0.16.0 four-target installation verified
+last_activity_desc: PR 558 merged and docs deployed; stale recovery blocker corrected against D-15
 state_head: d205d4a361979ff318bb47adda278ab17d3672e5
 progress:
   total_phases: 6
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 Phase: 06 — Install Documentation
 Plan: 2 of 2 complete
-Status: v0.16.0 released and verified; docs PR #558 open — https://github.com/seanb4t/engram/pull/558
+Status: Phase 6 shipped; PR #558 merged and docs deployed; ready for milestone audit
 Last activity: 2026-09-12 — PRs #557 and #533 merged; four Homebrew installs and tagged Go install passed
 
 All six phase reports pass. The three Phase 6 requirements are complete under
@@ -40,11 +40,12 @@ reconciled explicitly. Existing unrelated pending requirement entries are preser
 The qualifying-release checks passed for v0.16.0. See
 `.planning/phases/06-install-documentation/06-RELEASE-0.16.0.md` for publication,
 installed setup/client-ID help, completion and tagged Go-install evidence.
-The five-guide availability update is open as PR #558 on
-`docs/setup-release-0.16.0`.
-Issue #556 closed with the implementation merge. Issue #514 and
-`REQ-cask-reship-recovery` remain open; the ordinary release does not prove the
-separate recovery rehearsal. Milestone release closure is still pending.
+The five-guide availability update merged as PR #558 and deployed through run
+34712224429. All five live guide routes now show v0.16.0. Issues #556 and #514
+are closed. The earlier recovery-rehearsal blocker was incorrect: Phase 1 D-15
+explicitly accepts that criterion by construction and prohibits a staged
+rehearsal; its verification report agrees. The requirement checkbox is now
+reconciled with the completed credential probe. Milestone audit/archive is next.
 
 ## Deferred Items
 
@@ -323,7 +324,7 @@ Both prior entries were delivered and had simply never been closed out:
 ## Session Continuity
 
 Last session: 2026-09-12T16:44:40+00:00
-Stopped at: v0.16.0 installation verified; PR 558 open; recovery rehearsal pending
+Stopped at: PR 558 merged and docs deployed; ready for milestone audit
 Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Performance Metrics
@@ -440,5 +441,5 @@ Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Operator Next Steps
 
-- Merge availability-guide PR #558 after CI passes.
-- Complete the recovery rehearsal and reconcile #514 before milestone release closure.
+- Run milestone audit, reconciling any remaining stale requirement statuses against canonical reports.
+- Complete milestone archival after the audit; no recovery rehearsal is required under Phase 1 D-15.

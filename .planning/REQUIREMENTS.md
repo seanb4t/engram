@@ -23,7 +23,7 @@ would write, and wires it up.
 - [x] **REQ-homebrew-cask-published**: A tagged release publishes a Homebrew cask to `seanb4t/homebrew-tap` alongside the existing `Casks/codegraph.rb`, via GoReleaser's `homebrew_casks:`. A user can install engram from the tap on macOS and Linux, on both amd64 and arm64.
 - [x] **REQ-cask-install-gate**: `brew install` fails loudly when the installed binary is not the declared artifact. The gate strips `com.apple.quarantine` as its first action, before invoking the binary — engram ships unsigned, and a gate that runs the binary first gets SIGKILLed by Gatekeeper instead of failing cleanly. `generate_completions_from_executable` is not used as the gate: Homebrew rescues its failures to a warning, so a broken binary would install green.
 - [x] **REQ-cask-credential-verified**: The release workflow holds a credential that can actually write to `seanb4t/homebrew-tap`, proven by an explicit check before any real release depends on it. The default `GITHUB_TOKEN` is scoped to the released repo and cannot.
-- [ ] **REQ-cask-reship-recovery**: A failure between tag creation and cask publication is recoverable without hand-editing the tap, by extending this repo's existing `workflow_dispatch` re-ship path rather than inventing a second mechanism. The recovery is rehearsed once, not assumed.
+- [x] **REQ-cask-reship-recovery**: A failure between tag creation and cask publication is recoverable without hand-editing the tap, by extending this repo's existing `workflow_dispatch` re-ship path rather than inventing a second mechanism. The recovery is rehearsed once, not assumed. **Acceptance clarification:** Phase 1 Context D-15 supersedes the literal rehearsal criterion with D-14 guard and D-13 credential-probe verification; no staged rehearsal is performed. The Phase 1 verification report accepts this by construction, and the credential probe passed from main (run 32860661930).
 
 ### Setup Command Core
 
@@ -92,7 +92,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-homebrew-cask-published | Phase 6 | Complete |
 | REQ-cask-install-gate | Phase 1 | Complete |
 | REQ-cask-credential-verified | Phase 1 | Complete |
-| REQ-cask-reship-recovery | Phase 1 | Pending |
+| REQ-cask-reship-recovery | Phase 1 | Complete |
 | REQ-setup-detects-runtimes | Phase 2 | Pending |
 | REQ-setup-previews-by-default | Phase 2 | Pending |
 | REQ-setup-idempotent | Phase 3 | Complete |
@@ -121,4 +121,5 @@ Which phases cover which requirements. Filled during roadmap creation.
 - Unmapped: 0
 
 ---
+
 *Requirements defined: 2026-08-23*

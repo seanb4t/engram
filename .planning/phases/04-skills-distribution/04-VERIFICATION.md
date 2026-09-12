@@ -42,7 +42,7 @@ covered_files:
   - internal/skills/importgate_test.go
   - internal/skills/install.go
   - internal/skills/inventory.go
-covered_digest: v1:sha256:8fe2a4b624a454e050f16bf14f6040feafda3e5c0aa98b0a7ceb097dea5f4846
+covered_digest: v1:sha256:b1fc4111b9876925c54fbd70113ab69b6ecf5940ff653043276f05e12feda8b2
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
