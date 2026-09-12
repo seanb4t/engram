@@ -2,11 +2,11 @@
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
 current_phase: 6
-status: ready_to_ship
-stopped_at: Phase 6 pre-merge verification passed; preparing PR
-last_updated: "2026-09-12T17:48:53.812Z"
+status: pr_open
+stopped_at: PR 557 open; review and CI pending; post-release handoff retained
+last_updated: "2026-09-12T17:50:59+00:00"
 last_activity: 2026-09-12
-last_activity_desc: All six phase reports passed; release handoff remains pending
+last_activity_desc: PR 557 opened for agent bootstrap; release handoff remains pending
 state_head: d205d4a361979ff318bb47adda278ab17d3672e5
 progress:
   total_phases: 6
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 Phase: 06 — Install Documentation
 Plan: 2 of 2 complete
-Status: Pre-merge verification passed; preparing PR
-Last activity: 2026-09-12 — Phase 6 passed 7/7, security 8/8, full task passed
+Status: PR #557 open — https://github.com/seanb4t/engram/pull/557
+Last activity: 2026-09-12 — PR #557 opened; Phase 6 passed 7/7, security 8/8, full task passed
 
 All six phase reports pass. The three Phase 6 requirements are complete under
 D-10 pre-merge acceptance. GSD's phase-completion helper could not parse the
@@ -320,7 +320,7 @@ Both prior entries were delivered and had simply never been closed out:
 ## Session Continuity
 
 Last session: 2026-09-12T16:44:40+00:00
-Stopped at: Phase 6 verified; PR preparation
+Stopped at: PR #557 open; review/CI pending
 Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Performance Metrics
