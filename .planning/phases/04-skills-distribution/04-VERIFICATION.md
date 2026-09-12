@@ -42,7 +42,7 @@ covered_files:
   - internal/skills/importgate_test.go
   - internal/skills/install.go
   - internal/skills/inventory.go
-covered_digest: v1:sha256:313454c1e8b6125d94e833a04ae7ddd0fabc51c0ca1fa39f02c906b4312fe686
+covered_digest: v1:sha256:8fe2a4b624a454e050f16bf14f6040feafda3e5c0aa98b0a7ceb097dea5f4846
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -275,3 +275,11 @@ generator, skill or test file changed, and Phase 04 requirements and acceptance
 are unchanged. Reviewed that scoped diff and refreshed the covered digest;
 the prior behavioral evidence and score remain applicable. This does not
 claim Phase 6 release acceptance or a new run of the full test suite.
+
+## Shipping tracking freshness — 2026-09-12
+
+Reviewed the covered-input delta for shipping: only Phase 6 scope/acceptance and
+requirement completion metadata changed in ROADMAP/REQUIREMENTS. The explicit
+D-10 post-release handoff remains pending. No covered source behavior changed;
+the full shipping `task` rerun passed. Refreshed the fingerprint to the reviewed
+tracking state without changing the verified behavioral score.

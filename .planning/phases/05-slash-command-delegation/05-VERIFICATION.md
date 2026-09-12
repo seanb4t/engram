@@ -37,7 +37,7 @@ covered_files:
   - internal/surfacesgen/main.go
   - internal/surfacesgen/main_test.go
   - skill/engram/commands/engram-setup.md
-covered_digest: v1:sha256:c3ef129b5874b11bae4b233e2396f733a6ea855954c3e74104165a4a3b3efe6a
+covered_digest: v1:sha256:b91167c748075fe03aaede9111c9017026ed7d49ce7e6dc630fa30c5b6e4ddc3
 ---
 
 # Phase 05: Slash Command Delegation Verification Report
@@ -197,3 +197,11 @@ generator, skill or test file changed, and Phase 05 requirements and acceptance
 are unchanged. Reviewed that scoped diff and refreshed the covered digest;
 the prior behavioral evidence and score remain applicable. This does not
 claim Phase 6 release acceptance or a new run of the full test suite.
+
+## Shipping tracking freshness — 2026-09-12
+
+Reviewed the covered-input delta for shipping: only Phase 6 scope/acceptance and
+requirement completion metadata changed in ROADMAP/REQUIREMENTS. The explicit
+D-10 post-release handoff remains pending. No covered source behavior changed;
+the full shipping `task` rerun passed. Refreshed the fingerprint to the reviewed
+tracking state without changing the verified behavioral score.

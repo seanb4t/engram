@@ -1,20 +1,19 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: 2026-08-23.01
-milestone_name: Distribution & Agent Bootstrap
-current_phase: 06
-current_phase_name: Install Documentation
-status: blocked
-stopped_at: Phase 06 plan 02 Task 2 awaits a release containing final setup
-last_updated: "2026-09-12T16:44:40+00:00"
+current_phase: 6
+status: ready_to_ship
+stopped_at: Phase 6 pre-merge verification passed; preparing PR
+last_updated: "2026-09-12T17:48:53.812Z"
 last_activity: 2026-09-12
-last_activity_desc: Phase 06 guides and four v0.15.1 installs verified; setup release pending
+last_activity_desc: All six phase reports passed; release handoff remains pending
+state_head: d205d4a361979ff318bb47adda278ab17d3672e5
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 20
-  completed_plans: 19
-state_head: 0c33f4ea871b429acfc095b1ade04116e7640619
+  completed_plans: 20
+milestone_name: Distribution & Agent Bootstrap
 ---
 
 # Project State
@@ -28,18 +27,21 @@ See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 ## Current Position
 
-Phase: 06 (Install Documentation) — RELEASE CHECKPOINT
-Plan: 2 of 2; Task 1 complete, Task 2 pending
-Status: Blocked on a release containing final setup, client-ID support and delegation
-Last activity: 2026-09-12 — Guides reviewed clean; four v0.15.1 Homebrew installs passed
+Phase: 06 — Install Documentation
+Plan: 2 of 2 complete
+Status: Pre-merge verification passed; preparing PR
+Last activity: 2026-09-12 — Phase 6 passed 7/7, security 8/8, full task passed
 
-Resume evidence: `.planning/phases/06-install-documentation/06-RELEASE-OBSERVATIONS.md`.
-06-01 is complete. 06-02 Task 1 is committed as `601be75e`; do not re-execute
-its completed v0.15.1 observations or create a success SUMMARY. Once a qualifying
-release exists, refresh provenance and repeat the four disposable installations
-against that release, then resolve Task 2 and execute Task 3. Phase 6 acceptance
-and milestone completion remain pending. Issue #514 already tracks the release
-handoff; no new issue or comment was created.
+All six phase reports pass. The three Phase 6 requirements are complete under
+D-10 pre-merge acceptance. GSD's phase-completion helper could not parse the
+repository's descriptive requirement IDs, so those verified entries were
+reconciled explicitly. Existing unrelated pending requirement entries are preserved.
+
+The release handoff remains pending in
+`.planning/phases/06-install-documentation/06-POST-RELEASE.md` and issue #514.
+Do not close the milestone's release work or remove unreleased notices until
+qualifying-release provenance and repeated four-target installs pass. Issue #556
+tracks the approved implementation and is separate from that release handoff.
 
 ## Deferred Items
 
@@ -318,8 +320,8 @@ Both prior entries were delivered and had simply never been closed out:
 ## Session Continuity
 
 Last session: 2026-09-12T16:44:40+00:00
-Stopped at: Phase 06 plan 02 Task 2 — qualifying setup release pending
-Resume file: .planning/phases/06-install-documentation/06-RELEASE-OBSERVATIONS.md
+Stopped at: Phase 6 verified; PR preparation
+Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Performance Metrics
 
@@ -435,6 +437,6 @@ Resume file: .planning/phases/06-install-documentation/06-RELEASE-OBSERVATIONS.m
 
 ## Operator Next Steps
 
-- Resume 06-02 at Task 2 after an actual release-please release includes final
-  setup/client-ID/delegation. Follow the evidence artifact; a verbal approval
-  cannot replace release provenance and repeated qualifying-release installs.
+- Review the prepared PR, then follow the normal release-please process.
+- After a qualifying release, complete `06-POST-RELEASE.md` and reconcile #514
+  before milestone release closure.

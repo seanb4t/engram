@@ -37,7 +37,7 @@ covered_files:
   - internal/setup/quote.go
   - internal/setup/runtime.go
   - internal/surfaces/toolclass.go
-covered_digest: "v1:sha256:50ebd88f493ea737cf53c6e15368e91a7d7beb97d19a2790678015d91598729e"
+covered_digest: v1:sha256:d7bb8c774306626b57a2b102c8035722c059def628e2a973e9c0da0c81c7cd68
 behavior_unverified: 0
 overrides_applied: 0
 behavior_unverified_items: []
@@ -291,3 +291,11 @@ documentation observation, not a newly introduced gap.
 
 _Verified: 2026-09-12T15:41:47Z_
 _Verifier: Codex (gsd-verifier); historical evidence retained_
+
+## Shipping tracking freshness — 2026-09-12
+
+Reviewed the covered-input delta for shipping: only Phase 6 scope/acceptance and
+requirement completion metadata changed in ROADMAP/REQUIREMENTS. The explicit
+D-10 post-release handoff remains pending. No covered source behavior changed;
+the full shipping `task` rerun passed. Refreshed the fingerprint to the reviewed
+tracking state without changing the verified behavioral score.

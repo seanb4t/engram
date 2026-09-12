@@ -277,7 +277,7 @@ mechanism instead of another one-shot operator command.
 - [x] **Phase 3: Runtime Registration** - `engram setup --apply` registers engram with Claude Code, Codex, and opencode via their own CLIs, converging idempotently, plus a generic-MCP fallback, across every auth mode (completed 2026-09-09)
 - [x] **Phase 4: Skills Distribution** - The five curation skills reach every runtime, native format where one exists, AGENTS.md fallback otherwise (completed 2026-09-11)
 - [x] **Phase 5: Slash Command Delegation** - `/engram-setup` delegates to the binary when present, keeps its prose fallback first-class otherwise, with a generated (not hand-checked) equivalence gate (completed 2026-09-12)
-- [ ] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup`
+- [x] **Phase 6: Install Documentation** - docs-site documents how to get the binary and how to run `engram setup` (completed 2026-09-12)
 
 ## Phase Details
 
@@ -546,15 +546,17 @@ and the delegation story settled).
    Linux — the end-to-end confirmation of the pipeline Phase 1 configures, and the prerequisite for
    documenting the exact working invocation in criterion 1.
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
-- [x] 06-01-PLAN.md — Canonical Install and Agent Setup guides with reconciled entry points
-- [ ] 06-02-PLAN.md — Release provenance, four-platform installation evidence and shipped availability
 
-06-02 Task 1 is complete: v0.15.1 publication and all four actual Homebrew
-installs passed. Task 2 awaits a release containing final setup/client-ID/delegation;
-see [release observations](phases/06-install-documentation/06-RELEASE-OBSERVATIONS.md).
+- [x] 06-01-PLAN.md — Canonical Install and Agent Setup guides with reconciled entry points
+- [x] 06-02-PLAN.md — Release provenance, four-platform installation evidence and shipped availability
+
+Phase 6 pre-merge acceptance is verified. v0.15.1 publication and all four
+actual Homebrew installs passed. Qualifying setup/client-ID/delegation release
+checks and availability updates remain pending under D-10; see the
+[post-release handoff](phases/06-install-documentation/06-POST-RELEASE.md).
 
 ---
 
@@ -641,7 +643,7 @@ see [release observations](phases/06-install-documentation/06-RELEASE-OBSERVATIO
 | 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
 | 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-10 |
 | 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
-| 6. Install Documentation | 2026-08-23.01 | 1/2 | Release checkpoint | - |
+| 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete (pre-merge) | 2026-09-12 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
