@@ -571,7 +571,8 @@ Phase 6 release observations are complete for v0.16.0: all four Homebrew install
 setup/client-ID help, tagged Go version and merged/deployed availability guides.
 See the [post-release handoff](phases/06-install-documentation/06-POST-RELEASE.md).
 The [milestone audit](2026-08-23.01-MILESTONE-AUDIT.md) found a Phase 4
-AGENTS.md preservation gap (#559); archival remains blocked on that fix.
+AGENTS.md preservation gap (#559), closed by gap-closure plan 04-05; the
+2026-09-12 re-run audit reports `tech_debt` with no blockers (25/25, 12/12, 8/8).
 
 ---
 
