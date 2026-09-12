@@ -551,6 +551,10 @@ Plans:
 - [x] 06-01-PLAN.md — Canonical Install and Agent Setup guides with reconciled entry points
 - [ ] 06-02-PLAN.md — Release provenance, four-platform installation evidence and shipped availability
 
+06-02 Task 1 is complete: v0.15.1 publication and all four actual Homebrew
+installs passed. Task 2 awaits a release containing final setup/client-ID/delegation;
+see [release observations](phases/06-install-documentation/06-RELEASE-OBSERVATIONS.md).
+
 ---
 
 ## Progress
@@ -636,7 +640,7 @@ Plans:
 | 3. Runtime Registration | 2026-08-23.01 | 7/7 | Complete | 2026-09-09 |
 | 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-10 |
 | 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
-| 6. Install Documentation | 2026-08-23.01 | 0/2 | Not started | - |
+| 6. Install Documentation | 2026-08-23.01 | 1/2 | Release checkpoint | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

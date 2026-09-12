@@ -4,17 +4,17 @@ milestone: 2026-08-23.01
 milestone_name: Distribution & Agent Bootstrap
 current_phase: 06
 current_phase_name: Install Documentation
-status: executing
-stopped_at: Phase 05 complete, ready to plan Phase 6
-last_updated: "2026-09-12T16:14:30.815Z"
+status: blocked
+stopped_at: Phase 06 plan 02 Task 2 awaits a release containing final setup
+last_updated: "2026-09-12T16:44:40+00:00"
 last_activity: 2026-09-12
-last_activity_desc: Phase 05 complete, transitioned to Phase 6
+last_activity_desc: Phase 06 guides and four v0.15.1 installs verified; setup release pending
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 20
-  completed_plans: 18
-state_head: 25de75f0bbd6841fa92b6f4936556087b84ed859
+  completed_plans: 19
+state_head: 0c33f4ea871b429acfc095b1ade04116e7640619
 ---
 
 # Project State
@@ -28,10 +28,18 @@ See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
 
 ## Current Position
 
-Phase: 06 (Install Documentation) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 06
-Last activity: 2026-09-12 — Phase 06 execution started
+Phase: 06 (Install Documentation) — RELEASE CHECKPOINT
+Plan: 2 of 2; Task 1 complete, Task 2 pending
+Status: Blocked on a release containing final setup, client-ID support and delegation
+Last activity: 2026-09-12 — Guides reviewed clean; four v0.15.1 Homebrew installs passed
+
+Resume evidence: `.planning/phases/06-install-documentation/06-RELEASE-OBSERVATIONS.md`.
+06-01 is complete. 06-02 Task 1 is committed as `601be75e`; do not re-execute
+its completed v0.15.1 observations or create a success SUMMARY. Once a qualifying
+release exists, refresh provenance and repeat the four disposable installations
+against that release, then resolve Task 2 and execute Task 3. Phase 6 acceptance
+and milestone completion remain pending. Issue #514 already tracks the release
+handoff; no new issue or comment was created.
 
 ## Deferred Items
 
@@ -309,9 +317,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-10T15:37:27.587Z
-Stopped at: Phase 05 complete, ready to plan Phase 6
-Resume file: None
+Last session: 2026-09-12T16:44:40+00:00
+Stopped at: Phase 06 plan 02 Task 2 — qualifying setup release pending
+Resume file: .planning/phases/06-install-documentation/06-RELEASE-OBSERVATIONS.md
 
 ## Performance Metrics
 
@@ -427,4 +435,6 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 1` to plan Phase 1 — Version & Homebrew Distribution.
+- Resume 06-02 at Task 2 after an actual release-please release includes final
+  setup/client-ID/delegation. Follow the evidence artifact; a verbal approval
+  cannot replace release provenance and repeated qualifying-release installs.

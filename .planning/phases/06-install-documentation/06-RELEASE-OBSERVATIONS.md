@@ -277,3 +277,8 @@ build (`/tmp/engram-06-final-docs-build.log`). Final rendered-link inspection
 checked 287 internal links with no broken routes or anchors; results are in
 `/tmp/engram-06-rendered-link-check-final.txt`. These changes preserve the
 unreleased availability notices and do not satisfy the release checkpoint.
+
+Task 1 evidence was committed as `601be75e` and merged through GSD worktree
+cleanup. The disposable executor worktree and branch were removed. Guide
+re-review is clean (0 blockers, 0 warnings); `06-REVIEW.md` retains all three
+resolved findings. Continuation begins at Task 2 with substantive release facts.

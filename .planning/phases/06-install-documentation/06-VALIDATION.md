@@ -59,7 +59,7 @@ preparing dependencies, without adding packages or changing the lockfile.
 ## Validation Sign-Off
 
 Documentation wave passed: forced Markdown lint, `task lint:setup`, an Astro build
-of 21 routes and 285 rendered internal links. `--no-exclude` is required because
+of 21 routes and 287 rendered internal links. `--no-exclude` is required because
 the repository rumdl configuration otherwise excludes docs-site. Release acceptance
 remains pending. A successful local build does not satisfy the four-platform
 release requirement. Preserve the known v0.15.1/setup availability boundary.

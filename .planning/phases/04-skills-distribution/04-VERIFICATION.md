@@ -42,7 +42,7 @@ covered_files:
   - internal/skills/importgate_test.go
   - internal/skills/install.go
   - internal/skills/inventory.go
-covered_digest: "v1:sha256:795a5cd82187905f2d35338dc4f504424b0f132efbc2766d3edb3e2dcff8e41e"
+covered_digest: v1:sha256:313454c1e8b6125d94e833a04ae7ddd0fabc51c0ca1fa39f02c906b4312fe686
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -265,3 +265,13 @@ now reconciled with that existing evidence. Status: passed.
 
 _Verified: 2026-09-12T15:41:47Z_
 _Verifier: Codex (gsd-verifier); historical evidence retained_
+
+## Phase 6 tracking-only freshness check — 2026-09-12
+
+Compared every covered file with this report's last committed verification.
+Only `.planning/ROADMAP.md` changed: the Phase 6 plan list and its progress row
+now record one completed plan and a release checkpoint. No covered runtime,
+generator, skill or test file changed, and Phase 04 requirements and acceptance
+are unchanged. Reviewed that scoped diff and refreshed the covered digest;
+the prior behavioral evidence and score remain applicable. This does not
+claim Phase 6 release acceptance or a new run of the full test suite.
