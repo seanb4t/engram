@@ -85,7 +85,11 @@ tasks:
 
   lint:
     desc: Run all linters
-    deps: ['lint:go', 'lint:yaml', 'lint:actions', 'lint:markdown', 'lint:python']
+    deps: ['lint:go', 'lint:yaml', 'lint:actions', 'lint:markdown', 'lint:python', 'lint:setup']
+  lint:setup:
+    desc: Check generated setup commands without modifying files
+    cmds:
+      - go run ./internal/surfacesgen --check-setup
   lint:go:
     cmds:
       - golangci-lint run ./...

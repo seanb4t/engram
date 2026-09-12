@@ -7,6 +7,7 @@ package setupgen
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/seanb4t/engram/internal/setup"
@@ -102,11 +103,77 @@ func commandCell(command string) string {
 	return fence + command + fence
 }
 
-// Write replaces only the existing anchored region using the real Claude Plan.
-func Write(path string) error {
-	body, err := Render(setup.ClaudeCode.Plan)
+// readRegion requires exactly one canonical Markdown pair. The shared surfaces
+// reader deliberately supports repeated regions for other consumers; setup has
+// only one. Return raw region bytes too, because ReadRegion normalizes CRLF.
+func readRegion(path string) (body, raw string, err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", err
+	}
+	text := string(data)
+	startToken := "engram:rule:start " + RegionID
+	endToken := "engram:rule:end " + RegionID
+	if strings.Count(text, startToken) != 1 || strings.Count(text, endToken) != 1 {
+		return "", "", fmt.Errorf("expected exactly one setup start and end anchor")
+	}
+	start := "<!-- " + startToken + " -->"
+	end := "<!-- " + endToken + " -->"
+	i, j := strings.Index(text, start), strings.Index(text, end)
+	if i < 0 || j < i+len(start) {
+		return "", "", fmt.Errorf("missing, malformed, or reversed setup anchors")
+	}
+	body, found, err := surfaces.ReadRegion(path, RegionID)
+	if err != nil {
+		return "", "", err
+	}
+	if !found {
+		return "", "", fmt.Errorf("setup region not found")
+	}
+	return body, text[i+len(start) : j], nil
+}
+
+// Check compares the existing region to the real Claude Plan without writing.
+func Check(path string) error {
+	return check(path, setup.ClaudeCode.Plan)
+}
+
+func check(path string, planFn PlanFunc) error {
+	if err := compare(path, planFn); err != nil {
+		return fmt.Errorf("setupgen: check %s: %w; run task surfaces:gen after repairing any invalid anchors", path, err)
+	}
+	return nil
+}
+
+func compare(path string, planFn PlanFunc) error {
+	want, err := Render(planFn)
 	if err != nil {
 		return err
+	}
+	body, raw, err := readRegion(path)
+	if err != nil {
+		return err
+	}
+	// WriteRegion adds a line boundary on either side of the rendered body.
+	// Keep the renderer's trailing newline: it separates the table and anchor.
+	if body != want || raw != "\n"+want+"\n" {
+		return fmt.Errorf("generated setup region has drifted")
+	}
+	return nil
+}
+
+// Write replaces only the existing anchored region using the real Claude Plan.
+func Write(path string) error {
+	return write(path, setup.ClaudeCode.Plan)
+}
+
+func write(path string, planFn PlanFunc) error {
+	body, err := Render(planFn)
+	if err != nil {
+		return err
+	}
+	if _, _, err := readRegion(path); err != nil {
+		return fmt.Errorf("setupgen: write %s: %w", path, err)
 	}
 	return surfaces.WriteRegion(path, RegionID, body)
 }
