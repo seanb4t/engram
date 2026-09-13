@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/seanb4t/engram/compare/v0.16.0...v0.16.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **skills:** preserve AGENTS.md on index read failure; close out milestone 2026-08-23.01 ([#562](https://github.com/seanb4t/engram/issues/562)) ([37fc71a](https://github.com/seanb4t/engram/commit/37fc71aeadb48e185438f395af1895c39d7d2033))
+
 ## [0.16.0](https://github.com/seanb4t/engram/compare/v0.15.1...v0.16.0) (2026-09-12)
 
 
