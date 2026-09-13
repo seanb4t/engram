@@ -4,17 +4,17 @@ milestone: 2026-09-13.01
 milestone_name: Setup v2
 current_phase: 01
 current_phase_name: Executor Correctness & Man Pages
-status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-09-13T18:01:03.163Z"
+status: verifying
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-09-13T18:23:03.926Z"
 last_activity: 2026-09-13
 last_activity_desc: Phase 01 execution started
-state_head: f35ed2de0061bc7d74c9f07e9191746ade8d7eee
+state_head: b1595371d40ab4fb243b2a4c20a8cc4bcbf17379
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-13 — after opening milestone 2026-0
 
 Phase: 01 (Executor Correctness & Man Pages) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-13 — Phase 01 execution started
 
 ## Deferred Items
@@ -274,6 +274,8 @@ milestone needs in working memory.
 - [Phase 04]: generic's Plan() authors the explicit no-destination SkillFormatNone, carrying the curation skills in its --output json deliverable with the install call explicitly skipped so it can never reach the filesystem
 - [Phase 04]: Only `errors.Is(readErr, fs.ErrNotExist)` is the AGENTS.md create case (04-05, #559); any other index read error performs zero writes, preserves the file byte-for-byte, and surfaces a wrapped error naming the index path through SkillsOutcome → AggregateOutcome → Classify (partial exit). D-15 extended to the unreadable case; installFiles' own posture deliberately unchanged (D-08).
 - [Phase 01]: D-10/D-11/D-12: osRun checks ctx.Err() first (bare sentinel, zero RunResult); runSeam owns the 'timed out after 20s' wording (#560)
+- [Phase 01]: Man-page header pinned to time.Unix(0,0).UTC() + raw version var + Engram Manual; DisableAutoGenTag=true on root; page set = cobra's unfiltered IsAvailableCommand walk (includes completion, excludes man/help/deprecated aliases)
+- [Phase 01]: Cask post_install/post_uninstall hooks grow a fourth, symmetric man-page step after completions; TestReleaseConfigCaskInstallGate pins ordering, counts, and forbidden literals
 
 ### Pending Todos
 
@@ -318,8 +320,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-13T18:01:03.149Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-09-13T18:23:03.912Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -434,6 +436,7 @@ Resume file: None
 | Phase 04 P03 | 55min | 3 tasks | 6 files |
 | Phase 04 P04 | 25min | 3 tasks | 5 files |
 | Phase 01 P01 | 13min | 3 tasks | 4 files |
+| Phase 01 P02 | 21min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 

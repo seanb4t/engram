@@ -25,8 +25,8 @@ any working auth shape, and never replaces a registration it did not write.
 
 ### Man Pages
 
-- [ ] **REQ-manpages-generated**: The released binary can generate its own man pages from the live cobra command tree (`engram man <dir>`, hidden like `completion`), one page per command, with deterministic output (no auto-generated timestamp) so re-generation is byte-stable. Zero new Go dependencies — `cobra/doc` is promoted from indirect to direct only.
-- [ ] **REQ-manpages-cask-installed**: The Homebrew cask installs the generated man pages on `post_install` and removes exactly those paths on `post_uninstall`, symmetric with the shipped completions hooks; the version gate still runs first, and `generate_completions_from_executable` stays absent. Ordering and absence are pinned by `releaseconfig_test.go` like the completions step already is. Shell completions themselves require no work — they shipped in `2026-08-23.01`.
+- [x] **REQ-manpages-generated**: The released binary can generate its own man pages from the live cobra command tree (`engram man <dir>`, hidden like `completion`), one page per command, with deterministic output (no auto-generated timestamp) so re-generation is byte-stable. Zero new Go dependencies — `cobra/doc` is promoted from indirect to direct only.
+- [x] **REQ-manpages-cask-installed**: The Homebrew cask installs the generated man pages on `post_install` and removes exactly those paths on `post_uninstall`, symmetric with the shipped completions hooks; the version gate still runs first, and `generate_completions_from_executable` stays absent. Ordering and absence are pinned by `releaseconfig_test.go` like the completions step already is. Shell completions themselves require no work — they shipped in `2026-08-23.01`.
 
 ### Custom Auth Headers
 
@@ -89,8 +89,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | REQ-osrun-deadline-error | Phase 1 | Complete |
-| REQ-manpages-generated | Phase 1 | Pending |
-| REQ-manpages-cask-installed | Phase 1 | Pending |
+| REQ-manpages-generated | Phase 1 | Complete |
+| REQ-manpages-cask-installed | Phase 1 | Complete |
 | REQ-header-name-parameter | Phase 2 | Pending |
 | REQ-header-value-env-ref-only | Phase 2 | Pending |
 | REQ-header-bearer-unchanged | Phase 2 | Pending |
