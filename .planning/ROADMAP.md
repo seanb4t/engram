@@ -344,7 +344,24 @@ Plans:
 4. Naming a header other than `Authorization` for Codex produces a `failed` row whose reason names the capability gap, and setup never writes `[mcp_servers.engram.http_headers]` by hand.
 5. `engram setup --help`, `guides/agent-setup.md`, and the regenerated `/engram-setup` prose show the gateway header shape with its env-reference form, including the Codex limitation.
 
-**Plans:** TBD
+**Plans:** 4 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — `Options.Headers []HeaderSpec` + `ErrHeaderUnsupported` + `sortedHeaders` in `internal/setup`; claude-code renders sorted `--header 'NAME: ${ENVVAR}'` pairs on its single add action in every mode; codex declines any header before its auth switch with a reason naming header(s), gap, and remedy (D-01, D-04, D-06, D-08, D-09, D-10; REQ-header-name-parameter, REQ-header-value-env-ref-only, REQ-header-codex-declined)
+
+**Wave 2**
+
+- [ ] 02-02-PLAN.md — opencode renders `--header 'NAME={env:ENVVAR}'` pairs in its own file; generic carries `${ENVVAR}` extras in its existing `headers` object marshaled Authorization-first then sorted, with zero-header Config byte-identical; `TestNoSecretInArgs` positive control (D-04, D-05, D-08; REQ-header-name-parameter, REQ-header-value-env-ref-only, REQ-header-bearer-unchanged)
+
+**Wave 3**
+
+- [ ] 02-03-PLAN.md — `--header NAME=ENVVAR` flag + `ENGRAM_HEADERS` default (no registry row), four exact usage errors at the CLI boundary with no right-hand-side echo, flat-scalar `headers` row facet, help paragraph + fifth example, regenerated help/catalog goldens (D-01, D-02, D-03, D-06, D-07, D-08, D-09; all five REQ-header-* IDs)
+
+**Wave 4**
+
+- [ ] 02-04-PLAN.md — fifth `bearer+header` setupgen case regenerating the `/engram-setup` tables, header-aware `TestSetupGeneratedInvocations`, `/engram-setup` prose and `guides/agent-setup.md` gateway-header section, `ENGRAM_HEADERS`, and the Codex limitation (D-01, D-02, D-04, D-07, D-08, D-09; REQ-header-documented, REQ-header-bearer-unchanged, REQ-header-codex-declined, REQ-header-name-parameter)
 
 ---
 
