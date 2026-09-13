@@ -101,10 +101,15 @@ var OSEnvironment = Environment{
 // real exit code — osRun's ctx.Err() read is a separate, unsynchronized
 // check from what cmd.Run() internally decided, so this ordering cannot
 // distinguish "killed by us" from "exited on its own, right at the
-// boundary." This is deliberate, not an oversight: runSeam (apply.go)
-// classifies both outcomes as Outcome == OutcomeFailed, so the residual
-// only changes the reported Reason (deadline text vs. exit-code text), and
-// the deadline is the more actionable of the two for an operator. The bare
+// boundary." This is deliberate, not an oversight. For a non-Tolerant
+// write Action the two outcomes are both OutcomeFailed and only the Reason
+// text differs (deadline vs. exit code); for a probe read or a Tolerant
+// action (apply.go's execute) a seam error is classified more severely
+// than a nonzero exit would have been — a would-be-tolerated failure
+// becomes OutcomeFailed. That is accepted because it requires a runtime
+// CLI to exit nonzero at the exact instant of a 20s deadline that every
+// measured invocation finishes in under 2s, and a run that genuinely
+// reached its deadline has already failed the operator's expectation. The bare
 // ctx.Err() sentinel is returned unwrapped — covering both
 // context.DeadlineExceeded and context.Canceled — alongside the zero
 // RunResult (D-12): any partial stdout/stderr captured before the kill is
