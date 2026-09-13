@@ -172,6 +172,21 @@ func TestNoSecretInArgs(t *testing.T) {
 					if strings.Contains(plan.Config, headerSecretValue) {
 						t.Errorf("%s: Config %q contains the resolved header credential value", name, plan.Config)
 					}
+
+					// Positive control: a successful, header-carrying Plan must
+					// actually NAME the env var somewhere in Args or Config -- a
+					// runtime that silently DROPS a header would otherwise pass
+					// every negative-space assertion above vacuously.
+					if withHeader {
+						var allArgs []string
+						for _, action := range plan.Actions {
+							allArgs = append(allArgs, action.Args...)
+						}
+						joined := strings.Join(allArgs, "\x00") + "\x00" + plan.Config
+						if !strings.Contains(joined, "LITELLM_KEY") {
+							t.Errorf("%s: want the env var NAME LITELLM_KEY rendered as a reference somewhere in Args or Config, got none", name)
+						}
+					}
 				})
 			}
 		}
