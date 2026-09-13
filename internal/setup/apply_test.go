@@ -224,6 +224,53 @@ func TestDriftReportedLegibly(t *testing.T) {
 		}
 	})
 
+	t.Run("probe-seam-deadline-exceeded-names-timeout", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "add"}}},
+			Probe:   []string{"faketool", "get"},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Err: context.DeadlineExceeded},
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeFailed {
+			t.Fatalf("Apply outcome = %q, want %q", res.Outcome, OutcomeFailed)
+		}
+		const wantReason = "faketool: faketool get: timed out after 20s: context deadline exceeded"
+		if res.Reason != wantReason {
+			t.Fatalf("Reason = %q, want %q (D-11)", res.Reason, wantReason)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("Run called %d times, want exactly 1 (the probe) — a probe seam error must not proceed to the write action", len(calls))
+		}
+	})
+
+	t.Run("probe-seam-canceled-passes-through-unwrapped", func(t *testing.T) {
+		rt := fakeRuntime{name: "faketool", plan: Plan{
+			Runtime: "faketool",
+			Actions: []Action{{Args: []string{"faketool", "add"}}},
+			Probe:   []string{"faketool", "get"},
+		}}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Err: context.Canceled},
+		), "faketool")
+
+		res := Apply(context.Background(), env, rt, Options{})
+		if res.Outcome != OutcomeFailed {
+			t.Fatalf("Apply outcome = %q, want %q", res.Outcome, OutcomeFailed)
+		}
+		if res.Reason != "faketool: faketool get: context canceled" {
+			t.Fatalf("Reason = %q, want %q (D-11: only DeadlineExceeded is wrapped)", res.Reason, "faketool: faketool get: context canceled")
+		}
+		if strings.Contains(res.Reason, "timed out") {
+			t.Errorf("Reason = %q, want it to NOT contain %q — a cancellation must never be described as a timeout", res.Reason, "timed out")
+		}
+	})
+
 	t.Run("captured-output-over-budget-truncated-on-rune-boundary", func(t *testing.T) {
 		longStderr := strings.Repeat("€", 2000) // 3-byte rune, 6000 bytes total, indivisible by maxCapturedBytes
 		rt := fakeRuntime{name: "faketool", plan: Plan{

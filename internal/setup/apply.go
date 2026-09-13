@@ -5,6 +5,7 @@ package setup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -121,11 +122,25 @@ func Apply(ctx context.Context, env Environment, rt Runtime, opts Options) Resul
 // runSeam bounds one Environment.Run call to execTimeout (D-12) via a
 // fresh context.WithTimeout per exec, per the deliberate per-exec (not
 // per-runtime, not per-Apply-call) scoping this package's own doc comments
-// commit to.
+// commit to. It is also the single place every Environment.Run is bounded,
+// so it is the single place a deadline is given its operator-facing name
+// (D-11): a context.DeadlineExceeded returned by env.Run (in production,
+// osRun's own ctx.Err() case) is wrapped as "timed out after 20s: context
+// deadline exceeded" with %w (errors.Is still resolves through the wrap),
+// so the row renders as "<runtime>: <argv>: timed out after 20s: context
+// deadline exceeded" via the unchanged describeSeamError.
+// A plain cancellation (Ctrl-C / a caller's own cancel, the Canceled
+// sentinel from the standard library's context package) is deliberately
+// left unwrapped — it is not a timeout, and must never be described as
+// one.
 func runSeam(ctx context.Context, env Environment, path string, args []string) (RunResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, execTimeout)
 	defer cancel()
-	return env.Run(ctx, path, args)
+	rr, err := env.Run(ctx, path, args)
+	if err != nil && errors.Is(err, context.DeadlineExceeded) {
+		err = fmt.Errorf("timed out after %s: %w", execTimeout, err)
+	}
+	return rr, err
 }
 
 // describeFailure builds a D-11 failure Reason from four components in a
