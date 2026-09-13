@@ -344,7 +344,7 @@ Plans:
 4. Naming a header other than `Authorization` for Codex produces a `failed` row whose reason names the capability gap, and setup never writes `[mcp_servers.engram.http_headers]` by hand.
 5. `engram setup --help`, `guides/agent-setup.md`, and the regenerated `/engram-setup` prose show the gateway header shape with its env-reference form, including the Codex limitation.
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 **Wave 1**
@@ -353,7 +353,7 @@ Plans:
 
 **Wave 2**
 
-- [ ] 02-02-PLAN.md — opencode renders `--header 'NAME={env:ENVVAR}'` pairs in its own file; generic carries `${ENVVAR}` extras in its existing `headers` object marshaled Authorization-first then sorted, with zero-header Config byte-identical; `TestNoSecretInArgs` positive control (D-04, D-05, D-08; REQ-header-name-parameter, REQ-header-value-env-ref-only, REQ-header-bearer-unchanged)
+- [x] 02-02-PLAN.md — opencode renders `--header 'NAME={env:ENVVAR}'` pairs in its own file; generic carries `${ENVVAR}` extras in its existing `headers` object marshaled Authorization-first then sorted, with zero-header Config byte-identical; `TestNoSecretInArgs` positive control (D-04, D-05, D-08; REQ-header-name-parameter, REQ-header-value-env-ref-only, REQ-header-bearer-unchanged)
 
 **Wave 3**
 
