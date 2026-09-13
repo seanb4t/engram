@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-13.01
 milestone_name: Setup v2
-current_phase: 2
+current_phase: 02
 current_phase_name: Custom Auth Headers
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-09-13T22:35:16.061Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-09-13T23:08:05.874Z"
 last_activity: 2026-09-13
-last_activity_desc: Phase 01 complete, transitioned to Phase 2
-state_head: ceabd8e99f7ca8bdcfdeedd3975c0c98b691a4c5
+last_activity_desc: Phase 02 execution started
+state_head: 0187379ae32cf6867e05fca258ee1c7aedfcda68
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-13 after Phase 1 — 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 2 — Custom Auth Headers
+**Current focus:** Phase 02 — Custom Auth Headers
 
 ## Current Position
 
-Phase: 2 (Custom Auth Headers) — READY TO EXECUTE
-Plan: Not started
+Phase: 02 (Custom Auth Headers) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-09-13 — Phase 01 complete, transitioned to Phase 2
+Last activity: 2026-09-13 — Phase 02 execution started
 
 ## Deferred Items
 
@@ -276,6 +276,8 @@ milestone needs in working memory.
 - [Phase 01]: D-10/D-11/D-12: osRun checks ctx.Err() first (bare sentinel, zero RunResult); runSeam owns the 'timed out after 20s' wording (#560)
 - [Phase 01]: Man-page header pinned to time.Unix(0,0).UTC() + raw version var + Engram Manual; DisableAutoGenTag=true on root; page set = cobra's unfiltered IsAvailableCommand walk (includes completion, excludes man/help/deprecated aliases)
 - [Phase 01]: Cask post_install/post_uninstall hooks grow a fourth, symmetric man-page step after completions; TestReleaseConfigCaskInstallGate pins ordering, counts, and forbidden literals
+- [Phase 02]: D-01/D-04/D-08 implemented exactly as locked: extra headers are additional, orthogonal to --auth, rendered as bare ${ENVVAR} references in claude-code's colon-space syntax, sorted case-insensitively by Name
+- [Phase 02]: D-09/D-10 implemented exactly as locked: codex's header guard is the first statement of Plan(), before HomeDir/auth switch, returning ErrHeaderUnsupported with a reason naming the header(s), gap, and remedy
 
 ### Pending Todos
 
@@ -329,9 +331,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-13T21:30:43.861Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-custom-auth-headers/02-CONTEXT.md
+Last session: 2026-09-13T23:07:47.125Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -446,6 +448,7 @@ Resume file: .planning/phases/02-custom-auth-headers/02-CONTEXT.md
 | Phase 04 P04 | 25min | 3 tasks | 5 files |
 | Phase 01 P01 | 13min | 3 tasks | 4 files |
 | Phase 01 P02 | 21min | 3 tasks | 4 files |
+| Phase 02 P01 | 20min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 
