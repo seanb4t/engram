@@ -4,9 +4,9 @@ verified: 2026-09-12T18:26:52.862468+00:00
 status: passed
 scope: documentation acceptance and D-10 qualifying-release observations
 score: 7/7 must-haves verified
-behavior_unverified: 2026-09-12T18:26:52.862468+00:00
+behavior_unverified: 0
 overrides_applied: 0
-post_release_status: release_verified_docs_prepared
+post_release_status: complete
 post_release_tracker: https://github.com/seanb4t/engram/issues/514
 covered_files:
   - .claude-plugin/marketplace.json
@@ -35,7 +35,7 @@ covered_files:
   - internal/setup/opencode.go
   - internal/setup/plan.go
   - skill/engram/commands/engram-setup.md
-covered_digest: v1:sha256:1652d492271b277b8aeb88c7cdfa1bcd14629380efeb81b373fb4c173b30d04d
+covered_digest: v1:sha256:83e95c539443858c52cd55a1eedfe0f0f8c0bd4851afd80847521cc00d1bce42
 ---
 
 # Phase 6: Install Documentation Verification Report
@@ -48,9 +48,10 @@ Go installation, and checked local rendered documentation. The earlier
 pre-merge report is preserved in [the implementation merge](https://github.com/seanb4t/engram/blob/efcfb0ad6fcf929dbfd0de195ec04d2eadfa612c/.planning/phases/06-install-documentation/06-VERIFICATION.md).
 
 This passes Phase 6's documentation and qualifying-release checks. The updated
-guides are prepared for a follow-up PR, not yet merged/deployed. Issue #514's
-recovery rehearsal and milestone release closure remain outstanding; neither
-production rollout nor actual runtime registration is asserted.
+guides merged in PR #558 and deployed successfully in run 34712224429. Live
+HTTP reads confirmed all five availability updates. Issue #514 is closed.
+Milestone audit/archive remains next; neither production server rollout nor
+actual runtime registration is asserted.
 
 ## Goal achievement
 
@@ -65,7 +66,7 @@ D-10 changed sequencing, not the requirement for release/installation evidence.
 | 4 | Readers can distinguish released setup availability from optional source builds. | VERIFIED | Five guides now name v0.16.0; each installed binary prints setup usage and client-ID help. Archive examples pin that release; local source builds remain explicitly identifiable. Old source-build anchor is preserved for existing links. |
 | 5 | Cover all four auth modes, client-ID input, skills and unsupported combinations without exposing credentials. | VERIFIED | Installed help confirms all four modes and required non-secret client ID. Tagged setup/delegation code is unchanged from verified shipping head 939d5916; inherited secret environment, literal token references and generic-only token-file guidance remain intact. No live registration is inferred. |
 | 6 | CLI/plugin readers reach canonical acquisition/setup and retain distinct capabilities. | VERIFIED | Acquisition/setup links render; plugin still explains absent-binary Claude fallback and upgrading an older present binary. Connect CLI configuration, marketplace commands and hooks are unchanged. Setup exit codes 8/9 now carry the released boundary. |
-| 7 | Post-release observations gate any released-setup claim and preserve historical evidence. | VERIFIED | New `06-RELEASE-0.16.0.md` records publication, four installs and module-version check; v0.15.1 observations remain untouched. `06-POST-RELEASE.md` separates completed observations from pending recovery/closure and docs merge. |
+| 7 | Post-release observations gate any released-setup claim and preserve historical evidence. | VERIFIED | New `06-RELEASE-0.16.0.md` records publication, four installs and module-version check; v0.15.1 observations remain untouched. `06-POST-RELEASE.md` records the docs merge/deployment and resolves stale recovery wording against Phase 1 D-15. |
 
 ## Scope and artifact review
 
@@ -118,7 +119,26 @@ observed), zero help exit without setup (usage and client-ID asserted), and
 broken acquisition links (rendered targets checked). No guide review findings
 remain. Existing Phase 6 security mitigations are unchanged.
 
-`REQ-cask-reship-recovery` belongs to Phase 1 and remains pending. A successful
-ordinary release does not rehearse failure recovery. Issue #514 has not been
-closed or edited, and milestone release closure has not been claimed. Merge and
-deploy the follow-up guide changes through the normal PR process.
+## Post-merge reconciliation
+
+`REQ-cask-reship-recovery` belongs to Phase 1. Its Context D-15 explicitly accepts
+the reviewed guard and credential probe instead of a staged rehearsal, and its
+verification report already marks it satisfied. The old pending checkbox was to
+close with the credential check (now complete). Corrected the checkbox and the
+Phase 6 handoff; no new behavioral acceptance or waiver was invented. Issue #514
+was closed by Sean before this guide PR, contrary to the initial handoff claim.
+
+PR #558 merged with passing CI; docs deployment 34712224429 completed successfully.
+Live HTTP reads of all five guide routes show v0.16.0 and no old unreleased notice
+(`/tmp/engram-558-live-docs.json`). The initial Python request returned 403; curl
+requests succeeded, so live content is supported by those successful responses.
+No source or rendered guide changed in this metadata reconciliation. Fingerprints
+were refreshed only for these reviewed documentation/requirement-status changes.
+
+## Milestone audit metadata correction
+
+The post-release edit accidentally put the verification timestamp into
+`behavior_unverified`. Restored the integer 0, matching this report's existing
+seven verified documentation truths. This repairs field typing, not acceptance.
+The independent milestone audit found a Phase 4 AGENTS.md error-path defect
+(#559); this documentation-phase pass does not override that milestone blocker.

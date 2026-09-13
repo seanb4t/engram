@@ -1,50 +1,37 @@
 ---
 gsd_state_version: "1.0"
 milestone: 2026-08-23.01
-current_phase: 6
-status: pr_open
-stopped_at: v0.16.0 installation verified; PR 558 open; recovery rehearsal pending
-last_updated: "2026-09-12T18:26:52.863429+00:00"
+status: Awaiting next milestone
+stopped_at: Milestone 2026-08-23.01 archived; awaiting /gsd-new-milestone
+last_updated: "2026-09-12T23:28:28.664Z"
 last_activity: 2026-09-12
-last_activity_desc: PRs 557 and 533 merged; v0.16.0 four-target installation verified
-state_head: d205d4a361979ff318bb47adda278ab17d3672e5
+last_activity_desc: Milestone 2026-08-23.01 completed and archived
+state_head: 3f82520cb1839d570abd4b2dd56b6f5c31842767
 progress:
   total_phases: 6
   completed_phases: 6
-  total_plans: 20
-  completed_plans: 20
+  total_plans: 21
+  completed_plans: 21
 milestone_name: Distribution & Agent Bootstrap
+current_phase: 06
+current_phase_name: Install Documentation
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-12 — after Phase 5 verification)
+See: .planning/PROJECT.md (updated 2026-09-12 — after milestone 2026-08-23.01 shipped as v0.16.0)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 06 — Install Documentation
+**Current focus:** Planning next milestone (`/gsd-new-milestone --reset-phase-numbers`); candidates in PROJECT.md Deferred and BACKLOG.md
 
 ## Current Position
 
-Phase: 06 — Install Documentation
-Plan: 2 of 2 complete
-Status: v0.16.0 released and verified; docs PR #558 open — https://github.com/seanb4t/engram/pull/558
-Last activity: 2026-09-12 — PRs #557 and #533 merged; four Homebrew installs and tagged Go install passed
-
-All six phase reports pass. The three Phase 6 requirements are complete under
-D-10 pre-merge acceptance. GSD's phase-completion helper could not parse the
-repository's descriptive requirement IDs, so those verified entries were
-reconciled explicitly. Existing unrelated pending requirement entries are preserved.
-
-The qualifying-release checks passed for v0.16.0. See
-`.planning/phases/06-install-documentation/06-RELEASE-0.16.0.md` for publication,
-installed setup/client-ID help, completion and tagged Go-install evidence.
-The five-guide availability update is open as PR #558 on
-`docs/setup-release-0.16.0`.
-Issue #556 closed with the implementation merge. Issue #514 and
-`REQ-cask-reship-recovery` remain open; the ordinary release does not prove the
-separate recovery rehearsal. Milestone release closure is still pending.
+Phase: Milestone 2026-08-23.01 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-12 — Milestone 2026-08-23.01 completed and archived
 
 ## Deferred Items
 
@@ -63,6 +50,13 @@ Items acknowledged and deferred at milestone close on 2026-08-12:
 | broken_window | WINDOWS.md id 1, id 2 (Phase 03 TDD RED+GREEN landed in combined commits) | Open — RED genuinely observed, commit granularity only |
 | code | internal/surfaces/toolclass.go:141-142 stale rationale comment contradicting shipped Phase 03.1 idempotency_key support | Open — annotation value correct, comment wrong |
 | test | TestExitCodeBaseline env-var fragility (ENGRAM_REINDEX_TARGET / ENGRAM_MIGRATE_OWNER) | Tracked upstream as #476 |
+
+Items acknowledged and deferred at milestone close on 2026-09-12 (milestone 2026-08-23.01, `override_closeout` — 2 newly acknowledged, 0 carried forward from a prior close):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_items | Phase 04 / 04-02: pre-existing `TestActiveMilestoneKeyLinksSatisfiable` failure against `04-01-PLAN.md` key_links entries authored as bare strings | acknowledged — no longer reproduces; `go test ./internal/keylinks/` passes at `3f82520c` and the entries now carry `from`/`to`/`pattern` mappings |
+| deferred_items | Phase 04 / 04-02: environmental `TestDialTestClientFailsWhenRequiredAndUnavailable` failure (Qdrant testcontainer mapped port "invalid port") | acknowledged — Docker/testcontainer flake on one run; not a code defect, not reproduced since |
 
 Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026-08-12.01, `override_closeout` — 8 newly acknowledged, 0 carried forward from a prior close):
 
@@ -278,6 +272,7 @@ milestone needs in working memory.
 - [Phase 04]: Codex routing: codex-native-plus-index (native skills + AGENTS.md index); RESEARCH assumption A1 confirmed by human observation — Gives ROADMAP success criterion 3 a live --apply write path and hedges the one MEDIUM-confidence open question; Sean confirmed codex's skill selector surfaces the five skills
 - [Phase 04]: setupSkillsTarget widened to (skills.Target, error): every registered runtime now authors an explicit SkillFormat, so an unrecognized format is a failed row, never a silent skip
 - [Phase 04]: generic's Plan() authors the explicit no-destination SkillFormatNone, carrying the curation skills in its --output json deliverable with the install call explicitly skipped so it can never reach the filesystem
+- [Phase 04]: Only `errors.Is(readErr, fs.ErrNotExist)` is the AGENTS.md create case (04-05, #559); any other index read error performs zero writes, preserves the file byte-for-byte, and surfaces a wrapped error naming the index path through SkillsOutcome → AggregateOutcome → Classify (partial exit). D-15 extended to the unreadable case; installFiles' own posture deliberately unchanged (D-08).
 
 ### Pending Todos
 
@@ -322,8 +317,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-12T16:44:40+00:00
-Stopped at: v0.16.0 installation verified; PR 558 open; recovery rehearsal pending
+Last session: 2026-09-12T20:31:18+00:00
+Stopped at: Phase 04 gap #559 closed and re-verified; milestone audit re-run pending
 Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Performance Metrics
@@ -440,5 +435,4 @@ Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 
 ## Operator Next Steps
 
-- Merge availability-guide PR #558 after CI passes.
-- Complete the recovery rehearsal and reconcile #514 before milestone release closure.
+- Start the next milestone with /gsd-new-milestone

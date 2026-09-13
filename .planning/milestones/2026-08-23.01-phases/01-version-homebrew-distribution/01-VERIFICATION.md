@@ -163,3 +163,14 @@ confirmed rather than taken on faith.
 ---
 *Verified: 2026-08-25*
 *Verifier: Claude (gsd-verifier)*
+
+## Post-merge status reconciliation — 2026-09-12
+
+The deferred credential probe subsequently passed from main in run 32860661930;
+REQ-cask-credential-verified is already complete. As specified in this report's
+recovery row, REQ-cask-reship-recovery now closes alongside that probe, under the
+existing D-11/D-15 by-construction acceptance. No staged rehearsal was performed
+or newly required. Sean closed issue #514 at 2026-09-12T17:56:27Z. Phase 6 later
+observed v0.16.0 publication, all four Homebrew installs, tagged Go version and
+the merged/deployed availability guides. Earlier open-issue and deferred-probe
+statements above are historical observations, not current blockers.

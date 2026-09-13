@@ -6,6 +6,8 @@ package skills
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -283,6 +285,126 @@ func TestInstallAgentsMdConverges(t *testing.T) {
 			t.Errorf("len(Wrote) = %d, want 3 (every skill file still installs)", len(report.Wrote))
 		}
 	})
+}
+
+// TestInstallPreservesIndexOnReadError is the audit's own reproduction
+// (issue #559, .planning/2026-08-23.01-INTEGRATION.md § "B01") turned into
+// a permanent regression: installAgentsMDIndex must distinguish confirmed
+// nonexistence (fs.ErrNotExist) from every other index-read failure.
+// Confirmed nonexistence is the create case (byte-identical to
+// TestInstallAgentsMdConverges's "create" subtest); anything else must
+// preserve the existing index byte-for-byte with ZERO writes and report a
+// wrapped, path-naming error, while the independent skill-file pass
+// (D-07) still completes.
+func TestInstallPreservesIndexOnReadError(t *testing.T) {
+	const indexFile = "/synthetic/.codex/AGENTS.md"
+	target := Target{Format: FormatAgentsMD, Dir: "/synthetic/.agents/skills", IndexFile: indexFile}
+	seed := []byte("# Operator's own AGENTS.md\n\nSome hand-written guidance.\n")
+	transientErr := errors.New("boom: transient read failure")
+
+	rows := []struct {
+		name      string
+		readErr   error
+		seeded    bool
+		wantWrite bool
+		wantErr   bool
+	}{
+		{name: "permission denied", readErr: os.ErrPermission, seeded: true, wantWrite: false, wantErr: true},
+		{name: "transient error", readErr: transientErr, seeded: true, wantWrite: false, wantErr: true},
+		{name: "bare nonexistence", readErr: os.ErrNotExist, seeded: false, wantWrite: true, wantErr: false},
+		{name: "wrapped nonexistence", readErr: fmt.Errorf("stat %s: %w", indexFile, fs.ErrNotExist), seeded: false, wantWrite: true, wantErr: false},
+	}
+
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			store := make(map[string][]byte)
+			if row.seeded {
+				store[indexFile] = append([]byte(nil), seed...)
+			}
+			base := fakeInstallEnv(store)
+
+			var writeLog []string
+			env := Environment{
+				ReadFile: func(name string) ([]byte, error) {
+					if name == indexFile {
+						return nil, row.readErr
+					}
+					return base.ReadFile(name)
+				},
+				WriteFile: func(name string, data []byte, perm os.FileMode) error {
+					writeLog = append(writeLog, name)
+					return base.WriteFile(name, data, perm)
+				},
+				MkdirAll: base.MkdirAll,
+			}
+
+			report := Install(env, target, testSkills())
+
+			var indexWriteCount int
+			for _, p := range writeLog {
+				if p == indexFile {
+					indexWriteCount++
+				}
+			}
+
+			if row.wantWrite {
+				if indexWriteCount != 1 {
+					t.Errorf("indexWriteCount = %d, want 1", indexWriteCount)
+				}
+				var sawIndex bool
+				for _, p := range report.Wrote {
+					if p == indexFile {
+						sawIndex = true
+					}
+				}
+				if !sawIndex {
+					t.Errorf("Wrote = %v, want it to contain the index file %q", report.Wrote, indexFile)
+				}
+				if report.Err != nil {
+					t.Errorf("Report.Err = %v, want nil", report.Err)
+				}
+				body := string(store[indexFile])
+				if !strings.Contains(body, BlockStartMarker) || !strings.Contains(body, BlockEndMarker) {
+					t.Errorf("index file content = %q, want it to contain both markers", body)
+				}
+				if len(report.Wrote) != 4 {
+					t.Errorf("len(Wrote) = %d, want 4 (3 skill files + index)", len(report.Wrote))
+				}
+				return
+			}
+
+			if indexWriteCount != 0 {
+				t.Errorf("indexWriteCount = %d, want 0 (zero index writes on a non-nonexistence read error)", indexWriteCount)
+			}
+			for _, p := range report.Wrote {
+				if p == indexFile {
+					t.Errorf("Wrote = %v, want it to NOT contain the index file", report.Wrote)
+				}
+			}
+			for _, p := range report.AlreadyCorrect {
+				if p == indexFile {
+					t.Errorf("AlreadyCorrect = %v, want it to NOT contain the index file", report.AlreadyCorrect)
+				}
+			}
+			if row.wantErr {
+				if report.Err == nil {
+					t.Fatal("Report.Err = nil, want a non-nil error naming the index path")
+				}
+				if !errors.Is(report.Err, row.readErr) {
+					t.Errorf("errors.Is(Report.Err, row.readErr) = false, want true; Report.Err = %v", report.Err)
+				}
+				if !strings.Contains(report.Err.Error(), indexFile) {
+					t.Errorf("Report.Err = %q, want it to name the index path %q", report.Err.Error(), indexFile)
+				}
+			}
+			if row.seeded && !bytes.Equal(store[indexFile], seed) {
+				t.Errorf("store[%q] = %q, want it UNCHANGED — zero bytes written on a read failure", indexFile, store[indexFile])
+			}
+			if len(report.Wrote) != 3 {
+				t.Errorf("len(Wrote) = %d, want 3 (independent skill-file pass still completes, D-07)", len(report.Wrote))
+			}
+		})
+	}
 }
 
 // TestAgentsMdPreservesSymlink is the one test in this package that uses
