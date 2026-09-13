@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-13 — after opening milestone 2026-09-13.01 Setup v2)
+See: .planning/PROJECT.md (updated 2026-09-13 after Phase 1 — 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 01 — Executor Correctness & Man Pages
+**Current focus:** Phase 2 — Custom Auth Headers
 
 ## Current Position
 
@@ -297,6 +297,15 @@ Both prior entries were delivered and had simply never been closed out:
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
+- **Phase 1 (2026-09-13.01) added three gates every later phase of this milestone must clear:**
+  `internal/keylinks` rejects backslash- or `\"`-escaped `key_links.pattern` values in ANY plan
+  (bracket classes + single-quoted YAML; run `go test ./internal/keylinks/ -count=1` right after
+  plan-checker passes); `internal/store` `TestRedEvidencePatchesAreLive` keeps `task` red until the
+  phase's red-evidence patches are registered in `redEvidenceDirs` (orchestrator step after the last
+  plan, before verification); `dispatch-isolation --raw/--json` re-record the isolation sentinel, so
+  `--force-isolation none` must be the LAST call before each executor dispatch (gotcha `xjz60c9h6t`).
+  `roadmap update-plan-progress` / `phase.complete` again wrote an archived-milestone "1." progress
+  row (`yzmfesbsg0`, 8th occurrence) — hand-verify the table after every call.
 - **New this milestone: runtime CLI availability.** Phase 3's shell-out writers now depend on
   each target runtime's own CLI being present and flag-stable (`claude`, `codex`, `opencode`) —
   flag/version drift in a third-party binary is a live failure mode, not a hypothetical; pinned
