@@ -127,9 +127,10 @@ func (r *recordingT) Errorf(_ string, _ ...any) {
 // TestReleaseConfigCaskInstallGate pins the cask post-install hook's
 // ordering and shape in .goreleaser.yaml (REQ-cask-install-gate): the
 // Gatekeeper quarantine strip, guarded to macOS, must run before the
-// binary-version gate, which must run before completions are generated —
-// and the declarative/deprecated GoReleaser mechanisms this design
-// deliberately avoids must not reappear.
+// binary-version gate, which must run before completions are generated,
+// which must run before man pages are generated (D-09) — and the
+// declarative/deprecated GoReleaser mechanisms this design deliberately
+// avoids must not reappear.
 func TestReleaseConfigCaskInstallGate(t *testing.T) {
 	const file = "../../.goreleaser.yaml"
 	lines, lineNos := nonCommentLines(t, file)
@@ -142,8 +143,22 @@ func TestReleaseConfigCaskInstallGate(t *testing.T) {
 	checkOrdering(t, file, lines, lineNos, "if OS.mac?", `system_command "/usr/bin/xattr"`)
 	checkOrdering(t, file, lines, lineNos, `system_command "/usr/bin/xattr"`, `"version", "--output", "json"`)
 	checkOrdering(t, file, lines, lineNos, `"version", "--output", "json"`, `args: ["completion"`)
+	checkOrdering(t, file, lines, lineNos, `args: ["completion"`, `args: ["man"`)
 
-	forbidden := []string{"generate_completions_from_executable", "brews:", "rm_rf"}
+	if n := countMatches(lines, `args: ["man"`); n != 1 {
+		t.Errorf("%s: expected exactly 1 non-comment occurrence of `args: [\"man\"`, found %d", file, n)
+	}
+
+	const manPageUninstallGlob = `Dir.glob("#{HOMEBREW_PREFIX}/share/man/man1/engram{,-*}.1")`
+	if n := countMatches(lines, manPageUninstallGlob); n != 1 {
+		t.Errorf("%s: expected exactly 1 non-comment occurrence of the uninstall man-page glob, found %d", file, n)
+	}
+
+	if n := countMatches(lines, "share/man/man1"); n != 2 {
+		t.Errorf("%s: expected exactly 2 non-comment occurrences of `share/man/man1` (install + uninstall), found %d", file, n)
+	}
+
+	forbidden := []string{"generate_completions_from_executable", "brews:", "rm_rf", "manpage:"}
 	for _, f := range forbidden {
 		if n := countMatches(lines, f); n != 0 {
 			t.Errorf("%s: expected 0 non-comment occurrences of %q, found %d", file, f, n)

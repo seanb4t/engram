@@ -198,13 +198,42 @@ homebrew_casks:
             FileUtils.mkdir_p(File.dirname(dest))
             File.write(dest, completion.stdout)
           end
+
+          # This is the hook's fourth exercise of the installed binary
+          # (after the quarantine strip, the version gate, and the
+          # completions loop above): the binary writes one roff man page
+          # per available command straight into the shared man1 directory
+          # below. system_command's default must_succeed (true) raises if
+          # the binary cannot document itself, exactly as it already does
+          # for a broken version report or a failed completion write.
+          # Homebrew's own declarative field for installing man pages is
+          # not used, for the same rescue-to-warning reason the
+          # completions loop above avoids its own declarative alternative
+          # and helper — neither is named here, or anywhere else in this
+          # file, on purpose: the acceptance gate for this decision is a
+          # literal occurrence count over the whole file, so naming either
+          # even in a comment would destroy the gate's ability to tell
+          # prose from actual use.
+          man1_dir = "#{HOMEBREW_PREFIX}/share/man/man1"
+          FileUtils.mkdir_p(man1_dir)
+          system_command binary, args: ["man", man1_dir]
         uninstall: |-
           # Homebrew tracks only the files IT installs, never files a hook
-          # wrote, so without this an uninstall leaves all three completion
-          # files behind. Removes exactly those three paths — never their
-          # parent directories, which are shared with other formulae and
-          # casks — with the file-scoped remover, never the recursive tree
+          # wrote, so without this an uninstall leaves the completion
+          # files (and, below, the generated man pages) behind. Removes
+          # exactly the paths the install hook wrote — never their parent
+          # directories, which are shared with other formulae and casks —
+          # with the file-scoped remover, never the recursive tree
           # remover.
           FileUtils.rm_f "#{HOMEBREW_PREFIX}/etc/bash_completion.d/engram"
           FileUtils.rm_f "#{HOMEBREW_PREFIX}/share/zsh/site-functions/_engram"
           FileUtils.rm_f "#{HOMEBREW_PREFIX}/share/fish/vendor_completions.d/engram.fish"
+
+          # The pages the install hook wrote above are removed by globbing
+          # exactly engram.1 and engram-*.1 under man1 and applying the
+          # same file-scoped remover to each match — never the directory,
+          # which is shared with other formulae and casks, and never a
+          # recursive remover. There is no install-time manifest: the
+          # binary symlink is already gone by the time this hook runs, so
+          # the page set cannot be regenerated here to diff against.
+          Dir.glob("#{HOMEBREW_PREFIX}/share/man/man1/engram{,-*}.1").each { |f| FileUtils.rm_f f }
