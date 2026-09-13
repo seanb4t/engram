@@ -79,23 +79,33 @@ var OSEnvironment = Environment{
 // milliseconds rather than hanging to ctx's deadline (D-13), and stdout
 // plus stderr captured into independent buffers (D-13).
 //
-// ctx.Err() is consulted BEFORE unwrapping *exec.ExitError (D-10): a
-// context-killed child still satisfies errors.As(runErr, &exitErr) with
-// ExitCode() == -1, because os/exec reports a SIGKILLed process the same
-// way it reports any other abnormal exit. Checking ctx.Err() first is what
-// GitHub #560 identified as missing — without it, a deadline-killed or
-// cancelled subprocess is misreported as a clean nonzero exit (ExitCode:
-// -1, nil error) instead of the "never got an answer" error Run's doc
-// comment promises. os/exec guarantees ctx.Done() closes strictly before
-// CommandContext's kill fires, so this plain post-Run() check needs no
-// extra synchronization (verified: go doc os/exec CommandContext). The
-// bare ctx.Err() sentinel is returned unwrapped — covering both
-// context.DeadlineExceeded and context.Canceled — alongside the zero
-// RunResult (D-12): any partial stdout/stderr captured before the kill is
-// discarded, never surfaced on the error path. A nonzero exit reached with
-// a still-live context is unwrapped from *exec.ExitError into
-// RunResult.ExitCode with a nil error, exactly as before; any other error
-// (e.g. start failure) is returned as the seam's own error.
+// ctx.Err() is consulted BEFORE unwrapping *exec.ExitError (D-10), but only
+// when cmd.Run() itself reported an error: a context-killed child still
+// satisfies errors.As(runErr, &exitErr) with ExitCode() == -1, because
+// os/exec reports a SIGKILLed process the same way it reports any other
+// abnormal exit. Checking ctx.Err() before that unwrap is what GitHub #560
+// identified as missing — without it, a deadline-killed or cancelled
+// subprocess is misreported as a clean nonzero exit (ExitCode: -1, nil
+// error) instead of the "never got an answer" error Run's doc comment
+// promises. The case is gated on runErr != nil (WR-01, 01-REVIEW.md) to
+// close a boundary-timing race: os/exec's watchCtx and cmd.Run()'s return
+// are not synchronized against each other, so a child that finishes
+// naturally (nil error, or a genuine *exec.ExitError) at essentially the
+// same wall-clock instant the context's own deadline timer independently
+// fires can observe ctx.Err() != nil moments later purely by proximity, even
+// though os/exec itself already concluded the run was clean. Without the
+// runErr != nil guard, that scenario is folded into "never got an answer",
+// discarding a real (and valid) result. Gating on runErr != nil still
+// catches #560's case (a SIGKILLed child surfaces as a non-nil
+// *exec.ExitError, so runErr != nil holds) while never discarding a run
+// os/exec itself already concluded was clean. The bare ctx.Err() sentinel
+// is returned unwrapped — covering both context.DeadlineExceeded and
+// context.Canceled — alongside the zero RunResult (D-12): any partial
+// stdout/stderr captured before the kill is discarded, never surfaced on
+// the error path. A nonzero exit reached with a still-live context is
+// unwrapped from *exec.ExitError into RunResult.ExitCode with a nil error,
+// exactly as before; any other error (e.g. start failure) is returned as
+// the seam's own error.
 func osRun(ctx context.Context, path string, args []string) (RunResult, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Stdin = nil
@@ -108,10 +118,10 @@ func osRun(ctx context.Context, path string, args []string) (RunResult, error) {
 
 	var exitErr *exec.ExitError
 	switch {
-	case ctx.Err() != nil:
-		return RunResult{}, ctx.Err()
 	case runErr == nil:
 		return result, nil
+	case ctx.Err() != nil:
+		return RunResult{}, ctx.Err()
 	case errors.As(runErr, &exitErr):
 		result.ExitCode = exitErr.ExitCode()
 		return result, nil
