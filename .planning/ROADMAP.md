@@ -589,3 +589,51 @@ mechanism that already carries these skills, the session hooks, and the
 - Related: `setup` has no custom-header auth mode, so a gateway registration
   (e.g. LiteLLM `x-litellm-api-key`) cannot be expressed and `--apply` replaces
   it. Same milestone or separate backlog item?
+
+### Phase 999.6: `engram setup` needs to support custom headers / auth keys (allow the maintainer's current gateway setup) (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+**Context (captured 2026-09-13, from a live `engram setup` review on the maintainer's machine):**
+
+`--auth` accepts exactly `oauth | oauth-client | bearer | none`
+(`cmd/engram/setup.go:628`). `bearer` is hard-wired to the `Authorization`
+header with an `ENGRAM_TOKEN` reference, expressed per runtime as:
+
+- claude-code: `--header "Authorization: Bearer ${ENGRAM_TOKEN}"` (`internal/setup/claudecode.go:162`)
+- codex: `--bearer-token-env-var ENGRAM_TOKEN` (`internal/setup/codex.go:110`)
+- opencode: `--header "Authorization=Bearer {env:ENGRAM_TOKEN}"` (`internal/setup/opencode.go:131`)
+- generic: `"Authorization": "Bearer ${ENGRAM_TOKEN}"` (`internal/setup/generic.go:141-145`)
+
+The maintainer's real registrations (all three runtimes) reach engram through a
+LiteLLM gateway and authenticate with a custom header
+(`x-litellm-api-key: Bearer <key>`), not `Authorization`. No `--auth` mode can
+express that, so `setup --apply` cannot *reproduce* the working config — it
+replaces it (claude-code is `mcp remove` + `mcp add`) and breaks the
+connection. This is the same class of incident as the 2026-09-10 overwrite
+(engram gotcha `ryr82bf2s2`), now with a root cause: the auth model is too
+narrow, not just the verification discipline.
+
+Preview is also affected: with the wrong `--auth`, the read probe reports the
+existing registration as drift to be replaced rather than as already-correct.
+
+**Open questions for planning:**
+
+- Shape of the option: a repeatable `--header NAME=VALUE-REF` (value names an
+  env var, never a literal), or `--auth header --header-name X --token-env Y`?
+  Must keep the "no secret in argv/config" property that `bearer` already has.
+- Per-runtime feasibility: claude-code and opencode take arbitrary `--header`;
+  codex's `mcp add` exposes `--bearer-token-env-var` only — does
+  `[mcp_servers.<name>.http_headers]` in `config.toml` need a direct write path,
+  and does that violate "register via the runtime's own CLI"?
+- Should `already-correct` detection compare the full header set so a preview
+  against an existing custom-header registration is a no-op instead of a
+  replacement?
+- Overlap with Phase 999.5 (plugin-based install): if the plugin carries the
+  MCP declaration, the header option must exist there too.
