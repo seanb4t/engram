@@ -146,7 +146,7 @@ func TestNoSecretInArgs(t *testing.T) {
 							return
 						}
 						if errors.Is(err, ErrHeaderUnsupported) {
-							if !(withHeader && rt.Name() == "codex") {
+							if !withHeader || rt.Name() != "codex" {
 								t.Fatalf("Plan: %v (errors.Is(err, ErrHeaderUnsupported) is only a PASS for codex with headers present)", err)
 							}
 							return

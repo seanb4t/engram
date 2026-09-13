@@ -272,7 +272,7 @@ func TestClaudeCodeHeaders(t *testing.T) {
 			t.Fatalf("Plan: %v", err)
 		}
 		args := plan.Actions[1].Args
-		var idxA, idxB int = -1, -1
+		idxA, idxB := -1, -1
 		for i, a := range args {
 			switch a {
 			case "a-key: ${A2}":
