@@ -30,8 +30,12 @@ const manManual = "Engram Manual"
 // manHeader builds a fresh *doc.GenManHeader per call (doc.GenManTree
 // takes ownership of the pointer it's given via a shallow copy per file
 // — see cobra/doc man_docs.go's GenManTreeFromOpts — so returning a new
-// value each time avoids any aliasing surprise across callers). Source
-// is "engram " + version: the RAW ldflags-injected version package var
+// struct each time avoids two callers' GenManTree runs mutating the same
+// shared header). Date still points at the single package-level manDate
+// (never a per-call copy): that aliasing is intentional, not a surprise
+// to avoid, because manDate is set once at init and never mutated
+// afterward (IN-01, 01-REVIEW.md). Source is "engram " + version: the RAW
+// ldflags-injected version package var
 // (root.go:19), the SAME value rootCmd.Version carries (root.go:78),
 // deliberately not the fully resolved version string used elsewhere in
 // this binary — D-02 makes the same choice root.go's own init()
