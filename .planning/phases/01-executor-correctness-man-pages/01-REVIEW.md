@@ -1,6 +1,6 @@
 ---
 phase: 01-executor-correctness-man-pages
-reviewed: 2026-09-13T18:42:30Z
+reviewed: 2026-09-13T23:45:00Z
 depth: standard
 files_reviewed: 9
 files_reviewed_list:
@@ -16,138 +16,161 @@ files_reviewed_list:
 findings:
   critical: 0
   warning: 1
-  info: 1
-  total: 2
+  info: 0
+  total: 1
 status: issues_found
 ---
 
-# Phase 01: Code Review Report
+# Phase 01: Code Review Report (iteration 3, final re-review)
 
-**Reviewed:** 2026-09-13T18:42:30Z
+**Reviewed:** 2026-09-13T23:45:00Z
 **Depth:** standard
 **Files Reviewed:** 9
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the osRun deadline-classification fix (`internal/setup/environment.go`,
-`apply.go`), the new hidden `engram man` command and its cobra-tree
-snapshot/restore mechanism (`cmd/engram/man.go`), the Homebrew cask
-post-install/uninstall man-page hooks (`.goreleaser.yaml`) and their
-ordering/shape gate (`releaseconfig_test.go`), and the phase's red-evidence
-registration (`internal/store/redevidence_harness_test.go`).
+Final re-review of the auto-fix commit `553e77b2`, the last of three fix
+iterations. Verified via `git diff aedc6d54 HEAD` that the entire delta since
+iteration 2 is two doc-comment-only edits, exactly as the fix report claims:
 
-Verification performed beyond static reading:
-- Ran `go test ./internal/store/ -run TestRedEvidencePatchesAreLive -v`
-  (full run, not `-short`) end to end: all four registered patches
-  (`01-01-osrun-ctx-err-first.patch`, `01-01-runseam-timeout-wording.patch`,
-  `01-02-man-header-pinned.patch`, `01-02-man-tree-restore.patch`) applied
-  cleanly, drove their mapped target test RED as claimed, and reverted
-  cleanly (`git status --porcelain` empty afterward). The phase's central
-  claim — "TDD RED was proven against real source for these two
-  regressions" — is independently confirmed, not merely asserted.
-- Ran the full `internal/setup` and relevant `cmd/engram` test subsets
-  (`TestOsRun*`, `TestDriftReportedLegibly`, `TestApplyConverges*`,
-  `TestManPages*`, `TestManCmd*`, `TestManGeneration*`,
-  `TestReleaseConfig*`): all pass.
-- Confirmed by grep that `runSeam` is the only non-test call site of
-  `Environment.Run` in `internal/setup`, and that no `cmd/engram` code
-  bypasses `Apply`/`Preview` to call `env.Run` directly — the doc comment's
-  "single place a deadline is named" claim holds structurally, not just by
-  assertion.
-- Manually traced `os/exec`'s `Cmd.Wait()`/`watchCtx` semantics against the
-  new `ctx.Err() != nil` case in `osRun` to check for a race between a
-  genuinely successful run and a concurrently-firing context deadline (see
-  WR-01 below).
+- `internal/setup/environment.go`: `osRun`'s comment above the (unchanged)
+  classification `switch` now states the accepted residual explicitly — a
+  genuine, non-killed nonzero exit racing the deadline is still reported as
+  the ctx error rather than its real exit code — instead of asserting (as the
+  iteration-2 doc did) that this case was already safely handled.
+- `cmd/engram/man.go`: `manHeader()`'s comment no longer claims returning a
+  fresh struct "avoids any aliasing surprise across callers"; it now states
+  correctly that `Date` intentionally keeps aliasing the single
+  package-level `manDate`, because that value is set once at init and never
+  mutated.
+
+No executable code changed in this delta (confirmed by reading the diff
+hunks: only comment lines were touched in both files), so no new
+control-flow defect can have been introduced by this commit.
+
+**Prior findings, both closed:**
+- Iteration-2 WR-01 (doc overclaimed the reordered switch was fully safe) —
+  closed. The orchestrator's recorded decision is that the switch ordering
+  is the intended, permanent design (the `ExitCode() == -1` disambiguation
+  the iteration-2 review itself proposed as a fix is platform-dependent —
+  Windows reports killed processes as exit code `1`, not `-1` — so it cannot
+  reliably distinguish the two cases either). Per the task brief, this
+  residual is not re-raised here.
+- Iteration-1/2 IN-01 (`manHeader()`'s comment overstated what aliasing
+  freshness protects against) — closed by the man.go edit above; the new
+  wording accurately describes what is and is not freshened per call.
+
+**Verification beyond static reading:**
+- `go test ./internal/setup/ ./cmd/engram/ -count=1` — both `ok`.
+- Re-read `internal/setup/apply.go`'s `execute()` in full against the new
+  comment's specific claim (see WR-01 below) rather than accepting the
+  claim at face value.
 
 No security issues, hardcoded secrets, or injection vectors were found.
-The only defect worth recording is a narrow, low-probability
-misclassification race in the new `osRun` ordering, which is a correctness
-edge case rather than something the test suite currently exercises.
 
 ## Warnings
 
-### WR-01: `osRun`'s unconditional `ctx.Err()` check can discard a genuinely successful run under a boundary-timing race
+### WR-01: The new "accepted residual" comment understates its own blast radius — it is not true that the residual "only changes the reported Reason" at every call site
 
-**File:** `internal/setup/environment.go:110-112`
-**Issue:** The new first `switch` case —
+**File:** `internal/setup/environment.go:98-114` (doc comment only; `osRun`'s
+code, `:115-137`, is unchanged from iteration 2 and is explicitly not
+re-litigated here per the task brief).
+
+**Issue:** The new comment claims:
+
+> `runSeam` (apply.go) classifies both outcomes as `Outcome == OutcomeFailed`,
+> so the residual only changes the reported Reason (deadline text vs.
+> exit-code text)
+
+This is true for exactly one of `runSeam`'s four call sites in
+`internal/setup/apply.go`'s `execute()` — a **non-tolerant** write `Action`'s
+nonzero exit, where both the raced (seam-error) and un-raced (nonzero-exit)
+paths land on `OutcomeFailed` with only the `Reason` text differing
+(`describeSeamError` vs. `describeFailure`). It is false at the other three
+sites, where the residual changes the **Outcome itself**, not just prose:
+
+1. **Probe #1 under `Apply` (`apply.go:318-322`).** A probe's genuine
+   nonzero exit (no race) is *not* a failure at all — `probe1Err == nil`
+   means execution falls through and proceeds to run the write actions
+   normally, with `Outcome` eventually settling as `OutcomeWrote` or
+   `OutcomeAlreadyCorrect`. But if that same genuine nonzero exit races the
+   deadline, `probe1Err != nil` and the row is failed immediately:
+   `res.Outcome = OutcomeFailed`. The residual turns a normal,
+   non-failing run into a hard failure here — not a wording change.
+
+2. **A `Tolerant` write `Action`'s nonzero exit (`apply.go:326-336`).**
+   `case runErr != nil` is checked before `case action.Tolerant`, and it
+   does not consult `action.Tolerant` at all. A genuine nonzero exit on a
+   tolerant action (no race) is appended to `Notes` and the sequence
+   continues — never `OutcomeFailed`. If that same exit races the deadline,
+   it is misclassified as a seam error and unconditionally fails the row
+   via `case runErr != nil`, bypassing the tolerance the action's author
+   deliberately authored (`claudecode.go`'s tolerant `mcp remove` is exactly
+   this shape in production). Again, an `Outcome` change, not a `Reason`
+   change — and in this case a materially worse one, since it defeats the
+   entire purpose of `Action.Tolerant`.
+
+3. **Probe #2 (`apply.go:370-382`).** A raced probe-2 seam error resolves to
+   `OutcomeWrote` ("ambiguity resolves to wrote, never to already-correct" —
+   neither `OutcomeFailed` as the comment claims). A genuine, un-raced
+   nonzero-exit probe-2 instead proceeds to the byte-compare against
+   probe-1's capture and could land on `OutcomeAlreadyCorrect` if the two
+   captures happen to match. So here too the residual can change `Outcome`
+   (`AlreadyCorrect` -> `Wrote`), and neither branch is `OutcomeFailed`,
+   contradicting the comment's specific wording a second, independent way.
+
+The comment's blanket claim ("classifies both outcomes as
+`Outcome == OutcomeFailed`... only changes the reported Reason") is
+therefore accurate for only 1 of 4 call sites and actively misleading for
+the other 3, including the `Tolerant`-action case, which is a normal,
+expected code path in this codebase (every `claude-code` `Apply` run
+exercises it). A maintainer relying on this comment's stated scope would
+reasonably (and wrongly) conclude the residual is a cosmetic wording
+difference everywhere it can occur.
+
+This is a documentation-accuracy issue only — the underlying switch
+ordering is out of scope per the task brief's orchestrator decision, and no
+executable code changed in this delta. It is a Warning because the residual
+itself was already accepted as tolerable risk; what's being flagged is that
+the written rationale for accepting it does not match the code it describes,
+which will mislead the next person who reads it (e.g., when deciding whether
+a future change to `execute()`'s tolerant-action handling is safe).
+
+**Fix:** Narrow the comment's claim to the one call site where it actually
+holds, and name the other three explicitly rather than generalizing from the
+first. For example, replace the "runSeam... classifies both outcomes..."
+sentence with something like:
 
 ```go
-case ctx.Err() != nil:
-    return RunResult{}, ctx.Err()
+// Accepted residual (WR-01 iteration 2, 01-REVIEW.md): a genuine, non-killed
+// nonzero exit that lands at essentially the same instant the deadline
+// independently fires is still reported as the ctx error rather than its
+// real exit code — osRun's ctx.Err() read is a separate, unsynchronized
+// check from what cmd.Run() internally decided, so this ordering cannot
+// distinguish "killed by us" from "exited on its own, right at the
+// boundary." This is deliberate, not an oversight, but its impact varies by
+// call site in apply.go's execute(): for a non-tolerant write Action's
+// nonzero exit, both the raced and un-raced paths already resolve to
+// OutcomeFailed, so the residual only changes the reported Reason text. At
+// the other three runSeam call sites — probe #1 under Apply, a Tolerant
+// Action's nonzero exit, and probe #2 — the residual changes the
+// classified Outcome itself (a probe or tolerated failure can be promoted
+// to a hard OutcomeFailed, or an already-correct probe-2 comparison can be
+// forced to OutcomeWrote), not merely its wording. The deadline reason is
+// still judged the more actionable text for an operator to see in the
+// non-tolerant-write case; the other three cases carry a real, if narrow,
+// availability cost that this comment does not paper over.
 ```
 
-— is evaluated regardless of whether `runErr` was `nil`. Per `os/exec`'s own
-`Cmd.Wait()`/`watchCtx` implementation, when the child process exits
-naturally (success or ordinary nonzero exit) essentially at the same
-wall-clock instant the context's deadline timer independently fires, the
-two are not synchronized against each other: `cmd.Run()` can legitimately
-return `nil` (or a real `*exec.ExitError`) for a run whose child was never
-actually killed, while `ctx.Err()` — checked microseconds later, purely by
-wall-clock proximity to the deadline — has *also* just become non-nil.
-Because this new case runs before `case runErr == nil`, that scenario is
-folded into "never got an answer": `RunResult{}` and `ctx.Err()` are
-returned, discarding the real (and valid) stdout/stderr/exit status.
-
-For a runtime write action, this converts a real, successful registration
-into an operator-visible `OutcomeFailed: timed out after 20s`, which is
-strictly worse than the pre-fix behavior for this specific slice of cases
-(the pre-fix bug misreported a *genuinely killed* child as a clean nonzero
-exit; this introduces the mirror-image risk of misreporting a *genuinely
-successful* child as killed). In practice the window is vanishingly small
-given the fixed 20s `execTimeout` and the ~2s real-world completion times
-the package's own comments cite, so this is not a blocker — but it is a
-real, provable gap the new tests do not exercise (both
-`TestOsRunReportsContextDeadlineExceeded`/`TestOsRunReportsContextCanceled`
-only assert the case where the child is still genuinely running/blocked at
-the deadline, never the boundary case where it finishes right at it).
-
-**Fix:** Narrow the new case so it only fires when there was otherwise no
-clean success to report, e.g. gate it on `runErr != nil`:
-
-```go
-switch {
-case runErr == nil:
-    return result, nil
-case ctx.Err() != nil:
-    return RunResult{}, ctx.Err()
-case errors.As(runErr, &exitErr):
-    ...
-}
-```
-
-This still catches GitHub #560's case (a SIGKILLed child surfaces as a
-non-nil `*exec.ExitError`, so `runErr != nil` holds), while no longer
-risking discarding a run that `os/exec` itself already concluded was clean.
-If the team's intent is specifically to also treat a "successful but the
-deadline fired concurrently" run as ambiguous-favor-safety (mirroring
-D-08's "ambiguity resolves to wrote, never already-correct" policy
-elsewhere in this package), that should be stated explicitly in the doc
-comment and covered by a dedicated test that forces the boundary race
-(e.g. a helper that exits right as the deadline elapses), rather than left
-implicit.
-
-## Info
-
-### IN-01: `manHeader()`'s doc comment overstates what "returning a new value each call" protects against
-
-**File:** `cmd/engram/man.go:30-47`
-**Issue:** The comment says returning a fresh `*doc.GenManHeader` per call
-"avoids any aliasing surprise across callers," but `Date: &manDate` still
-takes the address of the single package-level `manDate` variable on every
-call — the returned struct is new, but its `Date` field always aliases the
-same shared pointer. This is harmless today because `manDate` is never
-mutated after package init, but the comment's stated rationale doesn't
-match what's actually protected (the new-struct-per-call is protecting
-against `doc.GenManTree`'s shallow-copy-per-file mutating some *other*
-field of the header struct across files, not the `Date` field's aliasing).
-**Fix:** Either take a local copy of the time value (`d := manDate; ...
-Date: &d`) so the comment's claim is literally true, or reword the comment
-to clarify that `Date`'s aliasing is intentionally shared (since the value
-is immutable) and only the struct itself is freshened per call.
+Whether to also change behavior (e.g., have the write-action loop consult
+`action.Tolerant` even on a seam error, so a tolerant action's raced failure
+is tolerated rather than promoted) is a separate design decision outside
+this iteration's scope; this finding is only about making the comment's
+claim match the code.
 
 ---
 
-_Reviewed: 2026-09-13T18:42:30Z_
+_Reviewed: 2026-09-13T23:45:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
