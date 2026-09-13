@@ -296,7 +296,7 @@ on the machine, shows what it would write, and wires it up.
 
 </details>
 
-- [ ] **Phase 1: Executor Correctness & Man Pages** - A deadline-killed runtime subprocess reports a timeout instead of a clean failure, and the binary generates and ships its own man pages
+- [x] **Phase 1: Executor Correctness & Man Pages** - A deadline-killed runtime subprocess reports a timeout instead of a clean failure, and the binary generates and ships its own man pages (completed 2026-09-13)
 - [ ] **Phase 2: Custom Auth Headers** - A gateway registration (e.g. LiteLLM's `x-litellm-api-key`) is expressible on every runtime that can render it, with existing auth modes unchanged
 - [ ] **Phase 3: Plugin-First Delivery** - Claude Code and Codex receive skills, hooks, and `/engram-setup` through their own plugin system instead of a plain skills copy
 - [ ] **Phase 4: Drift Detection (Read-Only)** - Preview classifies an existing registration as identical, reproducible, or preserved by comparing against what setup would actually write
@@ -318,7 +318,7 @@ on the machine, shows what it would write, and wires it up.
 2. An operator can run the hidden `engram man <dir>` command to generate one man page per command from the live cobra tree, and re-running it produces byte-identical output (no auto-generated timestamp).
 3. The Homebrew cask installs the generated man pages on `post_install` and removes exactly those paths on `post_uninstall`, symmetric with the shipped completions hooks, with ordering and absence pinned by `releaseconfig_test.go`.
 
-**Plans:** 2/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 **Wave 1**
@@ -491,7 +491,7 @@ Plans:
 | 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
 | 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
 | 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete; released docs live | 2026-09-12 |
-| 1. Executor Correctness & Man Pages | 2026-09-13.01 | 0/3 | Pending |  |
+| 1. Executor Correctness & Man Pages | 2026-09-13.01 | 3/3 | Complete | 2026-09-13 |
 | 2. Custom Auth Headers | 2026-09-13.01 | 0/5 | Pending |  |
 | 3. Plugin-First Delivery | 2026-09-13.01 | 0/7 | Pending |  |
 | 4. Drift Detection (Read-Only) | 2026-09-13.01 | 0/5 | Pending |  |
