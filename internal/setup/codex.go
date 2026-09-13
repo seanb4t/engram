@@ -6,6 +6,7 @@ package setup
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // codexRuntime implements Runtime for Codex, authoring the live-verified
@@ -51,8 +52,21 @@ func (codexRuntime) Detect(env Environment) bool {
 // personal skills (04-RESEARCH.md § "Native format and destination per
 // runtime", citing learn.chatgpt.com/docs/build-skills), and
 // independently one of opencode's own documented global discovery paths
-// (opencode.ai/docs/skills/), so this single write covers both. A live
-// research machine also showed a populated, working-looking
+// (opencode.ai/docs/skills/), so this single write covers both.
+//
+// Any opts.Headers entry is declined up front (D-09, D-10, before this
+// method resolves home or dispatches on opts.Auth) because `codex mcp
+// add` (codex-cli 0.154.0, live-probed read-only in 02-RESEARCH.md)
+// exposes only --bearer-token-env-var — a purpose-built,
+// Authorization-shaped flag — and no generic header flag; openai/codex#5180
+// was closed COMPLETED by adding header keys to Codex's own config file,
+// not a CLI flag, so this is Codex's shipped design rather than a
+// temporary gap. The decline is per-runtime (claude-code, opencode, and
+// generic CAN express any header name), which is why it lives here and
+// not at the CLI boundary, and why it is the same failed-row shape
+// oauth-client on opencode already produces.
+//
+// A live research machine also showed a populated, working-looking
 // $CODEX_HOME/skills (04-RESEARCH.md's Codex discrepancy write-up); that
 // path was DELIBERATELY NOT CHOSEN, and engram never writes two skills
 // destinations for one runtime — a future contributor must not "fix"
@@ -71,6 +85,16 @@ func (codexRuntime) Detect(env Environment) bool {
 // reported as a failed row naming this runtime, exactly like any other
 // Plan() error.
 func (codexRuntime) Plan(env Environment, opts Options) (Plan, error) {
+	if len(opts.Headers) > 0 {
+		sorted := sortedHeaders(opts.Headers)
+		names := make([]string, len(sorted))
+		for i, h := range sorted {
+			names[i] = h.Name
+		}
+		return Plan{}, fmt.Errorf("codex: custom header(s) %s: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: %w",
+			strings.Join(names, ", "), ErrHeaderUnsupported)
+	}
+
 	home, err := env.HomeDir()
 	if err != nil {
 		return Plan{}, fmt.Errorf("codex: resolve home directory: %w", err)

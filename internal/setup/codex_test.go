@@ -118,6 +118,80 @@ func TestEveryRuntimeAuthorsAnExplicitSkillFormat(t *testing.T) {
 	}
 }
 
+// TestCodexDeclinesHeaders proves codex's Plan() declines ANY header
+// before its auth-mode switch runs, in every mode, with an
+// ErrHeaderUnsupported-wrapped error naming the header(s), the capability
+// gap, and the remedy (D-09, D-10) — never ErrAuthModeUnsupported, so
+// Phase 4 and docs can tell the two gaps apart. env.HomeDir is replaced
+// by a func that fails the test if called at all, proving the guard runs
+// BEFORE home resolution.
+func TestCodexDeclinesHeaders(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	env := fakeEnv()
+	env.HomeDir = func() (string, error) {
+		t.Errorf("HomeDir called; the header guard must run before home resolution")
+		return "/home/fake", nil
+	}
+
+	const wantReason = "codex: custom header(s) x-litellm-api-key: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: setup: custom header is not supported by this runtime"
+
+	for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
+		auth := auth
+		t.Run(auth, func(t *testing.T) {
+			opts := Options{URL: url, Auth: auth, ClientID: "test-client",
+				Headers: []HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}}}
+			plan, err := Codex.Plan(env, opts)
+			if !errors.Is(err, ErrHeaderUnsupported) {
+				t.Fatalf("Plan(auth=%q) err = %v, want errors.Is(err, ErrHeaderUnsupported)", auth, err)
+			}
+			if errors.Is(err, ErrAuthModeUnsupported) {
+				t.Errorf("Plan(auth=%q) err = %v, must NOT satisfy errors.Is(err, ErrAuthModeUnsupported) (D-10: the two gaps stay distinguishable)", auth, err)
+			}
+			if !reflect.DeepEqual(plan, Plan{}) {
+				t.Errorf("Plan(auth=%q) = %#v, want the zero Plan", auth, plan)
+			}
+			if err.Error() != wantReason {
+				t.Errorf("Plan(auth=%q) err.Error() = %q, want %q", auth, err.Error(), wantReason)
+			}
+			if strings.Contains(err.Error(), "LITELLM_KEY") {
+				t.Errorf("Plan(auth=%q) err.Error() = %q, must never name the env var — only the header NAME", auth, err.Error())
+			}
+		})
+	}
+
+	t.Run("two-headers-sorted", func(t *testing.T) {
+		opts := Options{URL: url, Auth: "bearer",
+			Headers: []HeaderSpec{
+				{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"},
+				{Name: "CF-Access-Client-Id", EnvVar: "CF_ID"},
+			}}
+		_, err := Codex.Plan(env, opts)
+		if !errors.Is(err, ErrHeaderUnsupported) {
+			t.Fatalf("err = %v, want errors.Is(err, ErrHeaderUnsupported)", err)
+		}
+		const wantPrefix = "codex: custom header(s) CF-Access-Client-Id, x-litellm-api-key:"
+		if !strings.HasPrefix(err.Error(), wantPrefix) {
+			t.Errorf("err.Error() = %q, want it to start with %q (D-08 sorted, comma-space joined)", err.Error(), wantPrefix)
+		}
+	})
+
+	// Zero-header control: the guard must not fire on empty, and codex's
+	// Plan stays byte-identical to HEAD.
+	t.Run("zero-header-control", func(t *testing.T) {
+		plan, err := Codex.Plan(fakeEnv(), Options{URL: url, Auth: "bearer"})
+		if err != nil {
+			t.Fatalf("Plan: %v", err)
+		}
+		want := []Action{{
+			Args:        []string{"codex", "mcp", "add", "engram", "--url", url, "--bearer-token-env-var", "ENGRAM_TOKEN"},
+			Description: "register engram as an MCP server (bearer token via ENGRAM_TOKEN)",
+		}}
+		if !reflect.DeepEqual(plan.Actions, want) {
+			t.Errorf("Actions = %#v, want %#v", plan.Actions, want)
+		}
+	})
+}
+
 func TestCodexClientID(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
 	for _, id := range []string{"test-client", "  client 'quoted'; $(echo nope) &  "} {
