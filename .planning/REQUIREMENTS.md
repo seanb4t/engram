@@ -88,36 +88,36 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-osrun-deadline-error | — | Pending |
-| REQ-manpages-generated | — | Pending |
-| REQ-manpages-cask-installed | — | Pending |
-| REQ-header-name-parameter | — | Pending |
-| REQ-header-value-env-ref-only | — | Pending |
-| REQ-header-bearer-unchanged | — | Pending |
-| REQ-header-codex-declined | — | Pending |
-| REQ-header-documented | — | Pending |
-| REQ-drift-observed-registration | — | Pending |
-| REQ-drift-three-way | — | Pending |
-| REQ-drift-preserved-outcome | — | Pending |
-| REQ-drift-facet-naming | — | Pending |
-| REQ-drift-redaction | — | Pending |
-| REQ-apply-preserve-gate | — | Pending |
-| REQ-apply-rewrite-consequence | — | Pending |
-| REQ-plugin-capability-detection | — | Pending |
-| REQ-plugin-install-or-update | — | Pending |
-| REQ-plugin-three-way-state | — | Pending |
-| REQ-plugin-skips-skills-copy | — | Pending |
-| REQ-plugin-facet-reported | — | Pending |
-| REQ-codex-plugin-manifest | — | Pending |
-| REQ-plugin-setupgen-regenerated | — | Pending |
-| REQ-docs-setup-v2 | — | Pending |
+| REQ-osrun-deadline-error | Phase 1 | Pending |
+| REQ-manpages-generated | Phase 1 | Pending |
+| REQ-manpages-cask-installed | Phase 1 | Pending |
+| REQ-header-name-parameter | Phase 2 | Pending |
+| REQ-header-value-env-ref-only | Phase 2 | Pending |
+| REQ-header-bearer-unchanged | Phase 2 | Pending |
+| REQ-header-codex-declined | Phase 2 | Pending |
+| REQ-header-documented | Phase 2 | Pending |
+| REQ-drift-observed-registration | Phase 4 | Pending |
+| REQ-drift-three-way | Phase 4 | Pending |
+| REQ-drift-preserved-outcome | Phase 4 | Pending |
+| REQ-drift-facet-naming | Phase 4 | Pending |
+| REQ-drift-redaction | Phase 4 | Pending |
+| REQ-apply-preserve-gate | Phase 5 | Pending |
+| REQ-apply-rewrite-consequence | Phase 5 | Pending |
+| REQ-plugin-capability-detection | Phase 3 | Pending |
+| REQ-plugin-install-or-update | Phase 3 | Pending |
+| REQ-plugin-three-way-state | Phase 3 | Pending |
+| REQ-plugin-skips-skills-copy | Phase 3 | Pending |
+| REQ-plugin-facet-reported | Phase 3 | Pending |
+| REQ-codex-plugin-manifest | Phase 3 | Pending |
+| REQ-plugin-setupgen-regenerated | Phase 3 | Pending |
+| REQ-docs-setup-v2 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 23 total
-- Mapped to phases: 0
-- Unmapped: 23 ⚠️
+- Mapped to phases: 23
+- Unmapped: 0 ✓
 
 ---
 
 *Requirements defined: 2026-09-13*
-*Last updated: 2026-09-13 after initial definition*
+*Last updated: 2026-09-13 after roadmap creation*

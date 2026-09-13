@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-13 — after opening milestone 2026-0
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 1 — Executor Correctness & Man Pages (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-09-13 — Milestone 2026-09-13.01 started
+Status: Roadmapped, awaiting first plan
+Last activity: 2026-09-13 — ROADMAP.md and REQUIREMENTS.md traceability written for 2026-09-13.01
 
 ## Deferred Items
 
