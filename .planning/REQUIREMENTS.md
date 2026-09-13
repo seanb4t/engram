@@ -21,7 +21,7 @@ any working auth shape, and never replaces a registration it did not write.
 
 ### Executor Correctness
 
-- [ ] **REQ-osrun-deadline-error**: When a runtime subprocess is killed because its context deadline expired, `osRun` reports the deadline error (`ctx.Err()`) rather than a clean nonzero exit with a nil error, so the executor's timeout path engages and the result row names the timeout. GitHub #560 (carried W01).
+- [x] **REQ-osrun-deadline-error**: When a runtime subprocess is killed because its context deadline expired, `osRun` reports the deadline error (`ctx.Err()`) rather than a clean nonzero exit with a nil error, so the executor's timeout path engages and the result row names the timeout. GitHub #560 (carried W01).
 
 ### Man Pages
 
@@ -88,7 +88,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-osrun-deadline-error | Phase 1 | Pending |
+| REQ-osrun-deadline-error | Phase 1 | Complete |
 | REQ-manpages-generated | Phase 1 | Pending |
 | REQ-manpages-cask-installed | Phase 1 | Pending |
 | REQ-header-name-parameter | Phase 2 | Pending |
@@ -113,6 +113,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-docs-setup-v2 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 23 total
 - Mapped to phases: 23
 - Unmapped: 0 ✓

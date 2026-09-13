@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-13.01
 milestone_name: Setup v2
-current_phase: 1
+current_phase: 01
 current_phase_name: Executor Correctness & Man Pages
-status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-09-13T17:45:25.411Z"
+status: executing
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-09-13T18:01:03.163Z"
 last_activity: 2026-09-13
-last_activity_desc: ROADMAP.md and REQUIREMENTS.md traceability written for 2026-09-13.01
-state_head: 38129b4c157ded88156e00f1a96ec208cd78835b
+last_activity_desc: Phase 01 execution started
+state_head: f35ed2de0061bc7d74c9f07e9191746ade8d7eee
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 2
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-13 — after opening milestone 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone (`/gsd-new-milestone --reset-phase-numbers`); candidates in PROJECT.md Deferred and BACKLOG.md
+**Current focus:** Phase 01 — Executor Correctness & Man Pages
 
 ## Current Position
 
-Phase: 1 (Executor Correctness & Man Pages) — READY TO EXECUTE
-Plan: —
-Status: Roadmapped, awaiting first plan
-Last activity: 2026-09-13 — ROADMAP.md and REQUIREMENTS.md traceability written for 2026-09-13.01
+Phase: 01 (Executor Correctness & Man Pages) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-09-13 — Phase 01 execution started
 
 ## Deferred Items
 
@@ -273,6 +273,7 @@ milestone needs in working memory.
 - [Phase 04]: setupSkillsTarget widened to (skills.Target, error): every registered runtime now authors an explicit SkillFormat, so an unrecognized format is a failed row, never a silent skip
 - [Phase 04]: generic's Plan() authors the explicit no-destination SkillFormatNone, carrying the curation skills in its --output json deliverable with the install call explicitly skipped so it can never reach the filesystem
 - [Phase 04]: Only `errors.Is(readErr, fs.ErrNotExist)` is the AGENTS.md create case (04-05, #559); any other index read error performs zero writes, preserves the file byte-for-byte, and surfaces a wrapped error naming the index path through SkillsOutcome → AggregateOutcome → Classify (partial exit). D-15 extended to the unreadable case; installFiles' own posture deliberately unchanged (D-08).
+- [Phase 01]: D-10/D-11/D-12: osRun checks ctx.Err() first (bare sentinel, zero RunResult); runSeam owns the 'timed out after 20s' wording (#560)
 
 ### Pending Todos
 
@@ -317,9 +318,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-13T16:30:22.195Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-executor-correctness-man-pages/01-CONTEXT.md
+Last session: 2026-09-13T18:01:03.149Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -432,6 +433,7 @@ Resume file: .planning/phases/01-executor-correctness-man-pages/01-CONTEXT.md
 | Phase 04-skills-distribution P02 | 35min | 3 tasks | 20 files |
 | Phase 04 P03 | 55min | 3 tasks | 6 files |
 | Phase 04 P04 | 25min | 3 tasks | 5 files |
+| Phase 01 P01 | 13min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 
