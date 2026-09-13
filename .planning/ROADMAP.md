@@ -539,3 +539,53 @@ after release is not free.
 
 - Whether unification is worth a proto change at all, or whether the right
   outcome is a comment pinning "non-negative, never a sentinel" as the contract.
+
+### Phase 999.5: `engram setup` should install via plugins for harnesses that support them (claude, codex), not plain installs (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+**Context (captured 2026-09-13, from a live `engram setup` review on the maintainer's machine):**
+
+v0.16.x `engram setup --apply` treats every native runtime as a "plain install":
+it copies the embedded skills into the runtime's user-scope skills directory
+(`~/.claude/skills/`, `~/.agents/skills/` + a managed `~/.codex/AGENTS.md`
+block, `~/.config/opencode/skills/`) and registers the MCP server with the
+runtime's `mcp add`. Claude Code and Codex both have a first-class plugin
+mechanism that already carries these skills, the session hooks, and the
+`/engram-setup` command — and on a machine where the plugin is installed,
+`setup` has no awareness of it:
+
+- Claude Code: skills arrive via the `engram@engram` marketplace plugin
+  (`~/.claude/plugins/marketplaces/engram/skill/engram/skills/…`) and
+  `~/.claude/skills/` is empty. `--apply` would write a second copy there,
+  so `curating-memory` and `engram:curating-memory` both surface. The binary
+  path also never installs the plugin's session hooks
+  (`guides/agent-setup.md` calls this out as a known gap).
+- Codex: `~/.agents/skills/*` are symlinks into that same plugin checkout, so
+  they track plugin updates. `setup` replaces a symlink target with a static
+  copy pinned to the binary's embedded version
+  (`internal/skills/install.go` — `os.Rename` over the target replaces the
+  link).
+- `internal/skills/` and `internal/setup/` contain no marketplace / plugin
+  detection at all.
+
+**Open questions for planning:**
+
+- Which runtimes count as "supports plugins" for v1 (Claude Code marketplace,
+  Codex — confirm Codex's plugin surface), and what does opencode get?
+- Plugin-first, or plugin-when-detected? I.e. should `setup` *install* the
+  plugin (`claude plugin marketplace add` + `claude plugin install`), or only
+  detect an installed plugin and skip the plain skill install?
+- Where does MCP registration live once the plugin is the delivery vehicle —
+  still `mcp add`, or the plugin's own MCP declaration?
+- Interaction with `/engram-setup` delegation: the plugin's command delegates to
+  the binary, which would then install the plugin — define the fixed point.
+- Related: `setup` has no custom-header auth mode, so a gateway registration
+  (e.g. LiteLLM `x-litellm-api-key`) cannot be expressed and `--apply` replaces
+  it. Same milestone or separate backlog item?
