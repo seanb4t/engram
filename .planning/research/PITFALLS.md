@@ -1,754 +1,957 @@
-# Pitfalls Research — Distribution & Agent Bootstrap
+# Pitfalls Research — Setup v2 (2026-09-13.01)
 
-**Domain:** Homebrew cask distribution + multi-runtime agent-config writing, added to an
-existing shipped Go CLI (`engram`).
-**Researched:** 2026-08-23
-**Confidence:** HIGH for Homebrew-cask mechanics and release-pipeline integration (verified
-against this org's own already-shipped sibling cask, `seanb4t/homebrew-tap` `Casks/codegraph.rb`,
-and engram's own `.github/workflows/release.yaml`); MEDIUM for cross-checked external claims
-(Gatekeeper quarantine behavior, Homebrew's `--no-quarantine` removal); MEDIUM/LOW for
-single-source runtime config-format claims (Codex TOML shape, opencode JSON shape) — flagged
-inline, verify against each runtime's live docs during phase execution.
+**Domain:** Extending an already-shipped, idempotent multi-runtime installer
+(`engram setup`, v0.16.x) with plugin-first delivery, custom auth headers, drift
+detection/reconcile, and cobra completions/manpages — engram
+(/Volumes/Code/github.com/seanb4t/engram).
+**Researched:** 2026-09-13
+**Confidence:** HIGH for anything cited against this repo's own shipped code
+(`internal/setup/*.go`, `internal/skills/*.go`, `.goreleaser.yaml`,
+`cmd/engram/releaseconfig_test.go`) and against live, read-only `--help`
+output from `claude`/`codex` installed on this machine (claude 2.1.270,
+codex-cli 0.154.0) captured this session. MEDIUM for opencode CLI claims,
+which are carried forward from `opencode.go`'s own code comments (live-verified
+against opencode 1.18.20 in the PRIOR milestone) rather than re-verified this
+session — `opencode --version`/`opencode mcp list --help` were invoked this
+session and both were killed (`Killed: 9`) by the sandbox before producing
+output; no mutating opencode command was attempted per the STRICT quality gate.
+LOW/speculative flagged inline for anything not yet decided by this milestone
+(e.g., the exact plugin-consent UX, since no phase plan exists yet).
+
+**Carried forward from the prior milestone's `PITFALLS.md`** (2026-08-23.01,
+still load-bearing and NOT restated in full below — read that file's git
+history if needed): Pitfall 7 (non-atomic writes / symlinked dotfiles — now
+directly evidenced by `internal/skills/install.go`'s own `installAgentsMDIndex`
+doc comment, which independently arrived at the same "write through, never
+stage-and-rename" symlink-preservation conclusion for `AGENTS.md`), Pitfall 8
+(non-uniform runtime config paths), Pitfall 10 (config-dir presence proves
+nothing), Pitfall 11 (version skew), Pitfall 14 (testing against real
+dotfiles — now enforced in shipped code via the `Environment`/`skills.Environment`
+injectable seams in `cmd/engram/setup.go`). Pitfalls 1–6, 9, 12, 13, 15 from
+that file were Homebrew-cask/release-pipeline and two-paths-equivalence
+pitfalls already resolved by v0.16.0's shipped `.goreleaser.yaml` and
+`internal/setupgen` — superseded, not carried forward, except where this
+milestone's new features can regress them (flagged explicitly below, e.g.
+Pitfall 9 here on completions/manpages regressing the cask-install-gate
+acceptance test).
 
 ## Critical Pitfalls
 
-### Pitfall 1: Cross-repo credential scoping failure (tap push 403s at the worst possible time)
+### Pitfall 1: `--apply` still has no opt-out from registration+skills, and that gap is the root cause the 2026-09-10 incident already proved live
 
 **What goes wrong:**
-`homebrew_casks:` in `.goreleaser.yaml` pushes `Casks/engram.rb` to a *different* repository
-(`seanb4t/homebrew-tap`) than the one the release workflow runs in. Every credential already
-wired into engram's release pipeline is scoped to the `engram` repo alone: the default
-`GITHUB_TOKEN` is always repo-scoped, and the GitHub App installation token engram's
-`release.yaml` already mints for release-please (`secrets.RELEASE_APP` /
-`RELEASE_APP_PRIVATE_KEY`) only carries whatever repos that App is *installed on* — which today
-is `engram`, not necessarily `homebrew-tap`. Reusing either as-is for the cask push fails with a
-403/404 on `git push`, and because it is the LAST pipe GoReleaser runs (cask pushes are ordered
-after the release/upload pipes so the cask can reference the just-uploaded asset URLs), it fails
-*after* the binary, checksums, and Docker images have already published successfully — so the
-run reports as a release failure even though most of the release actually shipped.
+The shipped `execute()` (`internal/setup/apply.go`) and `cmd/engram/setup.go`
+give `--apply` exactly one behavior per selected runtime: run the full write
+sequence (remove-then-add for claude-code, a single overwrite-add for codex,
+add for opencode) AND the skills facet, together, with no flag to apply one
+without the other, and no flag to apply only if the runtime is
+"not-yet-registered." This is not a hypothetical — it is the documented
+mechanism of the incident this milestone exists to prevent (engram memory
+`ryr82bf2s2`): an agent ran the plan's own documented verification command,
+`engram setup --url https://engram.example.com/mcp --apply`, to build a test
+fixture, and it overwrote the maintainer's real registrations in all three
+runtimes because there was and is no "only register the fake fixture URL if
+nothing real is already there" mode. **Drift detection alone does not close
+this gap** — a drift/reconcile feature that only changes *preview*'s
+diagnosis of an existing registration does nothing to stop `--apply` from
+running its unconditional remove-then-add or overwrite-add sequence the
+instant a caller invokes it, fixture or not. This milestone's own PROJECT.md
+already carries the corrective language ("a plan that documents `--apply` as
+a verification step is an attractive nuisance") but that is process guidance
+for *plan authors*, not a code-level guard.
 
 **Why it happens:**
-It's easy to assume "we already have a working GitHub token in this workflow" and reach for it,
-because the release workflow already authenticates successfully against GHCR and the `engram`
-repo itself. Cross-repo write access is a categorically different grant that nothing in the
-existing pipeline provides.
+The existing design's philosophy (D-08's byte-compare, D-11's report-not-
+diagnose) is about classifying an *already-performed* write, not about
+gating whether a write happens at all — "detect drift, then decide" and
+"never write blind" are easy to conflate, but they are different features.
+It is tempting to believe shipping drift detection automatically makes
+`--apply` safer, because the review conversation and the incident both
+mention "drift" — but the incident's actual failure was an unconditional
+write with no comparison step *before* the write, and drift detection as
+scoped (`preview compares the full existing registration ... reported as
+preserved, never as drift to replace`) is explicitly a **preview-time**,
+not an **apply-time**, gate.
 
 **How to avoid:**
-Follow the pattern this org already shipped for `codegraph-go` → `homebrew-tap`: a **separate**
-credential, minted specifically for the tap push, never the release-please app token or
-`GITHUB_TOKEN`. Two viable shapes, in preference order:
-1. A second GitHub App installed *only* on `homebrew-tap`, with an installation token minted
-   fresh in the release job (`actions/create-github-app-token`) and passed to GoReleaser as
-   `HOMEBREW_TAP_TOKEN` — no long-lived secret, scoped to exactly one repo, auto-rotates.
-2. A fine-grained PAT scoped to `homebrew-tap` alone, stored as a repo secret — acceptable but
-   carries its own trap (see the PAT-expiration row in Technical Debt Patterns below); if chosen,
-   set the expiration to "no expiration" only with the maintainer's explicit awareness of the
-   tradeoff, or set a calendar reminder, since a fine-grained PAT's silent expiry surfaces only as
-   a release-time failure months later with no advance warning.
+Decide explicitly, as a written decision this milestone records, whether
+`--apply` itself consults the same full-registration comparison drift
+detection performs, and refuses (or requires an additional confirmation
+flag) to replace a registration it did not write and cannot fully reproduce
+— not just report it in preview. The requirement text ("a registration
+`setup` cannot reproduce is reported as preserved, never as drift to
+replace") must be read as applying to `--apply`'s own write path, not only
+to the preview report string. If the phase plan implements reconcile as
+preview-only prose, that is a scope gap worth surfacing to the user before
+execution, not silently accepting the same shape that caused the incident.
 
-Either way, verify the credential's actual repo grant *before* the first real release depends on
-it — a `gh api repos/seanb4t/homebrew-tap` call using that exact token, run manually once.
+**Warning signs:** A test exists proving preview correctly labels an
+unreproducible registration "preserved," but no test proves `--apply`
+against the SAME fixture actually leaves the file/registration byte-for-byte
+untouched — those are two different assertions and only the second one
+would have caught the 2026-09-10 incident.
 
-**Warning signs:**
-`goreleaser release` fails at the `homebrew_casks` publish step specifically (not build, not
-upload) with a 403/404 against `homebrew-tap`; `git push` inside GoReleaser's cask pipe errors
-with "Permission to seanb4t/homebrew-tap.git denied."
-
-**Phase to address:**
-Distribution/release-pipeline phase, before the first `homebrew_casks:` block is added to
-`.goreleaser.yaml` — provision and verify the credential first, wire the pipe second.
+**Phase to address:** Drift-detection/reconcile phase, as its OWN explicit
+requirement ("`--apply` must consult the same comparison before writing"),
+verified by a fixture test that runs `--apply` (via the fake `Environment`
+seam, never a real CLI) against a pre-seeded unreproducible registration and
+asserts zero write actions were issued.
 
 ---
 
-### Pitfall 2: A tag gets cut, the GitHub Release exists, but the cask never publishes (released-but-unpublishable state)
+### Pitfall 2: Custom-header auth is structurally inexpressible on Codex's own `mcp add` — a naive implementation silently downgrades or drops the header
 
 **What goes wrong:**
-engram's actual release pipeline (`.github/workflows/release.yaml`, read directly) has
-release-please create the tag **and** the GitHub Release object together, *before* any build
-artifact exists — then a separate step waits for the module to be indexed by the Go proxy/sumdb
-(engram's own comment: "v0.11.0 failed here with a sumdb 500 and shipped zero artifacts"), and
-only after that does `goreleaser release --clean` build, upload, and (with `homebrew_casks:`
-added) push the cask. Any failure between tag-creation and the cask push — proxy/sumdb timeout,
-Docker buildx failure, or the cross-repo credential failure in Pitfall 1 — leaves a **published,
-changelogged GitHub Release with an already-cut tag, but no cask update in the tap** (and on a
-first-ever cask publish, no cask at all). `brew install seanb4t/tap/engram` then either 404s or
-— worse, for a subsequent release — silently serves the *previous* version's cask with no error,
-because the tap simply never advanced.
+Live-verified this session (`codex mcp add --help`, codex-cli 0.154.0):
+Codex's `mcp add` has exactly two auth-shaped flags — `--bearer-token-env-var
+<ENV_VAR>` (names a variable holding a raw bearer token) and
+`--oauth-client-id`/`--oauth-client-registration`/`--oauth-resource` (OAuth).
+**There is no generic `--header` flag at all.** A LiteLLM-shaped registration
+(`x-litellm-api-key: Bearer ${ENGRAM_TOKEN}`, an arbitrary header NAME, not
+`Authorization`) cannot be expressed on Codex's CLI surface in any form —
+not even as a workaround, since `--bearer-token-env-var` hardcodes the header
+name to `Authorization: Bearer <token>` (per `codex.go`'s own comment: "codex
+resolves the token from that named environment variable at its own
+invocation time"). A naive implementation of the new "custom headers" auth
+mode that reuses `--bearer-token-env-var` for a `x-litellm-api-key`-shaped
+request would SILENTLY WRITE THE WRONG HEADER NAME — registering
+`Authorization: Bearer ${ENGRAM_TOKEN}` when the gateway expects
+`x-litellm-api-key: Bearer ${ENGRAM_TOKEN}` — reporting `wrote`/success while
+producing a registration that will fail authentication the moment Codex
+actually connects. This is a second, code-shaped instance of the same root
+cause as the 2026-09-10 incident: a "successful" `--apply` that replaces a
+working config with a broken one.
 
 **Why it happens:**
-release-please and GoReleaser are two independently-triggered systems glued together by "the tag
-exists" as the only shared signal; nothing enforces that a tag is a release ONLY once every
-downstream artifact — including the cross-repo cask push — has also succeeded.
+`--bearer-token-env-var` and a generic custom-header request LOOK like the
+same shape (both are "put a token from an env var into an HTTP auth
+mechanism"), and Codex's own naming ("bearer token env var") invites reusing
+it for anything token-shaped. The distinction — Codex's flag fixes the
+header NAME to `Authorization`, a custom-header request does not — is easy
+to miss without reading Codex's own `--help` line by line, which is exactly
+what this session did to surface it.
 
 **How to avoid:**
-engram's release workflow already has the right recovery shape for this exact class of failure —
-extend it, don't invent a new one. The existing `workflow_dispatch` input (`tag: "Existing tag to
-(re-)ship artifacts for"`) re-runs the full `goreleaser release --clean` for an already-tagged
-release; `release.replace_existing_artifacts: true` in `.goreleaser.yaml` already makes the
-binary/checksum/Docker re-upload idempotent. Confirm the cask publish pipe is idempotent under
-this re-ship path too (pushing the same rendered `Casks/engram.rb` twice should be a no-op commit
-or a clean overwrite, never an error) — GoReleaser's cask pipe writes via a normal git commit to
-the tap, so a second identical-content push is safe by default, but verify this once against the
-real tap rather than assuming. Document the recovery command explicitly (`workflow_dispatch` with
-the failed tag) in whatever install/release runbook this milestone produces, since the failure is
-easy to hit given the Go-proxy propagation delay is already a *known, recurring* engram release
-failure mode (their own comment names a prior real occurrence).
+Treat "custom header name != `Authorization`" as an explicit, tested
+precondition that routes Codex to the SAME preserve/report-unsupported path
+the milestone already scopes for other unreproducible registrations — never
+to a coerced `--bearer-token-env-var` call. Concretely: if the new auth mode
+carries a header name other than `Authorization`, Codex's `Plan()` must
+return an outcome equivalent to `ErrAuthModeUnsupported` (or the new
+drift-detection "cannot reproduce" outcome) for Codex specifically, the same
+way `openCodeRuntime.Plan` already returns `ErrAuthModeUnsupported` for
+`oauth-client` — this repo already has the exact precedent to follow. Only
+when the custom header IS literally `Authorization: Bearer <ref>` does
+Codex's existing `--bearer-token-env-var` remain a faithful (if narrower)
+expression, and that equivalence should be asserted by a test, not assumed.
 
-**Warning signs:**
-`gh release view vX.Y.Z` shows a release with assets, but `brew info seanb4t/tap/engram` (or a
-manual `git log` on the tap) shows an older version than the just-cut tag.
+**Warning signs:** A fixture test using a non-`Authorization` header name
+(e.g. `x-litellm-api-key`) against Codex's `Plan()` produces an `Action`
+whose `Args` contain `--bearer-token-env-var` rather than an
+unsupported/preserve outcome.
 
-**Phase to address:**
-Distribution/release-pipeline phase — the recovery path must be proven (not just documented)
-before the first real release depends on it; a dry-run of `workflow_dispatch` against a
-throwaway/pre-release tag is cheap insurance.
+**Phase to address:** Custom-headers phase, Codex sub-task — this is the
+single highest-value fixture test in the whole milestone, since it directly
+prevents a repeat of the incident this milestone was opened to fix, on a
+runtime the milestone's own scoping text already flags as needing special
+care ("must account for Codex's `--bearer-token-env-var`-only CLI").
 
 ---
 
-### Pitfall 3: The install-time gate is Gatekeeper's hostage — quarantine ordering and the `rescue`-not-`raise` trap
+### Pitfall 3: Three runtimes, three incompatible header-value syntaxes — reusing one runtime's separator for another silently breaks the registration
 
 **What goes wrong:**
-This is the single most consequential pitfall for an **unsigned, un-notarized** cask, and it
-directly threatens the milestone's own stated prerequisite (`engram version --json` as an
-install-time correctness gate). Two independent facts compound:
+Live-verified this session and cross-checked against shipped code:
+- **Claude Code** (`claude mcp add --help`, claude 2.1.270): `-H/--header
+  "X-Api-Key: abc123"` — colon-space, HTTP-header-string form, one shell
+  word per header, repeatable flag.
+- **opencode** (`opencode.go`'s own comment, live-verified prior milestone
+  against opencode 1.18.20, itself documenting a real regression this
+  project already shipped a fix for): `--header KEY=VALUE` — equals sign,
+  NOT colon-space. The colon-space form was "LIVE-REPRODUCED to fail
+  outright ... with an immediate nonzero exit" before the fix landed.
+- **Codex**: no generic header flag exists at all (Pitfall 2).
 
-1. Homebrew Cask **unconditionally quarantines every downloaded artifact** via the LaunchServices
-   FFI, regardless of URL scheme — this was measured directly by this org against the sibling
-   `codegraph-go` cask, and is independently corroborated by a public Homebrew Cask issue
-   (cursor-cli's bundled `node` binary was preserved-quarantined through install and Gatekeeper
-   killed it — `Killed: 9` — the moment the wrapper tried to execute it; the fix was `xattr -dr
-   com.apple.quarantine` on the installed path). [MEDIUM confidence, cross-checked]
-2. Homebrew has been actively **removing** its own escape hatch for this: the `--no-quarantine`
-   flag has been deprecated/removed (Homebrew maintainers, Nov 2025 discussion, shipped in
-   Homebrew 5.1), with the maintainers' own stated position being *"post-processing is required
-   [for unsigned software], as it would be if you download and extract the files using other
-   methods."* This is now the *expected*, sanctioned pattern for a cask distributing unsigned
-   binaries — not a workaround to apologize for. [MEDIUM confidence, cross-checked against the
-   GitHub discussion directly]
-
-Combine these with the milestone's own already-identified `codegraph.rb` finding: Homebrew's
-`Cask::Artifact::GeneratedCompletion#write_completion` wraps its own execution of the binary in
-`rescue => e; opoo e` — a **warning**, never a raise — so `generate_completions_from_executable`
-structurally cannot fail an install. If the quarantine strip is ordered *after* (or omitted
-before) the `postflight` block's own `system_command engram, args: ["version", "--json"]` gate,
-that gate itself gets **SIGKILLed by Gatekeeper**, not "fails cleanly" — and depending on how the
-raise/rescue plays out around it, a naive implementation can end up in exactly the silent-warning
-failure mode this gate exists to prevent, just one layer removed. The net effect without careful
-ordering: `brew install` reports success, the binary is unusable until the user manually strips
-quarantine, and nothing told them so.
+A custom-header feature built by generalizing ONE runtime's already-working
+syntax into a shared helper (e.g., "format every header as `NAME: VALUE`"
+because that's how bearer mode already renders it for claude-code) will
+silently reproduce the exact opencode regression this project already found
+and fixed once, for the NEW custom-header code path specifically — the fix
+that lives in `opencode.go` today protects only the hardcoded `Authorization`
+bearer case, not a new generalized header-rendering function that a
+different implementer might write without re-deriving the same lesson.
 
 **Why it happens:**
-The `codegraph.rb` precedent this milestone is explicitly modeling itself on does **not** need a
-quarantine-strip step in its own `postflight`, because that binary is genuinely Developer-ID
-signed and notarized — Gatekeeper's quarantine assessment passes on its own. Copying that
-postflight structure verbatim for an *unsigned* binary silently drops a step that codegraph never
-needed, and the omission only surfaces at real-user install time, never in a snapshot/dry-run
-build that doesn't execute the artifact.
+The three runtimes' CLIs are independently designed, and "pass a header" is
+exactly the kind of operation that looks like it should have one shared
+serialization — until the syntax difference surfaces, which for opencode
+only shows up as a live nonzero exit, never a compile-time or type-level
+signal.
 
 **How to avoid:**
-The `postflight` block must strip quarantine from the installed binary **as its first action**,
-before any `system_command` invocation of that binary (the version-assertion gate, or any future
-completions/man-page generation):
-```ruby
-postflight do
-  binary = "#{HOMEBREW_PREFIX}/bin/engram"
-  system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", binary], sudo: false
-  # ...then the version-assertion gate, matching codegraph.rb's own D-10 pattern...
-end
-```
-Treat this as load-bearing production code, not defensive boilerplate — write a test/rehearsal
-(Pitfall 15) that proves the gate actually fires *without* the strip (observe a Gatekeeper kill,
-not a clean pass) and *with* it (observe the version assertion run). Do not assume `xattr -d`
-against a nonexistent attribute is a no-op without checking exit code handling — `xattr -d` on a
-path with no quarantine attribute set exits non-zero on some macOS/xattr versions, which would
-make a strict `system_command` (`must_succeed: true` default) fail the whole install on a
-*second* `brew reinstall` where quarantine is already gone. Use `xattr -d com.apple.quarantine
-"$path" 2>/dev/null; true`-shaped tolerance, or Ruby's own `rescue` around just that one command
-(deliberately, unlike the `rescue`-wrapped completions call this pitfall is about avoiding
-elsewhere — the intent here is narrow and explicit, not a blanket swallow).
+Keep header-value formatting authored per-runtime, in that runtime's own
+file, exactly as bearer mode already does — never introduce a shared
+"format a header" helper across `claudecode.go`/`codex.go`/`opencode.go`.
+`AUTHORED HERE and nowhere else (D-09)` (the package doc comment in
+`runtime.go`) already states this principle for the write invocation as a
+whole; apply it explicitly to header-value rendering too. Write one fixture
+test per runtime asserting the LITERAL separator character in the rendered
+`Action.Args` (`": "` for claude-code, `"="` for opencode), not just that a
+header was included, so a regression toward the wrong separator fails
+immediately rather than needing a live opencode process to surface it again.
 
-**Warning signs:**
-`brew install --cask engram` completes with a green "🍺 engram was successfully installed", but
-`engram version` from a fresh terminal reports "Killed: 9" or hangs; `xattr -l
-$(which engram)` shows `com.apple.quarantine` still present after install.
+**Warning signs:** A generalized `renderHeader(name, value string) string`
+function (or similar) that more than one runtime's `Plan()` calls.
 
-**Phase to address:**
-Cask/postflight-gate phase — this is the phase's actual acceptance criterion, not an edge case;
-the rehearsal in Pitfall 15 is the only way to prove it rather than assume it.
+**Phase to address:** Custom-headers phase — each runtime's own sub-task,
+enforced by the leaf-purity/no-shared-helper discipline this package already
+follows for everything else.
 
 ---
 
-### Pitfall 4: `brew audit` failures from multi-archive OS collision, stale metadata, or template assumptions
+### Pitfall 4: A read-probe genuinely CAN echo a secret value — the existing "probes never see values" claim was proven for ONE shape, not for custom headers
 
 **What goes wrong:**
-Several distinct `brew audit --cask` (and `--online`) failure classes are specific to how
-GoReleaser renders a cask from a Go build matrix, verified against the org's own
-`codegraph-go` `.goreleaser.yaml` comments:
-- **`ErrMultipleArchivesSameOS`**: if the build produces more than one archive artifact covering
-  the same OS/arch pair (e.g. a raw binary archive *and* a zip, as `codegraph-go` does for its
-  direct-download path), `cask.Pipe{}`'s default artifact filter matches **both**, and GoReleaser
-  itself refuses to render with this exact error unless `homebrew_casks[].ids:` is scoped to the
-  one archive id the cask should use. This is easy to reintroduce later if engram ever adds a
-  second archive format (e.g. a raw-binary release artifact alongside `tar.gz`) without revisiting
-  the cask's `ids:` filter.
-- **Version/SHA drift from a stale local render**: a rendered `Casks/engram.rb` copied by hand
-  during testing (rather than always regenerated by `goreleaser release`) will audit-fail once the
-  real tagged version's SHA256 no longer matches — never hand-edit the generated file; the header
-  comment (`# This file was generated by GoReleaser. DO NOT EDIT.`) is not decorative.
-- **Hand-written `livecheck` block**: GoReleaser's cask template unconditionally emits `livecheck
-  do skip "Auto-generated on release." end` for every cask — there is no config field to
-  customize it in the pinned GoReleaser v2 line. Attempting to hand-author a different `livecheck`
-  strategy (e.g. a GitHub-releases-based check) has no effect and risks confusing future
-  maintainers into thinking it's configurable when it structurally isn't.
-- **`--online` audit run too soon after tag**: `brew audit --cask --online` fetches the declared
-  URL to verify it resolves and the SHA matches; running it in the same CI job immediately after
-  the GitHub Release publish can race the same CDN-propagation-delay class engram's own release
-  workflow already works around for the Go module proxy (their own comment: 40 retries, 15s apart,
-  for proxy.golang.org/sum.golang.org). GitHub Release asset URLs are generally available faster
-  than proxy.golang.org, but treat "audit passed once locally minutes after release" as sufficient
-  evidence rather than wiring a flaky live audit into the release-blocking path.
+`claudecode.go`'s own doc comment states a specific, narrow, already-proven
+fact: for the SHIPPED bearer mode, "`claude mcp get` and the on-disk config
+both echo back the literal, unexpanded `${ENGRAM_TOKEN}` text" — i.e., the
+probe is safe because Claude Code stores and displays the UNEXPANDED
+variable reference, never the resolved secret, for that specific header
+value shape (`"Authorization: Bearer ${ENGRAM_TOKEN}"`). **This is a fact
+about Claude Code's own storage/display behavior for that literal string
+shape, verified once, live, at one version — it is not a structural
+guarantee that generalizes to every possible header value a custom-header
+feature might construct.** Two ways it can break for the new feature:
+1. A custom-header value that does NOT keep the entire secret behind a
+   `${VAR}`-shaped reference (e.g., a value with a literal prefix/suffix
+   around the reference, or a caller-supplied raw value passed through
+   unexamined) would have that literal portion echoed by `claude mcp get`
+   exactly as it is stored — the existing proof covers "whole value is a
+   `${VAR}` reference," not "value contains one."
+2. `opencode mcp list`'s printed table is a DIFFERENT surface with no
+   verified claim about its header-echo behavior at all in this repo's own
+   research — `opencode.go`'s comments document `mcp list`'s TIMING and
+   completeness limitations (dials every registered server, ~1.2-1.7s) but
+   say nothing about whether it prints registered header VALUES or just
+   header NAMES. A drift-detection feature that captures `opencode mcp
+   list`'s full stdout into a comparison buffer, a JSON report field, or
+   generated prose, without first establishing (live, once) whether that
+   table ever prints a resolved or stored header value, risks leaking
+   whatever it does print into `--output json`, a CI log, or (via
+   `internal/setupgen`) the generated `/engram-setup` slash-command
+   markdown — a file that ships inside the plugin and is committed to the
+   repository.
+3. Drift detection's OWN stated design — "preview compares the full
+   existing registration (URL, auth shape, header set)" — is new work: it
+   necessarily reads MORE of the runtime's registration state than the
+   existing probes did (the existing probes exist only to detect
+   wrote-vs-already-correct via byte-compare, D-08; they were never
+   designed to extract and RENDER a structured "header set" for a human-
+   or machine-readable diff). Building that structured extraction is new
+   surface area for exactly the leak this pitfall describes, and it did
+   not exist in the shipped v0.16.x code at all.
 
 **Why it happens:**
-GoReleaser's cask template has real, undocumented-in-most-tutorials edge cases that only surface
-once a real build matrix (multi-OS, multi-arch, multiple archive formats) is in play — the
-happy-path examples in GoReleaser's own docs use a single archive id.
+The existing, narrow, already-proven safety property gets remembered as "the
+probes are safe" rather than "THIS ONE probe, for THIS ONE value shape, on
+THIS ONE runtime, was verified safe" — and it's natural to extend that
+confidence to a materially different feature (drift's registration-state
+extraction) built on the same underlying commands.
 
 **How to avoid:**
-Run `brew audit --cask --strict Casks/engram.rb` locally (via `task release:rehearse-cask` or
-equivalent, see Pitfall 15) against every real render before trusting it; scope `ids:` explicitly
-even if only one archive exists today (self-documenting, and pre-empts the collision the moment a
-second archive format is added); never hand-edit the generated cask file, including "just to
-test" — regenerate.
+Before drift detection ships, live-verify (once, read-only, exactly the
+discipline this research session followed) what each runtime's read verb
+ACTUALLY PRINTS for a header whose value is NOT a bare `${VAR}`/`{env:VAR}`
+reference — this session could not do that verification itself (STRICT: no
+mutating commands), so it must happen in-phase, against a throwaway
+registration, before the drift feature's comparison/rendering code is
+trusted. Whatever the header set comparison consumes, sanitize it through
+the same "reference-only, never resolved value" contract `bearerProvenance`
+and the shipped bearer modes already hold themselves to — treat any header
+VALUE captured from a probe as suspect data, never render it verbatim into
+`Result.Registered`, a JSON report field, or generated prose without first
+confirming (per-runtime) that it can only ever be an unresolved reference,
+never a literal secret. Apply `internal/setup/apply.go`'s existing
+`maxCapturedBytes`/`boundCapture` discipline to this NEW field too, but
+recognize that byte-bounding a leak does not un-leak it — the fix is
+verifying the source never contains a resolved value in the first place,
+not truncating it after the fact.
 
-**Warning signs:** `goreleaser release` exits non-zero with `ErrMultipleArchivesSameOS` in the log;
-`brew audit` flags a livecheck or SHA mismatch on a file that was manually touched.
+**Warning signs:** A drift-detection "header set" field in `--output json`
+or a CI-committed generated markdown file that ever contains anything other
+than a `${VAR}`/`{env:VAR}`-shaped reference or a header NAME with no value.
 
-**Phase to address:** Cask/distribution phase, as part of the `.goreleaser.yaml` `homebrew_casks:`
-block authoring — pair every field decision with the `codegraph-go` `.goreleaser.yaml` comment
-block as a checklist, since it already documents which fields are load-bearing vs. cosmetic.
+**Phase to address:** Drift-detection/reconcile phase — the live-verification
+step (what does each read verb actually print for a non-bare-reference
+header) is a prerequisite task, not a nice-to-have, and should block the
+comparison/rendering code from landing until done.
 
 ---
 
-### Pitfall 5: The new `engram setup` CLI re-introduces the exact hand-editing problem the existing prose path was built to avoid
+### Pitfall 5: Claude Code's remove-then-add window is now ALSO the reconcile feature's collision zone — "preserve" and "converge on re-run" want opposite actions on the same registration
 
 **What goes wrong:**
-The *current* `/engram-setup` slash command (read directly from `skill/engram/commands/
-engram-setup.md`) already solved Claude Code MCP registration correctly: it explicitly states
-*"This writes a **user-scope** server ... using the supported `claude mcp add` CLI — never by
-hand-editing settings files"* — because Claude Code's own config files (`~/.claude.json` and
-friends) are not a stable, documented-for-third-parties format, and hand-editing them risks
-corrupting fields the running Claude Code process also manages (MCP OAuth tokens, project
-registrations, etc.). If the new Go `engram setup` reimplements Claude Code registration by
-directly reading/writing `~/.claude.json` instead of shelling out to `claude mcp add` (or the
-equivalent for each runtime that ships one), it regresses behavior the prose path already got
-right — and because both paths are meant to be equivalent (see Pitfall 12), a silent regression
-here is also a silent equivalence-drift.
+`claudecode.go`'s `claudeCodeRemoveAction` already documents, in its own
+comment, the exact destructive window this milestone must not make worse:
+"if the following (fatal) add action fails or is interrupted after this
+action succeeds, the operator is left with NO claude-code registration where
+they previously had a working one, and engram cannot restore it — it never
+read the prior entry." Layering drift detection on top of the SAME runtime
+creates a direct semantic collision, not just a window-timing risk:
+- **Preserve** (the new reconcile requirement) means: "a registration
+  `setup` cannot reproduce must never be replaced."
+- **Converge on re-run** (the EXISTING idempotency contract, `docs-site
+  guides/agent-setup.md`: "Repeating setup with the same inputs converges
+  on the requested registration without duplicate entries") means: "running
+  `--apply` again should make the machine match what was requested."
+  For claude-code specifically, "converging" is IMPLEMENTED as
+  remove-then-add — there is no in-place update primitive on this CLI (the
+  same `claudeCodeRemoveAction` comment: "`claude mcp add` has no
+  --force/--overwrite flag and refuses ... on an existing name at EVERY
+  scope"). If a caller runs `--apply` with a URL/auth combination that
+  ALREADY has an unreproducible custom-header registration in place, "detect
+  it, report preserved, never replace it" and "converge because that's what
+  `--apply` with a URL always does for claude-code" are contradictory
+  instructions to the SAME code path — and the shipped remove step has NO
+  way to distinguish "the existing registration is one we should preserve"
+  from "the existing registration is stale and should be cleared" without
+  the drift comparison actually gating whether the remove-then-add sequence
+  even runs. Silently choosing "converge always wins" reproduces the
+  2026-09-10 incident's exact mechanism for claude-code, since the remove
+  step has always run unconditionally to date.
 
 **Why it happens:**
-Shelling out to another CLI from Go feels like an indirection to avoid, and a "just write the
-JSON" implementation looks simpler and gives full control over the diff shown in preview mode.
-The tradeoff is invisible until it corrupts a field the target runtime itself depends on that
-isn't in the part of the schema the implementer bothered to model.
+The two requirements were written by the same milestone for good reasons —
+idempotent re-run and non-destructive reconcile are both real goals — but
+neither requirement, as scoped, states which one governs when they conflict
+on the ONE runtime whose convergence mechanism (remove-then-add) is itself
+destructive.
 
 **How to avoid:**
-For any runtime that ships its own config-mutation CLI (`claude mcp add`, and check whether Codex,
-Cursor, or opencode ship an equivalent before assuming none does), prefer shelling out to it over
-reimplementing the write, exactly as the existing prose path does — this also means `engram
-setup`'s "preview" mode for that runtime should be able to show what such a command *would* do
-without literally running it (e.g., print the resolved `claude mcp add ...` invocation), which is
-a natural fit for the project's existing preview/`--apply` convention. Reserve hand-authored
-JSON/TOML writing (with all of Pitfalls 6/7/9/13's care) for runtimes that have no such CLI —
-likely the "generic MCP client" and AGENTS.md-fallback cases the milestone already scopes
-separately.
+Resolve this as an explicit, written decision, not an implicit code
+consequence: reconcile's "preserve" must be checked BEFORE
+`claudeCodeRemoveAction` is scheduled at all, for every apply — i.e., drift
+detection is not merely a preview-time feature (Pitfall 1) but the actual
+GATE that decides whether claude-code's write sequence runs, is skipped
+with a reported "preserved, not converged" outcome, or proceeds normally
+because the existing registration IS one setup wrote and can safely be
+replaced. This makes "preserved" a real THIRD outcome alongside
+`OutcomeWrote`/`OutcomeAlreadyCorrect` for claude-code specifically, not a
+preview-only annotation — a new `Outcome` value (`plan.go`'s five-value enum
+already documents that "every code path ... must set one of the five
+constants" — this is exactly the kind of change that enum's own philosophy
+anticipates needing a sixth, explicit value for, never an implicit fallback
+onto an existing one).
 
-**Warning signs:** A round-trip test against a real `~/.claude.json` fixture shows fields
-unrelated to the MCP server entry changed or disappeared after `engram setup` runs.
+**Warning signs:** A fixture where an existing claude-code registration
+carries a header the new drift comparison flags as unreproducible, followed
+by `--apply` — if the resulting `Result.Outcome` is `OutcomeWrote` (or the
+`claude mcp remove` action ran at all), the collision was resolved in favor
+of the wrong requirement.
 
-**Phase to address:** Config-writer phase, Claude Code sub-task specifically — decide "shell out
-vs. hand-write" per runtime as an explicit, written decision before implementation, not an
-implicit default.
+**Phase to address:** Drift-detection/reconcile phase, in explicit
+coordination with the claude-code sub-task — this is the single riskiest
+integration point in the whole milestone, since claude-code is also the
+runtime whose OAuth re-login cost (see Pitfall 6) makes an unnecessary
+remove-then-add cycle expensive even when it does succeed.
 
 ---
 
-### Pitfall 6: TOML config writing for Codex collides with the "zero new Go dependencies" constraint
+### Pitfall 6: A "successful" reconcile that still runs remove-then-add on an OAuth-authenticated Claude Code registration forces re-login for no observable reason
 
 **What goes wrong:**
-Codex CLI's config lives at `~/.codex/config.toml` (project-scoped override at
-`.codex/config.toml` for trusted projects), with MCP servers under `[mcp_servers.<name>]` table
-sections. [MEDIUM confidence — single-source aggregation, verify against the live `codex --help`
-/ current OpenAI Codex docs during phase execution.] engram's `go.mod` has **no TOML dependency
-today** (confirmed: only `yaml.v3`/`go.yaml.in/yaml` appear, both `// indirect`), and the
-milestone's standing constraint is *zero new Go dependencies* — a hard constraint this project has
-held across four prior milestones. TOML is materially harder to round-trip correctly than JSON
-with the Go standard library, because:
-- There is no TOML support in `encoding/*` at all — any correct parse-modify-serialize approach
-  needs a real TOML library (comment-preserving edit support specifically requires something like
-  `pelletier/go-toml/v2`'s document-editing API or BurntSushi/toml with hand-rolled comment
-  preservation — plain `encoding/json`-style marshal/unmarshal round-trips silently drop comments
-  and reorder tables even with such a library, unless its edit-in-place API is used deliberately).
-- A naive "unmarshal to `map[string]any`, add a key, marshal back" approach — the shape that
-  *would* fit inside a zero-new-deps constraint if hand-rolled — cannot preserve either comments or
-  table/key ordering in TOML, and Codex's own config file commonly carries user comments and
-  ordering the user cares about (model config, other MCP servers, provider settings adjacent to
-  the block engram needs to add).
+`docs-site/guides/agent-setup.md` already states, as a known property of
+the existing design: "Registration and OAuth login are separate steps:
+complete the runtime's OAuth login after successful registration." Claude
+Code's OAuth token is tied to the registration entry `claude mcp remove`
+clears — PROJECT.md's own incident summary confirms this happened for real:
+"Claude Code needed re-auth after `mcp remove` + `mcp add`." If drift
+detection determines a claude-code registration is "already correct" in
+every respect EXCEPT some field the comparison logic considers changed
+(e.g., a normalization difference in how the URL or an unrelated header is
+rendered — see Pitfall 7), and reconcile decides to "converge" by running
+the existing remove-then-add sequence anyway, the operator experiences an
+unprompted OAuth re-login for a registration that, from their perspective,
+was not meaningfully different — with no drift-detection message explaining
+WHY a re-login was suddenly required, since the existing report shape
+(`Result.Reason`/`Result.Notes`) was designed for failure/tolerance
+narration, not for "this write was necessary because X differed."
 
 **Why it happens:**
-JSON and TOML *look* similar enough (both are "structured config with nesting") that the same
-"just parse, mutate, re-serialize" mental model gets applied to both, but TOML's comment/ordering
-preservation problem is strictly harder and Go's stdlib gives zero help for it, unlike JSON where
-at least the format itself has no comments to lose.
+Drift comparison is naturally implemented as a byte- or field-level
+inequality check; ANY field-level difference currently maps to "not already
+correct" under the shipped `execute()` model (`D-08`'s byte-compare is
+binary — identical or not, with no notion of "differs in a way that doesn't
+matter"). Converting "differs" into "requires an OAuth-costly rewrite" is an
+implicit consequence of reusing the existing convergence path, not a
+decision anyone makes explicitly.
 
 **How to avoid:**
-Do not attempt a general TOML parse/serialize round-trip. Do targeted, surgical **text-level**
-editing instead: locate (or confirm the absence of) a `[mcp_servers.engram]` table header via
-line-oriented scanning of the existing file, and either (a) if absent, append a new
-`[mcp_servers.engram]` block with a clear boundary comment (reusing the same marker-comment
-approach as the AGENTS.md fallback, Pitfall 13) at end-of-file, which requires no TOML parsing at
-all — TOML table order doesn't matter semantically, so appending is always structurally valid; or
-(b) if present, replace only the byte range between that header and the next `[` at column 0
-(or EOF), leaving everything else in the file byte-for-byte untouched. This sidesteps needing a
-TOML library entirely for the *write* path. It does still need a minimal TOML-aware *read* to
-detect "is engram already configured, and with what values" for idempotency (Pitfall 9/23) — that
-detection can be regex/line-scanning too (TOML table headers are a simple, well-defined lexical
-shape: `^\[mcp_servers\.engram\]\s*$`), avoiding a full parser for the read side as well. If this
-line-oriented approach proves too fragile in practice (nested inline tables, multi-line strings
-inside the target block), escalate this as an explicit decision point rather than silently adding
-a TOML dependency — the "zero new deps" constraint is described in this project's own history as
-"standing," which reads as requiring a deliberate, recorded exception, not a quiet one.
+Treat "this field's drift is real and warrants a rewrite" and "this field's
+drift is cosmetic/probe-artifact and should be ignored" as a decision the
+new comparison logic must make explicitly per field (URL normalization,
+header ordering, whitespace) — reusing Pitfall 7's normalization work — and
+surface, in the reported outcome, WHY a claude-code rewrite is about to
+force re-login, so an operator can decide to defer `--apply` rather than
+being surprised. At minimum, the generated report/prose should state the
+re-login consequence explicitly whenever claude-code's remove-then-add path
+is about to run for a registration that was OAuth-authenticated — mirroring
+`claudeCodeRemoveAction`'s existing Description discipline (surfacing a
+consequence via `Result.Notes` even when the step itself succeeds).
 
-**Warning signs:** A Codex config with pre-existing hand-written comments or a specific table
-order loses either after `engram setup` runs against it in a test fixture.
+**Warning signs:** A drift-comparison fixture where only whitespace or key
+ordering differs between the stored and requested registration, and the
+resulting outcome is still "would rewrite" for claude-code with no
+distinguishing note from a genuine credential/URL change.
 
-**Phase to address:** Config-writer phase, Codex sub-task — resolve the "surgical text edit vs.
-new dependency" decision explicitly before implementation; write the idempotency-detection regex
-and the fixture-based round-trip test (Pitfall 14) before the writer itself, TDD-style, given this
-is exactly the kind of narrow lexical assumption a later Codex config format change could quietly
-break.
+**Phase to address:** Drift-detection/reconcile phase, claude-code sub-task
+— pair directly with Pitfall 5's gating decision, since both concern the
+same remove-then-add sequence.
 
 ---
 
-### Pitfall 7: Non-atomic writes racing the target runtime, and symlinked dotfiles breaking the fix
+### Pitfall 7: Comparing a normalized registration against a runtime whose OWN read verb is lossy or non-deterministic — `opencode mcp list` is the sharpest case, but not the only one
 
 **What goes wrong:**
-Two related failure modes:
-1. **Torn writes.** If the target agent runtime is running while `engram setup --apply` writes
-   its config (a very likely scenario — Claude Code, Cursor, and Codex are all commonly left
-   running across a terminal session that also invokes `engram setup`), a naive `os.WriteFile`
-   that truncates-then-writes leaves a window where the file is empty or half-written. A runtime
-   that re-reads its config on some trigger (a session restart, a manual reload command) during
-   that window can crash on invalid JSON/TOML, or silently treat the truncated file as "no
-   servers configured."
-2. **Atomic-write-fixes-it, except when it doesn't.** The standard fix — write to a temp file,
-   then `os.Rename` into place — is atomic *only* when the temp file and the destination are on
-   the same filesystem. Dotfiles managers (chezmoi, yadm, GNU stow) commonly symlink `~/.claude`,
-   `~/.codex`, or `~/.config/opencode` to a directory inside a separate dotfiles repo, which may
-   live on a different mount (a network share, an iCloud-synced folder, a separate APFS volume).
-   Creating the temp file via a global `os.CreateTemp("", ...)` (default OS temp dir) and then
-   renaming into a symlinked target that resolves to a different filesystem fails with `EXDEV`
-   ("invalid cross-device link") on Linux, and can silently fall back to a non-atomic copy
-   depending on the library used, reintroducing failure mode 1 exactly where a symlink-using
-   power user is most likely to be.
+`opencode.go`'s own extensive doc comment already states the core problem
+for the SHIPPED byte-compare (D-08): `opencode mcp list` is "the ONLY read
+verb available," it "renders a human-formatted table with box-drawing and
+status glyphs," it "lists EVERY registered MCP server (not just engram's),"
+and it "dials the network for each of them on every invocation" — so two
+reads of the SAME unchanged state can differ for reasons entirely unrelated
+to engram's own registration (another server's transient connection status
+flipping a status glyph). The shipped code's answer is D-08's own escape
+hatch: ambiguity resolves to `OutcomeWrote`, never `OutcomeAlreadyCorrect,`
+which is SAFE for the binary "did this converge" question but is NOT an
+answer for the NEW question drift detection asks: "does the EXISTING
+registration's URL/auth-shape/header-set match what setup would write."
+Building drift detection's comparison on top of the SAME `mcp list` output
+means:
+1. **False-positive drift.** An unrelated server's status glyph, or the
+   the table's own column-width padding (which can shift when another
+   server's name is longer or shorter), changes the RAW captured bytes
+   between two runs, which a naive full-registration-string comparison
+   would report as "the registration drifted" even though engram's own
+   entry did not change at all.
+2. **False-negative preserve.** Conversely, `mcp list`'s table format may
+   not expose enough structure to reliably ISOLATE engram's own row's
+   header set from the rest of the table at all — parsing a third-party
+   human-formatted table to extract a structured comparison target is
+   EXACTLY the kind of "scraping a format that drifts as easily as the
+   flag surface it claims to protect against" this package's own
+   `apply.go` doc comment already rejects for a different purpose
+   ("no pre-flight probe of any runtime's `--help` output ... matching
+   tokens in help text is scraping a format that drifts").
+3. A parallel, less severe version of the same problem exists for Codex:
+   `codex mcp get <name> --json` DOES return structured JSON (confirmed
+   live this session: `--json` flag exists and is documented as
+   "Output the server configuration as JSON") — a genuinely reliable
+   comparison target — but Claude Code's `claude mcp get <name>` has NO
+   `--json` flag at all (confirmed live this session: `claude mcp get
+   --help` lists only `-h/--help`), so its comparison target is
+   necessarily the SAME kind of human-formatted text `apply.go` already
+   treats as an ambiguity-resolves-safely case for the narrower
+   byte-compare, not a green light for a NEW structured-diff feature to
+   assume the same text is parseable into fields.
 
 **Why it happens:**
-"Temp file + rename" is folk wisdom that's correct in the common case and silently wrong the
-moment the destination directory isn't an ordinary local directory — which describes a real,
-not-rare fraction of the target audience (developers sophisticated enough to run multiple agent
-CLIs are also disproportionately likely to manage dotfiles with a symlink-based tool).
+The shipped code already solved the NARROW problem (converge-or-not) by
+choosing to be conservative rather than parse anything — it never needed a
+STRUCTURED comparison. Drift detection's stated design ("preview compares
+the full existing registration ... URL, auth shape, header set") is asking
+for exactly the structured extraction the shipped design avoided, and it is
+easy to reach for "just parse the same output we already read" without
+re-deriving why that output was never trusted for structure before.
 
 **How to avoid:**
-Create the temp file **in the same directory as the destination file** (`filepath.Dir(target)`),
-never a global temp dir, so `os.Rename` is guaranteed same-filesystem regardless of whether that
-directory is itself a symlink target on another volume — `os.Rename` follows the destination
-symlink transparently and the atomicity guarantee holds as long as source and destination inode
-are on the same device. After a successful write, tell the user (in the CLI's own output) that a
-running instance of the affected runtime should be restarted to pick up the change — this is a
-disclosure, not a fix, since no config-writer can force another running process to re-read its
-own file.
+For each runtime, decide explicitly which comparison granularity its OWN
+read verb can honestly support, and record that as a per-runtime fact
+(mirroring D-09's "authored here, in the runtime's own file" discipline):
+Codex's `--json` output is the one case where a genuinely structured,
+field-level comparison is honest; Claude Code's and opencode's text output
+should drive a COARSER, more conservative comparison (e.g., "does the whole
+captured text change" — closer to the existing D-08 shape — rather than
+"does the extracted header field change"), with any apparent drift on those
+two runtimes defaulting toward "cannot confidently determine, report as
+preserved/unknown" rather than confidently misreporting either false
+positive or false negative. Never write a parser for `opencode mcp list`'s
+box-drawing table to extract engram's own row — if opencode's comparison
+needs more structure than the raw text safely provides, that is a scope
+boundary to state explicitly ("opencode drift detection is best-effort /
+whole-table-change only"), not a parsing problem to solve.
 
-**Warning signs:** `engram setup --apply` on a machine with dotfiles symlinks to a
-network-mounted or cross-volume location fails with `rename ...: invalid cross-device link`, or
-(if that path is guarded around) silently falls back to non-atomic behavior.
+**Warning signs:** A drift-detection fixture with an unrelated second MCP
+server present alongside engram's own entry reports drift on engram's
+registration when only the OTHER server's state changed.
 
-**Phase to address:** Config-writer phase, as a shared low-level write primitive used by every
-runtime writer — build and test this once, centrally, rather than per-runtime.
+**Phase to address:** Drift-detection/reconcile phase — decide and record
+per-runtime comparison granularity as an explicit early task, before writing
+any comparison logic, since it changes what the comparison function's
+return type even needs to express (a boolean "matches" vs. a structured
+field-level diff).
 
 ---
 
-### Pitfall 8: Runtime config paths aren't uniformly XDG, `~/.config`, or macOS `~/Library` — each runtime picked its own convention
+### Pitfall 8: Plugin install/marketplace-add without consent — and this maintainer's own machine is ALREADY in the exact partial state that makes the consent question real
 
 **What goes wrong:**
-It's tempting to write one path-resolution helper ("check `$XDG_CONFIG_HOME`, else
-`~/.config`, else macOS `~/Library/Application Support`") and apply it generically per runtime.
-That generalization is wrong for this specific runtime set: Claude Code uses `~/.claude/` (a
-dotfile directory, not XDG- or `~/Library`-shaped, on both macOS and Linux); Codex uses
-`~/.codex/`; opencode documents `~/.config/opencode/` even on macOS (XDG-style unconditionally,
-not gated behind `$XDG_CONFIG_HOME` the way a strictly-XDG-compliant tool would be) [MEDIUM
-confidence, single-source]; Cursor uses `~/.cursor/`. None of these follow the platform-idiomatic
-convention their own ecosystem might suggest (no macOS tool here uses `~/Library/Application
-Support/`), and none of them share a resolution algorithm with each other. A generic "compute the
-config dir" helper either gets one of these wrong (writes to a path the runtime never reads —
-silent no-op, the worst failure mode since `engram setup` reports success) or accretes into an
-unmaintainable pile of runtime-specific special cases disguised as a general algorithm.
+Live-inspected this session, read-only, on the machine this research ran on:
+`claude plugin marketplace list` already shows an `engram` marketplace
+configured (source: GitHub `seanb4t/engram`), and
+`~/.claude/plugins/marketplaces/engram` and
+`~/.claude/plugins/cache/engram/engram` both exist on disk — but
+`~/.claude/plugins/installed_plugins.json` shows **no engram entry actually
+installed**, and no `~/.claude/skills/curating-memory` (or any other engram
+skill) directory exists under the plain-install path either. This is a
+REAL, currently-live "marketplace added, plugin not installed, no plain
+skills present" state — not a hypothetical fixture — and it demonstrates
+exactly the ambiguity a plugin-first `--apply` must resolve correctly:
+1. **Marketplace-add is itself a trust decision.** `claude plugin
+   marketplace add <source>` fetches and caches a marketplace definition
+   from a URL/GitHub repo BEFORE any plugin is installed from it — running
+   this unconditionally under `--apply` (with no separate confirmation)
+   adds a new trust surface (a marketplace source, `seanb4t/engram`'s own
+   `.claude-plugin/marketplace.json` if one exists, or the repo itself)
+   that a `bearer`/`none`-auth, no-plugin-opinion user of today's
+   `engram setup` never had to accept. The existing binary-setup docs
+   explicitly draw the line the other way already: "Binary setup does not
+   install the standalone Claude plugin's session hooks" — plugin-first
+   delivery being scoped for `--apply` under the SAME command inverts that
+   documented boundary, and the docs/consent UX must be updated
+   deliberately, not left stale (a stale doc here is worse than usual,
+   since it directly contradicts the new shipped behavior).
+2. **`claude plugin install` and `claude plugin update` both support
+   `--json`/`-y` (`--yes`) flags** (confirmed live this session): `-y`
+   "Accept the displayed marketplace-declared command without the
+   confirmation prompt ... required when stdin or stdout is not a TTY."
+   This means a scripted, non-interactive `engram setup --apply` MUST pass
+   `-y` for plugin install to succeed non-interactively at all — which
+   means engram's own `--apply` invocation, not a human, becomes the thing
+   that accepts "the displayed marketplace-declared command" sight-unseen
+   on the operator's behalf. That is a materially bigger consent
+   surface than anything `engram setup` has shipped to date (every prior
+   write was a single, fully-specified `mcp add`/`mcp remove` invocation
+   engram itself authored and displayed in preview — a plugin's declared
+   install command is AUTHORED BY THE MARKETPLACE, not by engram, and
+   engram's own preview cannot show it without first resolving the
+   marketplace, which itself has side effects per point 1).
+3. **Codex's plugin surface is structurally the same shape**
+   (`codex plugin add <PLUGIN[@MARKETPLACE]>`, confirmed live this
+   session) — `codex plugin marketplace add` similarly requires trusting a
+   marketplace source before `codex plugin add` can resolve `PLUGIN@engram`.
 
 **Why it happens:**
-Generalizing path resolution feels like good engineering; in practice, per-runtime config
-location is an *external fact* about each tool, not a derivable convention, and treating it as
-derivable hides the actual list of facts that need verifying.
+"Plugin-first" reads, at the requirements level, as a pure DELIVERY
+mechanism change (skills/hooks/command ship via a different channel) — but
+operationally it is also a NEW trust-and-consent surface (a marketplace
+source, plus a marketplace-declared install command neither engram nor the
+operator authored) layered underneath a command (`--apply`) whose entire
+prior design assumed every write action's exact argv was authored and
+previewable by engram itself.
 
 **How to avoid:**
-Hardcode each runtime's documented config path as an explicit, named constant with a comment
-citing where it was confirmed (the runtime's own docs, or — better — the runtime's own installed
-`--help`/version-check output at detection time, see Pitfall 11), never a shared derivation
-function. Treat "verify this path against the runtime's current docs" as a per-runtime, explicit
-checklist item in the config-writer phase, not something a generic helper can be trusted to get
-right by pattern-matching on OS.
+Preview MUST show, in full, both the exact `marketplace add`/`plugin
+install` invocations AND — where the CLI supports it (`claude plugin
+install --json`, `claude plugin details <name>` per the `--help` output
+captured this session) — the marketplace-declared command that install will
+run, BEFORE `--apply` ever passes `-y`/accepts it non-interactively. Decide
+explicitly whether a first-run plugin install needs an EXTRA, separate
+opt-in beyond the existing `--apply` flag (a `--allow-plugin-install` shape,
+or equivalent) given that the marketplace source and declared command are
+not engram's own authored content the way every prior `Action.Args` was —
+and record that decision, since the milestone's own PROJECT.md is silent on
+consent UX specifically. Test against the REAL partial state this session
+found live (marketplace present, plugin not installed) as an explicit
+fixture, not just the two clean-slate cases (nothing present / fully
+installed) — the partial state may be common precisely because prior
+research/experimentation (like this milestone's own predecessor work)
+leaves exactly this residue.
 
-**Warning signs:** `engram setup --apply` reports success for a runtime, but that runtime's own
-`/mcp` (or equivalent) listing never shows engram — because the write landed in a path the
-runtime doesn't read.
+**Warning signs:** `engram setup --apply` for claude-code silently performs
+`marketplace add` before the operator has seen the marketplace source URL
+in preview output; a scripted/CI `--apply` invocation requires discovering
+`-y` semantics by trial and error rather than from engram's own `--help`.
 
-**Phase to address:** Config-writer phase, one path-constant per runtime, verified individually.
+**Phase to address:** Plugin-first-delivery phase — the consent/preview
+design here is a prerequisite decision, not an implementation detail, given
+this session found the "marketplace present, plugin absent" ambiguity is
+not hypothetical.
 
 ---
 
-### Pitfall 9: The same MCP server registered twice — across tools, and against itself on re-run
+### Pitfall 9: Plain-install and plugin-install can double-register the same skill under two different names, and a naive migration can also silently orphan the OLD copy or misuse a stow/chezmoi symlink
 
 **What goes wrong:**
-Two overlapping cases:
-1. **Cross-source duplication.** A user who already ran the *old* prose-based `/engram-setup`
-   (which invokes `claude mcp add --transport http engram <url> --scope user`) has a server keyed
-   as `engram`. If the new `engram setup` CLI, run later, generates its own key by some different
-   convention, or the user re-runs it with a different URL variant (trailing slash, `http://` vs
-   the resolved canonical form), Claude Code ends up with two entries pointing at conceptually the
-   same server — doubled tool listings surfaced to the agent, ambiguous which one is "current" if
-   they drift (one still bearer-token, one since rotated to OAuth).
-2. **Self-duplication on naive re-run.** If detection is name-only (`"is there a key literally
-   named engram?"`) rather than identity-aware, a config shape that stores servers as an **array**
-   rather than a map (some client configs do) can't be deduplicated by key lookup at all — every
-   re-run appends another array element with the same nominal name, and array position, not name
-   uniqueness, is what actually determines "duplicate" from the client's perspective.
+Two related risks, both grounded in shipped code:
+1. **Double registration.** `internal/skills/install.go`'s `installFiles`
+   writes each skill at `filepath.Join(dir, s.Name, f.Path)` — for
+   claude-code today, `~/.claude/skills/curating-memory/SKILL.md`. Claude
+   Code's OWN plugin system separately names an installed plugin's skills
+   with a `<plugin>:<skill>` prefix in its own UI/skill-listing (the
+   milestone's own scoping text names this exact collision: "duplicate
+   `curating-memory` next to the plugin's `engram:curating-memory`"). If
+   plugin-first delivery for claude-code is added WITHOUT also making the
+   plain-install path a no-op for claude-code specifically, a machine that
+   runs `--apply` after this milestone ships gets BOTH: the plugin's
+   `engram:curating-memory` (from the marketplace/plugin flow) AND a plain
+   `~/.claude/skills/curating-memory` directory (from the pre-existing,
+   still-unconditional `claudeCodeRuntime.Plan`'s `SkillTarget{Format:
+   SkillFormatNative, Dir: filepath.Join(home, ".claude", "skills")}`) —
+   this is not a hypothetical drift scenario, it is the CURRENT shipped
+   code path, unconditionally executed, that this milestone's PROJECT.md
+   explicitly names as the thing that must change: "Today `internal/skills/`
+   and `internal/setup/` have no plugin awareness: on the maintainer's
+   machine `--apply` would write a duplicate `curating-memory` next to the
+   plugin's `engram:curating-memory`."
+2. **Migration orphan / symlink-replacement risk on cleanup.** The natural
+   fix for (1) — once claude-code is plugin-first, have `--apply` DELETE
+   the stale plain `~/.claude/skills/curating-memory/` directory a PRIOR
+   binary-setup run may have left behind — introduces a NEW write mode
+   (delete) this package has never had (every existing skills-facet write
+   is additive-or-overwrite per `installFiles`'s byte-compare-then-write,
+   never a delete). If that cleanup naively does `os.RemoveAll` on a path
+   that is itself a symlink into a chezmoi/yadm/stow-managed dotfiles repo
+   (the exact scenario `internal/skills/install.go`'s own `WriteFile`
+   doc-comment for `installAgentsMDIndex` already reasons carefully about
+   for a DIFFERENT file: "this repository's own AGENTS.md is one such
+   symlink" and os.WriteFile-through-a-symlink vs.
+   stage-and-rename-replaces-the-symlink), a delete-based cleanup could
+   remove the operator's own dotfiles-managed skill source, not just
+   engram's copy of it — a strictly worse failure mode than merely leaving
+   a stale duplicate.
+3. PROJECT.md's own text ALSO names the symlink-replacement risk directly
+   for a different artifact: "replace Codex's marketplace symlinks with
+   static copies pinned to the binary's embedded version" — i.e., Codex's
+   OWN plugin caching mechanism uses symlinks (confirmed structurally this
+   session: `~/.claude/plugins/marketplaces/engram` and
+   `~/.claude/plugins/cache/engram/engram` both exist as the marketplace's
+   own managed structure) that a plain, binary-embedded skills copy
+   running AFTER plugin install could silently overwrite with static files
+   pinned to whatever version shipped inside that particular `engram`
+   binary — regressing a marketplace-tracked (auto-updatable) skill to a
+   binary-pinned (stale-on-next-plugin-update) one, with no visible error.
 
 **Why it happens:**
-"Idempotent" gets implemented as "check if the exact key I'm about to write already exists,"
-which is correct for the CLI's own second run with identical inputs, but doesn't account for
-pre-existing entries created a different way, or for array-shaped configs where key-based
-reasoning doesn't map onto the actual data structure.
+The plain-install path was built and hardened (byte-compare idempotency,
+symlink-preserving `AGENTS.md` writes) BEFORE any plugin awareness existed
+— it is correct in isolation. Plugin-first delivery is a routing decision
+layered on top ("for this runtime, use the plugin path INSTEAD"), and
+"instead" silently implies "and therefore skip/undo the other path," which
+is new logic nothing in the shipped code currently performs — the
+`FormatNone`/`FormatNative`/`FormatAgentsMD` exhaustive switch in
+`skills.Install` has no fourth case for "this runtime is plugin-managed,
+skip skills entirely," and `setupSkillsTarget`'s exhaustive mapping in
+`cmd/engram/setup.go` would need a new case too, with the SAME
+never-silently-coerce discipline it already applies to an unrecognized
+format.
 
 **How to avoid:**
-Detect existing registrations by a stable identity signal that survives naming drift — for HTTP
-MCP servers, the resolved URL (normalized: scheme + host + path, trailing slash stripped) is a
-better identity key than the human-chosen server name. Before writing, scan for *any* existing
-entry (by name, or by matching URL/command signature) and, if found, offer to update it in place
-rather than blindly adding a second one under the CLI's own default name — this needs to surface
-in preview mode as an explicit "found existing registration named X, will update" line rather than
-a silent decision either way.
+Route claude-code (and codex, once its plugin path lands) to
+`SkillFormatNone` — the EXISTING no-op value the generic pseudo-runtime
+already uses — the moment plugin-first delivery is selected for that
+runtime, rather than inventing new delete logic. This turns "stop writing
+the plain copy" into a change that reuses an already-tested code path
+(`skills.Install`'s `FormatNone` case: "has nothing to write and returns
+immediately") instead of adding destructive new behavior. For the SEPARATE
+question of a stale plain copy left over from a PRE-plugin-first version of
+engram: report its presence explicitly (a new, additive check — "found a
+plain skill install at X that plugin-first delivery no longer manages;
+remove it yourself if you want to" — surfaced via `Result.Notes`, matching
+the existing tolerant-action-Notes discipline) rather than deleting it
+automatically. Never `os.RemoveAll` a path without first confirming (via
+`os.Lstat`, not `os.Stat`) that it is not itself a symlink the operator's
+own dotfiles tooling manages — mirroring the reasoning
+`installAgentsMDIndex`'s own doc comment already applies to writes, extended
+to the NEW case of deletes.
 
-**Warning signs:** `claude mcp list` (or the equivalent for other runtimes) shows two entries
-whose URL differs only by a trailing slash or scheme; an agent session shows the engram tools
-listed twice.
+**Warning signs:** A fixture with a pre-existing `~/.claude/skills/
+curating-memory/SKILL.md` (simulating a pre-plugin-first install) shows BOTH
+that directory and a successful plugin install after `--apply` runs on the
+post-plugin-first binary; a cleanup step that follows a symlink and deletes
+through it rather than stopping at the link.
 
-**Phase to address:** Config-writer phase (detection logic) — this needs to land before the
-idempotent-re-run tests in Pitfall 26/23, since it's the mechanism those tests are proving.
+**Phase to address:** Plugin-first-delivery phase — the `SkillFormatNone`
+routing decision is small and should land with the plugin-path decision
+itself; the stale-copy detection is a small additive check that should not
+be deferred, since it is the DIRECTLY NAMED failure mode in this milestone's
+own PROJECT.md.
 
 ---
 
-### Pitfall 10: Config-dir presence proves nothing about install state in either direction
+### Pitfall 10: Hand-edits in Codex's `config.toml` that `codex mcp add` would clobber — "reconcile hand-edits" needs a source Codex's own CLI cannot give it
 
 **What goes wrong:**
-Two symmetric false signals:
-- **False positive.** A user who installed Cursor once, tried it, and uninstalled the application
-  itself very commonly leaves `~/.cursor/` behind — uninstallers for GUI apps on macOS routinely
-  don't touch dotfiles. A presence-only detector ("does `~/.cursor/` exist?") reports Cursor as
-  installed and writes a config entry with no consumer; `engram setup`'s own summary then claims
-  "configured N runtimes" when one of them isn't actually there.
-- **False negative.** Conversely, a runtime installed via Homebrew cask or a fresh direct download
-  that the user has never actually launched commonly has **no config directory yet** — several of
-  these tools lazily create their config dir on first run, not at install time. A presence-only
-  detector reports "not installed" for a genuinely-installed runtime, and `engram setup` silently
-  skips it.
+`codex.go`'s own doc comment already records the load-bearing fact this
+pitfall turns on: "Codex is the only registered runtime whose `mcp add`
+genuinely overwrites an existing entry silently" — confirmed structurally
+this session (`codex mcp add --help` shows no `--force`/confirmation gate
+at all; it simply writes). This is DIFFERENT from claude-code's refuse-on-
+existing behavior and opencode's (undocumented-either-way) behavior, and it
+is the reason `codexRuntime.Plan` needs no remove-then-add sequence today —
+but it is ALSO exactly the mechanism that makes "reconcile hand-edits"
+structurally harder for Codex than for the other two runtimes: if an
+operator hand-edited `~/.codex/config.toml`'s `[mcp_servers.engram]` table
+directly (adding a comment, a field engram doesn't know about, or a
+provider-specific extension key), `codex mcp add engram --url <...>` does
+not read, merge, or preserve that hand-edited table — it silently
+overwrites the whole entry the moment `--apply` runs, REGARDLESS of what
+drift detection concluded, because Codex exposes NO in-place-update-only
+primitive and no dry-run/diff flag on `mcp add` itself (confirmed: no such
+flag in the `--help` output captured this session). Drift detection can
+tell the operator "this differs from what I would write" via `codex mcp get
+--json` (a reliable, structured read — Pitfall 7's one genuinely-honest
+comparison target), but "detected != preserved" for Codex specifically,
+because there is no Codex-native write path that ONLY updates the fields
+engram cares about while leaving unknown TOML keys inside that one table
+untouched — the only tools are "overwrite the whole entry" (`mcp add`) or
+"read-only" (`mcp get`).
 
 **Why it happens:**
-Config-dir existence is the cheapest, most universally-available signal to check, so it's the
-natural first implementation — but it measures "has this ever been run and reached the point of
-writing config," which is neither "is the binary present" nor "is it currently usable."
+"Reconcile hand-edits" implicitly assumes a merge or partial-update
+capability exists somewhere in the toolchain being reconciled against; for
+Codex, the shipped design deliberately shells out to `codex mcp add` rather
+than hand-writing TOML (the prior milestone's Pitfall 6 already established
+why: zero-new-deps, no comment/ordering-preserving TOML round-trip in
+stdlib) — which means engram has NO write primitive of its own that could
+implement a partial merge even if it wanted to; it is entirely dependent on
+whatever `codex mcp add`'s own semantics happen to be.
 
 **How to avoid:**
-Detect installation via the binary/application itself, not its config footprint: `PATH` lookup
-for CLI-shaped runtimes (`exec.LookPath("codex")`, `exec.LookPath("cursor")` where applicable),
-and — on macOS — `/Applications/<Name>.app` presence for GUI-installed runtimes that don't
-necessarily land a CLI shim on `PATH`. Config-dir presence is useful as a *secondary* signal
-(e.g., to decide whether to create a new file or edit an existing one) but must not be the
-detection gate on its own.
+For Codex, "preserve a hand-edited registration" can only mean "detect that
+one exists (via `codex mcp get --json`'s reliable structured read) and
+REFUSE to run `mcp add` at all for that runtime, reporting the hand-edited
+state as preserved-by-non-action" — never "merge the hand-edit into the new
+write," since no primitive exists to do that merge. This is a materially
+different resolution than claude-code's (Pitfall 5's gate-before-remove) or
+opencode's (Pitfall 7's coarse-comparison) cases, and should be recorded
+explicitly as a Codex-specific limitation in whatever design doc or
+docs-site update this phase produces — an operator hand-editing
+`config.toml` for Codex, unlike an operator hand-editing nothing, needs to
+understand that `engram setup --apply` for Codex will EITHER skip Codex
+entirely (preserving the hand-edit) OR overwrite it whole (destroying the
+hand-edit) — there is no partial-preserve middle ground the CLI can offer.
 
-**Warning signs:** `engram setup` reports a runtime as configured that the user says they don't
-have installed; conversely, a runtime the user swears is installed and working doesn't show up in
-detection output at all.
+**Warning signs:** A fixture with a `[mcp_servers.engram]` table carrying an
+unrecognized extra key (simulating a hand-edit) followed by `--apply` shows
+that key gone from the resulting registration — proving `mcp add`'s
+overwrite-whole-entry behavior actually destroyed the hand-edit rather than
+merely reporting it.
 
-**Phase to address:** Runtime-detection phase — this is the phase's core correctness bar; get the
-detection signal right before building any writer on top of it.
+**Phase to address:** Drift-detection/reconcile phase, Codex sub-task —
+this needs its own explicit written decision (skip-whole-runtime vs.
+overwrite-whole-runtime, no partial option), distinct from claude-code's and
+opencode's resolutions, and should be the FIRST Codex reconcile fixture
+written since it is the runtime with the least flexible CLI.
 
 ---
 
-### Pitfall 11: Version skew — writing a config shape the installed runtime doesn't understand yet
+### Pitfall 11: Manpage generation regresses the completions design this project ALREADY fixed once — and the milestone's own scoping text is stale about how completions ship today
 
 **What goes wrong:**
-Each runtime's MCP config schema has evolved over versions (Claude Code's own `--transport http`
-HTTP-based MCP registration and `--scope` flag are themselves version-gated features that didn't
-always exist, which the current prose `/engram-setup` implicitly assumes by using them
-unconditionally). If `engram setup` writes a config field or transport type an older installed
-version of the target runtime predates, the runtime either silently ignores the unrecognized key
-(best case: engram just doesn't work, no error) or — for stricter config loaders — refuses to
-start at all, which is a materially worse outcome than "not configured," since it can break a
-runtime the user was previously using successfully for unrelated purposes.
+PROJECT.md's current milestone scope states: "The cask's
+`generate_completions_from_executable` hook already expects a completion
+verb." **This is factually stale relative to the shipped `.goreleaser.yaml`**
+(read directly this session, lines ~178–200): the cask's `post.install` hook
+explicitly and deliberately does NOT use Homebrew's
+`generate_completions_from_executable` helper at all — it hand-writes
+completions via `system_command binary, args: ["completion", shell]` for
+each of bash/zsh/fish, with its own comment explaining exactly why: "never
+via Homebrew's completion-generation helper — that helper's `write_completion`
+wraps execution in a rescue that downgrades a failure to a warning, so a
+broken binary would install green." `cmd/engram/releaseconfig_test.go`'s
+`TestReleaseConfigCaskInstallGate` enforces this as a hard acceptance gate:
+it asserts the string `generate_completions_from_executable` occurs **zero**
+times anywhere in `.goreleaser.yaml`, including comments — the test's own
+comment explains why even a comment mentioning the helper's name is
+forbidden: "the acceptance gate for this decision is a literal occurrence
+count over this file, so naming it even in a comment destroys the gate's
+ability to tell prose from actual use." Three concrete risks follow for the
+manpage work:
+1. **Following the milestone's stale scoping text literally** (wiring into
+   `generate_completions_from_executable`, or even mentioning it in a new
+   comment while explaining why manpages work differently) would either
+   reintroduce the exact silent-failure trap this project already
+   diagnosed and fixed (prior milestone's Pitfall 3/4: `rescue`-wraps
+   execution, "a warning, never a raise"), or fail the existing acceptance
+   test outright the moment a PR touches `.goreleaser.yaml` near that
+   block.
+2. **cobra/doc's `GenManTree` is a Go API, not a CLI subcommand** — unlike
+   `completion`, which cobra auto-registers as a real subcommand
+   (`cmd/engram/testdata/help.golden` already lists it), there is no
+   built-in `engram man`-shaped verb for a cask postflight hook to exec the
+   way it execs `engram completion <shell>` today. Reusing the EXACT same
+   "generate from the installed binary via `system_command`" pattern for
+   manpages requires FIRST adding a new hidden Cobra command in
+   `cmd/engram` that calls `doc.GenManTree` internally — this is new
+   surface area the milestone's "zero new Go dependencies" framing
+   undersells: `cobra/doc` being "already an indirect dependency" (true,
+   per `go.mod`'s own comment: "transitively today by cobra/doc and buf —
+   no new module is fetched") means no NEW module needs fetching, but the
+   dependency still needs PROMOTING from indirect to direct in `go.mod`
+   (this repo's own precedent: `go.yaml.in/yaml/v3` was promoted the same
+   way for skill frontmatter in the prior milestone) — skipping that
+   promotion risks a `go mod tidy` drift check failing in CI the moment
+   the import is added without the corresponding `go.mod` edit.
+3. **cobra/doc's generated output is non-deterministic by default.** Cobra
+   inserts an "Autogenerated by spf13/cobra" timestamp line into both
+   completion scripts and `GenManTree` output unless the command tree sets
+   `DisableAutoGenTag = true` — this repo relies HEAVILY on golden-file
+   tests (`help.golden`, and the pattern `TestReleaseConfigCaskInstallGate`
+   itself exemplifies) for exactly this class of generated-content
+   determinism; a manpage-generation golden test (or even just a rehearsal
+   run compared byte-for-byte across two invocations) will be spuriously
+   flaky/non-reproducible if this flag is left at its default.
 
 **Why it happens:**
-Detection logic naturally focuses on "is it installed" (Pitfall 10), and it's easy to stop there
-without also checking "which version, and does the config shape I'm about to write match what
-that version's schema expects."
+The milestone's own PROJECT.md was written from an earlier understanding of
+how completions ship (or the phrasing is imprecise shorthand for "the cask
+already has an install-time completions mechanism") — but a phase plan that
+trusts that sentence literally, rather than re-reading `.goreleaser.yaml`
+directly, will build the wrong thing. Separately, cobra's own defaults
+(auto-gen timestamp) are easy to overlook because they only matter once
+something diffs the generated output across two runs, which a first "does
+it produce a man page" smoke test would not surface.
 
 **How to avoid:**
-Where the runtime exposes a version (`codex --version`, `claude --version`, etc.), capture it at
-detection time and gate the written config shape on a known-minimum-version if the milestone's
-scope includes any config feature that isn't universally supported (e.g., HTTP-transport MCP vs.
-older stdio-only support). Where no reliable version signal exists, prefer the most
-broadly-compatible config shape available rather than the newest/most convenient one, and treat
-"this runtime's schema has a known minimum version for feature X" as a fact to record per-runtime,
-not assume is stable.
+Re-verify `.goreleaser.yaml`'s actual completions mechanism directly (as
+this research did) before writing the phase plan or requirements text for
+manpages — do not propagate PROJECT.md's `generate_completions_from_
+executable` phrasing into code, comments, or a new test without first
+confirming it against the file. Design manpage generation to MIRROR the
+completions pattern's actual shape (a new hidden cobra command, exec'd from
+the SAME cask postflight block, AFTER the version-assertion gate — the
+existing `checkOrdering` test's third assertion, `"version", "--output",
+"json"` before `args: ["completion"`, should gain a parallel assertion for
+whatever the man verb's marker string is), not the helper it deliberately
+avoids. Set `RootCmd.DisableAutoGenTag = true` before calling `GenManTree`
+(and confirm `GenBashCompletion`'s auto-gen tag setting is already handled
+the same way, if not already verified) so any generated-content comparison
+test is deterministic. Promote `cobra/doc` from indirect to direct in
+`go.mod` in the SAME commit that first imports it, following the
+`go.yaml.in/yaml/v3` precedent exactly.
 
-**Warning signs:** A runtime that was working before `engram setup` ran fails to start afterward,
-or starts but silently drops the newly-added server.
+**Warning signs:** A grep for `generate_completions_from_executable`
+anywhere in a manpage-phase PR's diff (including comments) — the existing
+test already fails loudly on this, so this is more a "catch it before CI"
+warning than a hidden risk, but the failure mode is worth naming since the
+milestone's OWN scoping text points the wrong way. Separately: two
+consecutive local `engram man`-equivalent generation runs producing
+byte-different output (the auto-gen-tag timestamp) is the manpage-specific
+non-determinism signature.
 
-**Phase to address:** Runtime-detection phase (capture version) and config-writer phase (gate on
-it) — a cross-cutting concern between the two, worth an explicit decision recorded once.
-
----
-
-### Pitfall 12: The two-paths divergence trap — and why a naive equivalence gate passes vacuously
-
-**What goes wrong:**
-`/engram-setup` (prose, hand-maintained markdown, ships inside the plugin) and `engram setup`
-(the new Go CLI) are two independently-edited artifacts meant to produce the *same observable
-outcome* when the slash command delegates. Nothing structurally prevents them from drifting:
-a future flag added to `claude mcp add`, a scope default change in the CLI, or a runtime adding a
-new config field can update one artifact and not the other, and the mismatch is invisible until a
-user on the un-updated path gets a materially different (or broken) result than a user on the
-CLI path.
-
-**Given this repo's own documented history, a naive equivalence gate does not catch this — it
-actively looks like it does while catching nothing.** The repo's prior vacuous-gate instances
-share one shape: a check that is syntactically present and green, but tests a proxy for the real
-property rather than the property itself. Applied here, the specific naive gates that would pass
-vacuously:
-- **Keyword/string-presence matching** ("does the prose file mention the same server name/URL
-  default as the CLI's default flag value?") — this is exactly the class of gate this repo has
-  already been burned by (a regex character class swallowing a token boundary; a negative grep
-  matching the wrong verb inflection). Two documents can share every keyword while describing
-  materially different *steps* — e.g., prose says `--scope user`, code defaults to project scope,
-  and a keyword gate that only checks for the string "engram" and "MCP" in both places is green
-  regardless.
-- **Independent liveness checks with no cross-comparison.** A test that the CLI path exits 0, plus
-  a separate markdown-lint pass on the prose file, each prove their own artifact "works" in
-  isolation — and prove *zero* things about whether the two produce equivalent results. This is
-  the same shape as the repo's documented `cmd | tail -20; echo "exit=$?"` bug: two things that
-  each look checked, where the thing that actually matters (equivalence, not individual validity)
-  was never asserted at all.
-- **Freshness/recency proxies** ("prose file's last-modified timestamp is after the CLI's last
-  commit touching the setup flow") — this can pass by coincidence (the CLI change genuinely didn't
-  require a prose change that time) and then keeps passing by inertia on the next several changes
-  that *did* require one but happened to also bump the prose file's mtime for an unrelated reason
-  (e.g., a typo fix). A proxy metric that happens to be right once accumulates false confidence.
-
-**Why it happens:**
-Equivalence between a natural-language artifact and executable code has no automatic oracle —
-inventing one requires deciding *what "equivalent" means*, and that decision is exactly where a
-plausible-looking-but-hollow proxy creeps in, because a real equivalence check is harder to write
-than a proxy and the proxy is what compiles first.
-
-**How to avoid — make divergence structurally harder, don't just test for it after the fact:**
-This repo already has the precedent for the right shape: `internal/surfaces`'s conformance gate
-(v0.13.x Phase 2) declares each conditional rule's canonical sentence **once**, in code, and
-*derives* applicability and presence-checking across five different surfaces (cobra help,
-jsonschema, MCP descriptions, proto comments, docs-site) from that single declaration — rather
-than restating the rule five times and hoping they stay in sync. Apply the same structure here:
-1. **Prefer generation over parallel hand-authorship wherever the content is mechanical.** The
-   mode→command table already embedded in the current `engram-setup.md` (OAuth / pre-registered
-   OAuth client / bearer token / none → the exact `claude mcp add` invocation for each) is exactly
-   the kind of table that can be generated from the CLI's own flag/mode enumeration rather than
-   hand-typed in markdown — a `task docs:gen`-style step that renders this table into the slash
-   command from a single Go-side source of truth, checked via a golden-file diff test (mirroring
-   this project's own cobra-`--help`-golden pattern from v0.13.x Phase 2), makes the table
-   *incapable* of drifting rather than merely *checked* for drift.
-2. **Where the content is genuinely natural language and can't be generated** (framing, tone,
-   troubleshooting prose), the test that actually catches drift is behavioral, not textual: run
-   `engram setup --dry-run` for a given runtime/auth-mode combination, capture the exact
-   machine-readable plan it produces (the config diff it would write), and assert that the
-   *criterion the slash command uses to decide whether to delegate at all* ("is the `engram`
-   binary on PATH") is itself independently exercised and true/false in the test harness for both
-   branches — i.e., prove both branches are reachable and, when reachable, converge on the same
-   resulting config state, by actually running both and diffing the *result*, never by comparing
-   the *instructions*.
-3. Treat "prose and code agree" as a property to prove **once per behavior-affecting change**, at
-   the point that change is made — not as a periodic audit — since periodic audits are exactly
-   where a proxy-metric gate quietly stops meaning anything between audits.
-
-**Warning signs:** Any test for this that can be described in one sentence as "check that string
-X appears in both files" or "check both files were touched in the same PR" — either sentence is
-itself the signal that the gate is a proxy, not a proof.
-
-**Phase to address:** Slash-command-delegation phase, as its own explicit deliverable (the
-generation/golden-test mechanism), not a follow-up test suite bolted on after both paths already
-exist independently.
+**Phase to address:** Completions/manpages phase — re-verify the actual
+`.goreleaser.yaml` mechanism as the FIRST task, before any code or
+requirements text is written from PROJECT.md's summary of it.
 
 ---
 
-### Pitfall 13: Idempotent AGENTS.md-appended guidance — markers, checksums, and whole-block replacement each fail differently
+### Pitfall 12: A new hidden `man`-generation command needs the SAME exclusion discipline `completion` already has, or it silently pollutes every surface-conformance and catalog test
 
 **What goes wrong:**
-The milestone falls back to "AGENTS.md-appended guidance" for runtimes with no native skill
-format. Naively appending on every `engram setup` run duplicates the block on every re-run — an
-unbounded-growth bug that's easy to miss in a first pass because a single run looks correct.
-Each of the three standard fixes has a distinct, real failure mode, not just theoretical ones:
-- **Marker comments** (`<!-- engram:skills:start -->` / `<!-- engram:skills:end -->`) correctly
-  make the block's boundaries machine-detectable, but: (a) if the user manually deletes just the
-  markers while leaving the body text (a very plausible edit — someone "cleaning up" a file they
-  don't fully understand), the next run has no anchor and either re-duplicates the body under
-  fresh markers, or needs a weaker content-sniffing fallback that itself risks false-positive
-  matches against unrelated content; (b) markers make the region overwrite-safe for *engram's*
-  writes, but do nothing to preserve a user's own edits made *inside* the region between runs —
-  this must be an explicit, stated non-goal ("content between these markers is managed by `engram
-  setup` and will be overwritten"), not an implicit behavior the user discovers by losing an edit.
-- **Content checksums** (hash the block, compare before writing) correctly answer "did anything
-  change, can I skip the write" — but cannot answer "where do I write the *new* content when it
-  *has* changed," since a checksum has no positional information. Checksums are therefore a
-  write-skipping optimization layered on top of a marker (or other positional) mechanism, never a
-  substitute for one.
-- **Whole-block replacement without a change check** (rewrite the entire managed region every
-  single run, unconditionally, using markers to find it) is the simplest correct baseline: it
-  can't accumulate duplicates, and "unnecessary write when nothing changed" is a performance
-  nicety, not a correctness bug — resist the temptation to treat the checksum-skip optimization as
-  load-bearing; it should be safe to delete without breaking correctness.
+`cmd/engram/cmdwalk.go` already carries a narrow, explicit exclusion:
+"cobra's own `help`/`completion` scaffolding (auto-registered ... ) ... is
+Hidden or its Name() is `help` or `completion`" (`isSkipped`, referenced in
+the doc-comment excerpt captured this session), and multiple tests
+(`cmdwalk_test.go`, `surfaces_test.go`, `golden_test.go`) depend on that
+exact, closed enumeration to keep `--help` output, the operator-command
+catalog (`catalog.go`), and the `internal/surfaces` conformance gate
+(`v0.13.x`'s "declare each conditional rule once, derive presence-checking
+across five surfaces") stable. A new hidden command added for manpage
+generation (whatever it is named — `man`, `gendoc`, `docs`) is, BY
+CONSTRUCTION, a sixth cobra command sibling to `completion` — but nothing in
+`isSkipped`'s current three-way check (`cmd.Hidden`, `Name() == "help"`,
+`Name() == "completion"`) will exclude it automatically. If it is added
+without `Hidden: true` AND without extending the skip predicate, it will
+appear in `Names()`/the operator catalog/`--help` golden output as a
+real, user-facing command — breaking `help.golden` and any exhaustive
+"every command has X" surfaces conformance check the moment it is added,
+in a way that is easy to chase as an unrelated regression rather than
+recognize as "a new hidden command needs the same treatment as
+`completion`."
 
 **Why it happens:**
-Idempotent text-block management looks solved on the first pass (write once, verify the second
-run doesn't duplicate) and the marker-deletion / in-region-edit-loss edge cases only surface with
-a user who interacts with the file in ways the implementer didn't rehearse.
+`completion`'s exclusion was hand-coded for a SPECIFIC cobra auto-registered
+name, not as a general "any hidden doc-generation utility" rule — adding a
+structurally similar but differently-named command doesn't inherit that
+treatment just because it serves an analogous purpose.
 
 **How to avoid:**
-Implement whole-block replacement inside stable, sufficiently-unique markers (include a stable
-slug, e.g. `engram:agents-md:v1`, but deliberately **not** a content hash in the marker itself —
-a content hash in the marker would make the marker change every time the managed content changes,
-defeating its own purpose as a stable anchor) as the baseline. State explicitly, in the block's own
-header comment inside AGENTS.md, that the region is engram-managed and overwritten on every
-`engram setup` run — this converts "user loses an edit" from a silent surprise into a documented,
-discoverable contract. Handle marker-deleted-but-body-present as an explicit, logged "couldn't
-find our managed region, appending a new one" case rather than a silent duplicate, so at least the
-CLI's own output makes the anomaly visible.
+Either (a) mark the new command `Hidden: true` (which `isSkipped` already
+honors regardless of name — the OR-condition `cmd.Hidden || Name() ==
+"help" || Name() == "completion"` covers any hidden command generically),
+which is the simpler and more future-proof choice, or (b) if it must be
+visible for some reason, extend `isSkipped`'s three-way check explicitly
+and update every test that enumerates the excluded set by name
+(`cmdwalk_test.go` at minimum). Prefer (a): mirror `completion`'s own
+"hidden utility, not a first-class user command" positioning rather than
+adding a fourth named exception to a check whose own doc comment implies a
+short, closed list.
 
-**Warning signs:** Running `engram setup` twice on a clean AGENTS.md produces two copies of the
-appended guidance; the appended block silently reverts a user's manual edit inside it with no
-prior warning in the CLI's preview output.
+**Warning signs:** `help.golden` (or any `nonHiddenCommands`-driven test)
+fails immediately after the new command is added, listing it as an
+unexpected addition.
 
-**Phase to address:** Skills-distribution phase, AGENTS.md-fallback sub-task — write the
-idempotent-re-run test (Pitfall 26) against this exact mechanism before considering the fallback
-path done.
+**Phase to address:** Completions/manpages phase — mark the command Hidden
+from its first commit, verified by running the existing golden tests
+(`go test ./cmd/engram/... -run Golden`) before considering the task done,
+not as an afterthought once a test happens to fail.
 
 ---
 
-### Pitfall 14: Testing config writers against the developer's real dotfiles
+### Pitfall 13: `#560`'s `ctx.Err()` fix looks small in isolation but changes the observable contract every OTHER pitfall's fixture tests rely on
 
 **What goes wrong:**
-Any test that calls the real path-resolution logic without an injectable override writes to
-whatever the running machine's actual `~/.claude/`, `~/.codex/`, `~/.cursor/`, or
-`~/.config/opencode/` resolves to. On a CI runner this is usually harmless (nothing installed
-there), but on a contributor's laptop — which very plausibly *does* have one or more of these
-tools installed for their own daily use — `go test ./...` silently mutates their real, in-use
-agent configuration. This is a machine-dependent flake in the worst direction: it passes safely on
-CI and corrupts a human's environment locally, meaning it's exactly the kind of bug that survives
-a green CI pipeline indefinitely.
+`environment.go`'s `osRun` currently converts ANY `*exec.ExitError` —
+including one produced by `exec.CommandContext`'s own deadline-triggered
+kill — into `RunResult{ExitCode: exitErr.ExitCode()}` with a **nil** error,
+never consulting `ctx.Err()` to distinguish "the process ran and exited
+nonzero on its own" from "the process was killed because the context
+deadline expired." Every pitfall in THIS document that proposes a new
+timeout-sensitive behavior (Pitfall 4's live-verification probes, Pitfall 7's
+per-runtime read-verb reliability, any new plugin-install `Environment.Run`
+call which may legitimately take longer than `execTimeout`'s existing 20s
+constant given a real network fetch from a marketplace) will be built and
+tested against the CURRENT, buggy contract unless this fix lands FIRST or
+concurrently — a fixture test asserting "a plugin install that times out
+reports a distinguishable timeout reason" cannot be written correctly
+against the current `osRun`, since a deadline-killed process today reports
+as an ordinary nonzero exit (frequently exit -1 on Unix for a SIGKILL'd
+process), indistinguishable in the `RunResult`/`Result.Reason` shape from a
+genuine CLI usage error.
 
 **Why it happens:**
-Path resolution (`os.UserHomeDir()` + a hardcoded suffix) is the kind of code that's trivial to
-write inline and easy to forget needs an override seam, especially since the function "obviously
-works" the first time it's manually tried.
+The bug is narrow and easy to treat as a pure cleanup item ("W01 — fix the
+exit-code conversion") independent of the new features — but plugin
+install is the first NEW call site in this milestone plausibly slow enough
+(network fetch of a marketplace/plugin archive) to actually HIT
+`execTimeout` in practice, where every existing call site (`mcp add`/`mcp
+get`, all under ~2s per the shipped research) essentially never did.
 
 **How to avoid:**
-Give every path-resolution function an injectable base directory — an explicit parameter, or an
-`ENGRAM_SETUP_HOME`-shaped environment override consistent with this project's existing
-`ENGRAM_`-prefixed config convention — and make every writer test set it to `t.TempDir()`. Add a
-guard test that asserts the *production* code path, when no override is set, resolves under the
-real `$HOME` — proving the override seam exists and is wired, the same "prove the gate is real"
-discipline this project already applies elsewhere (e.g., the `newTestStore` collection-prefix
-conformance gate that proves no test store construction bypasses its isolation seam).
+Land the `#560` fix (consult `ctx.Err()` in `osRun`'s error-classification
+switch — a `context.DeadlineExceeded`/`context.Canceled` check alongside the
+existing `errors.As(runErr, &exitErr)` branch) BEFORE or ALONGSIDE the
+plugin-install phase, not as an independent, later cleanup — and write the
+plugin-install timeout fixture test against the FIXED contract, asserting a
+distinguishable timeout reason (not a bare nonzero-exit `Reason` string)
+reaches the operator. Consider, explicitly, whether plugin install's likely
+longer network latency means `execTimeout`'s existing fixed 20s constant
+(documented as deliberately non-tunable because "every runtime's `mcp
+add`/`mcp get` surface completed in under 2 seconds") needs its own
+per-call-site override now that a genuinely slower operation exists — this
+is the kind of the "not yet earned" tunability that constant's own comment
+already anticipates revisiting.
 
-**Warning signs:** A test failure (or, worse, no failure but a changed file) appears in `git
-status` under a contributor's real home directory after running the test suite; CI stays green
-throughout because the CI runner has none of these tools installed to corrupt.
+**Warning signs:** A plugin-install timeout in the wild reports as a bare
+"exited -1" (or similar) rather than a legible timeout message; a fixture
+test for plugin-install timeout handling can only be written by asserting
+on exit code -1 rather than on a distinct seam-error path.
 
-**Phase to address:** Config-writer phase — build the override seam as the *first* piece of
-infrastructure, before the first runtime-specific writer, so every subsequent writer test inherits
-it rather than each writer needing its own ad hoc fixture.
-
----
-
-### Pitfall 15: Rehearsing the cask install without publishing — and why engram's rehearsal can't skip the step codegraph's did
-
-**What goes wrong:**
-There is no way to test a Homebrew cask's real install behavior (postflight hooks running against
-a real, quarantined, Caskroom-installed binary) without either publishing to the real tap or
-constructing an equivalent local rehearsal — `brew install` fundamentally needs a real tap and a
-real, brew-fetchable URL. This org has already solved this exact problem for `codegraph-go`
-(`task release:rehearse-cask`, maintainer-only, opt-in via `CASK_REHEARSE=1`): it runs a real
-`goreleaser release` build (never `--snapshot`-only, since the artifact must actually exist to
-install), copies the rendered cask aside and rewrites *only* its download URL to a local
-`file://` or loopback-HTTP mirror of the just-built `dist/`, taps a real throwaway git repo in a
-temp dir via `file://`, runs a real `brew install --cask`, asserts the postflight gate's own
-behavior, then `brew uninstall --cask` + `brew untap` in a trap-based cleanup that fires on both
-pass and fail — never touching the real tap repository or cutting a tag.
-
-**Where engram's version must diverge, not just copy:** `codegraph-go`'s rehearsal target
-*requires* real Apple Developer ID signing + notarization credentials (five `MACOS_*`
-preconditions), because — measured directly in that repo, this session — Homebrew Cask's
-unconditional quarantine SIGKILLs an unsigned or merely ad-hoc-signed binary the instant the
-postflight hook tries to execute it, so without real signing credentials the rehearsal can't even
-reach a genuine PASS. **engram's binary is deliberately unsigned per this milestone's scope** — so
-copying `codegraph-go`'s rehearsal verbatim would either (a) fail unconditionally without Apple
-credentials this project has no plan to obtain, or (b) if the signing preconditions are simply
-deleted, silently stop rehearsing the one thing that most needs rehearsing for an unsigned binary:
-Pitfall 3's quarantine-strip-before-gate ordering. engram's rehearsal target must instead:
-1. Run *without* signing (matching production reality), and
-2. Positively assert the postflight's quarantine-strip step fires and the version-assertion gate
-   still succeeds afterward — i.e., rehearse the thing codegraph-go's use of real signing
-   credentials let it skip needing to think about.
-3. As a negative control, verify (once, by hand or in a deliberately-broken variant of the
-   rehearsal) that *without* the strip, the gate does fail loudly (a Gatekeeper kill surfaced as an
-   install failure) rather than the `rescue`/`opoo` silent-warning shape — proving the gate's
-   failure mode is the right one, not just that the happy path passes.
-
-Separately: `brew install --cask` is Homebrew-Cask-specific and has no Linux/Linuxbrew
-equivalent, so this rehearsal is inherently a native-macOS, human-run task — never a CI gate.
-Treating a green CI run as evidence the cask path works is itself a mistake; CI can at most run
-`brew style`/`brew audit --cask` (no `--online`, no real install) against the static rendered file.
-
-**Why it happens:**
-The natural instinct, given a working sibling example, is to copy it — and 95% of it (the render,
-the local tap, the URL rewrite, the cleanup trap) *should* be copied verbatim, since it's
-correct-by-construction infrastructure. The 5% that must NOT be copied (the signing preconditions)
-is exactly the part most likely to be copied by inertia, since it's presented as boilerplate
-"preconditions" rather than as a decision.
-
-**How to avoid:** Fork the `release:rehearse-cask` Taskfile target from `codegraph-go` deliberately
-(not `git subtree`/copy-paste without review), strip the five `MACOS_*` preconditions, and add the
-quarantine-strip assertion described above as the target's actual new content. Document, in the
-target's own `desc:`, exactly why the signing preconditions are absent here (mirroring the dense,
-self-documenting comment style `codegraph-go`'s own Taskfile already uses) so a future maintainer
-doesn't "fix" the apparent omission by re-adding them.
-
-**Warning signs:** A cask rehearsal that passes with zero mention of quarantine anywhere in its
-own script or evidence output is testing the wrong thing for an unsigned binary.
-
-**Phase to address:** Testing/rehearsal phase, built alongside (not after) the cask/postflight-gate
-phase — the rehearsal target and the postflight gate it exists to prove should land in the same
-phase, since the gate is unverifiable without it.
+**Phase to address:** This is explicitly carried as its own bullet in
+PROJECT.md ("#560 `osRun` deadline classification") — sequence it before or
+alongside the plugin-first-delivery phase specifically, since that is the
+first phase whose new `Environment.Run` call sites make the bug
+practically reachable rather than theoretical.
 
 ---
 
@@ -756,113 +959,146 @@ phase, since the gate is unverifiable without it.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|-----------------|-----------------|
-| Fine-grained PAT for `homebrew-tap` push instead of a scoped GitHub App | Faster to set up, no App registration | Silent expiry breaks a release with no advance warning; tied to an individual account | Only as a stopgap, with an explicit expiry-monitoring plan; migrate to a GitHub App before the second real release |
-| Checking `#skip if content matches` via checksum only, no marker boundaries, for AGENTS.md | Simpler to write first | Can detect "unchanged" but structurally cannot locate where to replace changed content — degrades to append-only | Never, once content can change across engram versions (i.e., almost immediately) |
-| Presence-only runtime detection (`~/.cursor/` exists) | One `os.Stat` call, trivial | False positives (uninstalled-but-config-lingers) and false negatives (installed-but-never-launched) both misreport the setup summary | Only as a fast pre-filter before a real PATH/bundle check, never as the sole signal |
-| Skipping the cask rehearsal target and relying on `--snapshot` dry-runs only | No macOS-native maintainer step required before shipping | `--snapshot` never executes the built binary — Gatekeeper/quarantine failures (Pitfall 3) are invisible until a real user hits them | Never for the cask path specifically, given the unsigned-binary risk this milestone accepts |
+| Reusing `--bearer-token-env-var` on Codex for any custom-header request that merely "looks token-shaped" | No new Codex-specific unsupported-mode branch to write | Silently writes the wrong header NAME (`Authorization` instead of the requested one), reporting `wrote` for a registration that will fail auth (Pitfall 2) | Never — only literal `Authorization: Bearer <ref>` custom-header requests may reuse it |
+| A shared cross-runtime header-formatting helper | Less code, one place to fix a bug | Reproduces the exact opencode `KEY=VALUE` vs `KEY: VALUE` regression this project already fixed once, for the new code path (Pitfall 3) | Never — keep header rendering authored per-runtime, matching the existing `AUTHORED HERE (D-09)` discipline |
+| Treating drift detection as sufficient protection against `--apply` overwriting a real registration | Ships the "preview shows preserved" requirement text quickly | Does nothing to stop the SAME unconditional write sequence that caused the 2026-09-10 incident, since preview and apply are different code paths today (Pitfall 1) | Never, given this is the literal incident the milestone exists to prevent |
+| Auto-deleting a stale plain-install skill directory once plugin-first ships for that runtime | Cleans up the exact duplicate-skill state PROJECT.md names | `os.RemoveAll` on a path that may be a chezmoi/yadm/stow-managed symlink destroys the operator's own dotfiles source, not just engram's copy (Pitfall 9) | Never automatically — report the stale copy, let the operator remove it |
+| Parsing `opencode mcp list`'s human-formatted table to extract a structured drift comparison | Gets opencode to the same comparison granularity as Codex's `--json` read | Third-party output-format scraping this package's own `apply.go` doc comment already rejects for a different purpose; breaks silently on unrelated servers' status changes (Pitfall 7) | Never — keep opencode's comparison coarse/whole-text, or explicitly best-effort |
+| Deferring the `#560` `ctx.Err()` fix as unrelated cleanup, independent of plugin-install | Smaller, more focused PR for the timeout fix alone | Plugin-install's fixture tests get built against the CURRENT buggy timeout-classification contract and need rework once the fix lands anyway (Pitfall 13) | Only if plugin-install's own timeout-handling tests are written AFTER the fix lands, never before |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|-----------------|-------------------|
-| release-please ↔ GoReleaser (tag/Release ordering) | Assuming the tag existing means the release is fully published | Treat "tag exists" and "all artifacts including the cask published" as separately-provable states; use the existing `workflow_dispatch` re-ship path to close the gap (Pitfall 2) |
-| GoReleaser `homebrew_casks:` ↔ tap repo | Reusing `GITHUB_TOKEN` or the release-please App token for the cross-repo push | Dedicated, narrowly-scoped credential minted or stored specifically for `homebrew-tap` (Pitfall 1) |
-| `engram setup` CLI ↔ `/engram-setup` slash command | Hand-maintaining both as separate prose/code artifacts and testing each in isolation | Generate the mechanical parts of the prose from the CLI's own source of truth; test behavioral convergence, not textual similarity (Pitfall 12) |
-| `engram setup` ↔ Claude Code's own config | Hand-writing `~/.claude.json` directly instead of shelling out to `claude mcp add` | Prefer the target runtime's own config-mutation CLI wherever one exists, matching the already-shipped prose path (Pitfall 5) |
-| `engram setup` ↔ Codex's `config.toml` | Adding a TOML dependency to satisfy a general parse/serialize need | Surgical, marker-bounded text editing scoped to the `[mcp_servers.engram]` table only (Pitfall 6) |
+| Custom-header auth ↔ Codex's `mcp add` | Assuming a "bearer token env var" flag can express an arbitrary header name | Route any non-`Authorization` custom header to the unsupported/preserve path for Codex specifically (Pitfall 2) |
+| Custom-header auth ↔ opencode's `--header` | Assuming the SAME `NAME: VALUE` rendering that works for claude-code also works for opencode | Author opencode's header rendering with its own `NAME=VALUE` separator, in `opencode.go` only, never a shared formatter (Pitfall 3) |
+| Drift detection ↔ each runtime's read verb | Treating `claude mcp get`/`opencode mcp list`/`codex mcp get --json` as equally structured comparison sources | Grant Codex's `--json` output field-level comparison; treat claude-code's and opencode's text output as coarse/whole-text only (Pitfall 7) |
+| Reconcile ("preserve hand-edits") ↔ Codex's silent-overwrite `mcp add` | Assuming "preserve" can mean "merge the hand-edit into the new write" | For Codex, preserve can only mean "skip the whole runtime's write," since no partial-update primitive exists (Pitfall 10) |
+| Plugin-first delivery ↔ existing plain-install skills path | Leaving `claudeCodeRuntime.Plan`'s `SkillFormatNative` skills target wired unconditionally once plugin delivery is added | Route plugin-managed runtimes to the existing `SkillFormatNone` no-op value; report (never auto-delete) any stale plain copy (Pitfall 9) |
+| Manpage generation ↔ the cask's existing completions mechanism | Wiring into or mentioning Homebrew's `generate_completions_from_executable` helper, per PROJECT.md's stale phrasing | Mirror the ALREADY-SHIPPED `system_command binary, args: ["completion", shell]` pattern with a new hidden cobra command for manpages, never the helper the acceptance test forbids naming (Pitfall 11) |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Logging or echoing a bearer token / OAuth client secret while writing a runtime's MCP config | Credential leaks into shell history, CI logs, or a config file committed to a dotfiles repo | Mirror the existing `/engram-setup` discipline exactly: never echo a token/secret back, accept it only via masked prompt or environment variable, write it only into the target runtime's own config store |
-| Running `engram setup --apply` under `sudo` because an earlier step needed elevated permissions | Root-owned config files invisible/unwritable to the user's normal-permission runtime process afterward | Never require or silently accept elevated permissions for config writes; if a permission error occurs, surface it rather than escalating |
-| Storing the cross-repo tap-push credential as a long-lived, broadly-scoped classic PAT | A leaked or over-scoped token can write to every repo the token's owner can access, not just `homebrew-tap` | Scope narrowly (fine-grained PAT limited to one repo, or a repo-installed GitHub App) per Pitfall 1 |
+| Rendering a drift-detection "header set" field from a probe's raw captured output without first confirming that runtime's read verb only ever echoes an unresolved reference | A resolved secret value reaches `--output json`, a CI log, or a committed generated markdown file via `internal/setupgen` (Pitfall 4) | Live-verify each read verb's echo behavior for a non-bare-reference header value BEFORE trusting its output in any rendered field; sanitize/bound exactly as `apply.go`'s existing `maxCapturedBytes` discipline already does for other captures |
+| Accepting a marketplace-declared plugin-install command non-interactively (`-y`) inside `--apply` without first previewing its exact content | `--apply` executes an install command authored by a third-party marketplace, not by engram, with no prior operator visibility — a materially larger trust surface than any prior `Action.Args` engram itself authored | Preview the marketplace source and the declared install command explicitly before `--apply` ever passes `-y`/accepts it (Pitfall 8) |
+| Auto-deleting a file/directory that turns out to be a dotfiles-managed symlink, in service of the new plugin-vs-plain-install cleanup | Silently destroys the operator's own dotfiles repository content, not just engram's managed copy | `os.Lstat` (never `os.Stat`) before any delete; report stale plain-install copies rather than removing them automatically (Pitfall 9) |
+| Running `codex mcp add`/`claude mcp add` against a hand-edited registration without checking for unknown/extra fields first | Silently destroys operator-authored config (comments, provider-specific keys) with no way to recover it, since neither CLI reads-merges-writes | Detect via the runtime's own structured read verb where one exists (Codex's `--json`); skip the write and report preserved-by-non-action rather than overwrite (Pitfall 10) |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|--------------|-------------------|
-| `brew install` reports success for a binary Gatekeeper will kill on first real use | User's very first experience of the product is a mysterious crash, with no connection drawn to "unsigned binary + quarantine" | The install-time gate (Pitfall 3) must fail the `brew install` itself, loudly, rather than let a broken install report green |
-| `engram setup` silently skips a runtime the user knows is installed | User assumes engram doesn't support that runtime, or that setup is broken, with no diagnostic to act on | Report *why* a runtime wasn't detected (no binary on PATH, no application bundle found) rather than a bare absence from the summary |
-| Re-running `engram setup` produces a visibly different, growing diff each time (duplicate entries, growing arrays) | Erodes trust in the "idempotent re-install as the update path" promise the milestone explicitly makes | Preview mode should show "no changes" on a genuinely-unchanged second run — treat that as an explicit acceptance check, not an incidental outcome |
-| The prose fallback and the CLI path give a Claude Code user visibly different steps depending on whether the binary happens to be on PATH | Feels arbitrary/inconsistent between two sessions on the same machine at different PATH states | Make the delegation criterion itself visible in the slash command's own output ("binary found at X, delegating" / "binary not found, using built-in steps") so the divergence is legible, not surprising |
+| `--apply` forces an unprompted Claude Code OAuth re-login for a registration the operator considered unchanged | Erodes trust in "idempotent re-run" exactly the way the existing docs-site guide already promises it won't ("converges ... without duplicate entries") | Distinguish cosmetic drift (whitespace/ordering) from substantive drift (URL/auth/header change) before deciding claude-code's remove-then-add sequence runs at all; state the re-login consequence explicitly when it will (Pitfall 6) |
+| A scripted/CI `--apply` invocation discovers `claude plugin install`'s `-y` requirement only via a hung/failing non-interactive run | Confusing failure with no clear remediation, especially since none of engram's OWN existing write actions ever needed a confirmation-bypass flag before | Document and surface the plugin-consent flag/flow explicitly in `--help` and the docs-site guide the moment plugin-first delivery ships, not as a later doc pass |
+| A machine with a stale plain-installed skill directory (from a pre-plugin-first `engram` binary) gets a silent, unexplained duplicate skill listing after upgrading and re-running `--apply` | Operator has no idea why their agent suddenly shows `curating-memory` twice, or which copy is "current" | Report the stale copy explicitly in the setup output the FIRST time plugin-first delivery detects it, rather than leaving the operator to notice the duplicate independently (Pitfall 9) |
+| Codex operators with a hand-edited `config.toml` MCP entry get either a silent full-overwrite or a silent full-skip with no visible reasoning for which happened | Feels arbitrary — "sometimes engram touches my Codex config, sometimes it doesn't" — without the CLI ever explaining Codex's binary skip-or-clobber limitation | State plainly, in the reported outcome, that Codex offers no partial-preserve option and which of the two behaviors applied and why (Pitfall 10) |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Cask install-time gate:** Often missing the quarantine strip *before* the gate executes the
-  binary — verify by running the rehearsal (Pitfall 15) with the strip deliberately removed and
-  confirming it fails loudly rather than passing.
-- [ ] **Config writer idempotency:** Often verified only by "run it once, looks right" — verify by
-  running `engram setup --apply` **twice** in a row against the same fixture and diffing the
-  resulting file against itself (must be byte-identical).
-- [ ] **Runtime detection:** Often tested only against "installed and configured" — verify against
-  three additional fixtures: never-installed, installed-but-config-dir-absent (lazy first-run
-  case), and uninstalled-with-lingering-config-dir.
-- [ ] **Two-paths equivalence:** Often "verified" by a human reading both files side by side once —
-  verify by an automated check that is behavioral (dry-run diff comparison) or generative (golden
-  file from one source of truth), not textual similarity (Pitfall 12).
-- [ ] **AGENTS.md fallback:** Often tested only against a clean/empty file — verify against a fixture
-  where the markers were manually deleted but the body text remains, and confirm the behavior is
-  the deliberately-chosen one (visible re-append), not a silent duplicate.
+- [ ] **`--apply` non-destructive guarantee:** Often verified only against a
+  CLEAN fixture (no prior registration) — verify against a fixture with an
+  EXISTING, unreproducible (custom-header) registration and confirm
+  `--apply` performs ZERO write actions for that runtime, not just that
+  preview reports it correctly (Pitfall 1).
+- [ ] **Custom-header Codex handling:** Often verified only for the literal
+  `Authorization: Bearer <ref>` shape — verify with a non-`Authorization`
+  header name and confirm Codex routes to unsupported/preserve, never to a
+  coerced `--bearer-token-env-var` call (Pitfall 2).
+- [ ] **Drift-detection secret safety:** Often verified only for the
+  already-proven bare-`${VAR}`-reference shape — verify what each read verb
+  ACTUALLY prints for a header value that is NOT a bare reference, live,
+  before trusting the comparison/rendering code (Pitfall 4).
+- [ ] **Plugin-vs-plain skill de-duplication:** Often tested only against a
+  clean machine — verify against a fixture pre-seeded with a PRE-existing
+  plain-installed skill directory, confirming plugin-first delivery neither
+  writes a second copy nor silently deletes the stale one (Pitfall 9).
+- [ ] **Manpage generation determinism:** Often verified by "it produced a
+  man page" — verify two consecutive generation runs are byte-identical
+  (`DisableAutoGenTag` actually set), and that the new command is excluded
+  from `help.golden`/the operator catalog the same way `completion` is
+  (Pitfalls 11, 12).
+- [ ] **`#560` timeout classification:** Often "fixed" by inspection of the
+  diff alone — verify a fixture that forces a real context-deadline kill
+  and asserts `Result.Reason` is DISTINGUISHABLE from an ordinary nonzero
+  exit (Pitfall 13).
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|----------------|------------------|
-| Released tag with unpublished cask (Pitfall 2) | LOW | `gh workflow run release.yaml -f tag=vX.Y.Z` (the existing `workflow_dispatch` recovery path) once the underlying cause (credential, proxy delay) is fixed |
-| Cross-repo credential 403 discovered mid-release (Pitfall 1) | LOW–MEDIUM | Rotate/re-provision the `homebrew-tap`-scoped credential, then re-run via the same `workflow_dispatch` path — no tag re-cut needed |
-| A user's installed binary is Gatekeeper-killed because they installed before the quarantine-strip fix shipped (Pitfall 3) | LOW, per-user | `brew reinstall --cask engram` picks up the corrected `postflight`; document the one-line manual `xattr -d com.apple.quarantine $(which engram)` workaround for users who can't/won't reinstall immediately |
-| Duplicate MCP server registrations discovered in the wild (Pitfall 9) | LOW, per-user | `engram setup --apply` with detection logic in place should self-heal by recognizing and consolidating on next run; document the manual `claude mcp remove <dup-name>` fallback |
-| AGENTS.md managed block corrupted by a manually-deleted marker (Pitfall 13) | LOW | `engram setup --apply` logs "region not found, appending fresh" — user manually removes the stale duplicate body once, next run is clean |
+| A custom-header Codex registration got silently coerced to `--bearer-token-env-var` (Pitfall 2), breaking auth against a gateway expecting a different header name | LOW–MEDIUM, per-user | `codex mcp remove engram` then manually re-register via a shell script or the gateway's own documented Codex integration path, since `codex mcp add` cannot express the header directly |
+| An operator's Codex hand-edit was silently overwritten by `mcp add` (Pitfall 10) | HIGH if the hand-edit is not otherwise recorded | No engram-side recovery exists — `mcp add` never preserved the prior entry; restore from the operator's own backup/dotfiles history if one exists, which is exactly why this milestone should route to skip-not-overwrite once detected |
+| Duplicate `curating-memory` (plain) and `engram:curating-memory` (plugin) both present (Pitfall 9) | LOW, per-user | Manually remove the reported stale plain directory (`~/.claude/skills/curating-memory`) once `engram setup` names it; never delete automatically |
+| Claude Code forced an unwanted OAuth re-login during a reconcile-triggered rewrite (Pitfall 6) | LOW, per-user, but disruptive | Re-run `/mcp` → select `engram` → re-authenticate, exactly as the existing docs-site flow already documents for a fresh registration |
+| A repeat of the 2026-09-10-shaped incident despite drift detection shipping (Pitfall 1) | HIGH — same recovery as the original incident | Restore the real registration manually per-runtime (`claude mcp add`/`codex mcp add`/`opencode mcp add` with the operator's own known-correct values); there is no automated undo, which is precisely why Pitfall 1's apply-time gate must exist before this milestone is considered done |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|--------------------|----------------|
-| 1. Cross-repo credential scoping | Distribution/release-pipeline phase | A real `gh api repos/seanb4t/homebrew-tap` call using the exact minted credential, before the first real release depends on it |
-| 2. Released-but-unpublishable tag | Distribution/release-pipeline phase | Dry-run the `workflow_dispatch` recovery path against a throwaway/pre-release tag |
-| 3. Gatekeeper kills the install-time gate | Cask/postflight-gate phase | The rehearsal (Pitfall 15), run with and without the quarantine strip, observing the expected pass/fail in each case |
-| 4. `brew audit` failures | Cask/distribution phase | `brew audit --cask --strict` against every real GoReleaser render, wired into the rehearsal target |
-| 5. Reimplementing Claude Code's config write by hand | Config-writer phase (Claude Code) | Round-trip test against a real `~/.claude.json` fixture asserting unrelated fields are untouched |
-| 6. TOML/zero-new-deps collision for Codex | Config-writer phase (Codex) | Fixture round-trip test proving comments and table order outside the `[mcp_servers.engram]` block are byte-identical before/after |
-| 7. Non-atomic writes / symlinked dotfiles | Config-writer phase (shared primitive) | A test fixture where the destination directory is a symlink to a separate temp filesystem/mount |
-| 8. Non-uniform runtime config paths | Config-writer phase (per-runtime path constants) | Each path constant individually verified against that runtime's current docs, recorded as a comment citation |
-| 9. Duplicate registrations | Config-writer phase (detection logic) | A fixture pre-seeded with a differently-named-but-same-URL entry; `engram setup` must recognize and offer to consolidate, not duplicate |
-| 10. Config-dir presence false positive/negative | Runtime-detection phase | Fixtures for all four detection-state combinations (installed×configured cross product) |
-| 11. Version skew | Runtime-detection phase + config-writer phase | Version captured at detection time; config shape gated on a recorded minimum-version fact per runtime |
-| 12. Two-paths divergence | Slash-command-delegation phase | Generation/golden-file mechanism for the mechanical table, plus a behavioral dry-run-diff test for the rest — not a textual-similarity check |
-| 13. AGENTS.md idempotent append | Skills-distribution phase (AGENTS.md fallback) | Double-run byte-identical test, plus the marker-deleted-but-body-present fixture |
-| 14. Testing against real dotfiles | Config-writer phase (infrastructure, first) | A guard test proving the injectable-base-dir override seam is wired in the production path |
-| 15. Cask rehearsal without publishing | Testing/rehearsal phase (paired with the postflight-gate phase) | `task release:rehearse-cask` (engram's forked, unsigned-appropriate variant) exercised locally before the first real tag |
+| 1. `--apply` has no opt-out / drift detection doesn't gate writes | Drift-detection/reconcile phase | Fixture: `--apply` against a pre-seeded unreproducible registration issues ZERO write actions, not just a correct preview label |
+| 2. Custom headers structurally inexpressible on Codex | Custom-headers phase, Codex sub-task | Fixture with a non-`Authorization` header name routes to unsupported/preserve, never `--bearer-token-env-var` |
+| 3. Per-runtime header-syntax divergence | Custom-headers phase, per-runtime sub-tasks | Fixture asserting the literal separator character (`": "` vs `"="`) in each runtime's rendered `Action.Args` |
+| 4. Read-probes may echo secret values for non-bare-reference headers | Drift-detection/reconcile phase | Live, read-only verification of each read verb's echo behavior (task, before comparison code lands); bound/sanitize any captured header text |
+| 5. "Preserve" vs "converge on re-run" collide on claude-code's destructive remove-then-add | Drift-detection/reconcile phase, claude-code sub-task | Fixture: an unreproducible existing registration never reaches `claudeCodeRemoveAction` |
+| 6. Reconcile forces unnecessary Claude Code OAuth re-login | Drift-detection/reconcile phase, claude-code sub-task | Fixture: cosmetic-only drift (whitespace/ordering) does not trigger the remove-then-add rewrite |
+| 7. Lossy/non-deterministic read verbs undermine structured comparison | Drift-detection/reconcile phase | Per-runtime comparison-granularity decision recorded; fixture with an unrelated second MCP server proves opencode comparison isn't polluted by it |
+| 8. Plugin install/marketplace-add without adequate consent | Plugin-first-delivery phase | Preview shows the marketplace source and declared install command before `--apply` ever passes `-y`; fixture reproduces the live "marketplace present, plugin absent" partial state found this session |
+| 9. Plugin vs plain-install double registration / unsafe cleanup | Plugin-first-delivery phase | Fixture with a pre-existing plain skill directory: plugin-first delivery reports (never deletes) it; `SkillFormatNone` routing confirmed for plugin-managed runtimes |
+| 10. Codex hand-edits clobbered by `mcp add`'s silent overwrite | Drift-detection/reconcile phase, Codex sub-task | Fixture with an unrecognized extra TOML key: `--apply` either skips Codex's write entirely or documents the overwrite, never a silent partial merge that doesn't exist |
+| 11. Manpage generation regresses the completions design / follows stale PROJECT.md phrasing | Completions/manpages phase | `.goreleaser.yaml` re-verified directly (not from PROJECT.md prose) as the first task; `generate_completions_from_executable` absent from the diff; `DisableAutoGenTag` set |
+| 12. New hidden man-generation command pollutes surface/catalog tests | Completions/manpages phase | `go test ./cmd/engram/... -run Golden` green with the new command present and `Hidden: true` |
+| 13. `#560` `ctx.Err()` fix ships after, not before, plugin-install's timeout-sensitive tests are written | Sequenced before or alongside plugin-first-delivery phase | Fixture forcing a real context-deadline kill asserts a distinguishable `Result.Reason`, written against the FIXED `osRun` contract |
 
 ## Sources
 
-**First-party (HIGH confidence — direct reads of this org's own already-shipped code):**
-- `/Volumes/Code/github.com/seanb4t/engram/.goreleaser.yaml` (read directly)
-- `/Volumes/Code/github.com/seanb4t/engram/.github/workflows/release.yaml` (read directly)
-- `/Volumes/Code/github.com/seanb4t/engram/skill/engram/commands/engram-setup.md` (read directly)
-- `/Volumes/Code/github.com/seanb4t/engram/cmd/engram/version.go`, `go.mod` (read directly)
-- `seanb4t/homebrew-tap` `Casks/codegraph.rb` (fetched via `gh api`) — the sibling cask this
-  milestone explicitly models itself on; its `postflight`/`uninstall_postflight` comments are the
-  primary source for Pitfalls 3, 4, and 15
-- `seanb4t/codegraph-go` `.goreleaser.yaml` `homebrew_casks:` block comments (fetched via `gh api`)
-  — source for Pitfalls 1 and 4
-- `seanb4t/codegraph-go` `Taskfile.yml` `release:rehearse-cask` target and
-  `.github/workflows/post-release-verify.yml` (fetched via `gh api`) — source for Pitfall 15
+**First-party (HIGH confidence — direct reads of this repo's own shipped
+code and tests, this session):**
+- `/Volumes/Code/github.com/seanb4t/engram/.planning/PROJECT.md` (Current
+  Milestone: 2026-09-13.01 Setup v2 section)
+- `/Volumes/Code/github.com/seanb4t/engram/.planning/research/PITFALLS.md`
+  (prior milestone, 2026-08-23.01 — read first per the required-reading
+  instruction; superseded pitfalls noted above, carried-forward ones cited
+  by number)
+- `internal/setup/claudecode.go`, `codex.go`, `opencode.go`, `generic.go`,
+  `apply.go`, `plan.go`, `runtime.go`, `environment.go` (read directly)
+- `internal/skills/install.go`, `agentsmd.go` (read directly)
+- `docs-site/src/content/docs/guides/agent-setup.md` (read directly)
+- `.goreleaser.yaml` (postflight hook, lines ~140–211, read directly)
+- `cmd/engram/releaseconfig_test.go` (`TestReleaseConfigCaskInstallGate`,
+  read directly)
+- `cmd/engram/cmdwalk.go` (`isSkipped` doc-comment excerpt, read via grep
+  context)
+- `go.mod` (cobra/doc indirect-dependency comment, read directly)
+- Live filesystem/JSON inspection of this machine's own
+  `~/.claude/plugins/{installed_plugins.json,marketplaces/,cache/}` and
+  `~/.claude/skills/` (read-only; no mutation) — the "marketplace present,
+  plugin not installed, no plain skill copy" state cited in Pitfall 8 is
+  this machine's REAL, current state, not a constructed fixture.
 
-**External, cross-checked (MEDIUM confidence):**
-- [Homebrew/homebrew-cask#246786 — cursor-cli bundled node quarantined, killed by Gatekeeper](https://github.com/Homebrew/homebrew-cask/issues/246786)
-- [Homebrew/discussions#6537 — Deprecation of `--no-quarantine`](https://github.com/orgs/Homebrew/discussions/6537)
+**First-party, live CLI `--help` output (HIGH confidence, read-only,
+captured this session — no mutating command run, per the STRICT quality
+gate):**
+- `claude --version` (2.1.270), `claude plugin --help`, `claude plugin
+  marketplace --help`, `claude plugin install --help`, `claude plugin
+  update --help`, `claude mcp add --help`, `claude mcp get --help`
+- `codex --version` (codex-cli 0.154.0), `codex plugin --help`, `codex
+  plugin marketplace --help`, `codex plugin add --help`, `codex mcp add
+  --help`, `codex mcp get --help`
 
-**External, single-source aggregation (LOW/MEDIUM — re-verify during phase execution):**
-- Codex CLI `~/.codex/config.toml` / `[mcp_servers.*]` shape (aggregated web search, not
-  independently fetched from OpenAI's own current docs — verify against live `codex --help` /
-  developer docs before implementation)
-- opencode `opencode.json`/`opencode.jsonc`, `~/.config/opencode/` path (aggregated web search,
-  not independently fetched — verify against opencode.ai's live docs before implementation)
+**Not independently re-verified this session (MEDIUM confidence, carried
+from `opencode.go`'s own code comments, themselves live-verified in the
+PRIOR milestone against opencode 1.18.20):**
+- `opencode mcp list`'s table shape, timing, and completeness limitations
+- `opencode --header KEY=VALUE` syntax and the historical colon-space
+  regression
+- opencode's `{env:VAR}` substitution reliability
+  (anomalyco/opencode#5299) — this session did not attempt to re-check that
+  issue's current status; treat as still-open per the last recorded check
 
 ---
-*Pitfalls research for: Homebrew distribution + multi-runtime agent-config writing (engram
-2026-08-23.01 milestone)*
-*Researched: 2026-08-23*
+*Pitfalls research for: engram Setup v2 (plugin-first delivery, custom auth
+headers, drift detection/reconcile, shell completions + manpages, #560)*
+*Researched: 2026-09-13*
