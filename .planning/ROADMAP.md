@@ -318,7 +318,13 @@ on the machine, shows what it would write, and wires it up.
 2. An operator can run the hidden `engram man <dir>` command to generate one man page per command from the live cobra tree, and re-running it produces byte-identical output (no auto-generated timestamp).
 3. The Homebrew cask installs the generated man pages on `post_install` and removes exactly those paths on `post_uninstall`, symmetric with the shipped completions hooks, with ordering and absence pinned by `releaseconfig_test.go`.
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 01-01-PLAN.md — `osRun` reports `ctx.Err()` before unwrapping `*exec.ExitError`; `runSeam` names the 20s timeout in the result row (#560, REQ-osrun-deadline-error)
+- [ ] 01-02-PLAN.md — Hidden `engram man <dir>` generating byte-stable man pages via `cobra/doc`, plus the symmetric cask install/uninstall hook step pinned by `releaseconfig_test.go` (REQ-manpages-generated, REQ-manpages-cask-installed)
 
 ---
 
