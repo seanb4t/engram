@@ -186,6 +186,162 @@ func findHeaderArg(t *testing.T, args []string) string {
 	return ""
 }
 
+// TestClaudeCodeHeaders proves claude-code appends one sorted "--header"
+// pair per entry of opts.Headers to the SAME claude mcp add action, in
+// every auth mode, after every shipped argument (and, for bearer, after
+// the auth-mode header) — D-01, D-04, D-08. Two headers are supplied in
+// REVERSE sorted order to prove sortedHeaders (not caller order) governs
+// the rendered order, and a mixed-case discriminating pair proves the
+// sort key is strings.ToLower(Name), not raw byte order.
+func TestClaudeCodeHeaders(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	env := Environment{
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:   func(string) string { return "" },
+		HomeDir:  func() (string, error) { return "/home/fake", nil },
+	}
+
+	headers := []HeaderSpec{
+		{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"},
+		{Name: "CF-Access-Client-Id", EnvVar: "CF_ID"},
+	}
+	wantExtra := []string{
+		"--header", "CF-Access-Client-Id: ${CF_ID}",
+		"--header", "x-litellm-api-key: ${LITELLM_KEY}",
+	}
+
+	tests := []struct {
+		auth    string
+		wantAdd []string
+	}{
+		{
+			auth:    "oauth",
+			wantAdd: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", url, "--scope", "user"}, wantExtra...),
+		},
+		{
+			auth:    "none",
+			wantAdd: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", url, "--scope", "user"}, wantExtra...),
+		},
+		{
+			auth: "oauth-client",
+			wantAdd: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", url,
+				"--scope", "user", "--client-id", "test-client", "--client-secret", "--callback-port", "8765"}, wantExtra...),
+		},
+		{
+			auth: "bearer",
+			wantAdd: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", url,
+				"--scope", "user", "--header", "Authorization: Bearer ${ENGRAM_TOKEN}"}, wantExtra...),
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.auth, func(t *testing.T) {
+			plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: tc.auth, ClientID: "test-client", Headers: headers})
+			if err != nil {
+				t.Fatalf("Plan(auth=%q): %v", tc.auth, err)
+			}
+			if len(plan.Actions) != 2 {
+				t.Fatalf("Plan(auth=%q): len(Actions) = %d, want 2 (headers never author a third action)", tc.auth, len(plan.Actions))
+			}
+			if !reflect.DeepEqual(plan.Actions[0], claudeCodeRemoveAction) {
+				t.Errorf("Plan(auth=%q): Actions[0] = %#v, want claudeCodeRemoveAction unchanged", tc.auth, plan.Actions[0])
+			}
+			if !reflect.DeepEqual(plan.Actions[1].Args, tc.wantAdd) {
+				t.Errorf("Plan(auth=%q): Actions[1].Args = %v, want %v", tc.auth, plan.Actions[1].Args, tc.wantAdd)
+			}
+		})
+	}
+
+	// The caller's slice must not be re-ordered in place (D-08:
+	// sortedHeaders returns a clone).
+	if headers[0].Name != "x-litellm-api-key" {
+		t.Errorf("caller's Headers slice was reordered in place: headers[0].Name = %q, want %q", headers[0].Name, "x-litellm-api-key")
+	}
+
+	// Discriminating case-insensitive sort pair: byte order would put
+	// "B-Key" before "a-key", but strings.ToLower order puts "a-key"
+	// first.
+	t.Run("case-insensitive-sort", func(t *testing.T) {
+		mixed := []HeaderSpec{
+			{Name: "B-Key", EnvVar: "B2"},
+			{Name: "a-key", EnvVar: "A2"},
+		}
+		plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: "bearer", Headers: mixed})
+		if err != nil {
+			t.Fatalf("Plan: %v", err)
+		}
+		args := plan.Actions[1].Args
+		var idxA, idxB int = -1, -1
+		for i, a := range args {
+			switch a {
+			case "a-key: ${A2}":
+				idxA = i
+			case "B-Key: ${B2}":
+				idxB = i
+			}
+		}
+		if idxA == -1 || idxB == -1 {
+			t.Fatalf("Args %v missing expected header elements", args)
+		}
+		if idxA > idxB {
+			t.Errorf("Args %v: want a-key before B-Key (case-insensitive sort), got a-key at %d, B-Key at %d", args, idxA, idxB)
+		}
+	})
+
+	// Second discriminating pair: "A-Key" and "b-key" — byte order agrees
+	// with case-insensitive order here, so this pins the simple case
+	// alongside the discriminating one above.
+	t.Run("simple-sort", func(t *testing.T) {
+		mixed := []HeaderSpec{
+			{Name: "b-key", EnvVar: "B"},
+			{Name: "A-Key", EnvVar: "A"},
+		}
+		plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: "bearer", Headers: mixed})
+		if err != nil {
+			t.Fatalf("Plan: %v", err)
+		}
+		want := []string{
+			"claude", "mcp", "add", "--transport", "http", "engram", url,
+			"--scope", "user", "--header", "Authorization: Bearer ${ENGRAM_TOKEN}",
+			"--header", "A-Key: ${A}", "--header", "b-key: ${B}",
+		}
+		if !reflect.DeepEqual(plan.Actions[1].Args, want) {
+			t.Errorf("Args = %v, want %v", plan.Actions[1].Args, want)
+		}
+	})
+
+	t.Run("display-single-quoted", func(t *testing.T) {
+		plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: "bearer", Headers: headers})
+		if err != nil {
+			t.Fatalf("Plan: %v", err)
+		}
+		cmd := plan.Actions[1].Command()
+		want := "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-litellm-api-key: ${LITELLM_KEY}'"
+		if !strings.Contains(cmd, want) {
+			t.Errorf("Command() = %q, want it to contain %q", cmd, want)
+		}
+	})
+
+	// Zero-header control: nil and empty both yield Args deep-equal to
+	// TestClaudeCodePlan's bearer vector (REQ-header-bearer-unchanged's
+	// package half).
+	wantBearerNoHeader := []string{"claude", "mcp", "add", "--transport", "http", "engram", url,
+		"--scope", "user", "--header", "Authorization: Bearer ${ENGRAM_TOKEN}"}
+	for name, hs := range map[string][]HeaderSpec{"nil": nil, "empty": {}} {
+		hs := hs
+		t.Run("zero-header-"+name, func(t *testing.T) {
+			plan, err := ClaudeCode.Plan(env, Options{URL: url, Auth: "bearer", Headers: hs})
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if !reflect.DeepEqual(plan.Actions[1].Args, wantBearerNoHeader) {
+				t.Errorf("Args = %v, want %v", plan.Actions[1].Args, wantBearerNoHeader)
+			}
+		})
+	}
+}
+
 func TestClaudeCodeClientID(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
 	for _, id := range []string{"test-client", "  client 'quoted'; $(echo nope) &  "} {

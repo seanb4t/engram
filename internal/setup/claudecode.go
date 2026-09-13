@@ -59,6 +59,28 @@ func (claudeCodeRuntime) Detect(env Environment) bool {
 // shared executor's Notes accumulation (apply.go), which records every
 // tolerant action's Description regardless of its own exit code — a
 // general executor behavior, not a claude-code special case.
+// claudeCodeHeaderArgs renders one "--header" / "NAME: ${ENVVAR}" pair
+// per entry of sortedHeaders(hs) — claude-code's own colon-space
+// HTTP-header-string dialect, live-verified in 02-RESEARCH.md against
+// `claude mcp add --help` 2.1.270 (`-H, --header <header...>`). Returns
+// nil for no headers, so appending its result to an existing Args slice
+// is a no-op and every no-header Args slice stays byte-identical to HEAD
+// (D-01, D-04, D-08). This is the ONE place claude-code's header dialect
+// is authored — no other runtime's file shares it (the opencode
+// colon-space regression is exactly the anti-pattern this separation
+// avoids).
+func claudeCodeHeaderArgs(hs []HeaderSpec) []string {
+	sorted := sortedHeaders(hs)
+	if len(sorted) == 0 {
+		return nil
+	}
+	args := make([]string, 0, len(sorted)*2)
+	for _, h := range sorted {
+		args = append(args, "--header", h.Name+": ${"+h.EnvVar+"}")
+	}
+	return args
+}
+
 var claudeCodeRemoveAction = Action{
 	Args:     []string{"claude", "mcp", "remove", "engram", "--scope", "user"},
 	Tolerant: true,
@@ -105,6 +127,14 @@ var claudeCodeRemoveAction = Action{
 // name, so no per-runtime execution code exists anywhere outside this
 // file.
 //
+// Extra headers (D-01, D-04, D-08): opts.Headers is valid with every auth
+// mode and renders as bare "${ENVVAR}" references in claude-code's own
+// syntax, never a scheme — any Bearer/raw-key shape lives in the
+// variable's value, which engram never sees. Each sorted extra header is
+// appended, via claudeCodeHeaderArgs, to the SAME `claude mcp add`
+// action's Args after every shipped argument (and, in the bearer arm,
+// after the auth-mode header itself) — never a second Action.
+//
 // Every auth mode also authors the SAME SkillTarget (Phase 4, D-05,
 // D-10): skills install at user scope only, with the destination derived
 // from env.HomeDir() — never a literal beginning with a tilde and never
@@ -127,7 +157,8 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 			Actions: []Action{
 				claudeCodeRemoveAction,
 				{
-					Args:        []string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL, "--scope", "user"},
+					Args: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL, "--scope", "user"},
+						claudeCodeHeaderArgs(opts.Headers)...),
 					Description: "register engram as a user-scope MCP server",
 				},
 			},
@@ -140,8 +171,9 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 			Actions: []Action{
 				claudeCodeRemoveAction,
 				{
-					Args: []string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
+					Args: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
 						"--scope", "user", "--client-id", opts.ClientID, "--client-secret", "--callback-port", "8765"},
+						claudeCodeHeaderArgs(opts.Headers)...),
 					// --client-secret deliberately takes no inline value: Claude
 					// Code can prompt interactively, but engram provides no stdin.
 					// Scripted registration requires MCP_CLIENT_SECRET in the
@@ -158,8 +190,9 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 			Actions: []Action{
 				claudeCodeRemoveAction,
 				{
-					Args: []string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
+					Args: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
 						"--scope", "user", "--header", "Authorization: Bearer ${ENGRAM_TOKEN}"},
+						claudeCodeHeaderArgs(opts.Headers)...),
 					Description: "register engram as a user-scope MCP server (bearer token via ENGRAM_TOKEN)",
 				},
 			},
