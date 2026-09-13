@@ -1,37 +1,33 @@
 ---
 gsd_state_version: "1.0"
-milestone: 2026-08-23.01
-status: Awaiting next milestone
-stopped_at: Milestone 2026-08-23.01 archived; awaiting /gsd-new-milestone
-last_updated: "2026-09-12T23:28:28.664Z"
-last_activity: 2026-09-12
-last_activity_desc: Milestone 2026-08-23.01 completed and archived
-state_head: 3f82520cb1839d570abd4b2dd56b6f5c31842767
+milestone: 2026-09-13.01
+milestone_name: Setup v2
+status: planning
+last_updated: "2026-09-13T13:44:29.774Z"
+last_activity: 2026-09-13
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 21
-  completed_plans: 21
-milestone_name: Distribution & Agent Bootstrap
-current_phase: 06
-current_phase_name: Install Documentation
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-12 — after milestone 2026-08-23.01 shipped as v0.16.0)
+See: .planning/PROJECT.md (updated 2026-09-13 — after opening milestone 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 **Current focus:** Planning next milestone (`/gsd-new-milestone --reset-phase-numbers`); candidates in PROJECT.md Deferred and BACKLOG.md
 
 ## Current Position
 
-Phase: Milestone 2026-08-23.01 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-12 — Milestone 2026-08-23.01 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-13 — Milestone 2026-09-13.01 started
 
 ## Deferred Items
 

@@ -244,6 +244,53 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 
 </details>
 
+## Current Milestone: 2026-09-13.01 Setup v2
+
+**Goal:** `engram setup` is safe to re-run against a real machine — it delivers skills, hooks, and
+`/engram-setup` through the runtime's own plugin system where one exists, can express any working
+auth shape, and never replaces a registration it did not write.
+
+**Target features:**
+
+- **Plugin-first delivery** (backlog 999.5) — Claude Code and Codex both expose a `plugin` CLI
+  (`claude plugin marketplace add` / `claude plugin install|update`, `codex plugin`). Under
+  `--apply`, `setup` installs or updates the engram plugin there and skips the plain skills copy
+  entirely; the plain native-directory install remains for opencode and the `generic` target.
+  MCP registration stays with the runtime's `mcp add` — the plugin carries skills, hooks, and the
+  command, never a per-deployment URL (`skill/engram/.claude-plugin/plugin.json` declares no
+  `mcpServers`). Today `internal/skills/` and `internal/setup/` have no plugin awareness: on the
+  maintainer's machine `--apply` would write a duplicate `curating-memory` next to the plugin's
+  `engram:curating-memory` and replace Codex's marketplace symlinks with static copies pinned to
+  the binary's embedded version.
+- **Custom headers / auth keys** (backlog 999.6) — `--auth` accepts only `oauth | oauth-client |
+  bearer | none`, and `bearer` is hard-wired to `Authorization: Bearer ${ENGRAM_TOKEN}` per
+  runtime (`internal/setup/{claudecode,codex,opencode,generic}.go`). A gateway registration such
+  as LiteLLM's `x-litellm-api-key` cannot be expressed, so `--apply` replaces a working config and
+  breaks it — the root cause behind the 2026-09-10 overwrite (engram `ryr82bf2s2`). The new shape
+  must keep the standing property that a secret is only ever an env-var *reference*, never a
+  literal on argv or in config, and must account for Codex's `--bearer-token-env-var`-only CLI.
+- **Drift detection + reconcile hand-edits** (carried `REQ-setup-drift-detection` /
+  `REQ-setup-reconcile-hand-edits`) — preview compares the *full* existing registration (URL,
+  auth shape, header set) against what it would write; a registration `setup` cannot reproduce
+  is reported as preserved, never as drift to replace. `already-correct` becomes a real
+  comparison rather than a read-probe heuristic.
+- **Shell completions + manpages** (carried `REQ-shell-completions-and-manpages`) — cobra's
+  auto-registered `completion` plus `cobra/doc` (already an indirect dependency); zero new Go
+  dependencies. The cask's `generate_completions_from_executable` hook already expects a
+  completion verb.
+- **#560 `osRun` deadline classification** (carried W01) — a deadline-killed subprocess's
+  `*exec.ExitError` currently becomes exit -1 / nil error without consulting `ctx.Err()`, so the
+  executor's timeout path is bypassed. Small, correctness-affecting, in `internal/setup/environment.go`.
+
+**Key context:** standing constraints carry forward unchanged — zero new Go dependencies, every
+runtime writer is a shell-out to the runtime's own CLI (no third-party config parser enters the
+tree), and verification never touches the operator's `$HOME` or invokes a real third-party CLI from
+a test (rule `m45p2b4bp7`; gotcha `ryr82bf2s2` — a plan that documents `--apply` as a verification
+step is an attractive nuisance). Cursor (`REQ-register-cursor`, the one target needing a
+config-file writer) and the setup-core maintenance nits stay deferred. Milestone labels are CalVer
+and decoupled from release-please's SemVer (rules `e325awbf7x` / `0v4249kc9d`); phase numbering
+restarts at 1 (rule `rvmts69cz1`).
+
 ## Core Value
 
 **Correctable recall precision** — a coding agent gets back the RIGHT memory for its context,
@@ -429,10 +476,11 @@ pre-close `REQUIREMENTS.md` snapshot).
 
 ### Active
 
-No milestone is open. `2026-08-23.01` shipped 2026-09-12 with all 25 requirements verified and
-moved to **Validated** above; `.planning/REQUIREMENTS.md` is archived at
-`milestones/2026-08-23.01-REQUIREMENTS.md` and a fresh one is written by `/gsd-new-milestone`.
-Candidates for the next milestone live in **Deferred** below and `.planning/BACKLOG.md`.
+Milestone `2026-09-13.01` (Setup v2) is open — see **Current Milestone** above for its goal and
+target features. Scoped requirements with REQ-IDs live in `.planning/REQUIREMENTS.md`, written by
+`/gsd-new-milestone` and mapped to phases by the roadmap. `2026-08-23.01` shipped 2026-09-12 with
+all 25 requirements verified and moved to **Validated** above. Candidates not taken into this
+milestone remain in **Deferred** below and `.planning/BACKLOG.md`.
 
 ### Deferred (carry-forward for next milestone)
 
@@ -804,4 +852,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-12 — after milestone `2026-08-23.01` (Distribution & Agent Bootstrap) shipped as v0.16.0.*
+*Last updated: 2026-09-13 — after opening milestone `2026-09-13.01` (Setup v2).*
