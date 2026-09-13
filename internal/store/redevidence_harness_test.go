@@ -104,9 +104,37 @@ import (
 // DURING one. TestRedEvidencePatchesAreLive tells those apart rather than
 // treating zero directories as vacuously green — see its empty-map guard.
 var redEvidenceDirs = map[string]map[string]string{
-	// Empty: no milestone is open. See the SCOPE note above before adding
-	// an archived path here — the guard below fails if an active-milestone
-	// phase directory exists while this map is empty.
+	// Milestone 2026-09-13.01, Phase 01 (01-executor-correctness-man-pages):
+	// two independent regressions this phase's SUMMARYs claim TDD RED
+	// against, pinned as live evidence rather than narrated history.
+	//
+	// osRun/runSeam (01-01, environment.go/apply.go): GitHub #560's
+	// misclassification — a context-killed child satisfies
+	// errors.As(runErr, &exitErr) exactly like any other abnormal exit, so
+	// dropping the ctx.Err() check-before-unwrap silently turns a
+	// deadline-killed/canceled subprocess back into a clean nonzero exit
+	// (ExitCode: -1, nil error) instead of the "never got an answer" error
+	// Environment.Run's contract promises. The second patch pins the
+	// operator-facing wording runSeam wraps that error in
+	// ("timed out after 20s: …") — losing it still returns an error, but
+	// silently regresses D-11's legibility contract for the row an
+	// operator actually reads.
+	//
+	// man.go (01-02): the two invariants D-01/D-03/D-04's byte-stability
+	// and cobra/doc's own help-grafting side effect depend on. Un-pinning
+	// manDate from the Unix epoch reintroduces the exact machine/date
+	// dependence D-01 exists to eliminate (README's "Jan 1970" promise).
+	// Dropping the snapshotCommandTree/pruneToSnapshot restore lets
+	// cobra/doc's genMan graft a "help" child onto every subgroup it
+	// renders (migrate, spine-review, completion) — a child a real
+	// `engram <group> --help` never lists, and the regression writeManPages'
+	// own doc comment names as the reason this restore exists.
+	".planning/phases/01-executor-correctness-man-pages/red-evidence": {
+		"01-01-osrun-ctx-err-first.patch":     "TestOsRunReportsContextDeadlineExceeded",
+		"01-01-runseam-timeout-wording.patch": "TestDriftReportedLegibly",
+		"01-02-man-header-pinned.patch":       "TestManPagesByteStable",
+		"01-02-man-tree-restore.patch":        "TestManGenerationLeavesCommandTreeUnchanged",
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
