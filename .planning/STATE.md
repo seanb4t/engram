@@ -4,17 +4,17 @@ milestone: 2026-09-13.01
 milestone_name: Setup v2
 current_phase: 02
 current_phase_name: Custom Auth Headers
-status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-09-14T00:48:06.585Z"
+status: verifying
+stopped_at: Completed 02-custom-auth-headers-04-PLAN.md
+last_updated: "2026-09-14T13:59:38.147Z"
 last_activity: 2026-09-13
 last_activity_desc: Phase 02 execution started
-state_head: f1a64b47a013d98c8fe8a6d47ad7a613d62748a1
+state_head: 822158d0dbcde4759265bf35e70c8036160d6e3c
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 6
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-13 after Phase 1 — 2026-09-13.01 Se
 
 Phase: 02 (Custom Auth Headers) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-13 — Phase 02 execution started
 
 ## Deferred Items
@@ -279,6 +279,7 @@ milestone needs in working memory.
 - [Phase 02]: D-01/D-04/D-08 implemented exactly as locked: extra headers are additional, orthogonal to --auth, rendered as bare ${ENVVAR} references in claude-code's colon-space syntax, sorted case-insensitively by Name
 - [Phase 02]: D-09/D-10 implemented exactly as locked: codex's header guard is the first statement of Plan(), before HomeDir/auth switch, returning ErrHeaderUnsupported with a reason naming the header(s), gap, and remedy
 - [Phase 02]: 02-02: opencode renders --header pairs via openCodeHeaderArgs on its single mcp add action; generic carries extras in its existing headers map via genericHeaders' ordered MarshalJSON (Authorization first, then case-insensitive) -- no shared cross-runtime formatter
+- [Phase 02]: Checkpoint option C: renamed the canonical gateway-header example from x-litellm-api-key/LITELLM_KEY to a vendor-neutral x-gateway-api-key/GATEWAY_KEY across setupgen, generated tables, CLI help/golden, setup tests, and both docs surfaces, to satisfy the shipped-bundle privacy guard (skill/engram/) without an exception
 
 ### Pending Todos
 
@@ -332,8 +333,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-13T23:39:53.989Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-09-14T13:59:38.128Z
+Stopped at: Completed 02-custom-auth-headers-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -452,6 +453,7 @@ Resume file: None
 | Phase 02 P01 | 20min | 3 tasks | 6 files |
 | Phase 02 P02 | ~35min | 3 tasks | 5 files |
 | Phase 02 P03 | 45min | 3 tasks | 8 files |
+| Phase 02-custom-auth-headers P04 | interrupted-and-resumed | 3 tasks | 14 files |
 
 ## Operator Next Steps
 

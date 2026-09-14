@@ -344,7 +344,7 @@ Plans:
 4. Naming a header other than `Authorization` for Codex produces a `failed` row whose reason names the capability gap, and setup never writes `[mcp_servers.engram.http_headers]` by hand.
 5. `engram setup --help`, `guides/agent-setup.md`, and the regenerated `/engram-setup` prose show the gateway header shape with its env-reference form, including the Codex limitation.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -361,7 +361,7 @@ Plans:
 
 **Wave 4**
 
-- [ ] 02-04-PLAN.md — fifth `bearer+header` setupgen case regenerating the `/engram-setup` tables, header-aware `TestSetupGeneratedInvocations`, `/engram-setup` prose and `guides/agent-setup.md` gateway-header section, `ENGRAM_HEADERS`, and the Codex limitation (D-01, D-02, D-04, D-07, D-08, D-09; REQ-header-documented, REQ-header-bearer-unchanged, REQ-header-codex-declined, REQ-header-name-parameter)
+- [x] 02-04-PLAN.md — fifth `bearer+header` setupgen case regenerating the `/engram-setup` tables, header-aware `TestSetupGeneratedInvocations`, `/engram-setup` prose and `guides/agent-setup.md` gateway-header section, `ENGRAM_HEADERS`, and the Codex limitation (D-01, D-02, D-04, D-07, D-08, D-09; REQ-header-documented, REQ-header-bearer-unchanged, REQ-header-codex-declined, REQ-header-name-parameter)
 
 ---
 

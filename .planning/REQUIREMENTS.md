@@ -30,11 +30,11 @@ any working auth shape, and never replaces a registration it did not write.
 
 ### Custom Auth Headers
 
-- [ ] **REQ-header-name-parameter**: A user can name the auth header (for example `x-litellm-api-key`) in addition to the env-var reference carrying its value, so a gateway registration is expressible for Claude Code, opencode, and `generic`. Each runtime renders the header in its own CLI syntax (`"Name: value"` for `claude mcp add --header`, `Name=value` for `opencode mcp add --header`), authored per runtime — never through a shared cross-runtime formatter.
+- [x] **REQ-header-name-parameter**: A user can name the auth header (for example `x-litellm-api-key`) in addition to the env-var reference carrying its value, so a gateway registration is expressible for Claude Code, opencode, and `generic`. Each runtime renders the header in its own CLI syntax (`"Name: value"` for `claude mcp add --header`, `Name=value` for `opencode mcp add --header`), authored per runtime — never through a shared cross-runtime formatter.
 - [x] **REQ-header-value-env-ref-only**: A header value is always an env-var *reference* in the runtime's own reference syntax (`${VAR}`, `{env:VAR}`); no literal secret ever appears on argv, in a written config, in preview text, in `--output json`, or in logs. The existing bearer provenance path is generalized, not duplicated.
-- [ ] **REQ-header-bearer-unchanged**: `--auth oauth | oauth-client | bearer | none` keep their shipped behavior, argv, help text, and generated `/engram-setup` prose when no header name is given; the new capability is additive.
-- [ ] **REQ-header-codex-declined**: For Codex, a header name other than `Authorization` yields a `failed` row whose reason names the capability gap (`codex mcp add` exposes only `--bearer-token-env-var`), exactly as `oauth-client` is already declined for opencode. Setup never silently downgrades the name and never writes `[mcp_servers.engram.http_headers]` by hand.
-- [ ] **REQ-header-documented**: `engram setup --help`, `guides/agent-setup.md`, and the regenerated `/engram-setup` prose show the gateway header shape (LiteLLM's `x-litellm-api-key`) with the env-reference form, including the Codex limitation.
+- [x] **REQ-header-bearer-unchanged**: `--auth oauth | oauth-client | bearer | none` keep their shipped behavior, argv, help text, and generated `/engram-setup` prose when no header name is given; the new capability is additive.
+- [x] **REQ-header-codex-declined**: For Codex, a header name other than `Authorization` yields a `failed` row whose reason names the capability gap (`codex mcp add` exposes only `--bearer-token-env-var`), exactly as `oauth-client` is already declined for opencode. Setup never silently downgrades the name and never writes `[mcp_servers.engram.http_headers]` by hand.
+- [x] **REQ-header-documented**: `engram setup --help`, `guides/agent-setup.md`, and the regenerated `/engram-setup` prose show the gateway header shape (LiteLLM's `x-litellm-api-key`) with the env-reference form, including the Codex limitation.
 
 ### Drift Detection & Reconcile
 
@@ -91,11 +91,11 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-osrun-deadline-error | Phase 1 | Complete |
 | REQ-manpages-generated | Phase 1 | Complete |
 | REQ-manpages-cask-installed | Phase 1 | Complete |
-| REQ-header-name-parameter | Phase 2 | Pending |
+| REQ-header-name-parameter | Phase 2 | Complete |
 | REQ-header-value-env-ref-only | Phase 2 | Complete |
-| REQ-header-bearer-unchanged | Phase 2 | Pending |
-| REQ-header-codex-declined | Phase 2 | Pending |
-| REQ-header-documented | Phase 2 | Pending |
+| REQ-header-bearer-unchanged | Phase 2 | Complete |
+| REQ-header-codex-declined | Phase 2 | Complete |
+| REQ-header-documented | Phase 2 | Complete |
 | REQ-drift-observed-registration | Phase 4 | Pending |
 | REQ-drift-three-way | Phase 4 | Pending |
 | REQ-drift-preserved-outcome | Phase 4 | Pending |
