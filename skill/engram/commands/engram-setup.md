@@ -64,6 +64,7 @@ for the user's machine. The tables contain no permission to apply.
 | `oauth-client` | `engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client-id` |
 | `bearer` | `engram setup --url https://engram.example.com/mcp --auth bearer` |
 | `none` | `engram setup --url https://engram.example.com/mcp --auth none` |
+| `bearer+header` | `engram setup --url https://engram.example.com/mcp --auth bearer --header x-litellm-api-key=LITELLM_KEY` |
 
 ### Claude Code fallback registration
 
@@ -73,6 +74,7 @@ for the user's machine. The tables contain no permission to apply.
 | `oauth-client` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --client-id example-client-id --client-secret --callback-port 8765` |
 | `bearer` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'Authorization: Bearer ${ENGRAM_TOKEN}'` |
 | `none` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user` |
+| `bearer+header` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-litellm-api-key: ${LITELLM_KEY}'` |
 
 <!-- engram:rule:end setup-commands -->
 

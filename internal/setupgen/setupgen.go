@@ -24,15 +24,23 @@ const Path = "skill/engram/commands/engram-setup.md"
 type PlanFunc func(setup.Environment, setup.Options) (setup.Plan, error)
 
 // Case shares synthetic auth inputs between rendering and CLI conformance tests.
+//
+// Label is the Mode-column label both generated tables use. The four
+// shipped auth-only cases use their auth mode verbatim (so their rows stay
+// byte-identical), while a case that adds a header is labeled
+// "<auth>+header" — distinct from any bare auth-mode label so the shipped
+// rows are never mistaken for a header-bearing one.
 type Case struct {
+	Label          string
 	Options        setup.Options
 	DelegationArgs []string // Full preview argv, including engram; never --apply.
 }
 
-// Cases returns fresh values in the published auth-choice order. CLI flag names
-// belong to engram's Cobra command, not Plan; conformance tests validate them.
+// Cases returns fresh values in the published auth-choice order, followed
+// by the gateway-header case. CLI flag names belong to engram's Cobra
+// command, not Plan; conformance tests validate them.
 func Cases() []Case {
-	cases := make([]Case, 0, 4)
+	cases := make([]Case, 0, 5)
 	for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
 		opts := setup.Options{URL: "https://engram.example.com/mcp", Auth: auth}
 		args := []string{"engram", "setup", "--url", opts.URL, "--auth", opts.Auth}
@@ -40,13 +48,31 @@ func Cases() []Case {
 			opts.ClientID = "example-client-id"
 			args = append(args, "--client-id", opts.ClientID)
 		}
-		cases = append(cases, Case{Options: opts, DelegationArgs: args})
+		cases = append(cases, Case{Label: auth, Options: opts, DelegationArgs: args})
 	}
+	// The canonical gateway example (02-CONTEXT.md): a bearer server behind
+	// a LiteLLM gateway that also wants x-litellm-api-key. Chosen because it
+	// shows the auth header AND the extra header on one line, in D-08 order
+	// (auth-mode header first, extra headers after).
+	headerOpts := setup.Options{
+		URL:     "https://engram.example.com/mcp",
+		Auth:    "bearer",
+		Headers: []setup.HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}},
+	}
+	headerArgs := []string{"engram", "setup", "--url", headerOpts.URL, "--auth", headerOpts.Auth,
+		"--header", "x-litellm-api-key=LITELLM_KEY"}
+	cases = append(cases, Case{Label: "bearer+header", Options: headerOpts, DelegationArgs: headerArgs})
 	return cases
 }
 
 // Render produces both tables atomically in memory. Only a synthetic HomeDir is
 // available: unexpected environment reads or process calls fail generation.
+// Each row's Mode cell carries the authoring Case's Label rather than its
+// raw Options.Auth, so a case that adds an extra header renders under its
+// own "<auth>+header" label without disturbing the four shipped auth-only
+// rows. Extra headers are additional --header pairs on the SAME `claude mcp
+// add` action (D-04/D-08) — never a second action — which is what keeps
+// the exactly-one-add filter below true for the header case too.
 func Render(planFn PlanFunc) (string, error) {
 	if planFn == nil {
 		return "", fmt.Errorf("setupgen: nil Plan function")
@@ -73,7 +99,7 @@ func Render(planFn PlanFunc) (string, error) {
 			return "", accessErr
 		}
 		if err != nil {
-			return "", fmt.Errorf("setupgen: %s Plan: %w", c.Options.Auth, err)
+			return "", fmt.Errorf("setupgen: %s Plan: %w", c.Label, err)
 		}
 		var adds []setup.Action
 		for _, action := range plan.Actions {
@@ -82,10 +108,10 @@ func Render(planFn PlanFunc) (string, error) {
 			}
 		}
 		if len(adds) != 1 {
-			return "", fmt.Errorf("setupgen: %s: expected exactly one claude mcp add action, got %d", c.Options.Auth, len(adds))
+			return "", fmt.Errorf("setupgen: %s: expected exactly one claude mcp add action, got %d", c.Label, len(adds))
 		}
-		fmt.Fprintf(&fallback, "| `%s` | %s |\n", c.Options.Auth, commandCell(adds[0].Command()))
-		fmt.Fprintf(&delegation, "| `%s` | %s |\n", c.Options.Auth, commandCell((setup.Action{Args: c.DelegationArgs}).Command()))
+		fmt.Fprintf(&fallback, "| `%s` | %s |\n", c.Label, commandCell(adds[0].Command()))
+		fmt.Fprintf(&delegation, "| `%s` | %s |\n", c.Label, commandCell((setup.Action{Args: c.DelegationArgs}).Command()))
 	}
 	return delegation.String() + "\n" + fallback.String(), nil
 }

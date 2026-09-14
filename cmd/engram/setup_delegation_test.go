@@ -20,7 +20,7 @@ import (
 
 func TestSetupGeneratedInvocations(t *testing.T) {
 	for _, c := range setupgen.Cases() {
-		t.Run(c.Options.Auth, func(t *testing.T) {
+		t.Run(c.Label, func(t *testing.T) {
 			assertGeneratedPreviewArgs(t, c)
 			for _, lane := range []string{"preview", "apply"} {
 				t.Run(lane, func(t *testing.T) {
@@ -54,8 +54,8 @@ func TestSetupGeneratedInvocations(t *testing.T) {
 					}
 					stdout, stderr, err := runClient(t, args...)
 					wantExit := 0
-					if lane == "apply" && c.Options.Auth == "oauth-client" {
-						wantExit = exitPartial // OpenCode remains unsupported.
+					if lane == "apply" && (c.Options.Auth == "oauth-client" || len(c.Options.Headers) > 0) {
+						wantExit = exitPartial // opencode declines oauth-client; codex declines every custom header (D-09).
 					}
 					if got := exitCodeFromError(err); got != wantExit {
 						t.Fatalf("exit=%d, want %d: %v (stderr=%q)", got, wantExit, err, stderr)
@@ -78,6 +78,13 @@ func TestSetupGeneratedInvocations(t *testing.T) {
 							t.Fatalf("unexpected detected runtime row: %+v", row)
 						}
 						plan, planErr := rt.Plan(env, c.Options)
+						if errors.Is(planErr, setup.ErrHeaderUnsupported) {
+							if row.Name != "codex" || len(c.Options.Headers) == 0 || row.Outcome != "failed" || row.Command != "" ||
+								!strings.Contains(row.Reason, "x-litellm-api-key") || !strings.Contains(row.Reason, "--bearer-token-env-var") {
+								t.Fatalf("header decline row lost: %+v", row)
+							}
+							continue
+						}
 						if errors.Is(planErr, setup.ErrAuthModeUnsupported) {
 							if row.Name != "opencode" || c.Options.Auth != "oauth-client" || row.Outcome != "failed" || row.Command != "" || !strings.Contains(row.Reason, "oauth-client") {
 								t.Fatalf("unsupported auth row lost: %+v", row)
@@ -144,6 +151,11 @@ func assertGeneratedPreviewArgs(t *testing.T, c setupgen.Case) {
 	if len(args) < 2 || args[0] != "engram" || args[1] != "setup" {
 		t.Fatalf("not a setup invocation: %q", args)
 	}
+	wantHeaders := make(map[string]bool, len(c.Options.Headers))
+	for _, h := range c.Options.Headers {
+		wantHeaders[h.Name+"="+h.EnvVar] = true
+	}
+	seenHeaders := make(map[string]bool, len(wantHeaders))
 	for i := 2; i < len(args); i += 2 {
 		if args[i] == "--apply" || args[i] == "--runtime" || args[i] == "--token-file" {
 			t.Fatalf("preview grants mutation, scopes detection, or uses native token-file: %q", args)
@@ -151,10 +163,24 @@ func assertGeneratedPreviewArgs(t *testing.T, c setupgen.Case) {
 		if !strings.HasPrefix(args[i], "--") || setupCmd.Flags().Lookup(strings.TrimPrefix(args[i], "--")) == nil || i+1 >= len(args) {
 			t.Fatalf("generated option does not conform to Cobra: %q", args[i:])
 		}
+		if args[i] == "--header" {
+			value := args[i+1]
+			if !wantHeaders[value] || seenHeaders[value] {
+				t.Fatalf("generated --header %q not among shared headers %q (or repeated)", value, c.Options.Headers)
+			}
+			seenHeaders[value] = true
+			continue
+		}
 		want, ok := map[string]string{"--url": c.Options.URL, "--auth": c.Options.Auth, "--client-id": c.Options.ClientID}[args[i]]
 		if !ok || args[i+1] != want {
 			t.Fatalf("generated option %q=%q differs from shared auth inputs", args[i], args[i+1])
 		}
+	}
+	if len(seenHeaders) != len(wantHeaders) {
+		t.Fatalf("preview args carried %d headers, want all %d shared headers: %q", len(seenHeaders), len(wantHeaders), args)
+	}
+	if len(c.Options.Headers) == 0 && slices.Contains(args, "--header") {
+		t.Fatal("header-less case must not carry --header")
 	}
 	if c.Options.Auth == "oauth-client" {
 		if c.Options.ClientID == "" || c.Options.ClientID == "<id>" || !slices.Contains(args, "--client-id") {
@@ -178,5 +204,21 @@ func assertGeneratedAuthWiring(t *testing.T, c setupgen.Case, row setupRuntimeRo
 	}
 	if c.Options.Auth == "bearer" && row.Name == "claude-code" && !strings.Contains(row.Command, "'Authorization: Bearer ${ENGRAM_TOKEN}'") {
 		t.Errorf("bearer literal environment reference lost: %q", row.Command)
+	}
+	if len(c.Options.Headers) > 0 {
+		switch row.Name {
+		case "claude-code":
+			if !strings.Contains(row.Command, "--header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+				t.Errorf("claude-code header rendering missing: %q", row.Command)
+			}
+			if c.Options.Auth == "bearer" &&
+				!strings.Contains(row.Command, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+				t.Errorf("claude-code auth header must precede the extra header: %q", row.Command)
+			}
+		case "opencode":
+			if !strings.Contains(row.Command, "--header 'x-litellm-api-key={env:LITELLM_KEY}'") {
+				t.Errorf("opencode header rendering missing: %q", row.Command)
+			}
+		}
 	}
 }

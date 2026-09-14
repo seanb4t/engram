@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,28 +23,47 @@ func TestRenderRealPlans(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := Cases()
-	if len(cases) != 4 {
-		t.Fatalf("got %d cases, want four", len(cases))
+	if len(cases) != 5 {
+		t.Fatalf("got %d cases, want five", len(cases))
 	}
-	for i, mode := range []string{"oauth", "oauth-client", "bearer", "none"} {
-		t.Run(mode, func(t *testing.T) {
+	for i, label := range []string{"oauth", "oauth-client", "bearer", "none", "bearer+header"} {
+		t.Run(label, func(t *testing.T) {
 			c := cases[i]
-			if c.Options.Auth != mode {
-				t.Fatalf("case %d = %q, want %q", i, c.Options.Auth, mode)
+			if c.Label != label {
+				t.Fatalf("case %d = %q, want %q", i, c.Label, label)
 			}
 			plan, err := setup.ClaudeCode.Plan(setup.Environment{HomeDir: func() (string, error) { return "/fake", nil }}, c.Options)
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, command := range []string{plan.Actions[1].Command(), (setup.Action{Args: c.DelegationArgs}).Command()} {
-				if !strings.Contains(body, "| `"+mode+"` | `"+command+"` |") {
+				if !strings.Contains(body, "| `"+label+"` | `"+command+"` |") {
 					t.Errorf("missing exact Plan/preview row for %q", command)
 				}
+			}
+			if label != "bearer+header" {
+				return
+			}
+			if c.Options.Auth != "bearer" {
+				t.Fatalf("bearer+header case Auth = %q, want %q", c.Options.Auth, "bearer")
+			}
+			if want := (setup.HeaderSpec{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}); len(c.Options.Headers) != 1 || c.Options.Headers[0] != want {
+				t.Fatalf("bearer+header case Headers = %+v, want exactly one %+v", c.Options.Headers, want)
+			}
+			idx := slices.Index(c.DelegationArgs, "--header")
+			if idx < 0 || idx+1 >= len(c.DelegationArgs) || c.DelegationArgs[idx+1] != "x-litellm-api-key=LITELLM_KEY" {
+				t.Fatalf("bearer+header DelegationArgs = %q, want trailing --header x-litellm-api-key=LITELLM_KEY", c.DelegationArgs)
 			}
 		})
 	}
 	if !strings.Contains(body, "'Authorization: Bearer ${ENGRAM_TOKEN}'") {
 		t.Fatal("bearer environment reference lost its literal shell quoting")
+	}
+	if !strings.Contains(body, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+		t.Fatal("bearer+header fallback row lost auth-header-first ordering")
+	}
+	if got := strings.Count(body, "| `bearer` |"); got != 2 {
+		t.Fatalf("shipped bearer rows = %d, want exactly 2 (bearer+header must use a distinct label)", got)
 	}
 	cases[0].Options.URL = "changed"
 	cases[0].DelegationArgs[0] = "changed"
@@ -64,7 +84,7 @@ func TestRenderSelectsActionAndQuotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (setup.Action{Args: args}).Command(); strings.Count(body, "`"+want+"`") != 4 {
+	if want := (setup.Action{Args: args}).Command(); strings.Count(body, "`"+want+"`") != len(Cases()) {
 		t.Fatalf("renderer did not preserve source quoting: %s", body)
 	}
 	if got := commandCell("echo '`a|b`'"); got != "`` echo '`a\\|b`' ``" {
