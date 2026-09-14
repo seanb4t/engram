@@ -5,7 +5,6 @@ status: passed
 score: 9/9 must-haves verified
 covered_files:
   - .goreleaser.yaml
-  - .planning/REQUIREMENTS.md
   - .planning/phases/01-executor-correctness-man-pages/01-01-PLAN.md
   - .planning/phases/01-executor-correctness-man-pages/01-01-SUMMARY.md
   - .planning/phases/01-executor-correctness-man-pages/01-02-PLAN.md
@@ -25,7 +24,7 @@ covered_files:
   - internal/setup/apply_test.go
   - internal/setup/environment.go
   - internal/setup/environment_test.go
-covered_digest: "v1:sha256:474440ca87393e8dd859719204d53be0ffba11b451306835759fa4a939c2d098"
+covered_digest: "v1:sha256:aa662daa06816c5e3f7dc421106bc4112a5e0f8e7fdfc33855f19cb601aea678"
 behavior_unverified: 0
 overrides_applied: 0
 ---
