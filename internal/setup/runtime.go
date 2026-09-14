@@ -52,6 +52,18 @@ type HeaderSpec struct {
 // whatever Auth produces — orthogonal to it, never a substitute for it
 // (D-01). ENGRAM_TOKEN remains bearer's own fixed variable; each extra
 // header names its own EnvVar (D-06).
+//
+// Headers is expected to arrive already validated by the CLI boundary
+// (cmd/engram/setup.go's setupParseHeaders, plan 02-03, 02-RESEARCH.md
+// Pitfall 5): no Authorization collision, no case-insensitive duplicate
+// names, and every EnvVar a POSIX identifier. This package orders and
+// renders the headers it is given deterministically (sortedHeaders below)
+// but does NOT re-validate them — a direct caller of this package that
+// skips that validation owns the consequences (a colliding Authorization
+// header or duplicate names surviving into a rendered invocation). This is
+// a deliberate boundary, not an oversight: 02-RESEARCH.md Pitfall 5
+// requires header validation to live ONCE, at the CLI boundary, rather
+// than duplicated per-runtime inside this package.
 type Options struct {
 	URL       string
 	Auth      string
@@ -180,11 +192,18 @@ func Select(names []string) ([]Runtime, error) {
 	return out, nil
 }
 
-// sortedHeaders returns hs sorted by strings.ToLower(Name) ascending, as
-// a CLONE — the caller's slice is never re-ordered in place (D-08). It
-// returns nil for a nil or empty hs, so append(args,
-// claudeCodeHeaderArgs(sortedHeaders(nil))...) is a no-op and every
-// no-header Args slice stays byte-identical.
+// sortedHeaders returns hs sorted by strings.ToLower(Name) ascending, with
+// ties (names equal under case folding) broken by an exact byte-wise
+// strings.Compare(a.Name, b.Name) — a TOTAL order, so the result never
+// depends on sort stability. This is defense-in-depth for the WR-01 gap:
+// Options.Headers is expected to already be free of case-insensitive
+// duplicate names (see Options' own doc comment), but a direct package
+// caller that skips CLI-boundary validation could hand this function two
+// case-colliding names, and D-08's "deterministic ordering" guarantee must
+// hold even then. The result is a CLONE — the caller's slice is never
+// re-ordered in place (D-08). It returns nil for a nil or empty hs, so
+// append(args, claudeCodeHeaderArgs(sortedHeaders(nil))...) is a no-op and
+// every no-header Args slice stays byte-identical.
 //
 // This function ORDERS but never FORMATS: no runtime dialect string is
 // authored here, because each runtime authors its own ("--header
@@ -200,7 +219,10 @@ func sortedHeaders(hs []HeaderSpec) []HeaderSpec {
 	}
 	out := slices.Clone(hs)
 	slices.SortFunc(out, func(a, b HeaderSpec) int {
-		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+		if c := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Name, b.Name)
 	})
 	return out
 }

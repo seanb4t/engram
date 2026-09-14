@@ -342,6 +342,39 @@ func TestClaudeCodeHeaders(t *testing.T) {
 	}
 }
 
+// TestSortedHeadersTotalOrder proves sortedHeaders' comparator is a TOTAL
+// order rather than depending on slices.SortFunc's stability (WR-01,
+// 02-REVIEW.md): "a-key" and "A-key" compare equal under the primary
+// strings.ToLower(Name) key, so the result is only deterministic if the
+// byte-wise strings.Compare(a.Name, b.Name) tiebreak fires. Feeding both
+// input orders and asserting the SAME output order each time is what
+// distinguishes "genuinely total" from "happens to be stable today" — a
+// caller that skips the CLI-boundary uniqueness/case-collision guard
+// (Options.Headers' own doc comment) would otherwise get a rendered
+// header order that flaps between runs depending on internal sort
+// implementation details, silently violating D-08's ordering guarantee.
+func TestSortedHeadersTotalOrder(t *testing.T) {
+	lower := HeaderSpec{Name: "a-key", EnvVar: "LOWER"}
+	upper := HeaderSpec{Name: "A-key", EnvVar: "UPPER"}
+	// strings.Compare("A-key", "a-key") < 0 ('A' = 0x41 < 'a' = 0x61), so
+	// the total order always places upper before lower, regardless of
+	// input order.
+	want := []HeaderSpec{upper, lower}
+
+	for name, in := range map[string][]HeaderSpec{
+		"lower-then-upper": {lower, upper},
+		"upper-then-lower": {upper, lower},
+	} {
+		in := in
+		t.Run(name, func(t *testing.T) {
+			got := sortedHeaders(in)
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("sortedHeaders(%v) = %v, want %v", in, got, want)
+			}
+		})
+	}
+}
+
 func TestClaudeCodeClientID(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
 	for _, id := range []string{"test-client", "  client 'quoted'; $(echo nope) &  "} {
