@@ -135,6 +135,50 @@ var redEvidenceDirs = map[string]map[string]string{
 		"01-02-man-header-pinned.patch":       "TestManPagesByteStable",
 		"01-02-man-tree-restore.patch":        "TestManGenerationLeavesCommandTreeUnchanged",
 	},
+	// Milestone 2026-09-13.01, Phase 02 (02-custom-auth-headers): five
+	// independent regressions this phase's SUMMARYs claim RED against
+	// (02-02-SUMMARY.md D5, 02-03-SUMMARY.md D4), pinned as live evidence
+	// rather than narrated history.
+	//
+	// claudeCodeHeaderArgs / openCodeHeaderArgs (02-01, 02-02): each
+	// runtime authors its OWN header-flag dialect for the "--header"
+	// argument that rides alongside `mcp add` (claude-code's
+	// "NAME: ${ENVVAR}" colon-space HTTP-header-string form vs opencode's
+	// "NAME={env:ENVVAR}" KEY=VALUE form — 02-RESEARCH.md's live-verified
+	// finding that treating them as interchangeable silently sends
+	// opencode the wrong dialect, the exact regression 02-02 exists to
+	// avoid). The claude-code patch drops rendering entirely (proving the
+	// extra-header args are wired in at all); the opencode patch swaps in
+	// claude-code's colon-space form (proving the dialect stays
+	// opencode's own, never borrowed).
+	//
+	// codexRuntime.Plan's up-front header guard (02-01): codex's `mcp add`
+	// exposes no custom-header flag at all, so a caller-supplied header
+	// must be DECLINED via ErrHeaderUnsupported before any other work —
+	// removing the guard lets Plan silently accept and drop the header,
+	// which is worse than an error (D-09/D-10's whole reason for a
+	// distinct sentinel from ErrAuthModeUnsupported).
+	//
+	// genericHeaders.MarshalJSON (02-02): D-08's ordering contract
+	// (Authorization first, then extras sorted case-insensitively) is the
+	// entire reason this named map type exists instead of a plain
+	// map[string]string, which encoding/json would marshal in raw byte
+	// order — falling back to that plain marshaling reproduces exactly
+	// the ordering bug this type was introduced to fix.
+	//
+	// setupParseHeaders' Authorization collision guard (02-03): --header
+	// Authorization=... must be rejected as a CLI usage error naming
+	// --auth bearer, per spec's fixed rejection order (rule 1 of 4) —
+	// dropping it lets a caller silently author a header that COLLIDES
+	// with whatever --auth bearer already produces, with no error at the
+	// boundary that owns validation.
+	".planning/phases/02-custom-auth-headers/red-evidence": {
+		"02-01-claudecode-header-args.patch":  "TestClaudeCodeHeaders",
+		"02-01-codex-header-decline.patch":    "TestCodexDeclinesHeaders",
+		"02-02-opencode-header-dialect.patch": "TestOpenCodeHeaders",
+		"02-02-generic-header-order.patch":    "TestGenericHeaders",
+		"02-03-header-validation.patch":       "TestSetupHeaderRejectsAuthorizationCollision",
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
