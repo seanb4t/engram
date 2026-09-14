@@ -4,7 +4,6 @@ verified: 2026-09-14T00:00:00Z
 status: passed
 score: 12/12 must-haves verified
 covered_files:
-  - ".planning/REQUIREMENTS.md"
   - ".planning/phases/02-custom-auth-headers/02-01-PLAN.md"
   - ".planning/phases/02-custom-auth-headers/02-01-SUMMARY.md"
   - ".planning/phases/02-custom-auth-headers/02-02-PLAN.md"
@@ -40,7 +39,7 @@ covered_files:
   - "internal/setupgen/setupgen.go"
   - "internal/setupgen/setupgen_test.go"
   - "skill/engram/commands/engram-setup.md"
-covered_digest: "v1:sha256:f642ef5e1da709afbac8a2c0d2cb00183ac6151e8c33553b6a0bc4ea0f0bf84b"
+covered_digest: "v1:sha256:72e816e4c743ebf49ec92723b105fcd6d231298de69f8535b61abba752812bbd"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
