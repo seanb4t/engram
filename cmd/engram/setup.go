@@ -768,8 +768,9 @@ Accepted --auth modes:
 Additional headers (--header NAME=ENVVAR, repeatable or comma-separated; default: ENGRAM_HEADERS, a
 comma-separated list that --header on the command line replaces): each header rides alongside whatever
 --auth produces and is valid with every mode. ENVVAR is the NAME of an environment variable the runtime
-resolves itself at connect time — never a value: a right-hand side containing $, {, whitespace, or : is
-rejected, and the Authorization header (in any letter case) is owned by --auth; use --auth bearer.
+resolves itself at connect time — never a value: it must be a POSIX-shell identifier (ASCII letters,
+digits, and underscore, not starting with a digit), and the Authorization header (in any letter case)
+is owned by --auth; use --auth bearer.
 Rendered in each runtime's own syntax — claude-code "NAME: ${ENVVAR}", opencode NAME={env:ENVVAR},
 generic "NAME": "${ENVVAR}" — with the --auth header first and extra headers sorted by name. codex has
 no custom-header flag (codex mcp add exposes only --bearer-token-env-var): its row reports failed

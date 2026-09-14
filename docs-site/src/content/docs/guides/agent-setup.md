@@ -123,9 +123,9 @@ engram setup --url https://engram.example.com/mcp --auth oauth --header x-gatewa
 `--header NAME=ENVVAR` adds a header alongside whatever `--auth` produces, is
 repeatable (or comma-separated), and works with every mode. `ENVVAR` is the
 NAME of an environment variable the runtime resolves at connection time —
-never a value — so a right-hand side containing `$`, `{`, whitespace, or `:`
-is rejected, as is any `Authorization` name — that header is owned by `--auth`
-(use `--auth bearer`).
+never a value — so it must be a POSIX-shell identifier (ASCII letters, digits,
+and underscore, not starting with a digit); any `Authorization` name is also
+rejected — that header is owned by `--auth` (use `--auth bearer`).
 
 Each runtime renders the header in its own syntax. The auth header (if any)
 renders first, and extra headers sort by name, identically in the preview,
