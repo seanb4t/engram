@@ -133,13 +133,13 @@ func TestCodexDeclinesHeaders(t *testing.T) {
 		return "/home/fake", nil
 	}
 
-	const wantReason = "codex: custom header(s) x-litellm-api-key: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: setup: custom header is not supported by this runtime"
+	const wantReason = "codex: custom header(s) x-gateway-api-key: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: setup: custom header is not supported by this runtime"
 
 	for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
 		auth := auth
 		t.Run(auth, func(t *testing.T) {
 			opts := Options{URL: url, Auth: auth, ClientID: "test-client",
-				Headers: []HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}}}
+				Headers: []HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}}}
 			plan, err := Codex.Plan(env, opts)
 			if !errors.Is(err, ErrHeaderUnsupported) {
 				t.Fatalf("Plan(auth=%q) err = %v, want errors.Is(err, ErrHeaderUnsupported)", auth, err)
@@ -153,7 +153,7 @@ func TestCodexDeclinesHeaders(t *testing.T) {
 			if err.Error() != wantReason {
 				t.Errorf("Plan(auth=%q) err.Error() = %q, want %q", auth, err.Error(), wantReason)
 			}
-			if strings.Contains(err.Error(), "LITELLM_KEY") {
+			if strings.Contains(err.Error(), "GATEWAY_KEY") {
 				t.Errorf("Plan(auth=%q) err.Error() = %q, must never name the env var — only the header NAME", auth, err.Error())
 			}
 		})
@@ -162,14 +162,14 @@ func TestCodexDeclinesHeaders(t *testing.T) {
 	t.Run("two-headers-sorted", func(t *testing.T) {
 		opts := Options{URL: url, Auth: "bearer",
 			Headers: []HeaderSpec{
-				{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"},
+				{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"},
 				{Name: "CF-Access-Client-Id", EnvVar: "CF_ID"},
 			}}
 		_, err := Codex.Plan(env, opts)
 		if !errors.Is(err, ErrHeaderUnsupported) {
 			t.Fatalf("err = %v, want errors.Is(err, ErrHeaderUnsupported)", err)
 		}
-		const wantPrefix = "codex: custom header(s) CF-Access-Client-Id, x-litellm-api-key:"
+		const wantPrefix = "codex: custom header(s) CF-Access-Client-Id, x-gateway-api-key:"
 		if !strings.HasPrefix(err.Error(), wantPrefix) {
 			t.Errorf("err.Error() = %q, want it to start with %q (D-08 sorted, comma-space joined)", err.Error(), wantPrefix)
 		}

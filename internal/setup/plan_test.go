@@ -104,7 +104,7 @@ func TestPlanPassesURLVerbatimRootMounted(t *testing.T) {
 //
 // This test also drives every runtime x every auth mode x {no headers,
 // one header} with a second sentinel exported through the fake
-// Environment.Getenv for LITELLM_KEY — proving the header vocabulary
+// Environment.Getenv for GATEWAY_KEY — proving the header vocabulary
 // (Options.Headers) carries a NAME, never a VALUE, for every runtime, not
 // just the auth-mode credential. A Plan returning ErrHeaderUnsupported is
 // a PASS only for codex with headers present (D-09); any other
@@ -118,7 +118,7 @@ func TestNoSecretInArgs(t *testing.T) {
 			switch key {
 			case "ENGRAM_TOKEN":
 				return secretValue
-			case "LITELLM_KEY":
+			case "GATEWAY_KEY":
 				return headerSecretValue
 			default:
 				return ""
@@ -138,7 +138,7 @@ func TestNoSecretInArgs(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					opts := Options{URL: "https://x", Auth: auth, ClientID: "test-client", TokenFile: "/home/u/.engram/token"}
 					if withHeader {
-						opts.Headers = []HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}}
+						opts.Headers = []HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}}
 					}
 					plan, err := rt.Plan(env, opts)
 					if err != nil {
@@ -183,8 +183,8 @@ func TestNoSecretInArgs(t *testing.T) {
 							allArgs = append(allArgs, action.Args...)
 						}
 						joined := strings.Join(allArgs, "\x00") + "\x00" + plan.Config
-						if !strings.Contains(joined, "LITELLM_KEY") {
-							t.Errorf("%s: want the env var NAME LITELLM_KEY rendered as a reference somewhere in Args or Config, got none", name)
+						if !strings.Contains(joined, "GATEWAY_KEY") {
+							t.Errorf("%s: want the env var NAME GATEWAY_KEY rendered as a reference somewhere in Args or Config, got none", name)
 						}
 					}
 				})

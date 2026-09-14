@@ -114,10 +114,10 @@ does not configure that runtime's credential; its result reports
 ### Gateway headers
 
 Some deployments sit behind a gateway that requires an additional header —
-for example LiteLLM's `x-litellm-api-key`:
+for example a gateway's own `x-gateway-api-key`:
 
 ```sh
-engram setup --url https://engram.example.com/mcp --auth oauth --header x-litellm-api-key=LITELLM_KEY
+engram setup --url https://engram.example.com/mcp --auth oauth --header x-gateway-api-key=GATEWAY_KEY
 ```
 
 `--header NAME=ENVVAR` adds a header alongside whatever `--auth` produces, is
@@ -134,9 +134,9 @@ generated `/engram-setup` prose:
 
 | Runtime | Rendering |
 | --- | --- |
-| Claude Code | `--header 'x-litellm-api-key: ${LITELLM_KEY}'` |
-| opencode | `--header 'x-litellm-api-key={env:LITELLM_KEY}'` |
-| Generic | `"headers": {"x-litellm-api-key": "${LITELLM_KEY}"}` |
+| Claude Code | `--header 'x-gateway-api-key: ${GATEWAY_KEY}'` |
+| opencode | `--header 'x-gateway-api-key={env:GATEWAY_KEY}'` |
+| Generic | `"headers": {"x-gateway-api-key": "${GATEWAY_KEY}"}` |
 
 Codex has no custom-header flag (`codex mcp add` exposes only
 `--bearer-token-env-var`), so a `--header` run reports a `failed` row for
@@ -145,7 +145,7 @@ Codex has no custom-header flag (`codex mcp add` exposes only
 for you. Codex documents its own per-server header configuration in its
 config file — configure it there yourself if you need it.
 
-Keep the `${LITELLM_KEY}` reference literal, including its single quotes, and
+Keep the `${GATEWAY_KEY}` reference literal, including its single quotes, and
 never paste the value.
 
 ### No authentication

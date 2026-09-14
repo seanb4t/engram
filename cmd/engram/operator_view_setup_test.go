@@ -81,15 +81,15 @@ func setupViewFixtures() map[string][]any {
 		Name:    "claude-code",
 		Present: true,
 		Outcome: "would-write",
-		Command: "claude mcp remove engram --scope user; claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-litellm-api-key: ${LITELLM_KEY}'",
-		Headers: "CF-Access-Client-Id=CF_ID,x-litellm-api-key=LITELLM_KEY",
+		Command: "claude mcp remove engram --scope user; claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'",
+		Headers: "CF-Access-Client-Id=CF_ID,x-gateway-api-key=GATEWAY_KEY",
 	}
 	codexHeaderDeclined := setupRuntimeRow{
 		Name:    "codex",
 		Present: true,
 		Outcome: "failed",
 		Reason:  setupCodexHeaderDeclineReason,
-		Headers: "x-litellm-api-key=LITELLM_KEY",
+		Headers: "x-gateway-api-key=GATEWAY_KEY",
 	}
 
 	return map[string][]any{

@@ -100,12 +100,12 @@ func TestOpenCodeHeaders(t *testing.T) {
 	}
 
 	headers := []HeaderSpec{
-		{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"},
+		{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"},
 		{Name: "CF-Access-Client-Id", EnvVar: "CF_ID"},
 	}
 	wantExtra := []string{
 		"--header", "CF-Access-Client-Id={env:CF_ID}",
-		"--header", "x-litellm-api-key={env:LITELLM_KEY}",
+		"--header", "x-gateway-api-key={env:GATEWAY_KEY}",
 	}
 
 	cases := []struct {
@@ -201,14 +201,14 @@ func TestOpenCodeHeaders(t *testing.T) {
 
 	t.Run("input-order-unchanged", func(t *testing.T) {
 		hs := []HeaderSpec{
-			{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"},
+			{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"},
 			{Name: "CF-Access-Client-Id", EnvVar: "CF_ID"},
 		}
 		if _, err := OpenCode.Plan(env, Options{URL: url, Auth: "oauth", Headers: hs}); err != nil {
 			t.Fatalf("Plan: %v", err)
 		}
-		if hs[0].Name != "x-litellm-api-key" {
-			t.Errorf("input slice reordered: hs[0].Name = %q, want %q (Plan must not mutate the caller's slice)", hs[0].Name, "x-litellm-api-key")
+		if hs[0].Name != "x-gateway-api-key" {
+			t.Errorf("input slice reordered: hs[0].Name = %q, want %q (Plan must not mutate the caller's slice)", hs[0].Name, "x-gateway-api-key")
 		}
 	})
 
@@ -230,7 +230,7 @@ func TestOpenCodeHeaders(t *testing.T) {
 			t.Fatalf("Plan: %v", err)
 		}
 		cmd := plan.Display()
-		want := "--header 'Authorization=Bearer {env:ENGRAM_TOKEN}' --header 'CF-Access-Client-Id={env:CF_ID}' --header 'x-litellm-api-key={env:LITELLM_KEY}'"
+		want := "--header 'Authorization=Bearer {env:ENGRAM_TOKEN}' --header 'CF-Access-Client-Id={env:CF_ID}' --header 'x-gateway-api-key={env:GATEWAY_KEY}'"
 		if !strings.Contains(cmd, want) {
 			t.Errorf("Display() = %q, want it to contain %q", cmd, want)
 		}

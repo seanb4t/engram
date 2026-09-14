@@ -80,7 +80,7 @@ func TestSetupGeneratedInvocations(t *testing.T) {
 						plan, planErr := rt.Plan(env, c.Options)
 						if errors.Is(planErr, setup.ErrHeaderUnsupported) {
 							if row.Name != "codex" || len(c.Options.Headers) == 0 || row.Outcome != "failed" || row.Command != "" ||
-								!strings.Contains(row.Reason, "x-litellm-api-key") || !strings.Contains(row.Reason, "--bearer-token-env-var") {
+								!strings.Contains(row.Reason, "x-gateway-api-key") || !strings.Contains(row.Reason, "--bearer-token-env-var") {
 								t.Fatalf("header decline row lost: %+v", row)
 							}
 							continue
@@ -208,15 +208,15 @@ func assertGeneratedAuthWiring(t *testing.T, c setupgen.Case, row setupRuntimeRo
 	if len(c.Options.Headers) > 0 {
 		switch row.Name {
 		case "claude-code":
-			if !strings.Contains(row.Command, "--header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+			if !strings.Contains(row.Command, "--header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
 				t.Errorf("claude-code header rendering missing: %q", row.Command)
 			}
 			if c.Options.Auth == "bearer" &&
-				!strings.Contains(row.Command, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+				!strings.Contains(row.Command, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
 				t.Errorf("claude-code auth header must precede the extra header: %q", row.Command)
 			}
 		case "opencode":
-			if !strings.Contains(row.Command, "--header 'x-litellm-api-key={env:LITELLM_KEY}'") {
+			if !strings.Contains(row.Command, "--header 'x-gateway-api-key={env:GATEWAY_KEY}'") {
 				t.Errorf("opencode header rendering missing: %q", row.Command)
 			}
 		}

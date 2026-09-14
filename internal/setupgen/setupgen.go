@@ -51,16 +51,16 @@ func Cases() []Case {
 		cases = append(cases, Case{Label: auth, Options: opts, DelegationArgs: args})
 	}
 	// The canonical gateway example (02-CONTEXT.md): a bearer server behind
-	// a LiteLLM gateway that also wants x-litellm-api-key. Chosen because it
+	// an API gateway that also wants x-gateway-api-key. Chosen because it
 	// shows the auth header AND the extra header on one line, in D-08 order
 	// (auth-mode header first, extra headers after).
 	headerOpts := setup.Options{
 		URL:     "https://engram.example.com/mcp",
 		Auth:    "bearer",
-		Headers: []setup.HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}},
+		Headers: []setup.HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}},
 	}
 	headerArgs := []string{"engram", "setup", "--url", headerOpts.URL, "--auth", headerOpts.Auth,
-		"--header", "x-litellm-api-key=LITELLM_KEY"}
+		"--header", "x-gateway-api-key=GATEWAY_KEY"}
 	cases = append(cases, Case{Label: "bearer+header", Options: headerOpts, DelegationArgs: headerArgs})
 	return cases
 }

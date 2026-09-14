@@ -797,7 +797,7 @@ func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 		"client-id", "non-secret client ID", "Other auth modes reject --client-id",
 		"MCP_CLIENT_SECRET", "inherited environment", "no interactive stdin",
 		"apply",
-		"--header", "NAME=ENVVAR", "ENGRAM_HEADERS", "x-litellm-api-key=LITELLM_KEY",
+		"--header", "NAME=ENVVAR", "ENGRAM_HEADERS", "x-gateway-api-key=GATEWAY_KEY",
 		"--bearer-token-env-var", "never a value", "owned by --auth",
 	} {
 		if !strings.Contains(section, want) {
@@ -2317,9 +2317,9 @@ func TestSetupParseHeaders(t *testing.T) {
 			specs []string
 			want  []setup.HeaderSpec
 		}{
-			{"single", []string{"x-litellm-api-key=LITELLM_KEY"}, []setup.HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}}},
-			{"two_input_order", []string{"x-litellm-api-key=LITELLM_KEY", "CF-Access-Client-Id=CF_ID"},
-				[]setup.HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}, {Name: "CF-Access-Client-Id", EnvVar: "CF_ID"}}},
+			{"single", []string{"x-gateway-api-key=GATEWAY_KEY"}, []setup.HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}}},
+			{"two_input_order", []string{"x-gateway-api-key=GATEWAY_KEY", "CF-Access-Client-Id=CF_ID"},
+				[]setup.HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}, {Name: "CF-Access-Client-Id", EnvVar: "CF_ID"}}},
 			{"nil", nil, nil},
 			{"empty_slice", []string{}, nil},
 			{"full_token_class", []string{"x!#$%&'*+.^_`|~-1=OK_9"}, []setup.HeaderSpec{{Name: "x!#$%&'*+.^_`|~-1", EnvVar: "OK_9"}}},
@@ -2346,7 +2346,7 @@ func TestSetupParseHeaders(t *testing.T) {
 	})
 
 	t.Run("malformed_name", func(t *testing.T) {
-		for _, spec := range []string{"", "=LITELLM_KEY", "x key=LITELLM_KEY", "x:key=LITELLM_KEY", "x-clé=LITELLM_KEY", "sk-live-RHS-SENTINEL-3a9f"} {
+		for _, spec := range []string{"", "=GATEWAY_KEY", "x key=GATEWAY_KEY", "x:key=GATEWAY_KEY", "x-clé=GATEWAY_KEY", "sk-live-RHS-SENTINEL-3a9f"} {
 			t.Run(spec, func(t *testing.T) {
 				_, err := setupParseHeaders([]string{spec})
 				assertSetupHeaderUsageError(t, err, "malformed header name", "NAME=ENVVAR")
@@ -2359,7 +2359,7 @@ func TestSetupParseHeaders(t *testing.T) {
 
 	t.Run("malformed_envvar", func(t *testing.T) {
 		for _, spec := range []string{
-			"x-key=", "x-key=sk-live-RHS-SENTINEL-3a9f", "x-key=${LITELLM_KEY}", "x-key={env:LITELLM_KEY}",
+			"x-key=", "x-key=sk-live-RHS-SENTINEL-3a9f", "x-key=${GATEWAY_KEY}", "x-key={env:GATEWAY_KEY}",
 			"x-key=Bearer abc", "x-key=a:b", "x-key=1BAD", "x-key=MY-KEY",
 		} {
 			t.Run(spec, func(t *testing.T) {
@@ -2389,9 +2389,9 @@ func TestSetupParseHeaders(t *testing.T) {
 // change a live flag's default (mirrors TestSetupRuntimeEnvDefaultReadsEnv
 // above).
 func TestSetupHeaderEnvDefaultReadsEnv(t *testing.T) {
-	t.Setenv("ENGRAM_HEADERS", "x-litellm-api-key=LITELLM_KEY,CF-Access-Client-Id=CF_ID")
+	t.Setenv("ENGRAM_HEADERS", "x-gateway-api-key=GATEWAY_KEY,CF-Access-Client-Id=CF_ID")
 	got := setupHeaderEnvDefault()
-	want := []string{"x-litellm-api-key=LITELLM_KEY", "CF-Access-Client-Id=CF_ID"}
+	want := []string{"x-gateway-api-key=GATEWAY_KEY", "CF-Access-Client-Id=CF_ID"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("setupHeaderEnvDefault() = %v, want %v", got, want)
 	}
@@ -2473,7 +2473,7 @@ func TestSetupHeaderRejectsAuthorizationCollision(t *testing.T) {
 // is a usage error, with zero runtime/skills effects, in both lanes
 // (D-03).
 func TestSetupHeaderRejectsMalformedName(t *testing.T) {
-	for _, spec := range []string{"", "=LITELLM_KEY", "x key=LITELLM_KEY", "x:key=LITELLM_KEY", "x-clé=LITELLM_KEY", "sk-live-RHS-SENTINEL-3a9f"} {
+	for _, spec := range []string{"", "=GATEWAY_KEY", "x key=GATEWAY_KEY", "x:key=GATEWAY_KEY", "x-clé=GATEWAY_KEY", "sk-live-RHS-SENTINEL-3a9f"} {
 		t.Run(spec, func(t *testing.T) {
 			setupHeaderInvalidCLI(t, []string{"--header", spec}, "malformed header name", "NAME=ENVVAR")
 		})
@@ -2487,7 +2487,7 @@ func TestSetupHeaderRejectsMalformedName(t *testing.T) {
 // echo the offending right-hand side (D-03, REQ-header-value-env-ref-only).
 func TestSetupHeaderRejectsMalformedEnvVar(t *testing.T) {
 	for _, spec := range []string{
-		"x-key=", "x-key=sk-live-RHS-SENTINEL-3a9f", "x-key=${LITELLM_KEY}", "x-key={env:LITELLM_KEY}",
+		"x-key=", "x-key=sk-live-RHS-SENTINEL-3a9f", "x-key=${GATEWAY_KEY}", "x-key={env:GATEWAY_KEY}",
 		"x-key=Bearer abc", "x-key=a:b", "x-key=1BAD", "x-key=MY-KEY",
 	} {
 		t.Run(spec, func(t *testing.T) {
@@ -2526,7 +2526,7 @@ func TestSetupHeaderRejectsDuplicateName(t *testing.T) {
 }
 
 // setupCodexHeaderDeclineReason is the reason codex's Plan() authors for
-// a declined "x-litellm-api-key" header (internal/setup/codex.go,
+// a declined "x-gateway-api-key" header (internal/setup/codex.go,
 // 02-01), quoted here once so this file's own header-related tests never
 // restate it by hand. Asserted via strings.Contains, matching
 // TestSetupUnsupportedAuthModeIsFailedRow's own precedent: a row whose
@@ -2536,7 +2536,7 @@ func TestSetupHeaderRejectsDuplicateName(t *testing.T) {
 // skill format" and appends onto Reason (setupJoinReason) — a pre-existing
 // property of the row-rendering pipeline, not something this plan's
 // header validation introduces or is responsible for correcting.
-const setupCodexHeaderDeclineReason = "codex: custom header(s) x-litellm-api-key: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: setup: custom header is not supported by this runtime"
+const setupCodexHeaderDeclineReason = "codex: custom header(s) x-gateway-api-key: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: setup: custom header is not supported by this runtime"
 
 // TestSetupHeaderCodexDeclined proves --header + codex is a "failed" row
 // naming the header and the capability gap end-to-end through the CLI —
@@ -2552,7 +2552,7 @@ func TestSetupHeaderCodexDeclined(t *testing.T) {
 		resetCommandFlagState(t, setupCmd)
 		withFakeSetupEnv(t, fakeSetupEnv("codex"))
 		stdout, stderr, err := runClient(t, "setup", "--url", url,
-			"--header", "x-litellm-api-key=LITELLM_KEY", "--runtime", "codex", "--output", "json")
+			"--header", "x-gateway-api-key=GATEWAY_KEY", "--runtime", "codex", "--output", "json")
 		if err != nil {
 			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
 		}
@@ -2584,7 +2584,7 @@ func TestSetupHeaderCodexDeclined(t *testing.T) {
 			return setup.RunResult{}, nil
 		}, "codex"))
 		_, stderr, err := runClient(t, "setup", "--url", url,
-			"--header", "x-litellm-api-key=LITELLM_KEY", "--runtime", "codex", "--apply", "--output", "json")
+			"--header", "x-gateway-api-key=GATEWAY_KEY", "--runtime", "codex", "--apply", "--output", "json")
 		if got := exitCodeFromError(err); got != exitSetupFailed {
 			t.Fatalf("exit=%d, want exitSetupFailed: %v (stderr=%q)", got, err, stderr)
 		}
@@ -2604,7 +2604,7 @@ func TestSetupHeaderCodexDeclined(t *testing.T) {
 			return setup.RunResult{}, nil
 		}, "claude", "codex"))
 		stdout, stderr, err := runClient(t, "setup", "--url", url,
-			"--header", "x-litellm-api-key=LITELLM_KEY", "--apply", "--output", "json")
+			"--header", "x-gateway-api-key=GATEWAY_KEY", "--apply", "--output", "json")
 		if got := exitCodeFromError(err); got != exitPartial {
 			t.Fatalf("exit=%d, want exitPartial: %v (stderr=%q)", got, err, stderr)
 		}
@@ -2615,7 +2615,7 @@ func TestSetupHeaderCodexDeclined(t *testing.T) {
 		for _, row := range doc.Runtimes {
 			switch row.Name {
 			case "claude-code":
-				if row.Outcome != "wrote" || !strings.Contains(row.Command, "--header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+				if row.Outcome != "wrote" || !strings.Contains(row.Command, "--header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
 					t.Errorf("claude-code row = %+v, want wrote with the header pair", row)
 				}
 			case "codex":
@@ -2653,7 +2653,7 @@ func TestSetupHeaderValidWithEveryAuthMode(t *testing.T) {
 			}
 			withFakeSetupEnv(t, env)
 			args := []string{"setup", "--url", url, "--auth", auth, "--runtime", "claude-code",
-				"--header", "x-litellm-api-key=LITELLM_KEY", "--output", "json"}
+				"--header", "x-gateway-api-key=GATEWAY_KEY", "--output", "json"}
 			if auth == "oauth-client" {
 				args = append(args, "--client-id", "test-client")
 			}
@@ -2669,10 +2669,10 @@ func TestSetupHeaderValidWithEveryAuthMode(t *testing.T) {
 				t.Fatalf("rows = %+v, want exactly 1", doc.Runtimes)
 			}
 			row := doc.Runtimes[0]
-			if !strings.HasSuffix(row.Command, "--header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+			if !strings.HasSuffix(row.Command, "--header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
 				t.Errorf("%s: command = %q, want it to end with the header pair", auth, row.Command)
 			}
-			if auth == "bearer" && !strings.Contains(row.Command, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+			if auth == "bearer" && !strings.Contains(row.Command, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
 				t.Errorf("bearer: command = %q, want auth header then extra header", row.Command)
 			}
 		})
@@ -2691,7 +2691,7 @@ func TestSetupHeaderValidWithEveryAuthMode(t *testing.T) {
 		withFakeSetupEnv(t, env)
 		stdout, stderr, err := runClient(t, "setup", "--url", url, "--auth", "bearer",
 			"--token-file", "/home/u/.engram/token", "--runtime", "generic",
-			"--header", "x-litellm-api-key=LITELLM_KEY", "--output", "json")
+			"--header", "x-gateway-api-key=GATEWAY_KEY", "--output", "json")
 		if err != nil {
 			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
 		}
@@ -2703,7 +2703,7 @@ func TestSetupHeaderValidWithEveryAuthMode(t *testing.T) {
 			t.Fatalf("rows = %+v, want exactly 1", doc.Runtimes)
 		}
 		row := doc.Runtimes[0]
-		if !strings.Contains(row.Config, `"x-litellm-api-key":"${LITELLM_KEY}"`) {
+		if !strings.Contains(row.Config, `"x-gateway-api-key":"${GATEWAY_KEY}"`) {
 			t.Errorf("generic: config = %q, missing extra header", row.Config)
 		}
 		if !strings.Contains(row.Config, "Bearer \\u003cfrom /home/u/.engram/token\\u003e") {
@@ -2721,12 +2721,12 @@ func TestSetupHeaderValidWithEveryAuthMode(t *testing.T) {
 // array/object — proved directly on the raw decoded JSON below).
 func TestSetupHeaderOrderIndependent(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
-	const wantHeaders = "CF-Access-Client-Id=CF_ID,x-litellm-api-key=LITELLM_KEY"
+	const wantHeaders = "CF-Access-Client-Id=CF_ID,x-gateway-api-key=GATEWAY_KEY"
 
 	invocations := [][]string{
-		{"--header", "x-litellm-api-key=LITELLM_KEY", "--header", "CF-Access-Client-Id=CF_ID"},
-		{"--header", "CF-Access-Client-Id=CF_ID", "--header", "x-litellm-api-key=LITELLM_KEY"},
-		{"--header", "CF-Access-Client-Id=CF_ID,x-litellm-api-key=LITELLM_KEY"},
+		{"--header", "x-gateway-api-key=GATEWAY_KEY", "--header", "CF-Access-Client-Id=CF_ID"},
+		{"--header", "CF-Access-Client-Id=CF_ID", "--header", "x-gateway-api-key=GATEWAY_KEY"},
+		{"--header", "CF-Access-Client-Id=CF_ID,x-gateway-api-key=GATEWAY_KEY"},
 	}
 	stdouts := make([]string, 0, len(invocations))
 	for _, hdrArgs := range invocations {
@@ -2755,11 +2755,11 @@ func TestSetupHeaderOrderIndependent(t *testing.T) {
 	for _, row := range doc.Runtimes {
 		switch row.Name {
 		case "claude-code":
-			if !strings.Contains(row.Command, "--header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+			if !strings.Contains(row.Command, "--header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
 				t.Errorf("claude-code command = %q, want the sorted header pair", row.Command)
 			}
 		case "opencode":
-			if !strings.Contains(row.Command, "--header 'CF-Access-Client-Id={env:CF_ID}' --header 'x-litellm-api-key={env:LITELLM_KEY}'") {
+			if !strings.Contains(row.Command, "--header 'CF-Access-Client-Id={env:CF_ID}' --header 'x-gateway-api-key={env:GATEWAY_KEY}'") {
 				t.Errorf("opencode command = %q, want the sorted header pair", row.Command)
 			}
 		}

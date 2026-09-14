@@ -98,7 +98,7 @@ func TestGenericHeaders(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
 
 	headers := []HeaderSpec{
-		{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"},
+		{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"},
 		{Name: "CF-Access-Client-Id", EnvVar: "CF_ID"},
 	}
 
@@ -129,8 +129,8 @@ func TestGenericHeaders(t *testing.T) {
 				t.Fatalf("mcpServers has no engram entry: %v", servers)
 			}
 
-			if entry.Headers["x-litellm-api-key"] != "${LITELLM_KEY}" {
-				t.Errorf("headers[x-litellm-api-key] = %q, want %q", entry.Headers["x-litellm-api-key"], "${LITELLM_KEY}")
+			if entry.Headers["x-gateway-api-key"] != "${GATEWAY_KEY}" {
+				t.Errorf("headers[x-gateway-api-key] = %q, want %q", entry.Headers["x-gateway-api-key"], "${GATEWAY_KEY}")
 			}
 			if entry.Headers["CF-Access-Client-Id"] != "${CF_ID}" {
 				t.Errorf("headers[CF-Access-Client-Id] = %q, want %q", entry.Headers["CF-Access-Client-Id"], "${CF_ID}")
@@ -156,12 +156,12 @@ func TestGenericHeaders(t *testing.T) {
 			raw := plan.Config
 			idxAuth := strings.Index(raw, "\"Authorization\"")
 			idxCF := strings.Index(raw, "\"CF-Access-Client-Id\"")
-			idxLite := strings.Index(raw, "\"x-litellm-api-key\"")
+			idxLite := strings.Index(raw, "\"x-gateway-api-key\"")
 			if idxCF < 0 || idxLite < 0 {
 				t.Fatalf("raw Config missing an expected header key: %q", raw)
 			}
 			if idxCF >= idxLite {
-				t.Errorf("raw order: CF-Access-Client-Id at %d, x-litellm-api-key at %d, want CF-Access-Client-Id first (case-insensitive sort)", idxCF, idxLite)
+				t.Errorf("raw order: CF-Access-Client-Id at %d, x-gateway-api-key at %d, want CF-Access-Client-Id first (case-insensitive sort)", idxCF, idxLite)
 			}
 			if auth == "bearer" {
 				if idxAuth < 0 {
@@ -213,8 +213,8 @@ func TestGenericHeaders(t *testing.T) {
 		if entry.Headers["Authorization"] != want {
 			t.Errorf("headers[Authorization] = %q, want %q (provenance stays bearer-only)", entry.Headers["Authorization"], want)
 		}
-		if entry.Headers["x-litellm-api-key"] != "${LITELLM_KEY}" {
-			t.Errorf("headers[x-litellm-api-key] = %q, want %q (extras still references)", entry.Headers["x-litellm-api-key"], "${LITELLM_KEY}")
+		if entry.Headers["x-gateway-api-key"] != "${GATEWAY_KEY}" {
+			t.Errorf("headers[x-gateway-api-key] = %q, want %q (extras still references)", entry.Headers["x-gateway-api-key"], "${GATEWAY_KEY}")
 		}
 	})
 
@@ -249,14 +249,14 @@ func TestGenericHeaders(t *testing.T) {
 
 	t.Run("input-order-unchanged", func(t *testing.T) {
 		hs := []HeaderSpec{
-			{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"},
+			{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"},
 			{Name: "CF-Access-Client-Id", EnvVar: "CF_ID"},
 		}
 		if _, err := Generic.Plan(OSEnvironment, Options{URL: url, Auth: "oauth", Headers: hs}); err != nil {
 			t.Fatalf("Plan: %v", err)
 		}
-		if hs[0].Name != "x-litellm-api-key" {
-			t.Errorf("input slice reordered: hs[0].Name = %q, want %q", hs[0].Name, "x-litellm-api-key")
+		if hs[0].Name != "x-gateway-api-key" {
+			t.Errorf("input slice reordered: hs[0].Name = %q, want %q", hs[0].Name, "x-gateway-api-key")
 		}
 	})
 }

@@ -35,8 +35,8 @@ Never hand-edit settings files. The plugin ships no bundled MCP server.
    - **None**: a local / no-auth server.
 
    **Gateway header (optional).** If the deployment sits behind a gateway that
-   requires an additional header — for example LiteLLM's `x-litellm-api-key` —
-   ask for the header **name** and the **name of the environment variable**
+   requires an additional header — for example a gateway's own
+   `x-gateway-api-key` — ask for the header **name** and the **name of the environment variable**
    that will hold its value, never the value itself. `--header NAME=ENVVAR` is
    repeatable and valid with every auth mode; it never replaces the
    `Authorization` header, which stays owned by the auth mode (use `bearer`
@@ -51,8 +51,8 @@ Never hand-edit settings files. The plugin ships no bundled MCP server.
    `--client-secret` takes no inline value, and delegated setup has no interactive
    stdin. For `bearer`, require `ENGRAM_TOKEN` in the runtime's environment. Keep
    the generated `${ENGRAM_TOKEN}` reference literal, including its single quotes.
-   For a gateway header, require the named variable (for example `LITELLM_KEY`)
-   in the runtime's environment and keep the generated `${LITELLM_KEY}` reference
+   For a gateway header, require the named variable (for example `GATEWAY_KEY`)
+   in the runtime's environment and keep the generated `${GATEWAY_KEY}` reference
    literal, including its single quotes.
    Do not ask the user to paste secrets into this conversation, read or print
    credentials, expand them into argv, or use `--token-file` for native runtimes.
@@ -68,7 +68,7 @@ These are synthetic preview and registration templates. Replace
 `example-client-id` with their non-secret client ID, preserving each value as
 one safely shell-quoted argument. Never execute the synthetic values as setup
 for the user's machine. The tables contain no permission to apply.
-Replace `LITELLM_KEY` with the user's own variable name when using the
+Replace `GATEWAY_KEY` with the user's own variable name when using the
 `bearer+header` rows.
 
 <!-- engram:rule:start setup-commands -->
@@ -80,7 +80,7 @@ Replace `LITELLM_KEY` with the user's own variable name when using the
 | `oauth-client` | `engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client-id` |
 | `bearer` | `engram setup --url https://engram.example.com/mcp --auth bearer` |
 | `none` | `engram setup --url https://engram.example.com/mcp --auth none` |
-| `bearer+header` | `engram setup --url https://engram.example.com/mcp --auth bearer --header x-litellm-api-key=LITELLM_KEY` |
+| `bearer+header` | `engram setup --url https://engram.example.com/mcp --auth bearer --header x-gateway-api-key=GATEWAY_KEY` |
 
 ### Claude Code fallback registration
 
@@ -90,7 +90,7 @@ Replace `LITELLM_KEY` with the user's own variable name when using the
 | `oauth-client` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --client-id example-client-id --client-secret --callback-port 8765` |
 | `bearer` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'Authorization: Bearer ${ENGRAM_TOKEN}'` |
 | `none` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user` |
-| `bearer+header` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-litellm-api-key: ${LITELLM_KEY}'` |
+| `bearer+header` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'` |
 
 <!-- engram:rule:end setup-commands -->
 

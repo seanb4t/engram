@@ -202,12 +202,12 @@ func TestClaudeCodeHeaders(t *testing.T) {
 	}
 
 	headers := []HeaderSpec{
-		{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"},
+		{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"},
 		{Name: "CF-Access-Client-Id", EnvVar: "CF_ID"},
 	}
 	wantExtra := []string{
 		"--header", "CF-Access-Client-Id: ${CF_ID}",
-		"--header", "x-litellm-api-key: ${LITELLM_KEY}",
+		"--header", "x-gateway-api-key: ${GATEWAY_KEY}",
 	}
 
 	tests := []struct {
@@ -255,8 +255,8 @@ func TestClaudeCodeHeaders(t *testing.T) {
 
 	// The caller's slice must not be re-ordered in place (D-08:
 	// sortedHeaders returns a clone).
-	if headers[0].Name != "x-litellm-api-key" {
-		t.Errorf("caller's Headers slice was reordered in place: headers[0].Name = %q, want %q", headers[0].Name, "x-litellm-api-key")
+	if headers[0].Name != "x-gateway-api-key" {
+		t.Errorf("caller's Headers slice was reordered in place: headers[0].Name = %q, want %q", headers[0].Name, "x-gateway-api-key")
 	}
 
 	// Discriminating case-insensitive sort pair: byte order would put
@@ -317,7 +317,7 @@ func TestClaudeCodeHeaders(t *testing.T) {
 			t.Fatalf("Plan: %v", err)
 		}
 		cmd := plan.Actions[1].Command()
-		want := "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-litellm-api-key: ${LITELLM_KEY}'"
+		want := "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'"
 		if !strings.Contains(cmd, want) {
 			t.Errorf("Command() = %q, want it to contain %q", cmd, want)
 		}

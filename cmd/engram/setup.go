@@ -773,8 +773,8 @@ rejected, and the Authorization header (in any letter case) is owned by --auth; 
 Rendered in each runtime's own syntax — claude-code "NAME: ${ENVVAR}", opencode NAME={env:ENVVAR},
 generic "NAME": "${ENVVAR}" — with the --auth header first and extra headers sorted by name. codex has
 no custom-header flag (codex mcp add exposes only --bearer-token-env-var): its row reports failed
-naming the header; drop --header or exclude codex via --runtime. Example, a LiteLLM gateway:
---header x-litellm-api-key=LITELLM_KEY`,
+naming the header; drop --header or exclude codex via --runtime. Example, an API-gateway header:
+--header x-gateway-api-key=GATEWAY_KEY`,
 		strings.Join(setup.Names(), ", "), setupApplySentence())
 }
 
@@ -787,7 +787,7 @@ const setupExample = `  engram setup --url https://engram.example.com/mcp
   engram setup --url https://engram.example.com/mcp --runtime claude-code
   engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
   engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
-  engram setup --url https://engram.example.com/mcp --auth oauth --header x-litellm-api-key=LITELLM_KEY`
+  engram setup --url https://engram.example.com/mcp --auth oauth --header x-gateway-api-key=GATEWAY_KEY`
 
 func init() {
 	setupCmd.Long = setupLongDescription()

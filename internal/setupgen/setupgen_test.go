@@ -47,19 +47,19 @@ func TestRenderRealPlans(t *testing.T) {
 			if c.Options.Auth != "bearer" {
 				t.Fatalf("bearer+header case Auth = %q, want %q", c.Options.Auth, "bearer")
 			}
-			if want := (setup.HeaderSpec{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}); len(c.Options.Headers) != 1 || c.Options.Headers[0] != want {
+			if want := (setup.HeaderSpec{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}); len(c.Options.Headers) != 1 || c.Options.Headers[0] != want {
 				t.Fatalf("bearer+header case Headers = %+v, want exactly one %+v", c.Options.Headers, want)
 			}
 			idx := slices.Index(c.DelegationArgs, "--header")
-			if idx < 0 || idx+1 >= len(c.DelegationArgs) || c.DelegationArgs[idx+1] != "x-litellm-api-key=LITELLM_KEY" {
-				t.Fatalf("bearer+header DelegationArgs = %q, want trailing --header x-litellm-api-key=LITELLM_KEY", c.DelegationArgs)
+			if idx < 0 || idx+1 >= len(c.DelegationArgs) || c.DelegationArgs[idx+1] != "x-gateway-api-key=GATEWAY_KEY" {
+				t.Fatalf("bearer+header DelegationArgs = %q, want trailing --header x-gateway-api-key=GATEWAY_KEY", c.DelegationArgs)
 			}
 		})
 	}
 	if !strings.Contains(body, "'Authorization: Bearer ${ENGRAM_TOKEN}'") {
 		t.Fatal("bearer environment reference lost its literal shell quoting")
 	}
-	if !strings.Contains(body, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+	if !strings.Contains(body, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
 		t.Fatal("bearer+header fallback row lost auth-header-first ordering")
 	}
 	if got := strings.Count(body, "| `bearer` |"); got != 2 {
