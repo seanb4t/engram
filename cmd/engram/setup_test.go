@@ -2600,7 +2600,7 @@ func TestSetupHeaderCodexDeclined(t *testing.T) {
 	t.Run("mixed_claude_codex_opencode", func(t *testing.T) {
 		resetClientFlags(t)
 		resetCommandFlagState(t, setupCmd)
-		withFakeSetupEnv(t, fakeSetupEnvWithRun(func(_ context.Context, path string, args []string) (setup.RunResult, error) {
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(func(_ context.Context, _ string, _ []string) (setup.RunResult, error) {
 			return setup.RunResult{}, nil
 		}, "claude", "codex"))
 		stdout, stderr, err := runClient(t, "setup", "--url", url,
@@ -2728,7 +2728,7 @@ func TestSetupHeaderOrderIndependent(t *testing.T) {
 		{"--header", "CF-Access-Client-Id=CF_ID", "--header", "x-litellm-api-key=LITELLM_KEY"},
 		{"--header", "CF-Access-Client-Id=CF_ID,x-litellm-api-key=LITELLM_KEY"},
 	}
-	var stdouts []string
+	stdouts := make([]string, 0, len(invocations))
 	for _, hdrArgs := range invocations {
 		resetClientFlags(t)
 		resetCommandFlagState(t, setupCmd)
