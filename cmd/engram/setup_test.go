@@ -2278,3 +2278,433 @@ func TestSetupHelpClientIDContract(t *testing.T) {
 		t.Errorf("client-id default = %q, want empty", flag.DefValue)
 	}
 }
+
+// assertSetupHeaderUsageError fails t unless err is a *cliError carrying
+// exitUsage, names "--header", and contains every substring in want. This
+// is the direct-call analogue of TestSetupClientID's invalid-branch
+// assertions, reused by TestSetupParseHeaders (02-03-PLAN.md Task 1).
+func assertSetupHeaderUsageError(t *testing.T, err error, want ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("setupParseHeaders: got nil error, want a usage error")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want exitUsage (%d): %v", got, exitUsage, err)
+	}
+	if !strings.Contains(err.Error(), "--header") {
+		t.Errorf("error = %v, want it to name --header", err)
+	}
+	for _, w := range want {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("error = %v, want it to contain %q", err, w)
+		}
+	}
+}
+
+// TestSetupParseHeaders exercises setupParseHeaders directly: valid specs
+// convert to setup.HeaderSpec values in INPUT order (the CLI does not
+// sort — runtimes do, D-08); every invalid shape returns a *cliError
+// carrying exitUsage, naming "--header" and the offending NAME, and never
+// echoing anything right of a spec's first "=" (a pasted secret lands
+// exactly there).
+func TestSetupParseHeaders(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			specs []string
+			want  []setup.HeaderSpec
+		}{
+			{"single", []string{"x-litellm-api-key=LITELLM_KEY"}, []setup.HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}}},
+			{"two_input_order", []string{"x-litellm-api-key=LITELLM_KEY", "CF-Access-Client-Id=CF_ID"},
+				[]setup.HeaderSpec{{Name: "x-litellm-api-key", EnvVar: "LITELLM_KEY"}, {Name: "CF-Access-Client-Id", EnvVar: "CF_ID"}}},
+			{"nil", nil, nil},
+			{"empty_slice", []string{}, nil},
+			{"full_token_class", []string{"x!#$%&'*+.^_`|~-1=OK_9"}, []setup.HeaderSpec{{Name: "x!#$%&'*+.^_`|~-1", EnvVar: "OK_9"}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				got, err := setupParseHeaders(tc.specs)
+				if err != nil {
+					t.Fatalf("setupParseHeaders(%q): %v", tc.specs, err)
+				}
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Errorf("setupParseHeaders(%q) = %+v, want %+v", tc.specs, got, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("authorization_collision", func(t *testing.T) {
+		for _, spec := range []string{"Authorization=T", "authorization=T", "AUTHORIZATION=T"} {
+			t.Run(spec, func(t *testing.T) {
+				_, err := setupParseHeaders([]string{spec})
+				assertSetupHeaderUsageError(t, err, "the Authorization header is owned by --auth", "use --auth bearer")
+			})
+		}
+	})
+
+	t.Run("malformed_name", func(t *testing.T) {
+		for _, spec := range []string{"", "=LITELLM_KEY", "x key=LITELLM_KEY", "x:key=LITELLM_KEY", "x-clé=LITELLM_KEY", "sk-live-RHS-SENTINEL-3a9f"} {
+			t.Run(spec, func(t *testing.T) {
+				_, err := setupParseHeaders([]string{spec})
+				assertSetupHeaderUsageError(t, err, "malformed header name", "NAME=ENVVAR")
+				if spec == "sk-live-RHS-SENTINEL-3a9f" && strings.Contains(err.Error(), "sk-live-RHS-SENTINEL-3a9f") {
+					t.Errorf("error echoed the no-= argument: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("malformed_envvar", func(t *testing.T) {
+		for _, spec := range []string{
+			"x-key=", "x-key=sk-live-RHS-SENTINEL-3a9f", "x-key=${LITELLM_KEY}", "x-key={env:LITELLM_KEY}",
+			"x-key=Bearer abc", "x-key=a:b", "x-key=1BAD", "x-key=MY-KEY",
+		} {
+			t.Run(spec, func(t *testing.T) {
+				_, err := setupParseHeaders([]string{spec})
+				assertSetupHeaderUsageError(t, err, "never a value")
+				for _, forbidden := range []string{"sk-live-RHS-SENTINEL-3a9f", "${", "{env:", "Bearer"} {
+					if strings.Contains(err.Error(), forbidden) {
+						t.Errorf("error echoed the right-hand side (%q): %v", forbidden, err)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("duplicate", func(t *testing.T) {
+		_, err := setupParseHeaders([]string{"x-key=A", "X-KEY=B"})
+		assertSetupHeaderUsageError(t, err, "duplicate header name", "X-KEY")
+		_, err = setupParseHeaders([]string{"x-key=A", "x-key=A"})
+		assertSetupHeaderUsageError(t, err, "duplicate header name")
+	})
+}
+
+// TestSetupHeaderEnvDefaultReadsEnv proves ENGRAM_HEADERS is split on ","
+// into --header's default value, and that an unset/empty var yields nil —
+// exercised directly since pflag defaults are bound at init() time, so
+// t.Setenv after the binary has already started cannot retroactively
+// change a live flag's default (mirrors TestSetupRuntimeEnvDefaultReadsEnv
+// above).
+func TestSetupHeaderEnvDefaultReadsEnv(t *testing.T) {
+	t.Setenv("ENGRAM_HEADERS", "x-litellm-api-key=LITELLM_KEY,CF-Access-Client-Id=CF_ID")
+	got := setupHeaderEnvDefault()
+	want := []string{"x-litellm-api-key=LITELLM_KEY", "CF-Access-Client-Id=CF_ID"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("setupHeaderEnvDefault() = %v, want %v", got, want)
+	}
+
+	t.Setenv("ENGRAM_HEADERS", "")
+	if got := setupHeaderEnvDefault(); got != nil {
+		t.Errorf("setupHeaderEnvDefault() with empty ENGRAM_HEADERS = %v, want nil", got)
+	}
+}
+
+// setupHeaderInvalidCLI runs `engram setup --url ... <headerArgs>` (and
+// its --apply variant) against a fake claude-code-present Environment
+// recording every runtime/skills effect, asserting exitUsage, that the
+// error names "--header" and every string in want, and that not one
+// countable effect occurred (LookPath/HomeDir/Run/WriteFile/MkdirAll) —
+// TestSetupClientID's own invalid-input branch shape: D-02/D-03 are
+// CLI-boundary usage errors, never a per-runtime capability gap
+// (RESEARCH.md Pitfall 5).
+func setupHeaderInvalidCLI(t *testing.T, headerArgs []string, want ...string) {
+	t.Helper()
+	for _, apply := range []bool{false, true} {
+		lane := "preview"
+		if apply {
+			lane = "apply"
+		}
+		t.Run(lane, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			effects := 0
+			env := fakeSetupEnv("claude")
+			env.LookPath = func(string) (string, error) { effects++; return "", exec.ErrNotFound }
+			env.HomeDir = func() (string, error) { effects++; return "/home/fake", nil }
+			env.Run = func(context.Context, string, []string) (setup.RunResult, error) {
+				effects++
+				return setup.RunResult{}, nil
+			}
+			withFakeSetupEnv(t, env)
+			skillsEnv.WriteFile = func(string, []byte, os.FileMode) error { effects++; return nil }
+			skillsEnv.MkdirAll = func(string, os.FileMode) error { effects++; return nil }
+			args := append([]string{"setup", "--url", "https://engram.example.com/mcp"}, headerArgs...)
+			if apply {
+				args = append(args, "--apply")
+			}
+			_, stderr, err := runClient(t, args...)
+			var coded interface{ ExitCode() int }
+			if !errors.As(err, &coded) || coded.ExitCode() != exitUsage {
+				t.Errorf("error = %v, want ExitCode() == exitUsage (stderr=%q)", err, stderr)
+			}
+			if err == nil || !strings.Contains(err.Error(), "--header") {
+				t.Errorf("error = %v, want it to name --header", err)
+			}
+			for _, w := range want {
+				if err == nil || !strings.Contains(err.Error(), w) {
+					t.Errorf("error = %v, want it to contain %q", err, w)
+				}
+			}
+			if effects != 0 {
+				t.Errorf("invalid --header caused %d runtime/skills effects, want zero", effects)
+			}
+		})
+	}
+}
+
+// TestSetupHeaderRejectsAuthorizationCollision proves --header Authorization=...
+// (in any letter case) is a usage error naming --auth bearer, with zero
+// runtime/skills effects, in both the preview and --apply lane (D-02).
+func TestSetupHeaderRejectsAuthorizationCollision(t *testing.T) {
+	for _, spec := range []string{"Authorization=T", "authorization=T", "AUTHORIZATION=T"} {
+		t.Run(spec, func(t *testing.T) {
+			setupHeaderInvalidCLI(t, []string{"--header", spec}, "the Authorization header is owned by --auth", "use --auth bearer")
+		})
+	}
+}
+
+// TestSetupHeaderRejectsMalformedName proves a --header NAME failing the
+// RFC 7230 token grammar — including an explicitly supplied empty
+// --header (Changed is true but pflag's readAsCSV("") yields a
+// zero-length slice, so it must not silently degrade to "no headers") —
+// is a usage error, with zero runtime/skills effects, in both lanes
+// (D-03).
+func TestSetupHeaderRejectsMalformedName(t *testing.T) {
+	for _, spec := range []string{"", "=LITELLM_KEY", "x key=LITELLM_KEY", "x:key=LITELLM_KEY", "x-clé=LITELLM_KEY", "sk-live-RHS-SENTINEL-3a9f"} {
+		t.Run(spec, func(t *testing.T) {
+			setupHeaderInvalidCLI(t, []string{"--header", spec}, "malformed header name", "NAME=ENVVAR")
+		})
+	}
+}
+
+// TestSetupHeaderRejectsMalformedEnvVar proves a --header ENVVAR failing
+// the POSIX identifier grammar — including an empty ENVVAR and every
+// literal-looking right-hand side — is a usage error, with zero
+// runtime/skills effects in both lanes, and that the error/stderr never
+// echo the offending right-hand side (D-03, REQ-header-value-env-ref-only).
+func TestSetupHeaderRejectsMalformedEnvVar(t *testing.T) {
+	for _, spec := range []string{
+		"x-key=", "x-key=sk-live-RHS-SENTINEL-3a9f", "x-key=${LITELLM_KEY}", "x-key={env:LITELLM_KEY}",
+		"x-key=Bearer abc", "x-key=a:b", "x-key=1BAD", "x-key=MY-KEY",
+	} {
+		t.Run(spec, func(t *testing.T) {
+			setupHeaderInvalidCLI(t, []string{"--header", spec}, "never a value")
+
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			withFakeSetupEnv(t, fakeSetupEnv("claude"))
+			_, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--header", spec)
+			if err == nil {
+				t.Fatal("want a usage error")
+			}
+			for _, forbidden := range []string{"sk-live-RHS-SENTINEL-3a9f", "${", "{env:", "Bearer"} {
+				if strings.Contains(err.Error(), forbidden) {
+					t.Errorf("error echoed the right-hand side (%q): %v", forbidden, err)
+				}
+				if strings.Contains(stderr, forbidden) {
+					t.Errorf("stderr echoed the right-hand side (%q): %q", forbidden, stderr)
+				}
+			}
+		})
+	}
+}
+
+// TestSetupHeaderRejectsDuplicateName proves two --header entries whose
+// NAMEs are equal case-insensitively — across flag repeats or within one
+// comma list — are a usage error, with zero runtime/skills effects in
+// both lanes (D-03).
+func TestSetupHeaderRejectsDuplicateName(t *testing.T) {
+	t.Run("flag_repeat", func(t *testing.T) {
+		setupHeaderInvalidCLI(t, []string{"--header", "x-key=A", "--header", "X-KEY=B"}, "duplicate header name")
+	})
+	t.Run("comma_list", func(t *testing.T) {
+		setupHeaderInvalidCLI(t, []string{"--header", "x-key=A,X-KEY=B"}, "duplicate header name")
+	})
+}
+
+// setupCodexHeaderDeclineReason is the reason codex's Plan() authors for
+// a declined "x-litellm-api-key" header (internal/setup/codex.go,
+// 02-01), quoted here once so this file's own header-related tests never
+// restate it by hand. Asserted via strings.Contains, matching
+// TestSetupUnsupportedAuthModeIsFailedRow's own precedent: a row whose
+// registration fails still runs the skills facet
+// (setupApplySkillsFacet/setupRuntimeRowFromResult) against the failed
+// Plan()'s zero-value SkillTarget, which itself fails as "unrecognized
+// skill format" and appends onto Reason (setupJoinReason) — a pre-existing
+// property of the row-rendering pipeline, not something this plan's
+// header validation introduces or is responsible for correcting.
+const setupCodexHeaderDeclineReason = "codex: custom header(s) x-litellm-api-key: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: setup: custom header is not supported by this runtime"
+
+// TestSetupHeaderCodexDeclined proves --header + codex is a "failed" row
+// naming the header and the capability gap end-to-end through the CLI —
+// in preview, under --apply with only codex selected (exitSetupFailed),
+// and under --apply with claude-code also present (exitPartial, exactly
+// like oauth-client on opencode) — with zero "add" invocations ever
+// reaching codex (D-09, D-10, REQ-header-codex-declined).
+func TestSetupHeaderCodexDeclined(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+
+	t.Run("preview", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnv("codex"))
+		stdout, stderr, err := runClient(t, "setup", "--url", url,
+			"--header", "x-litellm-api-key=LITELLM_KEY", "--runtime", "codex", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("rows = %+v, want exactly 1", doc.Runtimes)
+		}
+		row := doc.Runtimes[0]
+		if row.Outcome != "failed" {
+			t.Errorf("row.Outcome = %q, want %q", row.Outcome, "failed")
+		}
+		if row.Command != "" {
+			t.Errorf("row.Command = %q, want empty", row.Command)
+		}
+		if !strings.Contains(row.Reason, setupCodexHeaderDeclineReason) {
+			t.Errorf("row.Reason = %q, want it to contain %q", row.Reason, setupCodexHeaderDeclineReason)
+		}
+	})
+
+	t.Run("apply_codex_only", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		var calls [][]string
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(func(_ context.Context, path string, args []string) (setup.RunResult, error) {
+			calls = append(calls, append([]string{filepath.Base(path)}, args...))
+			return setup.RunResult{}, nil
+		}, "codex"))
+		_, stderr, err := runClient(t, "setup", "--url", url,
+			"--header", "x-litellm-api-key=LITELLM_KEY", "--runtime", "codex", "--apply", "--output", "json")
+		if got := exitCodeFromError(err); got != exitSetupFailed {
+			t.Fatalf("exit=%d, want exitSetupFailed: %v (stderr=%q)", got, err, stderr)
+		}
+		for _, call := range calls {
+			for _, arg := range call {
+				if arg == "add" {
+					t.Errorf("codex decline still ran an add invocation: %q", call)
+				}
+			}
+		}
+	})
+
+	t.Run("mixed_claude_codex_opencode", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(func(_ context.Context, path string, args []string) (setup.RunResult, error) {
+			return setup.RunResult{}, nil
+		}, "claude", "codex"))
+		stdout, stderr, err := runClient(t, "setup", "--url", url,
+			"--header", "x-litellm-api-key=LITELLM_KEY", "--apply", "--output", "json")
+		if got := exitCodeFromError(err); got != exitPartial {
+			t.Fatalf("exit=%d, want exitPartial: %v (stderr=%q)", got, err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		for _, row := range doc.Runtimes {
+			switch row.Name {
+			case "claude-code":
+				if row.Outcome != "wrote" || !strings.Contains(row.Command, "--header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+					t.Errorf("claude-code row = %+v, want wrote with the header pair", row)
+				}
+			case "codex":
+				if row.Outcome != "failed" || !strings.Contains(row.Reason, setupCodexHeaderDeclineReason) {
+					t.Errorf("codex row = %+v, want failed with the decline reason", row)
+				}
+			case "opencode":
+				if row.Outcome != "not-present" {
+					t.Errorf("opencode row = %+v, want not-present", row)
+				}
+			default:
+				t.Fatalf("unexpected runtime row: %+v", row)
+			}
+		}
+	})
+}
+
+// TestSetupHeaderValidWithEveryAuthMode proves --header is valid with
+// EVERY --auth mode (D-01): each renders the same sorted extra --header
+// pair after that mode's own auth header, and no code path anywhere in
+// the stack reads any environment variable other than XDG_CONFIG_HOME
+// (opencode's own config-root read, unrelated to headers).
+func TestSetupHeaderValidWithEveryAuthMode(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
+		t.Run(auth, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			env := fakeSetupEnv("claude")
+			env.Getenv = func(key string) string {
+				if key != "XDG_CONFIG_HOME" {
+					t.Errorf("unexpected environment read %q", key)
+				}
+				return ""
+			}
+			withFakeSetupEnv(t, env)
+			args := []string{"setup", "--url", url, "--auth", auth, "--runtime", "claude-code",
+				"--header", "x-litellm-api-key=LITELLM_KEY", "--output", "json"}
+			if auth == "oauth-client" {
+				args = append(args, "--client-id", "test-client")
+			}
+			stdout, stderr, err := runClient(t, args...)
+			if err != nil {
+				t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+			}
+			var doc setupReportDoc
+			if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+				t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+			}
+			if len(doc.Runtimes) != 1 {
+				t.Fatalf("rows = %+v, want exactly 1", doc.Runtimes)
+			}
+			row := doc.Runtimes[0]
+			if !strings.HasSuffix(row.Command, "--header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+				t.Errorf("%s: command = %q, want it to end with the header pair", auth, row.Command)
+			}
+			if auth == "bearer" && !strings.Contains(row.Command, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+				t.Errorf("bearer: command = %q, want auth header then extra header", row.Command)
+			}
+		})
+	}
+
+	t.Run("generic", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		env := fakeSetupEnv()
+		env.Getenv = func(key string) string {
+			if key != "XDG_CONFIG_HOME" {
+				t.Errorf("unexpected environment read %q", key)
+			}
+			return ""
+		}
+		withFakeSetupEnv(t, env)
+		stdout, stderr, err := runClient(t, "setup", "--url", url, "--auth", "bearer",
+			"--token-file", "/home/u/.engram/token", "--runtime", "generic",
+			"--header", "x-litellm-api-key=LITELLM_KEY", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("rows = %+v, want exactly 1", doc.Runtimes)
+		}
+		row := doc.Runtimes[0]
+		if !strings.Contains(row.Config, `"x-litellm-api-key":"${LITELLM_KEY}"`) {
+			t.Errorf("generic: config = %q, missing extra header", row.Config)
+		}
+		if !strings.Contains(row.Config, "Bearer \\u003cfrom /home/u/.engram/token\\u003e") {
+			t.Errorf("generic: config = %q, missing bearer provenance", row.Config)
+		}
+	})
+}

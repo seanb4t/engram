@@ -341,6 +341,7 @@ Flags:
       --apply               a mutating operator command previews by default and mutates only when apply is set
       --auth string         auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH) (default "oauth")
       --client-id string    non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag
+      --header strings      additional HTTP header as NAME=ENVVAR, where ENVVAR names the environment variable the runtime resolves itself at connect time — never a value; repeatable or comma-separated; valid with every --auth mode; codex has no custom-header flag and reports a failed row (default: ENGRAM_HEADERS) (default )
   -h, --help                help for setup
       --output string       output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode, generic (default: ENGRAM_RUNTIME) (default )

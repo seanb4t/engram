@@ -185,6 +185,9 @@ func resetClientFlags(t *testing.T) {
 		spinePurgeTags = nil
 		// 02-01-PLAN.md Task 1: setupRuntime is StringSliceVar-backed too.
 		setupRuntime = nil
+		// 02-03-PLAN.md Task 1: setupHeaders is StringSliceVar-backed too —
+		// same append-latch reason as setupRuntime above.
+		setupHeaders = nil
 	})
 }
 

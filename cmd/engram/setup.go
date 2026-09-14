@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,7 @@ var (
 	setupClientID  string
 	setupOutput    string
 	setupRuntime   []string
+	setupHeaders   []string
 	setupApply     bool
 )
 
@@ -196,6 +198,89 @@ func setupRuntimeEnvDefault() []string {
 	return strings.Split(v, ",")
 }
 
+// setupHeaderEnvDefault splits ENGRAM_HEADERS on "," into --header's
+// default value, byte-for-byte the same shape as setupRuntimeEnvDefault
+// above: nil for an unset/empty var, else strings.Split on comma (D-07).
+// ENGRAM_HEADERS gets NO internal/config registry row, for the SAME
+// reason --runtime has none — internal/config/registry.go:105-118's own
+// comment states it verbatim: "--runtime because pflag's
+// StringSliceVar.Value.String() returns the bracketed display form
+// ("[a b]"), which the changed-flag overlay cannot round-trip — its own
+// env default (ENGRAM_RUNTIME) is read directly via os.Getenv in
+// cmd/engram/setup.go's init(), mirroring reindex.go --target." The same
+// limitation applies to any StringSliceVar-backed flag, including this
+// one, so config.Load(cmd.Flags()) stays inert for a flag named "header":
+// flagToKey (internal/config/registry.go) has no row keyed by that name.
+// --header on argv REPLACES this env list wholesale — pflag's own
+// StringSliceVar "flag overrides env-default" semantics need no merge
+// code here (D-07's "replaces" requirement is free).
+func setupHeaderEnvDefault() []string {
+	v := os.Getenv("ENGRAM_HEADERS")
+	if v == "" {
+		return nil
+	}
+	return strings.Split(v, ",")
+}
+
+// setupHeaderNameRe is the RFC 7230 §3.2.6 token grammar a --header NAME
+// must match; setupHeaderEnvVarRe is the POSIX identifier grammar its
+// ENVVAR must match (D-03). Both were verified live via `go run` in
+// 02-RESEARCH.md's "Code Examples" section.
+var setupHeaderNameRe = regexp.MustCompile("^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
+
+var setupHeaderEnvVarRe = regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_]*$")
+
+// setupParseHeaders validates and converts specs (each "NAME=ENVVAR", as
+// supplied via --header/ENGRAM_HEADERS) into setup.HeaderSpec values, in
+// INPUT order — this boundary does not sort; each runtime does (D-08).
+// This function is the WHOLE D-02/D-03 CLI-boundary validation surface:
+// every usage error below fires from setupResolve, before setup.Select
+// dispatches to any runtime (RESEARCH.md Pitfall 5) — a header-name
+// collision or a malformed spec is a CLI usage error, never a per-runtime
+// capability gap (unlike Codex's decline, which genuinely IS per-runtime:
+// claude-code, opencode, and generic CAN express any header name).
+//
+// Rejection order per spec is fixed: (1) Authorization collision
+// (case-insensitive, D-02) — one owner per header; (2) malformed NAME
+// against the RFC 7230 token grammar, which also covers an argument with
+// no "=" at all (name is forced empty rather than echoing the raw spec —
+// a secret pasted without a NAME lands exactly here); (3) malformed
+// ENVVAR against the POSIX identifier grammar, which also covers an empty
+// ENVVAR and every literal-looking right-hand side ($, {, whitespace, :,
+// leading digit, stray punctuation) — REQ-header-value-env-ref-only's
+// guard; (4) a duplicate NAME, compared case-insensitively, across
+// repeats or the env list. No message here ever echoes anything right of
+// a spec's first "=" — the %s/%q verbs below format only the NAME.
+func setupParseHeaders(specs []string) ([]setup.HeaderSpec, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]bool, len(specs))
+	headers := make([]setup.HeaderSpec, 0, len(specs))
+	for _, spec := range specs {
+		name, envVar, found := strings.Cut(spec, "=")
+		if !found {
+			name = ""
+		}
+		if strings.EqualFold(name, "Authorization") {
+			return nil, usageErrorf("--header %s: the Authorization header is owned by --auth; use --auth bearer", name)
+		}
+		if !found || !setupHeaderNameRe.MatchString(name) {
+			return nil, usageErrorf("--header %q: malformed header name; expected NAME=ENVVAR where NAME is an RFC 7230 token", name)
+		}
+		if !setupHeaderEnvVarRe.MatchString(envVar) {
+			return nil, usageErrorf("--header %s: takes an environment variable NAME (NAME=ENVVAR), never a value; the right-hand side must be a POSIX identifier", name)
+		}
+		lower := strings.ToLower(name)
+		if seen[lower] {
+			return nil, usageErrorf("--header %s: duplicate header name (header names compare case-insensitively)", name)
+		}
+		seen[lower] = true
+		headers = append(headers, setup.HeaderSpec{Name: name, EnvVar: envVar})
+	}
+	return headers, nil
+}
+
 // setupRuntimeRow is one runtime's row in setupReportDoc.Runtimes,
 // rendered through renderOperator with zero bespoke rendering code
 // (D-15): viewRow already renders each element as a dense
@@ -311,10 +396,12 @@ func setupPreviewSummary(rows []setupRuntimeRow) string {
 
 // setupResolve resolves --url/--auth through config.Load (CR-01: the
 // ENGRAM_URL/ENGRAM_AUTH environment lane this command's --help has always
-// advertised), validates --auth, and selects runtimes via setupRuntime —
-// the resolution logic setupPlanDoc (preview) and setupApplyRun (apply)
-// both need, kept in exactly one place so it cannot drift between the two
-// closures (D-14's stated shape for setup).
+// advertised), validates --auth, validates --header (setupParseHeaders,
+// D-02/D-03 — the one CLI-boundary usage-error gate for headers, run
+// before setup.Select ever dispatches to a runtime), and selects runtimes
+// via setupRuntime — the resolution logic setupPlanDoc (preview) and
+// setupApplyRun (apply) both need, kept in exactly one place so it cannot
+// drift between the two closures (D-14's stated shape for setup).
 func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 	// flagToKey (internal/config/registry.go) is keyed by flag NAME, and
 	// setup carries flags named "output" and "token-file" that collide with
@@ -348,6 +435,23 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 		return nil, setup.Options{}, usageErrorf("--client-id is only valid for --auth oauth-client")
 	}
 
+	// --header validation (D-02/D-03) runs once, here, before setup.Select
+	// ever dispatches to a runtime (RESEARCH.md Pitfall 5): a header-name
+	// collision or a malformed spec is a CLI usage error, never a
+	// per-runtime capability gap like Codex's decline. An explicitly
+	// supplied empty --header ("" — Changed is true, but pflag's
+	// readAsCSV("") yields a zero-length slice) must not silently degrade
+	// to "no headers": it is itself a malformed NAME, caught here rather
+	// than inside setupParseHeaders (which treats a genuinely EMPTY specs
+	// slice — no --header supplied at all — as "no headers", correctly).
+	if cmd.Flags().Changed("header") && len(setupHeaders) == 0 {
+		return nil, setup.Options{}, usageErrorf("--header %q: malformed header name; expected NAME=ENVVAR where NAME is an RFC 7230 token", "")
+	}
+	headers, err := setupParseHeaders(setupHeaders)
+	if err != nil {
+		return nil, setup.Options{}, err
+	}
+
 	runtimes, err := setup.Select(setupRuntime)
 	if err != nil {
 		return nil, setup.Options{}, usageErrorf("%w", err)
@@ -364,7 +468,7 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 		return nil, setup.Options{}, usageErrorf("--url or ENGRAM_URL is required")
 	}
 
-	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile, ClientID: setupClientID}, nil
+	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile, ClientID: setupClientID, Headers: headers}, nil
 }
 
 // setupPlanDoc resolves --url/--auth/--runtime (setupResolve) and builds
@@ -629,6 +733,10 @@ func init() {
 	setupCmd.Flags().StringSliceVar(&setupRuntime, "runtime", setupRuntimeEnvDefault(),
 		fmt.Sprintf("runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: %s (default: ENGRAM_RUNTIME)",
 			strings.Join(setup.Names(), ", ")))
+	setupCmd.Flags().StringSliceVar(&setupHeaders, "header", setupHeaderEnvDefault(),
+		"additional HTTP header as NAME=ENVVAR, where ENVVAR names the environment variable the runtime "+
+			"resolves itself at connect time — never a value; repeatable or comma-separated; valid with every "+
+			"--auth mode; codex has no custom-header flag and reports a failed row (default: ENGRAM_HEADERS)")
 	setupCmd.Flags().StringVar(&setupClientID, "client-id", "",
 		"non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag")
 	setupCmd.Flags().StringVar(&setupTokenFile, "token-file", "",
