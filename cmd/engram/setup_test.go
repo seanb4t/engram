@@ -783,7 +783,8 @@ func TestSetupExitCodes(t *testing.T) {
 // TestSetupHelpNamesEveryRuntimeAndAuthMode is the golden-backed
 // assertion that `engram setup --help`'s help.golden section names each
 // of claude-code, codex, opencode, oauth, oauth-client, bearer, and none,
-// and states what --apply does.
+// and states what --apply does. 02-03-PLAN.md Task 2 extends this with
+// the --header paragraph's own vocabulary (REQ-header-documented).
 func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "help.golden"))
 	if err != nil {
@@ -796,6 +797,8 @@ func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 		"client-id", "non-secret client ID", "Other auth modes reject --client-id",
 		"MCP_CLIENT_SECRET", "inherited environment", "no interactive stdin",
 		"apply",
+		"--header", "NAME=ENVVAR", "ENGRAM_HEADERS", "x-litellm-api-key=LITELLM_KEY",
+		"--bearer-token-env-var", "never a value", "owned by --auth",
 	} {
 		if !strings.Contains(section, want) {
 			t.Errorf("## engram setup section does not contain %q:\n%s", want, section)
@@ -2707,4 +2710,105 @@ func TestSetupHeaderValidWithEveryAuthMode(t *testing.T) {
 			t.Errorf("generic: config = %q, missing bearer provenance", row.Config)
 		}
 	})
+}
+
+// TestSetupHeaderOrderIndependent proves D-08: --header order (flag
+// repeat vs comma list, and either direction) never changes rendered
+// output — three differently-ordered invocations produce byte-identical
+// `--output json` documents, and every present row's flat `headers`
+// facet is comma-joined and sorted case-insensitively regardless of
+// input order (Pitfall 2: the facet is a JSON string, never an
+// array/object — proved directly on the raw decoded JSON below).
+func TestSetupHeaderOrderIndependent(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	const wantHeaders = "CF-Access-Client-Id=CF_ID,x-litellm-api-key=LITELLM_KEY"
+
+	invocations := [][]string{
+		{"--header", "x-litellm-api-key=LITELLM_KEY", "--header", "CF-Access-Client-Id=CF_ID"},
+		{"--header", "CF-Access-Client-Id=CF_ID", "--header", "x-litellm-api-key=LITELLM_KEY"},
+		{"--header", "CF-Access-Client-Id=CF_ID,x-litellm-api-key=LITELLM_KEY"},
+	}
+	var stdouts []string
+	for _, hdrArgs := range invocations {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		setupHeaders = nil
+		withFakeSetupEnv(t, fakeSetupEnv("claude", "codex", "opencode"))
+		args := append([]string{"setup", "--url", url}, hdrArgs...)
+		args = append(args, "--output", "json")
+		stdout, stderr, err := runClient(t, args...)
+		if err != nil {
+			t.Fatalf("runClient(%q): %v (stderr=%q)", hdrArgs, err, stderr)
+		}
+		stdouts = append(stdouts, stdout)
+	}
+	for i := 1; i < len(stdouts); i++ {
+		if stdouts[i] != stdouts[0] {
+			t.Errorf("invocation %d differs from invocation 0:\n%q\n%q", i, stdouts[i], stdouts[0])
+		}
+	}
+
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdouts[0]), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdouts[0], err)
+	}
+	for _, row := range doc.Runtimes {
+		switch row.Name {
+		case "claude-code":
+			if !strings.Contains(row.Command, "--header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-litellm-api-key: ${LITELLM_KEY}'") {
+				t.Errorf("claude-code command = %q, want the sorted header pair", row.Command)
+			}
+		case "opencode":
+			if !strings.Contains(row.Command, "--header 'CF-Access-Client-Id={env:CF_ID}' --header 'x-litellm-api-key={env:LITELLM_KEY}'") {
+				t.Errorf("opencode command = %q, want the sorted header pair", row.Command)
+			}
+		}
+		// Every PRESENT row carries the facet — including codex's failed
+		// row, which reports what was REQUESTED regardless of whether its
+		// own Plan() accepted or declined it (D-08).
+		if row.Present && row.Headers != wantHeaders {
+			t.Errorf("%s: Headers = %q, want %q", row.Name, row.Headers, wantHeaders)
+		}
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(stdouts[0]), &raw); err != nil {
+		t.Fatalf("json.Unmarshal(raw): %v", err)
+	}
+	rawRuntimes, _ := raw["runtimes"].([]any)
+	if len(rawRuntimes) == 0 {
+		t.Fatal("raw runtimes array is empty")
+	}
+	for _, r := range rawRuntimes {
+		row, _ := r.(map[string]any)
+		if v, ok := row["headers"]; ok {
+			if _, isString := v.(string); !isString {
+				t.Errorf("row %+v: headers field type = %T, want string", row, v)
+			}
+		}
+	}
+
+	// Fourth run: only claude-code present, no --header at all — every
+	// row (present or not) must omit the facet entirely (omitempty),
+	// never render it as "".
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	setupHeaders = nil
+	withFakeSetupEnv(t, fakeSetupEnv("claude"))
+	stdout, stderr, err := runClient(t, "setup", "--url", url, "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+	var absentDoc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &absentDoc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	for _, row := range absentDoc.Runtimes {
+		if row.Headers != "" {
+			t.Errorf("%s: Headers = %q, want empty", row.Name, row.Headers)
+		}
+	}
+	if strings.Contains(stdout, `"headers"`) {
+		t.Errorf("stdout with no --header carries a headers key: %s", stdout)
+	}
 }

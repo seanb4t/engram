@@ -69,6 +69,28 @@ func setupViewFixtures() map[string][]any {
 		Present: false,
 		Outcome: "not-present",
 	}
+	// headerGateway and codexHeaderDeclined (02-03-PLAN.md Task 2) exercise
+	// the flat-scalar `headers` row facet: ONE comma-joined "NAME=ENVVAR"
+	// string, sorted case-insensitively by name (D-08) — never a
+	// []string/map[string]string, which would fail
+	// TestOperatorViewFixturesHaveNoUnsanitizedNesting (Pitfall 2).
+	// codexHeaderDeclined additionally proves the facet reports what was
+	// REQUESTED even on a failed row (the runtime declined it, but the
+	// row still names what was asked for).
+	headerGateway := setupRuntimeRow{
+		Name:    "claude-code",
+		Present: true,
+		Outcome: "would-write",
+		Command: "claude mcp remove engram --scope user; claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-litellm-api-key: ${LITELLM_KEY}'",
+		Headers: "CF-Access-Client-Id=CF_ID,x-litellm-api-key=LITELLM_KEY",
+	}
+	codexHeaderDeclined := setupRuntimeRow{
+		Name:    "codex",
+		Present: true,
+		Outcome: "failed",
+		Reason:  setupCodexHeaderDeclineReason,
+		Headers: "x-litellm-api-key=LITELLM_KEY",
+	}
 
 	return map[string][]any{
 		"setup": {
@@ -85,6 +107,9 @@ func setupViewFixtures() map[string][]any {
 			setupReportDoc{Runtimes: []setupRuntimeRow{bearerMode}},
 			setupReportDoc{Runtimes: []setupRuntimeRow{unsupportedMode}},
 			setupReportDoc{Runtimes: []setupRuntimeRow{applyAttemptedFailed, applyNotPresent}},
+			// 02-03-PLAN.md Task 2: the header-gateway and codex-declined
+			// fixtures, carrying the flat headers facet.
+			setupReportDoc{Runtimes: []setupRuntimeRow{headerGateway, codexHeaderDeclined}},
 		},
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -74,6 +75,27 @@ func setupSkillsDigestSummary(inv []skills.Skill) string {
 	parts := make([]string, len(inv))
 	for i, s := range inv {
 		parts[i] = s.Name + ":" + skills.Digest(s)
+	}
+	return strings.Join(parts, ",")
+}
+
+// setupHeadersSummary renders hs as ONE comma-joined "NAME=ENVVAR"
+// string, sorted case-insensitively by Name (D-08) — the same
+// flat-scalar row-field discipline setupSkillsDigestSummary above
+// already uses for a different facet (Pitfall 2:
+// TestOperatorViewFixturesHaveNoUnsanitizedNesting structurally forbids
+// a []string/map[string]string row field). Returns "" for a nil or
+// empty hs, so a header-less present row's facet is omitted by the
+// row's own `omitempty` tag exactly like a not-present row's (which
+// never calls this at all).
+func setupHeadersSummary(hs []setup.HeaderSpec) string {
+	sorted := slices.Clone(hs)
+	slices.SortFunc(sorted, func(a, b setup.HeaderSpec) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	parts := make([]string, len(sorted))
+	for i, h := range sorted {
+		parts[i] = h.Name + "=" + h.EnvVar
 	}
 	return strings.Join(parts, ",")
 }
@@ -317,6 +339,20 @@ func setupParseHeaders(specs []string) ([]setup.HeaderSpec, error) {
 // tens of kilobytes. Every one of these seven fields is a plain string —
 // the same "never a struct, map, or raw-message type" constraint Config's
 // own comment states above applies identically to each of them.
+//
+// Headers (02-03-PLAN.md Task 2) is the header facet: ONE joined
+// string — "NAME=ENVVAR" entries sorted case-insensitively by name
+// (D-08) and comma-joined with no spaces, the same idiom SkillsDigest
+// above already uses — carrying header NAMEs and env var NAMEs only,
+// never a value. It takes Config's own "never a struct, map, or slice"
+// constraint for the identical reason (Pitfall 2:
+// TestOperatorViewFixturesHaveNoUnsanitizedNesting) — a []string or
+// map[string]string here would fall through viewScalar's kind switch to
+// an unsanitized verbatim render. A not-present row carries no facet,
+// exactly like the skills facet above; a present row's facet reports
+// what was REQUESTED, independent of whether that runtime's own Plan()
+// accepted or declined it (see codex's failed row in setup_test.go's
+// TestSetupHeaderCodexDeclined).
 type setupRuntimeRow struct {
 	Name       string `json:"name"`
 	Present    bool   `json:"present"`
@@ -326,6 +362,7 @@ type setupRuntimeRow struct {
 	Binary     string `json:"binary,omitempty"`
 	Registered string `json:"registered,omitempty"`
 	TokenFile  string `json:"token_file,omitempty"`
+	Headers    string `json:"headers,omitempty"`
 	Config     string `json:"config,omitempty"`
 	Notes      string `json:"notes,omitempty"`
 
@@ -366,9 +403,10 @@ type setupReportDoc struct {
 // state without ever changing this function's own no-command-level-error
 // contract.
 func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup.Runtime, opts setup.Options, includeContent bool) []setupRuntimeRow {
+	headers := setupHeadersSummary(opts.Headers)
 	rows := make([]setupRuntimeRow, 0, len(runtimes))
 	for _, rt := range runtimes {
-		rows = append(rows, setupRuntimeRowFromResult(setup.Preview(ctx, env, rt, opts), false, includeContent))
+		rows = append(rows, setupRuntimeRowFromResult(setup.Preview(ctx, env, rt, opts), headers, false, includeContent))
 	}
 	return rows
 }
@@ -537,8 +575,16 @@ func setupExitCode(c setup.ExitClass) int {
 // the registration facet's own outcome, folded together with the skills
 // facet's own outcome via setup.AggregateOutcome. A not-present runtime
 // is skipped entirely: it keeps its OutcomeNotPresent row untouched, with
-// no skills facet (D-07).
-func setupRuntimeRowFromResult(r setup.Result, mutate bool, includeContent bool) setupRuntimeRow {
+// no skills facet (D-07) and no header facet (02-03-PLAN.md Task 2:
+// headers is set only inside the same "if r.Present" branch below).
+//
+// headers is the ALREADY-SUMMARIZED (setupHeadersSummary) header facet —
+// computed once by the caller (setupBuildRows/setupApplyRun) from
+// opts.Headers, not re-derived per runtime, since every row in one
+// report shares the same requested header set (D-08: the facet reports
+// what was REQUESTED, independent of whether that runtime's own Plan()
+// accepted or declined it).
+func setupRuntimeRowFromResult(r setup.Result, headers string, mutate bool, includeContent bool) setupRuntimeRow {
 	row := setupRuntimeRow{
 		Name:       r.Runtime,
 		Present:    r.Present,
@@ -552,6 +598,7 @@ func setupRuntimeRowFromResult(r setup.Result, mutate bool, includeContent bool)
 		Notes:      r.Notes,
 	}
 	if r.Present {
+		row.Headers = headers
 		row.Outcome = string(setupApplySkillsFacet(&row, r.Outcome, r.Skills, mutate, includeContent))
 	}
 	return row
@@ -622,9 +669,10 @@ func setupApplyRun(ctx context.Context, cmd *cobra.Command) error {
 		return err
 	}
 
+	headers := setupHeadersSummary(opts.Headers)
 	rows := make([]setupRuntimeRow, len(runtimes))
 	for i, rt := range runtimes {
-		rows[i] = setupRuntimeRowFromResult(setup.Apply(ctx, setupEnv, rt, opts), true, format != formatText)
+		rows[i] = setupRuntimeRowFromResult(setup.Apply(ctx, setupEnv, rt, opts), headers, true, format != formatText)
 	}
 	doc := setupReportDoc{Runtimes: rows}
 
@@ -671,8 +719,13 @@ func setupApplySentence() string {
 // that a bare invocation reads each present runtime's own CLI for its
 // current state, including a network dial for two of the three (D-10 —
 // what makes that side effect discoverable by reading rather than by
-// observing); and the four accepted --auth modes, including bearer's
-// narrowed --token-file scope (D-06).
+// observing); the four accepted --auth modes, including bearer's narrowed
+// --token-file scope (D-06); and (02-03-PLAN.md Task 2,
+// REQ-header-documented) a sibling paragraph — AFTER the untouched
+// Accepted --auth modes block, never inside it (D-01) — documenting
+// --header/ENGRAM_HEADERS, the value-is-a-NAME-never-a-value rule
+// (D-02/D-03), the per-runtime rendering (D-04/D-08), and the codex
+// limitation (D-09).
 func setupLongDescription() string {
 	return fmt.Sprintf(`Detect installed agent runtimes and preview registering engram as an MCP server.
 
@@ -710,17 +763,31 @@ Accepted --auth modes:
                 carrying the path, never the secret — and has no effect on
                 a native runtime, whose row carries token_file=ignored
                 when the flag is supplied
-  none          a local / no-auth server`,
+  none          a local / no-auth server
+
+Additional headers (--header NAME=ENVVAR, repeatable or comma-separated; default: ENGRAM_HEADERS, a
+comma-separated list that --header on the command line replaces): each header rides alongside whatever
+--auth produces and is valid with every mode. ENVVAR is the NAME of an environment variable the runtime
+resolves itself at connect time — never a value: a right-hand side containing $, {, whitespace, or : is
+rejected, and the Authorization header (in any letter case) is owned by --auth; use --auth bearer.
+Rendered in each runtime's own syntax — claude-code "NAME: ${ENVVAR}", opencode NAME={env:ENVVAR},
+generic "NAME": "${ENVVAR}" — with the --auth header first and extra headers sorted by name. codex has
+no custom-header flag (codex mcp add exposes only --bearer-token-env-var): its row reports failed
+naming the header; drop --header or exclude codex via --runtime. Example, a LiteLLM gateway:
+--header x-litellm-api-key=LITELLM_KEY`,
 		strings.Join(setup.Names(), ", "), setupApplySentence())
 }
 
-// setupExample carries four worked invocations
+// setupExample carries five worked invocations
 // (REQ-setup-correct-by-reading, success criterion 5): a bare preview, a
-// --runtime-scoped preview, an OAuth-client preview, and a bearer preview.
+// --runtime-scoped preview, an OAuth-client preview, a bearer preview,
+// and (02-03-PLAN.md Task 2) a gateway preview naming an additional
+// header.
 const setupExample = `  engram setup --url https://engram.example.com/mcp
   engram setup --url https://engram.example.com/mcp --runtime claude-code
   engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
-  engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token`
+  engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
+  engram setup --url https://engram.example.com/mcp --auth oauth --header x-litellm-api-key=LITELLM_KEY`
 
 func init() {
 	setupCmd.Long = setupLongDescription()

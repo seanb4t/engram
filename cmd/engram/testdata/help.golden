@@ -328,6 +328,17 @@ Accepted --auth modes:
                 when the flag is supplied
   none          a local / no-auth server
 
+Additional headers (--header NAME=ENVVAR, repeatable or comma-separated; default: ENGRAM_HEADERS, a
+comma-separated list that --header on the command line replaces): each header rides alongside whatever
+--auth produces and is valid with every mode. ENVVAR is the NAME of an environment variable the runtime
+resolves itself at connect time — never a value: a right-hand side containing $, {, whitespace, or : is
+rejected, and the Authorization header (in any letter case) is owned by --auth; use --auth bearer.
+Rendered in each runtime's own syntax — claude-code "NAME: ${ENVVAR}", opencode NAME={env:ENVVAR},
+generic "NAME": "${ENVVAR}" — with the --auth header first and extra headers sorted by name. codex has
+no custom-header flag (codex mcp add exposes only --bearer-token-env-var): its row reports failed
+naming the header; drop --header or exclude codex via --runtime. Example, a LiteLLM gateway:
+--header x-litellm-api-key=LITELLM_KEY
+
 Usage:
   engram setup [flags]
 
@@ -336,6 +347,7 @@ Examples:
   engram setup --url https://engram.example.com/mcp --runtime claude-code
   engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
   engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
+  engram setup --url https://engram.example.com/mcp --auth oauth --header x-litellm-api-key=LITELLM_KEY
 
 Flags:
       --apply               a mutating operator command previews by default and mutates only when apply is set
