@@ -12,7 +12,7 @@ last_activity_desc: Phase 02 complete, transitioned to Phase 3
 state_head: 3cf7055809e970531cf3fbf8807046455c8cc38d
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
   completed_plans: 6
 ---
@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-13 after Phase 1 — 2026-09-13.01 Setup v2)
+See: .planning/PROJECT.md (updated 2026-09-14 after Phase 2 — 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 02 — Custom Auth Headers
+**Current focus:** Phase 3 — Plugin-First Delivery
 
 ## Current Position
 
@@ -301,6 +301,15 @@ Both prior entries were delivered and had simply never been closed out:
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
+- **Phase 2 (2026-09-13.01) learnings for Phases 3–5:** the shipped-bundle privacy guard
+  (`skill/engram/hooks/tests/test_no_residual_memory_oauth.py`) bans vendor substrings under
+  `skill/engram/` — any example that reaches the generated `/engram-setup` prose must be vendor-neutral
+  (the canonical gateway header is `x-gateway-api-key=GATEWAY_KEY`). `Options.Headers` arrives
+  pre-validated from the CLI boundary only (`setupParseHeaders`); Phase 4's drift comparison must
+  compare header NAMES + env-var NAMES, never values, and may rely on `sortedHeaders`' total order.
+  Executors die on API rate limits mid-plan: when a plan's commits are on disk but no SUMMARY exists,
+  the orchestrator re-runs the plan gate and closes out by hand (02-03 precedent) — and re-checks
+  `completed_phases` in STATE.md, which an interrupted metadata step regressed once.
 - **Phase 1 (2026-09-13.01) added three gates every later phase of this milestone must clear:**
   `internal/keylinks` rejects backslash- or `\"`-escaped `key_links.pattern` values in ANY plan
   (bracket classes + single-quoted YAML; run `go test ./internal/keylinks/ -count=1` right after
