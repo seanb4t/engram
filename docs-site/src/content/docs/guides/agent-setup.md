@@ -74,16 +74,17 @@ engram setup --url https://engram.example.com/mcp --auth bearer
 engram setup --url https://engram.example.com/mcp --auth none
 ```
 
-| Runtime | `oauth` | `oauth-client` | `bearer` | `none` |
-| --- | --- | --- | --- | --- |
-| `claude-code` | Supported | Supported | Supported | Supported |
-| `codex` | Supported | Supported | Supported | Supported |
-| `opencode` | Supported | Unsupported | Supported | Supported |
-| `generic` | Manual config | Unsupported | Manual config | Manual config |
+| Runtime | `oauth` | `oauth-client` | `bearer` | `none` | `--header` |
+| --- | --- | --- | --- | --- | --- |
+| `claude-code` | Supported | Supported | Supported | Supported | Supported |
+| `codex` | Supported | Supported | Supported | Supported | Unsupported |
+| `opencode` | Supported | Unsupported | Supported | Supported | Supported |
+| `generic` | Manual config | Unsupported | Manual config | Manual config | Manual config |
 
-Unsupported combinations appear as failed rows with a reason. Inspect them even
-when other runtimes succeed. The installed runtime must also accept the commands
-shown in the preview; an older runtime may reject an option.
+Unsupported combinations — including `--header` on `codex` — appear as failed
+rows with a reason. Inspect them even when other runtimes succeed. The
+installed runtime must also accept the commands shown in the preview; an
+older runtime may reject an option.
 
 ### OAuth
 
@@ -109,6 +110,43 @@ Do not expand it into a credential value before running a command.
 `--token-file` applies only to `--runtime generic`. Passing it to a native runtime
 does not configure that runtime's credential; its result reports
 `token_file=ignored`.
+
+### Gateway headers
+
+Some deployments sit behind a gateway that requires an additional header —
+for example LiteLLM's `x-litellm-api-key`:
+
+```sh
+engram setup --url https://engram.example.com/mcp --auth oauth --header x-litellm-api-key=LITELLM_KEY
+```
+
+`--header NAME=ENVVAR` adds a header alongside whatever `--auth` produces, is
+repeatable (or comma-separated), and works with every mode. `ENVVAR` is the
+NAME of an environment variable the runtime resolves at connection time —
+never a value — so a right-hand side containing `$`, `{`, whitespace, or `:`
+is rejected, as is any `Authorization` name — that header is owned by `--auth`
+(use `--auth bearer`).
+
+Each runtime renders the header in its own syntax. The auth header (if any)
+renders first, and extra headers sort by name, identically in the preview,
+the JSON `headers` field (a comma-separated `NAME=ENVVAR` string), and the
+generated `/engram-setup` prose:
+
+| Runtime | Rendering |
+| --- | --- |
+| Claude Code | `--header 'x-litellm-api-key: ${LITELLM_KEY}'` |
+| opencode | `--header 'x-litellm-api-key={env:LITELLM_KEY}'` |
+| Generic | `"headers": {"x-litellm-api-key": "${LITELLM_KEY}"}` |
+
+Codex has no custom-header flag (`codex mcp add` exposes only
+`--bearer-token-env-var`), so a `--header` run reports a `failed` row for
+`codex` naming the header — drop `--header` or select the other runtimes with
+`--runtime claude-code,opencode`; setup never writes Codex's configuration
+for you. Codex documents its own per-server header configuration in its
+config file — configure it there yourself if you need it.
+
+Keep the `${LITELLM_KEY}` reference literal, including its single quotes, and
+never paste the value.
 
 ### No authentication
 
@@ -169,10 +207,13 @@ and is not a stable parsing interface:
 engram setup --url https://engram.example.com/mcp --auth oauth --runtime codex --output json
 ```
 
-`ENGRAM_URL`, `ENGRAM_AUTH`, and `ENGRAM_RUNTIME` provide environment defaults;
-the corresponding flags override them. Setup does not prompt interactively.
-Review the JSON report before running the same selected invocation with
-`--apply`. Keep the runtime's output as report data, not shell instructions.
+`ENGRAM_URL`, `ENGRAM_AUTH`, `ENGRAM_RUNTIME`, and `ENGRAM_HEADERS` (a
+comma-separated `NAME=ENVVAR` list) provide environment defaults; the
+corresponding flags override them — `--header` on the command line replaces
+the whole `ENGRAM_HEADERS` list. Setup does not prompt interactively. Review
+the JSON report before running the same selected invocation with `--apply`.
+Keep the runtime's output as report data, not shell instructions. Each
+present runtime's JSON row carries a `headers` string.
 
 ## Cursor and other clients: manual setup
 
