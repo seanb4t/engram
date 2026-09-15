@@ -48,11 +48,11 @@ any working auth shape, and never replaces a registration it did not write.
 
 ### Plugin-First Delivery
 
-- [ ] **REQ-plugin-capability-detection**: Setup detects whether a present Claude Code or Codex binary actually exposes a working `plugin` CLI, separately from binary-on-PATH detection; a runtime without it falls back to the native skills copy with a reported reason, never a failed runtime row.
-- [ ] **REQ-plugin-install-or-update**: Under `--apply`, for a plugin-capable Claude Code or Codex, setup adds engram's own marketplace when absent, installs the engram plugin when absent, updates it when outdated, and does nothing when already current. Preview shows the exact plugin-CLI argv; `--apply` is the consent gate — no additional flag. Only engram's own marketplace source is ever added.
-- [ ] **REQ-plugin-three-way-state**: Plugin state is reported as one of absent / installed-but-outdated / installed-and-current, comparing the runtime's `plugin list` output against the version the binary itself carries, since neither vendor CLI reports "up to date" vs "updated" itself.
-- [ ] **REQ-plugin-skips-skills-copy**: Plugin delivery and the native skills copy are mutually exclusive per runtime per run — a plugin-delivered runtime gets no files under its user-scope skills directory and no `AGENTS.md` index block, so `curating-memory` never appears twice. Setup never removes a skills path without first checking for a managed symlink.
-- [ ] **REQ-plugin-facet-reported**: Plugin delivery is its own result facet (text and JSON) alongside registration and skills, so a `wrote` registration next to a `failed` plugin install stays visible, and the exit taxonomy accounts for it.
+- [x] **REQ-plugin-capability-detection**: Setup detects whether a present Claude Code or Codex binary actually exposes a working `plugin` CLI, separately from binary-on-PATH detection; a runtime without it falls back to the native skills copy with a reported reason, never a failed runtime row.
+- [x] **REQ-plugin-install-or-update**: Under `--apply`, for a plugin-capable Claude Code or Codex, setup adds engram's own marketplace when absent, installs the engram plugin when absent, updates it when outdated, and does nothing when already current. Preview shows the exact plugin-CLI argv; `--apply` is the consent gate — no additional flag. Only engram's own marketplace source is ever added.
+- [x] **REQ-plugin-three-way-state**: Plugin state is reported as one of absent / installed-but-outdated / installed-and-current, comparing the runtime's `plugin list` output against the version the binary itself carries, since neither vendor CLI reports "up to date" vs "updated" itself.
+- [x] **REQ-plugin-skips-skills-copy**: Plugin delivery and the native skills copy are mutually exclusive per runtime per run — a plugin-delivered runtime gets no files under its user-scope skills directory and no `AGENTS.md` index block, so `curating-memory` never appears twice. Setup never removes a skills path without first checking for a managed symlink.
+- [x] **REQ-plugin-facet-reported**: Plugin delivery is its own result facet (text and JSON) alongside registration and skills, so a `wrote` registration next to a `failed` plugin install stays visible, and the exit taxonomy accounts for it.
 - [ ] **REQ-codex-plugin-manifest**: `skill/engram/.codex-plugin/plugin.json` exists so Codex's plugin loader accepts the engram plugin; its version is release-please-synced like `.claude-plugin/plugin.json`, and a drift gate keeps the two manifests' identity fields equal.
 - [ ] **REQ-plugin-setupgen-regenerated**: `/engram-setup`'s generated prose reflects plugin actions and the new outcomes in the same change that introduces them; the existing `setupgen` CI drift gate stays green.
 
@@ -103,11 +103,11 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-drift-redaction | Phase 4 | Pending |
 | REQ-apply-preserve-gate | Phase 5 | Pending |
 | REQ-apply-rewrite-consequence | Phase 5 | Pending |
-| REQ-plugin-capability-detection | Phase 3 | Pending |
-| REQ-plugin-install-or-update | Phase 3 | Pending |
-| REQ-plugin-three-way-state | Phase 3 | Pending |
-| REQ-plugin-skips-skills-copy | Phase 3 | Pending |
-| REQ-plugin-facet-reported | Phase 3 | Pending |
+| REQ-plugin-capability-detection | Phase 3 | Complete |
+| REQ-plugin-install-or-update | Phase 3 | Complete |
+| REQ-plugin-three-way-state | Phase 3 | Complete |
+| REQ-plugin-skips-skills-copy | Phase 3 | Complete |
+| REQ-plugin-facet-reported | Phase 3 | Complete |
 | REQ-codex-plugin-manifest | Phase 3 | Pending |
 | REQ-plugin-setupgen-regenerated | Phase 3 | Pending |
 | REQ-docs-setup-v2 | Phase 5 | Pending |
