@@ -179,6 +179,52 @@ var redEvidenceDirs = map[string]map[string]string{
 		"02-02-generic-header-order.patch":    "TestGenericHeaders",
 		"02-03-header-validation.patch":       "TestSetupHeaderRejectsAuthorizationCollision",
 	},
+	// Milestone 2026-09-13.01, Phase 03 (03-plugin-first-delivery): five
+	// independent regressions this phase's SUMMARYs claim RED against
+	// (each 03-0N-SUMMARY.md's own red-evidence section), pinned as live
+	// evidence rather than narrated history.
+	//
+	// classifyPluginVersion's never-downgrade arm (03-01, plugin.go): D-01's
+	// whole point is that a plugin newer than the resolved binary is
+	// reported PluginCurrent with an explanatory note and is NEVER treated
+	// as an update target — flipping the comparator's greater-than arm to
+	// PluginOutdated silently reintroduces exactly the downgrade-on-newer
+	// bug D-01 exists to forbid.
+	//
+	// claude-code's PluginActions default arm (03-01, claudecode.go): a
+	// PluginCurrent (or PluginUnavailable) classification must author ZERO
+	// actions — REQ-plugin-three-way-state's whole reason a "current" state
+	// exists separately from "outdated" is to make idempotent re-runs a
+	// true no-op; authoring an update action here would churn a working
+	// install on every --apply.
+	//
+	// codex's PluginActions outdated arm (03-01, codex.go): D-02's
+	// remove-then-add sequencing exists because codex's own `plugin add`
+	// has no update semantics over an existing entry — collapsing the
+	// two-action sequence to a bare add silently drops the remove step
+	// this file's own doc comment names as the reason D-02 requires it.
+	//
+	// DetectPresence's per-entry symlink classification (03-02,
+	// presence.go): REQ-plugin-skips-skills-copy's report-only contract
+	// depends on correctly distinguishing a maintainer's own symlinked
+	// skill entry from an ordinary directory — checking the wrong file-mode
+	// bit (ModeDir instead of ModeSymlink) misclassifies both directions at
+	// once, exactly the report-only contract's failure mode.
+	//
+	// setupRuntimeRowFromResult's plugin/native routing (03-03, setup.go):
+	// D-07's routing predicate is p.Delivered() — a plugin-capable,
+	// currently-delivered runtime must author ZERO native skills writes,
+	// ever, in the same run. Inverting that one condition silently routes
+	// every plugin-delivered runtime through the native skills.Install
+	// path, reproducing REQ-plugin-skips-skills-copy's exact double-write
+	// defect this phase exists to prevent.
+	".planning/phases/03-plugin-first-delivery/red-evidence": {
+		"03-01-plugin-version-compare.patch": "TestPluginVersionCompare",
+		"03-01-plugin-state-machine.patch":   "TestPluginPlan",
+		"03-01-codex-remove-then-add.patch":  "TestPluginPlan",
+		"03-02-detect-presence.patch":        "TestDetectPresence",
+		"03-03-plugin-skips-native.patch":    "TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites",
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than

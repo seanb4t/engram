@@ -1,0 +1,12 @@
+diff --git a/internal/setup/plugin.go b/internal/setup/plugin.go
+index cc964a37..8e495e28 100644
+--- a/internal/setup/plugin.go
++++ b/internal/setup/plugin.go
+@@ -395,6 +395,6 @@ func classifyPluginVersion(installed string, isInstalled bool, binary string) (P
+ 	case 0:
+ 		return PluginCurrent, ""
+ 	default:
+-		return PluginCurrent, fmt.Sprintf("plugin %s is newer than this binary %s", installed, binary)
++		return PluginOutdated, fmt.Sprintf("plugin %s is newer than this binary %s", installed, binary)
+ 	}
+ }
