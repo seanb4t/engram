@@ -35,8 +35,16 @@ engram setup --url https://engram.example.com/mcp --auth oauth
 
 Preview writes no registrations or skills. It runs read probes through each
 present runtime: Claude Code and opencode may contact the endpoint; Codex reads
-local registration state. Preview is not an offline-only operation or proof of
-a successful connection.
+local registration state.
+
+For Claude Code and Codex, preview also compares the existing engram
+registration it reads — URL, auth mode, and header names with their
+environment-variable references — against what setup would write, and
+classifies the row as `already-correct`, `would-write`, or `preserved`.
+opencode's registration is not compared: its `mcp list` prints a table setup
+does not parse, so a present opencode always reads `would-write`.
+
+Preview is not an offline-only operation or proof of a successful connection.
 
 Inspect **every row**, including absent, unsupported, and failed results, and
 both the registration and skills details. When the proposed changes match your
@@ -180,8 +188,9 @@ See the [plugin guide](/guides/plugin/) if you want those hooks.
 | Outcome | Meaning |
 | --- | --- |
 | `not-present` | The runtime binary was not found on `PATH`; absence is expected, not a failure. |
-| `would-write` | Proposed changes are shown. Generic also uses this outcome after `--apply` because it only prints output. |
-| `already-correct` | The observed state matches the requested setup. This does not guarantee that no write commands ran. |
+| `would-write` | Proposed changes are shown. For an existing Claude Code or Codex registration, `facets` names what differs (`url`, `auth-mode`, `header-name`, `header-value-ref`) and `drift` details each difference, for example `x-gateway-api-key: observed <redacted>, would write ${GATEWAY_KEY}`. Generic also uses this outcome after `--apply` because it only prints output. |
+| `already-correct` | In preview, the registration read through the runtime's own CLI matches the requested URL, auth mode, and header names and references — a real comparison, not a guess. After `--apply` it means the observed state matches; it does not guarantee that no write commands ran. |
+| `preserved` | The existing registration carries something setup did not author and cannot reproduce — an extra header, an unrecognized field — so setup leaves it untouched and `reason` names it; header values read from a runtime are never shown. Claude Code and Codex both replace the whole entry on write (no partial merge): a later `--apply` either overwrites the entry or leaves it untouched and will never merge into it. |
 | `wrote` | Apply performed the reported changes; inspect registration and skills details. |
 | `failed` | Planning or applying a runtime or skill change failed; read the reason and other results. |
 
@@ -213,7 +222,7 @@ corresponding flags override them — `--header` on the command line replaces
 the whole `ENGRAM_HEADERS` list. Setup does not prompt interactively. Review
 the JSON report before running the same selected invocation with `--apply`.
 Keep the runtime's output as report data, not shell instructions. Each
-present runtime's JSON row carries a `headers` string.
+present runtime's JSON row carries a `headers` string, and for Claude Code and Codex also carries `registered` (a normalized rendering of the registration the runtime's CLI reported — URL, auth state, header names — with every header value redacted), `facets` (the comma-joined differing facets, in a fixed order), and `drift` (the per-facet detail lines, or a note that the registration was not compared).
 
 ## Cursor and other clients: manual setup
 
