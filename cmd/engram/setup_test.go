@@ -185,6 +185,33 @@ func withFakeSetupVersion(t *testing.T, v string) {
 	t.Cleanup(func() { setupVersion = orig })
 }
 
+// codexGetEngramBearerJSON is cmd/engram's own copy of
+// internal/setup/drift_test.go's codexGetEngramBearer fixture: the two
+// packages cannot share test code, so this is the SAME 04-RESEARCH.md
+// verbatim `codex mcp get engram --json` document — name "engram", URL
+// https://engram.example.com/mcp, bearer var ENGRAM_TOKEN, every other
+// field null/true exactly as observed — kept in sync by inspection
+// (04-04-PLAN.md Task 1).
+const codexGetEngramBearerJSON = `{"name":"engram","enabled":true,"disabled_reason":null,"transport":{"type":"streamable_http","url":"https://engram.example.com/mcp","bearer_token_env_var":"ENGRAM_TOKEN","http_headers":null,"env_http_headers":null,"http_headers_helper":null},"enabled_tools":null,"disabled_tools":null,"startup_timeout_sec":null,"tool_timeout_sec":null}`
+
+// scriptedSetupRun returns a Run seam that responds to a `mcp get` probe
+// (args[0]=="mcp", args[1]=="get" — codex's own probe shape, plan.go's
+// Probe with the binary already stripped) with mcpGet, and to every
+// other invocation — including the plugin probes — with a bare
+// zero-exit RunResult, exactly like every existing preview test's
+// default fake: the plugin probes then read as unavailable, so no
+// plugin facet folds into a drift-focused test's assertions
+// (04-04-PLAN.md Task 1).
+func scriptedSetupRun(t *testing.T, mcpGet setup.RunResult) func(context.Context, string, []string) (setup.RunResult, error) {
+	t.Helper()
+	return func(_ context.Context, _ string, args []string) (setup.RunResult, error) {
+		if len(args) >= 2 && args[0] == "mcp" && args[1] == "get" {
+			return mcpGet, nil
+		}
+		return setup.RunResult{ExitCode: 0}, nil
+	}
+}
+
 // defaultRuntimeCount returns the number of runtimes a BARE `engram
 // setup` (no --runtime) targets — setup.Select(nil)'s own result length,
 // derived from the live registry rather than hardcoded, so a test
@@ -795,6 +822,169 @@ func TestSetupPreviewNeverClassifiesAlreadyCorrect(t *testing.T) {
 	}
 }
 
+// TestSetupPreviewJSONCarriesDriftFacets proves facets/drift/preserved
+// ride setupRuntimeRow in both output lanes, composed straight from
+// internal/setup's Result.Facets/Result.Drift/Result.Reason (04-01): a
+// would-write URL diff, a preserved unrecognized-content registration
+// (first-class in the raw JSON lane too), an already-correct registration
+// (facets/drift both empty and omitted from JSON), and the flat fields
+// rendered in the text lane (04-04-PLAN.md Task 1).
+func TestSetupPreviewJSONCarriesDriftFacets(t *testing.T) {
+	t.Run("codex-would-write-url", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		stdout := strings.Replace(codexGetEngramBearerJSON,
+			`"url":"https://engram.example.com/mcp"`, `"url":"https://old.example/mcp"`, 1)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: stdout}), "codex"))
+
+		out, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--auth", "bearer", "--runtime", "codex", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+		}
+		row := rowByName(t, doc.Runtimes, "codex")
+		if row.Outcome != string(setup.OutcomeWouldWrite) {
+			t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomeWouldWrite)
+		}
+		if row.Registration != string(setup.OutcomeWouldWrite) {
+			t.Errorf("Registration = %q, want %q", row.Registration, setup.OutcomeWouldWrite)
+		}
+		if row.Facets != "url" {
+			t.Errorf("Facets = %q, want %q", row.Facets, "url")
+		}
+		wantDrift := "url: observed https://old.example/mcp, would write https://engram.example.com/mcp"
+		if row.Drift != wantDrift {
+			t.Errorf("Drift = %q, want %q", row.Drift, wantDrift)
+		}
+		wantRegistered := "url=https://old.example/mcp auth=bearer headers=none"
+		if row.Registered != wantRegistered {
+			t.Errorf("Registered = %q, want %q", row.Registered, wantRegistered)
+		}
+		if row.Reason != "" {
+			t.Errorf("Reason = %q, want empty", row.Reason)
+		}
+		assertFoldedOutcome(t, row)
+	})
+
+	t.Run("codex-preserved-unrecognized-field", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		stdout := strings.Replace(codexGetEngramBearerJSON,
+			`"name":"engram"`, `"name":"engram","oauth_client_id":"x"`, 1)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: stdout}), "codex"))
+
+		out, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--auth", "bearer", "--runtime", "codex", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		if !strings.Contains(out, `"outcome":"preserved"`) {
+			t.Errorf("raw JSON does not carry outcome:preserved: %s", out)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+		}
+		row := rowByName(t, doc.Runtimes, "codex")
+		if row.Outcome != string(setup.OutcomePreserved) {
+			t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+		}
+		if row.Registration != string(setup.OutcomePreserved) {
+			t.Errorf("Registration = %q, want %q", row.Registration, setup.OutcomePreserved)
+		}
+		if row.Facets != "unrecognized-content" {
+			t.Errorf("Facets = %q, want %q", row.Facets, "unrecognized-content")
+		}
+		if row.Drift != "unrecognized-content: oauth_client_id" {
+			t.Errorf("Drift = %q, want %q", row.Drift, "unrecognized-content: oauth_client_id")
+		}
+		wantPrefix := "codex: preserved: unrecognized-content: oauth_client_id; "
+		if !strings.HasPrefix(row.Reason, wantPrefix) {
+			t.Errorf("Reason = %q, want prefix %q", row.Reason, wantPrefix)
+		}
+		if !strings.HasSuffix(row.Reason, "never merge into it") {
+			t.Errorf("Reason = %q, want suffix %q", row.Reason, "never merge into it")
+		}
+		if !strings.HasSuffix(row.Registered, "unrecognized=oauth_client_id") {
+			t.Errorf("Registered = %q, want suffix %q", row.Registered, "unrecognized=oauth_client_id")
+		}
+		assertFoldedOutcome(t, row)
+	})
+
+	t.Run("codex-already-correct", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: codexGetEngramBearerJSON}), "codex"))
+
+		out, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--auth", "bearer", "--runtime", "codex", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+		}
+		row := rowByName(t, doc.Runtimes, "codex")
+		if row.Registration != string(setup.OutcomeAlreadyCorrect) {
+			t.Errorf("Registration = %q, want %q", row.Registration, setup.OutcomeAlreadyCorrect)
+		}
+		if row.Outcome != string(setup.OutcomeAlreadyCorrect) {
+			t.Errorf("Outcome = %q, want %q (already-correct outranks would-write skills)", row.Outcome, setup.OutcomeAlreadyCorrect)
+		}
+		if row.Facets != "" {
+			t.Errorf("Facets = %q, want empty", row.Facets)
+		}
+		if row.Drift != "" {
+			t.Errorf("Drift = %q, want empty", row.Drift)
+		}
+		wantRegistered := "url=https://engram.example.com/mcp auth=bearer headers=none"
+		if row.Registered != wantRegistered {
+			t.Errorf("Registered = %q, want %q", row.Registered, wantRegistered)
+		}
+
+		var raw struct {
+			Runtimes []json.RawMessage `json:"runtimes"`
+		}
+		if uErr := json.Unmarshal([]byte(out), &raw); uErr != nil {
+			t.Fatalf("json.Unmarshal(raw): %v", uErr)
+		}
+		if len(raw.Runtimes) != 1 {
+			t.Fatalf("want exactly 1 runtime row, got %d", len(raw.Runtimes))
+		}
+		var rowMap map[string]any
+		if uErr := json.Unmarshal(raw.Runtimes[0], &rowMap); uErr != nil {
+			t.Fatalf("json.Unmarshal(row): %v", uErr)
+		}
+		if _, ok := rowMap["facets"]; ok {
+			t.Errorf("row JSON carries a facets key for an already-correct row: %v", rowMap)
+		}
+	})
+
+	t.Run("text-lane-renders-flat-fields", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		stdout := strings.Replace(codexGetEngramBearerJSON,
+			`"name":"engram"`, `"name":"engram","oauth_client_id":"x"`, 1)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: stdout}), "codex"))
+
+		out, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--auth", "bearer", "--runtime", "codex", "--output", "text")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		for _, want := range []string{"outcome=preserved", "facets=unrecognized-content", "registration=preserved"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("text output does not contain %q: %s", want, out)
+			}
+		}
+	})
+}
+
 // TestSetupApplyJSONEmitsPerRuntimeOutcome proves `engram setup --output
 // json --apply` against a mixed fake Environment emits a runtimes array
 // with exactly one element per selected runtime, each carrying its own
@@ -874,6 +1064,36 @@ func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 	} {
 		if !strings.Contains(section, want) {
 			t.Errorf("## engram setup section does not contain %q:\n%s", want, section)
+		}
+	}
+}
+
+// TestSetupHelpNamesDriftOutcomes proves setupCmd.Long teaches the Phase
+// 4 comparison — the three classifications, the four differing facets,
+// what preserved means, that header values read from a runtime are
+// never shown, and that an unreadable registration reads would-write —
+// and that testdata/help.golden proves the paragraph shipped, not only
+// the in-memory Long (04-04-PLAN.md Task 1).
+func TestSetupHelpNamesDriftOutcomes(t *testing.T) {
+	lower := strings.ToLower(setupCmd.Long)
+	for _, want := range []string{
+		"preserved", "already-correct", "would-write", "facets", "drift",
+		"url", "auth-mode", "header-name", "header-value-ref",
+		"never shown", "not compared", "cannot reproduce",
+	} {
+		if !strings.Contains(lower, want) {
+			t.Errorf("setup long description does not mention %q: %s", want, setupCmd.Long)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join("testdata", "help.golden"))
+	if err != nil {
+		t.Fatalf("read help.golden: %v", err)
+	}
+	section := helpGoldenSection(t, string(data), "engram setup")
+	for _, want := range []string{"preserved", "not compared"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("help.golden's engram setup section does not contain %q:\n%s", want, section)
 		}
 	}
 }
@@ -1809,10 +2029,12 @@ func namesOf(rts []setup.Runtime) []string {
 // acceptance criteria). Every entry here is a fact this test's own
 // fakes are scripted to produce, pinned by hand.
 var setupOutcomeFoldTable = map[[2]string]string{
-	{string(setup.OutcomeWouldWrite), string(setup.OutcomeWouldWrite)}: string(setup.OutcomeWouldWrite),
-	{string(setup.OutcomeWrote), string(setup.OutcomeWrote)}:           string(setup.OutcomeWrote),
-	{string(setup.OutcomeWrote), string(setup.OutcomeFailed)}:          string(setup.OutcomeFailed),
-	{string(setup.OutcomeFailed), string(setup.OutcomeWrote)}:          string(setup.OutcomeFailed),
+	{string(setup.OutcomeWouldWrite), string(setup.OutcomeWouldWrite)}:     string(setup.OutcomeWouldWrite),
+	{string(setup.OutcomeWrote), string(setup.OutcomeWrote)}:               string(setup.OutcomeWrote),
+	{string(setup.OutcomeWrote), string(setup.OutcomeFailed)}:              string(setup.OutcomeFailed),
+	{string(setup.OutcomeFailed), string(setup.OutcomeWrote)}:              string(setup.OutcomeFailed),
+	{string(setup.OutcomePreserved), string(setup.OutcomeWouldWrite)}:      string(setup.OutcomePreserved),
+	{string(setup.OutcomeAlreadyCorrect), string(setup.OutcomeWouldWrite)}: string(setup.OutcomeAlreadyCorrect),
 }
 
 // assertFoldedOutcome asserts row.Outcome equals setupOutcomeFoldTable's

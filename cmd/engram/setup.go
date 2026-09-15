@@ -512,6 +512,21 @@ type setupRuntimeRow struct {
 	Config     string `json:"config,omitempty"`
 	Notes      string `json:"notes,omitempty"`
 
+	// Phase 4 (Drift Detection, D-12/D-03): Facets is the differing
+	// facets of a compared registration, as ONE comma-joined string in
+	// internal/setup's fixed facet order (url, auth-mode, header-name,
+	// header-value-ref, unrecognized-content) — empty for an
+	// already-correct registration and for a not-compared read. Drift
+	// is the corresponding "; "-joined per-facet detail-line text, or
+	// the "<runtime>: not compared: <why>" note when no comparison was
+	// possible at all. Registered's content is now a normalized
+	// rendering rebuilt from parsed-and-redacted fields, with every
+	// header value redacted, rather than a raw probe capture (D-03).
+	// Both new fields take Config's own "never a struct, map, slice, or
+	// raw-message type" constraint for the identical reason.
+	Facets string `json:"facets,omitempty"`
+	Drift  string `json:"drift,omitempty"`
+
 	Registration  string `json:"registration,omitempty"`
 	Skills        string `json:"skills,omitempty"`
 	SkillsDest    string `json:"skills_dest,omitempty"`
@@ -575,11 +590,13 @@ func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup
 
 // setupPreviewSummary renders the operator-facing one-line PREVIEW
 // headline: how many of the selected runtimes are present, that a bare
-// invocation reads current state from each present runtime's own CLI (D-10
-// — the fact that makes the probe's side effect, including a live network
-// dial for two of the three native runtimes, discoverable by reading
-// rather than by observing, per REQ-setup-correct-by-reading), and both
-// effects --apply actually performs (Phase 4: registration AND the
+// invocation reads current state from each present runtime's own CLI AND
+// compares it with what setup would write (D-10 — the fact that makes
+// the probe's side effect, including a live network dial for two of the
+// three native runtimes, discoverable by reading rather than by
+// observing, per REQ-setup-correct-by-reading), that opencode is
+// exempted from that comparison (its mcp list output is not parsed), and
+// both effects --apply actually performs (Phase 4: registration AND the
 // curation skills install) — never registration alone, which would be a
 // half-truth about what the command now does.
 func setupPreviewSummary(rows []setupRuntimeRow) string {
@@ -590,7 +607,7 @@ func setupPreviewSummary(rows []setupRuntimeRow) string {
 		}
 	}
 	return fmt.Sprintf(
-		"preview: %d/%d selected runtime(s) present; a present runtime's own CLI is read to show current state (two of the three dial the configured URL); run with --apply to register and install skills",
+		"preview: %d/%d selected runtime(s) present; a present runtime's own CLI is read and compared with what setup would write (two of the three dial the configured URL; opencode is not compared); run with --apply to register and install skills",
 		present, len(rows))
 }
 
@@ -779,6 +796,8 @@ func setupRuntimeRowFromResult(ctx context.Context, env setup.Environment, rt se
 		TokenFile:  r.TokenFile,
 		Config:     r.Config,
 		Notes:      r.Notes,
+		Facets:     r.Facets,
+		Drift:      r.Drift,
 	}
 	if r.Present {
 		row.Headers = headers
@@ -819,6 +838,8 @@ func setupResultsFromRows(rows []setupRuntimeRow) []setup.Result {
 			TokenFile:  r.TokenFile,
 			Config:     r.Config,
 			Notes:      r.Notes,
+			Facets:     r.Facets,
+			Drift:      r.Drift,
 		}
 	}
 	return results
@@ -826,21 +847,27 @@ func setupResultsFromRows(rows []setupRuntimeRow) []setup.Result {
 
 // setupApplySummary renders the operator-facing one-line APPLY headline:
 // how many of the selected runtimes were written, were already correct,
-// and failed — replacing Phase 2's "registration lands in a later phase"
-// wording, which is false as of this phase (D-09's stub is retired).
+// were preserved, and failed — replacing Phase 2's "registration lands
+// in a later phase" wording, which is false as of this phase (D-09's
+// stub is retired). Phase 4 (D-04): a preserved registration is a
+// non-failed attempt reported in its own bucket, never counted as
+// failed — setup declining to overwrite something it cannot reproduce is
+// setup performing correctly.
 func setupApplySummary(rows []setupRuntimeRow) string {
-	var wrote, already, failed int
+	var wrote, already, preserved, failed int
 	for _, r := range rows {
 		switch setup.Outcome(r.Outcome) {
 		case setup.OutcomeWrote:
 			wrote++
 		case setup.OutcomeAlreadyCorrect:
 			already++
+		case setup.OutcomePreserved:
+			preserved++
 		case setup.OutcomeFailed:
 			failed++
 		}
 	}
-	return fmt.Sprintf("apply: %d wrote, %d already correct, %d failed (of %d selected runtime(s))", wrote, already, failed, len(rows))
+	return fmt.Sprintf("apply: %d wrote, %d already correct, %d preserved, %d failed (of %d selected runtime(s))", wrote, already, preserved, failed, len(rows))
 }
 
 // setupApplyRun is registerDestructive's apply closure. It resolves
@@ -942,6 +969,18 @@ A bare invocation (no --apply) contacts each present runtime's own CLI to
 read its current registration state for the report; nothing is written.
 For claude-code and opencode, that read dials the configured URL; for
 codex, it is a pure local read.
+
+For claude-code and codex, that read is compared with what setup would
+write — URL, auth mode, and header names with their environment-variable
+references — and the row is classified already-correct, would-write, or
+preserved. A would-write row names the differing facets (url, auth-mode,
+header-name, header-value-ref) in its facets field, with drift detailing
+each one; a preserved row means the registration carries something setup
+did not author and cannot reproduce — an extra header, an unrecognized
+field — so setup leaves it untouched and names it in the reason. Header
+values read from a runtime are never shown. A registration the read
+cannot parse reads would-write; opencode is not compared (its mcp list
+output is not parsed) and always reads would-write.
 
 %s
 

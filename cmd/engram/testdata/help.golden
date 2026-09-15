@@ -300,6 +300,18 @@ read its current registration state for the report; nothing is written.
 For claude-code and opencode, that read dials the configured URL; for
 codex, it is a pure local read.
 
+For claude-code and codex, that read is compared with what setup would
+write — URL, auth mode, and header names with their environment-variable
+references — and the row is classified already-correct, would-write, or
+preserved. A would-write row names the differing facets (url, auth-mode,
+header-name, header-value-ref) in its facets field, with drift detailing
+each one; a preserved row means the registration carries something setup
+did not author and cannot reproduce — an extra header, an unrecognized
+field — so setup leaves it untouched and names it in the reason. Header
+values read from a runtime are never shown. A registration the read
+cannot parse reads would-write; opencode is not compared (its mcp list
+output is not parsed) and always reads would-write.
+
 a mutating operator command previews by default and mutates only when apply is set
 
 --apply also delivers the engram curation skills to each present runtime. A
