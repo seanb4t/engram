@@ -520,6 +520,35 @@ func TestPluginPlan(t *testing.T) {
 				},
 			},
 			{
+				// WR-03: codexPluginRemoveAction's own doc comment names
+				// this exact destructive window ("if the following add
+				// fails after this action succeeds, no codex plugin
+				// remains until --apply is re-run") — this pins the
+				// observable outcome the lane actually produces: remove
+				// (unscripted here, so it succeeds via
+				// scriptedPluginRunErr's default ExitCode:0) runs first,
+				// then add fails, and the row fails naming "add" (never
+				// "remove") in its Reason, with no third action attempted
+				// (wantApplyExtraArgs stops at exactly the two actions).
+				name:              "outdated-add-fails-after-remove-succeeds",
+				listStdout:        codexListStdout("0.16.0"),
+				marketplaceStdout: codexMarketplacePresent,
+				wantState:         PluginOutdated,
+				wantInstalled:     "0.16.0",
+				wantSource:        "/home/fake/.codex/plugins/marketplaces/engram",
+				wantCommand:       "codex plugin remove engram@engram --json; codex plugin add engram@engram --json",
+				wantNoteExact:     "",
+				actionScript: map[string]RunResult{
+					"plugin add engram@engram --json": {ExitCode: 1, Stderr: "boom: add refused"},
+				},
+				wantApplyOutcome: OutcomeFailed,
+				wantApplyReason:  "codex: codex plugin add engram@engram --json exited 1: 'boom: add refused'",
+				wantApplyExtraArgs: [][]string{
+					{"plugin", "remove", "engram@engram", "--json"},
+					{"plugin", "add", "engram@engram", "--json"},
+				},
+			},
+			{
 				name:              "current",
 				listStdout:        codexListStdout("0.16.1"),
 				marketplaceStdout: codexMarketplacePresent,
