@@ -42,6 +42,16 @@ var setupEnv = setup.OSEnvironment
 // destination instead of a real home directory (repo rule m45p2b4bp7).
 var skillsEnv = skills.OSEnvironment
 
+// setupVersion is the injectable seam supplying the binary-side operand of
+// D-01's plugin-version comparison: resolvedVersion (buildversion.go) in
+// production — the SAME function `engram version` reports, never the raw
+// `version` ldflags var — behind a package-level, t.Cleanup-overridable
+// seam exactly like setupEnv/skillsEnv above, so a test injects a stable
+// release core (a test binary resolves to "dev" or a derived
+// "-dev.0+g<hash>" form via resolvedVersion, which D-03 deliberately never
+// treats as an update trigger).
+var setupVersion = resolvedVersion
+
 // setupSkillsTarget maps a setup.SkillTarget onto a skills.Target — the
 // ONE explicit mapping across the D-05 package boundary, exhaustive over
 // the three real SkillFormat values. Every registered runtime now
@@ -127,14 +137,12 @@ func setupJoinReason(existing, next string) string {
 // includeContent gates skills_content population per D-03: populated only
 // when the resolved output format is not text, so the dense text row
 // never carries skill file content.
-func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outcome, planTarget setup.SkillTarget, mutate bool, includeContent bool) setup.Outcome {
-	row.Registration = string(registrationOutcome)
-
+func setupApplySkillsFacet(row *setupRuntimeRow, base setup.Outcome, planTarget setup.SkillTarget, mutate bool, includeContent bool) setup.Outcome {
 	target, targetErr := setupSkillsTarget(planTarget)
 	if targetErr != nil {
 		row.Skills = string(setup.OutcomeFailed)
 		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %s: %v", row.Name, targetErr))
-		return setup.AggregateOutcome(registrationOutcome, setup.OutcomeFailed)
+		return setup.AggregateOutcome(base, setup.OutcomeFailed)
 	}
 
 	inv, invErr := skills.Inventory()
@@ -148,7 +156,7 @@ func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outco
 		row.SkillsDest = target.Dir
 		row.SkillsIndex = target.IndexFile
 		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", invErr))
-		return setup.AggregateOutcome(registrationOutcome, setup.OutcomeFailed)
+		return setup.AggregateOutcome(base, setup.OutcomeFailed)
 	}
 
 	var wrote, alreadyCorrect int
@@ -178,7 +186,125 @@ func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outco
 	if installErr != nil {
 		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", installErr))
 	}
-	return setup.AggregateOutcome(registrationOutcome, skillsOutcome)
+	return setup.AggregateOutcome(base, skillsOutcome)
+}
+
+// setupApplyPluginFacet composes the plugin facet onto row and returns
+// row's outcome further folded with p's own outcome — the THIRD facet
+// AggregateOutcome folds (registration, then plugin, then skills;
+// AggregateOutcome is symmetric and associative, aggregate.go, so this
+// two-way fold repeated twice is an exact three-way fold), composed the
+// SAME way setupApplySkillsFacet composes the skills facet
+// (03-RESEARCH.md Pattern 2).
+//
+// !p.Attempted means rt does not implement setup.PluginRuntime (opencode,
+// generic), or the registration lane resolved no binary at all (a
+// declined Plan(), e.g. ErrHeaderUnsupported/ErrAuthModeUnsupported) — no
+// plugin facet at all, base returned unchanged.
+//
+// p.Outcome == "" is D-12's PluginUnavailable: the capability probe found
+// no working plugin CLI. PluginState/PluginInstalled/PluginTarget/
+// PluginSource/PluginCommand/PluginNote are still populated (PluginNote
+// carries the unavailable reason), but NOTHING is folded into the
+// aggregate — this is how "never a failed runtime row for a plugin probe
+// failure" (D-12, REQ-plugin-capability-detection) holds by construction,
+// not by a later filter.
+//
+// A failed plugin install folds through setup.AggregateOutcome exactly
+// like any other failed facet (03-CONTEXT.md discretion: "like any other
+// failed facet"), reaching exitPartial beside a succeeding runtime — the
+// failure reason is joined onto row.Reason as "plugin: " plus the
+// describeFailure/describeSeamError text via setupJoinReason, alongside
+// (never instead of) any registration failure already recorded there.
+func setupApplyPluginFacet(row *setupRuntimeRow, base setup.Outcome, p setup.PluginResult) setup.Outcome {
+	if !p.Attempted {
+		return base
+	}
+	row.PluginState = string(p.State)
+	row.PluginInstalled = p.Installed
+	row.PluginTarget = p.Target
+	row.PluginSource = p.Source
+	row.PluginCommand = p.Command
+	row.PluginNote = p.Note
+	if p.Outcome == "" {
+		return base
+	}
+	row.Plugin = string(p.Outcome)
+	if p.Reason != "" {
+		row.Reason = setupJoinReason(row.Reason, "plugin: "+p.Reason)
+	}
+	return setup.AggregateOutcome(base, p.Outcome)
+}
+
+// setupNativePresenceSummary renders p (skills.DetectPresence's read-only
+// D-08/D-09 report) into ONE row-field string, following
+// setupSkillsDigestSummary/setupHeadersSummary's own comma/semicolon-
+// joined idiom (never a struct/slice/map — the same flat-scalar
+// discipline TestOperatorViewFixturesHaveNoUnsanitizedNesting enforces
+// structurally): "N skills present at DIR (symlink|copy)" when
+// p.Skills > 0, "index block present at INDEXFILE" when p.IndexBlock,
+// joined by "; " when both apply and suffixed " — remove manually to
+// avoid duplicates" whenever either part is present (D-08's own example
+// wording, D-09's "index block present"). Returns "none" when neither
+// applies. Nothing here removes anything — it only describes what
+// DetectPresence already found.
+func setupNativePresenceSummary(p skills.Presence, dir, indexFile string) string {
+	var parts []string
+	if p.Skills > 0 {
+		kind := "copy"
+		if p.Symlink {
+			kind = "symlink"
+		}
+		parts = append(parts, fmt.Sprintf("%d skills present at %s (%s)", p.Skills, dir, kind))
+	}
+	if p.IndexBlock {
+		parts = append(parts, fmt.Sprintf("index block present at %s", indexFile))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, "; ") + " — remove manually to avoid duplicates"
+}
+
+// setupReportNativeSkills is the D-07/D-08/D-09 routing counterpart to
+// setupApplySkillsFacet for a runtime whose plugin facet reports
+// Delivered() == true: it never adds anything to the native skills
+// directory and never calls skills.Install — the skills, hooks, and
+// /engram-setup command are already delivered by the runtime's own plugin
+// system. It only REPORTS what already exists at the native destination
+// (a leftover copy from an earlier --apply, or a hand-made symlink),
+// via the read-only skills.DetectPresence, so an operator can remove it
+// by hand if they wish — nothing is ever deleted here.
+//
+// The skills facet contributes NOTHING to the aggregate on this path:
+// nothing was written or compared natively, and the plugin facet (folded
+// separately, via setupApplyPluginFacet) already carries the delivery
+// outcome — so base is returned unchanged except on an authoring-bug
+// failure (an unrecognized SkillTarget format, or a broken skills embed),
+// which stays visible exactly as it would on the native path.
+func setupReportNativeSkills(row *setupRuntimeRow, base setup.Outcome, planTarget setup.SkillTarget) setup.Outcome {
+	target, targetErr := setupSkillsTarget(planTarget)
+	if targetErr != nil {
+		row.Skills = string(setup.OutcomeFailed)
+		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %s: %v", row.Name, targetErr))
+		return setup.AggregateOutcome(base, setup.OutcomeFailed)
+	}
+
+	inv, invErr := skills.Inventory()
+	if invErr != nil {
+		row.Skills = string(setup.OutcomeFailed)
+		row.SkillsDest = target.Dir
+		row.SkillsIndex = target.IndexFile
+		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", invErr))
+		return setup.AggregateOutcome(base, setup.OutcomeFailed)
+	}
+
+	pres := skills.DetectPresence(skillsEnv, target, inv)
+	row.Skills = setupSkillsPluginDelivered
+	row.SkillsDest = target.Dir
+	row.SkillsIndex = target.IndexFile
+	row.SkillsNative = setupNativePresenceSummary(pres, target.Dir, target.IndexFile)
+	return base
 }
 
 // setupCmd detects which supported agent runtimes are present on the
@@ -353,6 +479,26 @@ func setupParseHeaders(specs []string) ([]setup.HeaderSpec, error) {
 // what was REQUESTED, independent of whether that runtime's own Plan()
 // accepted or declined it (see codex's failed row in setup_test.go's
 // TestSetupHeaderCodexDeclined).
+//
+// Phase 3 (Plugin-First Delivery) adds the plugin facet — the THIRD facet
+// the aggregate folds (registration, then plugin, then skills;
+// AggregateOutcome is symmetric and associative, so a three-way fold via
+// two two-way folds is exact): Plugin is the facet's OWN outcome (one of
+// the five Outcome values, EMPTY when the capability probe found no
+// working plugin CLI — D-12 reports "unavailable" on PluginState and the
+// reason on PluginNote without ever producing an outcome to fold).
+// PluginState is one of absent/outdated/current/unavailable
+// (REQ-plugin-three-way-state). PluginInstalled is the observed installed
+// version; PluginTarget is the binary version it was compared against.
+// PluginSource is the observed marketplace source (D-05) so a fork stays
+// visible. PluginCommand is the exact argv --apply would run/ran (SC2).
+// PluginNote carries D-01's newer-than-binary note, D-03's dev-build
+// note, or D-12's unavailable reason. SkillsNative is D-08/D-09's
+// report of what already sits under the native destination beside a
+// plugin-delivered runtime — path, count, and symlink-vs-copy, never
+// written or removed. Every one of these eight fields takes Config's own
+// "never a struct, map, slice, or raw-message type" constraint for the
+// identical reason.
 type setupRuntimeRow struct {
 	Name       string `json:"name"`
 	Present    bool   `json:"present"`
@@ -373,7 +519,23 @@ type setupRuntimeRow struct {
 	SkillsDigest  string `json:"skills_digest,omitempty"`
 	SkillsBytes   string `json:"skills_bytes,omitempty"`
 	SkillsContent string `json:"skills_content,omitempty"`
+
+	Plugin          string `json:"plugin,omitempty"`
+	PluginState     string `json:"plugin_state,omitempty"`
+	PluginInstalled string `json:"plugin_installed,omitempty"`
+	PluginTarget    string `json:"plugin_target,omitempty"`
+	PluginSource    string `json:"plugin_source,omitempty"`
+	PluginCommand   string `json:"plugin_command,omitempty"`
+	PluginNote      string `json:"plugin_note,omitempty"`
+	SkillsNative    string `json:"skills_native,omitempty"`
 }
+
+// setupSkillsPluginDelivered is the Skills row-field value for a runtime
+// whose plugin facet reports Delivered() == true: nothing was written or
+// compared natively — the plugin facet (Plugin/PluginState/…) already
+// carries the delivery outcome — so this is deliberately NOT one of the
+// five setup.Outcome values.
+const setupSkillsPluginDelivered = "plugin-delivered"
 
 // setupReportDoc is the one typed document setupPreview and setupApplyRun
 // both render through renderOperator — text and json cannot drift because
@@ -406,7 +568,7 @@ func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup
 	headers := setupHeadersSummary(opts.Headers)
 	rows := make([]setupRuntimeRow, 0, len(runtimes))
 	for _, rt := range runtimes {
-		rows = append(rows, setupRuntimeRowFromResult(setup.Preview(ctx, env, rt, opts), headers, false, includeContent))
+		rows = append(rows, setupRuntimeRowFromResult(ctx, env, rt, setup.Preview(ctx, env, rt, opts), headers, false, includeContent))
 	}
 	return rows
 }
@@ -569,14 +731,35 @@ func setupExitCode(c setup.ExitClass) int {
 // Result field is one more key=value the existing renderOperator pipeline
 // picks up automatically, no bespoke rendering code).
 //
-// For a PRESENT runtime, this also composes the skills facet
-// (setupApplySkillsFacet) and OVERWRITES Outcome with the aggregated
-// value D-06 requires — r.Outcome itself is passed through unchanged as
-// the registration facet's own outcome, folded together with the skills
-// facet's own outcome via setup.AggregateOutcome. A not-present runtime
-// is skipped entirely: it keeps its OutcomeNotPresent row untouched, with
-// no skills facet (D-07) and no header facet (02-03-PLAN.md Task 2:
-// headers is set only inside the same "if r.Present" branch below).
+// For a PRESENT runtime, this also runs the plugin lane and composes both
+// the plugin and skills facets, OVERWRITING Outcome with the fully
+// aggregated value: r.Outcome (registration) is folded with the plugin
+// facet's outcome (setupApplyPluginFacet), which is folded with the
+// skills facet's outcome — either the native write/compare
+// (setupApplySkillsFacet) or, for a plugin-delivered runtime, the D-07
+// report-only path (setupReportNativeSkills). ctx and env are threaded
+// through so the plugin lane (setup.PluginPreview/setup.PluginApply) can
+// exec through the SAME injected seam the registration lane already used
+// (repo rule m45p2b4bp7) — never the real machine. rt is the Runtime
+// itself: the plugin lane needs it for its own PluginRuntime type
+// assertion (never a by-name branch). The plugin lane REUSES r.Binary,
+// the registration lane's already-resolved path — no second LookPath — so
+// a runtime whose registration lane resolved no binary at all (opencode,
+// generic, or a declined Plan()) gets no plugin facet either.
+//
+// Routing is decided by CAPABILITY (p.Delivered(): a working plugin CLI),
+// never by the install's own success — a plugin-capable runtime NEVER
+// receives the native copy in the same run, even when its plugin install
+// just failed, because the re-run that eventually succeeds would
+// otherwise leave a native copy behind ALONGSIDE the plugin, duplicating
+// every skill twice — exactly the defect this phase exists to prevent.
+// The failed facet stays fully visible on the row, and --apply is
+// re-runnable.
+//
+// A not-present runtime is skipped entirely: it keeps its
+// OutcomeNotPresent row untouched, with no plugin facet, no skills facet
+// (D-07), and no header facet (headers is set only inside the same
+// "if r.Present" branch below).
 //
 // headers is the ALREADY-SUMMARIZED (setupHeadersSummary) header facet —
 // computed once by the caller (setupBuildRows/setupApplyRun) from
@@ -584,7 +767,7 @@ func setupExitCode(c setup.ExitClass) int {
 // report shares the same requested header set (D-08: the facet reports
 // what was REQUESTED, independent of whether that runtime's own Plan()
 // accepted or declined it).
-func setupRuntimeRowFromResult(r setup.Result, headers string, mutate bool, includeContent bool) setupRuntimeRow {
+func setupRuntimeRowFromResult(ctx context.Context, env setup.Environment, rt setup.Runtime, r setup.Result, headers string, mutate bool, includeContent bool) setupRuntimeRow {
 	row := setupRuntimeRow{
 		Name:       r.Runtime,
 		Present:    r.Present,
@@ -599,7 +782,21 @@ func setupRuntimeRowFromResult(r setup.Result, headers string, mutate bool, incl
 	}
 	if r.Present {
 		row.Headers = headers
-		row.Outcome = string(setupApplySkillsFacet(&row, r.Outcome, r.Skills, mutate, includeContent))
+		row.Registration = string(r.Outcome)
+
+		var p setup.PluginResult
+		if mutate {
+			p = setup.PluginApply(ctx, env, rt, r.Binary, setupVersion())
+		} else {
+			p = setup.PluginPreview(ctx, env, rt, r.Binary, setupVersion())
+		}
+		outcome := setupApplyPluginFacet(&row, r.Outcome, p)
+		if p.Delivered() {
+			outcome = setupReportNativeSkills(&row, outcome, r.Skills)
+		} else {
+			outcome = setupApplySkillsFacet(&row, outcome, r.Skills, mutate, includeContent)
+		}
+		row.Outcome = string(outcome)
 	}
 	return row
 }
@@ -672,7 +869,7 @@ func setupApplyRun(ctx context.Context, cmd *cobra.Command) error {
 	headers := setupHeadersSummary(opts.Headers)
 	rows := make([]setupRuntimeRow, len(runtimes))
 	for i, rt := range runtimes {
-		rows[i] = setupRuntimeRowFromResult(setup.Apply(ctx, setupEnv, rt, opts), headers, true, format != formatText)
+		rows[i] = setupRuntimeRowFromResult(ctx, setupEnv, rt, setup.Apply(ctx, setupEnv, rt, opts), headers, true, format != formatText)
 	}
 	doc := setupReportDoc{Runtimes: rows}
 

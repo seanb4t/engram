@@ -116,6 +116,17 @@ func TestSetupGeneratedInvocations(t *testing.T) {
 								wantCalls = append(wantCalls, plan.Probe)
 							}
 						}
+						// Phase 3: every present runtime implementing
+						// setup.PluginRuntime also runs its OWN plugin
+						// capability-and-state probe (D-10), in BOTH lanes,
+						// immediately after its registration sequence above —
+						// the shared fake's empty stdout is unavailable after
+						// exactly one probe (D-12), so no marketplace probe
+						// and no plugin action ever follows here.
+						if pr, ok := rt.(setup.PluginRuntime); ok {
+							list, _ := pr.PluginProbes()
+							wantCalls = append(wantCalls, list)
+						}
 					}
 					if !reflect.DeepEqual(calls, wantCalls) {
 						t.Errorf("captured argv=%q, want Plan-authored sequence=%q", calls, wantCalls)

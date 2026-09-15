@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/seanb4t/engram/internal/setup"
 	"github.com/seanb4t/engram/internal/skills"
@@ -70,7 +71,11 @@ func fakeSetupEnvWithRun(run func(context.Context, string, []string) (setup.RunR
 // so no test in this file ever installs skills to a real home directory
 // (repo rule m45p2b4bp7) — the skills-package analogue of fakeSetupEnv
 // above. MkdirAll is a no-op; the in-memory map has no directory concept
-// to create.
+// to create. Lstat always reports absent (os.ErrNotExist): every test
+// that drives this fake exercises the NATIVE write path
+// (setupApplySkillsFacet), never the plugin-delivered presence report
+// (setupReportNativeSkills), so there is nothing for a real Lstat to
+// find here.
 func fakeSkillsEnv() skills.Environment {
 	store := make(map[string][]byte)
 	return skills.Environment{
@@ -88,6 +93,58 @@ func fakeSkillsEnv() skills.Environment {
 			return nil
 		},
 		MkdirAll: func(string, os.FileMode) error { return nil },
+		Lstat:    func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
+	}
+}
+
+// fakeFileInfo is a minimal os.FileInfo implementation for
+// fakeSkillsEnvWithEntries' Lstat responses — only Mode() is ever
+// consulted by skills.DetectPresence (presence.go), but the interface
+// requires the rest.
+type fakeFileInfo struct {
+	name string
+	mode os.FileMode
+}
+
+func (f fakeFileInfo) Name() string       { return f.name }
+func (f fakeFileInfo) Size() int64        { return 0 }
+func (f fakeFileInfo) Mode() os.FileMode  { return f.mode }
+func (f fakeFileInfo) ModTime() time.Time { return time.Time{} }
+func (f fakeFileInfo) IsDir() bool        { return f.mode.IsDir() }
+func (f fakeFileInfo) Sys() any           { return nil }
+
+// fakeSkillsEnvWithEntries builds an in-memory skills.Environment exactly
+// like fakeSkillsEnv, backed by store, but with a SCRIPTED Lstat: a path
+// present in entries (keyed by its full path, e.g.
+// "/home/fake/.agents/skills" or "/home/fake/.agents/skills/curating-memory")
+// reports a fakeFileInfo carrying that entry's os.FileMode (os.ModeDir,
+// os.ModeSymlink, or 0 for an ordinary file); any other path reports
+// os.ErrNotExist — the D-08 presence-report analogue of fakeSkillsEnv
+// above, for a test exercising setupReportNativeSkills/DetectPresence
+// rather than the native write path.
+func fakeSkillsEnvWithEntries(entries map[string]os.FileMode, store map[string][]byte) skills.Environment {
+	return skills.Environment{
+		ReadFile: func(name string) ([]byte, error) {
+			b, ok := store[name]
+			if !ok {
+				return nil, os.ErrNotExist
+			}
+			return b, nil
+		},
+		WriteFile: func(name string, data []byte, _ os.FileMode) error {
+			cp := make([]byte, len(data))
+			copy(cp, data)
+			store[name] = cp
+			return nil
+		},
+		MkdirAll: func(string, os.FileMode) error { return nil },
+		Lstat: func(name string) (os.FileInfo, error) {
+			mode, ok := entries[name]
+			if !ok {
+				return nil, os.ErrNotExist
+			}
+			return fakeFileInfo{name: filepath.Base(name), mode: mode}, nil
+		},
 	}
 }
 
@@ -111,6 +168,21 @@ func withFakeSetupEnv(t *testing.T, env setup.Environment) {
 	origSkills := skillsEnv
 	skillsEnv = fakeSkillsEnv()
 	t.Cleanup(func() { skillsEnv = origSkills })
+}
+
+// withFakeSetupVersion points the package-level setupVersion seam at a
+// fixed value v for the duration of the test, restoring the original via
+// t.Cleanup — mirrors withFakeSetupEnv above. Every plugin test MUST go
+// through this helper rather than assigning setupVersion directly: a
+// real test binary's resolvedVersion() resolves to "dev" or a derived
+// "-dev.0+g<hash>" form, which D-03 deliberately never treats as
+// comparable, so an un-seamed plugin test would nondeterministically
+// exercise only the non-comparable branch of classifyPluginVersion.
+func withFakeSetupVersion(t *testing.T, v string) {
+	t.Helper()
+	orig := setupVersion
+	setupVersion = func() string { return v }
+	t.Cleanup(func() { setupVersion = orig })
 }
 
 // defaultRuntimeCount returns the number of runtimes a BARE `engram
@@ -1673,6 +1745,7 @@ func (r *setupE2ERecorder) skillsEnv() skills.Environment {
 			return nil
 		},
 		MkdirAll: func(string, os.FileMode) error { return nil },
+		Lstat:    func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
 	}
 }
 
@@ -2087,7 +2160,12 @@ func TestSetupClientID(t *testing.T) {
 						if !reflect.DeepEqual(call, wantAdd) {
 							t.Errorf("add argv = %q, want %q", call, wantAdd)
 						}
-					} else if !apply && !reflect.DeepEqual(call, []string{"claude", "mcp", "get", "engram"}) {
+					} else if !apply && !reflect.DeepEqual(call, []string{"claude", "mcp", "get", "engram"}) &&
+						!reflect.DeepEqual(call, []string{"claude", "plugin", "list", "--json"}) {
+						// Phase 3: every present claude-code row also runs the D-10
+						// plugin capability-and-state probe (read-only, in both
+						// preview and apply) — a legitimate additional probe call,
+						// never a write.
 						t.Errorf("preview ran a non-probe command: %q", call)
 					}
 				}
@@ -2810,5 +2888,467 @@ func TestSetupHeaderOrderIndependent(t *testing.T) {
 	}
 	if strings.Contains(stdout, `"headers"`) {
 		t.Errorf("stdout with no --header carries a headers key: %s", stdout)
+	}
+}
+
+// --- Phase 3 (Plugin-First Delivery): plugin-facet test infrastructure ---
+
+// claudeListEmptyJSON/claudeListCurrentJSON/claudeMarketplaceAbsentText/
+// claudeMarketplacePresentText/codexListEmptyJSON/codexListCurrentJSON/
+// codexMarketplacePresentText are scripted `plugin list --json`/`plugin
+// marketplace list` responses for the plugin-facet tests below —
+// engram@engram at version 0.16.1, matching withFakeSetupVersion's
+// binary-side operand in those tests so classifyPluginVersion resolves to
+// PluginCurrent.
+const (
+	claudeListEmptyJSON          = "[]"
+	claudeListCurrentJSON        = `[{"id":"engram@engram","version":"0.16.1","scope":"user"}]`
+	claudeMarketplaceAbsentText  = "❯ other\n    Source: GitHub (someone/other)\n"
+	claudeMarketplacePresentText = "❯ engram\n    Source: GitHub (seanb4t/engram)\n"
+	codexListEmptyJSON           = `{"installed":[],"available":[]}`
+	codexListCurrentJSON         = `{"installed":[{"pluginId":"engram@engram","name":"engram","marketplaceName":"engram","version":"0.16.1"}],"available":[]}`
+	codexMarketplacePresentText  = "MARKETPLACE  ROOT\nengram  /home/fake/.codex/plugins/marketplaces/engram\n"
+)
+
+// fakePluginRun builds an env.Run implementation scripting a plugin
+// runtime's responses by (bare binary name, joined argv-after-binary) —
+// the plugin-lane analogue of fakeSetupEnvWithRun's single (path, args)
+// closure. script's outer key is filepath.Base(path) ("claude"/"codex");
+// the inner key is strings.Join(args, " "). Any call not matched by
+// script — including every registration verb and every plugin WRITE verb
+// this test does not care about — delegates to base, unmodified.
+func fakePluginRun(base func(context.Context, string, []string) (setup.RunResult, error), script map[string]map[string]setup.RunResult) func(context.Context, string, []string) (setup.RunResult, error) {
+	return func(ctx context.Context, path string, args []string) (setup.RunResult, error) {
+		if perBinary, ok := script[filepath.Base(path)]; ok {
+			if rr, ok := perBinary[strings.Join(args, " ")]; ok {
+				return rr, nil
+			}
+		}
+		return base(ctx, path, args)
+	}
+}
+
+// recording wraps run, additionally appending
+// append([]string{filepath.Base(path)}, args...) onto *calls for every
+// invocation, in call order — the same idiom
+// TestSetupGeneratedInvocations (setup_delegation_test.go) already uses
+// inline, factored out here so the plugin tests below can layer it on
+// top of fakePluginRun/fakeSetupEnvSucceedingRun.
+func recording(calls *[][]string, run func(context.Context, string, []string) (setup.RunResult, error)) func(context.Context, string, []string) (setup.RunResult, error) {
+	return func(ctx context.Context, path string, args []string) (setup.RunResult, error) {
+		*calls = append(*calls, append([]string{filepath.Base(path)}, args...))
+		return run(ctx, path, args)
+	}
+}
+
+// counterBase is a plugin-test base Run implementation returning a
+// DISTINCT stdout ("read N") per DISTINCT (bare binary name, joined args)
+// key, incrementing on every call to that same key — every OTHER call
+// exits 0 with empty output. This is what makes a runtime's own
+// registration probe (`mcp get engram`, run once before and once after
+// the write) read as two DIFFERENT captures, so the shared executor
+// (apply.go) classifies registration as OutcomeWrote rather than
+// OutcomeAlreadyCorrect — every unscripted plugin write verb, in
+// contrast, only has its ExitCode consulted, so a fixed "read %d" body
+// text is inert there.
+func counterBase() func(context.Context, string, []string) (setup.RunResult, error) {
+	counts := make(map[string]int)
+	return func(_ context.Context, path string, args []string) (setup.RunResult, error) {
+		key := filepath.Base(path) + " " + strings.Join(args, " ")
+		counts[key]++
+		return setup.RunResult{ExitCode: 0, Stdout: fmt.Sprintf("read %d", counts[key])}, nil
+	}
+}
+
+// assertNoPluginWriteVerb fails the test if any recorded call is a
+// plugin WRITE verb (install/update/add/remove, or marketplace add) for
+// either claude or codex — the negative-space half of
+// TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites: a current
+// plugin authors zero plugin actions (03-CONTEXT.md "Specific Ideas").
+// The read-only list/marketplace-list probes are never flagged.
+func assertNoPluginWriteVerb(t *testing.T, calls [][]string) {
+	t.Helper()
+	for _, call := range calls {
+		if len(call) < 3 || call[1] != "plugin" {
+			continue
+		}
+		switch call[2] {
+		case "list":
+			continue
+		case "marketplace":
+			if len(call) >= 4 && call[3] == "list" {
+				continue
+			}
+			t.Errorf("recorded a plugin marketplace write verb: %q", call)
+		default:
+			t.Errorf("recorded a plugin write verb: %q", call)
+		}
+	}
+}
+
+// TestSetupApplyJSONEmitsPluginFacet proves the end-to-end plugin facet
+// under --apply: a claude-code row whose plugin install fails stays
+// `registration=wrote` beside `plugin=failed` (both facets visible,
+// exitPartial), while a codex row whose plugin add succeeds reports
+// `plugin=wrote` — and neither row ever falls back to a native skills
+// write, because BOTH runtimes are plugin-capable this run (D-07/D-12,
+// REQ-plugin-facet-reported).
+func TestSetupApplyJSONEmitsPluginFacet(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupVersion(t, "0.16.1")
+
+	script := map[string]map[string]setup.RunResult{
+		"claude": {
+			"plugin list --json":                                  {ExitCode: 0, Stdout: claudeListEmptyJSON},
+			"plugin marketplace list":                             {ExitCode: 0, Stdout: claudeMarketplaceAbsentText},
+			"plugin install engram@engram --scope user --json -y": {ExitCode: 1, Stderr: "boom: install refused"},
+		},
+		"codex": {
+			"plugin list --json":      {ExitCode: 0, Stdout: codexListEmptyJSON},
+			"plugin marketplace list": {ExitCode: 0, Stdout: codexMarketplacePresentText},
+		},
+	}
+	var calls [][]string
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(recording(&calls, fakePluginRun(counterBase(), script)), "claude", "codex"))
+
+	mutations := 0
+	write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+	skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+		mutations++
+		return write(path, data, mode)
+	}
+	skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+		mutations++
+		return mkdir(path, mode)
+	}
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code,codex", "--output", "json", "--apply")
+	if err == nil {
+		t.Fatal("expected a non-nil error (claude-code's plugin install fails), got nil")
+	}
+	if got := exitCodeFromError(err); got != exitPartial {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitPartial); stdout=%q stderr=%q", got, exitPartial, stdout, stderr)
+	}
+
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 2 {
+		t.Fatalf("emitted %d rows, want 2: %s", len(doc.Runtimes), stdout)
+	}
+
+	claudeRow := rowByName(t, doc.Runtimes, "claude-code")
+	if claudeRow.Outcome != "failed" {
+		t.Errorf("claude-code row.Outcome = %q, want %q", claudeRow.Outcome, "failed")
+	}
+	if claudeRow.Registration != "wrote" {
+		t.Errorf("claude-code row.Registration = %q, want %q", claudeRow.Registration, "wrote")
+	}
+	if claudeRow.Plugin != "failed" {
+		t.Errorf("claude-code row.Plugin = %q, want %q", claudeRow.Plugin, "failed")
+	}
+	if claudeRow.PluginState != "absent" {
+		t.Errorf("claude-code row.PluginState = %q, want %q", claudeRow.PluginState, "absent")
+	}
+	if claudeRow.PluginTarget != "0.16.1" {
+		t.Errorf("claude-code row.PluginTarget = %q, want %q", claudeRow.PluginTarget, "0.16.1")
+	}
+	if claudeRow.PluginInstalled != "" {
+		t.Errorf("claude-code row.PluginInstalled = %q, want empty", claudeRow.PluginInstalled)
+	}
+	wantClaudeCommand := "claude plugin marketplace add seanb4t/engram --scope user; claude plugin install engram@engram --scope user --json -y"
+	if claudeRow.PluginCommand != wantClaudeCommand {
+		t.Errorf("claude-code row.PluginCommand = %q, want %q", claudeRow.PluginCommand, wantClaudeCommand)
+	}
+	wantReasonSubstr := "plugin: claude-code: claude plugin install engram@engram --scope user --json -y exited 1: 'boom: install refused'"
+	if !strings.Contains(claudeRow.Reason, wantReasonSubstr) {
+		t.Errorf("claude-code row.Reason = %q, want it to contain %q", claudeRow.Reason, wantReasonSubstr)
+	}
+	if claudeRow.Skills != setupSkillsPluginDelivered {
+		t.Errorf("claude-code row.Skills = %q, want %q", claudeRow.Skills, setupSkillsPluginDelivered)
+	}
+	if claudeRow.SkillsNative != "none" {
+		t.Errorf("claude-code row.SkillsNative = %q, want %q", claudeRow.SkillsNative, "none")
+	}
+
+	codexRow := rowByName(t, doc.Runtimes, "codex")
+	if codexRow.Outcome != "wrote" {
+		t.Errorf("codex row.Outcome = %q, want %q", codexRow.Outcome, "wrote")
+	}
+	if codexRow.Registration != "wrote" {
+		t.Errorf("codex row.Registration = %q, want %q", codexRow.Registration, "wrote")
+	}
+	if codexRow.Plugin != "wrote" {
+		t.Errorf("codex row.Plugin = %q, want %q", codexRow.Plugin, "wrote")
+	}
+	if codexRow.PluginState != "absent" {
+		t.Errorf("codex row.PluginState = %q, want %q", codexRow.PluginState, "absent")
+	}
+	wantCodexSource := "/home/fake/.codex/plugins/marketplaces/engram"
+	if codexRow.PluginSource != wantCodexSource {
+		t.Errorf("codex row.PluginSource = %q, want %q", codexRow.PluginSource, wantCodexSource)
+	}
+	wantCodexCommand := "codex plugin add engram@engram --json"
+	if codexRow.PluginCommand != wantCodexCommand {
+		t.Errorf("codex row.PluginCommand = %q, want %q", codexRow.PluginCommand, wantCodexCommand)
+	}
+	if codexRow.Skills != setupSkillsPluginDelivered {
+		t.Errorf("codex row.Skills = %q, want %q", codexRow.Skills, setupSkillsPluginDelivered)
+	}
+
+	if mutations != 0 {
+		t.Errorf("skills mutations = %d, want 0 (both runtimes delivered; a failed install must never fall back to a native copy)", mutations)
+	}
+
+	wantClaudeMarketplaceAdd := []string{"claude", "plugin", "marketplace", "add", "seanb4t/engram", "--scope", "user"}
+	wantClaudeInstall := []string{"claude", "plugin", "install", "engram@engram", "--scope", "user", "--json", "-y"}
+	wantCodexAdd := []string{"codex", "plugin", "add", "engram@engram", "--json"}
+	claudeMarketplaceIdx, claudeInstallIdx, codexAddIdx := -1, -1, -1
+	for i, call := range calls {
+		switch {
+		case reflect.DeepEqual(call, wantClaudeMarketplaceAdd):
+			claudeMarketplaceIdx = i
+		case reflect.DeepEqual(call, wantClaudeInstall):
+			claudeInstallIdx = i
+		case reflect.DeepEqual(call, wantCodexAdd):
+			codexAddIdx = i
+		case len(call) >= 4 && call[0] == "codex" && call[1] == "plugin" && call[2] == "marketplace" && call[3] == "add":
+			t.Errorf("codex ran a marketplace add despite an already-present marketplace: %q", call)
+		}
+	}
+	if claudeMarketplaceIdx == -1 || claudeInstallIdx == -1 || claudeMarketplaceIdx >= claudeInstallIdx {
+		t.Errorf("recorded calls did not contain %q followed by %q: %q", wantClaudeMarketplaceAdd, wantClaudeInstall, calls)
+	}
+	if codexAddIdx == -1 {
+		t.Errorf("recorded calls did not contain %q: %q", wantCodexAdd, calls)
+	}
+}
+
+// TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites proves the D-07
+// routing invariant end to end: when both claude-code's and codex's
+// engram plugin are already current, --apply authors ZERO plugin write
+// verbs, ZERO native skills writes (skillsEnv.WriteFile/MkdirAll never
+// called), and NEVER touches codex's existing AGENTS.md index block —
+// while still reporting exactly what already sits at each runtime's
+// native destination via SkillsNative (D-08/D-09).
+func TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupVersion(t, "0.16.1")
+
+	script := map[string]map[string]setup.RunResult{
+		"claude": {
+			"plugin list --json":      {ExitCode: 0, Stdout: claudeListCurrentJSON},
+			"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplacePresentText},
+		},
+		"codex": {
+			"plugin list --json":      {ExitCode: 0, Stdout: codexListCurrentJSON},
+			"plugin marketplace list": {ExitCode: 0, Stdout: codexMarketplacePresentText},
+		},
+	}
+	var calls [][]string
+	// base returns IDENTICAL mcp get output for every call (registration's
+	// own two probe reads therefore compare equal -> already-correct).
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(recording(&calls, fakePluginRun(fakeSetupEnvSucceedingRun, script)), "claude", "codex"))
+
+	inv, invErr := skills.Inventory()
+	if invErr != nil {
+		t.Fatalf("skills.Inventory(): %v", invErr)
+	}
+	const codexAgentsMD = "/home/fake/.codex/AGENTS.md"
+	entries := map[string]os.FileMode{
+		"/home/fake/.agents/skills": os.ModeDir,
+	}
+	for _, s := range inv {
+		entries["/home/fake/.agents/skills/"+s.Name] = os.ModeSymlink
+	}
+	seed := []byte("# Mine\n" + skills.BlockStartMarker + "\nold\n" + skills.BlockEndMarker + "\n")
+	store := map[string][]byte{codexAgentsMD: append([]byte(nil), seed...)}
+	skillsEnv = fakeSkillsEnvWithEntries(entries, store)
+
+	mutations := 0
+	write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+	skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+		mutations++
+		return write(path, data, mode)
+	}
+	skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+		mutations++
+		return mkdir(path, mode)
+	}
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code,codex", "--output", "json", "--apply")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q stdout=%q)", err, stderr, stdout)
+	}
+
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 2 {
+		t.Fatalf("emitted %d rows, want 2: %s", len(doc.Runtimes), stdout)
+	}
+
+	for _, name := range []string{"claude-code", "codex"} {
+		row := rowByName(t, doc.Runtimes, name)
+		if row.Outcome != "already-correct" {
+			t.Errorf("%s row.Outcome = %q, want %q", name, row.Outcome, "already-correct")
+		}
+		if row.Plugin != "already-correct" {
+			t.Errorf("%s row.Plugin = %q, want %q", name, row.Plugin, "already-correct")
+		}
+		if row.PluginState != "current" {
+			t.Errorf("%s row.PluginState = %q, want %q", name, row.PluginState, "current")
+		}
+		if row.PluginInstalled != "0.16.1" {
+			t.Errorf("%s row.PluginInstalled = %q, want %q", name, row.PluginInstalled, "0.16.1")
+		}
+		if row.PluginTarget != "0.16.1" {
+			t.Errorf("%s row.PluginTarget = %q, want %q", name, row.PluginTarget, "0.16.1")
+		}
+		if row.PluginCommand != "" {
+			t.Errorf("%s row.PluginCommand = %q, want empty", name, row.PluginCommand)
+		}
+		if row.PluginNote != "" {
+			t.Errorf("%s row.PluginNote = %q, want empty", name, row.PluginNote)
+		}
+		if row.Skills != setupSkillsPluginDelivered {
+			t.Errorf("%s row.Skills = %q, want %q", name, row.Skills, setupSkillsPluginDelivered)
+		}
+		if row.SkillsDigest != "" || row.SkillsBytes != "" || row.SkillsContent != "" {
+			t.Errorf("%s row carries native skill detail (SkillsDigest=%q SkillsBytes=%q SkillsContent=%q), want all empty (nothing was installed natively)",
+				name, row.SkillsDigest, row.SkillsBytes, row.SkillsContent)
+		}
+	}
+
+	claudeRow := rowByName(t, doc.Runtimes, "claude-code")
+	if claudeRow.SkillsDest != "/home/fake/.claude/skills" {
+		t.Errorf("claude-code row.SkillsDest = %q, want %q", claudeRow.SkillsDest, "/home/fake/.claude/skills")
+	}
+	if claudeRow.SkillsNative != "none" {
+		t.Errorf("claude-code row.SkillsNative = %q, want %q", claudeRow.SkillsNative, "none")
+	}
+
+	codexRow := rowByName(t, doc.Runtimes, "codex")
+	if codexRow.SkillsDest != "/home/fake/.agents/skills" {
+		t.Errorf("codex row.SkillsDest = %q, want %q", codexRow.SkillsDest, "/home/fake/.agents/skills")
+	}
+	if codexRow.SkillsIndex != codexAgentsMD {
+		t.Errorf("codex row.SkillsIndex = %q, want %q", codexRow.SkillsIndex, codexAgentsMD)
+	}
+	wantCodexNative := fmt.Sprintf("%d skills present at /home/fake/.agents/skills (symlink); index block present at /home/fake/.codex/AGENTS.md — remove manually to avoid duplicates", len(inv))
+	if codexRow.SkillsNative != wantCodexNative {
+		t.Errorf("codex row.SkillsNative = %q, want %q", codexRow.SkillsNative, wantCodexNative)
+	}
+
+	if mutations != 0 {
+		t.Errorf("skills mutations = %d, want 0 (both runtimes current and plugin-delivered)", mutations)
+	}
+	if got := store[codexAgentsMD]; string(got) != string(seed) {
+		t.Errorf("store[%q] = %q, want byte-identical to the seed (D-09: no AGENTS.md write)", codexAgentsMD, got)
+	}
+	assertNoPluginWriteVerb(t, calls)
+}
+
+// TestSetupPreviewShowsPluginArgv proves a bare preview (no --apply)
+// shows the exact plugin argv the apply lane would run, and runs no
+// write verb of any kind — the plugin lane's own D-11 read-only
+// discipline, mirrored in both the json and text output lanes.
+func TestSetupPreviewShowsPluginArgv(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupVersion(t, "0.16.1")
+
+	script := map[string]map[string]setup.RunResult{
+		"claude": {
+			"plugin list --json":      {ExitCode: 0, Stdout: claudeListEmptyJSON},
+			"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplaceAbsentText},
+		},
+	}
+	var calls [][]string
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(recording(&calls, fakePluginRun(fakeSetupEnvSucceedingRun, script)), "claude"))
+
+	mutations := 0
+	write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+	skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+		mutations++
+		return write(path, data, mode)
+	}
+	skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+		mutations++
+		return mkdir(path, mode)
+	}
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 1 {
+		t.Fatalf("emitted %d rows, want 1: %s", len(doc.Runtimes), stdout)
+	}
+	row := doc.Runtimes[0]
+
+	if row.Outcome != "would-write" {
+		t.Errorf("row.Outcome = %q, want %q", row.Outcome, "would-write")
+	}
+	if row.Registration != "would-write" {
+		t.Errorf("row.Registration = %q, want %q", row.Registration, "would-write")
+	}
+	if row.Plugin != "would-write" {
+		t.Errorf("row.Plugin = %q, want %q", row.Plugin, "would-write")
+	}
+	if row.PluginState != "absent" {
+		t.Errorf("row.PluginState = %q, want %q", row.PluginState, "absent")
+	}
+	wantPluginCommand := "claude plugin marketplace add seanb4t/engram --scope user; claude plugin install engram@engram --scope user --json -y"
+	if row.PluginCommand != wantPluginCommand {
+		t.Errorf("row.PluginCommand = %q, want %q", row.PluginCommand, wantPluginCommand)
+	}
+
+	realPlan, planErr := setup.ClaudeCode.Plan(setup.Environment{
+		HomeDir: func() (string, error) { return "/home/fake", nil },
+	}, setup.Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+	if planErr != nil {
+		t.Fatalf("setup.ClaudeCode.Plan: %v", planErr)
+	}
+	if row.Command != realPlan.Display() {
+		t.Errorf("row.Command = %q, want the real registration Plan's Display() %q (untouched by the plugin lane)", row.Command, realPlan.Display())
+	}
+	if row.Skills != setupSkillsPluginDelivered {
+		t.Errorf("row.Skills = %q, want %q", row.Skills, setupSkillsPluginDelivered)
+	}
+
+	wantCalls := [][]string{
+		{"claude", "mcp", "get", "engram"},
+		{"claude", "plugin", "list", "--json"},
+		{"claude", "plugin", "marketplace", "list"},
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Errorf("recorded calls = %q, want exactly %q (no write verb)", calls, wantCalls)
+	}
+	if mutations != 0 {
+		t.Errorf("skills mutations = %d, want 0 (a preview never writes)", mutations)
+	}
+
+	resetCommandFlagState(t, setupCmd)
+	stdoutText, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "text")
+	if err != nil {
+		t.Fatalf("runClient (text): %v (stderr=%q)", err, stderr)
+	}
+	for _, want := range []string{"plugin=would-write", "plugin_state=absent", "skills=plugin-delivered", "plugin_command="} {
+		if !strings.Contains(stdoutText, want) {
+			t.Errorf("text output does not contain %q: %s", want, stdoutText)
+		}
 	}
 }
