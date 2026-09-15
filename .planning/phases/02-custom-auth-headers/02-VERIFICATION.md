@@ -39,7 +39,7 @@ covered_files:
   - "internal/setupgen/setupgen.go"
   - "internal/setupgen/setupgen_test.go"
   - "skill/engram/commands/engram-setup.md"
-covered_digest: "v1:sha256:72e816e4c743ebf49ec92723b105fcd6d231298de69f8535b61abba752812bbd"
+covered_digest: "v1:sha256:8eaba5bb88d06332becd3605f3b55cdc33da9aec1b85a729c82bf374fef82e5a"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
@@ -203,3 +203,18 @@ No gaps. All 12 observable truths derived from the 5 ROADMAP success criteria pl
 
 *Verified: 2026-09-14*
 *Verifier: Claude (gsd-verifier)*
+
+## Re-fingerprint 2026-09-15 (orchestrator)
+
+Phase 3 (Plugin-First Delivery) additively edited 10 files in this phase's `covered_files`
+(`internal/setup/{claudecode,codex}.go`, `cmd/engram/{setup.go,setup_test.go,setup_delegation_test.go,operator_view_setup_test.go,testdata/help.golden}`,
+`internal/setupgen/{setupgen.go,setupgen_test.go}`, `skill/engram/commands/engram-setup.md`), which
+correctly flipped the covered digest and this report to `stale`.
+
+This phase's CONCLUSION is unchanged and was re-proven at Phase 3's HEAD before re-fingerprinting —
+every Phase 2 test passes: `TestClaudeCodeHeaders`, `TestOpenCodeHeaders`, `TestGenericHeaders`,
+`TestCodexDeclinesHeaders`, `TestNoSecretInArgs`, `TestSortedHeadersTotalOrder` (`internal/setup`);
+the nine `TestSetupParseHeaders`/`TestSetupHeader*` tests (`cmd/engram`, `-count=1`); and the full
+`internal/setupgen` suite. The digest is re-pinned to the current bytes so the staleness signal stays
+meaningful for the NEXT unrelated change rather than staying permanently tripped.
+
