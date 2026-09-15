@@ -298,7 +298,7 @@ on the machine, shows what it would write, and wires it up.
 
 - [x] **Phase 1: Executor Correctness & Man Pages** - A deadline-killed runtime subprocess reports a timeout instead of a clean failure, and the binary generates and ships its own man pages (completed 2026-09-13)
 - [x] **Phase 2: Custom Auth Headers** - A gateway registration (e.g. LiteLLM's `x-litellm-api-key`) is expressible on every runtime that can render it, with existing auth modes unchanged (completed 2026-09-14)
-- [ ] **Phase 3: Plugin-First Delivery** - Claude Code and Codex receive skills, hooks, and `/engram-setup` through their own plugin system instead of a plain skills copy
+- [x] **Phase 3: Plugin-First Delivery** - Claude Code and Codex receive skills, hooks, and `/engram-setup` through their own plugin system instead of a plain skills copy (completed 2026-09-15)
 - [ ] **Phase 4: Drift Detection (Read-Only)** - Preview classifies an existing registration as identical, reproducible, or preserved by comparing against what setup would actually write
 - [ ] **Phase 5: Apply-Time Preserve Gate & Documentation** - `--apply` never rewrites a registration it cannot reproduce, and shipped docs are brought current with a post-release observation
 
@@ -381,7 +381,7 @@ Plans:
 4. A result row shows plugin delivery as its own facet in both text and JSON output, alongside registration and skills, so a `wrote` registration next to a `failed` plugin install stays visible.
 5. `skill/engram/.codex-plugin/plugin.json` exists, is release-please-synced like `.claude-plugin/plugin.json` with a drift gate keeping their identity fields equal, and `/engram-setup`'s generated prose reflects the new plugin actions and outcomes in the same change that introduces them, keeping the existing `setupgen` CI drift gate green.
 
-**Plans:** 4/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -521,7 +521,7 @@ Plans:
 | 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete; released docs live | 2026-09-12 |
 | 1. Executor Correctness & Man Pages | 2026-09-13.01 | 3/3 | Complete | 2026-09-13 |
 | 2. Custom Auth Headers | 2026-09-13.01 | 5/5 | Complete | 2026-09-14 |
-| 3. Plugin-First Delivery | 2026-09-13.01 | 0/7 | Pending |  |
+| 3. Plugin-First Delivery | 2026-09-13.01 | 7/7 | Complete | 2026-09-15 |
 | 4. Drift Detection (Read-Only) | 2026-09-13.01 | 0/5 | Pending |  |
 | 5. Apply-Time Preserve Gate & Documentation | 2026-09-13.01 | 0/3 | Pending |  |
 
