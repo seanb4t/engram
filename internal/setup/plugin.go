@@ -231,7 +231,11 @@ func executePlugin(ctx context.Context, env Environment, rt Runtime, binary, bin
 	state, note := classifyPluginVersion(version, installed, binaryVersion)
 	res.State = state
 	if installed {
-		res.Installed = version
+		// version is entry.Version parsed straight out of third-party
+		// `plugin list --json` output (claudecode.go, codex.go) — bounded
+		// the same way apply.go bounds every other third-party capture
+		// before it reaches a rendered field (WR-02).
+		res.Installed = boundCapture(version)
 	}
 	res.Note = note
 
@@ -261,7 +265,12 @@ func executePlugin(ctx context.Context, env Environment, rt Runtime, binary, bin
 			res.Note = res.Note + "; " + mktFailureReason
 		}
 	} else {
-		marketplacePresent, res.Source = pr.ParseMarketplaceList(mktResult.Stdout)
+		var source string
+		marketplacePresent, source = pr.ParseMarketplaceList(mktResult.Stdout)
+		// source is the observed "Source:" line, verbatim third-party
+		// output — bounded the same way apply.go bounds every other
+		// third-party capture before it reaches a rendered field (WR-02).
+		res.Source = boundCapture(source)
 	}
 
 	actions := pr.PluginActions(res.State, marketplacePresent)
@@ -374,6 +383,12 @@ func compareVersionCore(aMajor, aMinor, aPatch, bMajor, bMinor, bPatch uint64) i
 // cores: less is PluginOutdated; equal or greater is PluginCurrent — a
 // newer-than-binary plugin is reported current with a note and is NEVER
 // downgraded (D-01).
+//
+// installed is compared RAW (untruncated) below — parseVersionCore's own
+// anchored grammar is the correctness gate, not a length cap — but every
+// note interpolating it is bounded via boundCapture first (WR-02): binary
+// is this package's own resolved build version, never third-party, so
+// only installed (parsed straight out of `plugin list --json`) needs it.
 func classifyPluginVersion(installed string, isInstalled bool, binary string) (PluginState, string) {
 	if !isInstalled {
 		return PluginAbsent, ""
@@ -381,12 +396,12 @@ func classifyPluginVersion(installed string, isInstalled bool, binary string) (P
 
 	bMajor, bMinor, bPatch, bOK := parseVersionCore(binary)
 	if !bOK {
-		return PluginCurrent, fmt.Sprintf("dev build: this binary (%s) is not a release version; plugin %s is reported current without comparison", binary, installed)
+		return PluginCurrent, fmt.Sprintf("dev build: this binary (%s) is not a release version; plugin %s is reported current without comparison", binary, boundCapture(installed))
 	}
 
 	iMajor, iMinor, iPatch, iOK := parseVersionCore(installed)
 	if !iOK {
-		return PluginCurrent, fmt.Sprintf("plugin version %s is not a release version; reported current without comparison", installed)
+		return PluginCurrent, fmt.Sprintf("plugin version %s is not a release version; reported current without comparison", boundCapture(installed))
 	}
 
 	switch compareVersionCore(iMajor, iMinor, iPatch, bMajor, bMinor, bPatch) {
@@ -395,6 +410,6 @@ func classifyPluginVersion(installed string, isInstalled bool, binary string) (P
 	case 0:
 		return PluginCurrent, ""
 	default:
-		return PluginCurrent, fmt.Sprintf("plugin %s is newer than this binary %s", installed, binary)
+		return PluginCurrent, fmt.Sprintf("plugin %s is newer than this binary %s", boundCapture(installed), binary)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // pluginScript maps a joined argv (strings.Join(args, " "), args as the
@@ -846,4 +847,69 @@ func TestPluginRuntimeIsOptional(t *testing.T) {
 			t.Errorf("recorded %d calls, want 0", len(calls))
 		}
 	})
+}
+
+// TestPluginResultFieldsAreBoundCaptured proves WR-02: the three untrusted
+// plugin-CLI strings that land on rendered PluginResult fields — Installed
+// (entry.Version out of `plugin list --json`), Source (the observed
+// "Source:" line out of `plugin marketplace list`), and
+// classifyPluginVersion's "newer than binary" Note — are bounded through
+// boundCapture exactly like apply.go bounds Result.Reason/Registered/Notes,
+// mirroring TestApply's own
+// "captured-output-over-budget-truncated-on-rune-boundary" (apply_test.go).
+func TestPluginResultFieldsAreBoundCaptured(t *testing.T) {
+	rt := ClaudeCode
+	binary := "/usr/local/bin/claude"
+
+	// A pure-ASCII digit run well over maxCapturedBytes: too long for
+	// strconv.ParseUint (range error) so parseVersionCore reports !ok,
+	// landing classifyPluginVersion in its "not a release version" arm —
+	// which is exactly the arm whose Note interpolates the untrusted
+	// installed string (plugin.go WR-02 fix).
+	longVersion := strings.Repeat("9", maxCapturedBytes+2000)
+	listStdout := claudeListStdout(longVersion)
+
+	longSource := "GitHub (" + strings.Repeat("z", maxCapturedBytes+2000) + ")"
+	marketplaceStdout := "❯ engram\n    Source: " + longSource
+
+	pr, ok := rt.(PluginRuntime)
+	if !ok {
+		t.Fatalf("claude-code does not implement PluginRuntime")
+	}
+	list, marketplace := pr.PluginProbes()
+	script := pluginScript{
+		strings.Join(list[1:], " "):        {ExitCode: 0, Stdout: listStdout},
+		strings.Join(marketplace[1:], " "): {ExitCode: 0, Stdout: marketplaceStdout},
+	}
+	var calls [][]string
+	env := fakeEnvWithRun(scriptedPluginRun(script, &calls), "claude")
+
+	res := PluginPreview(context.Background(), env, rt, binary, "0.16.1")
+
+	if !res.Attempted {
+		t.Fatalf("Attempted = false, want true")
+	}
+	if !utf8.ValidString(res.Installed) {
+		t.Errorf("Installed is not valid UTF-8 after truncation: %q", res.Installed)
+	}
+	if !strings.Contains(res.Installed, truncationMarker) {
+		t.Errorf("Installed = %q, want it to carry the truncation marker %q", res.Installed, truncationMarker)
+	}
+	if len(res.Installed) >= len(longVersion) {
+		t.Errorf("Installed length %d, want it bounded well below the untruncated version length %d", len(res.Installed), len(longVersion))
+	}
+
+	if !utf8.ValidString(res.Source) {
+		t.Errorf("Source is not valid UTF-8 after truncation: %q", res.Source)
+	}
+	if !strings.Contains(res.Source, truncationMarker) {
+		t.Errorf("Source = %q, want it to carry the truncation marker %q", res.Source, truncationMarker)
+	}
+	if len(res.Source) >= len(longSource) {
+		t.Errorf("Source length %d, want it bounded well below the untruncated source length %d", len(res.Source), len(longSource))
+	}
+
+	if !strings.Contains(res.Note, truncationMarker) {
+		t.Errorf("Note = %q, want it to carry the truncation marker %q (classifyPluginVersion's installed interpolation)", res.Note, truncationMarker)
+	}
 }
