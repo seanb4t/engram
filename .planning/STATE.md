@@ -4,17 +4,17 @@ milestone: 2026-09-13.01
 milestone_name: Setup v2
 current_phase: 03
 current_phase_name: Plugin-First Delivery
-status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-09-15T02:56:27.524Z"
+status: verifying
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-09-15T03:26:41.449Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 03 execution started
-state_head: c2059eecbc5dd1e4c68d33af1354a4a9072dcefc
+state_head: bea6ade7b1cb79b692698a134090f0385451d02c
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 after Phase 2 — 2026-09-13.01 Se
 
 Phase: 03 (Plugin-First Delivery) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-14 — Phase 03 execution started
 
 ## Deferred Items
@@ -284,6 +284,8 @@ milestone needs in working memory.
 - [Phase 03]: Regenerated stale phase-02 red-evidence patch (02-01-codex-header-decline.patch) in place after codex.go's plugin-lane edit broke its context; re-verified RED/apply/revert manually.
 - [Phase 03]: Reused testSkills() (2-skill fixture) instead of a new five-skill literal for DetectPresence tests; kept requirements-completed empty because REQ-plugin-skips-skills-copy is shared with not-yet-executed plan 03-03 (shared-ID gate #2388).
 - [Phase 03]: Phase 3 Plan 3: composed the plugin facet onto the setup report row, routed a plugin-delivered runtime away from the native skills write via DetectPresence, and rewrote --help for plugin-first delivery. — Routing decided by PluginResult.Delivered() (capability), never by install success, so a plugin-capable runtime never receives a duplicate native copy even after a failed install in the same run.
+- [Phase 03]: Codex plugin manifest ships as the minimal four-key twin of .claude-plugin/plugin.json (no interface block) — Orchestrator's Open Question 2 decision: Codex loader acceptance of a minimal manifest is a post-release live observation, not a phase gate
+- [Phase 03]: setupgen's generated /engram-setup tables SHOW the plugin actions, rendered from claude-code's real PluginActions — Orchestrator's Open Question 1 decision: never re-typed argv, so the generated tables cannot drift from what --apply actually runs
 
 ### Pending Todos
 
@@ -346,8 +348,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-15T02:56:18.714Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-09-15T03:26:41.422Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -470,6 +472,7 @@ Resume file: None
 | Phase 03 P01 | 34min | 3 tasks | 5 files |
 | Phase 03 P02 | 22min | 2 tasks | 3 files |
 | Phase 03 P03 | 40min | 3 tasks | 5 files |
+| Phase 03 P04 | 35 min | 3 tasks | 7 files |
 
 ## Operator Next Steps
 
