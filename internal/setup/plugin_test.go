@@ -66,6 +66,20 @@ const claudeMarketplacePresent = "❯ engram\n    Source: GitHub (seanb4t/engram
 const claudeMarketplaceFork = "❯ engram\n    Source: Directory (/Users/dev/engram-fork)"
 const claudeMarketplaceAbsent = "❯ other\n    Source: GitHub (someone/other)"
 
+// Fixtures: codex list/marketplace stdout shapes.
+const codexListEmpty = `{"installed":[],"available":[]}`
+const codexListNoKey = `{}`
+
+// codexListStdout builds a `codex plugin list --json` document with an
+// entry whose NAME matches but whose marketplace does not (proving both
+// fields are matched), then the real engram@engram entry at version.
+func codexListStdout(version string) string {
+	return fmt.Sprintf(`{"installed":[{"pluginId":"engram@other","name":"engram","marketplaceName":"other","version":"9.9.9"},{"pluginId":"engram@engram","name":"engram","marketplaceName":"engram","version":%q,"installed":true,"enabled":true}],"available":[]}`, version)
+}
+
+const codexMarketplacePresent = "MARKETPLACE  ROOT\nengram  /home/fake/.codex/plugins/marketplaces/engram\n"
+const codexMarketplaceAbsent = "MARKETPLACE  ROOT\nother  /home/fake/.codex/plugins/marketplaces/other\n"
+
 // TestPluginVersionCompare pins classifyPluginVersion's whole table
 // (D-01, D-03) and the four PluginState constants' string values.
 func TestPluginVersionCompare(t *testing.T) {
@@ -435,6 +449,136 @@ func TestPluginPlan(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("codex", func(t *testing.T) {
+		rt := Codex
+		binary := "/usr/local/bin/codex"
+
+		cases := []pluginCase{
+			{
+				name:              "absent-marketplace-absent",
+				listStdout:        codexListEmpty,
+				marketplaceStdout: codexMarketplaceAbsent,
+				wantState:         PluginAbsent,
+				wantInstalled:     "",
+				wantSource:        "",
+				wantCommand:       "codex plugin marketplace add https://github.com/seanb4t/engram --json; codex plugin add engram@engram --json",
+				wantNoteExact:     "",
+				wantApplyOutcome:  OutcomeWrote,
+				wantApplyExtraArgs: [][]string{
+					{"plugin", "marketplace", "add", "https://github.com/seanb4t/engram", "--json"},
+					{"plugin", "add", "engram@engram", "--json"},
+				},
+			},
+			{
+				name:              "absent-marketplace-present",
+				listStdout:        codexListEmpty,
+				marketplaceStdout: codexMarketplacePresent,
+				wantState:         PluginAbsent,
+				wantInstalled:     "",
+				wantSource:        "/home/fake/.codex/plugins/marketplaces/engram",
+				wantCommand:       "codex plugin add engram@engram --json",
+				wantNoteExact:     "",
+				wantApplyOutcome:  OutcomeWrote,
+				wantApplyExtraArgs: [][]string{
+					{"plugin", "add", "engram@engram", "--json"},
+				},
+			},
+			{
+				name:              "outdated",
+				listStdout:        codexListStdout("0.16.0"),
+				marketplaceStdout: codexMarketplacePresent,
+				wantState:         PluginOutdated,
+				wantInstalled:     "0.16.0",
+				wantSource:        "/home/fake/.codex/plugins/marketplaces/engram",
+				wantCommand:       "codex plugin remove engram@engram --json; codex plugin add engram@engram --json",
+				wantNoteExact:     "",
+				wantApplyOutcome:  OutcomeWrote,
+				wantApplyExtraArgs: [][]string{
+					{"plugin", "remove", "engram@engram", "--json"},
+					{"plugin", "add", "engram@engram", "--json"},
+				},
+			},
+			{
+				name:              "outdated-remove-fails",
+				listStdout:        codexListStdout("0.16.0"),
+				marketplaceStdout: codexMarketplacePresent,
+				wantState:         PluginOutdated,
+				wantInstalled:     "0.16.0",
+				wantSource:        "/home/fake/.codex/plugins/marketplaces/engram",
+				wantCommand:       "codex plugin remove engram@engram --json; codex plugin add engram@engram --json",
+				wantNoteExact:     "",
+				actionScript: map[string]RunResult{
+					"plugin remove engram@engram --json": {ExitCode: 1, Stderr: "boom"},
+				},
+				wantApplyOutcome: OutcomeFailed,
+				wantApplyReason:  "codex: codex plugin remove engram@engram --json exited 1: boom",
+				wantApplyExtraArgs: [][]string{
+					{"plugin", "remove", "engram@engram", "--json"},
+				},
+			},
+			{
+				name:              "current",
+				listStdout:        codexListStdout("0.16.1"),
+				marketplaceStdout: codexMarketplacePresent,
+				wantState:         PluginCurrent,
+				wantInstalled:     "0.16.1",
+				wantSource:        "/home/fake/.codex/plugins/marketplaces/engram",
+				wantCommand:       "",
+				wantNoteExact:     "",
+				wantApplyOutcome:  OutcomeAlreadyCorrect,
+			},
+			{
+				name:              "absent-empty-installed",
+				listStdout:        codexListEmpty,
+				marketplaceStdout: codexMarketplacePresent,
+				wantState:         PluginAbsent,
+				wantInstalled:     "",
+				wantSource:        "/home/fake/.codex/plugins/marketplaces/engram",
+				wantCommand:       "codex plugin add engram@engram --json",
+				wantNoteExact:     "",
+				wantApplyOutcome:  OutcomeWrote,
+				wantApplyExtraArgs: [][]string{
+					{"plugin", "add", "engram@engram", "--json"},
+				},
+			},
+		}
+
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				runPluginCase(t, rt, binary, c)
+			})
+		}
+
+		// Every codex plugin action/probe uses "plugin" as Args[1] and
+		// never carries a flag other than --json (Pitfall 2's
+		// available-listing flag and D-06's scope flag are both excluded
+		// by construction).
+		codexPr, ok := rt.(PluginRuntime)
+		if !ok {
+			t.Fatalf("Codex does not implement PluginRuntime")
+		}
+		list, marketplace := codexPr.PluginProbes()
+		for _, argv := range [][]string{list, marketplace} {
+			if argv[0] != "codex" || argv[1] != "plugin" {
+				t.Errorf("codex probe argv = %v, want Args[0]==\"codex\" and Args[1]==\"plugin\"", argv)
+			}
+		}
+		for _, state := range []PluginState{PluginAbsent, PluginOutdated} {
+			for _, marketplacePresent := range []bool{true, false} {
+				for _, a := range codexPr.PluginActions(state, marketplacePresent) {
+					if a.Args[0] != "codex" || a.Args[1] != "plugin" {
+						t.Errorf("codex action Args = %v, want Args[0]==\"codex\" and Args[1]==\"plugin\"", a.Args)
+					}
+					for _, arg := range a.Args {
+						if arg != "--json" && strings.HasPrefix(arg, "--") {
+							t.Errorf("codex action Args = %v contains disallowed flag %q", a.Args, arg)
+						}
+					}
+				}
+			}
+		}
+	})
 }
 
 // TestPluginCapabilityProbeFailureFallsBackToNative asserts D-12's whole
@@ -560,5 +704,145 @@ func TestPluginCapabilityProbeFailureFallsBackToNative(t *testing.T) {
 				}
 			}
 		})
+	})
+
+	t.Run("codex", func(t *testing.T) {
+		rt := Codex
+		binary := "/usr/local/bin/codex"
+		listKey := "plugin list --json"
+		marketplaceKey := "plugin marketplace list"
+
+		runLane := func(t *testing.T, script pluginScript, errs map[string]error, wantCalls [][]string, wantNote string, checkNoteExact bool) {
+			t.Helper()
+			for _, lane := range []struct {
+				name string
+				fn   func(context.Context, Environment, Runtime, string, string) PluginResult
+			}{
+				{"preview", PluginPreview},
+				{"apply", PluginApply},
+			} {
+				var calls [][]string
+				env := fakeEnvWithRun(scriptedPluginRunErr(script, errs, &calls), "codex")
+				res := lane.fn(context.Background(), env, rt, binary, "0.16.1")
+				if !res.Attempted {
+					t.Errorf("%s Attempted = false, want true", lane.name)
+				}
+				if res.State != PluginUnavailable {
+					t.Errorf("%s State = %q, want %q", lane.name, res.State, PluginUnavailable)
+				}
+				if res.Outcome != "" {
+					t.Errorf("%s Outcome = %q, want empty (never a failed outcome)", lane.name, res.Outcome)
+				}
+				if res.Delivered() {
+					t.Errorf("%s Delivered() = true, want false", lane.name)
+				}
+				if checkNoteExact {
+					if res.Note != wantNote {
+						t.Errorf("%s Note = %q, want %q", lane.name, res.Note, wantNote)
+					}
+				} else if !strings.Contains(res.Note, wantNote) {
+					t.Errorf("%s Note = %q, want contains %q", lane.name, res.Note, wantNote)
+				}
+				if !reflect.DeepEqual(calls, wantCalls) {
+					t.Errorf("%s calls = %v, want %v", lane.name, calls, wantCalls)
+				}
+			}
+		}
+
+		t.Run("list-exit-1", func(t *testing.T) {
+			script := pluginScript{listKey: {ExitCode: 1, Stderr: "unknown subcommand"}}
+			runLane(t, script, nil, [][]string{{"plugin", "list", "--json"}},
+				"codex: codex plugin list --json exited 1: 'unknown subcommand'", true)
+		})
+
+		t.Run("list-wrong-shape-array", func(t *testing.T) {
+			script := pluginScript{listKey: {ExitCode: 0, Stdout: "[]"}}
+			runLane(t, script, nil, [][]string{{"plugin", "list", "--json"}},
+				"codex plugin list --json", false)
+		})
+
+		t.Run("list-no-installed-key", func(t *testing.T) {
+			script := pluginScript{listKey: {ExitCode: 0, Stdout: codexListNoKey}}
+			runLane(t, script, nil, [][]string{{"plugin", "list", "--json"}},
+				"codex plugin list --json", false)
+		})
+
+		t.Run("list-empty-stdout", func(t *testing.T) {
+			script := pluginScript{listKey: {ExitCode: 0, Stdout: ""}}
+			runLane(t, script, nil, [][]string{{"plugin", "list", "--json"}},
+				"codex plugin list --json", false)
+		})
+
+		t.Run("marketplace-probe-fails-while-absent", func(t *testing.T) {
+			script := pluginScript{
+				listKey:        {ExitCode: 0, Stdout: codexListEmpty},
+				marketplaceKey: {ExitCode: 1, Stderr: "boom"},
+			}
+			runLane(t, script, nil, [][]string{{"plugin", "list", "--json"}, {"plugin", "marketplace", "list"}},
+				"codex plugin marketplace list", false)
+		})
+	})
+}
+
+// TestPluginRuntimeIsOptional asserts PluginRuntime's optional-interface
+// idiom: only claude-code and codex implement it, and driving
+// PluginPreview/PluginApply against a runtime that does not never issues
+// a single Run call.
+func TestPluginRuntimeIsOptional(t *testing.T) {
+	if _, ok := ClaudeCode.(PluginRuntime); !ok {
+		t.Error("ClaudeCode.(PluginRuntime) = false, want true")
+	}
+	if _, ok := Codex.(PluginRuntime); !ok {
+		t.Error("Codex.(PluginRuntime) = false, want true")
+	}
+	if _, ok := OpenCode.(PluginRuntime); ok {
+		t.Error("OpenCode.(PluginRuntime) = true, want false")
+	}
+	if _, ok := Generic.(PluginRuntime); ok {
+		t.Error("Generic.(PluginRuntime) = true, want false")
+	}
+
+	for _, rt := range []Runtime{OpenCode, Generic} {
+		t.Run(rt.Name(), func(t *testing.T) {
+			var calls [][]string
+			recordingRun := func(_ context.Context, _ string, args []string) (RunResult, error) {
+				calls = append(calls, args)
+				return RunResult{ExitCode: 0}, nil
+			}
+			env := fakeEnvWithRun(recordingRun, "opencode")
+			previewRes := PluginPreview(context.Background(), env, rt, "/usr/local/bin/x", "0.16.1")
+			if previewRes.Attempted {
+				t.Errorf("preview Attempted = true, want false")
+			}
+			if previewRes.Delivered() {
+				t.Errorf("preview Delivered() = true, want false")
+			}
+			applyRes := PluginApply(context.Background(), env, rt, "/usr/local/bin/x", "0.16.1")
+			if applyRes.Attempted {
+				t.Errorf("apply Attempted = true, want false")
+			}
+			if applyRes.Delivered() {
+				t.Errorf("apply Delivered() = true, want false")
+			}
+			if len(calls) != 0 {
+				t.Errorf("recorded %d calls, want 0", len(calls))
+			}
+		})
+	}
+
+	t.Run("empty-binary", func(t *testing.T) {
+		var calls [][]string
+		recordingRun := func(_ context.Context, _ string, args []string) (RunResult, error) {
+			calls = append(calls, args)
+			return RunResult{ExitCode: 0}, nil
+		}
+		env := fakeEnvWithRun(recordingRun, "claude")
+		res := PluginApply(context.Background(), env, ClaudeCode, "", "0.16.1")
+		if res.Attempted {
+			t.Errorf("Attempted = true, want false")
+		}
+		if len(calls) != 0 {
+			t.Errorf("recorded %d calls, want 0", len(calls))
+		}
 	})
 }
