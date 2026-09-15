@@ -109,3 +109,12 @@ None - no external service configuration required.
 ---
 *Phase: 04-drift-detection-read-only*
 *Completed: 2026-09-15*
+
+## Self-Check: PASSED
+
+- `.planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md` — FOUND on disk.
+- `.planning/phases/04-drift-detection-read-only/04-02-SUMMARY.md` — FOUND on disk (this file).
+- Commit `3cafb90` (`docs(04): record literal header echo observation for drift fixtures (D-05, D-08)`) — FOUND in `git log --oneline --all`.
+- Commit `fc967cf` (`docs(04-02): complete D-05 literal header echo observation plan`) — FOUND in `git log --oneline --all`.
+- Task 2's automated `<verify>` chain re-run: all links passed (dummy marker present, zero stray `sk-` tokens, both read-verb command lines present, dated `**Observed:**` line present, `## What this pins` heading present, 5 `exit code: N` lines ≥3, single-file commit for the record).
+- All five `<acceptance_criteria>` re-checked and passing (7 `## ` headings, 38 `probe-literal-04` lines, zero `mcp (get|add|remove) engram` matches, `Headers:`/`http_headers` both present, first line is the title, commit subject and single-file `--stat` match exactly).
