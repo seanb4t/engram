@@ -521,7 +521,7 @@ Plans:
 | 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete; released docs live | 2026-09-12 |
 | 1. Executor Correctness & Man Pages | 2026-09-13.01 | 3/3 | Complete | 2026-09-13 |
 | 2. Custom Auth Headers | 2026-09-13.01 | 5/5 | Complete | 2026-09-14 |
-| 3. Plugin-First Delivery | 2026-09-13.01 | 7/7 | Complete | 2026-09-15 |
+| 3. Plugin-First Delivery | 2026-09-13.01 | 0/7 | Pending |  |
 | 4. Drift Detection (Read-Only) | 2026-09-13.01 | 0/5 | Pending |  |
 | 5. Apply-Time Preserve Gate & Documentation | 2026-09-13.01 | 0/3 | Pending |  |
 
