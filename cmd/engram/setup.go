@@ -923,6 +923,15 @@ func setupApplySentence() string {
 // --header/ENGRAM_HEADERS, the value-is-a-NAME-never-a-value rule
 // (D-02/D-03), the per-runtime rendering (D-04/D-08), and the codex
 // limitation (D-09).
+//
+// Phase 3 (Plugin-First Delivery) rewrites the "--apply also installs"
+// paragraph to describe plugin-first delivery: a plugin-capable Claude
+// Code or Codex receives the skills through engram's own marketplace
+// plugin, mutually exclusive with the native copy every other runtime
+// still receives, with an existing native copy or index block reported
+// rather than removed (D-07, D-12, REQ-plugin-facet-reported) — naming no
+// destination path segment, per TestSetupHelpNamesSkillsInstallation's own
+// structural gate.
 func setupLongDescription() string {
 	return fmt.Sprintf(`Detect installed agent runtimes and preview registering engram as an MCP server.
 
@@ -936,13 +945,22 @@ codex, it is a pure local read.
 
 %s
 
---apply also installs the engram curation skills into each present
-runtime's own user-scope skills location, in addition to registering the
-MCP server — the skills are carried inside the binary itself, so no
-separate plugin install is required. Each present runtime's row reports a
-registration result and a skills result as two separate fields under one
-aggregated outcome, with the full skill content available in the
---output json lane.
+--apply also delivers the engram curation skills to each present runtime. A
+Claude Code or Codex whose own plugin CLI works receives the skills, hooks,
+and the /engram-setup command through its plugin system — engram's own
+marketplace and plugin only (seanb4t/engram, engram@engram): the
+marketplace is added when absent, the plugin installed when absent,
+updated when outdated, and left untouched when current, with the exact
+plugin commands shown in the preview and no consent gate beyond --apply
+itself. Every other runtime — opencode, generic, or a Claude Code/Codex
+without a working plugin CLI — receives the native skills copy carried
+inside the binary itself. The two are mutually exclusive per runtime: a
+plugin-delivered runtime gets no native copy and no index block, and an
+existing native copy or index block beside it is reported, never removed.
+Each present runtime's row reports a registration result, a plugin result
+(absent, outdated, current, or unavailable with a reason), and a skills
+result as separate fields under one aggregated outcome, with the full
+skill content available in the --output json lane.
 
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)

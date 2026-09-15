@@ -3352,3 +3352,116 @@ func TestSetupPreviewShowsPluginArgv(t *testing.T) {
 		}
 	}
 }
+
+// TestSetupPluginUnavailableFallsBackToNative proves D-12: when a
+// present, otherwise plugin-capable runtime's capability probe fails
+// (nonzero exit, or a seam timeout), registration and the native skills
+// copy proceed EXACTLY as today — the row is never failed by the probe —
+// and the plugin facet reports nothing but PluginState=unavailable plus
+// the reason on PluginNote.
+func TestSetupPluginUnavailableFallsBackToNative(t *testing.T) {
+	run := func(t *testing.T, listResponse setup.RunResult, listErr error, wantNoteSubstr string) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupVersion(t, "0.16.1")
+
+		base := counterBase()
+		var calls [][]string
+		listCallCount := 0
+		runFn := func(ctx context.Context, path string, args []string) (setup.RunResult, error) {
+			if filepath.Base(path) == "claude" && strings.Join(args, " ") == "plugin list --json" {
+				listCallCount++
+				return listResponse, listErr
+			}
+			return base(ctx, path, args)
+		}
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(recording(&calls, runFn), "claude"))
+
+		mutations := 0
+		write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+		skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+			mutations++
+			return write(path, data, mode)
+		}
+		skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+			mutations++
+			return mkdir(path, mode)
+		}
+
+		stdout, stderr, err := runClient(t, "setup",
+			"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "json", "--apply")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q stdout=%q)", err, stderr, stdout)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("emitted %d rows, want 1: %s", len(doc.Runtimes), stdout)
+		}
+		row := doc.Runtimes[0]
+		if row.Outcome != "wrote" {
+			t.Errorf("row.Outcome = %q, want %q", row.Outcome, "wrote")
+		}
+		if row.Registration != "wrote" {
+			t.Errorf("row.Registration = %q, want %q", row.Registration, "wrote")
+		}
+		if row.Plugin != "" {
+			t.Errorf("row.Plugin = %q, want empty", row.Plugin)
+		}
+		if row.PluginState != "unavailable" {
+			t.Errorf("row.PluginState = %q, want %q", row.PluginState, "unavailable")
+		}
+		if !strings.Contains(row.PluginNote, wantNoteSubstr) {
+			t.Errorf("row.PluginNote = %q, want it to contain %q", row.PluginNote, wantNoteSubstr)
+		}
+		if row.PluginCommand != "" {
+			t.Errorf("row.PluginCommand = %q, want empty", row.PluginCommand)
+		}
+		if row.Skills != "wrote" {
+			t.Errorf("row.Skills = %q, want %q (the native copy proceeded exactly as today)", row.Skills, "wrote")
+		}
+		if row.SkillsNative != "" {
+			t.Errorf("row.SkillsNative = %q, want empty", row.SkillsNative)
+		}
+		if mutations == 0 {
+			t.Error("skills mutations = 0, want > 0 (the native copy must proceed exactly as today)")
+		}
+		if listCallCount != 1 {
+			t.Errorf("claude plugin list --json called %d times, want exactly 1", listCallCount)
+		}
+		for _, call := range calls {
+			if len(call) >= 3 && call[0] == "claude" && call[1] == "plugin" && call[2] == "marketplace" {
+				t.Errorf("recorded a plugin marketplace probe despite the list probe being unavailable: %q", call)
+			}
+		}
+		assertNoPluginWriteVerb(t, calls)
+	}
+
+	t.Run("exit-nonzero", func(t *testing.T) {
+		run(t, setup.RunResult{ExitCode: 1, Stderr: "unknown command plugin"}, nil,
+			"claude-code: claude plugin list --json exited 1: 'unknown command plugin'")
+	})
+	t.Run("timeout", func(t *testing.T) {
+		run(t, setup.RunResult{}, context.DeadlineExceeded, "timed out after 20s")
+	})
+}
+
+// TestSetupHelpNamesPluginDelivery is the golden-adjacent assertion that
+// setupCmd.Long describes plugin-first delivery (Phase 3): a plugin-
+// capable runtime is delivered through engram's own marketplace, mutually
+// exclusive with the native copy, updated when outdated, and an existing
+// native copy or index block is reported rather than removed — and the
+// stale "no separate plugin install is required" claim is gone.
+func TestSetupHelpNamesPluginDelivery(t *testing.T) {
+	lower := strings.ToLower(setupCmd.Long)
+	for _, want := range []string{"plugin", "marketplace", "mutually exclusive", "updated when outdated", "never removed"} {
+		if !strings.Contains(lower, want) {
+			t.Errorf("setup long description does not mention %q: %s", want, setupCmd.Long)
+		}
+	}
+	if strings.Contains(lower, "separate plugin install") {
+		t.Errorf("setup long description still claims a separate plugin install is unnecessary: %s", setupCmd.Long)
+	}
+}

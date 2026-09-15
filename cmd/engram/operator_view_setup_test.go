@@ -92,6 +92,62 @@ func setupViewFixtures() map[string][]any {
 		Headers: "x-gateway-api-key=GATEWAY_KEY",
 	}
 
+	// pluginDelivered, pluginFailedBesideWrote, pluginUnavailable, and
+	// pluginDeliveredWithLeftovers (Phase 3, Plugin-First Delivery)
+	// exercise the plugin facet's flat-scalar row fields
+	// (Plugin/PluginState/PluginInstalled/PluginTarget/PluginSource/
+	// PluginCommand/PluginNote) and SkillsNative — the D-07/D-08/D-09
+	// report of what already sits at a plugin-delivered runtime's native
+	// destination — mirroring headerGateway's own comment above: this is
+	// what proves the flat-scalar identity gate
+	// (TestOperatorViewFixturesHaveNoUnsanitizedNesting) stays green with
+	// these new fields.
+	pluginDelivered := setupRuntimeRow{
+		Name:            "claude-code",
+		Present:         true,
+		Outcome:         "already-correct",
+		Registration:    "already-correct",
+		Plugin:          "already-correct",
+		PluginState:     "current",
+		PluginInstalled: "0.16.1",
+		PluginTarget:    "0.16.1",
+		PluginSource:    "GitHub (seanb4t/engram)",
+		Skills:          setupSkillsPluginDelivered,
+		SkillsNative:    "none",
+	}
+	pluginFailedBesideWrote := setupRuntimeRow{
+		Name:          "claude-code",
+		Present:       true,
+		Outcome:       "failed",
+		Registration:  "wrote",
+		Plugin:        "failed",
+		PluginState:   "absent",
+		PluginCommand: "claude plugin marketplace add seanb4t/engram --scope user; claude plugin install engram@engram --scope user --json -y",
+		Reason:        "plugin: claude-code: claude plugin install engram@engram --scope user --json -y exited 1: 'boom'",
+		Skills:        setupSkillsPluginDelivered,
+	}
+	pluginUnavailable := setupRuntimeRow{
+		Name:         "codex",
+		Present:      true,
+		Outcome:      "wrote",
+		Registration: "wrote",
+		PluginState:  "unavailable",
+		PluginNote:   "codex: codex plugin list --json exited 1: 'unknown subcommand'",
+		Skills:       "wrote",
+	}
+	pluginDeliveredWithLeftovers := setupRuntimeRow{
+		Name:            "codex",
+		Present:         true,
+		Outcome:         "already-correct",
+		Registration:    "already-correct",
+		Plugin:          "already-correct",
+		PluginState:     "current",
+		PluginInstalled: "0.16.1",
+		PluginTarget:    "0.16.1",
+		Skills:          setupSkillsPluginDelivered,
+		SkillsNative:    "5 skills present at /home/u/.agents/skills (symlink); index block present at /home/u/.codex/AGENTS.md — remove manually to avoid duplicates",
+	}
+
 	return map[string][]any{
 		"setup": {
 			setupReportDoc{Runtimes: []setupRuntimeRow{present}},         // all-present
@@ -110,6 +166,11 @@ func setupViewFixtures() map[string][]any {
 			// 02-03-PLAN.md Task 2: the header-gateway and codex-declined
 			// fixtures, carrying the flat headers facet.
 			setupReportDoc{Runtimes: []setupRuntimeRow{headerGateway, codexHeaderDeclined}},
+			// Phase 3 (03-03-PLAN.md Task 2): the plugin facet's four
+			// shapes — delivered/current, failed beside a wrote
+			// registration, unavailable (native fallback), and delivered
+			// with a leftover native presence report.
+			setupReportDoc{Runtimes: []setupRuntimeRow{pluginDelivered, pluginFailedBesideWrote, pluginUnavailable, pluginDeliveredWithLeftovers}},
 		},
 	}
 }
