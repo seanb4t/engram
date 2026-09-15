@@ -18,7 +18,7 @@ import (
 )
 
 func TestRenderRealPlans(t *testing.T) {
-	body, err := Render(setup.ClaudeCode.Plan)
+	body, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestRenderSelectsActionAndQuotes(t *testing.T) {
 			{Args: []string{"unrelated", "mcp", "add"}},
 			{Args: []string{"claude", "mcp", "remove", "engram"}},
 		}}, nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,15 +117,119 @@ func TestRenderRejectsInvalidPlans(t *testing.T) {
 					_, _ = env.Run(context.Background(), "claude", nil)
 				}
 				return plan, nil
-			})
+			}, nil)
 			if err == nil || body != "" {
 				t.Fatalf("Render returned body=%q err=%v", body, err)
 			}
 		})
 	}
-	if body, err := Render(nil); err == nil || body != "" {
+	if body, err := Render(nil, nil); err == nil || body != "" {
 		t.Fatalf("nil Plan returned %q, %v", body, err)
 	}
+}
+
+func TestRenderPluginTable(t *testing.T) {
+	body, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr, ok := setup.ClaudeCode.(setup.PluginRuntime)
+	if !ok {
+		t.Fatal("setup.ClaudeCode does not implement setup.PluginRuntime")
+	}
+	rows := []struct {
+		label              string
+		state              setup.PluginState
+		marketplacePresent bool
+	}{
+		{"`absent` (marketplace absent)", setup.PluginAbsent, false},
+		{"`absent` (marketplace present)", setup.PluginAbsent, true},
+		{"`outdated`", setup.PluginOutdated, true},
+		{"`current`", setup.PluginCurrent, true},
+	}
+	for _, r := range rows {
+		actions := pr.PluginActions(r.state, r.marketplacePresent)
+		if r.state == setup.PluginCurrent {
+			if len(actions) != 0 {
+				t.Fatalf("PluginCurrent authored %d action(s), want 0", len(actions))
+			}
+			if !strings.Contains(body, "| `current` | (no action) |") {
+				t.Fatal("missing current row with (no action)")
+			}
+			continue
+		}
+		want := setup.Plan{Actions: actions}.Display()
+		if !strings.Contains(body, "| "+r.label+" | "+commandCell(want)+" |") {
+			t.Fatalf("missing row for %s: %s\nbody:\n%s", r.label, want, body)
+		}
+	}
+
+	for _, argv := range []string{
+		"claude plugin marketplace add seanb4t/engram --scope user; claude plugin install engram@engram --scope user --json -y",
+		"`claude plugin install engram@engram --scope user --json -y`",
+		"claude plugin update engram@engram --scope user --json -y",
+	} {
+		if !strings.Contains(body, argv) {
+			t.Fatalf("body missing expected argv %q", argv)
+		}
+	}
+
+	if idx1, idx2 := strings.Index(body, "### Claude Code plugin delivery (--apply)"), strings.Index(body, "### Claude Code fallback registration"); idx1 <= idx2 {
+		t.Fatalf("plugin table (%d) must be appended after fallback registration table (%d)", idx1, idx2)
+	}
+
+	twoTables, err := Render(setup.ClaudeCode.Plan, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(body, twoTables) {
+		t.Fatal("plugin table changed the two shipped tables")
+	}
+	if strings.Contains(twoTables, "plugin delivery") {
+		t.Fatal("nil pluginFn must render no plugin delivery heading")
+	}
+
+	t.Run("nil-actions-for-absent-is-error", func(t *testing.T) {
+		fn := PluginActionsFunc(func(state setup.PluginState, marketplacePresent bool) []setup.Action {
+			if state == setup.PluginAbsent {
+				return nil
+			}
+			return pr.PluginActions(state, marketplacePresent)
+		})
+		out, err := Render(setup.ClaudeCode.Plan, fn)
+		if err == nil || out != "" {
+			t.Fatalf("Render returned body=%q err=%v, want error with empty body", out, err)
+		}
+		if !strings.Contains(err.Error(), "plugin") || !strings.Contains(err.Error(), "absent") {
+			t.Fatalf("error %q does not name plugin/absent", err)
+		}
+	})
+
+	t.Run("actions-for-current-is-error", func(t *testing.T) {
+		fn := PluginActionsFunc(func(state setup.PluginState, marketplacePresent bool) []setup.Action {
+			if state == setup.PluginCurrent {
+				return []setup.Action{{Args: []string{"claude", "plugin", "install", "engram@engram"}}}
+			}
+			return pr.PluginActions(state, marketplacePresent)
+		})
+		out, err := Render(setup.ClaudeCode.Plan, fn)
+		if err == nil || out != "" {
+			t.Fatalf("Render returned body=%q err=%v, want error with empty body", out, err)
+		}
+	})
+
+	t.Run("non-claude-plugin-argv-is-error", func(t *testing.T) {
+		fn := PluginActionsFunc(func(setup.PluginState, bool) []setup.Action {
+			return []setup.Action{{Args: []string{"codex", "plugin", "add"}}}
+		})
+		out, err := Render(setup.ClaudeCode.Plan, fn)
+		if err == nil || out != "" {
+			t.Fatalf("Render returned body=%q err=%v, want error with empty body", out, err)
+		}
+		if !strings.Contains(err.Error(), "claude plugin") {
+			t.Fatalf("error %q does not name claude plugin", err)
+		}
+	})
 }
 
 func TestWriteRejectsInvalidAnchors(t *testing.T) {
@@ -189,7 +293,7 @@ func TestWriteNoneTracer(t *testing.T) {
 }
 
 func TestCheckReadOnly(t *testing.T) {
-	body, err := Render(setup.ClaudeCode.Plan)
+	body, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,11 +361,11 @@ func mutatedPlan(env setup.Environment, opts setup.Options) (setup.Plan, error) 
 }
 
 func TestPlanMutationChangesRegion(t *testing.T) {
-	baseline, err := Render(setup.ClaudeCode.Plan)
+	baseline, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
 	if err != nil {
 		t.Fatal(err)
 	}
-	mutant, err := Render(mutatedPlan)
+	mutant, err := Render(mutatedPlan, claudeCodePluginActions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +404,7 @@ func TestPlanMutationChangesRegion(t *testing.T) {
 	if changed != 1 {
 		t.Fatalf("changed %d rows, want exactly one", changed)
 	}
-	again, err := Render(setup.ClaudeCode.Plan)
+	again, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
 	if err != nil || again != baseline {
 		t.Fatalf("mutant contaminated real Plan: %v", err)
 	}
@@ -378,14 +482,14 @@ func TestDriftChecks(t *testing.T) {
 				planFn = setup.ClaudeCode.Plan
 			}
 			before := read()
-			if err := check(path, planFn); err == nil {
+			if err := check(path, planFn, claudeCodePluginActions()); err == nil {
 				t.Fatal("read-only lane accepted drift")
 			}
 			if read() != before {
 				t.Fatal("failed check repaired its evidence")
 			}
 			fixtureGit(t, dir, false, "diff", "--exit-code", "--", "command.md")
-			if err := write(path, planFn); err != nil {
+			if err := write(path, planFn, claudeCodePluginActions()); err != nil {
 				t.Fatal(err)
 			}
 			generated := read()
@@ -393,10 +497,10 @@ func TestDriftChecks(t *testing.T) {
 				t.Fatal("writer ignored changed source or stale artifact")
 			}
 			fixtureGit(t, dir, true, "diff", "--exit-code", "--", "command.md")
-			if err := check(path, planFn); err != nil {
+			if err := check(path, planFn, claudeCodePluginActions()); err != nil {
 				t.Fatal(err)
 			}
-			if err := write(path, planFn); err != nil {
+			if err := write(path, planFn, claudeCodePluginActions()); err != nil {
 				t.Fatal(err)
 			}
 			if read() != generated {

@@ -23,6 +23,27 @@ const Path = "skill/engram/commands/engram-setup.md"
 // PlanFunc is the runtime authoring seam; rendering never executes its actions.
 type PlanFunc func(setup.Environment, setup.Options) (setup.Plan, error)
 
+// PluginActionsFunc is the plugin-lane authoring seam: rendering calls it
+// to obtain the exact write actions a runtime would issue for an observed
+// plugin state and marketplace presence, but — mirroring PlanFunc's own
+// generation-only contract — never executes any of them.
+type PluginActionsFunc func(state setup.PluginState, marketplacePresent bool) []setup.Action
+
+// claudeCodePluginActions type-asserts setup.ClaudeCode as
+// setup.PluginRuntime and returns its PluginActions method: the plugin
+// table's argv source is ALWAYS the real, exported PluginRuntime
+// implementation (internal/setup/claudecode.go), never a re-typed literal
+// in this package. A failed assertion means setup.ClaudeCode stopped
+// implementing PluginRuntime — a programming error caught at generation
+// time, never a runtime path, hence the panic rather than an error return.
+func claudeCodePluginActions() PluginActionsFunc {
+	pr, ok := setup.ClaudeCode.(setup.PluginRuntime)
+	if !ok {
+		panic("setupgen: setup.ClaudeCode does not implement setup.PluginRuntime")
+	}
+	return pr.PluginActions
+}
+
 // Case shares synthetic auth inputs between rendering and CLI conformance tests.
 //
 // Label is the Mode-column label both generated tables use. The four
@@ -73,7 +94,7 @@ func Cases() []Case {
 // rows. Extra headers are additional --header pairs on the SAME `claude mcp
 // add` action (D-04/D-08) — never a second action — which is what keeps
 // the exactly-one-add filter below true for the header case too.
-func Render(planFn PlanFunc) (string, error) {
+func Render(planFn PlanFunc, pluginFn PluginActionsFunc) (string, error) {
 	if planFn == nil {
 		return "", fmt.Errorf("setupgen: nil Plan function")
 	}
@@ -113,7 +134,77 @@ func Render(planFn PlanFunc) (string, error) {
 		fmt.Fprintf(&fallback, "| `%s` | %s |\n", c.Label, commandCell(adds[0].Command()))
 		fmt.Fprintf(&delegation, "| `%s` | %s |\n", c.Label, commandCell((setup.Action{Args: c.DelegationArgs}).Command()))
 	}
-	return delegation.String() + "\n" + fallback.String(), nil
+	body := delegation.String() + "\n" + fallback.String()
+	if pluginFn == nil {
+		return body, nil
+	}
+	pluginTable, err := renderPluginTable(pluginFn)
+	if err != nil {
+		return "", err
+	}
+	return body + "\n" + pluginTable, nil
+}
+
+// pluginTableRow describes one fixed row of the plugin-delivery table:
+// the observed (state, marketplacePresent) pair pluginFn is called with,
+// and whether that state is expected to author at least one action.
+type pluginTableRow struct {
+	label              string
+	state              setup.PluginState
+	marketplacePresent bool
+	wantActions        bool
+}
+
+// pluginTableRows is the FIXED, ORDERED set of states the plugin-delivery
+// table renders — never derived from a live probe (rendering only ever
+// sees synthetic Options, never a real Environment). PluginUnavailable is
+// deliberately absent: its argv is always empty (no action authored),
+// giving the reader nothing beyond what the `current` row already shows.
+var pluginTableRows = []pluginTableRow{
+	{"`absent` (marketplace absent)", setup.PluginAbsent, false, true},
+	{"`absent` (marketplace present)", setup.PluginAbsent, true, true},
+	{"`outdated`", setup.PluginOutdated, true, true},
+	{"`current`", setup.PluginCurrent, true, false},
+}
+
+// renderPluginTable renders the third table — "### Claude Code plugin
+// delivery (--apply)" — showing exactly what --apply runs for a
+// plugin-capable Claude Code, by observed plugin state (D-01/D-02/D-04/
+// D-06 argv, authored in claudecode.go, never re-typed here). It exists
+// so /engram-setup's generated tables are never silently incomplete
+// relative to what --apply actually does (03-RESEARCH.md Pitfall 7).
+// Codex's own `codex plugin` argv are deliberately never rendered here:
+// this package renders claude-code's Plan only (see Check/Write); the
+// hand-authored prose around the anchored region points readers at the
+// live preview for codex's equivalents. The renderer validates its own
+// invariants rather than trusting pluginFn: a row whose wantActions is
+// true but authored zero actions (or vice versa), or any authored action
+// whose argv does not begin "claude plugin", fails generation outright —
+// the renderer knows the shape it renders.
+func renderPluginTable(pluginFn PluginActionsFunc) (string, error) {
+	var b strings.Builder
+	b.WriteString("### Claude Code plugin delivery (--apply)\n\n| Plugin state | Command |\n| --- | --- |\n")
+	for _, row := range pluginTableRows {
+		actions := pluginFn(row.state, row.marketplacePresent)
+		n := len(actions)
+		switch {
+		case row.wantActions && n == 0:
+			return "", fmt.Errorf("setupgen: plugin %s: expected %s, got %d action(s)", row.label, "actions", n)
+		case !row.wantActions && n != 0:
+			return "", fmt.Errorf("setupgen: plugin %s: expected %s, got %d action(s)", row.label, "no action", n)
+		}
+		for _, action := range actions {
+			if len(action.Args) < 2 || action.Args[0] != "claude" || action.Args[1] != "plugin" {
+				return "", fmt.Errorf("setupgen: plugin %s: action %q is not a claude plugin invocation", row.label, action.Command())
+			}
+		}
+		cell := "(no action)"
+		if n > 0 {
+			cell = commandCell(setup.Plan{Actions: actions}.Display())
+		}
+		fmt.Fprintf(&b, "| %s | %s |\n", row.label, cell)
+	}
+	return b.String(), nil
 }
 
 // commandCell preserves shell quoting while escaping Markdown table syntax.
@@ -161,18 +252,18 @@ func readRegion(path string) (body, raw string, err error) {
 
 // Check compares the existing region to the real Claude Plan without writing.
 func Check(path string) error {
-	return check(path, setup.ClaudeCode.Plan)
+	return check(path, setup.ClaudeCode.Plan, claudeCodePluginActions())
 }
 
-func check(path string, planFn PlanFunc) error {
-	if err := compare(path, planFn); err != nil {
+func check(path string, planFn PlanFunc, pluginFn PluginActionsFunc) error {
+	if err := compare(path, planFn, pluginFn); err != nil {
 		return fmt.Errorf("setupgen: check %s: %w; run task surfaces:gen after repairing any invalid anchors", path, err)
 	}
 	return nil
 }
 
-func compare(path string, planFn PlanFunc) error {
-	want, err := Render(planFn)
+func compare(path string, planFn PlanFunc, pluginFn PluginActionsFunc) error {
+	want, err := Render(planFn, pluginFn)
 	if err != nil {
 		return err
 	}
@@ -190,11 +281,11 @@ func compare(path string, planFn PlanFunc) error {
 
 // Write replaces only the existing anchored region using the real Claude Plan.
 func Write(path string) error {
-	return write(path, setup.ClaudeCode.Plan)
+	return write(path, setup.ClaudeCode.Plan, claudeCodePluginActions())
 }
 
-func write(path string, planFn PlanFunc) error {
-	body, err := Render(planFn)
+func write(path string, planFn PlanFunc, pluginFn PluginActionsFunc) error {
+	body, err := Render(planFn, pluginFn)
 	if err != nil {
 		return err
 	}

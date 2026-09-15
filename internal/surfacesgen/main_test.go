@@ -18,7 +18,14 @@ import (
 func checkFixture(t *testing.T, drift bool) (string, string, string) {
 	t.Helper()
 	root := t.TempDir()
-	body, err := setupgen.Render(setup.ClaudeCode.Plan)
+	// Mirror setupgen.Check/Write's own plugin-argv source exactly (the
+	// exported PluginRuntime interface, never a re-typed literal) so the
+	// "exact" fixture below matches what dispatch(--check-setup) expects.
+	pr, ok := setup.ClaudeCode.(setup.PluginRuntime)
+	if !ok {
+		t.Fatal("setup.ClaudeCode does not implement setup.PluginRuntime")
+	}
+	body, err := setupgen.Render(setup.ClaudeCode.Plan, pr.PluginActions)
 	if err != nil {
 		t.Fatal(err)
 	}
