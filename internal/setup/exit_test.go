@@ -17,6 +17,7 @@ func TestClassifySingleOutcome(t *testing.T) {
 		{OutcomeAlreadyCorrect, ExitTotalSuccess},
 		{OutcomeWouldWrite, ExitTotalSuccess},
 		{OutcomeWrote, ExitTotalSuccess},
+		{OutcomePreserved, ExitTotalSuccess},
 		{OutcomeFailed, ExitTotalFailure},
 	}
 	for _, c := range cases {
@@ -71,6 +72,7 @@ func TestClassifyMixedCases(t *testing.T) {
 		{"already-correct + failed", []Outcome{OutcomeAlreadyCorrect, OutcomeFailed}, ExitPartial},
 		{"would-write + failed", []Outcome{OutcomeWouldWrite, OutcomeFailed}, ExitPartial},
 		{"not-present + wrote + failed", []Outcome{OutcomeNotPresent, OutcomeWrote, OutcomeFailed}, ExitPartial},
+		{"preserved-beside-failed", []Outcome{OutcomePreserved, OutcomeFailed}, ExitPartial},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -105,6 +107,7 @@ var allOutcomes = []Outcome{
 	OutcomeWouldWrite,
 	OutcomeWrote,
 	OutcomeFailed,
+	OutcomePreserved,
 }
 
 // classifyExpected derives the expected ExitClass for outcomes from the

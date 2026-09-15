@@ -6,27 +6,30 @@ package setup
 import "testing"
 
 // allOutcomesPlusZero is the full cross-product domain
-// TestAggregateOutcomeExhaustive drives: the five pinned Outcome constants
-// plus the Go zero value — six values, thirty-six ordered pairs.
+// TestAggregateOutcomeExhaustive drives: the six pinned Outcome constants
+// plus the Go zero value — seven values, forty-nine ordered pairs.
 var allOutcomesPlusZero = []Outcome{
 	OutcomeFailed,
 	OutcomeWrote,
+	OutcomePreserved,
 	OutcomeAlreadyCorrect,
 	OutcomeWouldWrite,
 	OutcomeNotPresent,
 	Outcome(""),
 }
 
-// TestAggregateOutcomeExhaustive drives every ordered pair of the five
-// outcome constants plus the zero value — thirty-six pairs, every one
+// TestAggregateOutcomeExhaustive drives every ordered pair of the six
+// outcome constants plus the zero value — 7x7 ordered pairs, every one
 // asserted, none skipped — with the expected winner stated LITERALLY per
 // row rather than computed by the same precedence logic under test (D-06:
-// failed > wrote > already-correct > would-write > not-present; the zero
-// value or any unrecognized value aggregates to failed).
+// failed > wrote > preserved > already-correct > would-write >
+// not-present; the zero value or any unrecognized value aggregates to
+// failed).
 func TestAggregateOutcomeExhaustive(t *testing.T) {
 	want := map[[2]Outcome]Outcome{
 		{OutcomeFailed, OutcomeFailed}:         OutcomeFailed,
 		{OutcomeFailed, OutcomeWrote}:          OutcomeFailed,
+		{OutcomeFailed, OutcomePreserved}:      OutcomeFailed,
 		{OutcomeFailed, OutcomeAlreadyCorrect}: OutcomeFailed,
 		{OutcomeFailed, OutcomeWouldWrite}:     OutcomeFailed,
 		{OutcomeFailed, OutcomeNotPresent}:     OutcomeFailed,
@@ -34,13 +37,23 @@ func TestAggregateOutcomeExhaustive(t *testing.T) {
 
 		{OutcomeWrote, OutcomeFailed}:         OutcomeFailed,
 		{OutcomeWrote, OutcomeWrote}:          OutcomeWrote,
+		{OutcomeWrote, OutcomePreserved}:      OutcomeWrote,
 		{OutcomeWrote, OutcomeAlreadyCorrect}: OutcomeWrote,
 		{OutcomeWrote, OutcomeWouldWrite}:     OutcomeWrote,
 		{OutcomeWrote, OutcomeNotPresent}:     OutcomeWrote,
 		{OutcomeWrote, Outcome("")}:           OutcomeFailed,
 
+		{OutcomePreserved, OutcomeFailed}:         OutcomeFailed,
+		{OutcomePreserved, OutcomeWrote}:          OutcomeWrote,
+		{OutcomePreserved, OutcomePreserved}:      OutcomePreserved,
+		{OutcomePreserved, OutcomeAlreadyCorrect}: OutcomePreserved,
+		{OutcomePreserved, OutcomeWouldWrite}:     OutcomePreserved,
+		{OutcomePreserved, OutcomeNotPresent}:     OutcomePreserved,
+		{OutcomePreserved, Outcome("")}:           OutcomeFailed,
+
 		{OutcomeAlreadyCorrect, OutcomeFailed}:         OutcomeFailed,
 		{OutcomeAlreadyCorrect, OutcomeWrote}:          OutcomeWrote,
+		{OutcomeAlreadyCorrect, OutcomePreserved}:      OutcomePreserved,
 		{OutcomeAlreadyCorrect, OutcomeAlreadyCorrect}: OutcomeAlreadyCorrect,
 		{OutcomeAlreadyCorrect, OutcomeWouldWrite}:     OutcomeAlreadyCorrect,
 		{OutcomeAlreadyCorrect, OutcomeNotPresent}:     OutcomeAlreadyCorrect,
@@ -48,6 +61,7 @@ func TestAggregateOutcomeExhaustive(t *testing.T) {
 
 		{OutcomeWouldWrite, OutcomeFailed}:         OutcomeFailed,
 		{OutcomeWouldWrite, OutcomeWrote}:          OutcomeWrote,
+		{OutcomeWouldWrite, OutcomePreserved}:      OutcomePreserved,
 		{OutcomeWouldWrite, OutcomeAlreadyCorrect}: OutcomeAlreadyCorrect,
 		{OutcomeWouldWrite, OutcomeWouldWrite}:     OutcomeWouldWrite,
 		{OutcomeWouldWrite, OutcomeNotPresent}:     OutcomeWouldWrite,
@@ -55,6 +69,7 @@ func TestAggregateOutcomeExhaustive(t *testing.T) {
 
 		{OutcomeNotPresent, OutcomeFailed}:         OutcomeFailed,
 		{OutcomeNotPresent, OutcomeWrote}:          OutcomeWrote,
+		{OutcomeNotPresent, OutcomePreserved}:      OutcomePreserved,
 		{OutcomeNotPresent, OutcomeAlreadyCorrect}: OutcomeAlreadyCorrect,
 		{OutcomeNotPresent, OutcomeWouldWrite}:     OutcomeWouldWrite,
 		{OutcomeNotPresent, OutcomeNotPresent}:     OutcomeNotPresent,
@@ -62,14 +77,15 @@ func TestAggregateOutcomeExhaustive(t *testing.T) {
 
 		{Outcome(""), OutcomeFailed}:         OutcomeFailed,
 		{Outcome(""), OutcomeWrote}:          OutcomeFailed,
+		{Outcome(""), OutcomePreserved}:      OutcomeFailed,
 		{Outcome(""), OutcomeAlreadyCorrect}: OutcomeFailed,
 		{Outcome(""), OutcomeWouldWrite}:     OutcomeFailed,
 		{Outcome(""), OutcomeNotPresent}:     OutcomeFailed,
 		{Outcome(""), Outcome("")}:           OutcomeFailed,
 	}
 
-	if len(want) != 36 {
-		t.Fatalf("table has %d entries, want 36 (6x6 ordered pairs)", len(want))
+	if len(want) != 49 { // 7x7 ordered pairs
+		t.Fatalf("table has %d entries, want 49 (7x7 ordered pairs)", len(want))
 	}
 
 	for pair, expected := range want {
@@ -114,6 +130,25 @@ func TestAggregatePrecedenceIsAuthoredNotDerived(t *testing.T) {
 	}
 	if got := AggregateOutcome(OutcomeAlreadyCorrect, OutcomeWrote); got != OutcomeWrote {
 		t.Errorf("AggregateOutcome(already-correct, wrote) = %q, want %q", got, OutcomeWrote)
+	}
+
+	// Phase 4: a preserved registration facet is never hidden beneath an
+	// already-correct facet at the aggregate — a declined write must
+	// never read as convergence.
+	if got := AggregateOutcome(OutcomePreserved, OutcomeAlreadyCorrect); got != OutcomePreserved {
+		t.Errorf("AggregateOutcome(preserved, already-correct) = %q, want %q", got, OutcomePreserved)
+	}
+	if got := AggregateOutcome(OutcomeAlreadyCorrect, OutcomePreserved); got != OutcomePreserved {
+		t.Errorf("AggregateOutcome(already-correct, preserved) = %q, want %q", got, OutcomePreserved)
+	}
+
+	// A facet that actually wrote still outranks a preserved facet — the
+	// more consequential event wins.
+	if got := AggregateOutcome(OutcomeWrote, OutcomePreserved); got != OutcomeWrote {
+		t.Errorf("AggregateOutcome(wrote, preserved) = %q, want %q", got, OutcomeWrote)
+	}
+	if got := AggregateOutcome(OutcomePreserved, OutcomeWrote); got != OutcomeWrote {
+		t.Errorf("AggregateOutcome(preserved, wrote) = %q, want %q", got, OutcomeWrote)
 	}
 }
 

@@ -41,9 +41,17 @@ const (
 //     an unset outcome as success is exactly how an unreported error
 //     becomes an exit 0, so it is treated as a failure rather than
 //     ignored.
-//   - Zero failures -> ExitTotalSuccess, including the zero-attempts case.
+//   - A preserved registration (Phase 4, D-01) is setup performing
+//     CORRECTLY — it declined to destroy something it cannot re-create —
+//     so it is a NON-FAILED attempt (D-04), placed explicitly alongside
+//     already-correct/would-write/wrote rather than left to fall through
+//     to the default arm below, which would otherwise launder it into a
+//     failure.
+//   - Zero failures -> ExitTotalSuccess, including the zero-attempts case
+//     (an all-preserved run is therefore ExitTotalSuccess too).
 //   - At least one failure alongside at least one non-failed attempt ->
-//     ExitPartial.
+//     ExitPartial (a preserved row beside a genuine failed row is
+//     ExitPartial).
 //   - At least one failure and no non-failed attempt -> ExitTotalFailure.
 func Classify(results []Result) ExitClass {
 	var hasFailure, hasNonFailedAttempt bool
@@ -53,7 +61,7 @@ func Classify(results []Result) ExitClass {
 			// Not an attempt (D-07): contributes to neither class.
 		case OutcomeFailed:
 			hasFailure = true
-		case OutcomeAlreadyCorrect, OutcomeWouldWrite, OutcomeWrote:
+		case OutcomeAlreadyCorrect, OutcomeWouldWrite, OutcomeWrote, OutcomePreserved:
 			hasNonFailedAttempt = true
 		default:
 			// The zero-valued Outcome ("") or any other unrecognized
