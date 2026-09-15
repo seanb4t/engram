@@ -890,8 +890,9 @@ func TestPluginResultFieldsAreBoundCaptured(t *testing.T) {
 	rt := ClaudeCode
 	binary := "/usr/local/bin/claude"
 
-	// A pure-ASCII digit run well over maxCapturedBytes: too long for
-	// strconv.ParseUint (range error) so parseVersionCore reports !ok,
+	// A pure-ASCII digit run well over maxCapturedBytes. It carries no dots,
+	// so pluginVersionCorePattern does not match and parseVersionCore
+	// reports !ok at the regex stage (never reaching strconv.ParseUint),
 	// landing classifyPluginVersion in its "not a release version" arm —
 	// which is exactly the arm whose Note interpolates the untrusted
 	// installed string (plugin.go WR-02 fix).
