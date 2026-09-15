@@ -412,7 +412,22 @@ Plans:
 4. A `would-write` row for an existing registration names which facet differs — URL, auth mode, header name, or value reference — rather than a bare "differs".
 5. Header values obtained from any runtime read-probe are redacted unconditionally before comparison storage, rendering, JSON output, or logging, proven against a fixture whose probe output carries a literal value.
 
-**Plans:** TBD
+**Plans:** 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — `OutcomePreserved` + `Classify`/`precedenceOrder` placement (preserved between wrote and already-correct); `drift.go`'s typed `Facet` vocabulary, `Observation`, the optional `DriftRuntime` interface, and the single D-01 `Compare` predicate; codex's totality `Observe` (`DisallowUnknownFields` + key-set diff); `execute()`'s preview branch rewritten to observe → compare → classify → redact → rebuild `Registered`, ambiguity and scanner-less runtimes → would-write (D-01, D-02, D-03, D-04, D-09, D-10, D-11, D-12; all five REQ-drift-* IDs)
+- [ ] 04-02-PLAN.md — D-05 human observation checkpoint (`gate="blocking-human"`): the literal header echo of `claude mcp get` / `codex mcp get --json` on a throwaway `probe-literal-04` entry, recorded dated and versioned as `04-OBSERVATIONS.md` (D-05, D-06, D-07, D-08; REQ-drift-redaction, REQ-drift-observed-registration)
+- [ ] 04-03-PLAN.md — `guides/agent-setup.md` `preserved` results row with the whole-entry sentence, the opencode not-compared statement, `facets`/`drift`/`registered` field descriptions, pinned by a `migrate_docs_test.go`-shaped docs gate with positive control (D-04, D-10, D-12; REQ-drift-preserved-outcome, REQ-drift-facet-naming, REQ-drift-observed-registration)
+
+**Wave 2**
+
+- [ ] 04-04-PLAN.md — `cmd/engram/setup.go`: flat `facets`/`drift` row fields, `preserved` in the apply headline and the comparison in the preview headline and `--help` (help golden regenerated), retargeted `TestSetupPreviewNeverClassifiesAlreadyCorrectFromAmbiguousRead` (D-09/D-10), `TestSetupJSONNeverLeaksProbeLiteral` at the process boundary, three view fixtures (D-03, D-04, D-09, D-10, D-12; REQ-drift-preserved-outcome, REQ-drift-facet-naming, REQ-drift-redaction, REQ-drift-three-way)
+
+**Wave 3**
+
+- [ ] 04-05-PLAN.md — claude-code's `Observe` as a total parse of `claude mcp get` built from `04-OBSERVATIONS.md` (Status line is chrome, exit code never blocks parsing), three-state coverage, codex mirror reconciled to the observed literal-header shape, observed literal-echo fixtures citing the record for both runtimes through `internal/setup` and `engram setup`'s output streams, phase gate (D-01, D-02, D-05, D-08, D-09, D-11, D-12; all five REQ-drift-* IDs)
 
 ---
 
