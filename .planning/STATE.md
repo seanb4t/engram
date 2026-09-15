@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-13.01
 milestone_name: Setup v2
-current_phase: 3
+current_phase: 03
 current_phase_name: Plugin-First Delivery
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-09-15T01:45:09.827Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-09-15T02:17:54.272Z"
 last_activity: 2026-09-14
-last_activity_desc: Phase 02 complete, transitioned to Phase 3
-state_head: 02f052894a82310293d98d1b04b125172b1e59bc
+last_activity_desc: Phase 03 execution started
+state_head: a094e618255211fce286d9a71a37a7c91034b8a7
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 10
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-14 after Phase 2 — 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 3 — Plugin-First Delivery
+**Current focus:** Phase 03 — Plugin-First Delivery
 
 ## Current Position
 
-Phase: 3 (Plugin-First Delivery) — READY TO EXECUTE
-Plan: Not started
+Phase: 03 (Plugin-First Delivery) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-09-14 — Phase 02 complete, transitioned to Phase 3
+Last activity: 2026-09-14 — Phase 03 execution started
 
 ## Deferred Items
 
@@ -280,6 +280,8 @@ milestone needs in working memory.
 - [Phase 02]: D-09/D-10 implemented exactly as locked: codex's header guard is the first statement of Plan(), before HomeDir/auth switch, returning ErrHeaderUnsupported with a reason naming the header(s), gap, and remedy
 - [Phase 02]: 02-02: opencode renders --header pairs via openCodeHeaderArgs on its single mcp add action; generic carries extras in its existing headers map via genericHeaders' ordered MarshalJSON (Authorization first, then case-insensitive) -- no shared cross-runtime formatter
 - [Phase 02]: Checkpoint option C: renamed the canonical gateway-header example from x-litellm-api-key/LITELLM_KEY to a vendor-neutral x-gateway-api-key/GATEWAY_KEY across setupgen, generated tables, CLI help/golden, setup tests, and both docs surfaces, to satisfy the shipped-bundle privacy guard (skill/engram/) without an exception
+- [Phase 03]: Plugin lane is parallel to registration's execute(); PluginRuntime is an optional interface implemented only by claude-code and codex.
+- [Phase 03]: Regenerated stale phase-02 red-evidence patch (02-01-codex-header-decline.patch) in place after codex.go's plugin-lane edit broke its context; re-verified RED/apply/revert manually.
 
 ### Pending Todos
 
@@ -342,9 +344,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-14T23:19:19.756Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-plugin-first-delivery/03-CONTEXT.md
+Last session: 2026-09-15T02:17:54.243Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -463,6 +465,7 @@ Resume file: .planning/phases/03-plugin-first-delivery/03-CONTEXT.md
 | Phase 02 P02 | ~35min | 3 tasks | 5 files |
 | Phase 02 P03 | 45min | 3 tasks | 8 files |
 | Phase 02-custom-auth-headers P04 | interrupted-and-resumed | 3 tasks | 14 files |
+| Phase 03 P01 | 34min | 3 tasks | 5 files |
 
 ## Operator Next Steps
 
