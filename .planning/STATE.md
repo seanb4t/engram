@@ -5,16 +5,16 @@ milestone_name: Setup v2
 current_phase: 4
 current_phase_name: Drift Detection (Read-Only)
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-09-15T18:02:53.928Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-09-15T18:39:00.850Z"
 last_activity: 2026-09-15
-last_activity_desc: Phase 03 complete, transitioned to Phase 4
-state_head: ca67f83dced669d73f0af4e851ce16f1ec0c0519
+last_activity_desc: Phase 4 execution started
+state_head: 02cae8818b23d98c8bff22af00669cf420851d80
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 15
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-15 after Phase 3 — 2026-09-13.01 Se
 
 ## Current Position
 
-Phase: 4 (Drift Detection (Read-Only)) — READY TO EXECUTE
-Plan: Not started
+Phase: 4 (Drift Detection (Read-Only)) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-09-15 — Phase 03 complete, transitioned to Phase 4
+Last activity: 2026-09-15 — Phase 4 execution started
 
 ## Deferred Items
 
@@ -286,6 +286,7 @@ milestone needs in working memory.
 - [Phase 03]: Phase 3 Plan 3: composed the plugin facet onto the setup report row, routed a plugin-delivered runtime away from the native skills write via DetectPresence, and rewrote --help for plugin-first delivery. — Routing decided by PluginResult.Delivered() (capability), never by install success, so a plugin-capable runtime never receives a duplicate native copy even after a failed install in the same run.
 - [Phase 03]: Codex plugin manifest ships as the minimal four-key twin of .claude-plugin/plugin.json (no interface block) — Orchestrator's Open Question 2 decision: Codex loader acceptance of a minimal manifest is a post-release live observation, not a phase gate
 - [Phase 03]: setupgen's generated /engram-setup tables SHOW the plugin actions, rendered from claude-code's real PluginActions — Orchestrator's Open Question 1 decision: never re-typed argv, so the generated tables cannot drift from what --apply actually runs
+- [Phase 04]: 04-01: OutcomePreserved sits between OutcomeWrote and OutcomeAlreadyCorrect in precedenceOrder (resolves 04-RESEARCH.md Open Question 1) - a preserved registration facet is never hidden beneath an already-correct facet at the aggregate row; a facet that actually wrote still outranks it.
 
 ### Pending Todos
 
@@ -357,9 +358,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-15T16:42:13.546Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-drift-detection-read-only/04-CONTEXT.md
+Last session: 2026-09-15T18:39:00.825Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -482,6 +483,7 @@ Resume file: .planning/phases/04-drift-detection-read-only/04-CONTEXT.md
 | Phase 03 P02 | 22min | 2 tasks | 3 files |
 | Phase 03 P03 | 40min | 3 tasks | 5 files |
 | Phase 03 P04 | 35 min | 3 tasks | 7 files |
+| Phase 04 P01 | ~40min | 3 tasks | 11 files |
 
 ## Operator Next Steps
 
