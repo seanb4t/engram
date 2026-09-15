@@ -192,8 +192,16 @@ func PluginApply(ctx context.Context, env Environment, rt Runtime, binary, binar
 //     write verb.
 //  9. len(actions) == 0 -> OutcomeAlreadyCorrect, return: current runs
 //     zero write verbs.
-//  10. Run each action in order. A seam error or nonzero exit ->
-//     OutcomeFailed immediately; no later action runs.
+//  10. Run each action in order. A Tolerant action's nonzero exit is
+//     recorded onto Note (joinPluginNote/toleratedNote — the SAME
+//     toleratedNote apply.go's own execute() uses, apply.go:335,344) and
+//     the sequence continues; a non-Tolerant action's nonzero exit, or a
+//     seam error from ANY action (tolerant or not — a seam error means no
+//     exit status was ever produced, so there is nothing to tolerate), is
+//     OutcomeFailed immediately and no later action runs. No plugin
+//     action authored by claudecode.go or codex.go sets Tolerant today;
+//     this step exists so a FUTURE one gets execute()'s own semantics
+//     rather than silently failing the row on a tolerated exit (WR-01).
 //  11. OutcomeWrote.
 func executePlugin(ctx context.Context, env Environment, rt Runtime, binary, binaryVersion string, mutate bool) PluginResult {
 	pr, ok := rt.(PluginRuntime)
@@ -295,19 +303,44 @@ func executePlugin(ctx context.Context, env Environment, rt Runtime, binary, bin
 
 	for _, action := range actions {
 		rr, runErr := runSeam(ctx, env, binary, action.Args[1:])
-		if runErr != nil {
+		switch {
+		case runErr != nil:
 			res.Outcome = OutcomeFailed
 			res.Reason = describeSeamError(name, action.Command(), runErr)
 			return res
-		}
-		if rr.ExitCode != 0 {
+		case rr.ExitCode != 0 && action.Tolerant:
+			// WR-01: mirror apply.go's execute() (apply.go:335,344) — a
+			// Tolerant action's nonzero exit is recorded as a note and
+			// the sequence continues, never failing the row.
+			res.Note = joinPluginNote(res.Note, toleratedNote(action, rr.ExitCode, rr.Stderr))
+		case rr.ExitCode != 0:
 			res.Outcome = OutcomeFailed
 			res.Reason = describeFailure(name, action.Command(), rr.ExitCode, rr.Stderr)
 			return res
+		case action.Tolerant:
+			// A tolerant action's Description is surfaced even on success
+			// (exit 0), mirroring apply.go's execute() (apply.go:344-358):
+			// it can carry a consequence that only matters if a LATER,
+			// non-tolerant action in the same sequence then fails.
+			if action.Description != "" {
+				res.Note = joinPluginNote(res.Note, action.Description)
+			}
 		}
 	}
 	res.Outcome = OutcomeWrote
 	return res
+}
+
+// joinPluginNote appends add onto existing using the same "; "-joined
+// idiom this file already uses when a marketplace-probe failure note is
+// appended to a classification note (see executePlugin's marketplace
+// branch above) — extracted here because the write-action loop's Tolerant
+// handling (WR-01) needs the same joining behavior twice.
+func joinPluginNote(existing, add string) string {
+	if existing == "" {
+		return add
+	}
+	return existing + "; " + add
 }
 
 // pluginVersionCorePattern anchors parseVersionCore's input to a plain,

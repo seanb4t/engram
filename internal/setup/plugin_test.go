@@ -913,3 +913,76 @@ func TestPluginResultFieldsAreBoundCaptured(t *testing.T) {
 		t.Errorf("Note = %q, want it to carry the truncation marker %q (classifyPluginVersion's installed interpolation)", res.Note, truncationMarker)
 	}
 }
+
+// fakeTolerantPluginRuntime is a synthetic Runtime+PluginRuntime authored
+// ONLY in this test: no real runtime (claude-code, codex) ever sets
+// Action.Tolerant on a plugin action today (see plugin.go's own package
+// doc comment), so this is the only way to exercise executePlugin's
+// Tolerant handling (WR-01) — proving a FUTURE tolerant plugin action gets
+// apply.go's own execute() semantics rather than silently failing the row.
+type fakeTolerantPluginRuntime struct{}
+
+func (fakeTolerantPluginRuntime) Name() string                            { return "faketolerant" }
+func (fakeTolerantPluginRuntime) Detect(Environment) bool                 { return true }
+func (fakeTolerantPluginRuntime) Plan(Environment, Options) (Plan, error) { return Plan{}, nil }
+
+func (fakeTolerantPluginRuntime) PluginProbes() (list, marketplace []string) {
+	return []string{"faketolerant", "plugin", "list", "--json"},
+		[]string{"faketolerant", "plugin", "marketplace", "list"}
+}
+
+func (fakeTolerantPluginRuntime) ParsePluginList(string) (version string, installed bool, err error) {
+	return "", false, nil
+}
+
+func (fakeTolerantPluginRuntime) ParseMarketplaceList(string) (present bool, source string) {
+	return false, ""
+}
+
+// PluginActions returns a Tolerant "clear" step (authored to fail in the
+// test's script below) followed by a non-tolerant "install" step — the
+// same tolerant-clear-then-fatal-write shape 03-RESEARCH.md's Pattern
+// 1/Pitfall 1 and apply.go's own doc comment (apply.go:220-221) describe.
+func (fakeTolerantPluginRuntime) PluginActions(PluginState, bool) []Action {
+	return []Action{
+		{Args: []string{"faketolerant", "clear"}, Tolerant: true, Description: "clear any prior state"},
+		{Args: []string{"faketolerant", "install"}},
+	}
+}
+
+// TestExecutePluginHonorsTolerant proves WR-01: a Tolerant action's nonzero
+// exit is recorded onto Note and the sequence continues to run the
+// following action, mirroring apply.go's execute() (apply.go:335,344) —
+// rather than failing the row on the tolerated action's own exit, which is
+// what executePlugin did before this fix.
+func TestExecutePluginHonorsTolerant(t *testing.T) {
+	rt := fakeTolerantPluginRuntime{}
+	binary := "/usr/local/bin/faketolerant"
+
+	script := pluginScript{
+		"plugin list --json":      {ExitCode: 0},
+		"plugin marketplace list": {ExitCode: 0},
+		"clear":                   {ExitCode: 1, Stderr: "not found"},
+		"install":                 {ExitCode: 0},
+	}
+	var calls [][]string
+	env := fakeEnvWithRun(scriptedPluginRun(script, &calls), "faketolerant")
+
+	res := PluginApply(context.Background(), env, rt, binary, "0.16.1")
+
+	if res.Outcome != OutcomeWrote {
+		t.Fatalf("Outcome = %q, want %q — a Tolerant action's nonzero exit must not fail the row", res.Outcome, OutcomeWrote)
+	}
+	if !strings.Contains(res.Note, "clear") || !strings.Contains(res.Note, "exited 1") {
+		t.Errorf("Note = %q, want it to record the tolerated action's nonzero exit", res.Note)
+	}
+	wantCalls := [][]string{
+		{"plugin", "list", "--json"},
+		{"plugin", "marketplace", "list"},
+		{"clear"},
+		{"install"},
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Errorf("calls = %v, want %v — the sequence must continue past the tolerated failure to run the following action", calls, wantCalls)
+	}
+}
