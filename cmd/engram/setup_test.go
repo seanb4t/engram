@@ -766,6 +766,12 @@ func TestSetupPreviewExitsZeroWhenProbeFails(t *testing.T) {
 		if len(doc.Runtimes) != 1 {
 			t.Fatalf("setup preview emitted %d rows, want exactly 1 (a probe failure must not erase the row): %s", len(doc.Runtimes), stdout)
 		}
+		if doc.Runtimes[0].Facets != "" {
+			t.Errorf("Facets = %q, want empty (D-09: a failed probe is ambiguous, never compared)", doc.Runtimes[0].Facets)
+		}
+		if doc.Runtimes[0].Registered != "" {
+			t.Errorf("Registered = %q, want empty (D-09: a failed probe is ambiguous, never compared)", doc.Runtimes[0].Registered)
+		}
 	})
 
 	t.Run("probe-seam-error", func(t *testing.T) {
@@ -788,38 +794,99 @@ func TestSetupPreviewExitsZeroWhenProbeFails(t *testing.T) {
 		if len(doc.Runtimes) != 1 {
 			t.Fatalf("setup preview emitted %d rows, want exactly 1 (a probe seam error must not erase the row): %s", len(doc.Runtimes), stdout)
 		}
+		if doc.Runtimes[0].Facets != "" {
+			t.Errorf("Facets = %q, want empty (D-09: a probe seam error is ambiguous, never compared)", doc.Runtimes[0].Facets)
+		}
+		if doc.Runtimes[0].Registered != "" {
+			t.Errorf("Registered = %q, want empty (D-09: a probe seam error is ambiguous, never compared)", doc.Runtimes[0].Registered)
+		}
 	})
 }
 
-// TestSetupPreviewNeverClassifiesAlreadyCorrect scripts a probe returning
-// IDENTICAL output on every call and asserts no row's outcome is ever
-// "already-correct" under a bare preview (D-10): byte-compare needs a
-// WRITE between two reads, and a preview never writes, so no single probe
-// read — however convincing — has an honest basis for that classification.
-func TestSetupPreviewNeverClassifiesAlreadyCorrect(t *testing.T) {
-	resetClientFlags(t)
-	resetCommandFlagState(t, setupCmd)
-	identicalProbe := func(context.Context, string, []string) (setup.RunResult, error) {
-		return setup.RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}, nil
-	}
-	withFakeSetupEnv(t, fakeSetupEnvWithRun(identicalProbe, "claude", "codex", "opencode"))
-
-	stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
-	if err != nil {
-		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
-	}
-	var doc setupReportDoc
-	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
-		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
-	}
-	if len(doc.Runtimes) == 0 {
-		t.Fatalf("setup preview emitted no runtimes: %s", stdout)
-	}
-	for _, row := range doc.Runtimes {
-		if row.Outcome == string(setup.OutcomeAlreadyCorrect) {
-			t.Errorf("%s row.Outcome = %q, want never %q under a bare preview (D-10)", row.Name, row.Outcome, setup.OutcomeAlreadyCorrect)
+// TestSetupPreviewNeverClassifiesAlreadyCorrectFromAmbiguousRead used to
+// pin "a bare preview never classifies already-correct" outright — Phase
+// 4 overturns that for a PARSED claude-code/codex registration
+// (TestSetupPreviewJSONCarriesDriftFacets/codex-already-correct covers
+// that positive case now). What this retargeted test pins is D-09/D-10:
+// an AMBIGUOUS read — one the scanner cannot frame as a registration at
+// all — never yields already-correct or preserved, however convincing it
+// looks, and opencode is never compared, full stop.
+func TestSetupPreviewNeverClassifiesAlreadyCorrectFromAmbiguousRead(t *testing.T) {
+	t.Run("ambiguous-read-every-runtime", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		identicalProbe := func(context.Context, string, []string) (setup.RunResult, error) {
+			return setup.RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}, nil
 		}
-	}
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(identicalProbe, "claude", "codex", "opencode"))
+
+		stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) == 0 {
+			t.Fatalf("setup preview emitted no runtimes: %s", stdout)
+		}
+		for _, row := range doc.Runtimes {
+			if row.Outcome == string(setup.OutcomeAlreadyCorrect) || row.Outcome == string(setup.OutcomePreserved) {
+				t.Errorf("%s row.Outcome = %q, want never %q or %q under an ambiguous read (D-09)", row.Name, row.Outcome, setup.OutcomeAlreadyCorrect, setup.OutcomePreserved)
+			}
+			if row.Registration != string(setup.OutcomeWouldWrite) {
+				t.Errorf("%s row.Registration = %q, want %q", row.Name, row.Registration, setup.OutcomeWouldWrite)
+			}
+			if row.Facets != "" {
+				t.Errorf("%s row.Facets = %q, want empty", row.Name, row.Facets)
+			}
+			if row.Registered != "" {
+				t.Errorf("%s row.Registered = %q, want empty (D-03: an unframeable read renders nothing)", row.Name, row.Registered)
+			}
+		}
+	})
+
+	t.Run("opencode-never-compared", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		// A convincing-looking box-drawing table naming engram and its URL
+		// with a connected glyph line — opencode's mcp list shape (D-10) —
+		// must still never be compared, whatever it says.
+		table := "┌────────┬─────────────────────────────────┬───────────┐\n" +
+			"│ name   │ url                             │ status    │\n" +
+			"├────────┼─────────────────────────────────┼───────────┤\n" +
+			"│ engram │ https://engram.example.com/mcp │ connected │\n" +
+			"└────────┴─────────────────────────────────┴───────────┘\n"
+		convincingProbe := func(context.Context, string, []string) (setup.RunResult, error) {
+			return setup.RunResult{Stdout: table}, nil
+		}
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(convincingProbe, "opencode"))
+
+		stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--runtime", "opencode", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		row := rowByName(t, doc.Runtimes, "opencode")
+		if row.Outcome != string(setup.OutcomeWouldWrite) {
+			t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomeWouldWrite)
+		}
+		if row.Facets != "" {
+			t.Errorf("Facets = %q, want empty", row.Facets)
+		}
+		if row.Registered != "" {
+			t.Errorf("Registered = %q, want empty", row.Registered)
+		}
+		wantDrift := "opencode: not compared: runtime authors no registration scanner"
+		if row.Drift != wantDrift {
+			t.Errorf("Drift = %q, want %q", row.Drift, wantDrift)
+		}
+	})
 }
 
 // TestSetupPreviewJSONCarriesDriftFacets proves facets/drift/preserved
@@ -983,6 +1050,85 @@ func TestSetupPreviewJSONCarriesDriftFacets(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestSetupJSONNeverLeaksProbeLiteral is the process-boundary mirror of
+// internal/setup's TestRedactionUnconditional (04-01-SUMMARY.md): a
+// sentinel ("SENTINEL-VALUE-cmd-7c1d4b-DO-NOT-LEAK") planted where codex
+// would carry the bearer env var name must never reach engram setup's
+// stdout or stderr, in EITHER output lane. 04-01's redaction-by-
+// construction already holds this by construction — this test is GREEN
+// on first run, pinning that existing behavior at the CLI process
+// boundary rather than only inside internal/setup. Plan 04-05 extends
+// this with the observed literal-echo shapes from 04-OBSERVATIONS.md
+// (04-04-PLAN.md Task 2).
+func TestSetupJSONNeverLeaksProbeLiteral(t *testing.T) {
+	const sentinel = "SENTINEL-VALUE-cmd-7c1d4b-DO-NOT-LEAK"
+
+	for _, lane := range []string{"json", "text"} {
+		t.Run(lane, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			stdout := strings.Replace(codexGetEngramBearerJSON,
+				`"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":"`+sentinel+`"`, 1)
+			withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: stdout}), "codex"))
+
+			out, errOut, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+				"--auth", "oauth", "--runtime", "codex", "--output", lane)
+			if err != nil {
+				t.Fatalf("runClient: %v (stderr=%q)", err, errOut)
+			}
+			if strings.Contains(out, sentinel) {
+				t.Errorf("%s stdout leaks the probe sentinel: %s", lane, out)
+			}
+			if strings.Contains(errOut, sentinel) {
+				t.Errorf("%s stderr leaks the probe sentinel: %s", lane, errOut)
+			}
+
+			if lane == "json" {
+				var doc setupReportDoc
+				if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+					t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+				}
+				row := rowByName(t, doc.Runtimes, "codex")
+				if row.Outcome != string(setup.OutcomePreserved) {
+					t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+				}
+				wantRegistered := "url=https://engram.example.com/mcp auth=foreign headers=none"
+				if row.Registered != wantRegistered {
+					t.Errorf("Registered = %q, want %q", row.Registered, wantRegistered)
+				}
+			}
+		})
+	}
+}
+
+// TestSetupApplySummaryCountsPreserved pins setupApplySummary's preserved
+// bucket (D-04: preserved is reported, never counted as failed).
+func TestSetupApplySummaryCountsPreserved(t *testing.T) {
+	rows := []setupRuntimeRow{
+		{Name: "a", Outcome: string(setup.OutcomeWrote)},
+		{Name: "b", Outcome: string(setup.OutcomeAlreadyCorrect)},
+		{Name: "c", Outcome: string(setup.OutcomePreserved)},
+		{Name: "d", Outcome: string(setup.OutcomeFailed)},
+		{Name: "e", Outcome: string(setup.OutcomeNotPresent)},
+	}
+	got := setupApplySummary(rows)
+	want := "apply: 1 wrote, 1 already correct, 1 preserved, 1 failed (of 5 selected runtime(s))"
+	if got != want {
+		t.Errorf("setupApplySummary(...) = %q, want %q", got, want)
+	}
+}
+
+// TestSetupPreviewSummaryNamesComparison pins setupPreviewSummary's
+// comparison wording (REQ-setup-correct-by-reading).
+func TestSetupPreviewSummaryNamesComparison(t *testing.T) {
+	got := setupPreviewSummary([]setupRuntimeRow{{Present: true}})
+	for _, want := range []string{"compared with what setup would write", "opencode is not compared"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("setupPreviewSummary(...) = %q, does not contain %q", got, want)
+		}
+	}
 }
 
 // TestSetupApplyJSONEmitsPerRuntimeOutcome proves `engram setup --output
