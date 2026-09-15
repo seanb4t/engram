@@ -1,16 +1,8 @@
 diff --git a/internal/setup/codex.go b/internal/setup/codex.go
-index 4b03a9f7..0fe0e3ac 100644
+index 41274756..07db206c 100644
 --- a/internal/setup/codex.go
 +++ b/internal/setup/codex.go
-@@ -6,7 +6,6 @@ package setup
- import (
- 	"fmt"
- 	"path/filepath"
--	"strings"
- )
- 
- // codexRuntime implements Runtime for Codex, authoring the live-verified
-@@ -85,16 +84,6 @@ func (codexRuntime) Detect(env Environment) bool {
+@@ -86,16 +86,6 @@ func (codexRuntime) Detect(env Environment) bool {
  // reported as a failed row naming this runtime, exactly like any other
  // Plan() error.
  func (codexRuntime) Plan(env Environment, opts Options) (Plan, error) {
