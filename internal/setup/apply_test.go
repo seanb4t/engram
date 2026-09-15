@@ -323,18 +323,26 @@ func TestDriftReportedLegibly(t *testing.T) {
 func TestPreviewReportsRegisteredState(t *testing.T) {
 	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
 
-	t.Run("probe-zero-exit-reports-registered", func(t *testing.T) {
+	// Phase 4: the old raw-capture assertion this subtest pinned no
+	// longer holds — Registered is now REBUILT from the parsed-and-
+	// redacted observation (D-03), never the raw probe bytes. A codex
+	// fixture whose auth is oauth-shaped (no bearer configured) against
+	// opts.Auth == "oauth" converges on every facet, so Outcome is
+	// already-correct.
+	t.Run("probe-zero-exit-reports-normalized-registration", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer, `"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":null`, 1)
 		var calls []runCall
 		env := fakeEnvWithRun(scriptedRun(&calls,
-			scriptedResult{Result: RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}},
+			scriptedResult{Result: RunResult{Stdout: stdout}},
 		), "codex")
 
 		res := Preview(context.Background(), env, Codex, opts)
-		if res.Outcome != OutcomeWouldWrite {
-			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+		if res.Outcome != OutcomeAlreadyCorrect {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeAlreadyCorrect)
 		}
-		if res.Registered == "" {
-			t.Error("Registered is empty, want the bounded probe output (D-10)")
+		wantRegistered := "url=https://engram.example.com/mcp auth=none headers=none"
+		if res.Registered != wantRegistered {
+			t.Errorf("Registered = %q, want %q (D-03: rebuilt from the parsed-and-redacted observation, never the raw probe capture)", res.Registered, wantRegistered)
 		}
 		if len(calls) != 1 {
 			t.Fatalf("Run called %d times, want exactly 1 (the probe, never the write): %+v", len(calls), calls)
@@ -351,6 +359,9 @@ func TestPreviewReportsRegisteredState(t *testing.T) {
 		if res.Outcome != OutcomeWouldWrite {
 			t.Fatalf("Outcome = %q, want %q — a probe's nonzero exit must never change a preview's classification (D-10)", res.Outcome, OutcomeWouldWrite)
 		}
+		if res.Facets != "" {
+			t.Errorf("Facets = %q, want empty", res.Facets)
+		}
 	})
 
 	t.Run("probe-seam-error-still-would-write", func(t *testing.T) {
@@ -365,6 +376,9 @@ func TestPreviewReportsRegisteredState(t *testing.T) {
 		}
 		if res.Registered != "" {
 			t.Errorf("Registered = %q, want empty when the probe never produced a valid read", res.Registered)
+		}
+		if res.Facets != "" {
+			t.Errorf("Facets = %q, want empty", res.Facets)
 		}
 	})
 

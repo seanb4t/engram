@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
+package setup
+
 // This file declares Phase 4's D-01 predicate and D-12 facet vocabulary
 // ONCE, as pure functions over a shared OUTPUT type (Observation) —
 // mirroring aggregate.go's single-declared-precedence-table discipline.
@@ -9,7 +11,6 @@
 // invariant, extended to probe OUTPUT by this phase, 04-RESEARCH.md
 // Pitfall 3) — this file, and the executor that consults it (apply.go),
 // stay content-blind to any one runtime's shape.
-package setup
 
 import (
 	"net/url"

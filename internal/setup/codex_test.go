@@ -5,6 +5,7 @@ package setup
 
 import (
 	"errors"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -231,6 +232,179 @@ func TestObserveCodexRegistration(t *testing.T) {
 			t.Errorf("WholeEntryNote = %q, want %q", obs.WholeEntryNote, codexWholeEntryNote)
 		}
 	})
+
+	bearerOpts := Options{URL: "https://engram.example.com/mcp", Auth: "bearer"}
+
+	t.Run("already-correct-bearer", func(t *testing.T) {
+		obs, ok := dr.Observe(codexGetEngramBearer, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if obs.Auth != AuthBearer {
+			t.Errorf("Auth = %q, want %q", obs.Auth, AuthBearer)
+		}
+		if len(obs.Headers) != 0 {
+			t.Errorf("Headers = %+v, want none", obs.Headers)
+		}
+		if len(obs.Unrecognized) != 0 {
+			t.Errorf("Unrecognized = %q, want none", obs.Unrecognized)
+		}
+	})
+
+	t.Run("oauth-shape", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer, `"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":null`, 1)
+		obs, ok := dr.Observe(stdout, Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if obs.Auth != AuthNone {
+			t.Errorf("Auth = %q, want %q", obs.Auth, AuthNone)
+		}
+	})
+
+	observeForeignBearer := func(t *testing.T, value string) Observation {
+		t.Helper()
+		stdout := strings.Replace(codexGetEngramBearer, `"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":"`+value+`"`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if obs.Auth != AuthForeign {
+			t.Errorf("Auth = %q, want %q", obs.Auth, AuthForeign)
+		}
+		return obs
+	}
+
+	t.Run("foreign-bearer-literal", func(t *testing.T) {
+		observeForeignBearer(t, "SENTINEL-VALUE-DO-NOT-LEAK")
+	})
+
+	t.Run("foreign-bearer-reference", func(t *testing.T) {
+		literalObs := observeForeignBearer(t, "SENTINEL-VALUE-DO-NOT-LEAK")
+		referenceObs := observeForeignBearer(t, "OTHER_TOKEN")
+		if !reflect.DeepEqual(literalObs, referenceObs) {
+			t.Errorf("literal-shaped Observation %+v != reference-shaped Observation %+v (D-02: no shape branching)", literalObs, referenceObs)
+		}
+	})
+
+	t.Run("unknown-transport-key", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer, `"transport":{"type"`, `"transport":{"proxy":"http://p","type"`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if len(obs.Unrecognized) != 1 || obs.Unrecognized[0] != "transport.proxy" {
+			t.Errorf("Unrecognized = %q, want [\"transport.proxy\"]", obs.Unrecognized)
+		}
+	})
+
+	t.Run("enabled-false", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer, `"enabled":true`, `"enabled":false`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if len(obs.Unrecognized) != 1 || obs.Unrecognized[0] != "enabled" {
+			t.Errorf("Unrecognized = %q, want [\"enabled\"]", obs.Unrecognized)
+		}
+	})
+
+	t.Run("transport-type-sse", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer, `"type":"streamable_http"`, `"type":"sse"`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if len(obs.Unrecognized) != 1 || obs.Unrecognized[0] != "transport.type" {
+			t.Errorf("Unrecognized = %q, want [\"transport.type\"]", obs.Unrecognized)
+		}
+	})
+
+	t.Run("disabled-reason-set", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer, `"disabled_reason":null`, `"disabled_reason":"x"`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if len(obs.Unrecognized) != 1 || obs.Unrecognized[0] != "disabled_reason" {
+			t.Errorf("Unrecognized = %q, want [\"disabled_reason\"]", obs.Unrecognized)
+		}
+	})
+
+	t.Run("startup-timeout-set", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer, `"startup_timeout_sec":null`, `"startup_timeout_sec":30`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if len(obs.Unrecognized) != 1 || obs.Unrecognized[0] != "startup_timeout_sec" {
+			t.Errorf("Unrecognized = %q, want [\"startup_timeout_sec\"]", obs.Unrecognized)
+		}
+	})
+
+	t.Run("two-unknown-keys-sorted", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer, `"name":"engram"`, `"name":"engram","zeta":1,"alpha":1`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		want := []string{"alpha", "zeta"}
+		if !reflect.DeepEqual(obs.Unrecognized, want) {
+			t.Errorf("Unrecognized = %q, want %q", obs.Unrecognized, want)
+		}
+	})
+
+	t.Run("url-userinfo-redacted", func(t *testing.T) {
+		const rawURL = "https://user:hunter2@gw.example/mcp"
+		stdout := strings.Replace(codexGetEngramBearer, `"url":"https://engram.example.com/mcp"`, `"url":"`+rawURL+`"`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if obs.URL != rawURL {
+			t.Errorf("URL = %q, want the raw observed URL %q (byte comparison basis)", obs.URL, rawURL)
+		}
+		const wantDisplay = "https://user:xxxxx@gw.example/mcp"
+		if got := displayURL(obs.URL); got != wantDisplay {
+			t.Errorf("displayURL(obs.URL) = %q, want %q", got, wantDisplay)
+		}
+	})
+
+	t.Run("http-headers-assumed-shape", func(t *testing.T) {
+		// ASSUMED SHAPE (A3) — 04-RESEARCH.md Assumptions Log: superseded
+		// by the observed-shape fixture plan 04-05 adds from
+		// 04-OBSERVATIONS.md.
+		stdout := strings.Replace(codexGetEngramBearer, `"http_headers":null`, `"http_headers":{"x-litellm-api-key":"SENTINEL-HDR-VALUE-DO-NOT-LEAK"}`, 1)
+		obs, ok := dr.Observe(stdout, bearerOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		want := []ObservedHeader{{Name: "x-litellm-api-key", State: HeaderUnplanned}}
+		if !reflect.DeepEqual(obs.Headers, want) {
+			t.Errorf("Headers = %+v, want %+v", obs.Headers, want)
+		}
+		if strings.Contains(fmt.Sprintf("%+v", obs), "SENTINEL-HDR-VALUE") {
+			t.Errorf("Observation carries the sentinel header value: %+v", obs)
+		}
+	})
+
+	for _, tc := range []struct {
+		name   string
+		stdout string
+	}{
+		{"not-json", "not json"},
+		{"empty", ""},
+		{"whitespace", "  \n"},
+		{"json-null", "null"},
+		{"wrong-name", strings.Replace(codexGetEngramBearer, `"name":"engram"`, `"name":"other"`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := dr.Observe(tc.stdout, bearerOpts)
+			if ok {
+				t.Errorf("Observe(%q, ...): ok = true, want false", tc.stdout)
+			}
+		})
+	}
 }
 
 func TestCodexClientID(t *testing.T) {
