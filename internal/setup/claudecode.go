@@ -4,8 +4,10 @@
 package setup
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // claudeCodeRuntime implements Runtime for Claude Code, authoring the
@@ -201,5 +203,121 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 		}, nil
 	default:
 		return Plan{}, fmt.Errorf("claude-code: auth mode %q: %w", opts.Auth, ErrAuthModeUnsupported)
+	}
+}
+
+// claudePluginListProbe is claude-code's D-10 capability-and-state probe:
+// one JSON read that answers both "does this CLI have a working plugin
+// subsystem" and "is engram installed, and at what version" (plugin.go's
+// executePlugin). claudePluginMarketplaceProbe is the D-11 marketplace
+// probe: whether a marketplace named "engram" is already registered, and
+// under what source.
+var claudePluginListProbe = []string{"claude", "plugin", "list", "--json"}
+var claudePluginMarketplaceProbe = []string{"claude", "plugin", "marketplace", "list"}
+
+// claudePluginMarketplaceAddAction is the ONLY marketplace source this
+// package ever authors for claude-code (D-04): engram's own GitHub
+// repository, default branch, unpinned, at user scope (D-06). Authored
+// only when PluginActions observes no marketplace already named "engram"
+// (D-05) — a marketplace that already exists under that name, whatever it
+// points at, is used as-is and never re-pointed.
+var claudePluginMarketplaceAddAction = Action{
+	Args:        []string{"claude", "plugin", "marketplace", "add", "seanb4t/engram", "--scope", "user"},
+	Description: "add engram's own plugin marketplace (GitHub owner/repo form, default branch, unpinned, user scope)",
+}
+
+// claudePluginInstallAction installs the engram plugin (skills, hooks,
+// /engram-setup) from engram's own marketplace. -y is REQUIRED for a
+// non-interactive/non-TTY invocation (03-RESEARCH.md Pitfall 1, live
+// `claude plugin install --help`) — omitting it hangs or fails every
+// scripted --apply. --scope user is D-06's explicit pin, matching `mcp
+// add --scope user`; no engram-side scope flag exists for this action.
+var claudePluginInstallAction = Action{
+	Args:        []string{"claude", "plugin", "install", "engram@engram", "--scope", "user", "--json", "-y"},
+	Description: "install the engram plugin (skills, hooks, /engram-setup) from engram's own marketplace",
+}
+
+// claudePluginUpdateAction updates an outdated engram plugin to the
+// marketplace's current version. Same -y and user-scope discipline as
+// claudePluginInstallAction above.
+var claudePluginUpdateAction = Action{
+	Args:        []string{"claude", "plugin", "update", "engram@engram", "--scope", "user", "--json", "-y"},
+	Description: "update the engram plugin to the marketplace's current version",
+}
+
+// PluginProbes implements PluginRuntime.
+func (claudeCodeRuntime) PluginProbes() (list, marketplace []string) {
+	return claudePluginListProbe, claudePluginMarketplaceProbe
+}
+
+// claudePluginListEntry is the tolerant, minimal shape of one entry in
+// `claude plugin list --json`'s array — extra fields such as
+// "mcpServers" (present on some entries, absent on others,
+// 03-RESEARCH.md Code Examples) are ignored.
+type claudePluginListEntry struct {
+	ID      string `json:"id"`
+	Version string `json:"version"`
+}
+
+// ParsePluginList implements PluginRuntime. A non-JSON-array stdout
+// (empty, an object, or garbage) returns the unmarshal error — D-10's
+// no-working-plugin-CLI signal. A parsed array with no engram@engram
+// entry returns installed == false, matched by id, never by position (a
+// decoy entry may sort first).
+func (claudeCodeRuntime) ParsePluginList(stdout string) (version string, installed bool, err error) {
+	var entries []claudePluginListEntry
+	if err := json.Unmarshal([]byte(stdout), &entries); err != nil {
+		return "", false, err
+	}
+	for _, entry := range entries {
+		if entry.ID == "engram@engram" {
+			return entry.Version, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// ParseMarketplaceList implements PluginRuntime: a COARSE exact-name
+// match over `claude plugin marketplace list`'s human-formatted output —
+// two adjacent lines matched by position, never a table model (D-11,
+// 03-RESEARCH.md Pitfall 5). A line naming the marketplace "engram" is
+// found by stripping the leading marker glyph; the source is the first
+// following non-empty line, with its own "Source:" prefix removed.
+func (claudeCodeRuntime) ParseMarketplaceList(stdout string) (present bool, source string) {
+	lines := strings.Split(stdout, "\n")
+	for i, line := range lines {
+		name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "❯"))
+		if name != "engram" {
+			continue
+		}
+		for _, follow := range lines[i+1:] {
+			trimmed := strings.TrimSpace(follow)
+			if trimmed == "" {
+				continue
+			}
+			trimmed = strings.TrimPrefix(trimmed, "Source:")
+			return true, strings.TrimSpace(trimmed)
+		}
+		return true, ""
+	}
+	return false, ""
+}
+
+// PluginActions implements PluginRuntime: PluginAbsent authors a
+// marketplace-add (only when the marketplace probe found none) then an
+// install; PluginOutdated authors an update; PluginCurrent and
+// PluginUnavailable author nothing (D-01, D-04, D-05, D-06, D-10, D-11).
+func (claudeCodeRuntime) PluginActions(state PluginState, marketplacePresent bool) []Action {
+	switch state {
+	case PluginAbsent:
+		var actions []Action
+		if !marketplacePresent {
+			actions = append(actions, claudePluginMarketplaceAddAction)
+		}
+		return append(actions, claudePluginInstallAction)
+	case PluginOutdated:
+		return []Action{claudePluginUpdateAction}
+	default:
+		return nil
 	}
 }
