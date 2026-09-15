@@ -192,6 +192,47 @@ func TestCodexDeclinesHeaders(t *testing.T) {
 	})
 }
 
+// TestObserveCodexRegistration drives codexRuntime.Observe directly on
+// scripted probe-output strings — no subprocess, no Environment. Task 1
+// authors the scaffold and its first subtest; Task 3 fills the full
+// three-state table.
+func TestObserveCodexRegistration(t *testing.T) {
+	dr, ok := Codex.(DriftRuntime)
+	if !ok {
+		t.Fatal("Codex does not implement DriftRuntime")
+	}
+
+	t.Run("preserved-unrecognized-field", func(t *testing.T) {
+		stdout := strings.Replace(codexGetEngramBearer,
+			`"enabled_tools"`,
+			`"oauth_client_id":"SENTINEL-LITERAL-9f3e2a-DO-NOT-LEAK","enabled_tools"`, 1)
+		opts := Options{URL: "https://engram.example.com/mcp", Auth: "bearer"}
+
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if len(obs.Unrecognized) != 1 || obs.Unrecognized[0] != "oauth_client_id" {
+			t.Errorf("Unrecognized = %q, want [\"oauth_client_id\"]", obs.Unrecognized)
+		}
+		if obs.Auth != AuthBearer {
+			t.Errorf("Auth = %q, want %q", obs.Auth, AuthBearer)
+		}
+		if obs.URL != "https://engram.example.com/mcp" {
+			t.Errorf("URL = %q, want %q", obs.URL, "https://engram.example.com/mcp")
+		}
+		if len(obs.Headers) != 0 {
+			t.Errorf("Headers = %+v, want none", obs.Headers)
+		}
+		if obs.BearerForm != "ENGRAM_TOKEN" {
+			t.Errorf("BearerForm = %q, want %q", obs.BearerForm, "ENGRAM_TOKEN")
+		}
+		if obs.WholeEntryNote != codexWholeEntryNote {
+			t.Errorf("WholeEntryNote = %q, want %q", obs.WholeEntryNote, codexWholeEntryNote)
+		}
+	})
+}
+
 func TestCodexClientID(t *testing.T) {
 	const url = "https://engram.example.com/mcp"
 	for _, id := range []string{"test-client", "  client 'quoted'; $(echo nope) &  "} {

@@ -5,9 +5,13 @@ package setup
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
+	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // codexRuntime implements Runtime for Codex, authoring the live-verified
@@ -132,7 +136,7 @@ func (codexRuntime) Plan(env Environment, opts Options) (Plan, error) {
 		return Plan{
 			Runtime: "codex",
 			Actions: []Action{{
-				Args:        []string{"codex", "mcp", "add", "engram", "--url", opts.URL, "--bearer-token-env-var", "ENGRAM_TOKEN"},
+				Args:        []string{"codex", "mcp", "add", "engram", "--url", opts.URL, "--bearer-token-env-var", codexBearerForm},
 				Description: "register engram as an MCP server (bearer token via ENGRAM_TOKEN)",
 			}},
 			Probe:  probe,
@@ -275,4 +279,259 @@ func (codexRuntime) PluginActions(state PluginState, marketplacePresent bool) []
 	default:
 		return nil
 	}
+}
+
+// codexBearerForm is the ONE bearer-token environment-variable name
+// codex's Plan ever authors (its own --bearer-token-env-var arm above
+// references this same constant, so the two cannot drift) and the value
+// Observe compares an observed bearer_token_env_var against to classify
+// AuthBearer vs. AuthForeign (drift.go).
+const codexBearerForm = "ENGRAM_TOKEN"
+
+// codexWholeEntryNote is REQ-drift-preserved-outcome's fixed, composed-
+// once sentence naming codex's whole-entry semantics (03-RESEARCH.md
+// Pitfall 10 / 04-RESEARCH.md Pitfall 5): `codex mcp add` has no partial-
+// merge form — it either overwrites the whole entry or leaves it
+// untouched — so a preserved row's Reason must state that risk plainly,
+// not merely name the differing facet.
+const codexWholeEntryNote = "codex mcp add replaces the whole entry: --apply would overwrite it or leave it untouched, never merge into it"
+
+// codexRegistrationTransport mirrors the "transport" object of
+// `codex mcp get <name> --json`'s live-verified shape (04-RESEARCH.md
+// Code Examples, codex-cli 0.153.4). BearerTokenEnvVar is a pointer so a
+// JSON null (no bearer configured) is distinguishable from an empty
+// string; HTTPHeaders/EnvHTTPHeaders are ASSUMPTION A3 (04-RESEARCH.md) —
+// inferred from field naming, not yet observed populated — and
+// HTTPHeadersHelper/EnabledTools/DisabledTools/StartupTimeoutSec/
+// ToolTimeoutSec on the sibling doc struct are json.RawMessage so their
+// null-ness can be tested (isNullRaw) without needing to know their real
+// shape, which D-11's totality parse does not require.
+type codexRegistrationTransport struct {
+	Type              string            `json:"type"`
+	URL               string            `json:"url"`
+	BearerTokenEnvVar *string           `json:"bearer_token_env_var"`
+	HTTPHeaders       map[string]string `json:"http_headers"`
+	EnvHTTPHeaders    map[string]string `json:"env_http_headers"`
+	HTTPHeadersHelper json.RawMessage   `json:"http_headers_helper"`
+}
+
+// codexRegistrationDoc mirrors the top-level object of
+// `codex mcp get <name> --json`'s live-verified shape (04-RESEARCH.md
+// Code Examples). Enabled is a pointer so JSON false is distinguishable
+// from an absent key; every other field engram never sets is
+// json.RawMessage purely to test null-ness (isNullRaw), never to parse
+// its content — a value there is, by definition, something D-11's
+// totality parse must report as unrecognized, not decode.
+type codexRegistrationDoc struct {
+	Name              string                     `json:"name"`
+	Enabled           *bool                      `json:"enabled"`
+	DisabledReason    json.RawMessage            `json:"disabled_reason"`
+	Transport         codexRegistrationTransport `json:"transport"`
+	EnabledTools      json.RawMessage            `json:"enabled_tools"`
+	DisabledTools     json.RawMessage            `json:"disabled_tools"`
+	StartupTimeoutSec json.RawMessage            `json:"startup_timeout_sec"`
+	ToolTimeoutSec    json.RawMessage            `json:"tool_timeout_sec"`
+}
+
+// codexKnownTopKeys and codexKnownTransportKeys list every JSON key
+// codexRegistrationDoc/codexRegistrationTransport's own tags declare —
+// the key-set diff in Observe below consults these SAME lists (never a
+// second, independently hand-typed list) to name an unrecognized
+// top-level or transport-nested key (D-11).
+var codexKnownTopKeys = []string{
+	"name", "enabled", "disabled_reason", "transport",
+	"enabled_tools", "disabled_tools", "startup_timeout_sec", "tool_timeout_sec",
+}
+
+var codexKnownTransportKeys = []string{
+	"type", "url", "bearer_token_env_var", "http_headers", "env_http_headers", "http_headers_helper",
+}
+
+// isNullRaw reports whether raw is JSON's absence or its null literal —
+// the ONLY test D-11's field rules apply to codexRegistrationDoc's
+// json.RawMessage fields, never a parse of their actual content.
+func isNullRaw(raw json.RawMessage) bool {
+	return len(raw) == 0 || string(raw) == "null"
+}
+
+// unrecognizedLabelBound is the byte bound Observe applies to every
+// unrecognized label before it is quoted for rendering — the same
+// discipline apply.go's boundCapture applies to a full third-party
+// capture, scaled down for a short field-name label.
+const unrecognizedLabelBound = 40
+
+// boundLabel truncates s to at most unrecognizedLabelBound bytes,
+// scanning back to the last valid rune boundary so the result is always
+// valid UTF-8 — mirroring apply.go's boundCapture, without its
+// truncation marker (a label is a field name or key, not prose a
+// human needs told was cut).
+func boundLabel(s string) string {
+	if len(s) <= unrecognizedLabelBound {
+		return s
+	}
+	limit := unrecognizedLabelBound
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
+}
+
+// Observe implements DriftRuntime for codex: a totality parse of
+// `codex mcp get <name> --json`'s combined stdout+stderr (04-CONTEXT.md
+// D-11), gated by json.Decoder.DisallowUnknownFields on
+// codexRegistrationDoc — the natural stdlib fit confirmed against
+// 04-RESEARCH.md's Code Examples. AUTHORED HERE: codex's own JSON shape
+// is parsed only in this file, never through a shared cross-runtime
+// parser (04-RESEARCH.md Pitfall 3).
+//
+// ok is false when probeOutput cannot be framed as a registration at
+// all: empty/whitespace-only body, a JSON syntax error, an unexpected-EOF
+// body, or a decoded document whose Name is not "engram" (D-09). Any
+// OTHER shape defect — an unrecognized top-level or transport-nested key,
+// a non-null field this runtime never sets, a transport type other than
+// "streamable_http", enabled other than true, or a strict-decode error
+// the tolerant pass and the key-set diff both missed — is reported on
+// Observation.Unrecognized instead (D-11): cautious, never blind.
+//
+// opts is consulted only to build the planned side of the header
+// comparison (joinHeaders) — codex declines every custom header up front
+// in Plan (D-09/D-10 of 02-CONTEXT.md), so opts.Headers is always empty
+// on every reachable call; this method still builds the planned side
+// uniformly, never special-cased on that emptiness.
+func (codexRuntime) Observe(probeOutput string, opts Options) (Observation, bool) {
+	if strings.TrimSpace(probeOutput) == "" {
+		return Observation{}, false
+	}
+
+	var doc codexRegistrationDoc
+	var unrecognized []string
+	if err := json.Unmarshal([]byte(probeOutput), &doc); err != nil {
+		var syntaxErr *json.SyntaxError
+		var typeErr *json.UnmarshalTypeError
+		switch {
+		case errors.As(err, &syntaxErr):
+			return Observation{}, false
+		case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+			return Observation{}, false
+		case errors.As(err, &typeErr):
+			if typeErr.Field != "" {
+				unrecognized = append(unrecognized, typeErr.Field)
+			}
+		default:
+			return Observation{}, false
+		}
+	}
+	if doc.Name != "engram" {
+		return Observation{}, false
+	}
+
+	// Key-set diff (c): every top-level and transport-nested key absent
+	// from the known lists is unrecognized, sorted for a deterministic
+	// rendering order.
+	var rawTop map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(probeOutput), &rawTop); err == nil {
+		var keyDiff []string
+		for k := range rawTop {
+			if !slices.Contains(codexKnownTopKeys, k) {
+				keyDiff = append(keyDiff, k)
+			}
+		}
+		if transportRaw, ok := rawTop["transport"]; ok {
+			var rawTransport map[string]json.RawMessage
+			if err := json.Unmarshal(transportRaw, &rawTransport); err == nil {
+				for k := range rawTransport {
+					if !slices.Contains(codexKnownTransportKeys, k) {
+						keyDiff = append(keyDiff, "transport."+k)
+					}
+				}
+			}
+		}
+		slices.Sort(keyDiff)
+		unrecognized = append(unrecognized, keyDiff...)
+	}
+
+	// Totality gate (d): a strict, DisallowUnknownFields decode is the
+	// structural safety net for whatever the tolerant pass and the
+	// key-set diff above both missed (e.g. a level neither inspects). It
+	// contributes the fixed token "unrecognized field" ONLY when nothing
+	// else already found something — never a second, redundant entry.
+	dec := json.NewDecoder(strings.NewReader(probeOutput))
+	dec.DisallowUnknownFields()
+	var strictDoc codexRegistrationDoc
+	if err := dec.Decode(&strictDoc); err != nil && len(unrecognized) == 0 {
+		unrecognized = append(unrecognized, "unrecognized field")
+	}
+
+	// Field rules (e): every non-null field engram never sets, plus
+	// enabled != true and a transport type other than streamable_http,
+	// is unrecognized content (D-11).
+	if doc.Enabled == nil || !*doc.Enabled {
+		unrecognized = append(unrecognized, "enabled")
+	}
+	if !isNullRaw(doc.DisabledReason) {
+		unrecognized = append(unrecognized, "disabled_reason")
+	}
+	if doc.Transport.Type != "streamable_http" {
+		unrecognized = append(unrecognized, "transport.type")
+	}
+	if !isNullRaw(doc.Transport.HTTPHeadersHelper) {
+		unrecognized = append(unrecognized, "transport.http_headers_helper")
+	}
+	if !isNullRaw(doc.EnabledTools) {
+		unrecognized = append(unrecognized, "enabled_tools")
+	}
+	if !isNullRaw(doc.DisabledTools) {
+		unrecognized = append(unrecognized, "disabled_tools")
+	}
+	if !isNullRaw(doc.StartupTimeoutSec) {
+		unrecognized = append(unrecognized, "startup_timeout_sec")
+	}
+	if !isNullRaw(doc.ToolTimeoutSec) {
+		unrecognized = append(unrecognized, "tool_timeout_sec")
+	}
+
+	// Auth (f): the observed value is compared for equality ONLY, inside
+	// this call frame — it is never assigned to Observation or any field
+	// that survives past this point (D-02).
+	auth := AuthNone
+	if v := doc.Transport.BearerTokenEnvVar; v != nil {
+		if *v == codexBearerForm {
+			auth = AuthBearer
+		} else {
+			auth = AuthForeign
+		}
+	}
+
+	// Headers (g): codex never authors an extra header (D-09/D-10 of
+	// 02-CONTEXT.md gates opts.Headers to always-empty on every
+	// reachable call), so planned is built uniformly and is empty in
+	// practice — never special-cased on that emptiness.
+	var observedHeaders []rawHeader
+	for name, value := range doc.Transport.HTTPHeaders {
+		observedHeaders = append(observedHeaders, rawHeader{Name: name, Value: value})
+	}
+	for name, value := range doc.Transport.EnvHTTPHeaders {
+		observedHeaders = append(observedHeaders, rawHeader{Name: name, Value: value})
+	}
+	var planned []plannedHeader
+	for _, h := range sortedHeaders(opts.Headers) {
+		planned = append(planned, plannedHeader{Name: h.Name, Value: h.EnvVar})
+	}
+	headers := joinHeaders(observedHeaders, planned)
+
+	// Unrecognized entries (h): bounded to 40 bytes at a rune boundary,
+	// then rendered through the SAME paste-safety quoter every other
+	// observed name/label crosses this boundary through.
+	for i, u := range unrecognized {
+		unrecognized[i] = quoteWord(boundLabel(u))
+	}
+
+	return Observation{
+		URL:            doc.Transport.URL,
+		Auth:           auth,
+		BearerForm:     codexBearerForm,
+		Headers:        headers,
+		Unrecognized:   unrecognized,
+		WholeEntryNote: codexWholeEntryNote,
+	}, true
 }

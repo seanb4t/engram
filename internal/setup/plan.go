@@ -22,13 +22,13 @@ import (
 )
 
 // Outcome classifies the result of planning (or, once Apply lands,
-// actually performing) one runtime's registration. It is a five-value
+// actually performing) one runtime's registration. It is a six-value
 // enum, string-backed for readable JSON/text rendering. OutcomeNotPresent
 // is a REAL, explicit value — never modeled as an absence or the zero
 // value (D-07): a runtime that is simply not installed is an expected
 // outcome, never a failure. A zero-valued Outcome ("") is a programming
 // error, never meaningful data — every code path that produces a Result
-// must set one of the five constants below.
+// must set one of the six constants below.
 type Outcome string
 
 const (
@@ -40,9 +40,15 @@ const (
 	// invocation, but --apply was not requested: a preview result.
 	OutcomeWouldWrite Outcome = "would-write"
 	// OutcomeAlreadyCorrect means the runtime is present and its existing
-	// registration already matches what Plan would produce. Reserved for
-	// Phase 3's Apply, which alone can observe existing state; Phase 2
-	// never produces this value.
+	// registration already matches what Plan would produce. Phase 3's
+	// Apply observes this via a two-read byte-compare (D-08); as of
+	// Phase 4, Preview observes it too — via a single read compared
+	// against the already-known Options (drift.go's Compare), for any
+	// runtime implementing DriftRuntime. A single read compared against
+	// ALREADY-KNOWN intent is honest evidence for convergence; a single
+	// read compared against nothing (Preview's old basis) was not — this
+	// is the distinction 04-RESEARCH.md Pitfall 1 warns a future reader
+	// not to collapse back together.
 	OutcomeAlreadyCorrect Outcome = "already-correct"
 	// OutcomeWrote means --apply actually performed the registration.
 	// Reserved for Phase 3's Apply; Phase 2's Apply is stubbed and never
@@ -52,6 +58,19 @@ const (
 	// failed — e.g. Plan returned ErrAuthModeUnsupported for the
 	// requested (runtime, auth mode) pair.
 	OutcomeFailed Outcome = "failed"
+	// OutcomePreserved means Preview's single-read comparison
+	// (drift.go's Compare) found the observed registration carries a
+	// facet the current Options do not account for — an extra header
+	// setup was not asked to write, an unrecognized field the runtime's
+	// own read verb echoed back (D-11) — so a write would destroy
+	// something setup cannot re-create. Setup declines, and the row
+	// names what it is preserving (D-01). It is a NON-failed attempt in
+	// Classify (D-04): an all-preserved run exits 0, and preserved beside
+	// a genuine failed row exits 8. Classify's default arm would
+	// otherwise launder an unplaced Outcome into a failure, which is why
+	// this placement is made explicit rather than left to fall out of
+	// that default.
+	OutcomePreserved Outcome = "preserved"
 )
 
 // SkillFormat classifies a SkillTarget's write shape. It mirrors
@@ -199,15 +218,39 @@ func (p Plan) Display() string {
 // builds Reason ever branches on stderr's CONTENT to decide an Outcome
 // (the typed-cause-never-message-text discipline cmd/engram/operror.go's
 // classifyOperatorErr already follows) — stderr is carried here as DATA,
-// never string-matched.
+// never string-matched. Reason also carries a preserved row's explanation
+// (Phase 4, D-01, D-12): drift.go Compare's Preserved causes, "; "-joined,
+// followed by the observing runtime's own fixed WholeEntryNote sentence
+// (Codex's whole-entry overwrite-or-untouched semantics,
+// REQ-drift-preserved-outcome) — composed the same fixed-order-never-
+// string-matched way as a failure Reason.
 //
 // Binary (D-04) is the LookPath-resolved absolute path Apply() actually
 // executed — recorded even though Args[0] (and therefore Command) stays
 // the bare runtime name, so a PATH-spoofing incident leaves a trace in the
-// report. Registered (D-10) is the bounded, informational capture of
-// Plan.Probe's output; TokenFile (D-07) is the "token_file=ignored"-style
-// marker for a native runtime that received --token-file; Config (D-15) is
-// the generic pseudo-runtime's minified portable JSON.
+// report. Registered is Plan.Probe's observed registration state: in the
+// preview (!mutate) lane, for a runtime implementing DriftRuntime, it is
+// REBUILT by drift.go's renderObservation from the parsed-and-redacted
+// Observation (D-03) — raw probe text never survives the parse, so a
+// header value the probe echoed back can never reach this field. For a
+// runtime with no scanner, or when the probe's output could not be framed
+// as a registration at all, it is left empty and Drift carries a
+// "not compared" note instead (D-09, D-10). The apply (mutate) lane's
+// post-write rendering is UNCHANGED this phase — it still bounds and
+// quotes the raw two-read capture via displayCapture; Phase 5 rewires it
+// once the write path itself consults this classification. TokenFile
+// (D-07) is the "token_file=ignored"-style marker for a native runtime
+// that received --token-file; Config (D-15) is the generic pseudo-
+// runtime's minified portable JSON.
+//
+// Facets (Phase 4, D-12) is the differing Facet set drift.go's Compare
+// found, comma-joined in facetOrder — empty when Outcome is
+// OutcomeAlreadyCorrect, and empty when Registered could not be compared
+// at all (D-09). Drift is the corresponding "; "-joined detail-line text
+// from Compare, or drift.go's notComparedNote when comparison was not
+// possible. Both are populated only in the preview lane, for a runtime
+// implementing DriftRuntime; the apply lane leaves them at their zero
+// value this phase.
 //
 // Notes (03-RESEARCH.md Open Question 1) carries a one-line record per
 // TOLERANT action in Plan.Actions — whether that action's own exit was
@@ -224,9 +267,9 @@ func (p Plan) Display() string {
 // Notes without this package (apply.go) ever knowing anything about
 // claude-code by name.
 //
-// Every one of Binary/Registered/TokenFile/Config/Notes is a plain
-// string — never json.RawMessage, a map, or a slice — so it can never
-// bypass sanitizeViewValue's scalar-only sanitizing branch
+// Every one of Binary/Registered/TokenFile/Config/Notes/Facets/Drift is a
+// plain string — never json.RawMessage, a map, or a slice — so it can
+// never bypass sanitizeViewValue's scalar-only sanitizing branch
 // (cmd/engram/operator_view.go).
 //
 // Skills is the single NON-RENDERED field on this struct — its json tag
@@ -248,6 +291,8 @@ type Result struct {
 	TokenFile  string      `json:"token_file,omitempty"`
 	Config     string      `json:"config,omitempty"`
 	Notes      string      `json:"notes,omitempty"`
+	Facets     string      `json:"facets,omitempty"`
+	Drift      string      `json:"drift,omitempty"`
 	Skills     SkillTarget `json:"-"`
 }
 

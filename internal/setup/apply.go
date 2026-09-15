@@ -93,17 +93,31 @@ func displayCapture(s string) string {
 
 // Preview runs rt's read-only detection and planning against env and opts,
 // then — for a present runtime with a Plan.Probe wired — runs that probe
-// once and reports its bounded output on Result.Registered (D-10): the
-// operator sees present state next to intended state before anything is
-// written. The classified Outcome always stays OutcomeWouldWrite: a single
-// probe read has no honest basis for classifying already-correct, because
-// D-08's byte-compare needs a WRITE between two reads. No probe result of
-// ANY kind — zero exit, nonzero exit, empty output, or a seam error (start
-// failure/timeout) — ever moves Outcome away from OutcomeWouldWrite or
-// produces a nonzero process exit code; only a usage/configuration error
-// does that. This re-pins T-02-08's exit-code property on behavioral
-// grounds now that its original structural argument ("setupPreview starts
-// no process") no longer holds — see
+// once and compares its output against opts (Phase 4, D-01): the operator
+// sees present state next to intended state before anything is written.
+//
+// A single read is dishonest evidence for "did this change between two
+// points in time" (D-08's basis, which the mutate branch below keeps
+// unchanged) but honest evidence for "does this match what I ALREADY KNOW
+// I would write" (Preview's basis, as of Phase 4) — a distinction this
+// comment states explicitly so a future reader does not "fix" the two
+// bases back together (04-RESEARCH.md Pitfall 1). For a runtime
+// implementing DriftRuntime, drift.go's Compare classifies the observed
+// registration as already-correct, would-write (naming which facet(s)
+// differ), or preserved (an observed facet the current Options do not
+// account for — a write would destroy something setup cannot re-create,
+// D-01) — and Result.Registered is REBUILT from the parsed-and-redacted
+// observation (D-03), never the raw probe capture. A runtime with no
+// scanner (opencode, generic — D-10), a probe seam error, or output the
+// scanner cannot frame as a registration at all resolves to
+// OutcomeWouldWrite with no facets (D-09: ambiguity of every kind never
+// becomes already-correct or preserved) — this is the SAME degradation
+// Preview always performed before Phase 4, now scoped precisely to the
+// cases a real comparison cannot honestly resolve. No probe result of ANY
+// kind ever produces a nonzero process exit code; only a
+// usage/configuration error does that. This re-pins T-02-08's exit-code
+// property on behavioral grounds now that its original structural
+// argument ("setupPreview starts no process") no longer holds — see
 // cmd/engram/setup_test.go's TestSetupPreviewExitsZeroWhenProbeFails.
 func Preview(ctx context.Context, env Environment, rt Runtime, opts Options) Result {
 	return execute(ctx, env, rt, opts, false)
@@ -205,13 +219,20 @@ func toleratedNote(action Action, exitCode int, stderr string) string {
 //     between Detect and the write.
 //  4. Run Plan.Probe (read #1) if this runtime has one wired; keep the
 //     RAW combined captures in local variables, never bounded.
-//  5. mutate == false (Preview): classify OutcomeWouldWrite and return.
-//     When this runtime has a probe wired AND it produced a valid read (no
-//     seam error), the RAW read #1 capture is bounded and rendered onto
-//     Result.Registered (D-10) — a nonzero probe exit is rendered exactly
-//     like a zero exit, since D-11 reports rather than diagnoses. A probe
-//     seam error leaves Registered empty; either way Outcome stays
-//     OutcomeWouldWrite and the process exit code is unaffected.
+//  5. mutate == false (Preview, Phase 4): set Outcome = OutcomeWouldWrite
+//     as the default, then type-assert DriftRuntime exactly once (the
+//     PluginRuntime idiom). No probe wired, no DriftRuntime, a probe seam
+//     error, or an Observe that reports it could not frame the output as
+//     a registration at all (D-09) leaves Outcome at OutcomeWouldWrite
+//     and sets Result.Drift to a "not compared" note that quotes no probe
+//     bytes — never Result.Registered, which stays empty in every one of
+//     those cases. Otherwise drift.go's Compare classifies the observed
+//     registration against opts, and Result.Outcome/Facets/Drift/
+//     Registered/Reason are all populated from that classification —
+//     Registered is REBUILT from the parsed-and-redacted observation
+//     (D-03), never the raw probe capture. Either way the process exit
+//     code is unaffected: no probe result of any kind produces a nonzero
+//     exit (T-02-08).
 //  6. A probe SEAM error (start failure/timeout) under Apply is
 //     OutcomeFailed.
 //  7. Run each Action in order on the resolved binary. A non-Tolerant
@@ -303,14 +324,37 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 	}
 
 	if !mutate {
-		// D-10: no probe result of ANY kind — zero exit, nonzero exit,
-		// empty output, or a seam error — may move Outcome away from
-		// OutcomeWouldWrite. Byte-compare requires a WRITE between two
-		// reads (D-08), so a single read here has no honest basis for
-		// claiming already-correct, whatever it shows.
 		res.Outcome = OutcomeWouldWrite
-		if hasProbe && probe1Err == nil {
-			res.Registered = displayCapture(probe1.Stdout + probe1.Stderr)
+		dr, isDrift := rt.(DriftRuntime)
+		if !hasProbe || !isDrift {
+			// D-10: a runtime with no probe wired, or no drift-capable
+			// scanner (opencode, generic — generic never reaches here at
+			// all, since step 2a above already returned for it), is never
+			// compared. This text is the only Drift note a scanner-less,
+			// probe-wired runtime ever produces.
+			res.Drift = notComparedNote(name, "runtime authors no registration scanner")
+			return res
+		}
+		if probe1Err != nil {
+			// D-09: a probe seam error is unreadable, never preserved or
+			// already-correct.
+			res.Drift = notComparedNote(name, quoteArgs(plan.Probe)+": "+probe1Err.Error())
+			return res
+		}
+		obs, ok := dr.Observe(probe1.Stdout+probe1.Stderr, opts)
+		if !ok {
+			// D-09: the scanner could not frame this output as a
+			// registration at all — NEVER render probe1's raw bytes here.
+			res.Drift = notComparedNote(name, fmt.Sprintf("%s exited %d: output not recognized as a registration", quoteArgs(plan.Probe), probe1.ExitCode))
+			return res
+		}
+		d := Compare(obs, opts)
+		res.Outcome = d.Outcome
+		res.Facets = joinFacets(d.Facets)
+		res.Drift = strings.Join(d.Details, "; ")
+		res.Registered = renderObservation(obs)
+		if d.Outcome == OutcomePreserved {
+			res.Reason = name + ": preserved: " + strings.Join(d.Preserved, "; ") + "; " + obs.WholeEntryNote
 		}
 		return res
 	}
