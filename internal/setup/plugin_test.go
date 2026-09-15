@@ -220,7 +220,8 @@ func runPluginCase(t *testing.T, rt Runtime, binary string, c pluginCase) {
 	if c.wantApplyReason != "" && applyRes.Reason != c.wantApplyReason {
 		t.Errorf("apply Reason = %q, want %q", applyRes.Reason, c.wantApplyReason)
 	}
-	wantApplyCalls := [][]string{append([]string(nil), list[1:]...), append([]string(nil), marketplace[1:]...)}
+	wantApplyCalls := make([][]string, 0, 2+len(c.wantApplyExtraArgs))
+	wantApplyCalls = append(wantApplyCalls, append([]string(nil), list[1:]...), append([]string(nil), marketplace[1:]...))
 	wantApplyCalls = append(wantApplyCalls, c.wantApplyExtraArgs...)
 	if !reflect.DeepEqual(applyCalls, wantApplyCalls) {
 		t.Errorf("apply calls = %v, want %v", applyCalls, wantApplyCalls)

@@ -323,7 +323,7 @@ func parseVersionCore(v string) (major, minor, patch uint64, ok bool) {
 	if err != nil {
 		return 0, 0, 0, false
 	}
-	min, err := strconv.ParseUint(m[2], 10, 32)
+	mnr, err := strconv.ParseUint(m[2], 10, 32)
 	if err != nil {
 		return 0, 0, 0, false
 	}
@@ -331,7 +331,7 @@ func parseVersionCore(v string) (major, minor, patch uint64, ok bool) {
 	if err != nil {
 		return 0, 0, 0, false
 	}
-	return maj, min, pat, true
+	return maj, mnr, pat, true
 }
 
 // compareVersionCore returns a total order over two parsed SemVer cores:
