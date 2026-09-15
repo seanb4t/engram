@@ -381,7 +381,18 @@ Plans:
 4. A result row shows plugin delivery as its own facet in both text and JSON output, alongside registration and skills, so a `wrote` registration next to a `failed` plugin install stays visible.
 5. `skill/engram/.codex-plugin/plugin.json` exists, is release-please-synced like `.claude-plugin/plugin.json` with a drift gate keeping their identity fields equal, and `/engram-setup`'s generated prose reflects the new plugin actions and outcomes in the same change that introduces them, keeping the existing `setupgen` CI drift gate green.
 
-**Plans:** TBD
+**Plans:** 4 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — `internal/setup` plugin lane: `PluginState` (absent/outdated/current/unavailable), the exported `PluginRuntime` optional interface implemented by claude-code and codex in their own files (probes, JSON parse, coarse marketplace parse, authored argv incl. `-y --scope user` for Claude Code, HTTPS Git URL marketplace add + remove-then-add for Codex), a stdlib SemVer-core comparator, and `PluginPreview`/`PluginApply` running one `plugin list --json` probe for capability+state, the `marketplace list` probe, and the decided actions through `runSeam` — probe failure is `unavailable`, never failed (D-01, D-02, D-03, D-04, D-05, D-06, D-10, D-11, D-12; REQ-plugin-capability-detection, REQ-plugin-install-or-update, REQ-plugin-three-way-state)
+- [ ] 03-02-PLAN.md — `internal/skills`: `Environment.Lstat` seam + read-only `DetectPresence` (count of present skills, symlink vs copy, `AGENTS.md` index block via `scanBlock`) — never a write or delete (D-08, D-09; REQ-plugin-skips-skills-copy)
+
+**Wave 2**
+
+- [ ] 03-03-PLAN.md — `cmd/engram/setup.go`: `setupVersion` seam (`resolvedVersion`), seven flat-scalar `plugin*` row fields + `skills_native`, `setupApplyPluginFacet` folding a failed plugin beside a wrote registration to `exitPartial`, `Delivered()` routing that never calls `skills.Install` for a plugin-delivered runtime and reports leftovers instead, D-12 native fallback, plugin-first `--help` paragraph, view fixtures, regenerated help/catalog goldens, `TestSetupGeneratedInvocations` pinning the new probe (D-01, D-05, D-06, D-07, D-08, D-09, D-11, D-12; REQ-plugin-facet-reported, REQ-plugin-skips-skills-copy, REQ-plugin-capability-detection, REQ-plugin-install-or-update, REQ-plugin-three-way-state)
+- [ ] 03-04-PLAN.md — `skill/engram/.codex-plugin/plugin.json` (minimal `$schema`/`name`/`version`/`description`), `release-please-config.json` `$.version` sync entry, `TestPluginManifestIdentityMatches` drift gate, pytest privacy guard; `setupgen.Render(planFn, pluginFn)` appending the `### Claude Code plugin delivery (--apply)` table from claude-code's real `PluginActions`, regenerated `/engram-setup` region in the same commit with plugin-first prose, `--check-setup` green (D-01, D-02, D-04, D-06; REQ-codex-plugin-manifest, REQ-plugin-setupgen-regenerated)
 
 ---
 
