@@ -5,16 +5,16 @@ milestone_name: Setup v2
 current_phase: 4
 current_phase_name: Drift Detection (Read-Only)
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-09-15T18:39:00.850Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-09-15T18:50:50.521Z"
 last_activity: 2026-09-15
 last_activity_desc: Phase 4 execution started
-state_head: 02cae8818b23d98c8bff22af00669cf420851d80
+state_head: "0bbae108977233517c6e42746511f86808dfee82"
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15 after Phase 3 — 2026-09-13.01 Se
 ## Current Position
 
 Phase: 4 (Drift Detection (Read-Only)) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-09-15 — Phase 4 execution started
 
@@ -287,6 +287,7 @@ milestone needs in working memory.
 - [Phase 03]: Codex plugin manifest ships as the minimal four-key twin of .claude-plugin/plugin.json (no interface block) — Orchestrator's Open Question 2 decision: Codex loader acceptance of a minimal manifest is a post-release live observation, not a phase gate
 - [Phase 03]: setupgen's generated /engram-setup tables SHOW the plugin actions, rendered from claude-code's real PluginActions — Orchestrator's Open Question 1 decision: never re-typed argv, so the generated tables cannot drift from what --apply actually runs
 - [Phase 04]: 04-01: OutcomePreserved sits between OutcomeWrote and OutcomeAlreadyCorrect in precedenceOrder (resolves 04-RESEARCH.md Open Question 1) - a preserved registration facet is never hidden beneath an already-correct facet at the aggregate row; a facet that actually wrote still outranks it.
+- [Phase 04]: Documented the preserved outcome, facet naming (registered/facets/drift), and the opencode not-compared exemption in guides/agent-setup.md, pinned by a new migrate_docs_test.go-shaped docs gate with a positive control (cmd/engram/agent_setup_docs_test.go).
 
 ### Pending Todos
 
@@ -358,8 +359,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-15T18:39:00.825Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-09-15T18:50:50.493Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -484,6 +485,7 @@ Resume file: None
 | Phase 03 P03 | 40min | 3 tasks | 5 files |
 | Phase 03 P04 | 35 min | 3 tasks | 7 files |
 | Phase 04 P01 | ~40min | 3 tasks | 11 files |
+| Phase 04 P03 | ~15min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
