@@ -5,16 +5,16 @@ milestone_name: Setup v2
 current_phase: 03
 current_phase_name: Plugin-First Delivery
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-09-15T02:17:54.272Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-09-15T02:26:05.773Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 03 execution started
-state_head: a094e618255211fce286d9a71a37a7c91034b8a7
+state_head: da7ad0d74d421601ed1b4bb720d7ad55fb6b0b04
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-14 after Phase 2 — 2026-09-13.01 Se
 ## Current Position
 
 Phase: 03 (Plugin-First Delivery) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-14 — Phase 03 execution started
 
@@ -282,6 +282,7 @@ milestone needs in working memory.
 - [Phase 02]: Checkpoint option C: renamed the canonical gateway-header example from x-litellm-api-key/LITELLM_KEY to a vendor-neutral x-gateway-api-key/GATEWAY_KEY across setupgen, generated tables, CLI help/golden, setup tests, and both docs surfaces, to satisfy the shipped-bundle privacy guard (skill/engram/) without an exception
 - [Phase 03]: Plugin lane is parallel to registration's execute(); PluginRuntime is an optional interface implemented only by claude-code and codex.
 - [Phase 03]: Regenerated stale phase-02 red-evidence patch (02-01-codex-header-decline.patch) in place after codex.go's plugin-lane edit broke its context; re-verified RED/apply/revert manually.
+- [Phase 03]: Reused testSkills() (2-skill fixture) instead of a new five-skill literal for DetectPresence tests; kept requirements-completed empty because REQ-plugin-skips-skills-copy is shared with not-yet-executed plan 03-03 (shared-ID gate #2388).
 
 ### Pending Todos
 
@@ -344,8 +345,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-15T02:17:54.243Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-09-15T02:26:05.726Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -466,6 +467,7 @@ Resume file: None
 | Phase 02 P03 | 45min | 3 tasks | 8 files |
 | Phase 02-custom-auth-headers P04 | interrupted-and-resumed | 3 tasks | 14 files |
 | Phase 03 P01 | 34min | 3 tasks | 5 files |
+| Phase 03 P02 | 22min | 2 tasks | 3 files |
 
 ## Operator Next Steps
 
