@@ -230,14 +230,14 @@ func TestDetectPresence(t *testing.T) {
 		}
 
 		root := t.TempDir()
-		real := filepath.Join(root, "real")
+		realDir := filepath.Join(root, "real")
 		for _, s := range list {
-			if err := os.MkdirAll(filepath.Join(real, s.Name), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Join(realDir, s.Name), 0o755); err != nil {
 				t.Fatalf("MkdirAll: %v", err)
 			}
 		}
 		link := filepath.Join(root, "skills")
-		if err := os.Symlink(real, link); err != nil {
+		if err := os.Symlink(realDir, link); err != nil {
 			t.Fatalf("Symlink: %v", err)
 		}
 
@@ -249,7 +249,7 @@ func TestDetectPresence(t *testing.T) {
 			t.Errorf("Symlink = false, want true (Dir itself is a symlink)")
 		}
 
-		got2 := DetectPresence(OSEnvironment, Target{Format: FormatNative, Dir: real}, list)
+		got2 := DetectPresence(OSEnvironment, Target{Format: FormatNative, Dir: realDir}, list)
 		if got2.Symlink {
 			t.Errorf("Symlink = true, want false (Dir is a real directory)")
 		}
