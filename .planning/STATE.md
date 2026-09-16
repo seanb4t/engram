@@ -20,7 +20,7 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-15 after Phase 4 — 2026-09-13.01 Setup v2)
+See: .planning/PROJECT.md (updated 2026-09-16 after Phase 5 — 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 **Current focus:** Phase 5 — Apply-Time Preserve Gate & Documentation
@@ -320,23 +320,15 @@ Both prior entries were delivered and had simply never been closed out:
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
-- **Phase 4 (2026-09-13.01) learnings for Phase 5:** the read-only classification Phase 5's apply
-  gate consumes lives in `internal/setup/drift.go` (`Compare`, the closed `Facet` enum, `Observation`)
-  and is reached only through the optional `DriftRuntime` interface each parsed runtime implements in
-  its own file (`claudecode.go`, `codex.go`; opencode authors none). `execute()`'s `!mutate` branch
-  observes → compares → classifies → redacts → renders; the `mutate == true` branch is still the
-  pre-Phase-4 write-then-byte-compare and still renders `displayCapture(probe2…)` on `Registered` —
-  Phase 5 routes it through the same `Observe`/`Compare` and must run ZERO write actions (including
-  Claude Code's tolerant `mcp remove`) on `preserved`. `OutcomePreserved` is a non-failed attempt in
-  `Classify` (exit 0) and sits between `wrote` and `already-correct` in `precedenceOrder`. Every
-  observed header value is compared raw in a local and never assigned to a struct field — keep it that
-  way; `Registered`/`Drift`/`Reason` go through `boundCapture`. The literal-echo shapes are pinned in
-  `04-OBSERVATIONS.md` (Claude Code exits 0 on a failed dial; `Status:`/`Issue:`/the removal trailer
-  are chrome; Codex carries a literal under `transport.http_headers`); the `oauth-client` read-back
-  shape is still UNOBSERVED (D-07) — Phase 5's REQ-apply-rewrite-consequence needs it. Nine
-  red-evidence patches are registered under `.planning/phases/04-drift-detection-read-only/red-evidence`.
-  Cross-phase: a later phase editing shared files legitimately flips earlier verifications to
-  `stale` — re-prove at HEAD, then re-fingerprint with the reason (Phases 1–3 re-pinned after Phase 4).
+- **Milestone 2026-09-13.01 closeout state (after Phase 5):** all five phases complete and
+  `passed`; `REQ-docs-setup-v2` is DELIBERATELY `[ ]` (D-06) — Phase 5's VERIFICATION carries
+  `post_release_status: pending` / `post_release_tracker: #567`, and closes only when a human records
+  `05-RELEASE-<ver>.md` per `05-POST-RELEASE.md` after the next release. The milestone audit must
+  read that open handoff as designed, not as a gap. Apply lane: `execute()`'s `mutate` branch now
+  shares `classifyProbe`/`renderClassification` with preview; `preserved`/`already-correct` return
+  before `plan.Actions[0]`; byte-compare survives only for non-drift runtimes. 33 red-evidence
+  patches registered across Phases 01–05. Cross-phase: every later phase's shared-file edits flip
+  earlier verifications `stale` — re-prove at HEAD, re-fingerprint with the reason (done after 4 and 5).
 - **Phase 3 (2026-09-13.01) learnings, still binding:** `internal/setup` is a machine-gated
   STDLIB-ONLY LEAF (`TestSetupPackageIsStdlibOnlyLeaf`) — no new import there, ever. Facets are
   composed in `cmd/engram` (flat scalars only); the shared `execute()` stays content-blind.
@@ -381,7 +373,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-16T22:45:34.879Z
+Last session: 2026-09-16T23:28:40.000Z
 Stopped at: Phase 05 complete — all phases complete
 Resume file: None
 
