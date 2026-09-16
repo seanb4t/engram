@@ -358,12 +358,18 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		// the same maxCapturedBytes discipline the mutate lane's own
 		// res.Registered = displayCapture(...) applies one code path
 		// below, so a flooded header name/URL can never flood the
-		// operator's terminal or --output json.
-		res.Drift = boundCapture(strings.Join(d.Details, "; "))
-		res.Registered = boundCapture(renderObservation(obs))
+		// operator's terminal or --output json. Registered is still
+		// rebuilt from the parsed-and-redacted Observation, never raw
+		// probe bytes (D-03) — boundCapture is applied AFTER that
+		// rebuild, never in place of it.
+		res.Drift = strings.Join(d.Details, "; ")
+		res.Registered = renderObservation(obs)
 		if d.Outcome == OutcomePreserved {
-			res.Reason = boundCapture(name + ": preserved: " + strings.Join(d.Preserved, "; ") + "; " + obs.WholeEntryNote)
+			res.Reason = name + ": preserved: " + strings.Join(d.Preserved, "; ") + "; " + obs.WholeEntryNote
 		}
+		res.Drift = boundCapture(res.Drift)
+		res.Registered = boundCapture(res.Registered)
+		res.Reason = boundCapture(res.Reason)
 		return res
 	}
 
