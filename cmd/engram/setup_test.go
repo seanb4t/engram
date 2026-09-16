@@ -1160,38 +1160,74 @@ func TestSetupJSONNeverLeaksProbeLiteral(t *testing.T) {
 	// this test beyond the (still-present) synthetic sentinel case above.
 	const observedLiteral = "sk-DO-NOT-COMMIT-literal-test-abc123"
 
+	// claude-code-observed-shape now also runs the apply lane (Phase 5
+	// Task 1, D-02): a mode loop over preview (no extra arg) and apply
+	// (--apply appended to the argv) — the json-lane Outcome/Facets
+	// assertions hold in both modes; apply mode additionally asserts the
+	// row's Reason carries the D-05 manual-remediation command, proving
+	// the observed literal never crosses the process boundary under
+	// --apply either (the apply-lane extension of the Phase 4 proof).
+	//
+	// pluginCurrentScript (TestSetupApplyPreservedRuntimeSkipsRegistrationWrite's
+	// plugin-current fixture) keeps the plugin lane already-correct under
+	// --apply, so no native skills write happens on this fresh fake
+	// environment's first run — a native skills write would outrank the
+	// preserved registration facet in the aggregate Outcome
+	// (aggregate.go's wrote > preserved precedence), masking the very
+	// property this subtest exists to prove. withFakeSetupVersion pins
+	// the binary-side version the script's plugin JSON claims, so
+	// classifyPluginVersion resolves PluginCurrent rather than PluginOutdated.
 	t.Run("claude-code-observed-shape", func(t *testing.T) {
-		for _, lane := range []string{"json", "text"} {
-			t.Run(lane, func(t *testing.T) {
-				resetClientFlags(t)
-				resetCommandFlagState(t, setupCmd)
-				withFakeSetupEnv(t, fakeSetupEnvWithRun(
-					scriptedSetupRun(t, setup.RunResult{Stdout: claudeGetProbeLiteralText, ExitCode: 0}), "claude"))
+		withFakeSetupVersion(t, "0.16.1")
+		pluginCurrentScript := map[string]map[string]setup.RunResult{
+			"claude": {
+				"plugin list --json":      {ExitCode: 0, Stdout: claudeListCurrentJSON},
+				"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplacePresentText},
+			},
+		}
+		for _, mode := range []string{"preview", "apply"} {
+			t.Run(mode, func(t *testing.T) {
+				for _, lane := range []string{"json", "text"} {
+					t.Run(lane, func(t *testing.T) {
+						resetClientFlags(t)
+						resetCommandFlagState(t, setupCmd)
+						withFakeSetupEnv(t, fakeSetupEnvWithRun(
+							fakePluginRun(scriptedSetupRun(t, setup.RunResult{Stdout: claudeGetProbeLiteralText, ExitCode: 0}), pluginCurrentScript),
+							"claude"))
 
-				out, errOut, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
-					"--auth", "oauth", "--runtime", "claude-code", "--output", lane)
-				if err != nil {
-					t.Fatalf("runClient: %v (stderr=%q)", err, errOut)
-				}
-				if strings.Contains(out, observedLiteral) {
-					t.Errorf("%s stdout leaks the observed literal: %s", lane, out)
-				}
-				if strings.Contains(errOut, observedLiteral) {
-					t.Errorf("%s stderr leaks the observed literal: %s", lane, errOut)
-				}
+						args := []string{"setup", "--url", "https://engram.example.com/mcp",
+							"--auth", "oauth", "--runtime", "claude-code", "--output", lane}
+						if mode == "apply" {
+							args = append(args, "--apply")
+						}
+						out, errOut, err := runClient(t, args...)
+						if err != nil {
+							t.Fatalf("runClient: %v (stderr=%q)", err, errOut)
+						}
+						if strings.Contains(out, observedLiteral) {
+							t.Errorf("%s/%s stdout leaks the observed literal: %s", mode, lane, out)
+						}
+						if strings.Contains(errOut, observedLiteral) {
+							t.Errorf("%s/%s stderr leaks the observed literal: %s", mode, lane, errOut)
+						}
 
-				if lane == "json" {
-					var doc setupReportDoc
-					if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
-						t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
-					}
-					row := rowByName(t, doc.Runtimes, "claude-code")
-					if row.Outcome != string(setup.OutcomePreserved) {
-						t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
-					}
-					if !strings.Contains(row.Facets, "header-name") {
-						t.Errorf("Facets = %q, want it to contain %q", row.Facets, "header-name")
-					}
+						if lane == "json" {
+							var doc setupReportDoc
+							if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+								t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+							}
+							row := rowByName(t, doc.Runtimes, "claude-code")
+							if row.Outcome != string(setup.OutcomePreserved) {
+								t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+							}
+							if !strings.Contains(row.Facets, "header-name") {
+								t.Errorf("Facets = %q, want it to contain %q", row.Facets, "header-name")
+							}
+							if mode == "apply" && !strings.Contains(row.Reason, "claude mcp remove engram --scope user") {
+								t.Errorf("Reason = %q, want it to contain the manual-remediation command", row.Reason)
+							}
+						}
+					})
 				}
 			})
 		}
@@ -1370,6 +1406,37 @@ func TestSetupHelpNamesDriftOutcomes(t *testing.T) {
 	}
 	section := helpGoldenSection(t, string(data), "engram setup")
 	for _, want := range []string{"preserved", "not compared"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("help.golden's engram setup section does not contain %q:\n%s", want, section)
+		}
+	}
+}
+
+// TestSetupHelpStatesApplyGate proves setupCmd.Long (05-CONTEXT.md D-01,
+// D-04, D-05) teaches the apply-time preserve gate by reading: --apply
+// makes the same comparison before writing, an already-correct or
+// preserved row runs no registration command (Claude Code's tolerant mcp
+// remove included), a preserved row's reason names the manual step in the
+// runtime's own tool, and a Claude Code rewrite of a registration carrying
+// no Authorization header states the operator will need to log in again.
+// testdata/help.golden proves the paragraph shipped, not only the
+// in-memory Long (the TestSetupHelpNamesDriftOutcomes shape).
+func TestSetupHelpStatesApplyGate(t *testing.T) {
+	lower := strings.ToLower(setupCmd.Long)
+	for _, want := range []string{
+		"before writing", "no registration command", "mcp remove", "runtime's own tool", "log in again",
+	} {
+		if !strings.Contains(lower, want) {
+			t.Errorf("setup long description does not mention %q: %s", want, setupCmd.Long)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join("testdata", "help.golden"))
+	if err != nil {
+		t.Fatalf("read help.golden: %v", err)
+	}
+	section := helpGoldenSection(t, string(data), "engram setup")
+	for _, want := range []string{"before writing", "log in again"} {
 		if !strings.Contains(section, want) {
 			t.Errorf("help.golden's engram setup section does not contain %q:\n%s", want, section)
 		}

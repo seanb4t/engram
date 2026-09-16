@@ -959,6 +959,17 @@ func setupApplySentence() string {
 // rather than removed (D-07, D-12, REQ-plugin-facet-reported) — naming no
 // destination path segment, per TestSetupHelpNamesSkillsInstallation's own
 // structural gate.
+//
+// Phase 5 (Apply-Time Preserve Gate) extends the drift-comparison
+// paragraph with the apply-time consequences of that same comparison
+// (05-CONTEXT.md D-01, D-04, D-05): --apply makes the identical comparison
+// before writing, so an already-correct or preserved row runs no
+// registration command at all — on claude-code, not even its tolerant mcp
+// remove — and only a would-write row is written and then read back; a
+// preserved row's reason names the exact manual step to clear the entry
+// with the runtime's own tool; and a claude-code rewrite of a registration
+// observed with no Authorization header states, in preview and apply
+// alike, that the operator will need to log in again afterward.
 func setupLongDescription() string {
 	return fmt.Sprintf(`Detect installed agent runtimes and preview registering engram as an MCP server.
 
@@ -981,6 +992,18 @@ field — so setup leaves it untouched and names it in the reason. Header
 values read from a runtime are never shown. A registration the read
 cannot parse reads would-write; opencode is not compared (its mcp list
 output is not parsed) and always reads would-write.
+
+--apply makes the same comparison before writing: an already-correct or
+preserved row runs no registration command at all — on claude-code, not
+even its own mcp remove — so repeating setup on a converged claude-code or
+codex registration is a true no-op. Only a would-write row is written and
+then read back, with its registered field showing the new registration,
+redacted. A preserved row's reason names the exact step to clear the entry
+with the runtime's own tool, after which a fresh run reads would-write. On
+claude-code, a would-write row whose existing registration carries no
+Authorization header is treated as OAuth-authenticated, and its notes
+field states — in preview and apply alike — that you will need to log in again
+after the rewrite.
 
 %s
 
