@@ -1,13 +1,12 @@
 diff --git a/internal/setup/apply.go b/internal/setup/apply.go
-index d3796fc7..e153f490 100644
+index 965c37bc..1a6fb9a6 100644
 --- a/internal/setup/apply.go
 +++ b/internal/setup/apply.go
-@@ -363,7 +363,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
- 		// probe bytes (D-03) — boundCapture is applied AFTER that
- 		// rebuild, never in place of it.
- 		res.Drift = strings.Join(d.Details, "; ")
--		res.Registered = renderObservation(obs)
-+		res.Registered = displayCapture(probe1.Stdout + probe1.Stderr)
- 		if d.Outcome == OutcomePreserved {
- 			res.Reason = name + ": preserved: " + strings.Join(d.Preserved, "; ") + "; " + obs.WholeEntryNote
+@@ -461,6 +461,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
+ 			return res
  		}
+ 		renderClassification(&res, name, c)
++		res.Registered = displayCapture(probe1.Stdout + probe1.Stderr)
+ 		return res
+ 	}
+
