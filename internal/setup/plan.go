@@ -40,36 +40,51 @@ const (
 	// invocation, but --apply was not requested: a preview result.
 	OutcomeWouldWrite Outcome = "would-write"
 	// OutcomeAlreadyCorrect means the runtime is present and its existing
-	// registration already matches what Plan would produce. Phase 3's
-	// Apply observes this via a two-read byte-compare (D-08); as of
-	// Phase 4, Preview observes it too — via a single read compared
-	// against the already-known Options (drift.go's Compare), for any
-	// runtime implementing DriftRuntime. A single read compared against
+	// registration already matches what Plan would produce. As of Phase 4,
+	// Preview observes this via a single read compared against the
+	// already-known Options (drift.go's Compare), for any runtime
+	// implementing DriftRuntime. As of Phase 5 (D-01), --apply reports the
+	// SAME thing, from the SAME pre-write comparison — for a DriftRuntime
+	// whose probe1 read could be framed, already-correct under --apply is
+	// now a PRE-write claim: no write command ran at all. A runtime with
+	// no scanner (opencode), or a probe1 read that could not be framed,
+	// keeps the ORIGINAL two-read byte-compare basis (D-09/D-10) — for
+	// those cases only, already-correct is a POST-write observation, not a
+	// guarantee that nothing ran. A single read compared against
 	// ALREADY-KNOWN intent is honest evidence for convergence; a single
 	// read compared against nothing (Preview's old basis) was not — this
 	// is the distinction 04-RESEARCH.md Pitfall 1 warns a future reader
 	// not to collapse back together.
 	OutcomeAlreadyCorrect Outcome = "already-correct"
-	// OutcomeWrote means --apply actually performed the registration.
-	// Reserved for Phase 3's Apply; Phase 2's Apply is stubbed and never
-	// produces this value.
+	// OutcomeWrote means --apply actually ran Plan.Actions: for a
+	// DriftRuntime whose probe1 classified would-write, or for any
+	// ambiguous/scanner-less read (D-09/D-10). A wrote row's Registered is
+	// rebuilt from a post-write re-observe (D-02, DriftRuntime only) or
+	// the raw bounded probe2 capture (the ambiguous/scanner-less
+	// fallback) — either way, the outcome itself is never reclassified by
+	// what that second read says.
 	OutcomeWrote Outcome = "wrote"
 	// OutcomeFailed means an attempt to plan or apply the registration
 	// failed — e.g. Plan returned ErrAuthModeUnsupported for the
 	// requested (runtime, auth mode) pair.
 	OutcomeFailed Outcome = "failed"
-	// OutcomePreserved means Preview's single-read comparison
-	// (drift.go's Compare) found the observed registration carries a
-	// facet the current Options do not account for — an extra header
-	// setup was not asked to write, an unrecognized field the runtime's
-	// own read verb echoed back (D-11) — so a write would destroy
-	// something setup cannot re-create. Setup declines, and the row
-	// names what it is preserving (D-01). It is a NON-failed attempt in
-	// Classify (D-04): an all-preserved run exits 0, and preserved beside
-	// a genuine failed row exits 8. Classify's default arm would
-	// otherwise launder an unplaced Outcome into a failure, which is why
-	// this placement is made explicit rather than left to fall out of
-	// that default.
+	// OutcomePreserved means a single-read comparison (drift.go's
+	// Compare) found the observed registration carries a facet the
+	// current Options do not account for — an extra header setup was not
+	// asked to write, an unrecognized field the runtime's own read verb
+	// echoed back (D-11) — so a write would destroy something setup
+	// cannot re-create. Setup declines, and the row names what it is
+	// preserving (D-01) plus the runtime's own manual-remediation
+	// sentence (D-05). Preview has reported this since Phase 4; as of
+	// Phase 5 (D-01), --apply reports it too, from the SAME pre-write
+	// comparison — for a DriftRuntime whose probe1 read could be framed,
+	// preserved under --apply means ZERO registration-write actions ran,
+	// Claude Code's tolerant `mcp remove` included. It is a NON-failed
+	// attempt in Classify (D-04): an all-preserved run exits 0, and
+	// preserved beside a genuine failed row exits 8. Classify's default
+	// arm would otherwise launder an unplaced Outcome into a failure,
+	// which is why this placement is made explicit rather than left to
+	// fall out of that default.
 	OutcomePreserved Outcome = "preserved"
 )
 
@@ -219,53 +234,68 @@ func (p Plan) Display() string {
 // (the typed-cause-never-message-text discipline cmd/engram/operror.go's
 // classifyOperatorErr already follows) — stderr is carried here as DATA,
 // never string-matched. Reason also carries a preserved row's explanation
-// (Phase 4, D-01, D-12): drift.go Compare's Preserved causes, "; "-joined,
-// followed by the observing runtime's own fixed WholeEntryNote sentence
-// (Codex's whole-entry overwrite-or-untouched semantics,
-// REQ-drift-preserved-outcome) — composed the same fixed-order-never-
-// string-matched way as a failure Reason.
+// (Phase 4, D-01, D-12; Phase 5, D-05): drift.go Compare's Preserved
+// causes, "; "-joined, followed by the observing runtime's own fixed
+// WholeEntryNote sentence (Codex's whole-entry overwrite-or-untouched
+// semantics, REQ-drift-preserved-outcome), then — when the observing
+// runtime authored one — its own fixed ManualRemediation sentence naming
+// the exact manual step that clears the registration in the runtime's OWN
+// tool (e.g. claude-code's "claude mcp remove engram --scope user") —
+// composed the same fixed-order-never-string-matched way as a failure
+// Reason, in both preview and apply, since both lanes report preserved
+// from the SAME pre-write comparison (Phase 5, D-01).
 //
 // Binary (D-04) is the LookPath-resolved absolute path Apply() actually
 // executed — recorded even though Args[0] (and therefore Command) stays
 // the bare runtime name, so a PATH-spoofing incident leaves a trace in the
-// report. Registered is Plan.Probe's observed registration state: in the
-// preview (!mutate) lane, for a runtime implementing DriftRuntime, it is
-// REBUILT by drift.go's renderObservation from the parsed-and-redacted
-// Observation (D-03) — raw probe text never survives the parse, so a
-// header value the probe echoed back can never reach this field. For a
-// runtime with no scanner, or when the probe's output could not be framed
-// as a registration at all, it is left empty and Drift carries a
-// "not compared" note instead (D-09, D-10). The apply (mutate) lane's
-// post-write rendering is UNCHANGED this phase — it still bounds and
-// quotes the raw two-read capture via displayCapture; Phase 5 rewires it
-// once the write path itself consults this classification. TokenFile
-// (D-07) is the "token_file=ignored"-style marker for a native runtime
-// that received --token-file; Config (D-15) is the generic pseudo-
-// runtime's minified portable JSON.
+// report. Registered is Plan.Probe's observed registration state: for a
+// runtime implementing DriftRuntime whose probe1 read could be framed, it
+// is REBUILT by drift.go's renderObservation from the parsed-and-redacted
+// Observation (D-03) in BOTH lanes — in preview, from probe1's own read;
+// under --apply on an already-correct/preserved row, from that SAME
+// pre-write read (Phase 5, D-01); under --apply on a wrote row, from a
+// POST-write re-observe (Phase 5, D-02) — raw probe text never survives
+// the parse in any of these cases, so a header value a probe echoed back
+// can never reach this field. For a runtime with no scanner, or when the
+// relevant probe's output could not be framed as a registration at all,
+// Registered is left empty (D-09, D-10): in preview, Drift carries a
+// "not compared" note instead; under --apply, this is the ONLY case that
+// still uses the raw bounded two-read capture (displayCapture), since
+// there is no parsed Observation to rebuild from. TokenFile (D-07) is the
+// "token_file=ignored"-style marker for a native runtime that received
+// --token-file; Config (D-15) is the generic pseudo-runtime's minified
+// portable JSON.
 //
 // Facets (Phase 4, D-12) is the differing Facet set drift.go's Compare
 // found, comma-joined in facetOrder — empty when Outcome is
 // OutcomeAlreadyCorrect, and empty when Registered could not be compared
 // at all (D-09). Drift is the corresponding "; "-joined detail-line text
 // from Compare, or drift.go's notComparedNote when comparison was not
-// possible. Both are populated only in the preview lane, for a runtime
-// implementing DriftRuntime; the apply lane leaves them at their zero
-// value this phase.
+// possible. As of Phase 5 (D-01), both are populated in EITHER lane for a
+// COMPARED row — under --apply, they describe what the pre-write read
+// found, even for a wrote row whose write already ran; the not-compared
+// path (no scanner, or an unframeable read) leaves both at their zero
+// value in either lane, exactly as before.
 //
-// Notes (03-RESEARCH.md Open Question 1) carries a one-line record per
-// TOLERANT action in Plan.Actions — whether that action's own exit was
-// zero or a tolerated nonzero — joined by "; " when more than one such
-// record applies. A tolerated nonzero exit's entry names the action's own
-// Description (when authored), its Command(), and its exit code, so a
-// genuinely broken tolerant step stays visible in --output json even
-// though it never fails the row. A tolerant action that succeeded still
-// contributes its bare Description when non-empty: a tolerant action's
-// Description can record a consequence that only matters if a LATER,
-// non-tolerant action in the same Plan then fails (claudecode.go's
-// claudeCodeRemoveAction, Phase 3 Task 2) — surfacing it here, in the
-// shared executor, keeps that consequence visible on the failed row's
-// Notes without this package (apply.go) ever knowing anything about
-// claude-code by name.
+// Notes (03-RESEARCH.md Open Question 1; Phase 5, D-03/D-04) carries a
+// one-line record per TOLERANT action in Plan.Actions — whether that
+// action's own exit was zero or a tolerated nonzero — joined by "; " when
+// more than one such record applies. A tolerated nonzero exit's entry
+// names the action's own Description (when authored), its Command(), and
+// its exit code, so a genuinely broken tolerant step stays visible in
+// --output json even though it never fails the row. A tolerant action
+// that succeeded still contributes its bare Description when non-empty: a
+// tolerant action's Description can record a consequence that only
+// matters if a LATER, non-tolerant action in the same Plan then fails
+// (claudecode.go's claudeCodeRemoveAction, Phase 3 Task 2) — surfacing it
+// here, in the shared executor, keeps that consequence visible on the
+// failed row's Notes without this package (apply.go) ever knowing
+// anything about claude-code by name. Notes may ALSO carry a
+// runtime-authored rewrite consequence (Observation.RewriteConsequence) —
+// claude-code's OAuth re-login sentence, on a would-write row whose
+// observed registration carries no Authorization header — stated FIRST,
+// ahead of any tolerant-action record, in BOTH preview and apply; the
+// executor never knows what the sentence says, only that it is non-empty.
 //
 // Every one of Binary/Registered/TokenFile/Config/Notes/Facets/Drift is a
 // plain string — never json.RawMessage, a map, or a slice — so it can

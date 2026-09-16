@@ -4,6 +4,7 @@
 package setup
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os/exec"
@@ -485,6 +486,12 @@ func TestObserveClaudeCodeRegistration(t *testing.T) {
 		if obs.WholeEntryNote != claudeCodeWholeEntryNote {
 			t.Errorf("WholeEntryNote = %q, want %q", obs.WholeEntryNote, claudeCodeWholeEntryNote)
 		}
+		if obs.ManualRemediation != claudeCodeManualRemediation {
+			t.Errorf("ManualRemediation = %q, want %q", obs.ManualRemediation, claudeCodeManualRemediation)
+		}
+		if obs.RewriteConsequence != "" {
+			t.Errorf("RewriteConsequence = %q, want empty (Pitfall 4: a bearer-shaped registration has no OAuth session to lose)", obs.RewriteConsequence)
+		}
 		alreadyCorrect = obs
 	})
 
@@ -510,6 +517,9 @@ func TestObserveClaudeCodeRegistration(t *testing.T) {
 		}
 		if len(obs.Headers) != 0 {
 			t.Errorf("Headers = %+v, want none", obs.Headers)
+		}
+		if obs.RewriteConsequence != claudeCodeOAuthReLoginNote {
+			t.Errorf("RewriteConsequence = %q, want %q", obs.RewriteConsequence, claudeCodeOAuthReLoginNote)
 		}
 	})
 
@@ -688,6 +698,274 @@ func TestObserveClaudeCodeRegistration(t *testing.T) {
 		_, ok := dr.Observe(stdout, opts)
 		if ok {
 			t.Error("Observe: ok = true, want false")
+		}
+	})
+}
+
+// TestOAuthReLoginConsequence is REQ-apply-rewrite-consequence's proof
+// (D-03, D-04): a claude-code registration observed with NO Authorization
+// header, that classifies would-write, carries claudeCodeOAuthReLoginNote
+// on Notes — in BOTH preview and apply, ahead of any tolerant-remove
+// record — while a bearer-shaped, foreign-shaped, already-correct,
+// preserved, ambiguous, or codex fixture never does (Pitfall 4). The
+// trigger is the observed SHAPE alone (obs.Auth == AuthNone), never
+// opts.Auth and never "claude-code + would-write" alone.
+func TestOAuthReLoginConsequence(t *testing.T) {
+	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+
+	// wouldWriteURL mutates a fixture's URL so it no longer matches opts
+	// — a reproducible would-write facet (FacetURL) that says nothing by
+	// itself about Auth.
+	wouldWriteURL := func(fixture string) string {
+		return strings.Replace(fixture, "URL: https://engram.example.com/mcp", "URL: https://old.example/mcp", 1)
+	}
+
+	t.Run("preview-oauth-shape-would-write-carries-note", func(t *testing.T) {
+		stdout := wouldWriteURL(claudeGetFixture(nil, claudeStatusFailedDial))
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+
+		res := Preview(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+		}
+		if res.Facets != "url" {
+			t.Errorf("Facets = %q, want %q", res.Facets, "url")
+		}
+		if res.Notes != claudeCodeOAuthReLoginNote {
+			t.Errorf("Notes = %q, want %q", res.Notes, claudeCodeOAuthReLoginNote)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("Run called %d times, want exactly 1: %+v", len(calls), calls)
+		}
+	})
+
+	t.Run("preview-oauth-shape-no-headers-line", func(t *testing.T) {
+		fixture := strings.Replace(claudeGetFixture(nil, claudeStatusFailedDial), "  Headers:\n", "", 1)
+		stdout := wouldWriteURL(fixture)
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+
+		res := Preview(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+		}
+		if res.Facets != "url" {
+			t.Errorf("Facets = %q, want %q", res.Facets, "url")
+		}
+		if res.Notes != claudeCodeOAuthReLoginNote {
+			t.Errorf("Notes = %q, want %q", res.Notes, claudeCodeOAuthReLoginNote)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("Run called %d times, want exactly 1: %+v", len(calls), calls)
+		}
+	})
+
+	t.Run("apply-oauth-shape-would-write-carries-note-before-remove", func(t *testing.T) {
+		probe1 := wouldWriteURL(claudeGetFixture(nil, claudeStatusFailedDial))
+		probe2 := claudeGetFixture(nil, claudeStatusConnected)
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: probe1, ExitCode: 0}}, // probe #1: would-write on url
+			scriptedResult{Result: RunResult{ExitCode: 0}},                 // tolerant remove
+			scriptedResult{Result: RunResult{ExitCode: 0}},                 // fatal add
+			scriptedResult{Result: RunResult{Stdout: probe2, ExitCode: 0}}, // probe #2
+		), "claude")
+
+		res := Apply(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWrote {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWrote)
+		}
+		wantNotes := claudeCodeOAuthReLoginNote + "; " + claudeCodeRemoveAction.Description
+		if res.Notes != wantNotes {
+			t.Errorf("Notes = %q, want %q", res.Notes, wantNotes)
+		}
+		if len(calls) != 4 {
+			t.Fatalf("Run called %d times, want exactly 4: %+v", len(calls), calls)
+		}
+		if calls[1].Args[0] != "mcp" || calls[1].Args[1] != "remove" {
+			t.Errorf("calls[1].Args = %q, want a %q call", calls[1].Args, "mcp remove")
+		}
+	})
+
+	t.Run("apply-oauth-shape-remove-tolerated-note-order", func(t *testing.T) {
+		probe1 := wouldWriteURL(claudeGetFixture(nil, claudeStatusFailedDial))
+		probe2 := claudeGetFixture(nil, claudeStatusConnected)
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: probe1, ExitCode: 0}},
+			scriptedResult{Result: RunResult{ExitCode: 1, Stderr: "No MCP server named 'engram' in user scope"}}, // remove: tolerated failure
+			scriptedResult{Result: RunResult{ExitCode: 0}},
+			scriptedResult{Result: RunResult{Stdout: probe2, ExitCode: 0}},
+		), "claude")
+
+		res := Apply(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWrote {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWrote)
+		}
+		wantPrefix := claudeCodeOAuthReLoginNote + "; "
+		if !strings.HasPrefix(res.Notes, wantPrefix) {
+			t.Errorf("Notes = %q, want prefix %q", res.Notes, wantPrefix)
+		}
+		if !strings.Contains(res.Notes, "exited 1") {
+			t.Errorf("Notes = %q, want it to contain %q", res.Notes, "exited 1")
+		}
+	})
+
+	t.Run("oauth-client-opts-same-shape-rule", func(t *testing.T) {
+		clientOpts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth-client", ClientID: "example-client-id"}
+		stdout := wouldWriteURL(claudeGetFixture(nil, claudeStatusFailedDial))
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+
+		res := Preview(context.Background(), env, ClaudeCode, clientOpts)
+		if res.Notes != claudeCodeOAuthReLoginNote {
+			t.Errorf("Notes = %q, want %q (the rule keys on the observed shape, not the requested mode)", res.Notes, claudeCodeOAuthReLoginNote)
+		}
+	})
+
+	t.Run("bearer-shape-no-note", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{"Authorization: " + claudeCodeBearerForm}, claudeStatusConnected)
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+
+		res := Preview(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+		}
+		if res.Facets != "auth-mode" {
+			t.Errorf("Facets = %q, want %q", res.Facets, "auth-mode")
+		}
+		if res.Notes != "" {
+			t.Errorf("Notes = %q, want empty (Pitfall 4: a bearer-shaped registration has no OAuth session to lose)", res.Notes)
+		}
+	})
+
+	t.Run("foreign-authorization-no-note", func(t *testing.T) {
+		const sentinel = "SENTINEL-FOREIGN-DO-NOT-LEAK"
+		stdout := claudeGetFixture([]string{"Authorization: Basic " + sentinel}, claudeStatusConnected)
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+
+		res := Preview(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomePreserved {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+		}
+		if res.Notes != "" {
+			t.Errorf("Notes = %q, want empty", res.Notes)
+		}
+		if !strings.HasSuffix(res.Reason, claudeCodeManualRemediation) {
+			t.Errorf("Reason = %q, want it to end with %q", res.Reason, claudeCodeManualRemediation)
+		}
+		b, err := json.Marshal(res)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		if strings.Contains(string(b), sentinel) {
+			t.Errorf("json.Marshal(res) = %s, must not contain the sentinel", b)
+		}
+	})
+
+	t.Run("already-correct-no-note", func(t *testing.T) {
+		stdout := claudeGetFixture(nil, claudeStatusConnected)
+
+		var previewCalls []runCall
+		previewEnv := fakeEnvWithRun(scriptedRun(&previewCalls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+		previewRes := Preview(context.Background(), previewEnv, ClaudeCode, opts)
+		if previewRes.Outcome != OutcomeAlreadyCorrect {
+			t.Fatalf("Preview Outcome = %q, want %q", previewRes.Outcome, OutcomeAlreadyCorrect)
+		}
+		if previewRes.Notes != "" {
+			t.Errorf("Preview Notes = %q, want empty", previewRes.Notes)
+		}
+
+		var applyCalls []runCall
+		applyEnv := fakeEnvWithRun(scriptedRun(&applyCalls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+		applyRes := Apply(context.Background(), applyEnv, ClaudeCode, opts)
+		if applyRes.Outcome != OutcomeAlreadyCorrect {
+			t.Fatalf("Apply Outcome = %q, want %q", applyRes.Outcome, OutcomeAlreadyCorrect)
+		}
+		if applyRes.Notes != "" {
+			t.Errorf("Apply Notes = %q, want empty", applyRes.Notes)
+		}
+	})
+
+	t.Run("preserved-oauth-shape-no-note", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{"x-litellm-api-key: sk-x"}, claudeStatusFailedDial)
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+
+		res := Preview(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomePreserved {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+		}
+		if res.Notes != "" {
+			t.Errorf("Notes = %q, want empty (no write runs, so no consequence)", res.Notes)
+		}
+	})
+
+	t.Run("ambiguous-read-no-note", func(t *testing.T) {
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stderr: "No MCP server named 'engram' in user scope", ExitCode: 1}},
+		), "claude")
+
+		res := Preview(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+		}
+		if res.Notes != "" {
+			t.Errorf("Notes = %q, want empty", res.Notes)
+		}
+		if !strings.HasPrefix(res.Drift, "claude-code: not compared:") {
+			t.Errorf("Drift = %q, want prefix %q", res.Drift, "claude-code: not compared:")
+		}
+	})
+
+	t.Run("codex-never-carries-note", func(t *testing.T) {
+		noBearer := strings.Replace(codexGetEngramBearer,
+			`"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":null`, 1)
+		stdout := strings.Replace(noBearer, `"url":"https://engram.example.com/mcp"`, `"url":"https://old.example/mcp"`, 1)
+
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "codex")
+
+		res := Preview(context.Background(), env, Codex, opts)
+		if res.Outcome != OutcomeWouldWrite {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+		}
+		if res.Notes != "" {
+			t.Errorf("Notes = %q, want empty (codex never authors a rewrite consequence)", res.Notes)
+		}
+
+		dr, ok := Codex.(DriftRuntime)
+		if !ok {
+			t.Fatal("Codex does not implement DriftRuntime")
+		}
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if obs.RewriteConsequence != "" {
+			t.Errorf("RewriteConsequence = %q, want empty", obs.RewriteConsequence)
 		}
 	})
 }

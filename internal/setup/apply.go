@@ -267,6 +267,16 @@ func renderClassification(res *Result, name string, c classification) {
 			res.Reason += "; " + c.obs.ManualRemediation
 		}
 	}
+	// D-04: a generic, content-blind rule — the executor does not know
+	// what the sentence says, only that a would-write row's observing
+	// runtime authored one. Runs in BOTH lanes: preview renders it
+	// directly on Notes; the mutate lane below seeds its own tolerant-
+	// action Notes accumulation from this value, so the consequence is
+	// stated FIRST, ahead of any tolerant-remove record the write loop
+	// appends.
+	if c.drift.Outcome == OutcomeWouldWrite && c.obs.RewriteConsequence != "" {
+		res.Notes = c.obs.RewriteConsequence
+	}
 	res.Drift = boundCapture(res.Drift)
 	res.Registered = boundCapture(res.Registered)
 	res.Reason = boundCapture(res.Reason)
@@ -331,9 +341,15 @@ func toleratedNote(action Action, exitCode int, stderr string) string {
 //     found) and returns HERE — BEFORE this step's own write-action loop
 //     runs even once (Pitfall 2: claudeCodeRemoveAction is
 //     plan.Actions[0] for every claude-code auth mode). A compared
-//     would-write classification, and every NOT-compared (ambiguous)
-//     classification, falls through to the SAME loop below unchanged
-//     (D-09/D-10: ambiguity never becomes license to skip a write). Run
+//     would-write classification renders too — including, for a runtime
+//     whose Observe authored one (D-03/D-04), a rewrite-consequence note
+//     on Notes (claude-code's OAuth re-login sentence, on an AuthNone
+//     shape) — then falls through, alongside every NOT-compared
+//     (ambiguous) classification, to the SAME loop below unchanged
+//     (D-09/D-10: ambiguity never becomes license to skip a write). The
+//     write-action loop's own Notes accumulation is SEEDED from that
+//     rewrite-consequence note when present, so it is stated FIRST,
+//     ahead of any tolerant-action record the loop itself appends. Run
 //     each Action in order on the resolved binary. A non-Tolerant
 //     action's nonzero exit or seam error is OutcomeFailed immediately.
 //     A Tolerant action's nonzero exit is appended to Notes and the
@@ -475,7 +491,14 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		}
 	}
 
+	// notes accumulates every tolerant action's own record, below — seeded
+	// here from res.Notes so a would-write row's rewrite consequence
+	// (renderClassification, D-04) is stated FIRST, ahead of any
+	// tolerant-remove record the loop itself appends.
 	var notes []string
+	if res.Notes != "" {
+		notes = append(notes, res.Notes)
+	}
 	for _, action := range plan.Actions {
 		rr, runErr := runSeam(ctx, env, binary, action.Args[1:])
 		switch {

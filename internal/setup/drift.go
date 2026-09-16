@@ -231,17 +231,25 @@ func joinHeaders(observed []rawHeader, planned []plannedHeader) []ObservedHeader
 // clears the registration in the runtime's OWN tool (e.g. claude-code's
 // "claude mcp remove engram --scope user"; codex's own config.toml
 // table) — appended to a preserved row's Reason, after WholeEntryNote,
-// when non-empty. AUTHORED-HERE: composed only in the observing
-// runtime's own file (claudecode.go, codex.go), never in
-// apply.go/drift.go, which only append it when it is non-empty.
+// when non-empty. RewriteConsequence (Phase 5, D-03/D-04) is a fixed,
+// runtime-authored sentence naming what a rewrite (would-write -> running
+// Plan.Actions) costs beyond the registration itself — e.g. claude-code's
+// OAuth re-login note, fired by SHAPE (no Authorization header observed),
+// never by parsing auth STATE. Surfaced on Result.Notes ONLY when Compare
+// yields OutcomeWouldWrite, in preview and apply alike; empty means the
+// rewrite has no such consequence (codex never sets it). AUTHORED-HERE:
+// both ManualRemediation and RewriteConsequence are composed only in the
+// observing runtime's own file (claudecode.go, codex.go), never in
+// apply.go/drift.go, which only append them when non-empty.
 type Observation struct {
-	URL               string
-	Auth              AuthState
-	BearerForm        string
-	Headers           []ObservedHeader
-	Unrecognized      []string
-	WholeEntryNote    string
-	ManualRemediation string
+	URL                string
+	Auth               AuthState
+	BearerForm         string
+	Headers            []ObservedHeader
+	Unrecognized       []string
+	WholeEntryNote     string
+	ManualRemediation  string
+	RewriteConsequence string
 }
 
 // DriftRuntime is an OPTIONAL interface a Runtime may implement to

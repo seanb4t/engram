@@ -351,6 +351,22 @@ const claudeCodeWholeEntryNote = "claude mcp remove then add replaces the whole 
 // would-write — nothing remains to preserve.
 const claudeCodeManualRemediation = "to replace it yourself, clear it with claude-code's own tool first: claude mcp remove engram --scope user, then run setup again; the row then reads would-write"
 
+// claudeCodeOAuthReLoginNote is D-03/D-04's fixed, runtime-authored
+// consequence sentence: a claude-code registration observed with NO
+// Authorization header (AuthNone) is treated as OAuth-authenticated BY
+// SHAPE — that is how a real oauth or oauth-client registration reads
+// back — so a would-write row (claude mcp remove then add) discards that
+// login. Deliberately conservative: it fires even if the user never
+// completed a login, because a false "you will need to log in again"
+// costs nothing and a missed one is a silent logout. Composed here, never
+// in apply.go/drift.go (AUTHORED-HERE): the shared executor only
+// consults Observation.RewriteConsequence, a generic, content-blind
+// field — never a comparison against opts.Auth or "claude-code" by name
+// (D-04, Pitfall 4). No stderr side-channel, no TTY pause: --apply is the
+// milestone's only consent gate, and this sentence is the single
+// rendering path, on Result.Notes, in both preview and apply.
+const claudeCodeOAuthReLoginNote = "the existing registration carries no Authorization header, so it is treated as OAuth-authenticated: claude mcp remove then add discards that login, and you will need to log in again after --apply (in Claude Code run /mcp, select engram, and authenticate)"
+
 // unrecognizedLabelBound is claude-code's own copy of codex.go's identical
 // bound — AUTHORED HERE rather than shared, since 04-RESEARCH.md Pitfall 3
 // forbids a cross-runtime parsing dependency, and this is a two-line
@@ -523,13 +539,25 @@ func (claudeCodeRuntime) Observe(probeOutput string, opts Options) (Observation,
 	}
 	headers := joinHeaders(observedHeaders, planned)
 
+	// D-03/D-04: the OAuth re-login consequence fires by SHAPE alone —
+	// no Authorization/bearer header observed at all is how a real oauth
+	// or oauth-client registration reads back. Never gated on opts.Auth,
+	// and never on "would-write" alone (that is decided one layer up, by
+	// Compare/apply.go) — AuthBearer and AuthForeign are NOT this shape
+	// (Pitfall 4).
+	consequence := ""
+	if auth == AuthNone {
+		consequence = claudeCodeOAuthReLoginNote
+	}
+
 	return Observation{
-		URL:               url,
-		Auth:              auth,
-		BearerForm:        claudeCodeBearerForm,
-		Headers:           headers,
-		Unrecognized:      unrecognized,
-		WholeEntryNote:    claudeCodeWholeEntryNote,
-		ManualRemediation: claudeCodeManualRemediation,
+		URL:                url,
+		Auth:               auth,
+		BearerForm:         claudeCodeBearerForm,
+		Headers:            headers,
+		Unrecognized:       unrecognized,
+		WholeEntryNote:     claudeCodeWholeEntryNote,
+		ManualRemediation:  claudeCodeManualRemediation,
+		RewriteConsequence: consequence,
 	}, true
 }
