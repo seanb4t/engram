@@ -18,6 +18,34 @@ import (
 // 0.153.4), never a second hand-typed document.
 const codexGetEngramBearer = `{"name":"engram","enabled":true,"disabled_reason":null,"transport":{"type":"streamable_http","url":"https://engram.example.com/mcp","bearer_token_env_var":"ENGRAM_TOKEN","http_headers":null,"env_http_headers":null,"http_headers_helper":null},"enabled_tools":null,"disabled_tools":null,"startup_timeout_sec":null,"tool_timeout_sec":null}`
 
+// codexObservedLiteralHeader is .planning/phases/04-drift-detection-read-only/
+// 04-OBSERVATIONS.md §"Codex — literal header (hand-edited)"'s VERBATIM
+// `codex mcp get probe-literal-04 --json` capture (codex-cli 0.154.0,
+// 2026-09-15), with ONLY "name":"probe-literal-04" rewritten to
+// "name":"engram" so Observe's framing check passes — reused by
+// codex_test.go's TestObserveCodexRegistration subtest for this shape and
+// this file's TestRedactionUnconditional subtest for the same shape, so
+// both quote the SAME fixture (D-08).
+const codexObservedLiteralHeader = `{
+  "name": "engram",
+  "enabled": true,
+  "disabled_reason": null,
+  "transport": {
+    "type": "streamable_http",
+    "url": "http://127.0.0.1:1/mcp",
+    "bearer_token_env_var": "DUMMY_04",
+    "http_headers": {
+      "x-litellm-api-key": "sk-DO-NOT-COMMIT-literal-test-abc123"
+    },
+    "env_http_headers": null,
+    "http_headers_helper": null
+  },
+  "enabled_tools": null,
+  "disabled_tools": null,
+  "startup_timeout_sec": null,
+  "tool_timeout_sec": null
+}`
+
 // TestPreviewClassifiesRegistration drives Preview end-to-end through the
 // scripted Run fake, proving the full observe -> compare -> classify ->
 // redact -> render pipeline (D-01, D-02, D-03) for codex.
@@ -419,6 +447,71 @@ func TestRedactionUnconditional(t *testing.T) {
 			t.Errorf("literal-shaped and reference-shaped foreign bearer values produced different Results (D-02: no shape branching):\nliteral:   %s\nreference: %s", sentinelJSON, referenceJSON)
 		}
 	})
+
+	// assertNoObservedLiteral asserts sk-DO-NOT-COMMIT-literal-test-abc123
+	// (the SC5 fixture proof on the OBSERVED shape, REQ-drift-redaction) is
+	// absent from json.Marshal(res) and from each of
+	// Registered/Reason/Drift/Facets/Notes.
+	assertNoObservedLiteral := func(t *testing.T, res Result) {
+		t.Helper()
+		const sentinel = "sk-DO-NOT-COMMIT-literal-test-abc123"
+		b, err := json.Marshal(res)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		if strings.Contains(string(b), sentinel) {
+			t.Errorf("json.Marshal(res) = %s, must not contain the observed literal", b)
+		}
+		for field, value := range map[string]string{
+			"Registered": res.Registered,
+			"Reason":     res.Reason,
+			"Drift":      res.Drift,
+			"Notes":      res.Notes,
+			"Facets":     res.Facets,
+		} {
+			if strings.Contains(value, sentinel) {
+				t.Errorf("%s = %q, must not contain the observed literal", field, value)
+			}
+		}
+	}
+
+	// The two subtests below are the SC5 fixture proof against the
+	// OBSERVED shape (04-05-PLAN.md Task 2, REQ-drift-redaction): both
+	// runtimes' literal-echo fixtures, quoted from 04-OBSERVATIONS.md,
+	// drive Preview end-to-end and prove the dummy literal never reaches
+	// a rendered field or the marshaled Result.
+	t.Run("claude-code-observed-literal", func(t *testing.T) {
+		// Shape: .planning/phases/04-drift-detection-read-only/
+		// 04-OBSERVATIONS.md §"Claude Code — literal value" (claude
+		// 2.1.273, 2026-09-15).
+		opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+		stdout := claudeGetFixture([]string{claudeLiteralHeaderLine}, claudeStatusFailedDial)
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+		res := Preview(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomePreserved {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+		}
+		assertNoObservedLiteral(t, res)
+	})
+
+	t.Run("codex-observed-literal", func(t *testing.T) {
+		// Shape: .planning/phases/04-drift-detection-read-only/
+		// 04-OBSERVATIONS.md §"Codex — literal header (hand-edited)"
+		// (codex-cli 0.154.0, 2026-09-15) — codexObservedLiteralHeader.
+		opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: codexObservedLiteralHeader}},
+		), "codex")
+		res := Preview(context.Background(), env, Codex, opts)
+		if res.Outcome != OutcomePreserved {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+		}
+		assertNoObservedLiteral(t, res)
+	})
 }
 
 // TestCompareRegistrationThreeWay is a literal-expectation table over
@@ -712,6 +805,9 @@ func TestPreviewAmbiguityResolvesToWouldWrite(t *testing.T) {
 func TestDriftRuntimeIsOptional(t *testing.T) {
 	if _, ok := Codex.(DriftRuntime); !ok {
 		t.Error("Codex does not implement DriftRuntime")
+	}
+	if _, ok := ClaudeCode.(DriftRuntime); !ok {
+		t.Error("ClaudeCode does not implement DriftRuntime")
 	}
 	if _, ok := OpenCode.(DriftRuntime); ok {
 		t.Error("OpenCode implements DriftRuntime, want it not to (D-10)")

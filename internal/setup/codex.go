@@ -17,7 +17,8 @@ import (
 // codexRuntime implements Runtime for Codex, authoring the live-verified
 // `codex mcp add <NAME> --url <URL>` invocation surface
 // (.planning/research/SUMMARY.md § "Post-Synthesis Live Verification") —
-// structurally identical to claudeCodeRuntime, no special-casing.
+// structurally identical to claude-code's own runtime implementation, no
+// special-casing.
 type codexRuntime struct{}
 
 // Codex is the Runtime registered for Codex.
@@ -300,12 +301,19 @@ const codexWholeEntryNote = "codex mcp add replaces the whole entry: --apply wou
 // `codex mcp get <name> --json`'s live-verified shape (04-RESEARCH.md
 // Code Examples, codex-cli 0.153.4). BearerTokenEnvVar is a pointer so a
 // JSON null (no bearer configured) is distinguishable from an empty
-// string; HTTPHeaders/EnvHTTPHeaders are ASSUMPTION A3 (04-RESEARCH.md) —
-// inferred from field naming, not yet observed populated — and
-// HTTPHeadersHelper/EnabledTools/DisabledTools/StartupTimeoutSec/
-// ToolTimeoutSec on the sibling doc struct are json.RawMessage so their
-// null-ness can be tested (isNullRaw) without needing to know their real
-// shape, which D-11's totality parse does not require.
+// string; HTTPHeaders/EnvHTTPHeaders's map[string]string typing is
+// CONFIRMED OBSERVED (04-05-PLAN.md Task 2,
+// .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Codex — literal header (hand-edited)", codex-cli 0.154.0,
+// 2026-09-15): a hand-edited literal header value under `http_headers`
+// round-tripped through `codex mcp get --json` as an object of strings,
+// coexisting with a populated `bearer_token_env_var` on the same entry —
+// confirming 04-RESEARCH.md's original field-naming-based guess for this
+// exact shape. HTTPHeadersHelper/EnabledTools/
+// DisabledTools/StartupTimeoutSec/ToolTimeoutSec on the sibling doc struct
+// are json.RawMessage so their null-ness can be tested (isNullRaw)
+// without needing to know their real shape, which D-11's totality parse
+// does not require.
 type codexRegistrationTransport struct {
 	Type              string            `json:"type"`
 	URL               string            `json:"url"`

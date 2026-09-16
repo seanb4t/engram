@@ -370,12 +370,21 @@ func TestObserveCodexRegistration(t *testing.T) {
 		}
 	})
 
-	t.Run("http-headers-assumed-shape", func(t *testing.T) {
-		// ASSUMED SHAPE (A3) — 04-RESEARCH.md Assumptions Log: superseded
-		// by the observed-shape fixture plan 04-05 adds from
-		// 04-OBSERVATIONS.md.
-		stdout := strings.Replace(codexGetEngramBearer, `"http_headers":null`, `"http_headers":{"x-litellm-api-key":"SENTINEL-HDR-VALUE-DO-NOT-LEAK"}`, 1)
-		obs, ok := dr.Observe(stdout, bearerOpts)
+	t.Run("preserved-literal-header-observed", func(t *testing.T) {
+		// Shape: .planning/phases/04-drift-detection-read-only/
+		// 04-OBSERVATIONS.md §"Codex — literal header (hand-edited)"
+		// (codex-cli 0.154.0, 2026-09-15) — the maintainer's verbatim
+		// `codex mcp get probe-literal-04 --json` capture after hand-
+		// editing $CODEX_HOME/config.toml to add a literal http_headers
+		// value. The ONLY edit from the record: "name":"probe-literal-04"
+		// rewritten to "name":"engram" so Observe's framing check passes.
+		// Supersedes the former assumed-shape subtest
+		// (http-headers-assumed-shape): the record confirms http_headers
+		// is an object of strings, exactly what codexRegistrationTransport
+		// already modeled. codexObservedLiteralHeader is package-level
+		// (drift_test.go) so TestRedactionUnconditional's
+		// codex-observed-literal subtest reuses the SAME fixture.
+		obs, ok := dr.Observe(codexObservedLiteralHeader, bearerOpts)
 		if !ok {
 			t.Fatal("Observe: ok = false, want true")
 		}
@@ -383,8 +392,11 @@ func TestObserveCodexRegistration(t *testing.T) {
 		if !reflect.DeepEqual(obs.Headers, want) {
 			t.Errorf("Headers = %+v, want %+v", obs.Headers, want)
 		}
-		if strings.Contains(fmt.Sprintf("%+v", obs), "SENTINEL-HDR-VALUE") {
-			t.Errorf("Observation carries the sentinel header value: %+v", obs)
+		if obs.Auth != AuthForeign {
+			t.Errorf("Auth = %q, want %q (bearer_token_env_var = \"DUMMY_04\", not codexBearerForm)", obs.Auth, AuthForeign)
+		}
+		if strings.Contains(fmt.Sprintf("%+v", obs), "sk-DO-NOT-COMMIT-literal-test-abc123") {
+			t.Errorf("Observation carries the observed literal: %+v", obs)
 		}
 	})
 
