@@ -320,6 +320,39 @@ func TestObserveCodexRegistration(t *testing.T) {
 		}
 	})
 
+	// WR-02 (04-REVIEW.md): a JSON type-mismatch on "enabled" or
+	// "transport.type" must report the field exactly ONCE in
+	// Unrecognized — the *json.UnmarshalTypeError branch (d) and the
+	// unconditional field-rules block (e) both independently derive the
+	// same finding from the same now-zero-valued field, and previously
+	// had no guard against double-reporting it.
+	for _, tc := range []struct {
+		name   string
+		stdout string
+		want   string
+	}{
+		{
+			name:   "enabled-type-mismatch",
+			stdout: strings.Replace(codexGetEngramBearer, `"enabled":true`, `"enabled":"true"`, 1),
+			want:   "enabled",
+		},
+		{
+			name:   "transport-type-type-mismatch",
+			stdout: strings.Replace(codexGetEngramBearer, `"type":"streamable_http"`, `"type":1`, 1),
+			want:   "transport.type",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			obs, ok := dr.Observe(tc.stdout, bearerOpts)
+			if !ok {
+				t.Fatal("Observe: ok = false, want true")
+			}
+			if len(obs.Unrecognized) != 1 || obs.Unrecognized[0] != tc.want {
+				t.Errorf("Unrecognized = %q, want exactly [%q] (reported once, not twice)", obs.Unrecognized, tc.want)
+			}
+		})
+	}
+
 	t.Run("disabled-reason-set", func(t *testing.T) {
 		stdout := strings.Replace(codexGetEngramBearer, `"disabled_reason":null`, `"disabled_reason":"x"`, 1)
 		obs, ok := dr.Observe(stdout, bearerOpts)

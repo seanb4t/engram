@@ -413,6 +413,13 @@ func (codexRuntime) Observe(probeOutput string, opts Options) (Observation, bool
 
 	var doc codexRegistrationDoc
 	var unrecognized []string
+	// typeErrField records which field (if any) a *json.UnmarshalTypeError
+	// already named below, so the field-rules block (e) — which
+	// independently re-derives the same finding from that field's now-
+	// zero Go value (Go's Unmarshal leaves a type-mismatched field at its
+	// zero value and decodes the rest) — never reports it a second time
+	// (WR-02 of 04-REVIEW.md).
+	var typeErrField string
 	if err := json.Unmarshal([]byte(probeOutput), &doc); err != nil {
 		var syntaxErr *json.SyntaxError
 		var typeErr *json.UnmarshalTypeError
@@ -424,6 +431,7 @@ func (codexRuntime) Observe(probeOutput string, opts Options) (Observation, bool
 		case errors.As(err, &typeErr):
 			if typeErr.Field != "" {
 				unrecognized = append(unrecognized, typeErr.Field)
+				typeErrField = typeErr.Field
 			}
 		default:
 			return Observation{}, false
@@ -473,13 +481,13 @@ func (codexRuntime) Observe(probeOutput string, opts Options) (Observation, bool
 	// Field rules (e): every non-null field engram never sets, plus
 	// enabled != true and a transport type other than streamable_http,
 	// is unrecognized content (D-11).
-	if doc.Enabled == nil || !*doc.Enabled {
+	if typeErrField != "enabled" && (doc.Enabled == nil || !*doc.Enabled) {
 		unrecognized = append(unrecognized, "enabled")
 	}
 	if !isNullRaw(doc.DisabledReason) {
 		unrecognized = append(unrecognized, "disabled_reason")
 	}
-	if doc.Transport.Type != "streamable_http" {
+	if typeErrField != "transport.type" && doc.Transport.Type != "streamable_http" {
 		unrecognized = append(unrecognized, "transport.type")
 	}
 	if !isNullRaw(doc.Transport.HTTPHeadersHelper) {
