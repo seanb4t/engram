@@ -5,16 +5,16 @@ milestone_name: Setup v2
 current_phase: 5
 current_phase_name: Apply-Time Preserve Gate & Documentation
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-09-16T21:57:56.511Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-09-16T22:10:14.356Z"
 last_activity: 2026-09-16
 last_activity_desc: Phase 5 execution started
-state_head: 9afcd2bd184823b557774c0ac55a227819b71fed
+state_head: c67aa825a312063ea0c0fac638dfdabba820db67
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15 after Phase 4 — 2026-09-13.01 Se
 ## Current Position
 
 Phase: 5 (Apply-Time Preserve Gate & Documentation) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-16 — Phase 5 execution started
 
@@ -294,6 +294,7 @@ milestone needs in working memory.
 - [Phase 4]: codexRegistrationTransport needed no retyping — 04-OBSERVATIONS.md confirmed the 04-01 map-of-strings guess for http_headers/env_http_headers exactly
 - [Phase 5]: Apply-time preserve gate (D-01): --apply now consults the same pre-write classification Preview reports, closing gotcha ryr82bf2s2 -- already-correct/preserved issue zero registration writes
 - [Phase 5]: RewriteConsequence and ManualRemediation are new, dedicated Observation fields (not extensions of WholeEntryNote), each authored per-runtime and appended by a content-blind executor
+- [Phase 05]: docs-gate legs requiring two tokens on the same line forced install.md's cask-hooks sentence and Next-steps bullet to be written as short unwrapped paragraphs/single lines rather than the file's usual ~80-column soft wrap
 
 ### Pending Todos
 
@@ -376,8 +377,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-16T21:57:56.480Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-09-16T22:10:14.326Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -507,6 +508,7 @@ Resume file: None
 | Phase 04 P04 | 35 min | 3 tasks | 4 files |
 | Phase 04 P05 | ~75min | 3 tasks | 7 files |
 | Phase 05 P01 | ~105min | 3 tasks | 11 files |
+| Phase 05 P03 | ~25min | 2 tasks | 4 files |
 
 ## Operator Next Steps
 
