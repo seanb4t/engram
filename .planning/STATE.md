@@ -21,7 +21,7 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-15 after Phase 3 — 2026-09-13.01 Setup v2)
+See: .planning/PROJECT.md (updated 2026-09-15 after Phase 4 — 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 **Current focus:** Phase 4 — Drift Detection (Read-Only)
@@ -313,15 +313,26 @@ Both prior entries were delivered and had simply never been closed out:
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
-- **Phase 3 (2026-09-13.01) learnings for Phases 4–5:** the plugin lane is the model for Phase 4's
-  drift comparison — a read probe whose parsed output is matched EXACTLY (`id == "engram@engram"`,
-  never a substring), bounded through `boundCapture` before it reaches any row field, and never
-  interpolated into argv. `internal/setup` is a machine-gated STDLIB-ONLY LEAF
-  (`TestSetupPackageIsStdlibOnlyLeaf`) — no new import there, ever. Facets are composed in
-  `cmd/engram` (flat scalars only); the shared `execute()` stays content-blind, so any
-  content-aware comparison needs its own read-then-decide lane. A later phase editing shared files
-  legitimately flips earlier phases' verification to `stale`: re-prove the earlier phase's own tests
-  at HEAD, then re-fingerprint with the reason recorded (Phase 2 precedent, 2026-09-15).
+- **Phase 4 (2026-09-13.01) learnings for Phase 5:** the read-only classification Phase 5's apply
+  gate consumes lives in `internal/setup/drift.go` (`Compare`, the closed `Facet` enum, `Observation`)
+  and is reached only through the optional `DriftRuntime` interface each parsed runtime implements in
+  its own file (`claudecode.go`, `codex.go`; opencode authors none). `execute()`'s `!mutate` branch
+  observes → compares → classifies → redacts → renders; the `mutate == true` branch is still the
+  pre-Phase-4 write-then-byte-compare and still renders `displayCapture(probe2…)` on `Registered` —
+  Phase 5 routes it through the same `Observe`/`Compare` and must run ZERO write actions (including
+  Claude Code's tolerant `mcp remove`) on `preserved`. `OutcomePreserved` is a non-failed attempt in
+  `Classify` (exit 0) and sits between `wrote` and `already-correct` in `precedenceOrder`. Every
+  observed header value is compared raw in a local and never assigned to a struct field — keep it that
+  way; `Registered`/`Drift`/`Reason` go through `boundCapture`. The literal-echo shapes are pinned in
+  `04-OBSERVATIONS.md` (Claude Code exits 0 on a failed dial; `Status:`/`Issue:`/the removal trailer
+  are chrome; Codex carries a literal under `transport.http_headers`); the `oauth-client` read-back
+  shape is still UNOBSERVED (D-07) — Phase 5's REQ-apply-rewrite-consequence needs it. Nine
+  red-evidence patches are registered under `.planning/phases/04-drift-detection-read-only/red-evidence`.
+  Cross-phase: a later phase editing shared files legitimately flips earlier verifications to
+  `stale` — re-prove at HEAD, then re-fingerprint with the reason (Phases 1–3 re-pinned after Phase 4).
+- **Phase 3 (2026-09-13.01) learnings, still binding:** `internal/setup` is a machine-gated
+  STDLIB-ONLY LEAF (`TestSetupPackageIsStdlibOnlyLeaf`) — no new import there, ever. Facets are
+  composed in `cmd/engram` (flat scalars only); the shared `execute()` stays content-blind.
 - **Phase 2 (2026-09-13.01) learnings for Phases 3–5:** the shipped-bundle privacy guard
   (`skill/engram/hooks/tests/test_no_residual_memory_oauth.py`) bans vendor substrings under
   `skill/engram/` — any example that reaches the generated `/engram-setup` prose must be vendor-neutral
@@ -363,7 +374,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-16T00:37:43.575Z
+Last session: 2026-09-16T01:31:39.000Z
 Stopped at: Phase 04 complete, ready to plan Phase 5
 Resume file: None
 
