@@ -5,16 +5,16 @@ milestone_name: Setup v2
 current_phase: 5
 current_phase_name: Apply-Time Preserve Gate & Documentation
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-09-16T19:04:07.983Z"
-last_activity: 2026-09-15
-last_activity_desc: Phase 04 complete, transitioned to Phase 5
-state_head: 18dcb9cc36e0cc774811615c1ffdf56ff8878d2d
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-09-16T21:57:56.511Z"
+last_activity: 2026-09-16
+last_activity_desc: Phase 5 execution started
+state_head: 9afcd2bd184823b557774c0ac55a227819b71fed
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15 after Phase 4 — 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 4 — Drift Detection (Read-Only)
+**Current focus:** Phase 5 — Apply-Time Preserve Gate & Documentation
 
 ## Current Position
 
-Phase: 5 (Apply-Time Preserve Gate & Documentation) — READY TO EXECUTE
-Plan: Not started
+Phase: 5 (Apply-Time Preserve Gate & Documentation) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-09-15 — Phase 04 complete, transitioned to Phase 5
+Last activity: 2026-09-16 — Phase 5 execution started
 
 ## Deferred Items
 
@@ -292,6 +292,8 @@ milestone needs in working memory.
 - [Phase 04]: setupLongDescription drift paragraph reworded to include the literal word "drift" (plan prose omitted it; plan acceptance test requires it) - Rule 1 auto-fix
 - [Phase 4]: claude-code's Observe: Scope: is chrome (never a facet), Type: is a facet-bearing line — Claude's own discretion, plan 04-05 objective
 - [Phase 4]: codexRegistrationTransport needed no retyping — 04-OBSERVATIONS.md confirmed the 04-01 map-of-strings guess for http_headers/env_http_headers exactly
+- [Phase 5]: Apply-time preserve gate (D-01): --apply now consults the same pre-write classification Preview reports, closing gotcha ryr82bf2s2 -- already-correct/preserved issue zero registration writes
+- [Phase 5]: RewriteConsequence and ManualRemediation are new, dedicated Observation fields (not extensions of WholeEntryNote), each authored per-runtime and appended by a content-blind executor
 
 ### Pending Todos
 
@@ -374,9 +376,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-16T17:54:44.249Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-apply-time-preserve-gate-documentation/05-CONTEXT.md
+Last session: 2026-09-16T21:57:56.480Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -504,6 +506,7 @@ Resume file: .planning/phases/05-apply-time-preserve-gate-documentation/05-CONTE
 | Phase 04 P02 | 6min | 2 tasks | 1 files |
 | Phase 04 P04 | 35 min | 3 tasks | 4 files |
 | Phase 04 P05 | ~75min | 3 tasks | 7 files |
+| Phase 05 P01 | ~105min | 3 tasks | 11 files |
 
 ## Operator Next Steps
 
