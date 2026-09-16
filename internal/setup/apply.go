@@ -456,8 +456,12 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		if !c.compared {
 			// This text is the only Drift note a scanner-less, probe-wired
 			// runtime (or a probe1 seam error, or unframeable output) ever
-			// produces.
-			res.Drift = c.notCompared
+			// produces. WR-01: boundCapture matches every sibling rendered
+			// field in this file (renderClassification's Drift/Registered/
+			// Reason, describeFailure's Reason, toleratedNote's Notes) — a
+			// probe1 seam error can embed unbounded third-party content
+			// (e.g. a long or attacker-influenced PATH).
+			res.Drift = boundCapture(c.notCompared)
 			return res
 		}
 		renderClassification(&res, name, c)

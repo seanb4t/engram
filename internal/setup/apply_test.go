@@ -1152,3 +1152,36 @@ func TestDriftFieldsStayBoundedAgainstOversizedProbeContent(t *testing.T) {
 		}
 	}
 }
+
+// TestPreviewNotComparedDriftStaysBounded covers WR-01 (05-REVIEW.md): the
+// Preview (!mutate) lane's "not compared" short-circuit
+// (`if !c.compared { res.Drift = ...; return res }`) rendered c.notCompared
+// unbounded, unlike every sibling rendered field in this file
+// (renderClassification's Drift/Registered/Reason, describeFailure's
+// Reason, toleratedNote's Notes). c.notCompared is built from
+// probe1Err.Error() when probe1 hits a seam error — not a probe-body
+// capture, but still third-party/OS-influenced content (e.g. an oversized
+// or attacker-influenced PATH embedded in an exec error) with no length
+// cap of its own before this fix.
+func TestPreviewNotComparedDriftStaysBounded(t *testing.T) {
+	hugeErr := errors.New("exec: \"codex\": lookup failed on PATH " + strings.Repeat("P", 100_000))
+
+	var calls []runCall
+	env := fakeEnvWithRun(scriptedRun(&calls,
+		scriptedResult{Err: hugeErr}, // probe #1: seam error
+	), "codex")
+
+	res := Preview(context.Background(), env, Codex, Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+
+	if res.Outcome != OutcomeWouldWrite {
+		t.Fatalf("Outcome = %q, want %q (an uncompared preview row is always would-write)", res.Outcome, OutcomeWouldWrite)
+	}
+
+	const maxAllowed = maxCapturedBytes + len(truncationMarker) + 64
+	if len(res.Drift) > maxAllowed {
+		t.Errorf("len(res.Drift) = %d, want <= %d (bounded via boundCapture, WR-01)", len(res.Drift), maxAllowed)
+	}
+	if strings.Contains(res.Drift, strings.Repeat("P", 100_000)) {
+		t.Error("res.Drift contains the full 100KB oversized probe1Err text unbounded")
+	}
+}
