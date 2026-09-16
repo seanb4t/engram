@@ -10,6 +10,13 @@ Follow [Install](/guides/install/) to obtain the released binary, then check
 `engram version --output json`. Upgrade older binaries before using setup.
 :::
 
+:::note[Unreleased as of v0.16.1]
+`--header`, plugin-first skill delivery, the `preserved` outcome, the apply
+gate described below, and the OAuth re-login note are on the main branch and
+not yet in a cut release (the latest tag is v0.16.1). They ship in the next
+release, after which this notice is replaced with the observed version.
+:::
+
 ## Before you start
 
 Obtain the **full MCP endpoint** from your server operator. Supply it through
@@ -44,6 +51,12 @@ classifies the row as `already-correct`, `would-write`, or `preserved`.
 opencode's registration is not compared: its `mcp list` prints a table setup
 does not parse, so a present opencode always reads `would-write`.
 
+`--apply` makes the same comparison before writing: an `already-correct` or
+`preserved` row runs no registration command — on Claude Code, not even
+`claude mcp remove` — so repeating setup on a converged Claude Code or Codex
+installation is a no-op that never touches an existing OAuth login. Only a
+`would-write` row is written, then read back.
+
 Preview is not an offline-only operation or proof of a successful connection.
 
 Inspect **every row**, including absent, unsupported, and failed results, and
@@ -58,6 +71,8 @@ Inspect every apply result too. Registration and OAuth login are separate steps:
 complete the runtime's OAuth login after successful registration. In Claude Code,
 run `/mcp`, select `engram`, and authenticate in the browser. Then use the agent
 to [store and recall your first memory](/guides/quickstart/#store-and-recall-your-first-memory).
+If a Claude Code row was rewritten, read its `notes` field first: the [OAuth
+section](#oauth) below describes when re-authentication is required.
 
 ### Choose specific runtimes
 
@@ -106,6 +121,15 @@ environment inherited by the Claude process launched by setup. There is no
 interactive stdin for a secret prompt. Supply secrets through your existing
 credential tooling; do not paste them into commands, chat, or logs. Complete the
 runtime's login after registration.
+
+On Claude Code, a `would-write` row is rewritten with `claude mcp remove` then
+`claude mcp add`. If the existing registration carries no `Authorization`
+header, setup treats it as OAuth-authenticated and replacing the entry discards that login.
+
+A rewritten row's `notes` field states, in both preview and apply, that this OAuth-authenticated registration means you will need to log in again after `--apply`.
+
+Read the preview's `notes` before applying — `--apply` does not pause for
+this, and there is no flag to suppress the rewrite.
 
 ### Bearer token
 
@@ -164,10 +188,19 @@ it does not change the server's authentication policy.
 
 ## Registration and curation skills
 
-`--apply` registers the MCP server and installs the curation skills carried in
-the binary. Each present runtime reports registration and skills separately,
-alongside an overall outcome. Inspect both: successful registration does not
-mean skill installation succeeded.
+`--apply` registers the MCP server and delivers the curation skills
+plugin-first. A Claude Code or Codex whose own plugin CLI works receives the
+skills, session hooks, and the `/engram-setup` command through its plugin
+system — engram's own marketplace and plugin only (`seanb4t/engram`, `engram@engram`).
+The marketplace is added when absent, the plugin installed
+when absent, updated when outdated, and left alone when current, with the
+exact plugin commands shown in the preview. Every other runtime — opencode,
+generic, or a Claude Code/Codex without a working plugin CLI — receives the
+native skills copy carried in the binary, per the table below. Each present
+runtime's row reports registration, plugin (absent, outdated, current, or
+unavailable with a reason), and skills separately, alongside one aggregated
+outcome. Inspect all three: successful registration does not mean skill or
+plugin installation succeeded.
 
 | Runtime | User-scope skill destination |
 | --- | --- |
@@ -176,22 +209,24 @@ mean skill installation succeeded.
 | opencode | `$XDG_CONFIG_HOME/opencode/skills/` when `XDG_CONFIG_HOME` is absolute; otherwise `~/.config/opencode/skills/` |
 | Generic | Printed guidance only; no filesystem destination |
 
-Codex receives native skill files and an `AGENTS.md` index that points to them
-as a fallback for discovery. Setup preserves unrelated text around its managed
-index. JSON output includes the full skill content, including for manual setup.
+A native-copy Codex receives native skill files and an `AGENTS.md` index that
+points to them as a fallback for discovery. Setup preserves unrelated text
+around its managed index. JSON output includes the full skill content,
+including for manual setup.
 
-Binary setup does not install the standalone Claude plugin's session hooks.
-See the [plugin guide](/guides/plugin/) if you want those hooks.
+A plugin-delivered runtime receives the session hooks through the plugin; a
+native-copy runtime does not. See the [plugin guide](/guides/plugin/) for what
+the plugin installs and its standalone Claude-only fallback.
 
 ## Read results and repeat safely
 
 | Outcome | Meaning |
 | --- | --- |
 | `not-present` | The runtime binary was not found on `PATH`; absence is expected, not a failure. |
-| `would-write` | Proposed changes are shown. For an existing Claude Code or Codex registration, `facets` names what differs (`url`, `auth-mode`, `header-name`, `header-value-ref`) and `drift` details each difference, for example `x-gateway-api-key: observed <redacted>, would write ${GATEWAY_KEY}`. Generic also uses this outcome after `--apply` because it only prints output. |
-| `already-correct` | In preview, the registration read through the runtime's own CLI matches the requested URL, auth mode, and header names and references — a real comparison, not a guess. After `--apply` it means the observed state matches; it does not guarantee that no write commands ran. |
-| `preserved` | The existing registration carries something setup did not author and cannot reproduce — an extra header, an unrecognized field — so setup leaves it untouched and `reason` names it; header values read from a runtime are never shown. Claude Code and Codex both replace the whole entry on write (no partial merge): a later `--apply` either overwrites the entry or leaves it untouched and will never merge into it. |
-| `wrote` | Apply performed the reported changes; inspect registration and skills details. |
+| `would-write` | Proposed changes are shown. For an existing Claude Code or Codex registration, `facets` names what differs (`url`, `auth-mode`, `header-name`, `header-value-ref`) and `drift` details each difference, for example `x-gateway-api-key: observed <redacted>, would write ${GATEWAY_KEY}`. On Claude Code, `--apply` rewrites with `claude mcp remove` then `claude mcp add` — see the [OAuth section](#oauth) for the re-login note. Generic also uses this outcome after `--apply` because it only prints output. |
+| `already-correct` | In preview, the registration read through the runtime's own CLI matches the requested URL, auth mode, and header names and references — a real comparison, not a guess. For Claude Code and Codex, `--apply` makes the same comparison before writing and runs no registration command when the row is `already-correct`; opencode is not compared, so its `--apply` writes and then reads back. |
+| `preserved` | The existing registration carries something setup did not author and cannot reproduce — an extra header, an unrecognized field — so setup leaves it untouched and `reason` names it; header values read from a runtime are never shown. Claude Code and Codex both replace the whole entry on write (no partial merge), so `--apply` leaves a `preserved` registration untouched — it runs no registration command, not even Claude Code's `mcp remove` — and will never merge into it. To replace it yourself, clear it with the runtime's own tool (`claude mcp remove engram --scope user`; for Codex, delete the `[mcp_servers.engram]` table from `config.toml`), then run setup again — the row then reads `would-write`. |
+| `wrote` | Apply performed the reported changes; inspect registration and skills details. For Claude Code and Codex, `registered` shows the new registration, with header values redacted. |
 | `failed` | Planning or applying a runtime or skill change failed; read the reason and other results. |
 
 A preview can exit zero while reporting failed or unsupported rows. Read every
@@ -201,11 +236,13 @@ failures. Preserve the exit status and per-runtime results when reporting an
 attempt.
 
 Repeating setup with the same inputs converges on the requested registration
-without duplicate entries, but it may perform writes again. After an interruption
-or partial failure, inspect each runtime's registration and skills, then preview
-again before applying. Changes across runtimes are not one transaction: a failure
-does not roll back earlier successes, and replacement can leave a registration
-removed if adding it fails. Run one setup operation at a time.
+without duplicate entries. For Claude Code and Codex, a converged registration
+reads `already-correct` and no registration command runs; opencode is written
+again each time. After an interruption or partial failure, inspect each
+runtime's registration and skills, then preview again before applying. Changes
+across runtimes are not one transaction: a failure does not roll back earlier
+successes, and replacement can leave a registration removed if adding it
+fails. Run one setup operation at a time.
 
 ### Scripts and JSON output
 
@@ -222,7 +259,7 @@ corresponding flags override them — `--header` on the command line replaces
 the whole `ENGRAM_HEADERS` list. Setup does not prompt interactively. Review
 the JSON report before running the same selected invocation with `--apply`.
 Keep the runtime's output as report data, not shell instructions. Each
-present runtime's JSON row carries a `headers` string, and for Claude Code and Codex also carries `registered` (a normalized rendering of the registration the runtime's CLI reported — URL, auth state, header names — with every header value redacted), `facets` (the comma-joined differing facets, in a fixed order), and `drift` (the per-facet detail lines, or a note that the registration was not compared).
+present runtime's JSON row carries a `headers` string, and for Claude Code and Codex also carries `registered` (a normalized rendering of the registration the runtime's CLI reported — URL, auth state, header names — with every header value redacted), `facets` (the comma-joined differing facets, in a fixed order), `drift` (the per-facet detail lines, or a note that the registration was not compared), and `notes` (the OAuth re-login consequence and other tolerant-step records, when present).
 
 ## Cursor and other clients: manual setup
 
