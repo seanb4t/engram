@@ -14,6 +14,13 @@ Install the released binary below and check its version before continuing.
 If you have an older binary on `PATH`, upgrade it first.
 :::
 
+:::note[Unreleased as of v0.16.1]
+The man pages the cask installs below and plugin-first skill delivery through
+`engram setup --apply` are on the main branch and not yet in a cut release
+(the latest tag is v0.16.1). This notice is replaced with the observed
+version once the next release is verified.
+:::
+
 ## Homebrew
 
 With Homebrew available, install from the engram tap:
@@ -24,10 +31,14 @@ engram version --output json
 ```
 
 The [engram cask](https://github.com/seanb4t/homebrew-tap/blob/main/Casks/engram.rb)
-selects the macOS or Linux archive for your architecture. Its install hooks check
-the installed version and generate bash, zsh, and fish completions. On macOS,
-the cask also removes quarantine from the downloaded engram executable because
-the binary is unsigned.
+selects the macOS or Linux archive for your architecture.
+
+Its install hooks check the installed version, generate bash, zsh, and fish completions, and write one man page per command into Homebrew's `share/man/man1` directory.
+
+After a cask install, `man engram` and `man engram-setup` describe the CLI and
+the setup command; `brew uninstall` removes them along with the completions.
+On macOS, the cask also removes quarantine from the downloaded engram
+executable because the binary is unsigned.
 
 ## Release archives
 
@@ -87,10 +98,11 @@ shell's `PATH` configuration if it is not already there.
 
 ### Unsigned binary on macOS
 
-An archive installation does not run Homebrew's hooks. If macOS blocks the
-downloaded executable because it is quarantined, first confirm you downloaded
-the intended release and verified its checksum. Then remove quarantine only
-from that executable and retry the version check:
+An archive installation does not run Homebrew's hooks: completions and man
+pages are not installed by hand, and `engram <command> --help` covers the same
+content. If macOS blocks the downloaded executable because it is quarantined,
+first confirm you downloaded the intended release and verified its checksum.
+Then remove quarantine only from that executable and retry the version check:
 
 ```sh
 xattr -d com.apple.quarantine "$engram_bin_dir/engram"
@@ -132,6 +144,6 @@ export PATH="$engram_build_dir:$PATH"
 
 ## Next steps
 
-- [Agent Setup](/guides/agent-setup/) — preview and apply MCP registration with v0.16.0 or later.
+- [Agent Setup](/guides/agent-setup/) — preview and apply MCP registration with v0.16.0 or later; on a Claude Code or Codex whose plugin CLI works, setup delivers the curation skills plugin-first through the runtime's own plugin system.
 - [Headless CLI Client](/guides/cli/) — use the Connect API from a shell.
 - [Quickstart](/guides/quickstart/) — provision a server if you do not have one.
