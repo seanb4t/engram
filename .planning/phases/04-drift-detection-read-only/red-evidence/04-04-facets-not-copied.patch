@@ -1,0 +1,12 @@
+diff --git a/cmd/engram/setup.go b/cmd/engram/setup.go
+index 99b1b5f6..7f062a41 100644
+--- a/cmd/engram/setup.go
++++ b/cmd/engram/setup.go
+@@ -796,7 +796,6 @@ func setupRuntimeRowFromResult(ctx context.Context, env setup.Environment, rt se
+ 		TokenFile:  r.TokenFile,
+ 		Config:     r.Config,
+ 		Notes:      r.Notes,
+-		Facets:     r.Facets,
+ 		Drift:      r.Drift,
+ 	}
+ 	if r.Present {

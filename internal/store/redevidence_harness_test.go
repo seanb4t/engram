@@ -225,6 +225,65 @@ var redEvidenceDirs = map[string]map[string]string{
 		"03-02-detect-presence.patch":        "TestDetectPresence",
 		"03-03-plugin-skips-native.patch":    "TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites",
 	},
+	// Milestone 2026-09-13.01, Phase 04 (04-drift-detection-read-only): nine
+	// independent regressions this phase's own red-evidence claims pin as
+	// live, spanning D-04 (OutcomePreserved is a non-failed attempt, never
+	// laundered into failure), D-03 (Result.Registered is always REBUILT
+	// from the parsed-and-redacted Observation, never a raw probe capture),
+	// D-11 (a runtime's Observe is a TOTAL parse — unaccounted content is
+	// always reported, never silently tolerated), D-12 (skills/plugin
+	// facets and their outcomes ride on every rendered row, never dropped
+	// silently), and REQ-drift-redaction (an observed secret or third-party
+	// literal must never reach a rendered field, unconditionally).
+	//
+	// exit.go/aggregate.go (04-01): Classify's non-failed-attempt case and
+	// AggregateOutcome's precedenceOrder both name OutcomePreserved
+	// explicitly (D-04) — dropping it from either falls a preserved
+	// registration through to the failure arm/default in one of the two
+	// classifiers, silently reporting "setup performing correctly by
+	// declining to destroy something it cannot re-create" as a failure.
+	//
+	// apply.go (04-01): the !mutate branch's res.Registered MUST be
+	// rebuilt from the parsed-and-redacted Observation (renderObservation),
+	// never the raw probe1 capture (D-03) — reverting to the old raw
+	// capture reopens exactly the secret-leak path D-03 was authored to
+	// close, caught here by TestRedactionUnconditional's codex-observed-
+	// literal fixture.
+	//
+	// codex.go Observe (04-01, 04-05): two independent totality signals
+	// this file's own doc comment names — the key-set diff (c) and the
+	// DisallowUnknownFields totality gate (d) — must both keep reporting
+	// content D-11 has no vocabulary for; the header mapping additionally
+	// turns an observed "http_headers" key engram never planned into an
+	// unplanned/preserved facet rather than silent drop. Removing the
+	// key-diff's append lets an unrecognized top-level/transport key go
+	// unreported (the totality gate's generic fallback label replaces the
+	// specific field name, breaking the exhaustive per-field assertions);
+	// removing the http_headers-to-observedHeaders mapping makes an
+	// observed literal header vanish from Observation.Headers entirely
+	// instead of surfacing as HeaderUnplanned.
+	//
+	// claudecode.go Observe (04-05): the "Status:" line must classify as
+	// chrome (Pitfall 4: live connection state must never affect
+	// classification) — reclassifying it as unrecognized content churns
+	// Unrecognized on every dial-state fluctuation, which
+	// status-failed-dial-is-chrome pins against. Separately, an observed
+	// custom-header VALUE must never survive past the joinHeaders
+	// comparison into any retained field (D-02/D-03) — appending it to
+	// Unrecognized alongside its redacted ObservedHeader entry reopens the
+	// same secret-leak class D-03 exists to close, this time via
+	// claude-code's own header block rather than codex's JSON parse.
+	".planning/phases/04-drift-detection-read-only/red-evidence": {
+		"04-01-preserved-not-in-classify.patch":      "TestClassifyExhaustiveOutcomeCombinations",
+		"04-01-precedence-slot.patch":                "TestAggregateOutcomeExhaustive",
+		"04-01-registered-raw-capture.patch":         "TestRedactionUnconditional",
+		"04-01-codex-tolerant-decode.patch":          "TestObserveCodexRegistration",
+		"04-04-facets-not-copied.patch":              "TestSetupPreviewJSONCarriesDriftFacets",
+		"04-04-apply-summary-preserved.patch":        "TestSetupApplySummaryCountsPreserved",
+		"04-05-claudecode-status-facet.patch":        "TestObserveClaudeCodeRegistration",
+		"04-05-claudecode-value-retained.patch":      "TestRedactionUnconditional",
+		"04-05-codex-literal-header-tolerated.patch": "TestObserveCodexRegistration",
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than

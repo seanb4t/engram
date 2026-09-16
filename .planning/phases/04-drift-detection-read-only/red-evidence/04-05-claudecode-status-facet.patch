@@ -1,0 +1,13 @@
+diff --git a/internal/setup/claudecode.go b/internal/setup/claudecode.go
+index ff606cd1..c3e1fbb5 100644
+--- a/internal/setup/claudecode.go
++++ b/internal/setup/claudecode.go
+@@ -487,7 +487,7 @@ func (claudeCodeRuntime) Observe(probeOutput string, opts Options) (Observation,
+ 			// Chrome (Claude's own discretion, this plan's objective:
+ 			// engram's write is always user scope, so comparing scope
+ 			// would add a facet with no safety gain).
+-		case strings.HasPrefix(trimmed, "Status:"), strings.HasPrefix(trimmed, "Issue:"):
++		case strings.HasPrefix(trimmed, "Issue:"):
+ 			// Chrome by prefix, regardless of content (Pitfall 4): a live
+ 			// connection-status line must never gate classification.
+ 		case strings.HasPrefix(trimmed, "Type:"):
