@@ -1,6 +1,6 @@
 ---
 phase: 05-apply-time-preserve-gate-documentation
-reviewed: 2026-09-16T00:00:00Z
+reviewed: 2026-09-16T23:15:00Z
 depth: standard
 files_reviewed: 17
 files_reviewed_list:
@@ -23,99 +23,68 @@ files_reviewed_list:
   - internal/setup/plan.go
 findings:
   critical: 0
-  warning: 1
+  warning: 0
   info: 1
-  total: 2
-status: issues_found
+  total: 1
+status: clean
 ---
 
 # Phase 5: Code Review Report
 
-**Reviewed:** 2026-09-16T00:00:00Z
+**Reviewed:** 2026-09-16T23:15:00Z
 **Depth:** standard
 **Files Reviewed:** 17
-**Status:** issues_found
+**Status:** clean
 
 ## Summary
 
-Reviewed the apply-time preserve gate implementation (`internal/setup/apply.go`,
-`drift.go`, `claudecode.go`, `codex.go`, `plan.go`), the CLI wiring
-(`cmd/engram/setup.go`), the three docs-gate test files, the generated
-`help.golden`, and the three updated guides, at standard depth, cross-checked
-against `05-CONTEXT.md`'s D-01..D-07 and diffed line-for-line against the
-pre-phase revision to isolate what this phase actually changed.
+Re-review (iteration 2) after fix commit `fd045e52`, which addressed WR-01
+from the prior review (`05-REVIEW.iter2.md`). Verified the fix directly
+against the diff (`git diff 89be5f13..HEAD -- internal/setup/`) and against
+the full current state of `internal/setup/apply.go`, not just the fixer's
+report.
 
-The security-critical property held up under adversarial tracing: in
-`execute()`'s `mutate == true` path, `classifyProbe` is computed once from
-probe1 and shared by both lanes; a `compared` classification of
-`OutcomeAlreadyCorrect` or `OutcomePreserved` returns before the write-action
-loop's first iteration (`apply.go:486-492`), so `claudeCodeRemoveAction`
-(`plan.Actions[0]` for every Claude Code auth mode) is never dispatched on
-those rows. An ambiguous/scanner-less/seam-error classification falls through
-unchanged to the write loop (ambiguity resolves to `wrote`, never skips a
-write). The plugin lane runs independently of the registration outcome
-(`setupApplyPluginFacet` is called unconditionally for a present runtime),
-confirmed live by `TestSetupApplyPreservedRuntimeSkipsRegistrationWrite`. The
-D-02 post-write re-observe rebuilds `Registered` via
-`Observe`/`renderObservation`, never `displayCapture`, and unconditionally
-sets `Outcome = OutcomeWrote` regardless of what the re-observe finds. The
-D-03 OAuth re-login note (`claudeCodeOAuthReLoginNote`) is set in
-`claudecode.go`'s `Observe` purely by observed shape (`auth == AuthNone`),
-but is only ever surfaced onto `Result.Notes` by `apply.go`'s
-`renderClassification` when `c.drift.Outcome == OutcomeWouldWrite` — verified
-against `TestOAuthReLoginConsequence`'s bearer/foreign/preserved/
-already-correct/ambiguous/codex negative cases, all of which assert `Notes ==
-""`. `ManualRemediation` is authored per-runtime in `claudecode.go`/`codex.go`
-(D-05) and only appended by the shared executor when non-empty. The redaction
-discipline (`REQ-drift-redaction`) holds for every new field: `Registered`,
-`Drift`, `Reason` (which now also carries `ManualRemediation`) are run through
-`boundCapture` in `renderClassification`, and the post-write re-observe path
-never uses `displayCapture` for a compared runtime. `internal/setup` remains
-stdlib-only across every file in scope (verified by import scan). No test in
-this phase's diff invokes a real `claude`/`codex`/`opencode` binary or touches
-`$HOME` — every scripted test drives `fakeEnvWithRun`/`scriptedRun` or
-`fakeSetupEnvWithRun`/`scriptedSetupRun`/`fakePluginRun` fakes (rule
-`m45p2b4bp7` honored). `agent-setup.md`'s `already-correct` row no longer
-claims "does not guarantee that no write commands ran," and all three guides'
-"Unreleased as of v0.16.1" notices are truthful against
-`git describe --tags --abbrev=0` (`v0.16.1`).
+**WR-01 closed, correctly.** `execute()`'s `!mutate` (Preview) branch now
+reads `res.Drift = boundCapture(c.notCompared)` (`apply.go:464`), matching
+every other rendered field in the file that carries potentially
+attacker/OS-influenced content (`renderClassification`'s
+Drift/Registered/Reason at `apply.go:280-282`, `describeFailure`'s Reason,
+`toleratedNote`'s Notes). This is the single call site that renders
+`c.notCompared` (`classifyProbe` never renders it directly), so no
+duplicate fix site was needed. The new test,
+`TestPreviewNotComparedDriftStaysBounded`, is a real regression guard, not a
+tautology: it drives a scripted `codex` probe #1 seam error carrying a
+100KB error string through the real `Preview` seam (`fakeEnvWithRun`/
+`scriptedRun`, rule `m45p2b4bp7` honored — no real CLI invoked), then
+asserts both a byte-length ceiling (`maxCapturedBytes + len(truncationMarker)
++ 64`) and the literal absence of the unbounded 100KB payload in
+`res.Drift`. Confirmed it fails against the pre-fix code by reverting the
+one-line change locally and re-running — matches the fixer's own claimed
+verification.
 
-Two minor issues found, both low-severity and outside the security-critical
-path; see below.
+**The security-critical `mutate == true` gate is untouched by this fix**,
+confirmed by direct re-read of `execute()` (`apply.go:372-600`): a
+`c.compared` classification of `OutcomeAlreadyCorrect` or `OutcomePreserved`
+still returns at `apply.go:490-493`, strictly before the write-action loop's
+first iteration — so `claudeCodeRemoveAction` (`plan.Actions[0]` for every
+Claude Code auth mode) still never runs on a preserved or already-correct
+row. `TestApplyPreservedNeverRunsClaudeCodeRemove`,
+`TestApplyPreservedIssuesZeroWrites`, and
+`TestApplyAlreadyCorrectIssuesZeroWrites` all pass. `go build`/`go vet` on
+`./internal/setup/...` and `./cmd/engram/...` are clean, and
+`go test ./internal/setup/... ./cmd/engram/...` passes in full (a separate,
+pre-existing `go vet` finding in `cmd/engram/operator_view_test.go` — a
+duplicate `json` struct tag — is outside this phase's file scope and
+unrelated to the fix; not reported here).
 
-## Warnings
+IN-01 (`strings.Replace` fixture derivations at `apply_test.go:73-74, 346,
+607-608, etc.` with no landed-substitution check) was out of the fixer's
+scope (`fix_scope: critical_warning`) and stands unchanged on re-read — still
+Info, carried forward without escalation per this iteration's instructions.
 
-### WR-01: Preview's "not compared" `Drift` note bypasses `boundCapture`, inconsistent with the rest of this file's own bounding discipline
-
-**File:** `internal/setup/apply.go:454-461`
-**Issue:** In the `!mutate` (Preview) branch, when `!c.compared`, the code
-does `res.Drift = c.notCompared; return res` with no `boundCapture` call. Every
-other rendered field in this file that can carry untrusted or variable-length
-content (`Drift`/`Registered`/`Reason` in `renderClassification`, `Reason` in
-`describeFailure`, `Notes` via `toleratedNote`, `Registered` via
-`displayCapture` in the ambiguous apply path) is explicitly bounded to
-`maxCapturedBytes`. `c.notCompared` is built by `classifyProbe` from
-`notComparedNote(name, quoteArgs(plan.Probe)+": "+probe1Err.Error())` when
-probe1 hits a seam error — `probe1Err.Error()` is not a probe-body capture
-(so this is not a `REQ-drift-redaction` violation), but it is also not
-bounded, unlike every sibling field this same commit's own doc comments
-(`WR-01` references throughout `apply.go`) commit to capping. This is
-pre-existing behavior carried through the Phase 5 refactor unchanged (the
-pre-refactor code had the identical gap), but the refactor was an opportunity
-to close it and the file's own `TestDriftFieldsStayBoundedAgainstOversizedProbeContent`
-test does not cover this specific "not compared" preview path, so a
-regression here (e.g. a future OS/exec error that embeds a long or
-attacker-influenced PATH) would go undetected.
-**Fix:**
-```go
-if !c.compared {
-    res.Drift = boundCapture(c.notCompared)
-    return res
-}
-```
-Apply the same treatment inside `classifyProbe` (or at the single call site
-above) so every "not compared" rendering path — preview and any future apply
-consumer — is bounded uniformly with the rest of the file.
+No new issues were introduced by the fix commit, and a fresh scan of the
+full phase scope (all 17 files) surfaced nothing beyond what iteration 1
+already found and this iteration's fix already resolved.
 
 ## Info
 
@@ -129,14 +98,14 @@ landed. If `codexGetEngramBearer`'s literal text ever changes (e.g. its own
 fixture drifts in an unrelated future edit) `strings.Replace` returns the
 original string unchanged with no error, and the test would then silently
 exercise the wrong fixture (a bearer-shaped registration instead of the
-intended no-bearer one) rather than failing loudly. This phase's own new test
-(`TestDriftFieldsStayBoundedAgainstOversizedProbeContent`) already guards
-against exactly this failure mode with an explicit
-`if !strings.Contains(stdout, hugeURL) || !strings.Contains(stdout, hugeName) { t.Fatal(...) }`
-check, showing the pattern is known; it just was not applied to the older
-`Replace` call sites this phase touches.
-**Fix:** Add the same landed-substitution assertion used in
-`TestDriftFieldsStayBoundedAgainstOversizedProbeContent`, e.g.:
+intended no-bearer one) rather than failing loudly. This phase's own newer
+tests (`TestDriftFieldsStayBoundedAgainstOversizedProbeContent`,
+`TestPreviewNotComparedDriftStaysBounded`) already guard against exactly
+this failure mode with explicit landed-substitution assertions, showing the
+pattern is known; it just was not applied to the older `Replace` call sites
+this phase touches.
+**Fix:** Add the same landed-substitution assertion used in the newer
+tests, e.g.:
 ```go
 noBearer := strings.Replace(codexGetEngramBearer,
     `"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":null`, 1)
@@ -147,6 +116,6 @@ if noBearer == codexGetEngramBearer {
 
 ---
 
-_Reviewed: 2026-09-16T00:00:00Z_
+_Reviewed: 2026-09-16T23:15:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
