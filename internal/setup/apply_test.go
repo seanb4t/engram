@@ -782,3 +782,66 @@ func TestThirdPartyCaptureIsQuotedForDisplay(t *testing.T) {
 		}
 	})
 }
+
+// TestDriftFieldsStayBoundedAgainstOversizedProbeContent covers WR-01
+// (04-REVIEW.md): an observed header NAME or URL is untrusted third-party
+// content — parsed straight out of codex's `mcp get --json` stdout by
+// codexRuntime.Observe, with no length cap of its own (unlike D-11's
+// Unrecognized labels, which codex.go's own unrecognizedLabelBound
+// already caps at 40 bytes). Result.Drift/Registered/Reason, built from
+// the drift-compare path (Compare/renderObservation), must stay bounded
+// to maxCapturedBytes the same way the mutate lane's own
+// displayCapture(probe2.Stdout+probe2.Stderr) always has — never flood
+// the operator's terminal or --output json from a single oversized
+// header name or URL.
+func TestDriftFieldsStayBoundedAgainstOversizedProbeContent(t *testing.T) {
+	hugeName := strings.Repeat("A", 100_000)
+	hugeURL := "https://engram.example.com/" + strings.Repeat("x", 100_000)
+
+	stdout := strings.Replace(codexGetEngramBearer, `"url":"https://engram.example.com/mcp"`, `"url":"`+hugeURL+`"`, 1)
+	stdout = strings.Replace(stdout, `"http_headers":null`, `"http_headers":{"`+hugeName+`":"v"}`, 1)
+	if !strings.Contains(stdout, hugeURL) || !strings.Contains(stdout, hugeName) {
+		t.Fatal("fixture setup failed: expected replacements did not land")
+	}
+
+	// opts.Auth stays "oauth" (not "bearer") against a fixture whose
+	// bearer_token_env_var is codex's own authored form, and opts.URL
+	// deliberately does not match hugeURL — both an auth-mode facet and
+	// a would-write URL facet fire alongside the unplanned (preserved)
+	// header, so this single scripted probe exercises Drift, Registered,
+	// AND Reason (OutcomePreserved) all at once.
+	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+	var calls []runCall
+	env := fakeEnvWithRun(scriptedRun(&calls,
+		scriptedResult{Result: RunResult{Stdout: stdout}},
+	), "codex")
+
+	res := Preview(context.Background(), env, Codex, opts)
+
+	if res.Outcome != OutcomePreserved {
+		t.Fatalf("Outcome = %q, want %q (an unplanned observed header is always a preserved cause)", res.Outcome, OutcomePreserved)
+	}
+
+	// maxCapturedBytes plus truncationMarker's own length is the hard
+	// ceiling boundCapture ever produces; a little slack covers the
+	// fixed prose boundCapture's caller prepends (e.g. "codex: preserved: ").
+	const maxAllowed = maxCapturedBytes + len(truncationMarker) + 64
+	for _, tc := range []struct {
+		field string
+		got   string
+	}{
+		{"Drift", res.Drift},
+		{"Registered", res.Registered},
+		{"Reason", res.Reason},
+	} {
+		if len(tc.got) > maxAllowed {
+			t.Errorf("len(res.%s) = %d, want <= %d (bounded via boundCapture, WR-01)", tc.field, len(tc.got), maxAllowed)
+		}
+		if strings.Contains(tc.got, hugeName) {
+			t.Errorf("res.%s contains the full 100KB oversized header name unbounded", tc.field)
+		}
+		if strings.Contains(tc.got, hugeURL) {
+			t.Errorf("res.%s contains the full 100KB oversized URL unbounded", tc.field)
+		}
+	}
+}

@@ -351,10 +351,18 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		d := Compare(obs, opts)
 		res.Outcome = d.Outcome
 		res.Facets = joinFacets(d.Facets)
-		res.Drift = strings.Join(d.Details, "; ")
-		res.Registered = renderObservation(obs)
+		// WR-01: an observed header NAME or URL is untrusted third-party
+		// content (parsed straight out of the probe's stdout/stderr by
+		// the observing runtime's own scanner) and carries no length cap
+		// of its own — bound the three rendered fields built from it,
+		// the same maxCapturedBytes discipline the mutate lane's own
+		// res.Registered = displayCapture(...) applies one code path
+		// below, so a flooded header name/URL can never flood the
+		// operator's terminal or --output json.
+		res.Drift = boundCapture(strings.Join(d.Details, "; "))
+		res.Registered = boundCapture(renderObservation(obs))
 		if d.Outcome == OutcomePreserved {
-			res.Reason = name + ": preserved: " + strings.Join(d.Preserved, "; ") + "; " + obs.WholeEntryNote
+			res.Reason = boundCapture(name + ": preserved: " + strings.Join(d.Preserved, "; ") + "; " + obs.WholeEntryNote)
 		}
 		return res
 	}
