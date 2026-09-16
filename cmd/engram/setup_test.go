@@ -194,6 +194,53 @@ func withFakeSetupVersion(t *testing.T, v string) {
 // (04-04-PLAN.md Task 1).
 const codexGetEngramBearerJSON = `{"name":"engram","enabled":true,"disabled_reason":null,"transport":{"type":"streamable_http","url":"https://engram.example.com/mcp","bearer_token_env_var":"ENGRAM_TOKEN","http_headers":null,"env_http_headers":null,"http_headers_helper":null},"enabled_tools":null,"disabled_tools":null,"startup_timeout_sec":null,"tool_timeout_sec":null}`
 
+// claudeGetProbeLiteralText is cmd/engram's own copy of
+// internal/setup/claudecode_test.go's literal-header fixture: the two
+// packages cannot share test code, so this is the SAME
+// .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Claude Code — literal value" VERBATIM `claude mcp get` capture
+// (claude 2.1.273, 2026-09-15), with every occurrence of the record's
+// probe entry name "probe-literal-04" rewritten to "engram" (the only
+// edit) — kept in sync by inspection (04-05-PLAN.md Task 3).
+const claudeGetProbeLiteralText = `engram:
+  Scope: User config (available in all your projects)
+  Status: ✘ Failed to connect
+  Issue: ConnectionRefused: Unable to connect. Is the computer able to access the url?
+  Type: http
+  URL: http://127.0.0.1:1/mcp
+  Headers:
+    x-litellm-api-key: sk-DO-NOT-COMMIT-literal-test-abc123
+
+To remove this server, run: claude mcp remove engram -s user
+`
+
+// codexGetProbeLiteralJSON is cmd/engram's own copy of
+// internal/setup/drift_test.go's codexObservedLiteralHeader fixture: the
+// SAME .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Codex — literal header (hand-edited)" VERBATIM
+// `codex mcp get probe-literal-04 --json` capture (codex-cli 0.154.0,
+// 2026-09-15), with ONLY "name":"probe-literal-04" rewritten to
+// "name":"engram" — kept in sync by inspection (04-05-PLAN.md Task 3).
+const codexGetProbeLiteralJSON = `{
+  "name": "engram",
+  "enabled": true,
+  "disabled_reason": null,
+  "transport": {
+    "type": "streamable_http",
+    "url": "http://127.0.0.1:1/mcp",
+    "bearer_token_env_var": "DUMMY_04",
+    "http_headers": {
+      "x-litellm-api-key": "sk-DO-NOT-COMMIT-literal-test-abc123"
+    },
+    "env_http_headers": null,
+    "http_headers_helper": null
+  },
+  "enabled_tools": null,
+  "disabled_tools": null,
+  "startup_timeout_sec": null,
+  "tool_timeout_sec": null
+}`
+
 // scriptedSetupRun returns a Run seam that responds to a `mcp get` probe
 // (args[0]=="mcp", args[1]=="get" — codex's own probe shape, plan.go's
 // Probe with the binary already stripped) with mcpGet, and to every
@@ -1101,6 +1148,87 @@ func TestSetupJSONNeverLeaksProbeLiteral(t *testing.T) {
 			}
 		})
 	}
+
+	// claude-code-observed-shape and codex-observed-shape (04-05-PLAN.md
+	// Task 3) are the SC5 fixture proof at the CLI process boundary
+	// against the OBSERVED shapes .planning/phases/04-drift-detection-read-only/
+	// 04-OBSERVATIONS.md recorded, rather than an assumed one — extending
+	// this test beyond the (still-present) synthetic sentinel case above.
+	const observedLiteral = "sk-DO-NOT-COMMIT-literal-test-abc123"
+
+	t.Run("claude-code-observed-shape", func(t *testing.T) {
+		for _, lane := range []string{"json", "text"} {
+			t.Run(lane, func(t *testing.T) {
+				resetClientFlags(t)
+				resetCommandFlagState(t, setupCmd)
+				withFakeSetupEnv(t, fakeSetupEnvWithRun(
+					scriptedSetupRun(t, setup.RunResult{Stdout: claudeGetProbeLiteralText, ExitCode: 0}), "claude"))
+
+				out, errOut, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+					"--auth", "oauth", "--runtime", "claude-code", "--output", lane)
+				if err != nil {
+					t.Fatalf("runClient: %v (stderr=%q)", err, errOut)
+				}
+				if strings.Contains(out, observedLiteral) {
+					t.Errorf("%s stdout leaks the observed literal: %s", lane, out)
+				}
+				if strings.Contains(errOut, observedLiteral) {
+					t.Errorf("%s stderr leaks the observed literal: %s", lane, errOut)
+				}
+
+				if lane == "json" {
+					var doc setupReportDoc
+					if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+						t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+					}
+					row := rowByName(t, doc.Runtimes, "claude-code")
+					if row.Outcome != string(setup.OutcomePreserved) {
+						t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+					}
+					if !strings.Contains(row.Facets, "header-name") {
+						t.Errorf("Facets = %q, want it to contain %q", row.Facets, "header-name")
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("codex-observed-shape", func(t *testing.T) {
+		for _, lane := range []string{"json", "text"} {
+			t.Run(lane, func(t *testing.T) {
+				resetClientFlags(t)
+				resetCommandFlagState(t, setupCmd)
+				withFakeSetupEnv(t, fakeSetupEnvWithRun(
+					scriptedSetupRun(t, setup.RunResult{Stdout: codexGetProbeLiteralJSON}), "codex"))
+
+				out, errOut, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+					"--auth", "oauth", "--runtime", "codex", "--output", lane)
+				if err != nil {
+					t.Fatalf("runClient: %v (stderr=%q)", err, errOut)
+				}
+				if strings.Contains(out, observedLiteral) {
+					t.Errorf("%s stdout leaks the observed literal: %s", lane, out)
+				}
+				if strings.Contains(errOut, observedLiteral) {
+					t.Errorf("%s stderr leaks the observed literal: %s", lane, errOut)
+				}
+
+				if lane == "json" {
+					var doc setupReportDoc
+					if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+						t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+					}
+					row := rowByName(t, doc.Runtimes, "codex")
+					if row.Outcome != string(setup.OutcomePreserved) {
+						t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+					}
+					if !strings.Contains(row.Facets, "header-name") {
+						t.Errorf("Facets = %q, want it to contain %q", row.Facets, "header-name")
+					}
+				}
+			})
+		}
+	})
 }
 
 // TestSetupApplySummaryCountsPreserved pins setupApplySummary's preserved
