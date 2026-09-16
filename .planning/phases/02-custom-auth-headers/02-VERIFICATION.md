@@ -39,7 +39,7 @@ covered_files:
   - "internal/setupgen/setupgen.go"
   - "internal/setupgen/setupgen_test.go"
   - "skill/engram/commands/engram-setup.md"
-covered_digest: "v1:sha256:8eaba5bb88d06332becd3605f3b55cdc33da9aec1b85a729c82bf374fef82e5a"
+covered_digest: "v1:sha256:3de82afe3e03d8f12a3e99e7c63fc68ce07c9be2fafd1805f2226b68b19a2522"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
@@ -218,3 +218,18 @@ the nine `TestSetupParseHeaders`/`TestSetupHeader*` tests (`cmd/engram`, `-count
 `internal/setupgen` suite. The digest is re-pinned to the current bytes so the staleness signal stays
 meaningful for the NEXT unrelated change rather than staying permanently tripped.
 
+
+## Re-fingerprint 2026-09-15 (orchestrator, after Phase 4)
+Phase 4 (Drift Detection, Read-Only) additively edited six files in this phase's `covered_files`
+(`internal/setup/{claudecode,codex}.go`, `cmd/engram/{setup.go,operator_view_setup_test.go,testdata/help.golden}`,
+`docs-site/src/content/docs/guides/agent-setup.md`) and retargeted one `key_links` pattern in
+`02-01-PLAN.md` (plan 04-05 factored the Claude Code bearer header string into
+`claudeCodeBearerForm`, so the old literal no longer exists in source; the link now names the
+constant — `internal/keylinks` gate green), which correctly flipped the covered digest and this
+report to `stale`. This phase's CONCLUSION is unchanged and was re-proven at Phase 4's HEAD before
+re-fingerprinting: `TestClaudeCodeHeaders`, `TestOpenCodeHeaders`, `TestGenericHeaders`,
+`TestCodexDeclinesHeaders`, `TestNoSecretInArgs`, `TestSortedHeadersTotalOrder` (`internal/setup`);
+the `TestSetupParseHeaders`/`TestSetupHeader*` family (`cmd/engram`); and the `internal/setupgen`
+render/drift suite all pass with `-count=1`, and all five `02-*.patch` red-evidence entries stayed
+live under `TestRedEvidencePatchesAreLive` (23/23 at `d5a5a694`). The digest is re-pinned to the
+current bytes so the staleness signal stays meaningful for the NEXT unrelated change.

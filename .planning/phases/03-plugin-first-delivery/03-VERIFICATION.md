@@ -34,7 +34,7 @@ covered_files:
   - "release-please-config.json"
   - "skill/engram/.codex-plugin/plugin.json"
   - "skill/engram/commands/engram-setup.md"
-covered_digest: "v1:sha256:f5ef1ddf7574c56d92e8f602b0ae0e8e5fb28c41bcea21a7699c9590b7df7dec"
+covered_digest: "v1:sha256:cacf89db76943b00245c4cda2dc7bde37d44dedf976525382d3be8fe32b3e0bb"
 overrides_applied: 0
 behavior_unverified: 0
 ---
@@ -157,3 +157,18 @@ machine reproduced the exact documented plugin-facet behavior with zero write ve
 
 _Verified: 2026-09-15T04:24:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Re-fingerprint 2026-09-15 (orchestrator, after Phase 4)
+Phase 4 (Drift Detection, Read-Only) additively edited six files in this phase's `covered_files`
+(`internal/setup/{claudecode,codex}.go`, `cmd/engram/{setup.go,operator_view_setup_test.go,testdata/help.golden}`,
+`internal/store/redevidence_harness_test.go` — a new Phase 4 entry in `redEvidenceDirs`; this
+phase's own entry is untouched), which correctly flipped the covered digest and this report to
+`stale`. This phase's CONCLUSION is unchanged and was re-proven at Phase 4's HEAD before
+re-fingerprinting: `TestPluginVersionCompare`, `TestPluginPlan`,
+`TestPluginCapabilityProbeFailureFallsBackToNative`, `TestPluginRuntimeIsOptional` (`internal/setup`);
+`TestDetectPresence` (`internal/skills`); `TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites`,
+`TestSetupApplyJSONEmitsPluginFacet`, `TestSetupPreviewShowsPluginArgv`,
+`TestSetupPluginUnavailableFallsBackToNative` (`cmd/engram`) all pass with `-count=1`, and all five
+`03-*.patch` red-evidence entries stayed live under `TestRedEvidencePatchesAreLive` (23/23 at
+`d5a5a694`). The digest is re-pinned to the current bytes so the staleness signal stays meaningful
+for the NEXT unrelated change.

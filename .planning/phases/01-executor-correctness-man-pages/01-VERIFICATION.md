@@ -24,7 +24,7 @@ covered_files:
   - internal/setup/apply_test.go
   - internal/setup/environment.go
   - internal/setup/environment_test.go
-covered_digest: "v1:sha256:aa662daa06816c5e3f7dc421106bc4112a5e0f8e7fdfc33855f19cb601aea678"
+covered_digest: "v1:sha256:98c2862359b2a25a1fed092bfa3cda5a4d3e6fb5464e9cd555d628f0453ec3b5"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -117,3 +117,15 @@ None. All must-haves from both plans' frontmatter, all three ROADMAP success cri
 
 _Verified: 2026-09-13T15:20:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Re-fingerprint 2026-09-15 (orchestrator, after Phase 4)
+Phase 4 (Drift Detection, Read-Only) additively edited `internal/setup/apply.go` in this phase's
+`covered_files` (the `!mutate` preview branch was rewritten to observe → compare → classify →
+redact → render; the `mutate` branch this phase's osRun/runSeam work feeds is byte-identical to
+`ff5a6f94` by plan 04-01's pinned diff check), which correctly flipped the covered digest and this
+report to `stale`. This phase's CONCLUSION is unchanged and was re-proven at Phase 4's HEAD before
+re-fingerprinting: `TestOsRunReportsContextDeadlineExceeded`, `TestDriftReportedLegibly`,
+`TestManPagesByteStable` (`internal/setup`, `cmd/engram`, `-count=1`) pass, and all four
+`01-*.patch` red-evidence entries stayed live under `TestRedEvidencePatchesAreLive` (23/23 at
+`d5a5a694`). The digest is re-pinned to the current bytes so the staleness signal stays meaningful
+for the NEXT unrelated change rather than staying permanently tripped.
