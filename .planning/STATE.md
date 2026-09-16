@@ -5,16 +5,16 @@ milestone_name: Setup v2
 current_phase: 5
 current_phase_name: Apply-Time Preserve Gate & Documentation
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-09-16T22:10:14.356Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-09-16T22:34:41.815Z"
 last_activity: 2026-09-16
 last_activity_desc: Phase 5 execution started
-state_head: c67aa825a312063ea0c0fac638dfdabba820db67
+state_head: d81f69283171e25d8ad6e59c6a27b145f0b89be8
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15 after Phase 4 — 2026-09-13.01 Se
 ## Current Position
 
 Phase: 5 (Apply-Time Preserve Gate & Documentation) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-16 — Phase 5 execution started
 
@@ -295,6 +295,9 @@ milestone needs in working memory.
 - [Phase 5]: Apply-time preserve gate (D-01): --apply now consults the same pre-write classification Preview reports, closing gotcha ryr82bf2s2 -- already-correct/preserved issue zero registration writes
 - [Phase 5]: RewriteConsequence and ManualRemediation are new, dedicated Observation fields (not extensions of WholeEntryNote), each authored per-runtime and appended by a content-blind executor
 - [Phase 05]: docs-gate legs requiring two tokens on the same line forced install.md's cask-hooks sentence and Next-steps bullet to be written as short unwrapped paragraphs/single lines rather than the file's usual ~80-column soft wrap
+- [Phase 5]: The apply-gate help paragraph is a new paragraph appended after the existing drift-comparison paragraph, not an in-place rewrite, keeping TestSetupHelpNamesDriftOutcomes byte-stable.
+- [Phase 5]: TestSetupJSONNeverLeaksProbeLiteral's apply-mode subtests script the plugin lane already-correct so a first-run native skills write never masks the preserved registration facet in the aggregate Outcome.
+- [Phase 5]: Every new agent-setup.md sentence a docs-gate leg checks is written as a single unwrapped physical source line at the checked substring.
 
 ### Pending Todos
 
@@ -377,8 +380,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-16T22:10:14.326Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-09-16T22:34:41.782Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -509,6 +512,7 @@ Resume file: None
 | Phase 04 P05 | ~75min | 3 tasks | 7 files |
 | Phase 05 P01 | ~105min | 3 tasks | 11 files |
 | Phase 05 P03 | ~25min | 2 tasks | 4 files |
+| Phase 05 P02 | 26min | 2 tasks | 5 files |
 
 ## Operator Next Steps
 

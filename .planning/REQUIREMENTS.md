@@ -43,8 +43,8 @@ any working auth shape, and never replaces a registration it did not write.
 - [x] **REQ-drift-preserved-outcome**: `preserved` is a first-class outcome in text and JSON output, with a reason naming what setup cannot reproduce (e.g. a header it does not author), reflected consistently in aggregation and exit codes, and documented in `guides/agent-setup.md`'s results table. Codex's semantics are whole-entry (preserve the runtime or overwrite it — no partial merge) and the docs say so.
 - [x] **REQ-drift-facet-naming**: A `would-write` row for an existing registration names which facet(s) differ — URL, auth mode, header name, or value reference — rather than a bare "differs".
 - [x] **REQ-drift-redaction**: Header values obtained from any runtime read-probe are redacted unconditionally before comparison storage, rendering, JSON output, or logging — setup never tries to tell a safe-looking reference from a literal secret. Verified with a fixture whose probe output carries a literal value.
-- [ ] **REQ-apply-preserve-gate**: `--apply` consults the same classification before writing and performs zero write actions for a `preserved` registration — including never running Claude Code's `mcp remove` step — while still applying skills/plugin actions for that runtime. Proven by a fixture test that runs `--apply` (not only preview) against a pre-seeded unreproducible registration and asserts no registration write was issued.
-- [ ] **REQ-apply-rewrite-consequence**: When a reproducible difference on Claude Code requires remove-then-add of an existing registration, preview and apply state that an OAuth-authenticated registration will need to log in again before the rewrite runs.
+- [x] **REQ-apply-preserve-gate**: `--apply` consults the same classification before writing and performs zero write actions for a `preserved` registration — including never running Claude Code's `mcp remove` step — while still applying skills/plugin actions for that runtime. Proven by a fixture test that runs `--apply` (not only preview) against a pre-seeded unreproducible registration and asserts no registration write was issued.
+- [x] **REQ-apply-rewrite-consequence**: When a reproducible difference on Claude Code requires remove-then-add of an existing registration, preview and apply state that an OAuth-authenticated registration will need to log in again before the rewrite runs.
 
 ### Plugin-First Delivery
 
@@ -101,8 +101,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-drift-preserved-outcome | Phase 4 | Complete |
 | REQ-drift-facet-naming | Phase 4 | Complete |
 | REQ-drift-redaction | Phase 4 | Complete |
-| REQ-apply-preserve-gate | Phase 5 | Pending |
-| REQ-apply-rewrite-consequence | Phase 5 | Pending |
+| REQ-apply-preserve-gate | Phase 5 | Complete |
+| REQ-apply-rewrite-consequence | Phase 5 | Complete |
 | REQ-plugin-capability-detection | Phase 3 | Complete |
 | REQ-plugin-install-or-update | Phase 3 | Complete |
 | REQ-plugin-three-way-state | Phase 3 | Complete |
