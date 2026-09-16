@@ -173,6 +173,167 @@ func TestPreviewClassifiesRegistration(t *testing.T) {
 			t.Fatalf("Run called %d times, want exactly 1", len(calls))
 		}
 	})
+
+	// claude-code: the second parsed runtime (04-05-PLAN.md Task 1),
+	// exercising the SAME observe -> compare -> classify -> redact ->
+	// render pipeline through claudeCodeRuntime.Observe (claudecode.go),
+	// with fixtures built from
+	// .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+	// (D-08) via claudecode_test.go's claudeGetFixture. Each subtest
+	// scripts exactly ONE Run result — Preview issues a single probe —
+	// with ExitCode 0, the RECORD's own observed failed-dial exit code
+	// (claude mcp get exits 0 even when the dial itself fails), proving
+	// parsing survives it (Pitfall 4).
+	t.Run("claude-code", func(t *testing.T) {
+		opts := Options{
+			URL:     "https://engram.example.com/mcp",
+			Auth:    "bearer",
+			Headers: []HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}},
+		}
+		noExtraOpts := Options{URL: "https://engram.example.com/mcp", Auth: "bearer"}
+
+		runClaudeCode := func(t *testing.T, opts Options, stdout string, exitCode int) (Result, []runCall) {
+			t.Helper()
+			var calls []runCall
+			env := fakeEnvWithRun(scriptedRun(&calls,
+				scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: exitCode}},
+			), "claude")
+			res := Preview(context.Background(), env, ClaudeCode, opts)
+			return res, calls
+		}
+
+		assertOneProbeCall := func(t *testing.T, calls []runCall) {
+			t.Helper()
+			if len(calls) != 1 {
+				t.Fatalf("Run called %d times, want exactly 1", len(calls))
+			}
+			wantArgs := []string{"mcp", "get", "engram"}
+			if !reflect.DeepEqual(calls[0].Args, wantArgs) {
+				t.Errorf("calls[0].Args = %q, want %q", calls[0].Args, wantArgs)
+			}
+		}
+
+		t.Run("already-correct", func(t *testing.T) {
+			stdout := claudeGetFixture([]string{
+				"Authorization: " + claudeCodeBearerForm,
+				"x-gateway-api-key: ${GATEWAY_KEY}",
+			}, claudeStatusFailedDial)
+			res, calls := runClaudeCode(t, opts, stdout, 0)
+			if res.Outcome != OutcomeAlreadyCorrect {
+				t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeAlreadyCorrect)
+			}
+			if res.Facets != "" {
+				t.Errorf("Facets = %q, want empty", res.Facets)
+			}
+			wantRegistered := "url=https://engram.example.com/mcp auth=bearer headers=x-gateway-api-key=<redacted>"
+			if res.Registered != wantRegistered {
+				t.Errorf("Registered = %q, want %q", res.Registered, wantRegistered)
+			}
+			assertOneProbeCall(t, calls)
+		})
+
+		t.Run("would-write-url", func(t *testing.T) {
+			stdout := strings.Replace(claudeGetFixture([]string{
+				"Authorization: " + claudeCodeBearerForm,
+				"x-gateway-api-key: ${GATEWAY_KEY}",
+			}, claudeStatusFailedDial), "URL: https://engram.example.com/mcp", "URL: https://old.example/mcp", 1)
+			res, calls := runClaudeCode(t, opts, stdout, 0)
+			if res.Outcome != OutcomeWouldWrite {
+				t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+			}
+			if res.Facets != "url" {
+				t.Errorf("Facets = %q, want %q", res.Facets, "url")
+			}
+			assertOneProbeCall(t, calls)
+		})
+
+		t.Run("would-write-auth-mode", func(t *testing.T) {
+			stdout := claudeGetFixture([]string{"Authorization: " + claudeCodeBearerForm}, claudeStatusFailedDial)
+			res, calls := runClaudeCode(t, Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}, stdout, 0)
+			if res.Outcome != OutcomeWouldWrite {
+				t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+			}
+			if res.Facets != "auth-mode" {
+				t.Errorf("Facets = %q, want %q", res.Facets, "auth-mode")
+			}
+			wantDrift := "auth-mode: observed bearer, would write oauth"
+			if res.Drift != wantDrift {
+				t.Errorf("Drift = %q, want %q", res.Drift, wantDrift)
+			}
+			assertOneProbeCall(t, calls)
+		})
+
+		t.Run("would-write-header-value-ref", func(t *testing.T) {
+			stdout := claudeGetFixture([]string{
+				"Authorization: " + claudeCodeBearerForm,
+				"x-gateway-api-key: ${OLD_KEY}",
+			}, claudeStatusFailedDial)
+			res, calls := runClaudeCode(t, opts, stdout, 0)
+			if res.Outcome != OutcomeWouldWrite {
+				t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+			}
+			wantDrift := "x-gateway-api-key: observed <redacted>, would write ${GATEWAY_KEY}"
+			if res.Drift != wantDrift {
+				t.Errorf("Drift = %q, want %q", res.Drift, wantDrift)
+			}
+			assertOneProbeCall(t, calls)
+		})
+
+		t.Run("preserved-unplanned-literal", func(t *testing.T) {
+			// Shape: 04-OBSERVATIONS.md §"Claude Code — literal value"
+			// (claude 2.1.273, 2026-09-15) — the literal header line
+			// (claudeLiteralHeaderLine) quoted verbatim.
+			stdout := claudeGetFixture([]string{
+				"Authorization: " + claudeCodeBearerForm,
+				claudeLiteralHeaderLine,
+			}, claudeStatusFailedDial)
+			res, calls := runClaudeCode(t, noExtraOpts, stdout, 0)
+			if res.Outcome != OutcomePreserved {
+				t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+			}
+			if res.Facets != "header-name" {
+				t.Errorf("Facets = %q, want %q", res.Facets, "header-name")
+			}
+			wantReason := "claude-code: preserved: x-litellm-api-key: observed <redacted>, not authored by setup; " + claudeCodeWholeEntryNote
+			if res.Reason != wantReason {
+				t.Errorf("Reason = %q, want %q", res.Reason, wantReason)
+			}
+			b, err := json.Marshal(res)
+			if err != nil {
+				t.Fatalf("json.Marshal: %v", err)
+			}
+			if strings.Contains(string(b), "sk-DO-NOT-COMMIT-literal-test-abc123") {
+				t.Errorf("json.Marshal(res) = %s, must not contain the observed literal", b)
+			}
+			assertOneProbeCall(t, calls)
+		})
+
+		t.Run("preserved-url-and-unplanned", func(t *testing.T) {
+			stdout := strings.Replace(claudeGetFixture([]string{
+				"Authorization: " + claudeCodeBearerForm,
+				claudeReferenceHeaderLine,
+			}, claudeStatusFailedDial), "URL: https://engram.example.com/mcp", "URL: https://old.example/mcp", 1)
+			res, calls := runClaudeCode(t, noExtraOpts, stdout, 0)
+			if res.Outcome != OutcomePreserved {
+				t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+			}
+			if res.Facets != "url,header-name" {
+				t.Errorf("Facets = %q, want %q", res.Facets, "url,header-name")
+			}
+			assertOneProbeCall(t, calls)
+		})
+
+		t.Run("not-found-would-write", func(t *testing.T) {
+			res, calls := runClaudeCode(t, opts, claudeNotFoundAfterRemove, 1)
+			if res.Outcome != OutcomeWouldWrite {
+				t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWouldWrite)
+			}
+			if !strings.HasPrefix(res.Drift, "claude-code: not compared:") {
+				t.Errorf("Drift = %q, want prefix %q", res.Drift, "claude-code: not compared:")
+			}
+			assertOneProbeCall(t, calls)
+		})
+	})
 }
 
 // TestRedactionUnconditional proves a header/credential value observed

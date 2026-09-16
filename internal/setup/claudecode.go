@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // claudeCodeRuntime implements Runtime for Claude Code, authoring the
@@ -193,7 +194,7 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 				claudeCodeRemoveAction,
 				{
 					Args: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
-						"--scope", "user", "--header", "Authorization: Bearer ${ENGRAM_TOKEN}"},
+						"--scope", "user", "--header", "Authorization: " + claudeCodeBearerForm},
 						claudeCodeHeaderArgs(opts.Headers)...),
 					Description: "register engram as a user-scope MCP server (bearer token via ENGRAM_TOKEN)",
 				},
@@ -320,4 +321,204 @@ func (claudeCodeRuntime) PluginActions(state PluginState, marketplacePresent boo
 	default:
 		return nil
 	}
+}
+
+// claudeCodeBearerForm is the ONE bearer-token header VALUE claude-code's
+// Plan ever authors (its own bearer arm above references this same
+// constant via "Authorization: "+claudeCodeBearerForm, so the two cannot
+// drift) and the value Observe compares an observed Authorization header
+// against to classify AuthBearer vs. AuthForeign (drift.go) — mirroring
+// codex.go's codexBearerForm/Observe pairing, AUTHORED HERE: claude-code's
+// own header dialect is never shared with codex's file.
+const claudeCodeBearerForm = "Bearer ${ENGRAM_TOKEN}"
+
+// claudeCodeWholeEntryNote is REQ-drift-preserved-outcome's fixed,
+// composed-once sentence naming claude-code's whole-entry semantics
+// (mirroring codexWholeEntryNote): `claude mcp remove` then `claude mcp
+// add` has no partial-merge form — the pair either overwrites the whole
+// entry or (if remove found nothing and add then fails) leaves the prior
+// entry untouched — so a preserved row's Reason must state that risk
+// plainly, not merely name the differing facet.
+const claudeCodeWholeEntryNote = "claude mcp remove then add replaces the whole entry: --apply would overwrite it or leave it untouched, never merge into it"
+
+// unrecognizedLabelBound is claude-code's own copy of codex.go's identical
+// bound — AUTHORED HERE rather than shared, since 04-RESEARCH.md Pitfall 3
+// forbids a cross-runtime parsing dependency, and this is a two-line
+// utility, not a parser.
+const claudeCodeUnrecognizedLabelBound = 40
+
+// claudeCodeLineLabel extracts a D-11 unrecognized-content label from one
+// line this scanner's known vocabulary does not account for: the text
+// before its first colon, trimmed, bounded to
+// claudeCodeUnrecognizedLabelBound bytes at a rune boundary, and
+// quoteWord'ed for paste-safety — the remainder after the colon (which
+// may carry an observed value, e.g. a header line missing its expected
+// "Name: value" shape) is NEVER copied. A line with no colon at all
+// contributes the fixed token "line" instead of any of its own text.
+func claudeCodeLineLabel(line string) string {
+	idx := strings.Index(line, ":")
+	if idx == -1 {
+		return quoteWord("line")
+	}
+	label := strings.TrimSpace(line[:idx])
+	if len(label) > claudeCodeUnrecognizedLabelBound {
+		limit := claudeCodeUnrecognizedLabelBound
+		for limit > 0 && !utf8.RuneStart(label[limit]) {
+			limit--
+		}
+		label = label[:limit]
+	}
+	return quoteWord(label)
+}
+
+// Observe implements DriftRuntime for claude-code: a TOTAL parse (D-11) of
+// `claude mcp get engram`'s combined stdout+stderr, built entirely from
+// the verbatim framing .planning/phases/04-drift-detection-read-only/
+// 04-OBSERVATIONS.md §"Claude Code — literal value" recorded (claude
+// 2.1.273, 2026-09-15) — every line class this method recognizes is
+// justified by a line that record shows. AUTHORED HERE: claude-code's own
+// fixed-label text is parsed only in this file, sharing no parsing code
+// with codex.go's JSON scan (04-RESEARCH.md Pitfall 3).
+//
+// (1) Framing: the presence of a "URL:" line (matched by trimmed prefix)
+// is the ONLY thing that determines ok. Its absence — an empty probe, the
+// post-remove "No MCP server named ..." text, or any other garbage —
+// returns Observation{}, false uniformly (D-09): a not-found entry, an
+// empty capture, and an unparseable capture are indistinguishable at this
+// layer, all resolving to "not compared" one level up (apply.go).
+//
+// (2) Every OTHER non-blank line is classified by trimmed prefix into
+// exactly one class: the entry-name line — matched by SHAPE (zero
+// indentation, ends with ":"), and ONLY for the very first non-blank line
+// encountered, so the scanner is name-agnostic and never checks for the
+// literal string "engram"; "Scope:" — chrome; "Status:" and any
+// "Issue:"-prefixed continuation line — chrome by prefix, regardless of
+// content (04-RESEARCH.md Pitfall 4: connection state varies with network
+// reachability and must never affect classification — a failed dial's
+// exit code does not block parsing either, since execute() in apply.go
+// hands this method probe1.Stdout+probe1.Stderr regardless of exit code);
+// "Type:" — a FACET line: its value compared case-insensitively to "http"
+// is accounted for, any other value contributes the fixed label "Type" to
+// Unrecognized (D-01: claude-code authors no other transport); "URL:" —
+// already captured in step 1; "Headers:" — opens the header block: every
+// following line indented deeper than "Headers:" own indentation is a
+// header line, split at its first ": " into name and raw value (an
+// "Authorization" name, matched case-insensitively, is folded into Auth
+// below and NEVER added to the raw header list); the trailing hint line
+// "To remove this server, run: ..." — chrome by its fixed prefix; every
+// other non-blank line — claudeCodeLineLabel(line) appended to
+// Unrecognized (D-11: unaccounted content is always reported, never
+// silently ignored).
+//
+// (3) Auth: an observed "Authorization" header's raw value is compared,
+// INSIDE this call frame only, against claudeCodeBearerForm — equal ->
+// AuthBearer, otherwise -> AuthForeign; no "Authorization" line observed
+// at all -> AuthNone. The raw value itself never survives past this
+// comparison (D-02/D-03).
+//
+// (4) Headers: the observed non-Authorization header lines are joined
+// (drift.go's joinHeaders) against a planned side built from
+// sortedHeaders(opts.Headers) rendered as "${"+EnvVar+"}" — the SAME bare
+// reference form claudeCodeHeaderArgs authors for the write path; the two
+// must stay in lockstep, referenced by name rather than duplicated.
+//
+// ok is false ONLY when probeOutput cannot be framed as a registration AT
+// ALL (no "URL:" line) — never for unrecognized CONTENT within an
+// otherwise-framed registration, which is reported on
+// Observation.Unrecognized instead (D-11).
+func (claudeCodeRuntime) Observe(probeOutput string, opts Options) (Observation, bool) {
+	lines := strings.Split(probeOutput, "\n")
+
+	var url string
+	foundURL := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(trimmed, "URL:"); ok {
+			url = strings.TrimSpace(rest)
+			foundURL = true
+			break
+		}
+	}
+	if !foundURL {
+		return Observation{}, false
+	}
+
+	var unrecognized []string
+	var observedHeaders []rawHeader
+	auth := AuthNone
+	inHeaderBlock := false
+	headerIndent := 0
+	seenFirstLine := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			inHeaderBlock = false
+			continue
+		}
+		leading := len(line) - len(strings.TrimLeft(line, " "))
+
+		if inHeaderBlock && leading > headerIndent {
+			name, value, ok := strings.Cut(trimmed, ": ")
+			if !ok {
+				unrecognized = append(unrecognized, claudeCodeLineLabel(trimmed))
+				continue
+			}
+			if strings.EqualFold(name, "Authorization") {
+				if value == claudeCodeBearerForm {
+					auth = AuthBearer
+				} else {
+					auth = AuthForeign
+				}
+				continue
+			}
+			observedHeaders = append(observedHeaders, rawHeader{Name: name, Value: value})
+			continue
+		}
+		inHeaderBlock = false
+
+		first := !seenFirstLine
+		seenFirstLine = true
+
+		switch {
+		case first && leading == 0 && strings.HasSuffix(trimmed, ":"):
+			// Entry-name line — matched by SHAPE, never the literal name.
+		case strings.HasPrefix(trimmed, "Scope:"):
+			// Chrome (Claude's own discretion, this plan's objective:
+			// engram's write is always user scope, so comparing scope
+			// would add a facet with no safety gain).
+		case strings.HasPrefix(trimmed, "Status:"), strings.HasPrefix(trimmed, "Issue:"):
+			// Chrome by prefix, regardless of content (Pitfall 4): a live
+			// connection-status line must never gate classification.
+		case strings.HasPrefix(trimmed, "Type:"):
+			val := strings.TrimSpace(strings.TrimPrefix(trimmed, "Type:"))
+			if !strings.EqualFold(val, "http") {
+				unrecognized = append(unrecognized, quoteWord("Type"))
+			}
+		case strings.HasPrefix(trimmed, "URL:"):
+			// Already captured above.
+		case strings.HasPrefix(trimmed, "Headers:"):
+			inHeaderBlock = true
+			headerIndent = leading
+		case strings.HasPrefix(trimmed, "To remove this server, run:"):
+			// Trailing hint chrome.
+		default:
+			unrecognized = append(unrecognized, claudeCodeLineLabel(trimmed))
+		}
+	}
+
+	var planned []plannedHeader
+	for _, h := range sortedHeaders(opts.Headers) {
+		planned = append(planned, plannedHeader{Name: h.Name, Value: "${" + h.EnvVar + "}"})
+	}
+	headers := joinHeaders(observedHeaders, planned)
+
+	return Observation{
+		URL:            url,
+		Auth:           auth,
+		BearerForm:     claudeCodeBearerForm,
+		Headers:        headers,
+		Unrecognized:   unrecognized,
+		WholeEntryNote: claudeCodeWholeEntryNote,
+	}, true
 }

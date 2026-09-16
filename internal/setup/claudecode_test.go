@@ -4,6 +4,7 @@
 package setup
 
 import (
+	"encoding/json"
 	"errors"
 	"os/exec"
 	"path/filepath"
@@ -373,6 +374,322 @@ func TestSortedHeadersTotalOrder(t *testing.T) {
 			}
 		})
 	}
+}
+
+// claudeGetFixture builds a "claude mcp get engram" fixture reproducing
+// the EXACT framing .planning/phases/04-drift-detection-read-only/
+// 04-OBSERVATIONS.md recorded for the `engram` entry: the entry-name
+// line, "Scope:", the caller-supplied status block (claudeStatusConnected
+// or claudeStatusFailedDial), "Type: http", "URL:", a "Headers:" block
+// with one 4-space-indented "Name: value" line per element of headers, a
+// blank line, and the trailing hint line — never a shape the record does
+// not show.
+// Shape: .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Claude Code — literal value" (claude 2.1.273, 2026-09-15).
+func claudeGetFixture(headers []string, status string) string {
+	var b strings.Builder
+	b.WriteString("engram:\n")
+	b.WriteString("  Scope: User config (available in all your projects)\n")
+	b.WriteString(status)
+	b.WriteString("  Type: http\n")
+	b.WriteString("  URL: https://engram.example.com/mcp\n")
+	b.WriteString("  Headers:\n")
+	for _, h := range headers {
+		b.WriteString("    " + h + "\n")
+	}
+	b.WriteString("\n")
+	b.WriteString("To remove this server, run: claude mcp remove engram -s user\n")
+	return b.String()
+}
+
+// claudeStatusConnected is a plausible connected-status block — NOT
+// directly observed (04-OBSERVATIONS.md's capture was a failed dial), but
+// the record's own "What this pins" section notes "a successful dial
+// would presumably omit Issue:", which this reproduces: no Issue: line at
+// all, Status is chrome regardless (Pitfall 4).
+const claudeStatusConnected = "  Status: ✓ Connected\n"
+
+// claudeStatusFailedDial is 04-OBSERVATIONS.md's VERBATIM failed-dial
+// Status:/Issue: block (claude 2.1.273, 2026-09-15) — the exact two
+// chrome lines the record captured for a dial to an unreachable URL.
+// Shape: .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Claude Code — literal value".
+const claudeStatusFailedDial = "  Status: ✘ Failed to connect\n  Issue: ConnectionRefused: Unable to connect. Is the computer able to access the url?\n"
+
+// claudeNotFoundAfterRemove is 04-OBSERVATIONS.md's VERBATIM post-remove
+// "mcp get" output (claude 2.1.273, 2026-09-15) — no "URL:" line, so
+// Observe's framing rule (D-09) reports it unreadable. Quoted byte-for-
+// byte, including the record's own "tosee" spacing.
+// Shape: .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Claude Code — literal value".
+const claudeNotFoundAfterRemove = `No MCP server named "engram". Configured servers: claude.ai Gmail, claude.ai Google Calendar, claude.ai Google Drive, clickhouse_ro, clickhouse_rw, clickstack, codegraph, context7 (and 16 more — run 'claude mcp list' tosee all)`
+
+// claudeLiteralHeaderLine is the record's literal Headers: line — quoted
+// verbatim into every literal-echo fixture that needs it (D-08).
+// Shape: .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Claude Code — literal value".
+const claudeLiteralHeaderLine = "x-litellm-api-key: sk-DO-NOT-COMMIT-literal-test-abc123"
+
+// claudeReferenceHeaderLine is the record's bare-reference control for
+// the same header — byte-identical framing, only the value differs
+// (D-02).
+// Shape: .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Claude Code — bare reference control".
+const claudeReferenceHeaderLine = "x-litellm-api-key: ${LITELLM_KEY}"
+
+// TestObserveClaudeCodeRegistration drives claudeCodeRuntime.Observe
+// directly on scripted probe-output strings built from
+// 04-OBSERVATIONS.md — no subprocess, no Environment (rule m45p2b4bp7).
+func TestObserveClaudeCodeRegistration(t *testing.T) {
+	dr, ok := ClaudeCode.(DriftRuntime)
+	if !ok {
+		t.Fatal("ClaudeCode does not implement DriftRuntime")
+	}
+
+	opts := Options{
+		URL:     "https://engram.example.com/mcp",
+		Auth:    "bearer",
+		Headers: []HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}},
+	}
+	noExtraOpts := Options{URL: "https://engram.example.com/mcp", Auth: "bearer"}
+
+	bearerHeaders := []string{
+		"Authorization: " + claudeCodeBearerForm,
+		"x-gateway-api-key: ${GATEWAY_KEY}",
+	}
+
+	var alreadyCorrect Observation
+
+	t.Run("already-correct-bearer", func(t *testing.T) {
+		stdout := claudeGetFixture(bearerHeaders, claudeStatusConnected)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if obs.URL != "https://engram.example.com/mcp" {
+			t.Errorf("URL = %q, want %q", obs.URL, "https://engram.example.com/mcp")
+		}
+		if obs.Auth != AuthBearer {
+			t.Errorf("Auth = %q, want %q", obs.Auth, AuthBearer)
+		}
+		want := []ObservedHeader{{Name: "x-gateway-api-key", State: HeaderMatches, Planned: "${GATEWAY_KEY}"}}
+		if !reflect.DeepEqual(obs.Headers, want) {
+			t.Errorf("Headers = %+v, want %+v", obs.Headers, want)
+		}
+		if len(obs.Unrecognized) != 0 {
+			t.Errorf("Unrecognized = %q, want none", obs.Unrecognized)
+		}
+		if obs.BearerForm != claudeCodeBearerForm {
+			t.Errorf("BearerForm = %q, want %q", obs.BearerForm, claudeCodeBearerForm)
+		}
+		if obs.WholeEntryNote != claudeCodeWholeEntryNote {
+			t.Errorf("WholeEntryNote = %q, want %q", obs.WholeEntryNote, claudeCodeWholeEntryNote)
+		}
+		alreadyCorrect = obs
+	})
+
+	t.Run("status-failed-dial-is-chrome", func(t *testing.T) {
+		stdout := claudeGetFixture(bearerHeaders, claudeStatusFailedDial)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if !reflect.DeepEqual(obs, alreadyCorrect) {
+			t.Errorf("Observation with the RECORD's failed-dial status = %+v, want identical to the connected-status Observation %+v (Pitfall 4: Status is chrome)", obs, alreadyCorrect)
+		}
+	})
+
+	t.Run("oauth-shape", func(t *testing.T) {
+		stdout := claudeGetFixture(nil, claudeStatusConnected)
+		obs, ok := dr.Observe(stdout, Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if obs.Auth != AuthNone {
+			t.Errorf("Auth = %q, want %q", obs.Auth, AuthNone)
+		}
+		if len(obs.Headers) != 0 {
+			t.Errorf("Headers = %+v, want none", obs.Headers)
+		}
+	})
+
+	t.Run("header-value-ref-differs", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{
+			"Authorization: " + claudeCodeBearerForm,
+			"x-gateway-api-key: ${OLD_KEY}",
+		}, claudeStatusConnected)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		want := []ObservedHeader{{Name: "x-gateway-api-key", State: HeaderDiffers, Planned: "${GATEWAY_KEY}"}}
+		if !reflect.DeepEqual(obs.Headers, want) {
+			t.Errorf("Headers = %+v, want %+v", obs.Headers, want)
+		}
+	})
+
+	t.Run("header-missing", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{"Authorization: " + claudeCodeBearerForm}, claudeStatusConnected)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		want := []ObservedHeader{{Name: "x-gateway-api-key", State: HeaderMissing, Planned: "${GATEWAY_KEY}"}}
+		if !reflect.DeepEqual(obs.Headers, want) {
+			t.Errorf("Headers = %+v, want %+v", obs.Headers, want)
+		}
+	})
+
+	t.Run("unplanned-header-literal-observed", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{
+			"Authorization: " + claudeCodeBearerForm,
+			claudeLiteralHeaderLine,
+		}, claudeStatusFailedDial)
+		obs, ok := dr.Observe(stdout, noExtraOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		want := []ObservedHeader{{Name: "x-litellm-api-key", State: HeaderUnplanned}}
+		if !reflect.DeepEqual(obs.Headers, want) {
+			t.Errorf("Headers = %+v, want %+v", obs.Headers, want)
+		}
+		b, err := json.Marshal(obs)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		if strings.Contains(string(b), "sk-DO-NOT-COMMIT-literal-test-abc123") {
+			t.Errorf("Observation carries the observed literal: %s", b)
+		}
+	})
+
+	t.Run("unplanned-header-reference-observed", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{
+			"Authorization: " + claudeCodeBearerForm,
+			claudeReferenceHeaderLine,
+		}, claudeStatusFailedDial)
+		obs, ok := dr.Observe(stdout, noExtraOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		literalStdout := claudeGetFixture([]string{
+			"Authorization: " + claudeCodeBearerForm,
+			claudeLiteralHeaderLine,
+		}, claudeStatusFailedDial)
+		literalObs, ok := dr.Observe(literalStdout, noExtraOpts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if !reflect.DeepEqual(obs, literalObs) {
+			t.Errorf("reference-shaped Observation %+v != literal-shaped Observation %+v (D-02: no shape branching)", obs, literalObs)
+		}
+	})
+
+	t.Run("foreign-authorization", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{"Authorization: Bearer sk-DO-NOT-COMMIT-literal-test-abc123"}, claudeStatusConnected)
+		obs, ok := dr.Observe(stdout, Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if obs.Auth != AuthForeign {
+			t.Errorf("Auth = %q, want %q", obs.Auth, AuthForeign)
+		}
+		b, err := json.Marshal(obs)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		if strings.Contains(string(b), "sk-DO-NOT-COMMIT-literal-test-abc123") {
+			t.Errorf("Observation carries the sentinel value: %s", b)
+		}
+	})
+
+	t.Run("duplicate-header-names", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{
+			"Authorization: " + claudeCodeBearerForm,
+			"x-gateway-api-key: ${GATEWAY_KEY}",
+			"x-gateway-api-key: ${OTHER}",
+		}, claudeStatusConnected)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		want := []ObservedHeader{
+			{Name: "x-gateway-api-key", State: HeaderMatches, Planned: "${GATEWAY_KEY}"},
+			{Name: "x-gateway-api-key", State: HeaderUnplanned},
+		}
+		if !reflect.DeepEqual(obs.Headers, want) {
+			t.Errorf("Headers = %+v, want %+v", obs.Headers, want)
+		}
+	})
+
+	t.Run("case-insensitive-name", func(t *testing.T) {
+		stdout := claudeGetFixture([]string{
+			"Authorization: " + claudeCodeBearerForm,
+			"X-Gateway-Api-Key: ${GATEWAY_KEY}",
+		}, claudeStatusConnected)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		want := []ObservedHeader{{Name: "x-gateway-api-key", State: HeaderMatches, Planned: "${GATEWAY_KEY}"}}
+		if !reflect.DeepEqual(obs.Headers, want) {
+			t.Errorf("Headers = %+v, want %+v", obs.Headers, want)
+		}
+	})
+
+	t.Run("type-not-http", func(t *testing.T) {
+		stdout := strings.Replace(claudeGetFixture(bearerHeaders, claudeStatusConnected), "Type: http", "Type: sse", 1)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if !reflect.DeepEqual(obs.Unrecognized, []string{"Type"}) {
+			t.Errorf("Unrecognized = %q, want %q", obs.Unrecognized, []string{"Type"})
+		}
+	})
+
+	t.Run("unrecognized-label", func(t *testing.T) {
+		stdout := strings.Replace(claudeGetFixture(bearerHeaders, claudeStatusConnected), "  Type: http\n", "  Type: http\n  Proxy: http://p\n", 1)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if !reflect.DeepEqual(obs.Unrecognized, []string{"Proxy"}) {
+			t.Errorf("Unrecognized = %q, want %q", obs.Unrecognized, []string{"Proxy"})
+		}
+	})
+
+	t.Run("unrecognized-unlabeled-line", func(t *testing.T) {
+		stdout := strings.Replace(claudeGetFixture(bearerHeaders, claudeStatusConnected), "  Type: http\n", "  Type: http\n  something odd\n", 1)
+		obs, ok := dr.Observe(stdout, opts)
+		if !ok {
+			t.Fatal("Observe: ok = false, want true")
+		}
+		if !reflect.DeepEqual(obs.Unrecognized, []string{"line"}) {
+			t.Errorf("Unrecognized = %q, want %q", obs.Unrecognized, []string{"line"})
+		}
+	})
+
+	t.Run("not-found-after-remove", func(t *testing.T) {
+		_, ok := dr.Observe(claudeNotFoundAfterRemove, opts)
+		if ok {
+			t.Error("Observe: ok = true, want false (no URL: line, D-09)")
+		}
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		_, ok := dr.Observe("", opts)
+		if ok {
+			t.Error("Observe: ok = true, want false")
+		}
+	})
+
+	t.Run("no-url-line", func(t *testing.T) {
+		stdout := strings.Replace(claudeGetFixture(bearerHeaders, claudeStatusConnected), "  URL: https://engram.example.com/mcp\n", "", 1)
+		_, ok := dr.Observe(stdout, opts)
+		if ok {
+			t.Error("Observe: ok = true, want false")
+		}
+	})
 }
 
 func TestClaudeCodeClientID(t *testing.T) {
