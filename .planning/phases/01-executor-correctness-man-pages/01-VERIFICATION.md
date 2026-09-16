@@ -24,7 +24,7 @@ covered_files:
   - internal/setup/apply_test.go
   - internal/setup/environment.go
   - internal/setup/environment_test.go
-covered_digest: "v1:sha256:98c2862359b2a25a1fed092bfa3cda5a4d3e6fb5464e9cd555d628f0453ec3b5"
+covered_digest: "v1:sha256:d98cf6fe797d08520b4bb1fe9bf18969e54c65ba5ac6dadb33d7a5ac141144b6"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -129,3 +129,6 @@ re-fingerprinting: `TestOsRunReportsContextDeadlineExceeded`, `TestDriftReported
 `01-*.patch` red-evidence entries stayed live under `TestRedEvidencePatchesAreLive` (23/23 at
 `d5a5a694`). The digest is re-pinned to the current bytes so the staleness signal stays meaningful
 for the NEXT unrelated change rather than staying permanently tripped.
+
+## Re-fingerprint 2026-09-16 (orchestrator, after Phase 5)
+Phase 5 (Apply-Time Preserve Gate) rewrote the `mutate == true` branch of `execute()` in `internal/setup/apply.go` (this phase's covered file) to consult the pre-write classification; the osRun/runSeam seam this phase owns is untouched (`TestOsRunReportsContextDeadlineExceeded`, `TestDriftReportedLegibly`, `TestManPagesByteStable` pass, `-count=1`). This phase's CONCLUSION is unchanged and was re-proven at Phase 5's HEAD (75785b75) before re-fingerprinting; every red-evidence patch this phase registered stayed live under `TestRedEvidencePatchesAreLive` (33/33 across Phases 01–05 at c9034a45). The digest is re-pinned to the current bytes so the staleness signal stays meaningful for the NEXT unrelated change.

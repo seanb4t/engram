@@ -39,7 +39,7 @@ covered_files:
   - "internal/setupgen/setupgen.go"
   - "internal/setupgen/setupgen_test.go"
   - "skill/engram/commands/engram-setup.md"
-covered_digest: "v1:sha256:3de82afe3e03d8f12a3e99e7c63fc68ce07c9be2fafd1805f2226b68b19a2522"
+covered_digest: "v1:sha256:75780923c75e979cdc25ed6f2aa6579b186f0ce38869fa4b41fb0f697e24a9ab"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
@@ -233,3 +233,6 @@ the `TestSetupParseHeaders`/`TestSetupHeader*` family (`cmd/engram`); and the `i
 render/drift suite all pass with `-count=1`, and all five `02-*.patch` red-evidence entries stayed
 live under `TestRedEvidencePatchesAreLive` (23/23 at `d5a5a694`). The digest is re-pinned to the
 current bytes so the staleness signal stays meaningful for the NEXT unrelated change.
+
+## Re-fingerprint 2026-09-16 (orchestrator, after Phase 5)
+Phase 5 additively edited five files in this phase's `covered_files` (`internal/setup/{claudecode,codex}.go` — the OAuth re-login note and per-runtime remediation constants; `cmd/engram/{setup.go,testdata/help.golden}` — the apply-gate help paragraph; `docs-site/src/content/docs/guides/agent-setup.md` — the apply gate rows). The header vocabulary this phase shipped is unchanged (`TestClaudeCodeHeaders`, `TestOpenCodeHeaders`, `TestGenericHeaders`, `TestCodexDeclinesHeaders`, `TestNoSecretInArgs`, `TestSortedHeadersTotalOrder`, the `TestSetupParseHeaders`/`TestSetupHeader*` family, and the `internal/setupgen` suite pass, `-count=1`; `internal/keylinks` green). This phase's CONCLUSION is unchanged and was re-proven at Phase 5's HEAD (75785b75) before re-fingerprinting; every red-evidence patch this phase registered stayed live under `TestRedEvidencePatchesAreLive` (33/33 across Phases 01–05 at c9034a45). The digest is re-pinned to the current bytes so the staleness signal stays meaningful for the NEXT unrelated change.

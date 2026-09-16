@@ -40,7 +40,7 @@ covered_files:
   - "internal/setup/exit_test.go"
   - "internal/setup/plan.go"
   - "internal/store/redevidence_harness_test.go"
-covered_digest: "v1:sha256:e67aa072c852fc19d025814b9c518b8ee974bab877ad7041460406595d451f80"
+covered_digest: "v1:sha256:8d96c2c62da201cb51a51f23f4629b938b15e00c9e66937d80b760e8a6ca8824"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -148,3 +148,6 @@ None. All five phase Success Criteria (ROADMAP.md §"Phase 4: Drift Detection (R
 
 *Verified: 2026-09-15T22:10:00Z*
 *Verifier: Claude (gsd-verifier)*
+
+## Re-fingerprint 2026-09-16 (orchestrator, after Phase 5)
+Phase 5 (Apply-Time Preserve Gate) edited eleven files in this phase's `covered_files`: the shared `classifyProbe`/`renderClassification` refactor in `internal/setup/{apply,drift}.go` (preview semantics unchanged — `TestPreviewClassifiesRegistration`, `TestRedactionUnconditional`, `TestObserveCodexRegistration`, `TestObserveClaudeCodeRegistration`, `TestCompareRegistrationThreeWay`, `TestFacetOrderIsAuthored`, `TestClassifyExhaustiveOutcomeCombinations`, `TestAggregateOutcomeExhaustive` pass, `-count=1`); `Observation` gained `RewriteConsequence`/`ManualRemediation` (`drift.go`, `plan.go`, `claudecode.go`, `codex.go`); `cmd/engram/{setup.go,testdata/help.golden,agent_setup_docs_test.go}` and the guide gained the apply-gate surface; one `key_links` pattern in `04-01-PLAN.md` and one red-evidence patch were retargeted to the refactored symbols (plan 05-01, `internal/keylinks` green); `redevidence_harness_test.go` gained the Phase 5 entry. This phase's CONCLUSION is unchanged and was re-proven at Phase 5's HEAD (75785b75) before re-fingerprinting; every red-evidence patch this phase registered stayed live under `TestRedEvidencePatchesAreLive` (33/33 across Phases 01–05 at c9034a45). The digest is re-pinned to the current bytes so the staleness signal stays meaningful for the NEXT unrelated change.
