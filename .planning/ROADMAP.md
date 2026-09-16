@@ -446,7 +446,21 @@ Plans:
 3. When a reproducible difference on Claude Code requires remove-then-add of an existing OAuth-authenticated registration, both preview and apply state that the rewrite will require logging in again before it runs.
 4. `guides/install.md`, `guides/agent-setup.md`, and `guides/plugin.md` describe the shipped plugin-first delivery, header shape, `preserved` outcome and apply gate, and man pages — checked off only after a post-release live observation is recorded, not from code alone.
 
-**Plans:** TBD
+**Plans:** 4 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — `execute()`'s mutate branch consults the shared `Observe → Compare` classification BEFORE any action: `already-correct`/`preserved` return before `plan.Actions[0]` (Claude Code's `mcp remove` never runs), `would-write` runs the actions then re-observes once and rebuilds `Registered` redaction-safe; per-runtime manual-remediation constants on the preserved Reason; the OAuth re-login note (`Observation.RewriteConsequence`, `AuthNone` shape only) on a Claude Code would-write row's Notes in both lanes; SC1/SC2 proven through `internal/setup`'s panic-on-overrun harness and `engram setup --apply` at the process boundary (D-01, D-02, D-03, D-04, D-05; REQ-apply-preserve-gate, REQ-apply-rewrite-consequence)
+- [ ] 05-03-PLAN.md — `guides/install.md` (cask contents incl. man pages — `man engram-setup` — plugin-first pointer, unreleased notice) and `guides/plugin.md` (plugin-first via `engram setup --apply`, `preserved` cross-link beside the fallback `mcp remove` block, unreleased notice), each gated by a new `agent_setup_docs_test.go`-shaped test file with a positive control (D-06, D-07; REQ-docs-setup-v2 code-gated half)
+
+**Wave 2**
+
+- [ ] 05-02-PLAN.md — `engram setup --help` states the apply gate, the manual remediation, and the re-login consequence (`help.golden` regenerated, `catalog.golden` untouched); the process-boundary literal-leak proof runs `--apply`; `guides/agent-setup.md` brought current (apply gate, corrected `already-correct`, preserved remediation, OAuth re-login, plugin-first, unreleased notice) with six new gate legs, two zero-occurrence stale anchors, and positive controls (D-01, D-04, D-05, D-06, D-07; all three REQ IDs)
+
+**Wave 3**
+
+- [ ] 05-04-PLAN.md — `05-POST-RELEASE.md` in the `06-POST-RELEASE.md` shape (`status: pending`, tracker issue opened) enumerating the qualifying-release checks; the whole phase gate at the final commit; Phase 5 verification passes with `post_release_status: pending` and REQ-docs-setup-v2 stays unchecked until `05-RELEASE-<ver>.md` is recorded (D-06; REQ-docs-setup-v2 closeout half)
 
 ---
 
