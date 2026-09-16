@@ -226,14 +226,22 @@ func joinHeaders(observed []rawHeader, planned []plannedHeader) []ObservedHeader
 // only — already bounded and quoteWord'ed by the observing runtime, never
 // a raw probe fragment. WholeEntryNote is a fixed, runtime-authored
 // sentence (e.g. codex's remove-or-add, never-merge semantics) appended
-// to a preserved row's Reason.
+// to a preserved row's Reason. ManualRemediation (Phase 5, D-05) is a
+// fixed, runtime-authored sentence naming the exact manual step that
+// clears the registration in the runtime's OWN tool (e.g. claude-code's
+// "claude mcp remove engram --scope user"; codex's own config.toml
+// table) — appended to a preserved row's Reason, after WholeEntryNote,
+// when non-empty. AUTHORED-HERE: composed only in the observing
+// runtime's own file (claudecode.go, codex.go), never in
+// apply.go/drift.go, which only append it when it is non-empty.
 type Observation struct {
-	URL            string
-	Auth           AuthState
-	BearerForm     string
-	Headers        []ObservedHeader
-	Unrecognized   []string
-	WholeEntryNote string
+	URL               string
+	Auth              AuthState
+	BearerForm        string
+	Headers           []ObservedHeader
+	Unrecognized      []string
+	WholeEntryNote    string
+	ManualRemediation string
 }
 
 // DriftRuntime is an OPTIONAL interface a Runtime may implement to

@@ -322,7 +322,7 @@ func TestPreviewClassifiesRegistration(t *testing.T) {
 			if res.Facets != "header-name" {
 				t.Errorf("Facets = %q, want %q", res.Facets, "header-name")
 			}
-			wantReason := "claude-code: preserved: x-litellm-api-key: observed <redacted>, not authored by setup; " + claudeCodeWholeEntryNote
+			wantReason := "claude-code: preserved: x-litellm-api-key: observed <redacted>, not authored by setup; " + claudeCodeWholeEntryNote + "; " + claudeCodeManualRemediation
 			if res.Reason != wantReason {
 				t.Errorf("Reason = %q, want %q", res.Reason, wantReason)
 			}

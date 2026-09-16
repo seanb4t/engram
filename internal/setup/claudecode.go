@@ -341,6 +341,16 @@ const claudeCodeBearerForm = "Bearer ${ENGRAM_TOKEN}"
 // plainly, not merely name the differing facet.
 const claudeCodeWholeEntryNote = "claude mcp remove then add replaces the whole entry: --apply would overwrite it or leave it untouched, never merge into it"
 
+// claudeCodeManualRemediation is D-05's fixed, runtime-authored sentence
+// naming the exact manual step that clears a preserved claude-code
+// registration — the human performs the destructive `claude mcp remove`
+// step themselves, with claude-code's own confirmation semantics, never
+// engram's. Composed here, never in apply.go/drift.go (AUTHORED-HERE):
+// the shared executor only appends this field when it is non-empty.
+// After the human runs this command, a re-run of --apply reads
+// would-write — nothing remains to preserve.
+const claudeCodeManualRemediation = "to replace it yourself, clear it with claude-code's own tool first: claude mcp remove engram --scope user, then run setup again; the row then reads would-write"
+
 // unrecognizedLabelBound is claude-code's own copy of codex.go's identical
 // bound — AUTHORED HERE rather than shared, since 04-RESEARCH.md Pitfall 3
 // forbids a cross-runtime parsing dependency, and this is a two-line
@@ -514,11 +524,12 @@ func (claudeCodeRuntime) Observe(probeOutput string, opts Options) (Observation,
 	headers := joinHeaders(observedHeaders, planned)
 
 	return Observation{
-		URL:            url,
-		Auth:           auth,
-		BearerForm:     claudeCodeBearerForm,
-		Headers:        headers,
-		Unrecognized:   unrecognized,
-		WholeEntryNote: claudeCodeWholeEntryNote,
+		URL:               url,
+		Auth:              auth,
+		BearerForm:        claudeCodeBearerForm,
+		Headers:           headers,
+		Unrecognized:      unrecognized,
+		WholeEntryNote:    claudeCodeWholeEntryNote,
+		ManualRemediation: claudeCodeManualRemediation,
 	}, true
 }

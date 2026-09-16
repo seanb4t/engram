@@ -124,11 +124,22 @@ func Preview(ctx context.Context, env Environment, rt Runtime, opts Options) Res
 }
 
 // Apply performs rt's registration against env and opts: resolve the
-// binary, read current state (Plan.Probe), run the write Action(s), read
-// state again, and classify wrote vs already-correct by a RAW byte
-// compare of the two reads (D-08). One shared, package-level executor
-// (D-03) — no per-runtime knowledge lives here; every runtime-specific
-// string was already authored in that runtime's own Plan() (D-09).
+// binary, read current state (Plan.Probe, read #1), and — for a runtime
+// implementing DriftRuntime whose read #1 can be framed as a
+// registration — consult the SAME classification Preview would report
+// BEFORE running any write Action (Phase 5, D-01): already-correct and
+// preserved issue ZERO registration-write actions (Claude Code's
+// tolerant `mcp remove` included) and return immediately; only
+// would-write runs Plan.Actions. After a real write, the executor
+// re-probes once and rebuilds Registered through the same
+// Observe -> renderObservation path Preview uses (D-02), redaction-safe;
+// Outcome stays wrote regardless of what that re-observe says. A runtime
+// with no scanner (opencode), or a read #1 that could not be framed at
+// all, keeps the ORIGINAL two-read byte compare this function always
+// used (D-09/D-10: ambiguity never skips a write). One shared,
+// package-level executor (D-03) — no per-runtime knowledge lives here;
+// every runtime-specific string was already authored in that runtime's
+// own Plan()/Observe() (D-09, AUTHORED-HERE).
 func Apply(ctx context.Context, env Environment, rt Runtime, opts Options) Result {
 	return execute(ctx, env, rt, opts, true)
 }
@@ -183,6 +194,84 @@ func describeSeamError(name, cmdDisplay string, err error) string {
 	return fmt.Sprintf("%s: %s: %v", name, cmdDisplay, err)
 }
 
+// classification holds the outcome of classifyProbe: probe1's parsed
+// comparison against opts, computed ONCE from a single probe1 read and
+// shared by both the preview (!mutate) lane and the apply (mutate)
+// lane's pre-action gate (Phase 5, D-01) — never a second parse path
+// (04-RESEARCH.md Pitfall 3). compared is false for every ambiguous case
+// (no probe wired, no DriftRuntime, a probe1 seam error, or an Observe
+// that could not frame probe1 as a registration at all) — D-09's
+// ambiguity invariant, restated as a struct field so both lanes consult
+// the identical classification rather than re-deriving it. notCompared
+// is the fixed "not compared" note for that case; dr/obs/drift are only
+// meaningful when compared is true.
+type classification struct {
+	compared    bool
+	notCompared string
+	dr          DriftRuntime
+	obs         Observation
+	drift       Drift
+}
+
+// classifyProbe runs the SAME DriftRuntime type-assertion / hasProbe /
+// probe1Err / dr.Observe / Compare sequence the !mutate branch has run
+// since Phase 4 — factored out so the apply (mutate) lane's own
+// pre-action gate (D-01) consults the IDENTICAL classification, never a
+// second parse path. probe1/probe1Err/hasProbe are the caller's own
+// already-made probe1 read (execute's shared prefix); this function
+// re-derives nothing and makes no Run call of its own (Pitfall 1: the
+// classification is always fresh within ONE execute() call, never
+// carried across process invocations). Every "not compared" note string
+// is byte-identical to what the !mutate branch produced before this
+// move.
+func classifyProbe(name string, rt Runtime, plan Plan, hasProbe bool, probe1 RunResult, probe1Err error, opts Options) classification {
+	dr, isDrift := rt.(DriftRuntime)
+	if !hasProbe || !isDrift {
+		// D-10: a runtime with no probe wired, or no drift-capable
+		// scanner (opencode, generic), is never compared.
+		return classification{notCompared: notComparedNote(name, "runtime authors no registration scanner")}
+	}
+	if probe1Err != nil {
+		// D-09: a probe seam error is unreadable, never preserved or
+		// already-correct.
+		return classification{notCompared: notComparedNote(name, quoteArgs(plan.Probe)+": "+probe1Err.Error())}
+	}
+	obs, ok := dr.Observe(probe1.Stdout+probe1.Stderr, opts)
+	if !ok {
+		// D-09: the scanner could not frame this output as a
+		// registration at all — NEVER render probe1's raw bytes here.
+		return classification{notCompared: notComparedNote(name, fmt.Sprintf("%s exited %d: output not recognized as a registration", quoteArgs(plan.Probe), probe1.ExitCode))}
+	}
+	return classification{compared: true, dr: dr, obs: obs, drift: Compare(obs, opts)}
+}
+
+// renderClassification writes the five classified fields onto res from a
+// COMPARED c (callers must only invoke this when c.compared is true) —
+// the same rendering both lanes have always performed, only shared now:
+// Outcome/Facets/Drift from c.drift, Registered REBUILT from
+// renderObservation(c.obs) (D-03, never raw probe bytes), and — on
+// OutcomePreserved — a Reason composed as "<name>: preserved: <causes
+// joined by '; '>; <WholeEntryNote>", with D-05's ManualRemediation
+// appended after WholeEntryNote (", "; "+ManualRemediation") when the
+// observing runtime authored one. WR-01: boundCapture is applied to
+// Drift/Registered/Reason AFTER this composition, never in place of it —
+// an observed header name/URL/label carries no length cap of its own.
+func renderClassification(res *Result, name string, c classification) {
+	res.Outcome = c.drift.Outcome
+	res.Facets = joinFacets(c.drift.Facets)
+	res.Drift = strings.Join(c.drift.Details, "; ")
+	res.Registered = renderObservation(c.obs)
+	if c.drift.Outcome == OutcomePreserved {
+		res.Reason = name + ": preserved: " + strings.Join(c.drift.Preserved, "; ") + "; " + c.obs.WholeEntryNote
+		if c.obs.ManualRemediation != "" {
+			res.Reason += "; " + c.obs.ManualRemediation
+		}
+	}
+	res.Drift = boundCapture(res.Drift)
+	res.Registered = boundCapture(res.Registered)
+	res.Reason = boundCapture(res.Reason)
+}
+
 // toleratedNote builds one Result.Notes entry for a TOLERATED nonzero
 // exit: the action's own Description (when authored — e.g.
 // claudecode.go's claudeCodeRemoveAction) is prefixed onto the rendered
@@ -218,34 +307,52 @@ func toleratedNote(action Action, exitCode int, stderr string) string {
 //     sequence reuses that SAME resolved path, closing the TOCTOU window
 //     between Detect and the write.
 //  4. Run Plan.Probe (read #1) if this runtime has one wired; keep the
-//     RAW combined captures in local variables, never bounded.
-//  5. mutate == false (Preview, Phase 4): set Outcome = OutcomeWouldWrite
-//     as the default, then type-assert DriftRuntime exactly once (the
-//     PluginRuntime idiom). No probe wired, no DriftRuntime, a probe seam
-//     error, or an Observe that reports it could not frame the output as
-//     a registration at all (D-09) leaves Outcome at OutcomeWouldWrite
-//     and sets Result.Drift to a "not compared" note that quotes no probe
-//     bytes — never Result.Registered, which stays empty in every one of
-//     those cases. Otherwise drift.go's Compare classifies the observed
-//     registration against opts, and Result.Outcome/Facets/Drift/
-//     Registered/Reason are all populated from that classification —
-//     Registered is REBUILT from the parsed-and-redacted observation
-//     (D-03), never the raw probe capture. Either way the process exit
-//     code is unaffected: no probe result of any kind produces a nonzero
-//     exit (T-02-08).
+//     RAW combined captures in local variables, never bounded. Then
+//     classifyProbe computes ONE shared classification (Phase 5, D-01)
+//     from this SAME read #1 — type-asserting DriftRuntime exactly once
+//     (the PluginRuntime idiom) — consulted by BOTH lanes below. No probe
+//     wired, no DriftRuntime, a probe seam error, or an Observe that
+//     reports it could not frame the output as a registration at all
+//     (D-09) leaves the classification "not compared". Either way the
+//     process exit code is unaffected: no probe result of any kind
+//     produces a nonzero exit (T-02-08).
+//  5. mutate == false (Preview): Outcome defaults to OutcomeWouldWrite. A
+//     "not compared" classification sets Result.Drift to that note
+//     (quoting no probe bytes) and returns — Result.Registered stays
+//     empty. A compared classification renders Outcome/Facets/Drift/
+//     Registered/Reason from it (renderClassification) — Registered is
+//     REBUILT from the parsed-and-redacted observation (D-03), never the
+//     raw probe capture.
 //  6. A probe SEAM error (start failure/timeout) under Apply is
-//     OutcomeFailed.
-//  7. Run each Action in order on the resolved binary. A non-Tolerant
+//     OutcomeFailed, checked before the classification is consulted.
+//  7. mutate == true (Apply, Phase 5 D-01): a COMPARED classification of
+//     already-correct or preserved renders the same five fields Preview
+//     would (Facets/Drift/Registered describe what the pre-write read
+//     found) and returns HERE — BEFORE this step's own write-action loop
+//     runs even once (Pitfall 2: claudeCodeRemoveAction is
+//     plan.Actions[0] for every claude-code auth mode). A compared
+//     would-write classification, and every NOT-compared (ambiguous)
+//     classification, falls through to the SAME loop below unchanged
+//     (D-09/D-10: ambiguity never becomes license to skip a write). Run
+//     each Action in order on the resolved binary. A non-Tolerant
 //     action's nonzero exit or seam error is OutcomeFailed immediately.
 //     A Tolerant action's nonzero exit is appended to Notes and the
 //     sequence continues (03-RESEARCH.md Pattern 1 / Pitfall 1's
 //     tolerant-remove-then-fatal-add shape, for a runtime that needs it).
-//  8. Run Plan.Probe again (read #2), if this runtime has one.
-//  9. Byte-compare the RAW read #1 and read #2 captures: identical means
-//     OutcomeAlreadyCorrect, different (or a runtime with no Probe wired,
-//     or a read #2 seam error) means OutcomeWrote. D-08's own invariant —
-//     ambiguity resolves to wrote, never to already-correct — is what
-//     makes "no Probe wired yet" a safe degradation rather than a bug.
+//  8. Run Plan.Probe again (read #2), if this runtime has one. For a
+//     COMPARED runtime, Registered is rebuilt through the SAME
+//     Observe -> renderObservation path Preview uses (D-02) — a header
+//     value the second read echoes back can never reach this field
+//     unredacted; Outcome stays OutcomeWrote regardless of what this
+//     re-observe says (D-02 — never reclassifies to already-correct,
+//     never fails the row). A NOT-compared runtime keeps the ORIGINAL raw
+//     bounded capture.
+//  9. For a NOT-compared runtime only: byte-compare the RAW read #1 and
+//     read #2 captures: identical means OutcomeAlreadyCorrect, different
+//     (or a runtime with no Probe wired, or a read #2 seam error) means
+//     OutcomeWrote. D-08/D-09's own invariant — ambiguity resolves to
+//     wrote, never to already-correct — is what makes "no Probe wired
+//     yet" a safe degradation rather than a bug.
 func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mutate bool) Result {
 	name := rt.Name()
 	if !rt.Detect(env) {
@@ -322,54 +429,22 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 	if hasProbe {
 		probe1, probe1Err = runSeam(ctx, env, binary, plan.Probe[1:])
 	}
+	// c is the SAME classification (Phase 5, D-01) both lanes below
+	// consult — computed once, fresh from THIS execute() call's own
+	// probe1 read (Pitfall 1: never carried across process invocations,
+	// never a second parse path, 04-RESEARCH.md Pitfall 3).
+	c := classifyProbe(name, rt, plan, hasProbe, probe1, probe1Err, opts)
 
 	if !mutate {
 		res.Outcome = OutcomeWouldWrite
-		dr, isDrift := rt.(DriftRuntime)
-		if !hasProbe || !isDrift {
-			// D-10: a runtime with no probe wired, or no drift-capable
-			// scanner (opencode, generic — generic never reaches here at
-			// all, since step 2a above already returned for it), is never
-			// compared. This text is the only Drift note a scanner-less,
-			// probe-wired runtime ever produces.
-			res.Drift = notComparedNote(name, "runtime authors no registration scanner")
+		if !c.compared {
+			// This text is the only Drift note a scanner-less, probe-wired
+			// runtime (or a probe1 seam error, or unframeable output) ever
+			// produces.
+			res.Drift = c.notCompared
 			return res
 		}
-		if probe1Err != nil {
-			// D-09: a probe seam error is unreadable, never preserved or
-			// already-correct.
-			res.Drift = notComparedNote(name, quoteArgs(plan.Probe)+": "+probe1Err.Error())
-			return res
-		}
-		obs, ok := dr.Observe(probe1.Stdout+probe1.Stderr, opts)
-		if !ok {
-			// D-09: the scanner could not frame this output as a
-			// registration at all — NEVER render probe1's raw bytes here.
-			res.Drift = notComparedNote(name, fmt.Sprintf("%s exited %d: output not recognized as a registration", quoteArgs(plan.Probe), probe1.ExitCode))
-			return res
-		}
-		d := Compare(obs, opts)
-		res.Outcome = d.Outcome
-		res.Facets = joinFacets(d.Facets)
-		// WR-01: an observed header NAME or URL is untrusted third-party
-		// content (parsed straight out of the probe's stdout/stderr by
-		// the observing runtime's own scanner) and carries no length cap
-		// of its own — bound the three rendered fields built from it,
-		// the same maxCapturedBytes discipline the mutate lane's own
-		// res.Registered = displayCapture(...) applies one code path
-		// below, so a flooded header name/URL can never flood the
-		// operator's terminal or --output json. Registered is still
-		// rebuilt from the parsed-and-redacted Observation, never raw
-		// probe bytes (D-03) — boundCapture is applied AFTER that
-		// rebuild, never in place of it.
-		res.Drift = strings.Join(d.Details, "; ")
-		res.Registered = renderObservation(obs)
-		if d.Outcome == OutcomePreserved {
-			res.Reason = name + ": preserved: " + strings.Join(d.Preserved, "; ") + "; " + obs.WholeEntryNote
-		}
-		res.Drift = boundCapture(res.Drift)
-		res.Registered = boundCapture(res.Registered)
-		res.Reason = boundCapture(res.Reason)
+		renderClassification(&res, name, c)
 		return res
 	}
 
@@ -377,6 +452,27 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		res.Outcome = OutcomeFailed
 		res.Reason = describeSeamError(name, quoteArgs(plan.Probe), probe1Err)
 		return res
+	}
+
+	// D-01/Pitfall 2 (the load-bearing ordering rule): on a COMPARED
+	// classification, already-correct and preserved return HERE — before
+	// the write-action loop's first iteration. claudeCodeRemoveAction is
+	// plan.Actions[0] for every claude-code auth mode; a return here means
+	// it is NEVER dispatched on a preserved or already-correct row (SC1,
+	// SC2, closing the ryr82bf2s2 incident class). Facets/Drift/Registered
+	// are rendered here too (they describe what the pre-write read found)
+	// even for a would-write row that falls through to the loop below —
+	// its Registered is overwritten by the post-write re-observe further
+	// down; its Outcome/Reason are overwritten only if a later action
+	// fails. An ambiguous (not-compared) read falls through unchanged —
+	// D-09/D-10's ambiguity-resolves-to-wrote invariant restated for the
+	// apply lane: ambiguity must never become a license to skip a write.
+	if c.compared {
+		renderClassification(&res, name, c)
+		switch c.drift.Outcome {
+		case OutcomeAlreadyCorrect, OutcomePreserved:
+			return res
+		}
 	}
 
 	var notes []string

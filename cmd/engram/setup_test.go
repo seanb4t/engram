@@ -3751,6 +3751,152 @@ func TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites(t *testing.T) {
 	assertNoPluginWriteVerb(t, calls)
 }
 
+// TestSetupApplyPreservedRuntimeSkipsRegistrationWrite is Phase 5's SC1/SC2
+// process-boundary proof (REQ-apply-preserve-gate, D-01, D-05): `--apply`
+// against the OBSERVED `x-litellm-api-key` Claude Code shape
+// (claudeGetProbeLiteralText, .planning/phases/04-drift-detection-read-only/
+// 04-OBSERVATIONS.md §"Claude Code — literal value") classifies `preserved`
+// BEFORE any write, so it records exactly one `mcp get` call and never a
+// `mcp remove`/`mcp add` — while the plugin lane still runs independently
+// of the registration outcome (Phase 3 D-12), in both plugin shapes.
+func TestSetupApplyPreservedRuntimeSkipsRegistrationWrite(t *testing.T) {
+	withFakeSetupVersion(t, "0.16.1")
+
+	// run drives one --apply invocation against the shared preserved-shape
+	// probe, scripting only the plugin-lane responses named by script — any
+	// other call (including a would-be mcp remove/add) falls through to
+	// scriptedSetupRun's zero-exit default, which is exactly what lets
+	// assertNoRegistrationWrite's argv scan catch a regression rather than
+	// merely a wrong assertion (RESEARCH.md Pitfall 2).
+	run := func(t *testing.T, script map[string]map[string]setup.RunResult) (doc setupReportDoc, calls [][]string, stdout, stderr string) {
+		t.Helper()
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(
+			recording(&calls, fakePluginRun(
+				scriptedSetupRun(t, setup.RunResult{Stdout: claudeGetProbeLiteralText, ExitCode: 0}), script)),
+			"claude"))
+
+		var err error
+		stdout, stderr, err = runClient(t, "setup",
+			"--url", "https://engram.example.com/mcp", "--auth", "oauth",
+			"--runtime", "claude-code", "--output", "json", "--apply")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q stdout=%q)", err, stderr, stdout)
+		}
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		return doc, calls, stdout, stderr
+	}
+
+	// assertNoRegistrationWrite is SC2's structural proof: exactly one
+	// recorded call is the `mcp get` probe, and no recorded call is any
+	// OTHER `mcp` subcommand (`remove`/`add`) — a count-only assertion
+	// could pass if some other action replaced the remove call, so both
+	// checks are required (RESEARCH.md Pitfall 2).
+	assertNoRegistrationWrite := func(t *testing.T, calls [][]string) {
+		t.Helper()
+		want := []string{"claude", "mcp", "get", "engram"}
+		gets := 0
+		for _, c := range calls {
+			if reflect.DeepEqual(c, want) {
+				gets++
+			}
+			if len(c) >= 3 && c[1] == "mcp" && c[2] != "get" {
+				t.Errorf("recorded a registration write call, want none: %q", c)
+			}
+		}
+		if gets != 1 {
+			t.Errorf("recorded %d call(s) equal to %q, want exactly 1: %q", gets, want, calls)
+		}
+	}
+
+	t.Run("plugin-current", func(t *testing.T) {
+		script := map[string]map[string]setup.RunResult{
+			"claude": {
+				"plugin list --json":      {ExitCode: 0, Stdout: claudeListCurrentJSON},
+				"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplacePresentText},
+			},
+		}
+		doc, calls, stdout, stderr := run(t, script)
+		assertNoRegistrationWrite(t, calls)
+
+		row := rowByName(t, doc.Runtimes, "claude-code")
+		if row.Registration != "preserved" {
+			t.Errorf("Registration = %q, want %q", row.Registration, "preserved")
+		}
+		if row.Outcome != "preserved" {
+			t.Errorf("Outcome = %q, want %q (aggregate: preserved outranks the plugin's already-correct)", row.Outcome, "preserved")
+		}
+		if row.Plugin != "already-correct" {
+			t.Errorf("Plugin = %q, want %q", row.Plugin, "already-correct")
+		}
+		if row.Skills != setupSkillsPluginDelivered {
+			t.Errorf("Skills = %q, want %q", row.Skills, setupSkillsPluginDelivered)
+		}
+		if !strings.Contains(row.Facets, "header-name") {
+			t.Errorf("Facets = %q, want it to contain %q", row.Facets, "header-name")
+		}
+		if !strings.Contains(row.Reason, "claude mcp remove engram --scope user") {
+			t.Errorf("Reason = %q, want it to contain the manual-remediation command", row.Reason)
+		}
+		if !strings.HasPrefix(row.Reason, "claude-code: preserved: ") {
+			t.Errorf("Reason = %q, want prefix %q", row.Reason, "claude-code: preserved: ")
+		}
+		const literal = "sk-DO-NOT-COMMIT-literal-test-abc123"
+		if strings.Contains(stdout, literal) {
+			t.Errorf("stdout leaks the observed literal: %s", stdout)
+		}
+		if strings.Contains(stderr, literal) {
+			t.Errorf("stderr leaks the observed literal: %s", stderr)
+		}
+	})
+
+	t.Run("plugin-absent", func(t *testing.T) {
+		script := map[string]map[string]setup.RunResult{
+			"claude": {
+				"plugin list --json":      {ExitCode: 0, Stdout: claudeListEmptyJSON},
+				"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplaceAbsentText},
+			},
+		}
+		doc, calls, _, _ := run(t, script)
+		assertNoRegistrationWrite(t, calls)
+
+		row := rowByName(t, doc.Runtimes, "claude-code")
+		if row.Registration != "preserved" {
+			t.Errorf("Registration = %q, want %q", row.Registration, "preserved")
+		}
+		if row.Plugin != "wrote" {
+			t.Errorf("Plugin = %q, want %q", row.Plugin, "wrote")
+		}
+		if row.PluginState != "absent" {
+			t.Errorf("PluginState = %q, want %q", row.PluginState, "absent")
+		}
+		if row.Outcome != "wrote" {
+			t.Errorf("Outcome = %q, want %q (aggregate: the plugin facet wrote)", row.Outcome, "wrote")
+		}
+
+		wantMarketplaceAdd := []string{"claude", "plugin", "marketplace", "add"}
+		wantInstall := []string{"claude", "plugin", "install"}
+		var sawMarketplaceAdd, sawInstall bool
+		for _, c := range calls {
+			if len(c) >= len(wantMarketplaceAdd) && reflect.DeepEqual(c[:len(wantMarketplaceAdd)], wantMarketplaceAdd) {
+				sawMarketplaceAdd = true
+			}
+			if len(c) >= len(wantInstall) && reflect.DeepEqual(c[:len(wantInstall)], wantInstall) {
+				sawInstall = true
+			}
+		}
+		if !sawMarketplaceAdd {
+			t.Errorf("recorded calls did not contain a %q call: %q", wantMarketplaceAdd, calls)
+		}
+		if !sawInstall {
+			t.Errorf("recorded calls did not contain a %q call: %q", wantInstall, calls)
+		}
+	})
+}
+
 // TestSetupPreviewShowsPluginArgv proves a bare preview (no --apply)
 // shows the exact plugin argv the apply lane would run, and runs no
 // write verb of any kind — the plugin lane's own D-11 read-only
