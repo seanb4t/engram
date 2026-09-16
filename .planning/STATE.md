@@ -4,17 +4,17 @@ milestone: 2026-09-13.01
 milestone_name: Setup v2
 current_phase: 4
 current_phase_name: Drift Detection (Read-Only)
-status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-09-15T23:50:37.827Z"
+status: verifying
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-09-16T00:37:43.603Z"
 last_activity: 2026-09-15
 last_activity_desc: Phase 4 execution started
-state_head: af5f16e705011a1ef1300f6c187645b08a57bf1d
+state_head: ec35051c873788deedd21b6b16f1d8f32ae5ec92
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-15 after Phase 3 — 2026-09-13.01 Se
 
 Phase: 4 (Drift Detection (Read-Only)) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-15 — Phase 4 execution started
 
 ## Deferred Items
@@ -290,6 +290,8 @@ milestone needs in working memory.
 - [Phase 04]: Documented the preserved outcome, facet naming (registered/facets/drift), and the opencode not-compared exemption in guides/agent-setup.md, pinned by a new migrate_docs_test.go-shaped docs gate with a positive control (cmd/engram/agent_setup_docs_test.go).
 - [Phase 4]: D-05 observation confirmed: Claude Code echoes literal header values verbatim on mcp get read-back (only the ADD confirmation masks them); Codex's http_headers renders as an object-of-strings, matching Assumption A3 and the 0.153.4 key set exactly.
 - [Phase 04]: setupLongDescription drift paragraph reworded to include the literal word "drift" (plan prose omitted it; plan acceptance test requires it) - Rule 1 auto-fix
+- [Phase 4]: claude-code's Observe: Scope: is chrome (never a facet), Type: is a facet-bearing line — Claude's own discretion, plan 04-05 objective
+- [Phase 4]: codexRegistrationTransport needed no retyping — 04-OBSERVATIONS.md confirmed the 04-01 map-of-strings guess for http_headers/env_http_headers exactly
 
 ### Pending Todos
 
@@ -361,8 +363,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-15T23:50:37.799Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-09-16T00:37:43.575Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -490,6 +492,7 @@ Resume file: None
 | Phase 04 P03 | ~15min | 2 tasks | 2 files |
 | Phase 04 P02 | 6min | 2 tasks | 1 files |
 | Phase 04 P04 | 35 min | 3 tasks | 4 files |
+| Phase 04 P05 | ~75min | 3 tasks | 7 files |
 
 ## Operator Next Steps
 

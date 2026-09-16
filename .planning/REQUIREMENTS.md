@@ -38,11 +38,11 @@ any working auth shape, and never replaces a registration it did not write.
 
 ### Drift Detection & Reconcile
 
-- [ ] **REQ-drift-observed-registration**: Preview reads the runtime's existing engram registration through the runtime's own read verb and normalizes it to the same shape the Plan authors — URL, auth mode, header names — using Codex's `mcp get --json` as structured input and a bounded text scan for Claude Code; opencode's table output is explicitly not parsed, and its comparison is documented as coarse. No third-party config file is read.
-- [ ] **REQ-drift-three-way**: A registration is classified as one of exactly three states — identical (`already-correct`), differs-but-reproducible (`would-write`), or differs-and-not-reproducible (`preserved`) — and the last two are never collapsed. `already-correct` is a real comparison with unit coverage for all three states per runtime, not a read-probe heuristic.
-- [ ] **REQ-drift-preserved-outcome**: `preserved` is a first-class outcome in text and JSON output, with a reason naming what setup cannot reproduce (e.g. a header it does not author), reflected consistently in aggregation and exit codes, and documented in `guides/agent-setup.md`'s results table. Codex's semantics are whole-entry (preserve the runtime or overwrite it — no partial merge) and the docs say so.
-- [ ] **REQ-drift-facet-naming**: A `would-write` row for an existing registration names which facet(s) differ — URL, auth mode, header name, or value reference — rather than a bare "differs".
-- [ ] **REQ-drift-redaction**: Header values obtained from any runtime read-probe are redacted unconditionally before comparison storage, rendering, JSON output, or logging — setup never tries to tell a safe-looking reference from a literal secret. Verified with a fixture whose probe output carries a literal value.
+- [x] **REQ-drift-observed-registration**: Preview reads the runtime's existing engram registration through the runtime's own read verb and normalizes it to the same shape the Plan authors — URL, auth mode, header names — using Codex's `mcp get --json` as structured input and a bounded text scan for Claude Code; opencode's table output is explicitly not parsed, and its comparison is documented as coarse. No third-party config file is read.
+- [x] **REQ-drift-three-way**: A registration is classified as one of exactly three states — identical (`already-correct`), differs-but-reproducible (`would-write`), or differs-and-not-reproducible (`preserved`) — and the last two are never collapsed. `already-correct` is a real comparison with unit coverage for all three states per runtime, not a read-probe heuristic.
+- [x] **REQ-drift-preserved-outcome**: `preserved` is a first-class outcome in text and JSON output, with a reason naming what setup cannot reproduce (e.g. a header it does not author), reflected consistently in aggregation and exit codes, and documented in `guides/agent-setup.md`'s results table. Codex's semantics are whole-entry (preserve the runtime or overwrite it — no partial merge) and the docs say so.
+- [x] **REQ-drift-facet-naming**: A `would-write` row for an existing registration names which facet(s) differ — URL, auth mode, header name, or value reference — rather than a bare "differs".
+- [x] **REQ-drift-redaction**: Header values obtained from any runtime read-probe are redacted unconditionally before comparison storage, rendering, JSON output, or logging — setup never tries to tell a safe-looking reference from a literal secret. Verified with a fixture whose probe output carries a literal value.
 - [ ] **REQ-apply-preserve-gate**: `--apply` consults the same classification before writing and performs zero write actions for a `preserved` registration — including never running Claude Code's `mcp remove` step — while still applying skills/plugin actions for that runtime. Proven by a fixture test that runs `--apply` (not only preview) against a pre-seeded unreproducible registration and asserts no registration write was issued.
 - [ ] **REQ-apply-rewrite-consequence**: When a reproducible difference on Claude Code requires remove-then-add of an existing registration, preview and apply state that an OAuth-authenticated registration will need to log in again before the rewrite runs.
 
@@ -96,11 +96,11 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-header-bearer-unchanged | Phase 2 | Complete |
 | REQ-header-codex-declined | Phase 2 | Complete |
 | REQ-header-documented | Phase 2 | Complete |
-| REQ-drift-observed-registration | Phase 4 | Pending |
-| REQ-drift-three-way | Phase 4 | Pending |
-| REQ-drift-preserved-outcome | Phase 4 | Pending |
-| REQ-drift-facet-naming | Phase 4 | Pending |
-| REQ-drift-redaction | Phase 4 | Pending |
+| REQ-drift-observed-registration | Phase 4 | Complete |
+| REQ-drift-three-way | Phase 4 | Complete |
+| REQ-drift-preserved-outcome | Phase 4 | Complete |
+| REQ-drift-facet-naming | Phase 4 | Complete |
+| REQ-drift-redaction | Phase 4 | Complete |
 | REQ-apply-preserve-gate | Phase 5 | Pending |
 | REQ-apply-rewrite-consequence | Phase 5 | Pending |
 | REQ-plugin-capability-detection | Phase 3 | Complete |
