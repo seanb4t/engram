@@ -300,7 +300,7 @@ on the machine, shows what it would write, and wires it up.
 - [x] **Phase 2: Custom Auth Headers** - A gateway registration (e.g. LiteLLM's `x-litellm-api-key`) is expressible on every runtime that can render it, with existing auth modes unchanged (completed 2026-09-14)
 - [x] **Phase 3: Plugin-First Delivery** - Claude Code and Codex receive skills, hooks, and `/engram-setup` through their own plugin system instead of a plain skills copy (completed 2026-09-15)
 - [x] **Phase 4: Drift Detection (Read-Only)** - Preview classifies an existing registration as identical, reproducible, or preserved by comparing against what setup would actually write (completed 2026-09-15)
-- [ ] **Phase 5: Apply-Time Preserve Gate & Documentation** - `--apply` never rewrites a registration it cannot reproduce, and shipped docs are brought current with a post-release observation
+- [x] **Phase 5: Apply-Time Preserve Gate & Documentation** - `--apply` never rewrites a registration it cannot reproduce, and shipped docs are brought current with a post-release observation (completed 2026-09-16)
 
 ## Phase Details
 
@@ -446,21 +446,21 @@ Plans:
 3. When a reproducible difference on Claude Code requires remove-then-add of an existing OAuth-authenticated registration, both preview and apply state that the rewrite will require logging in again before it runs.
 4. `guides/install.md`, `guides/agent-setup.md`, and `guides/plugin.md` describe the shipped plugin-first delivery, header shape, `preserved` outcome and apply gate, and man pages — checked off only after a post-release live observation is recorded, not from code alone.
 
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — `execute()`'s mutate branch consults the shared `Observe → Compare` classification BEFORE any action: `already-correct`/`preserved` return before `plan.Actions[0]` (Claude Code's `mcp remove` never runs), `would-write` runs the actions then re-observes once and rebuilds `Registered` redaction-safe; per-runtime manual-remediation constants on the preserved Reason; the OAuth re-login note (`Observation.RewriteConsequence`, `AuthNone` shape only) on a Claude Code would-write row's Notes in both lanes; SC1/SC2 proven through `internal/setup`'s panic-on-overrun harness and `engram setup --apply` at the process boundary (D-01, D-02, D-03, D-04, D-05; REQ-apply-preserve-gate, REQ-apply-rewrite-consequence)
-- [ ] 05-03-PLAN.md — `guides/install.md` (cask contents incl. man pages — `man engram-setup` — plugin-first pointer, unreleased notice) and `guides/plugin.md` (plugin-first via `engram setup --apply`, `preserved` cross-link beside the fallback `mcp remove` block, unreleased notice), each gated by a new `agent_setup_docs_test.go`-shaped test file with a positive control (D-06, D-07; REQ-docs-setup-v2 code-gated half)
+- [x] 05-01-PLAN.md — `execute()`'s mutate branch consults the shared `Observe → Compare` classification BEFORE any action: `already-correct`/`preserved` return before `plan.Actions[0]` (Claude Code's `mcp remove` never runs), `would-write` runs the actions then re-observes once and rebuilds `Registered` redaction-safe; per-runtime manual-remediation constants on the preserved Reason; the OAuth re-login note (`Observation.RewriteConsequence`, `AuthNone` shape only) on a Claude Code would-write row's Notes in both lanes; SC1/SC2 proven through `internal/setup`'s panic-on-overrun harness and `engram setup --apply` at the process boundary (D-01, D-02, D-03, D-04, D-05; REQ-apply-preserve-gate, REQ-apply-rewrite-consequence)
+- [x] 05-03-PLAN.md — `guides/install.md` (cask contents incl. man pages — `man engram-setup` — plugin-first pointer, unreleased notice) and `guides/plugin.md` (plugin-first via `engram setup --apply`, `preserved` cross-link beside the fallback `mcp remove` block, unreleased notice), each gated by a new `agent_setup_docs_test.go`-shaped test file with a positive control (D-06, D-07; REQ-docs-setup-v2 code-gated half)
 
 **Wave 2**
 
-- [ ] 05-02-PLAN.md — `engram setup --help` states the apply gate, the manual remediation, and the re-login consequence (`help.golden` regenerated, `catalog.golden` untouched); the process-boundary literal-leak proof runs `--apply`; `guides/agent-setup.md` brought current (apply gate, corrected `already-correct`, preserved remediation, OAuth re-login, plugin-first, unreleased notice) with six new gate legs, two zero-occurrence stale anchors, and positive controls (D-01, D-04, D-05, D-06, D-07; all three REQ IDs)
+- [x] 05-02-PLAN.md — `engram setup --help` states the apply gate, the manual remediation, and the re-login consequence (`help.golden` regenerated, `catalog.golden` untouched); the process-boundary literal-leak proof runs `--apply`; `guides/agent-setup.md` brought current (apply gate, corrected `already-correct`, preserved remediation, OAuth re-login, plugin-first, unreleased notice) with six new gate legs, two zero-occurrence stale anchors, and positive controls (D-01, D-04, D-05, D-06, D-07; all three REQ IDs)
 
 **Wave 3**
 
-- [ ] 05-04-PLAN.md — `05-POST-RELEASE.md` in the `06-POST-RELEASE.md` shape (`status: pending`, tracker issue opened) enumerating the qualifying-release checks; the whole phase gate at the final commit; Phase 5 verification passes with `post_release_status: pending` and REQ-docs-setup-v2 stays unchecked until `05-RELEASE-<ver>.md` is recorded (D-06; REQ-docs-setup-v2 closeout half)
+- [x] 05-04-PLAN.md — `05-POST-RELEASE.md` in the `06-POST-RELEASE.md` shape (`status: pending`, tracker issue opened) enumerating the qualifying-release checks; the whole phase gate at the final commit; Phase 5 verification passes with `post_release_status: pending` and REQ-docs-setup-v2 stays unchecked until `05-RELEASE-<ver>.md` is recorded (D-06; REQ-docs-setup-v2 closeout half)
 
 ---
 
@@ -552,7 +552,7 @@ Plans:
 | 2. Custom Auth Headers | 2026-09-13.01 | 5/5 | Complete | 2026-09-14 |
 | 3. Plugin-First Delivery | 2026-09-13.01 | 7/7 | Complete | 2026-09-15 |
 | 4. Drift Detection (Read-Only) | 2026-09-13.01 | 5/5 | Complete | 2026-09-15 |
-| 5. Apply-Time Preserve Gate & Documentation | 2026-09-13.01 | 0/3 | Pending |  |
+| 5. Apply-Time Preserve Gate & Documentation | 2026-09-13.01 | 4/4 | Complete | 2026-09-16 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
