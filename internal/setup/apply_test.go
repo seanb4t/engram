@@ -5,7 +5,9 @@ package setup
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -59,17 +61,28 @@ func TestApplyConvergesCodex(t *testing.T) {
 	})
 
 	t.Run("second-run-already-correct", func(t *testing.T) {
-		const probeOutput = `{"url":"https://engram.example.com/mcp"}`
+		// D-01: already-correct is now a PRE-write claim from probe1's
+		// own classification. The former `{"url":...}` body was NEVER a
+		// framable codex document (no "name":"engram"), so this subtest
+		// used to reach already-correct only via the ambiguous byte-
+		// compare fallback — 4 scripted calls including a real write.
+		// The no-bearer variant of codexGetEngramBearer IS framable and
+		// matches opts (Auth: "oauth" => plannedBearer=false, observed
+		// AuthNone), so classifyProbe now returns already-correct after
+		// exactly ONE Run call — no write, no probe #2.
+		noBearer := strings.Replace(codexGetEngramBearer,
+			`"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":null`, 1)
 		var calls []runCall
 		env := fakeEnvWithRun(scriptedRun(&calls,
-			scriptedResult{Result: RunResult{Stdout: probeOutput}}, // probe #1: already registered
-			scriptedResult{Result: RunResult{ExitCode: 0}},         // write: codex mcp add (still runs — D-08 always writes)
-			scriptedResult{Result: RunResult{Stdout: probeOutput}}, // probe #2: byte-identical
+			scriptedResult{Result: RunResult{Stdout: noBearer}}, // probe #1: already registered, matches opts
 		), "codex")
 
 		res := Apply(context.Background(), env, Codex, opts)
 		if res.Outcome != OutcomeAlreadyCorrect {
 			t.Fatalf("second Apply outcome = %q, want %q (distinctly from %q)", res.Outcome, OutcomeAlreadyCorrect, OutcomeWrote)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("Run called %d times, want exactly 1 (D-01: already-correct is a pre-write claim, no write/probe#2): %+v", len(calls), calls)
 		}
 	})
 
@@ -415,8 +428,10 @@ func TestPreviewReportsRegisteredState(t *testing.T) {
 // catching the defect: a plan that only exercises the FIRST --apply run
 // can look correct and still never reach OutcomeAlreadyCorrect on a
 // second run. claude-code's two-action tolerant-remove-then-fatal-add
-// sequence means each Apply call drives 4 scripted Run results (probe,
-// remove, add, probe), not codex's 3.
+// sequence means the FIRST Apply call, against an ambiguous (unframeable)
+// probe1, drives 4 scripted Run results (probe, remove, add, probe), not
+// codex's 3 — a SECOND, already-converged run is now a D-01 one-call
+// no-op instead (below).
 func TestApplyConvergesClaudeCode(t *testing.T) {
 	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
 
@@ -439,18 +454,310 @@ func TestApplyConvergesClaudeCode(t *testing.T) {
 	})
 
 	t.Run("second-run-already-correct", func(t *testing.T) {
-		const probeOutput = "engram: https://engram.example.com/mcp (HTTP)"
+		// D-01: already-correct is now a PRE-write claim from probe1's
+		// own classification, using a REAL claude-code fixture (a "URL:"
+		// line, matching opts) rather than the former bare
+		// "engram: https://... (HTTP)" text, which claude-code's Observe
+		// cannot frame at all (no "URL:" line) and previously reached
+		// already-correct only via the ambiguous byte-compare fallback.
+		probeOutput := claudeGetFixture(nil, claudeStatusConnected)
 		var calls []runCall
 		env := fakeEnvWithRun(scriptedRun(&calls,
-			scriptedResult{Result: RunResult{Stdout: probeOutput}}, // probe #1: already registered
-			scriptedResult{Result: RunResult{ExitCode: 0}},         // tolerant remove: clears the slot
-			scriptedResult{Result: RunResult{ExitCode: 0}},         // fatal add: re-registers identically
-			scriptedResult{Result: RunResult{Stdout: probeOutput}}, // probe #2: byte-identical
+			scriptedResult{Result: RunResult{Stdout: probeOutput}}, // probe #1: already registered, matches opts
 		), "claude")
 
 		res := Apply(context.Background(), env, ClaudeCode, opts)
 		if res.Outcome != OutcomeAlreadyCorrect {
 			t.Fatalf("second Apply outcome = %q, want %q — this is the exact defect 03-RESEARCH.md Pitfall 1 names: claude-code must be able to reach already-correct", res.Outcome, OutcomeAlreadyCorrect)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("Run called %d times, want exactly 1 (D-01: already-correct is a pre-write claim, no remove/add/probe#2): %+v", len(calls), calls)
+		}
+	})
+}
+
+// TestApplyPreservedIssuesZeroWrites is REQ-apply-preserve-gate SC1's
+// package-level proof: --apply against a probe1 read that classifies
+// preserved issues EXACTLY the probe call and nothing else — for BOTH
+// parsed runtimes — with the runtime's own D-05 manual-remediation
+// sentence on Reason and the observed literal never surviving to the
+// marshaled Result.
+func TestApplyPreservedIssuesZeroWrites(t *testing.T) {
+	t.Run("claude-code", func(t *testing.T) {
+		opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+		stdout := claudeGetFixture([]string{claudeLiteralHeaderLine}, claudeStatusFailedDial)
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+		), "claude")
+
+		res := Apply(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomePreserved {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+		}
+		if res.Facets != "header-name" {
+			t.Errorf("Facets = %q, want %q", res.Facets, "header-name")
+		}
+		wantDrift := "x-litellm-api-key: observed <redacted>, not authored by setup"
+		if res.Drift != wantDrift {
+			t.Errorf("Drift = %q, want %q", res.Drift, wantDrift)
+		}
+		wantRegistered := "url=https://engram.example.com/mcp auth=none headers=x-litellm-api-key=<redacted>"
+		if res.Registered != wantRegistered {
+			t.Errorf("Registered = %q, want %q", res.Registered, wantRegistered)
+		}
+		wantReason := "claude-code: preserved: " + wantDrift + "; " + claudeCodeWholeEntryNote + "; " + claudeCodeManualRemediation
+		if res.Reason != wantReason {
+			t.Errorf("Reason = %q, want %q", res.Reason, wantReason)
+		}
+		if res.Notes != "" {
+			t.Errorf("Notes = %q, want empty", res.Notes)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("Run called %d times, want exactly 1: %+v", len(calls), calls)
+		}
+		wantArgs := []string{"mcp", "get", "engram"}
+		if !reflect.DeepEqual(calls[0].Args, wantArgs) {
+			t.Errorf("calls[0].Args = %q, want %q", calls[0].Args, wantArgs)
+		}
+		b, err := json.Marshal(res)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		if strings.Contains(string(b), "sk-DO-NOT-COMMIT-literal-test-abc123") {
+			t.Errorf("json.Marshal(res) = %s, must not contain the observed literal", b)
+		}
+		if got := Classify([]Result{res}); got != ExitTotalSuccess {
+			t.Errorf("Classify([]Result{res}) = %v, want %v (D-04: preserved is a non-failed attempt, exit 0)", got, ExitTotalSuccess)
+		}
+	})
+
+	t.Run("codex", func(t *testing.T) {
+		// codexObservedLiteralHeader is 04-OBSERVATIONS.md's own "Codex —
+		// literal header (hand-edited)" shape (drift_test.go).
+		opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: codexObservedLiteralHeader, ExitCode: 0}},
+		), "codex")
+
+		res := Apply(context.Background(), env, Codex, opts)
+		if res.Outcome != OutcomePreserved {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("Run called %d times, want exactly 1: %+v", len(calls), calls)
+		}
+		if !strings.HasSuffix(res.Reason, codexManualRemediation) {
+			t.Errorf("Reason = %q, want it to end with %q", res.Reason, codexManualRemediation)
+		}
+	})
+}
+
+// TestApplyPreservedNeverRunsClaudeCodeRemove is SC2's structural proof
+// (04-RESEARCH.md Pitfall 2): a preserved classification never dispatches
+// claudeCodeRemoveAction, which is plan.Actions[0] for every claude-code
+// auth mode. Two independent checks are BOTH required — a count-only
+// assertion could pass if some OTHER action silently replaced the remove
+// call: scriptedRun's own panic-on-overrun is the structural proof (one
+// scripted result; a second Run call panics the test), and the explicit
+// argv scan below names the offending call if the loop is ever entered.
+func TestApplyPreservedNeverRunsClaudeCodeRemove(t *testing.T) {
+	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+	stdout := claudeGetFixture([]string{claudeLiteralHeaderLine}, claudeStatusFailedDial)
+	var calls []runCall
+	env := fakeEnvWithRun(scriptedRun(&calls,
+		scriptedResult{Result: RunResult{Stdout: stdout, ExitCode: 0}},
+	), "claude")
+
+	res := Apply(context.Background(), env, ClaudeCode, opts)
+	if res.Outcome != OutcomePreserved {
+		t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomePreserved)
+	}
+	for _, c := range calls {
+		if len(c.Args) >= 2 && c.Args[0] == "mcp" && (c.Args[1] == "remove" || c.Args[1] == "add") {
+			t.Fatalf("recorded a claude-code registration write call, want none: %+v", c)
+		}
+	}
+	if len(calls) != 1 {
+		t.Fatalf("Run called %d times, want exactly 1: %+v", len(calls), calls)
+	}
+}
+
+// TestApplyAlreadyCorrectIssuesZeroWrites proves already-correct is a
+// TRUE one-call no-op for both parsed runtimes under --apply (D-01),
+// including on a SECOND, freshly-scripted call — the idempotency truth
+// REQ-apply-preserve-gate's own success criteria name explicitly.
+func TestApplyAlreadyCorrectIssuesZeroWrites(t *testing.T) {
+	cases := []struct {
+		name string
+		rt   Runtime
+	}{
+		{"claude-code", ClaudeCode},
+		{"codex", Codex},
+	}
+	opts := Options{URL: "https://engram.example.com/mcp", Auth: "oauth"}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fixture := func() string {
+				if c.name == "claude-code" {
+					return claudeGetFixture(nil, claudeStatusConnected)
+				}
+				return strings.Replace(codexGetEngramBearer,
+					`"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":null`, 1)
+			}
+
+			assertOnce := func(t *testing.T) {
+				t.Helper()
+				var calls []runCall
+				env := fakeEnvWithRun(scriptedRun(&calls,
+					scriptedResult{Result: RunResult{Stdout: fixture(), ExitCode: 0}},
+				), map[string]string{"claude-code": "claude", "codex": "codex"}[c.name])
+
+				res := Apply(context.Background(), env, c.rt, opts)
+				if res.Outcome != OutcomeAlreadyCorrect {
+					t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeAlreadyCorrect)
+				}
+				if res.Facets != "" {
+					t.Errorf("Facets = %q, want empty", res.Facets)
+				}
+				if res.Drift != "" {
+					t.Errorf("Drift = %q, want empty", res.Drift)
+				}
+				if res.Reason != "" {
+					t.Errorf("Reason = %q, want empty", res.Reason)
+				}
+				if res.Notes != "" {
+					t.Errorf("Notes = %q, want empty", res.Notes)
+				}
+				wantRegistered := "url=https://engram.example.com/mcp auth=none headers=none"
+				if res.Registered != wantRegistered {
+					t.Errorf("Registered = %q, want %q", res.Registered, wantRegistered)
+				}
+				if len(calls) != 1 {
+					t.Fatalf("Run called %d times, want exactly 1: %+v", len(calls), calls)
+				}
+			}
+
+			// The idempotency truth: a SECOND Apply call, freshly
+			// scripted with the same converged fixture, is the SAME
+			// one-call no-op — not merely "the first call happened to
+			// look right".
+			assertOnce(t)
+			assertOnce(t)
+		})
+	}
+}
+
+// TestApplyWroteRegisteredIsRedacted is D-02's proof: after a real write,
+// Registered is rebuilt from the POST-write probe through the SAME
+// Observe -> renderObservation path Preview uses — never the raw probe2
+// capture — so a literal a runtime's CLI echoes back after registering
+// can never reach Registered or the marshaled Result.
+func TestApplyWroteRegisteredIsRedacted(t *testing.T) {
+	opts := Options{
+		URL:  "https://engram.example.com/mcp",
+		Auth: "oauth",
+		Headers: []HeaderSpec{
+			{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"},
+		},
+	}
+	const sentinel = "SENTINEL-POSTWRITE-9a1c-DO-NOT-LEAK"
+
+	t.Run("redacted-on-success", func(t *testing.T) {
+		probe1 := strings.Replace(
+			claudeGetFixture([]string{"x-gateway-api-key: ${GATEWAY_KEY}"}, claudeStatusFailedDial),
+			"URL: https://engram.example.com/mcp", "URL: https://old.example/mcp", 1)
+		probe2 := claudeGetFixture([]string{"x-gateway-api-key: " + sentinel}, claudeStatusConnected)
+
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: probe1, ExitCode: 0}}, // probe #1: would-write on url
+			scriptedResult{Result: RunResult{ExitCode: 0}},                 // tolerant remove
+			scriptedResult{Result: RunResult{ExitCode: 0}},                 // fatal add
+			scriptedResult{Result: RunResult{Stdout: probe2, ExitCode: 0}}, // probe #2: literal echo
+		), "claude")
+
+		res := Apply(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWrote {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWrote)
+		}
+		if res.Facets != "url" {
+			t.Errorf("Facets = %q, want %q", res.Facets, "url")
+		}
+		wantDrift := "url: observed https://old.example/mcp, would write https://engram.example.com/mcp"
+		if res.Drift != wantDrift {
+			t.Errorf("Drift = %q, want %q", res.Drift, wantDrift)
+		}
+		wantRegistered := "url=https://engram.example.com/mcp auth=none headers=x-gateway-api-key=<redacted>"
+		if res.Registered != wantRegistered {
+			t.Errorf("Registered = %q, want %q", res.Registered, wantRegistered)
+		}
+		if len(calls) != 4 {
+			t.Fatalf("Run called %d times, want exactly 4: %+v", len(calls), calls)
+		}
+		if calls[1].Args[0] != "mcp" || calls[1].Args[1] != "remove" {
+			t.Errorf("calls[1].Args = %q, want a %q call", calls[1].Args, "mcp remove")
+		}
+		if calls[2].Args[0] != "mcp" || calls[2].Args[1] != "add" {
+			t.Errorf("calls[2].Args = %q, want a %q call", calls[2].Args, "mcp add")
+		}
+		b, err := json.Marshal(res)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		for _, field := range []string{string(b), res.Registered, res.Reason, res.Drift, res.Notes} {
+			if strings.Contains(field, sentinel) {
+				t.Errorf("field %q leaks the post-write sentinel", field)
+			}
+		}
+	})
+
+	t.Run("probe2-unframeable-leaves-registered-empty", func(t *testing.T) {
+		probe1 := strings.Replace(
+			claudeGetFixture([]string{"x-gateway-api-key: ${GATEWAY_KEY}"}, claudeStatusFailedDial),
+			"URL: https://engram.example.com/mcp", "URL: https://old.example/mcp", 1)
+
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: probe1, ExitCode: 0}},
+			scriptedResult{Result: RunResult{ExitCode: 0}},
+			scriptedResult{Result: RunResult{ExitCode: 0}},
+			scriptedResult{Result: RunResult{Stdout: "garbage", ExitCode: 1}}, // probe #2: unframeable
+		), "claude")
+
+		res := Apply(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWrote {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWrote)
+		}
+		if res.Registered != "" {
+			t.Errorf("Registered = %q, want empty (never the raw probe2 bytes)", res.Registered)
+		}
+		if strings.Contains(res.Registered, "garbage") {
+			t.Errorf("Registered = %q, must not contain the raw probe2 capture", res.Registered)
+		}
+	})
+
+	t.Run("probe2-seam-error-still-wrote", func(t *testing.T) {
+		probe1 := strings.Replace(
+			claudeGetFixture([]string{"x-gateway-api-key: ${GATEWAY_KEY}"}, claudeStatusFailedDial),
+			"URL: https://engram.example.com/mcp", "URL: https://old.example/mcp", 1)
+
+		var calls []runCall
+		env := fakeEnvWithRun(scriptedRun(&calls,
+			scriptedResult{Result: RunResult{Stdout: probe1, ExitCode: 0}},
+			scriptedResult{Result: RunResult{ExitCode: 0}},
+			scriptedResult{Result: RunResult{ExitCode: 0}},
+			scriptedResult{Err: errors.New("boom")}, // probe #2: seam error
+		), "claude")
+
+		res := Apply(context.Background(), env, ClaudeCode, opts)
+		if res.Outcome != OutcomeWrote {
+			t.Fatalf("Outcome = %q, want %q", res.Outcome, OutcomeWrote)
+		}
+		if res.Registered != "" {
+			t.Errorf("Registered = %q, want empty", res.Registered)
 		}
 	})
 }

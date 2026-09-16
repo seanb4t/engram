@@ -522,6 +522,30 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 	}
 
 	probe2, probe2Err := runSeam(ctx, env, binary, plan.Probe[1:])
+	if c.compared {
+		// D-02: the outcome stays wrote regardless of what this
+		// re-observe says — a post-write read is NEVER used to claim
+		// already-correct or to fail the row (that stays D-09's
+		// ambiguity-resolves-to-wrote invariant, restated: a post-write
+		// read is not even a comparison ambiguity can lean on). Facets/
+		// Drift keep the PRE-write comparison renderClassification
+		// already rendered above (what the write changed); Registered is
+		// SUPERSEDED here — the row must show the NEW registration,
+		// rebuilt redaction-safe through the same Observe ->
+		// renderObservation path Preview uses (D-03), or nothing when
+		// the second read cannot be framed — never the pre-write
+		// rendering, and never raw probe2 bytes (closing the last
+		// raw-capture site in this file for a compared runtime).
+		res.Outcome = OutcomeWrote
+		res.Registered = ""
+		if probe2Err == nil {
+			if obs2, ok2 := c.dr.Observe(probe2.Stdout+probe2.Stderr, opts); ok2 {
+				res.Registered = boundCapture(renderObservation(obs2))
+			}
+		}
+		return res
+	}
+
 	if probe2Err != nil {
 		// Ambiguity resolves to wrote, never to already-correct (D-08).
 		res.Outcome = OutcomeWrote

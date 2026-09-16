@@ -69,7 +69,7 @@ func TestPreviewClassifiesRegistration(t *testing.T) {
 		if res.Facets != "unrecognized-content" {
 			t.Errorf("Facets = %q, want %q", res.Facets, "unrecognized-content")
 		}
-		wantReason := "codex: preserved: unrecognized-content: oauth_client_id; " + codexWholeEntryNote
+		wantReason := "codex: preserved: unrecognized-content: oauth_client_id; " + codexWholeEntryNote + "; " + codexManualRemediation
 		if res.Reason != wantReason {
 			t.Errorf("Reason = %q, want %q", res.Reason, wantReason)
 		}
@@ -402,7 +402,7 @@ func TestRedactionUnconditional(t *testing.T) {
 		if res.Drift != wantDrift {
 			t.Errorf("Drift = %q, want %q", res.Drift, wantDrift)
 		}
-		wantReason := "codex: preserved: " + wantDrift + "; " + codexWholeEntryNote
+		wantReason := "codex: preserved: " + wantDrift + "; " + codexWholeEntryNote + "; " + codexManualRemediation
 		if res.Reason != wantReason {
 			t.Errorf("Reason = %q, want %q", res.Reason, wantReason)
 		}

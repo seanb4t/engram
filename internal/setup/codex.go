@@ -297,6 +297,16 @@ const codexBearerForm = "ENGRAM_TOKEN"
 // not merely name the differing facet.
 const codexWholeEntryNote = "codex mcp add replaces the whole entry: --apply would overwrite it or leave it untouched, never merge into it"
 
+// codexManualRemediation is D-05's fixed, runtime-authored sentence
+// naming the exact manual step that clears a preserved codex
+// registration: codex has no remove verb for a single entry (unlike
+// claude-code's `mcp remove`), so the human edits config.toml directly,
+// with codex's own semantics — never engram's. Composed here, never in
+// apply.go/drift.go (AUTHORED-HERE): the shared executor only appends
+// this field when it is non-empty. After the human removes that table, a
+// re-run of --apply reads would-write — nothing remains to preserve.
+const codexManualRemediation = "to replace it yourself, delete the [mcp_servers.engram] table from codex's config.toml first, then run setup again; the row then reads would-write"
+
 // codexRegistrationTransport mirrors the "transport" object of
 // `codex mcp get <name> --json`'s live-verified shape (04-RESEARCH.md
 // Code Examples, codex-cli 0.153.4). BearerTokenEnvVar is a pointer so a
@@ -543,11 +553,12 @@ func (codexRuntime) Observe(probeOutput string, opts Options) (Observation, bool
 	}
 
 	return Observation{
-		URL:            doc.Transport.URL,
-		Auth:           auth,
-		BearerForm:     codexBearerForm,
-		Headers:        headers,
-		Unrecognized:   unrecognized,
-		WholeEntryNote: codexWholeEntryNote,
+		URL:               doc.Transport.URL,
+		Auth:              auth,
+		BearerForm:        codexBearerForm,
+		Headers:           headers,
+		Unrecognized:      unrecognized,
+		WholeEntryNote:    codexWholeEntryNote,
+		ManualRemediation: codexManualRemediation,
 	}, true
 }

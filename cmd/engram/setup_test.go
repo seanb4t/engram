@@ -1020,8 +1020,12 @@ func TestSetupPreviewJSONCarriesDriftFacets(t *testing.T) {
 		if !strings.HasPrefix(row.Reason, wantPrefix) {
 			t.Errorf("Reason = %q, want prefix %q", row.Reason, wantPrefix)
 		}
-		if !strings.HasSuffix(row.Reason, "never merge into it") {
-			t.Errorf("Reason = %q, want suffix %q", row.Reason, "never merge into it")
+		if !strings.Contains(row.Reason, "never merge into it") {
+			t.Errorf("Reason = %q, want it to contain %q", row.Reason, "never merge into it")
+		}
+		wantRemediationTail := "then run setup again; the row then reads would-write"
+		if !strings.HasSuffix(row.Reason, wantRemediationTail) {
+			t.Errorf("Reason = %q, want suffix %q (D-05: codex's own manual remediation, appended after the whole-entry note)", row.Reason, wantRemediationTail)
 		}
 		if !strings.HasSuffix(row.Registered, "unrecognized=oauth_client_id") {
 			t.Errorf("Registered = %q, want suffix %q", row.Registered, "unrecognized=oauth_client_id")
