@@ -4,17 +4,17 @@ milestone: 2026-09-13.01
 milestone_name: Setup v2
 current_phase: 5
 current_phase_name: Apply-Time Preserve Gate & Documentation
-status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-09-16T22:34:41.815Z"
+status: verifying
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-09-16T22:45:34.913Z"
 last_activity: 2026-09-16
 last_activity_desc: Phase 5 execution started
-state_head: d81f69283171e25d8ad6e59c6a27b145f0b89be8
+state_head: c38016d51a9a7d3f151210e9be7fd245674b94bc
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-15 after Phase 4 — 2026-09-13.01 Se
 
 Phase: 5 (Apply-Time Preserve Gate & Documentation) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-16 — Phase 5 execution started
 
 ## Deferred Items
@@ -298,6 +298,8 @@ milestone needs in working memory.
 - [Phase 5]: The apply-gate help paragraph is a new paragraph appended after the existing drift-comparison paragraph, not an in-place rewrite, keeping TestSetupHelpNamesDriftOutcomes byte-stable.
 - [Phase 5]: TestSetupJSONNeverLeaksProbeLiteral's apply-mode subtests script the plugin lane already-correct so a first-run native skills write never masks the preserved registration facet in the aggregate Outcome.
 - [Phase 5]: Every new agent-setup.md sentence a docs-gate leg checks is written as a single unwrapped physical source line at the checked substring.
+- [Phase 5]: Opened GitHub issue #567 before writing 05-POST-RELEASE.md so the frontmatter tracker URL is real, not a placeholder
+- [Phase 5]: 05-POST-RELEASE.md deliberately omits the '## Current disposition' section the 06-POST-RELEASE.md precedent grew after its own observation — this handoff is still open
 
 ### Pending Todos
 
@@ -380,8 +382,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-16T22:34:41.782Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-09-16T22:45:34.879Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -513,6 +515,7 @@ Resume file: None
 | Phase 05 P01 | ~105min | 3 tasks | 11 files |
 | Phase 05 P03 | ~25min | 2 tasks | 4 files |
 | Phase 05 P02 | 26min | 2 tasks | 5 files |
+| Phase 05 P04 | 15min | 2 tasks | 1 files |
 
 ## Operator Next Steps
 
