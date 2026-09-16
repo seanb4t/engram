@@ -1,0 +1,32 @@
+diff --git a/internal/setup/apply.go b/internal/setup/apply.go
+index cbb96aa3..01cb8566 100644
+--- a/internal/setup/apply.go
++++ b/internal/setup/apply.go
+@@ -487,12 +487,9 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
+ 	// fails. An ambiguous (not-compared) read falls through unchanged —
+ 	// D-09/D-10's ambiguity-resolves-to-wrote invariant restated for the
+ 	// apply lane: ambiguity must never become a license to skip a write.
++	preservedOrCorrect := c.compared && (c.drift.Outcome == OutcomeAlreadyCorrect || c.drift.Outcome == OutcomePreserved)
+ 	if c.compared {
+ 		renderClassification(&res, name, c)
+-		switch c.drift.Outcome {
+-		case OutcomeAlreadyCorrect, OutcomePreserved:
+-			return res
+-		}
+ 	}
+ 
+ 	// notes accumulates every tolerant action's own record, below — seeded
+@@ -503,8 +500,13 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
+ 	if res.Notes != "" {
+ 		notes = append(notes, res.Notes)
+ 	}
++	ranFirstAction := false
+ 	for _, action := range plan.Actions {
++		if ranFirstAction && preservedOrCorrect {
++			return res
++		}
+ 		rr, runErr := runSeam(ctx, env, binary, action.Args[1:])
++		ranFirstAction = true
+ 		switch {
+ 		case runErr != nil:
+ 			res.Outcome = OutcomeFailed

@@ -1,0 +1,16 @@
+diff --git a/internal/setup/claudecode.go b/internal/setup/claudecode.go
+index a9b21237..b49215a9 100644
+--- a/internal/setup/claudecode.go
++++ b/internal/setup/claudecode.go
+@@ -545,10 +545,7 @@ func (claudeCodeRuntime) Observe(probeOutput string, opts Options) (Observation,
+ 	// and never on "would-write" alone (that is decided one layer up, by
+ 	// Compare/apply.go) — AuthBearer and AuthForeign are NOT this shape
+ 	// (Pitfall 4).
+-	consequence := ""
+-	if auth == AuthNone {
+-		consequence = claudeCodeOAuthReLoginNote
+-	}
++	consequence := claudeCodeOAuthReLoginNote
+ 
+ 	return Observation{
+ 		URL:                url,

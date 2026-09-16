@@ -284,6 +284,83 @@ var redEvidenceDirs = map[string]map[string]string{
 		"04-05-claudecode-value-retained.patch":      "TestRedactionUnconditional",
 		"04-05-codex-literal-header-tolerated.patch": "TestObserveCodexRegistration",
 	},
+	// Milestone 2026-09-13.01, Phase 05 (05-apply-time-preserve-gate-documentation):
+	// ten independent regressions this phase's own red-evidence claims pin as
+	// live, spanning D-01 (already-correct and preserved issue ZERO
+	// registration-write actions under --apply, checked BEFORE Plan.Actions'
+	// loop runs even once — Claude Code's tolerant `mcp remove` included),
+	// D-02 (a post-write Registered is always REBUILT through Observe ->
+	// renderObservation, never the raw probe2 capture), D-03/D-04 (the OAuth
+	// re-login RewriteConsequence fires by observed SHAPE alone — no
+	// Authorization/bearer header at all — never unconditionally), D-05
+	// (each runtime authors its OWN ManualRemediation sentence for a
+	// preserved row; the shared executor only relays it, never composes or
+	// substitutes another runtime's), D-07 (plugin-first delivery is
+	// documented alongside the apply gate and the preserved cross-link),
+	// REQ-apply-preserve-gate (the operator-facing guarantee that --apply
+	// compares before writing), REQ-apply-rewrite-consequence (the OAuth
+	// re-login note's Pitfall-4 shape gating), and REQ-docs-setup-v2 (the
+	// install/plugin/agent-setup guides document the shipped v2 setup
+	// contract, including the man page and preserved-row remediation).
+	//
+	// apply.go (05-01): the compared-outcome short-circuit for
+	// OutcomeAlreadyCorrect/OutcomePreserved must return BEFORE
+	// plan.Actions' loop runs even once — moving the check to fire only
+	// after the first iteration lets Claude Code's tolerant `mcp remove`
+	// (plan.Actions[0] for every claude-code auth mode) actually run against
+	// a preserved or already-correct registration, reopening the exact
+	// destructive-window incident class D-01 exists to close. Two
+	// independent patches pin this: one moves the check inside the loop
+	// (preserved), one drops OutcomeAlreadyCorrect from the case entirely
+	// (already-correct). A third patch pins D-02 by reverting the post-write
+	// Registered rebuild to the raw, unredacted probe2 capture — the exact
+	// secret-leak class Phase 4's D-03 closed, reopened here on the
+	// apply-time re-read path specifically.
+	//
+	// claudecode.go Observe (05-01): the OAuth re-login RewriteConsequence
+	// must fire by SHAPE alone (no observed Authorization/bearer header) —
+	// setting it unconditionally regresses Pitfall 4: a bearer- or
+	// foreign-Authorization-shaped registration has no OAuth session to
+	// lose, so the note becomes actively misleading on every such row.
+	//
+	// apply.go/codex.go (05-01): D-05's ManualRemediation is AUTHORED-HERE
+	// per runtime — hard-coding claude-code's remediation sentence into the
+	// shared renderClassification (and blanking codex's own constant)
+	// silently swaps codex's correct manual step for claude-code's,
+	// misdirecting an operator clearing a preserved codex registration.
+	//
+	// setup.go (05-02): deleting the apply-gate sentences from
+	// setupLongDescription regresses REQ-apply-preserve-gate's own
+	// documentation success criterion — the CLI's --help text must state
+	// the same before-writing/no-registration-command/mcp-remove/runtime's-
+	// own-tool/log-in-again guarantee TestSetupHelpStatesApplyGate pins.
+	//
+	// agent-setup.md (05-02): two independent regressions in the drift
+	// guide's results table — reinserting the stale "does not guarantee
+	// that no write commands ran" sentence onto the already-correct row (a
+	// claim the apply-time preserve gate makes false, REQ-apply-preserve-
+	// gate), and dropping the preserved row's claude-code manual-remediation
+	// clause (`claude mcp remove engram --scope user`, D-05) while leaving
+	// codex's own remediation intact.
+	//
+	// install.md (05-03) and plugin.md (05-03): REQ-docs-setup-v2's
+	// cask-contents and plugin-first documentation — deleting the `man
+	// engram-setup` sentence from the install guide, and deleting the
+	// preserved-row cross-link line from the plugin guide (D-07: a
+	// preserved registration's remediation is documented once, pointed at
+	// from the plugin guide, never restated or silently dropped).
+	".planning/phases/05-apply-time-preserve-gate-documentation/red-evidence": {
+		"05-01-preserved-flag-inside-loop.patch":       "TestApplyPreservedNeverRunsClaudeCodeRemove",
+		"05-01-already-correct-still-writes.patch":     "TestApplyAlreadyCorrectIssuesZeroWrites",
+		"05-01-registered-raw-probe2.patch":            "TestApplyWroteRegisteredIsRedacted",
+		"05-01-oauth-note-on-bearer.patch":             "TestOAuthReLoginConsequence",
+		"05-01-remediation-composed-in-executor.patch": "TestPreviewClassifiesRegistration",
+		"05-02-help-drops-apply-gate.patch":            "TestSetupHelpStatesApplyGate",
+		"05-02-guide-stale-guarantee.patch":            "TestAgentSetupGuideDocumentsDrift",
+		"05-02-guide-preserved-no-remediation.patch":   "TestAgentSetupGuideDocumentsDrift",
+		"05-03-install-drops-man-page.patch":           "TestInstallGuideDocumentsSetupV2",
+		"05-03-plugin-drops-preserved-crosslink.patch": "TestPluginGuideDocumentsPluginFirst",
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
