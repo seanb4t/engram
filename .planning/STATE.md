@@ -3,12 +3,11 @@ gsd_state_version: "1.0"
 milestone: 2026-09-13.01
 milestone_name: Setup v2
 current_phase: 05
-status: completed
+status: "Milestone 2026-09-13.01 shipped — PR #569 merged (0aaba2c4)"
 stopped_at: Phase 05 complete — all phases complete
-last_updated: "2026-09-16T23:26:53.323Z"
-last_activity: 2026-09-16
-last_activity_desc: Phase 05 complete
-state_head: c9034a45e6ee027c96f9714a8ce645d07342d669
+last_updated: "2026-09-17T21:37:36.785Z"
+last_activity: 2026-09-17
+state_head: d01efb0b9d46f46e259338ed3ec3b50fa6028247
 progress:
   total_phases: 5
   completed_phases: 5
@@ -29,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-09-16 after Phase 5 — 2026-09-13.01 Se
 
 Phase: 05
 Plan: Not started
-Status: All phases complete
-Last activity: 2026-09-16 — Phase 05 complete
+Status: Milestone 2026-09-13.01 shipped — PR #569 merged (0aaba2c4)
+Last activity: 2026-09-17
 
 ## Deferred Items
 
