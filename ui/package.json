@@ -14,7 +14,7 @@
   "devDependencies": {
     "@lucide/svelte": "1.46.0",
     "@sveltejs/adapter-static": "3.0.10",
-    "@sveltejs/kit": "2.70.2",
+    "@sveltejs/kit": "2.70.3",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/jest-dom": "7.0.1",
@@ -24,7 +24,7 @@
     "playwright": "1.63.0",
     "shadcn-svelte": "1.6.1",
     "svelte": "5.57.0",
-    "svelte-check": "4.7.3",
+    "svelte-check": "4.7.6",
     "svelte-sonner": "1.2.1",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
