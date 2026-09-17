@@ -1,37 +1,36 @@
 ---
 gsd_state_version: "1.0"
-milestone: 2026-08-23.01
-status: Awaiting next milestone
-stopped_at: Milestone 2026-08-23.01 archived; awaiting /gsd-new-milestone
-last_updated: "2026-09-12T23:28:28.664Z"
-last_activity: 2026-09-12
-last_activity_desc: Milestone 2026-08-23.01 completed and archived
-state_head: 3f82520cb1839d570abd4b2dd56b6f5c31842767
+milestone: 2026-09-13.01
+milestone_name: Setup v2
+current_phase: 05
+status: completed
+stopped_at: Phase 05 complete — all phases complete
+last_updated: "2026-09-16T23:26:53.323Z"
+last_activity: 2026-09-16
+last_activity_desc: Phase 05 complete
+state_head: c9034a45e6ee027c96f9714a8ce645d07342d669
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 21
-  completed_plans: 21
-milestone_name: Distribution & Agent Bootstrap
-current_phase: 06
-current_phase_name: Install Documentation
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 19
+  completed_plans: 19
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-12 — after milestone 2026-08-23.01 shipped as v0.16.0)
+See: .planning/PROJECT.md (updated 2026-09-16 after Phase 5 — 2026-09-13.01 Setup v2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone (`/gsd-new-milestone --reset-phase-numbers`); candidates in PROJECT.md Deferred and BACKLOG.md
+**Current focus:** Phase 5 — Apply-Time Preserve Gate & Documentation
 
 ## Current Position
 
-Phase: Milestone 2026-08-23.01 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-12 — Milestone 2026-08-23.01 completed and archived
+Phase: 05
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-09-16 — Phase 05 complete
 
 ## Deferred Items
 
@@ -273,6 +272,33 @@ milestone needs in working memory.
 - [Phase 04]: setupSkillsTarget widened to (skills.Target, error): every registered runtime now authors an explicit SkillFormat, so an unrecognized format is a failed row, never a silent skip
 - [Phase 04]: generic's Plan() authors the explicit no-destination SkillFormatNone, carrying the curation skills in its --output json deliverable with the install call explicitly skipped so it can never reach the filesystem
 - [Phase 04]: Only `errors.Is(readErr, fs.ErrNotExist)` is the AGENTS.md create case (04-05, #559); any other index read error performs zero writes, preserves the file byte-for-byte, and surfaces a wrapped error naming the index path through SkillsOutcome → AggregateOutcome → Classify (partial exit). D-15 extended to the unreadable case; installFiles' own posture deliberately unchanged (D-08).
+- [Phase 01]: D-10/D-11/D-12: osRun checks ctx.Err() first (bare sentinel, zero RunResult); runSeam owns the 'timed out after 20s' wording (#560)
+- [Phase 01]: Man-page header pinned to time.Unix(0,0).UTC() + raw version var + Engram Manual; DisableAutoGenTag=true on root; page set = cobra's unfiltered IsAvailableCommand walk (includes completion, excludes man/help/deprecated aliases)
+- [Phase 01]: Cask post_install/post_uninstall hooks grow a fourth, symmetric man-page step after completions; TestReleaseConfigCaskInstallGate pins ordering, counts, and forbidden literals
+- [Phase 02]: D-01/D-04/D-08 implemented exactly as locked: extra headers are additional, orthogonal to --auth, rendered as bare ${ENVVAR} references in claude-code's colon-space syntax, sorted case-insensitively by Name
+- [Phase 02]: D-09/D-10 implemented exactly as locked: codex's header guard is the first statement of Plan(), before HomeDir/auth switch, returning ErrHeaderUnsupported with a reason naming the header(s), gap, and remedy
+- [Phase 02]: 02-02: opencode renders --header pairs via openCodeHeaderArgs on its single mcp add action; generic carries extras in its existing headers map via genericHeaders' ordered MarshalJSON (Authorization first, then case-insensitive) -- no shared cross-runtime formatter
+- [Phase 02]: Checkpoint option C: renamed the canonical gateway-header example from x-litellm-api-key/LITELLM_KEY to a vendor-neutral x-gateway-api-key/GATEWAY_KEY across setupgen, generated tables, CLI help/golden, setup tests, and both docs surfaces, to satisfy the shipped-bundle privacy guard (skill/engram/) without an exception
+- [Phase 03]: Plugin lane is parallel to registration's execute(); PluginRuntime is an optional interface implemented only by claude-code and codex.
+- [Phase 03]: Regenerated stale phase-02 red-evidence patch (02-01-codex-header-decline.patch) in place after codex.go's plugin-lane edit broke its context; re-verified RED/apply/revert manually.
+- [Phase 03]: Reused testSkills() (2-skill fixture) instead of a new five-skill literal for DetectPresence tests; kept requirements-completed empty because REQ-plugin-skips-skills-copy is shared with not-yet-executed plan 03-03 (shared-ID gate #2388).
+- [Phase 03]: Phase 3 Plan 3: composed the plugin facet onto the setup report row, routed a plugin-delivered runtime away from the native skills write via DetectPresence, and rewrote --help for plugin-first delivery. — Routing decided by PluginResult.Delivered() (capability), never by install success, so a plugin-capable runtime never receives a duplicate native copy even after a failed install in the same run.
+- [Phase 03]: Codex plugin manifest ships as the minimal four-key twin of .claude-plugin/plugin.json (no interface block) — Orchestrator's Open Question 2 decision: Codex loader acceptance of a minimal manifest is a post-release live observation, not a phase gate
+- [Phase 03]: setupgen's generated /engram-setup tables SHOW the plugin actions, rendered from claude-code's real PluginActions — Orchestrator's Open Question 1 decision: never re-typed argv, so the generated tables cannot drift from what --apply actually runs
+- [Phase 04]: 04-01: OutcomePreserved sits between OutcomeWrote and OutcomeAlreadyCorrect in precedenceOrder (resolves 04-RESEARCH.md Open Question 1) - a preserved registration facet is never hidden beneath an already-correct facet at the aggregate row; a facet that actually wrote still outranks it.
+- [Phase 04]: Documented the preserved outcome, facet naming (registered/facets/drift), and the opencode not-compared exemption in guides/agent-setup.md, pinned by a new migrate_docs_test.go-shaped docs gate with a positive control (cmd/engram/agent_setup_docs_test.go).
+- [Phase 4]: D-05 observation confirmed: Claude Code echoes literal header values verbatim on mcp get read-back (only the ADD confirmation masks them); Codex's http_headers renders as an object-of-strings, matching Assumption A3 and the 0.153.4 key set exactly.
+- [Phase 04]: setupLongDescription drift paragraph reworded to include the literal word "drift" (plan prose omitted it; plan acceptance test requires it) - Rule 1 auto-fix
+- [Phase 4]: claude-code's Observe: Scope: is chrome (never a facet), Type: is a facet-bearing line — Claude's own discretion, plan 04-05 objective
+- [Phase 4]: codexRegistrationTransport needed no retyping — 04-OBSERVATIONS.md confirmed the 04-01 map-of-strings guess for http_headers/env_http_headers exactly
+- [Phase 5]: Apply-time preserve gate (D-01): --apply now consults the same pre-write classification Preview reports, closing gotcha ryr82bf2s2 -- already-correct/preserved issue zero registration writes
+- [Phase 5]: RewriteConsequence and ManualRemediation are new, dedicated Observation fields (not extensions of WholeEntryNote), each authored per-runtime and appended by a content-blind executor
+- [Phase 05]: docs-gate legs requiring two tokens on the same line forced install.md's cask-hooks sentence and Next-steps bullet to be written as short unwrapped paragraphs/single lines rather than the file's usual ~80-column soft wrap
+- [Phase 5]: The apply-gate help paragraph is a new paragraph appended after the existing drift-comparison paragraph, not an in-place rewrite, keeping TestSetupHelpNamesDriftOutcomes byte-stable.
+- [Phase 5]: TestSetupJSONNeverLeaksProbeLiteral's apply-mode subtests script the plugin lane already-correct so a first-run native skills write never masks the preserved registration facet in the aggregate Outcome.
+- [Phase 5]: Every new agent-setup.md sentence a docs-gate leg checks is written as a single unwrapped physical source line at the checked substring.
+- [Phase 5]: Opened GitHub issue #567 before writing 05-POST-RELEASE.md so the frontmatter tracker URL is real, not a placeholder
+- [Phase 5]: 05-POST-RELEASE.md deliberately omits the '## Current disposition' section the 06-POST-RELEASE.md precedent grew after its own observation — this handoff is still open
 
 ### Pending Todos
 
@@ -294,6 +320,36 @@ Both prior entries were delivered and had simply never been closed out:
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
+- **Milestone 2026-09-13.01 closeout state (after Phase 5):** all five phases complete and
+  `passed`; `REQ-docs-setup-v2` is DELIBERATELY `[ ]` (D-06) — Phase 5's VERIFICATION carries
+  `post_release_status: pending` / `post_release_tracker: #567`, and closes only when a human records
+  `05-RELEASE-<ver>.md` per `05-POST-RELEASE.md` after the next release. The milestone audit must
+  read that open handoff as designed, not as a gap. Apply lane: `execute()`'s `mutate` branch now
+  shares `classifyProbe`/`renderClassification` with preview; `preserved`/`already-correct` return
+  before `plan.Actions[0]`; byte-compare survives only for non-drift runtimes. 33 red-evidence
+  patches registered across Phases 01–05. Cross-phase: every later phase's shared-file edits flip
+  earlier verifications `stale` — re-prove at HEAD, re-fingerprint with the reason (done after 4 and 5).
+- **Phase 3 (2026-09-13.01) learnings, still binding:** `internal/setup` is a machine-gated
+  STDLIB-ONLY LEAF (`TestSetupPackageIsStdlibOnlyLeaf`) — no new import there, ever. Facets are
+  composed in `cmd/engram` (flat scalars only); the shared `execute()` stays content-blind.
+- **Phase 2 (2026-09-13.01) learnings for Phases 3–5:** the shipped-bundle privacy guard
+  (`skill/engram/hooks/tests/test_no_residual_memory_oauth.py`) bans vendor substrings under
+  `skill/engram/` — any example that reaches the generated `/engram-setup` prose must be vendor-neutral
+  (the canonical gateway header is `x-gateway-api-key=GATEWAY_KEY`). `Options.Headers` arrives
+  pre-validated from the CLI boundary only (`setupParseHeaders`); Phase 4's drift comparison must
+  compare header NAMES + env-var NAMES, never values, and may rely on `sortedHeaders`' total order.
+  Executors die on API rate limits mid-plan: when a plan's commits are on disk but no SUMMARY exists,
+  the orchestrator re-runs the plan gate and closes out by hand (02-03 precedent) — and re-checks
+  `completed_phases` in STATE.md, which an interrupted metadata step regressed once.
+- **Phase 1 (2026-09-13.01) added three gates every later phase of this milestone must clear:**
+  `internal/keylinks` rejects backslash- or `\"`-escaped `key_links.pattern` values in ANY plan
+  (bracket classes + single-quoted YAML; run `go test ./internal/keylinks/ -count=1` right after
+  plan-checker passes); `internal/store` `TestRedEvidencePatchesAreLive` keeps `task` red until the
+  phase's red-evidence patches are registered in `redEvidenceDirs` (orchestrator step after the last
+  plan, before verification); `dispatch-isolation --raw/--json` re-record the isolation sentinel, so
+  `--force-isolation none` must be the LAST call before each executor dispatch (gotcha `xjz60c9h6t`).
+  `roadmap update-plan-progress` / `phase.complete` again wrote an archived-milestone "1." progress
+  row (`yzmfesbsg0`, 8th occurrence) — hand-verify the table after every call.
 - **New this milestone: runtime CLI availability.** Phase 3's shell-out writers now depend on
   each target runtime's own CLI being present and flag-stable (`claude`, `codex`, `opencode`) —
   flag/version drift in a third-party binary is a live failure mode, not a hypothetical; pinned
@@ -317,9 +373,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-12T20:31:18+00:00
-Stopped at: Phase 04 gap #559 closed and re-verified; milestone audit re-run pending
-Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
+Last session: 2026-09-16T23:28:40.000Z
+Stopped at: Phase 05 complete — all phases complete
+Resume file: None
 
 ## Performance Metrics
 
@@ -432,6 +488,25 @@ Resume file: .planning/phases/06-install-documentation/06-POST-RELEASE.md
 | Phase 04-skills-distribution P02 | 35min | 3 tasks | 20 files |
 | Phase 04 P03 | 55min | 3 tasks | 6 files |
 | Phase 04 P04 | 25min | 3 tasks | 5 files |
+| Phase 01 P01 | 13min | 3 tasks | 4 files |
+| Phase 01 P02 | 21min | 3 tasks | 4 files |
+| Phase 02 P01 | 20min | 3 tasks | 6 files |
+| Phase 02 P02 | ~35min | 3 tasks | 5 files |
+| Phase 02 P03 | 45min | 3 tasks | 8 files |
+| Phase 02-custom-auth-headers P04 | interrupted-and-resumed | 3 tasks | 14 files |
+| Phase 03 P01 | 34min | 3 tasks | 5 files |
+| Phase 03 P02 | 22min | 2 tasks | 3 files |
+| Phase 03 P03 | 40min | 3 tasks | 5 files |
+| Phase 03 P04 | 35 min | 3 tasks | 7 files |
+| Phase 04 P01 | ~40min | 3 tasks | 11 files |
+| Phase 04 P03 | ~15min | 2 tasks | 2 files |
+| Phase 04 P02 | 6min | 2 tasks | 1 files |
+| Phase 04 P04 | 35 min | 3 tasks | 4 files |
+| Phase 04 P05 | ~75min | 3 tasks | 7 files |
+| Phase 05 P01 | ~105min | 3 tasks | 11 files |
+| Phase 05 P03 | ~25min | 2 tasks | 4 files |
+| Phase 05 P02 | 26min | 2 tasks | 5 files |
+| Phase 05 P04 | 15min | 2 tasks | 1 files |
 
 ## Operator Next Steps
 

@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 5
 waived_count: 0
-fixed_count: 2
-total_count: 7
-last_updated: 2026-09-10T04:59:52.722Z
+fixed_count: 4
+total_count: 9
+last_updated: 2026-09-13T19:16:21.833Z
 ---
 
 # Broken Windows Ledger
@@ -22,6 +22,8 @@ last_updated: 2026-09-10T04:59:52.722Z
 | 5 | 06 | unmet-truth | cmd/engram/operator_output_test.go | 359 | TestOperatorOutputParity's spine-review archive/restore/purge subtests fail after 06-05's R1 headline trim; expected transitional gap per D-09, resolved when 06-07 retires the test | fixed |  | 2026-08-17T14:44:59.064Z | 2026-08-17T15:21:44.448Z |
 | 6 | 06 | deviation | cmd/engram/operator_output_test.go |  | TestOperatorOutputParity/migrate_status fails after 06-04's R1 trim of statusSummary's future-bucket enumeration loop; resolved when 06-07 deletes TestOperatorOutputParity/operatorParityRows (06-07 depends_on 06-04) | fixed |  | 2026-08-17T14:55:25.446Z | 2026-08-17T15:21:44.538Z |
 | 7 | 04 | stub | internal/skills/install.go |  | Install's FormatAgentsMD case returns 'not wired yet' (explicit, plan-specified — resolved by 04-02-PLAN.md) | open |  | 2026-09-10T04:59:52.722Z |  |
+| 8 | 01 | deviation | internal/store/redevidence_harness_test.go |  | task gate fails pre-existing (verified at plan start HEAD 9918f3af, before 01-01's changes): redEvidenceDirs is empty while phase 01 (active milestone) exists; 01-01 shipped real RED evidence (osRun deadline/cancel tests, apply_test seam subtests) but registering red-evidence/*.patch + redEvidenceDirs entries is out of 01-01's files_modified scope (internal/setup only) | fixed |  | 2026-09-13T17:59:04.222Z | 2026-09-13T19:16:21.746Z |
+| 9 | 01 | deviation | .planning/phases/01-executor-correctness-man-pages/01-01-PLAN.md |  | task gate fails pre-existing (verified at plan start HEAD 9918f3af, before 01-01/01-02 changes): internal/keylinks TestNoEscapedPatternsRepoWide flags over-escaped regex illustrations in 01-01-PLAN.md/01-02-PLAN.md key_links.pattern fields, and TestActiveMilestoneKeyLinksSatisfiable scans 0 plan files; both are planning-artifact/tooling gates outside any plan's files_modified scope and must not be hand-edited per planning-artifacts rule | fixed |  | 2026-09-13T17:59:12.777Z | 2026-09-13T19:16:21.833Z |
 
 ````json
 [
@@ -108,6 +110,30 @@ last_updated: 2026-09-10T04:59:52.722Z
     "reason": "",
     "recorded_at": "2026-09-10T04:59:52.722Z",
     "resolved_at": null
+  },
+  {
+    "id": 8,
+    "kind": "deviation",
+    "phase": "01",
+    "file": "internal/store/redevidence_harness_test.go",
+    "line": null,
+    "description": "task gate fails pre-existing (verified at plan start HEAD 9918f3af, before 01-01's changes): redEvidenceDirs is empty while phase 01 (active milestone) exists; 01-01 shipped real RED evidence (osRun deadline/cancel tests, apply_test seam subtests) but registering red-evidence/*.patch + redEvidenceDirs entries is out of 01-01's files_modified scope (internal/setup only)",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-13T17:59:04.222Z",
+    "resolved_at": "2026-09-13T19:16:21.746Z"
+  },
+  {
+    "id": 9,
+    "kind": "deviation",
+    "phase": "01",
+    "file": ".planning/phases/01-executor-correctness-man-pages/01-01-PLAN.md",
+    "line": null,
+    "description": "task gate fails pre-existing (verified at plan start HEAD 9918f3af, before 01-01/01-02 changes): internal/keylinks TestNoEscapedPatternsRepoWide flags over-escaped regex illustrations in 01-01-PLAN.md/01-02-PLAN.md key_links.pattern fields, and TestActiveMilestoneKeyLinksSatisfiable scans 0 plan files; both are planning-artifact/tooling gates outside any plan's files_modified scope and must not be hand-edited per planning-artifacts rule",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-13T17:59:12.777Z",
+    "resolved_at": "2026-09-13T19:16:21.833Z"
   }
 ]
 ````

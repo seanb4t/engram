@@ -69,6 +69,128 @@ func setupViewFixtures() map[string][]any {
 		Present: false,
 		Outcome: "not-present",
 	}
+	// headerGateway and codexHeaderDeclined (02-03-PLAN.md Task 2) exercise
+	// the flat-scalar `headers` row facet: ONE comma-joined "NAME=ENVVAR"
+	// string, sorted case-insensitively by name (D-08) — never a
+	// []string/map[string]string, which would fail
+	// TestOperatorViewFixturesHaveNoUnsanitizedNesting (Pitfall 2).
+	// codexHeaderDeclined additionally proves the facet reports what was
+	// REQUESTED even on a failed row (the runtime declined it, but the
+	// row still names what was asked for).
+	headerGateway := setupRuntimeRow{
+		Name:    "claude-code",
+		Present: true,
+		Outcome: "would-write",
+		Command: "claude mcp remove engram --scope user; claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'",
+		Headers: "CF-Access-Client-Id=CF_ID,x-gateway-api-key=GATEWAY_KEY",
+	}
+	codexHeaderDeclined := setupRuntimeRow{
+		Name:    "codex",
+		Present: true,
+		Outcome: "failed",
+		Reason:  setupCodexHeaderDeclineReason,
+		Headers: "x-gateway-api-key=GATEWAY_KEY",
+	}
+
+	// pluginDelivered, pluginFailedBesideWrote, pluginUnavailable, and
+	// pluginDeliveredWithLeftovers (Phase 3, Plugin-First Delivery)
+	// exercise the plugin facet's flat-scalar row fields
+	// (Plugin/PluginState/PluginInstalled/PluginTarget/PluginSource/
+	// PluginCommand/PluginNote) and SkillsNative — the D-07/D-08/D-09
+	// report of what already sits at a plugin-delivered runtime's native
+	// destination — mirroring headerGateway's own comment above: this is
+	// what proves the flat-scalar identity gate
+	// (TestOperatorViewFixturesHaveNoUnsanitizedNesting) stays green with
+	// these new fields.
+	pluginDelivered := setupRuntimeRow{
+		Name:            "claude-code",
+		Present:         true,
+		Outcome:         "already-correct",
+		Registration:    "already-correct",
+		Plugin:          "already-correct",
+		PluginState:     "current",
+		PluginInstalled: "0.16.1",
+		PluginTarget:    "0.16.1",
+		PluginSource:    "GitHub (seanb4t/engram)",
+		Skills:          setupSkillsPluginDelivered,
+		SkillsNative:    "none",
+	}
+	pluginFailedBesideWrote := setupRuntimeRow{
+		Name:          "claude-code",
+		Present:       true,
+		Outcome:       "failed",
+		Registration:  "wrote",
+		Plugin:        "failed",
+		PluginState:   "absent",
+		PluginCommand: "claude plugin marketplace add seanb4t/engram --scope user; claude plugin install engram@engram --scope user --json -y",
+		Reason:        "plugin: claude-code: claude plugin install engram@engram --scope user --json -y exited 1: 'boom'",
+		Skills:        setupSkillsPluginDelivered,
+	}
+	pluginUnavailable := setupRuntimeRow{
+		Name:         "codex",
+		Present:      true,
+		Outcome:      "wrote",
+		Registration: "wrote",
+		PluginState:  "unavailable",
+		PluginNote:   "codex: codex plugin list --json exited 1: 'unknown subcommand'",
+		Skills:       "wrote",
+	}
+	pluginDeliveredWithLeftovers := setupRuntimeRow{
+		Name:            "codex",
+		Present:         true,
+		Outcome:         "already-correct",
+		Registration:    "already-correct",
+		Plugin:          "already-correct",
+		PluginState:     "current",
+		PluginInstalled: "0.16.1",
+		PluginTarget:    "0.16.1",
+		Skills:          setupSkillsPluginDelivered,
+		SkillsNative:    "5 skills present at /home/u/.agents/skills (symlink); index block present at /home/u/.codex/AGENTS.md — remove manually to avoid duplicates",
+	}
+
+	// preservedGateway, driftURL, and notCompared (Phase 4, Drift
+	// Detection) exercise the flat-scalar Facets/Drift row fields across
+	// the three new row shapes plan 04-04 adds: a preserved registration
+	// (an unaccounted-for header, claude-code's whole-entry semantics), a
+	// would-write URL diff (codex), and opencode's not-compared exemption
+	// (D-10) — mirroring headerGateway's own comment above: this is what
+	// proves the flat-scalar identity gate
+	// (TestOperatorViewFixturesHaveNoUnsanitizedNesting) stays green with
+	// these new fields. A vendor-neutral header name
+	// (x-gateway-api-key/x-other-gateway-key) is used throughout, never
+	// the vendor-branded name the incident record ryr82bf2s2 names
+	// (STATE.md Phase 2 learnings).
+	preservedGateway := setupRuntimeRow{
+		Name:         "claude-code",
+		Present:      true,
+		Outcome:      "preserved",
+		Registration: "preserved",
+		Command:      "claude mcp remove engram --scope user; claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'x-gateway-api-key: ${GATEWAY_KEY}'",
+		Headers:      "x-gateway-api-key=GATEWAY_KEY",
+		Facets:       "header-name",
+		Drift:        "x-other-gateway-key: observed <redacted>, not authored by setup",
+		Reason:       "claude-code: preserved: x-other-gateway-key: observed <redacted>, not authored by setup; claude mcp remove then add replaces the whole entry: --apply would overwrite it or leave it untouched, never merge into it",
+		Registered:   "url=https://engram.example.com/mcp auth=none headers=x-gateway-api-key=<redacted>,x-other-gateway-key=<redacted>",
+		Skills:       "would-write",
+	}
+	driftURL := setupRuntimeRow{
+		Name:         "codex",
+		Present:      true,
+		Outcome:      "would-write",
+		Registration: "would-write",
+		Facets:       "url",
+		Drift:        "url: observed https://old.example/mcp, would write https://engram.example.com/mcp",
+		Registered:   "url=https://old.example/mcp auth=bearer headers=none",
+		Skills:       "would-write",
+	}
+	notCompared := setupRuntimeRow{
+		Name:         "opencode",
+		Present:      true,
+		Outcome:      "would-write",
+		Registration: "would-write",
+		Drift:        "opencode: not compared: runtime authors no registration scanner",
+		Skills:       "would-write",
+	}
 
 	return map[string][]any{
 		"setup": {
@@ -85,6 +207,18 @@ func setupViewFixtures() map[string][]any {
 			setupReportDoc{Runtimes: []setupRuntimeRow{bearerMode}},
 			setupReportDoc{Runtimes: []setupRuntimeRow{unsupportedMode}},
 			setupReportDoc{Runtimes: []setupRuntimeRow{applyAttemptedFailed, applyNotPresent}},
+			// 02-03-PLAN.md Task 2: the header-gateway and codex-declined
+			// fixtures, carrying the flat headers facet.
+			setupReportDoc{Runtimes: []setupRuntimeRow{headerGateway, codexHeaderDeclined}},
+			// Phase 3 (03-03-PLAN.md Task 2): the plugin facet's four
+			// shapes — delivered/current, failed beside a wrote
+			// registration, unavailable (native fallback), and delivered
+			// with a leftover native presence report.
+			setupReportDoc{Runtimes: []setupRuntimeRow{pluginDelivered, pluginFailedBesideWrote, pluginUnavailable, pluginDeliveredWithLeftovers}},
+			// Phase 4 (04-04-PLAN.md Task 2): the drift facet's three
+			// shapes — preserved (an unaccounted-for header), would-write
+			// (a URL diff), and opencode's not-compared exemption.
+			setupReportDoc{Runtimes: []setupRuntimeRow{preservedGateway, driftURL, notCompared}},
 		},
 	}
 }

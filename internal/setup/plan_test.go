@@ -101,44 +101,94 @@ func TestPlanPassesURLVerbatimRootMounted(t *testing.T) {
 // A mode returning ErrAuthModeUnsupported is a PASS for that pair, not a
 // skip-and-forget: the error is asserted to wrap ErrAuthModeUnsupported
 // so an accidental future removal of the guard is caught.
+//
+// This test also drives every runtime x every auth mode x {no headers,
+// one header} with a second sentinel exported through the fake
+// Environment.Getenv for GATEWAY_KEY — proving the header vocabulary
+// (Options.Headers) carries a NAME, never a VALUE, for every runtime, not
+// just the auth-mode credential. A Plan returning ErrHeaderUnsupported is
+// a PASS only for codex with headers present (D-09); any other
+// (runtime, withHeader) pair returning it is a failure.
 func TestNoSecretInArgs(t *testing.T) {
 	const secretValue = "SUPER-SECRET-VALUE-MUST-NEVER-APPEAR-9f3e2a"
+	const headerSecretValue = "HEADER-SECRET-VALUE-MUST-NEVER-APPEAR-7c1d4b"
 	env := Environment{
 		LookPath: func(string) (string, error) { return "/usr/local/bin/x", nil },
 		Getenv: func(key string) string {
-			if key == "ENGRAM_TOKEN" {
+			switch key {
+			case "ENGRAM_TOKEN":
 				return secretValue
+			case "GATEWAY_KEY":
+				return headerSecretValue
+			default:
+				return ""
 			}
-			return ""
 		},
 		HomeDir: func() (string, error) { return "/home/fake", nil },
 	}
 
 	for _, rt := range Runtimes {
 		for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
-			rt, auth := rt, auth
-			t.Run(rt.Name()+":"+auth, func(t *testing.T) {
-				plan, err := rt.Plan(env, Options{URL: "https://x", Auth: auth, ClientID: "test-client", TokenFile: "/home/u/.engram/token"})
-				if err != nil {
-					if errors.Is(err, ErrAuthModeUnsupported) {
-						return
-					}
-					t.Fatalf("Plan: %v (want either success or errors.Is(err, ErrAuthModeUnsupported))", err)
+			for _, withHeader := range []bool{false, true} {
+				rt, auth, withHeader := rt, auth, withHeader
+				name := rt.Name() + ":" + auth
+				if withHeader {
+					name += "+header"
 				}
-				for _, action := range plan.Actions {
-					for _, arg := range action.Args {
-						if strings.Contains(arg, secretValue) {
-							t.Errorf("%s:%s: Args element %q contains the resolved credential value", rt.Name(), auth, arg)
+				t.Run(name, func(t *testing.T) {
+					opts := Options{URL: "https://x", Auth: auth, ClientID: "test-client", TokenFile: "/home/u/.engram/token"}
+					if withHeader {
+						opts.Headers = []HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}}
+					}
+					plan, err := rt.Plan(env, opts)
+					if err != nil {
+						if errors.Is(err, ErrAuthModeUnsupported) {
+							return
+						}
+						if errors.Is(err, ErrHeaderUnsupported) {
+							if !withHeader || rt.Name() != "codex" {
+								t.Fatalf("Plan: %v (errors.Is(err, ErrHeaderUnsupported) is only a PASS for codex with headers present)", err)
+							}
+							return
+						}
+						t.Fatalf("Plan: %v (want success, errors.Is(err, ErrAuthModeUnsupported), or errors.Is(err, ErrHeaderUnsupported))", err)
+					}
+					for _, action := range plan.Actions {
+						for _, arg := range action.Args {
+							if strings.Contains(arg, secretValue) {
+								t.Errorf("%s: Args element %q contains the resolved credential value", name, arg)
+							}
+							if strings.Contains(arg, headerSecretValue) {
+								t.Errorf("%s: Args element %q contains the resolved header credential value", name, arg)
+							}
 						}
 					}
-				}
-				// The generic pseudo-runtime (03-04) carries its whole
-				// deliverable in Config rather than Args — the resolved
-				// credential value must never reach there either.
-				if strings.Contains(plan.Config, secretValue) {
-					t.Errorf("%s:%s: Config %q contains the resolved credential value", rt.Name(), auth, plan.Config)
-				}
-			})
+					// The generic pseudo-runtime (03-04) carries its whole
+					// deliverable in Config rather than Args — the resolved
+					// credential value must never reach there either.
+					if strings.Contains(plan.Config, secretValue) {
+						t.Errorf("%s: Config %q contains the resolved credential value", name, plan.Config)
+					}
+					if strings.Contains(plan.Config, headerSecretValue) {
+						t.Errorf("%s: Config %q contains the resolved header credential value", name, plan.Config)
+					}
+
+					// Positive control: a successful, header-carrying Plan must
+					// actually NAME the env var somewhere in Args or Config -- a
+					// runtime that silently DROPS a header would otherwise pass
+					// every negative-space assertion above vacuously.
+					if withHeader {
+						var allArgs []string
+						for _, action := range plan.Actions {
+							allArgs = append(allArgs, action.Args...)
+						}
+						joined := strings.Join(allArgs, "\x00") + "\x00" + plan.Config
+						if !strings.Contains(joined, "GATEWAY_KEY") {
+							t.Errorf("%s: want the env var NAME GATEWAY_KEY rendered as a reference somewhere in Args or Config, got none", name)
+						}
+					}
+				})
+			}
 		}
 	}
 }

@@ -1,0 +1,14 @@
+diff --git a/docs-site/src/content/docs/guides/install.md b/docs-site/src/content/docs/guides/install.md
+index 8b33ffe5..42dad524 100644
+--- a/docs-site/src/content/docs/guides/install.md
++++ b/docs-site/src/content/docs/guides/install.md
+@@ -35,8 +35,7 @@ selects the macOS or Linux archive for your architecture.
+ 
+ Its install hooks check the installed version, generate bash, zsh, and fish completions, and write one man page per command into Homebrew's `share/man/man1` directory.
+ 
+-After a cask install, `man engram` and `man engram-setup` describe the CLI and
+-the setup command; `brew uninstall` removes them along with the completions.
++`brew uninstall` removes the man pages along with the completions.
+ On macOS, the cask also removes quarantine from the downloaded engram
+ executable because the binary is unsigned.
+ 

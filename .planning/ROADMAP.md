@@ -133,6 +133,7 @@ shipped behavior rather than a moving target.
 - ✅ **v0.13.x — Curation & Self-Evidence** — Phases 1–5 plus inserted 03.1 (shipped 2026-08-12): CLI interface enforceability (#453/#467 unified + #452 timeout), interface discoverability (conditional-rule conformance, MCP tool annotations, pinned `--help`), `engram spine-review` structural spine curation, multi-target merge supersession, a companion semantic curation skill, and Nyquist `VALIDATION.md` reconciliation (incl. #355). 23/24 requirements, audit `tech_debt` (0 blockers). Full detail archived at `milestones/v0.13.x-ROADMAP.md`.
 - ✅ **2026-08-12.01 — Record State & Schema Evolution** — Phases 1–9 (shipped 2026-08-22): gate & CI integrity first (#479/#497), a `schema_version` payload discriminator (absent-safe, wire-visible, never recall-gated), a versioned `internal/migrate` step registry + `Store.Migrate` sweep with mandatory additive-only/reversibility declarations, `engram migrate` via `registerDestructive` folding in `backfill-short-ids` as its first step, Connect record-state parity (#482) proven by an exhaustive round-trip test, a typed operator renderer (#481), console + CLI state surfacing, and the `RuleSweepScopeOrAllScopesRequired` registry/docs tail (#480). 27/27 requirements, audit `tech_debt` (0 blockers). Full detail archived at `milestones/2026-08-12.01-ROADMAP.md`.
 - ✅ **2026-08-23.01 — Distribution & Agent Bootstrap** — Phases 1–6 (shipped 2026-09-12 as v0.16.0): `engram version --output json` + a credential-verified, backfill-safe Homebrew cask (#514/#516), `engram setup` (detect → preview → `--apply`, three-way exit taxonomy), runtime registration through `claude`/`codex`/`opencode mcp add` plus a `generic` portable-config fallback across all four auth modes, the five curation skills embedded in the binary and installed natively (AGENTS.md index for Codex; preservation gap #559 closed by 04-05), `/engram-setup` delegation with a generated equivalence gate, and canonical Install / Agent Setup guides. 25/25 requirements, audit `tech_debt` (0 blockers, Nyquist 6/6). Full detail archived at `milestones/2026-08-23.01-ROADMAP.md`.
+- 🚧 **2026-09-13.01 — Setup v2** — Phases 1–5 (in progress, roadmapped 2026-09-13): plugin-first delivery for Claude Code/Codex, a custom-header auth shape for gateway registrations (LiteLLM's `x-litellm-api-key`), three-way drift detection with an apply-time preserve gate, man pages, and the `osRun` deadline fix (#560).
 
 ## Phases
 
@@ -295,11 +296,177 @@ on the machine, shows what it would write, and wires it up.
 
 </details>
 
+- [x] **Phase 1: Executor Correctness & Man Pages** - A deadline-killed runtime subprocess reports a timeout instead of a clean failure, and the binary generates and ships its own man pages (completed 2026-09-13)
+- [x] **Phase 2: Custom Auth Headers** - A gateway registration (e.g. LiteLLM's `x-litellm-api-key`) is expressible on every runtime that can render it, with existing auth modes unchanged (completed 2026-09-14)
+- [x] **Phase 3: Plugin-First Delivery** - Claude Code and Codex receive skills, hooks, and `/engram-setup` through their own plugin system instead of a plain skills copy (completed 2026-09-15)
+- [x] **Phase 4: Drift Detection (Read-Only)** - Preview classifies an existing registration as identical, reproducible, or preserved by comparing against what setup would actually write (completed 2026-09-15)
+- [x] **Phase 5: Apply-Time Preserve Gate & Documentation** - `--apply` never rewrites a registration it cannot reproduce, and shipped docs are brought current with a post-release observation (completed 2026-09-16)
+
+## Phase Details
+
+### Phase 1: Executor Correctness & Man Pages
+
+**Goal:** `engram`'s subprocess executor correctly classifies a deadline-killed runtime CLI as a timeout instead of a clean failure, and the released binary can generate and ship its own man pages alongside the completions it already ships. Both fixes are small, independently shippable, and touch no other feature in this milestone — the `osRun` fix is a three-line diff checking `ctx.Err()` before the `errors.As(*exec.ExitError)` branch (`internal/setup/environment.go`), and `engram man` mirrors the already-shipped hidden `completion` command via `cobra/doc`'s `GenManTree` (`cobra/doc` promoted from an indirect to a direct dependency; zero new Go dependencies). Both are standard, fully-specified patterns needing no additional research at plan time.
+
+**Requirements:** REQ-osrun-deadline-error, REQ-manpages-generated, REQ-manpages-cask-installed
+
+**Depends on:** Nothing (first phase).
+
+**Success criteria:**
+
+1. When a runtime subprocess (`claude`, `codex`, `opencode`) is killed because its command context deadline expired, `engram setup`'s result row for that runtime reports a timeout — the executor's timeout path engages — rather than a clean nonzero exit with no error.
+2. An operator can run the hidden `engram man <dir>` command to generate one man page per command from the live cobra tree, and re-running it produces byte-identical output (no auto-generated timestamp).
+3. The Homebrew cask installs the generated man pages on `post_install` and removes exactly those paths on `post_uninstall`, symmetric with the shipped completions hooks, with ordering and absence pinned by `releaseconfig_test.go`.
+
+**Plans:** 2/2 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 01-01-PLAN.md — `osRun` reports `ctx.Err()` before unwrapping `*exec.ExitError`; `runSeam` names the 20s timeout in the result row (#560, REQ-osrun-deadline-error)
+- [x] 01-02-PLAN.md — Hidden `engram man <dir>` generating byte-stable man pages via `cobra/doc`, plus the symmetric cask install/uninstall hook step pinned by `releaseconfig_test.go` (REQ-manpages-generated, REQ-manpages-cask-installed)
+
+---
+
+### Phase 2: Custom Auth Headers
+
+**Goal:** A user can name the auth header a registration uses (for example LiteLLM's `x-litellm-api-key`) alongside its env-var-reference value, for every runtime that can express it — Claude Code, opencode, and `generic` — each rendered in that runtime's own CLI syntax and authored per-runtime file, never through a shared cross-runtime formatter (reusing one previously reintroduced opencode's colon-space regression). Codex declines a non-`Authorization` header name explicitly, the same way `oauth-client` is already declined for opencode, and never gains a hand-written `[mcp_servers.engram.http_headers]` TOML edit. Every existing `--auth oauth|oauth-client|bearer|none` mode keeps its shipped argv, help text, and generated prose unchanged when no header name is given. Live-verify opencode's `--header KEY=VALUE` repeatability at implementation time — its CLI could not be exercised this research session (Gatekeeper/AMFI kill), so its facts are carried forward from the prior milestone's live verification, not re-confirmed.
+
+**Requirements:** REQ-header-name-parameter, REQ-header-value-env-ref-only, REQ-header-bearer-unchanged, REQ-header-codex-declined, REQ-header-documented
+
+**Depends on:** Nothing (independent of Phase 1 — touches unrelated files; sequenced after it purely as build order).
+
+**Success criteria:**
+
+1. A user can register engram with Claude Code, opencode, or `generic`, naming a custom header alongside an env-var reference for its value, rendered in each runtime's own CLI syntax (`"Name: value"` for Claude Code, `Name=value` for opencode).
+2. No literal secret value ever appears on argv, in written config, in preview text, `--output json`, or in logs — only an env-var reference in the runtime's own reference syntax.
+3. Running `engram setup` with any of `--auth oauth|oauth-client|bearer|none` and no header name produces argv, help text, and generated `/engram-setup` prose identical to what shipped in `2026-08-23.01`.
+4. Naming a header other than `Authorization` for Codex produces a `failed` row whose reason names the capability gap, and setup never writes `[mcp_servers.engram.http_headers]` by hand.
+5. `engram setup --help`, `guides/agent-setup.md`, and the regenerated `/engram-setup` prose show the gateway header shape with its env-reference form, including the Codex limitation.
+
+**Plans:** 4/4 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 02-01-PLAN.md — `Options.Headers []HeaderSpec` + `ErrHeaderUnsupported` + `sortedHeaders` in `internal/setup`; claude-code renders sorted `--header 'NAME: ${ENVVAR}'` pairs on its single add action in every mode; codex declines any header before its auth switch with a reason naming header(s), gap, and remedy (D-01, D-04, D-06, D-08, D-09, D-10; REQ-header-name-parameter, REQ-header-value-env-ref-only, REQ-header-codex-declined)
+
+**Wave 2**
+
+- [x] 02-02-PLAN.md — opencode renders `--header 'NAME={env:ENVVAR}'` pairs in its own file; generic carries `${ENVVAR}` extras in its existing `headers` object marshaled Authorization-first then sorted, with zero-header Config byte-identical; `TestNoSecretInArgs` positive control (D-04, D-05, D-08; REQ-header-name-parameter, REQ-header-value-env-ref-only, REQ-header-bearer-unchanged)
+
+**Wave 3**
+
+- [x] 02-03-PLAN.md — `--header NAME=ENVVAR` flag + `ENGRAM_HEADERS` default (no registry row), four exact usage errors at the CLI boundary with no right-hand-side echo, flat-scalar `headers` row facet, help paragraph + fifth example, regenerated help/catalog goldens (D-01, D-02, D-03, D-06, D-07, D-08, D-09; all five REQ-header-* IDs)
+
+**Wave 4**
+
+- [x] 02-04-PLAN.md — fifth `bearer+header` setupgen case regenerating the `/engram-setup` tables, header-aware `TestSetupGeneratedInvocations`, `/engram-setup` prose and `guides/agent-setup.md` gateway-header section, `ENGRAM_HEADERS`, and the Codex limitation (D-01, D-02, D-04, D-07, D-08, D-09; REQ-header-documented, REQ-header-bearer-unchanged, REQ-header-codex-declined, REQ-header-name-parameter)
+
+---
+
+### Phase 3: Plugin-First Delivery
+
+**Goal:** Under `--apply`, a plugin-capable Claude Code or Codex receives engram's skills, hooks, and `/engram-setup` command through its own plugin system — installing or updating only engram's own marketplace plugin, never a foreign one — while a runtime without a working `plugin` CLI, and opencode/`generic` regardless, keep the native skills-copy path, mutually exclusive per runtime per run so `curating-memory` never appears twice. Live-verify at implementation time, before locking any plugin `Action.Args`: whether `codex plugin` exists as a stable, scriptable surface (no confirmed `--json` on any subcommand; the best current source is an in-flight, unmerged upstream PR, not a released feature); whether `claude plugin install`/`codex plugin` refuse-on-already-installed or silently overwrite; and whether `skill/engram/.codex-plugin/plugin.json` needs the richer `interface` block for a CLI-only install. Also surface explicitly, before building: whether a first-run plugin/marketplace install needs consent beyond the existing `--apply` gate (PROJECT.md is silent on this).
+
+**Requirements:** REQ-plugin-capability-detection, REQ-plugin-install-or-update, REQ-plugin-three-way-state, REQ-plugin-skips-skills-copy, REQ-plugin-facet-reported, REQ-codex-plugin-manifest, REQ-plugin-setupgen-regenerated
+
+**Depends on:** Phase 2 (sequenced after only to reduce merge risk in the shared runtime files `claudecode.go`/`codex.go` — no functional dependency on headers).
+
+**Success criteria:**
+
+1. Setup detects whether a present Claude Code or Codex binary exposes a working `plugin` CLI, distinct from binary-on-PATH detection, and a runtime without that capability falls back to the native skills copy with a reported reason rather than a failed row.
+2. Under `--apply`, a plugin-capable runtime gets engram's own marketplace added when absent, the plugin installed when absent, and updated when outdated — doing nothing when already current — while preview shows the exact plugin-CLI argv beforehand and no additional consent flag exists beyond `--apply`.
+3. Plugin state is reported as one of absent / installed-but-outdated / installed-and-current, and a plugin-delivered runtime never also receives a native skills-copy install or an `AGENTS.md` index block.
+4. A result row shows plugin delivery as its own facet in both text and JSON output, alongside registration and skills, so a `wrote` registration next to a `failed` plugin install stays visible.
+5. `skill/engram/.codex-plugin/plugin.json` exists, is release-please-synced like `.claude-plugin/plugin.json` with a drift gate keeping their identity fields equal, and `/engram-setup`'s generated prose reflects the new plugin actions and outcomes in the same change that introduces them, keeping the existing `setupgen` CI drift gate green.
+
+**Plans:** 4/4 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 03-01-PLAN.md — `internal/setup` plugin lane: `PluginState` (absent/outdated/current/unavailable), the exported `PluginRuntime` optional interface implemented by claude-code and codex in their own files (probes, JSON parse, coarse marketplace parse, authored argv incl. `-y --scope user` for Claude Code, HTTPS Git URL marketplace add + remove-then-add for Codex), a stdlib SemVer-core comparator, and `PluginPreview`/`PluginApply` running one `plugin list --json` probe for capability+state, the `marketplace list` probe, and the decided actions through `runSeam` — probe failure is `unavailable`, never failed (D-01, D-02, D-03, D-04, D-05, D-06, D-10, D-11, D-12; REQ-plugin-capability-detection, REQ-plugin-install-or-update, REQ-plugin-three-way-state)
+- [x] 03-02-PLAN.md — `internal/skills`: `Environment.Lstat` seam + read-only `DetectPresence` (count of present skills, symlink vs copy, `AGENTS.md` index block via `scanBlock`) — never a write or delete (D-08, D-09; REQ-plugin-skips-skills-copy)
+
+**Wave 2**
+
+- [x] 03-03-PLAN.md — `cmd/engram/setup.go`: `setupVersion` seam (`resolvedVersion`), seven flat-scalar `plugin*` row fields + `skills_native`, `setupApplyPluginFacet` folding a failed plugin beside a wrote registration to `exitPartial`, `Delivered()` routing that never calls `skills.Install` for a plugin-delivered runtime and reports leftovers instead, D-12 native fallback, plugin-first `--help` paragraph, view fixtures, regenerated help/catalog goldens, `TestSetupGeneratedInvocations` pinning the new probe (D-01, D-05, D-06, D-07, D-08, D-09, D-11, D-12; REQ-plugin-facet-reported, REQ-plugin-skips-skills-copy, REQ-plugin-capability-detection, REQ-plugin-install-or-update, REQ-plugin-three-way-state)
+- [x] 03-04-PLAN.md — `skill/engram/.codex-plugin/plugin.json` (minimal `$schema`/`name`/`version`/`description`), `release-please-config.json` `$.version` sync entry, `TestPluginManifestIdentityMatches` drift gate, pytest privacy guard; `setupgen.Render(planFn, pluginFn)` appending the `### Claude Code plugin delivery (--apply)` table from claude-code's real `PluginActions`, regenerated `/engram-setup` region in the same commit with plugin-first prose, `--check-setup` green (D-01, D-02, D-04, D-06; REQ-codex-plugin-manifest, REQ-plugin-setupgen-regenerated)
+
+---
+
+### Phase 4: Drift Detection (Read-Only)
+
+**Goal:** Preview compares a runtime's actual existing engram registration — URL, auth mode, header set — against what setup would write, classifying it as exactly one of three states (identical / reproducible-difference / non-reproducible-so-`preserved`) rather than a read-probe heuristic, and names which facet differs when it does. Before any comparison or rendering code is trusted, live-verify what each runtime's read verb actually prints for a header whose value is NOT a bare `${VAR}`/`{env:VAR}` reference: both `claude mcp get` and `codex mcp get --json` were confirmed this research session to echo literal header values in cleartext for registrations engram did not write, but the non-reference-value echo case itself could not be tested under this session's no-mutation constraint — this is a blocking prerequisite for trusting the redaction path, not an assumption to carry forward. opencode's registration is explicitly NOT parsed (its `mcp list` output is a box-drawing table) and stays a documented coarse comparison; re-verify opencode's live CLI behavior at implementation time (unexecutable this research session).
+
+**Requirements:** REQ-drift-observed-registration, REQ-drift-three-way, REQ-drift-preserved-outcome, REQ-drift-facet-naming, REQ-drift-redaction
+
+**Depends on:** Phase 2 (hard dependency — the comparison surface needs the header vocabulary Phase 2 introduces before anything can be compared against it).
+
+**Success criteria:**
+
+1. Preview reads a runtime's existing engram registration through the runtime's own read verb (Codex's `mcp get --json` as structured input, a bounded text scan for Claude Code) and normalizes it to the same shape the Plan authors, without reading any third-party config file directly.
+2. A registration is classified as exactly one of `already-correct`, `would-write`, or `preserved` — the latter two are never collapsed into one bucket — with unit coverage of all three states per runtime.
+3. `preserved` is a first-class outcome in both text and JSON output, with a reason naming what setup cannot reproduce, reflected consistently in aggregation and exit codes, and documented in `guides/agent-setup.md`'s results table, including Codex's whole-entry (preserve-or-overwrite, no partial merge) semantics.
+4. A `would-write` row for an existing registration names which facet differs — URL, auth mode, header name, or value reference — rather than a bare "differs".
+5. Header values obtained from any runtime read-probe are redacted unconditionally before comparison storage, rendering, JSON output, or logging, proven against a fixture whose probe output carries a literal value.
+
+**Plans:** 5/5 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 04-01-PLAN.md — `OutcomePreserved` + `Classify`/`precedenceOrder` placement (preserved between wrote and already-correct); `drift.go`'s typed `Facet` vocabulary, `Observation`, the optional `DriftRuntime` interface, and the single D-01 `Compare` predicate; codex's totality `Observe` (`DisallowUnknownFields` + key-set diff); `execute()`'s preview branch rewritten to observe → compare → classify → redact → rebuild `Registered`, ambiguity and scanner-less runtimes → would-write (D-01, D-02, D-03, D-04, D-09, D-10, D-11, D-12; all five REQ-drift-* IDs)
+- [x] 04-02-PLAN.md — D-05 human observation checkpoint (`gate="blocking-human"`): the literal header echo of `claude mcp get` / `codex mcp get --json` on a throwaway `probe-literal-04` entry, recorded dated and versioned as `04-OBSERVATIONS.md` (D-05, D-06, D-07, D-08; REQ-drift-redaction, REQ-drift-observed-registration)
+- [x] 04-03-PLAN.md — `guides/agent-setup.md` `preserved` results row with the whole-entry sentence, the opencode not-compared statement, `facets`/`drift`/`registered` field descriptions, pinned by a `migrate_docs_test.go`-shaped docs gate with positive control (D-04, D-10, D-12; REQ-drift-preserved-outcome, REQ-drift-facet-naming, REQ-drift-observed-registration)
+
+**Wave 2**
+
+- [x] 04-04-PLAN.md — `cmd/engram/setup.go`: flat `facets`/`drift` row fields, `preserved` in the apply headline and the comparison in the preview headline and `--help` (help golden regenerated), retargeted `TestSetupPreviewNeverClassifiesAlreadyCorrectFromAmbiguousRead` (D-09/D-10), `TestSetupJSONNeverLeaksProbeLiteral` at the process boundary, three view fixtures (D-03, D-04, D-09, D-10, D-12; REQ-drift-preserved-outcome, REQ-drift-facet-naming, REQ-drift-redaction, REQ-drift-three-way)
+
+**Wave 3**
+
+- [x] 04-05-PLAN.md — claude-code's `Observe` as a total parse of `claude mcp get` built from `04-OBSERVATIONS.md` (Status line is chrome, exit code never blocks parsing), three-state coverage, codex mirror reconciled to the observed literal-header shape, observed literal-echo fixtures citing the record for both runtimes through `internal/setup` and `engram setup`'s output streams, phase gate (D-01, D-02, D-05, D-08, D-09, D-11, D-12; all five REQ-drift-* IDs)
+
+---
+
+### Phase 5: Apply-Time Preserve Gate & Documentation
+
+**Goal:** `--apply` consults the same drift classification before writing and performs zero write actions against a `preserved` registration — including never running Claude Code's destructive `mcp remove` step — closing the root cause of the 2026-09-10 overwrite incident (gotcha `ryr82bf2s2`) that this milestone exists to prevent; a reproducible rewrite on Claude Code states upfront that an OAuth-authenticated registration will need to log in again. This is genuinely new executor surface (the shipped executor never branches on probe content today), so it stays its own phase rather than folding into Phase 4's read-only comparison. `guides/install.md`, `guides/agent-setup.md`, and `guides/plugin.md` are brought current with everything this milestone shipped — plugin-first delivery, the header shape, the `preserved` outcome and apply gate, and man pages — closed out with a post-release live-observation note (the `2026-08-23.01` D-10 pattern) rather than checked off from code alone.
+
+**Requirements:** REQ-apply-preserve-gate, REQ-apply-rewrite-consequence, REQ-docs-setup-v2
+
+**Depends on:** Phase 4 (hard dependency — the apply-time gate consults the same classification Phase 4 introduces).
+
+**Success criteria:**
+
+1. Running `--apply` (not only preview) against a pre-seeded, unreproducible registration performs zero registration-write actions for that runtime, while still applying its skills/plugin actions — proven by a fixture test that runs `--apply` itself, not only preview.
+2. Claude Code's `mcp remove` step never runs against a `preserved` registration.
+3. When a reproducible difference on Claude Code requires remove-then-add of an existing OAuth-authenticated registration, both preview and apply state that the rewrite will require logging in again before it runs.
+4. `guides/install.md`, `guides/agent-setup.md`, and `guides/plugin.md` describe the shipped plugin-first delivery, header shape, `preserved` outcome and apply gate, and man pages — checked off only after a post-release live observation is recorded, not from code alone.
+
+**Plans:** 4/4 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 05-01-PLAN.md — `execute()`'s mutate branch consults the shared `Observe → Compare` classification BEFORE any action: `already-correct`/`preserved` return before `plan.Actions[0]` (Claude Code's `mcp remove` never runs), `would-write` runs the actions then re-observes once and rebuilds `Registered` redaction-safe; per-runtime manual-remediation constants on the preserved Reason; the OAuth re-login note (`Observation.RewriteConsequence`, `AuthNone` shape only) on a Claude Code would-write row's Notes in both lanes; SC1/SC2 proven through `internal/setup`'s panic-on-overrun harness and `engram setup --apply` at the process boundary (D-01, D-02, D-03, D-04, D-05; REQ-apply-preserve-gate, REQ-apply-rewrite-consequence)
+- [x] 05-03-PLAN.md — `guides/install.md` (cask contents incl. man pages — `man engram-setup` — plugin-first pointer, unreleased notice) and `guides/plugin.md` (plugin-first via `engram setup --apply`, `preserved` cross-link beside the fallback `mcp remove` block, unreleased notice), each gated by a new `agent_setup_docs_test.go`-shaped test file with a positive control (D-06, D-07; REQ-docs-setup-v2 code-gated half)
+
+**Wave 2**
+
+- [x] 05-02-PLAN.md — `engram setup --help` states the apply gate, the manual remediation, and the re-login consequence (`help.golden` regenerated, `catalog.golden` untouched); the process-boundary literal-leak proof runs `--apply`; `guides/agent-setup.md` brought current (apply gate, corrected `already-correct`, preserved remediation, OAuth re-login, plugin-first, unreleased notice) with six new gate legs, two zero-occurrence stale anchors, and positive controls (D-01, D-04, D-05, D-06, D-07; all three REQ IDs)
+
+**Wave 3**
+
+- [x] 05-04-PLAN.md — `05-POST-RELEASE.md` in the `06-POST-RELEASE.md` shape (`status: pending`, tracker issue opened) enumerating the qualifying-release checks; the whole phase gate at the final commit; Phase 5 verification passes with `post_release_status: pending` and REQ-docs-setup-v2 stays unchecked until `05-RELEASE-<ver>.md` is recorded (D-06; REQ-docs-setup-v2 closeout half)
+
 ---
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02 · v0.13.x: 1 · 2 (parallelizable with each other) → 3 (needs 1 and 2 settled first) → 4 (authored in parallel with 3, full acceptance trails it) → 5 (last; needs 3's `verify` for the #355 fixture, reconciles each phase's own validation as it closes) — v0.13.x planned 2026-08-03 · 2026-08-12.01: 1 → 2 → 3 → 4 → 5 (needs 4) · 6 (independent, parallelizable with 3–5; must finish before 7) → 7 (needs 5 and 6) → 8 (needs 4 and 7) — 2026-08-12.01 roadmapped 2026-08-12 · 2026-08-23.01: 1 · 2 (independent, parallelizable with 1) → 3 → 4 → 5 (strict order) → 6 (needs 1 and 5) — 2026-08-23.01 roadmapped 2026-08-23
+**Execution Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 (v0.8.x, shipped) · 9 → 10 → 11 → 12 (v0.9.x, shipped 2026-07-10) · 13 → 14 (embedder track) · 15 → 16 → 17 → 18 → 19 (write-lane track, strict order) · 20 → 21 (independent) — v0.10.x shipped 2026-07-16 · 22 → 23 (Cedar foundation → service auth/tenancy, strict order) · 24 → 25 → 26 (capture trio + recall/config tail, strict order; 24 can start in parallel with 22–23) — v0.11.x shipped 2026-07-26 · v0.12.x: 1 → 2 (spine → CLI, strict order) · 3 · 4 · 5 · 6 (independent of the spine and of each other; ran in parallel once 1 was underway) · 7 (CLI cross-spine wiring, closed the audit seam between 2 and 3) — v0.12.x shipped 2026-08-02 · v0.13.x: 1 · 2 (parallelizable with each other) → 3 (needs 1 and 2 settled first) → 4 (authored in parallel with 3, full acceptance trails it) → 5 (last; needs 3's `verify` for the #355 fixture, reconciles each phase's own validation as it closes) — v0.13.x planned 2026-08-03 · 2026-08-12.01: 1 → 2 → 3 → 4 → 5 (needs 4) · 6 (independent, parallelizable with 3–5; must finish before 7) → 7 (needs 5 and 6) → 8 (needs 4 and 7) — 2026-08-12.01 roadmapped 2026-08-12 · 2026-08-23.01: 1 · 2 (independent, parallelizable with 1) → 3 → 4 → 5 (strict order) → 6 (needs 1 and 5) — 2026-08-23.01 roadmapped 2026-08-23 · 2026-09-13.01: 1 → 2 → 3 → 4 → 5 (1 is an independent quick win, run first; 2 → 4 → 5 is a hard-dependency chain — headers before drift, drift-read before the apply-time preserve gate; 3 is sequenced after 2 only to reduce shared-file merge risk, not a functional dependency) — 2026-09-13.01 roadmapped 2026-09-13
 
 > **Phase numbering restarts per milestone as of v0.12.x.** Phases 1–26 above are the pre-v0.12.x
 > monotonic sequence and keep their historical numbers. In **prose**, a phase number is only
@@ -381,6 +548,11 @@ on the machine, shows what it would write, and wires it up.
 | 4. Skills Distribution | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
 | 5. Slash Command Delegation | 2026-08-23.01 | 3/3 | Complete | 2026-09-12 |
 | 6. Install Documentation | 2026-08-23.01 | 2/2 | Complete; released docs live | 2026-09-12 |
+| 1. Executor Correctness & Man Pages | 2026-09-13.01 | 3/3 | Complete | 2026-09-13 |
+| 2. Custom Auth Headers | 2026-09-13.01 | 5/5 | Complete | 2026-09-14 |
+| 3. Plugin-First Delivery | 2026-09-13.01 | 7/7 | Complete | 2026-09-15 |
+| 4. Drift Detection (Read-Only) | 2026-09-13.01 | 5/5 | Complete | 2026-09-15 |
+| 5. Apply-Time Preserve Gate & Documentation | 2026-09-13.01 | 4/4 | Complete | 2026-09-16 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
@@ -539,3 +711,101 @@ after release is not free.
 
 - Whether unification is worth a proto change at all, or whether the right
   outcome is a comment pinning "non-negative, never a sentinel" as the contract.
+
+### Phase 999.5: `engram setup` should install via plugins for harnesses that support them (claude, codex), not plain installs (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+**Context (captured 2026-09-13, from a live `engram setup` review on the maintainer's machine):**
+
+v0.16.x `engram setup --apply` treats every native runtime as a "plain install":
+it copies the embedded skills into the runtime's user-scope skills directory
+(`~/.claude/skills/`, `~/.agents/skills/` + a managed `~/.codex/AGENTS.md`
+block, `~/.config/opencode/skills/`) and registers the MCP server with the
+runtime's `mcp add`. Claude Code and Codex both have a first-class plugin
+mechanism that already carries these skills, the session hooks, and the
+`/engram-setup` command — and on a machine where the plugin is installed,
+`setup` has no awareness of it:
+
+- Claude Code: skills arrive via the `engram@engram` marketplace plugin
+  (`~/.claude/plugins/marketplaces/engram/skill/engram/skills/…`) and
+  `~/.claude/skills/` is empty. `--apply` would write a second copy there,
+  so `curating-memory` and `engram:curating-memory` both surface. The binary
+  path also never installs the plugin's session hooks
+  (`guides/agent-setup.md` calls this out as a known gap).
+- Codex: `~/.agents/skills/*` are symlinks into that same plugin checkout, so
+  they track plugin updates. `setup` replaces a symlink target with a static
+  copy pinned to the binary's embedded version
+  (`internal/skills/install.go` — `os.Rename` over the target replaces the
+  link).
+- `internal/skills/` and `internal/setup/` contain no marketplace / plugin
+  detection at all.
+
+**Open questions for planning:**
+
+- Which runtimes count as "supports plugins" for v1 (Claude Code marketplace,
+  Codex — confirm Codex's plugin surface), and what does opencode get?
+- Plugin-first, or plugin-when-detected? I.e. should `setup` *install* the
+  plugin (`claude plugin marketplace add` + `claude plugin install`), or only
+  detect an installed plugin and skip the plain skill install?
+- Where does MCP registration live once the plugin is the delivery vehicle —
+  still `mcp add`, or the plugin's own MCP declaration?
+- Interaction with `/engram-setup` delegation: the plugin's command delegates to
+  the binary, which would then install the plugin — define the fixed point.
+- Related: `setup` has no custom-header auth mode, so a gateway registration
+  (e.g. LiteLLM `x-litellm-api-key`) cannot be expressed and `--apply` replaces
+  it. Same milestone or separate backlog item?
+
+### Phase 999.6: `engram setup` needs to support custom headers / auth keys (allow the maintainer's current gateway setup) (BACKLOG)
+
+**Goal:** [Captured for future planning]
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+**Context (captured 2026-09-13, from a live `engram setup` review on the maintainer's machine):**
+
+`--auth` accepts exactly `oauth | oauth-client | bearer | none`
+(`cmd/engram/setup.go:628`). `bearer` is hard-wired to the `Authorization`
+header with an `ENGRAM_TOKEN` reference, expressed per runtime as:
+
+- claude-code: `--header "Authorization: Bearer ${ENGRAM_TOKEN}"` (`internal/setup/claudecode.go:162`)
+- codex: `--bearer-token-env-var ENGRAM_TOKEN` (`internal/setup/codex.go:110`)
+- opencode: `--header "Authorization=Bearer {env:ENGRAM_TOKEN}"` (`internal/setup/opencode.go:131`)
+- generic: `"Authorization": "Bearer ${ENGRAM_TOKEN}"` (`internal/setup/generic.go:141-145`)
+
+The maintainer's real registrations (all three runtimes) reach engram through a
+LiteLLM gateway and authenticate with a custom header
+(`x-litellm-api-key: Bearer <key>`), not `Authorization`. No `--auth` mode can
+express that, so `setup --apply` cannot *reproduce* the working config — it
+replaces it (claude-code is `mcp remove` + `mcp add`) and breaks the
+connection. This is the same class of incident as the 2026-09-10 overwrite
+(engram gotcha `ryr82bf2s2`), now with a root cause: the auth model is too
+narrow, not just the verification discipline.
+
+Preview is also affected: with the wrong `--auth`, the read probe reports the
+existing registration as drift to be replaced rather than as already-correct.
+
+**Open questions for planning:**
+
+- Shape of the option: a repeatable `--header NAME=VALUE-REF` (value names an
+  env var, never a literal), or `--auth header --header-name X --token-env Y`?
+  Must keep the "no secret in argv/config" property that `bearer` already has.
+- Per-runtime feasibility: claude-code and opencode take arbitrary `--header`;
+  codex's `mcp add` exposes `--bearer-token-env-var` only — does
+  `[mcp_servers.<name>.http_headers]` in `config.toml` need a direct write path,
+  and does that violate "register via the runtime's own CLI"?
+- Should `already-correct` detection compare the full header set so a preview
+  against an existing custom-header registration is a no-op instead of a
+  replacement?
+- Overlap with Phase 999.5 (plugin-based install): if the plugin carries the
+  MCP declaration, the header option must exist there too.

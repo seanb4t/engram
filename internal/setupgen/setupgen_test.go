@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,33 +18,52 @@ import (
 )
 
 func TestRenderRealPlans(t *testing.T) {
-	body, err := Render(setup.ClaudeCode.Plan)
+	body, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
 	if err != nil {
 		t.Fatal(err)
 	}
 	cases := Cases()
-	if len(cases) != 4 {
-		t.Fatalf("got %d cases, want four", len(cases))
+	if len(cases) != 5 {
+		t.Fatalf("got %d cases, want five", len(cases))
 	}
-	for i, mode := range []string{"oauth", "oauth-client", "bearer", "none"} {
-		t.Run(mode, func(t *testing.T) {
+	for i, label := range []string{"oauth", "oauth-client", "bearer", "none", "bearer+header"} {
+		t.Run(label, func(t *testing.T) {
 			c := cases[i]
-			if c.Options.Auth != mode {
-				t.Fatalf("case %d = %q, want %q", i, c.Options.Auth, mode)
+			if c.Label != label {
+				t.Fatalf("case %d = %q, want %q", i, c.Label, label)
 			}
 			plan, err := setup.ClaudeCode.Plan(setup.Environment{HomeDir: func() (string, error) { return "/fake", nil }}, c.Options)
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, command := range []string{plan.Actions[1].Command(), (setup.Action{Args: c.DelegationArgs}).Command()} {
-				if !strings.Contains(body, "| `"+mode+"` | `"+command+"` |") {
+				if !strings.Contains(body, "| `"+label+"` | `"+command+"` |") {
 					t.Errorf("missing exact Plan/preview row for %q", command)
 				}
+			}
+			if label != "bearer+header" {
+				return
+			}
+			if c.Options.Auth != "bearer" {
+				t.Fatalf("bearer+header case Auth = %q, want %q", c.Options.Auth, "bearer")
+			}
+			if want := (setup.HeaderSpec{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}); len(c.Options.Headers) != 1 || c.Options.Headers[0] != want {
+				t.Fatalf("bearer+header case Headers = %+v, want exactly one %+v", c.Options.Headers, want)
+			}
+			idx := slices.Index(c.DelegationArgs, "--header")
+			if idx < 0 || idx+1 >= len(c.DelegationArgs) || c.DelegationArgs[idx+1] != "x-gateway-api-key=GATEWAY_KEY" {
+				t.Fatalf("bearer+header DelegationArgs = %q, want trailing --header x-gateway-api-key=GATEWAY_KEY", c.DelegationArgs)
 			}
 		})
 	}
 	if !strings.Contains(body, "'Authorization: Bearer ${ENGRAM_TOKEN}'") {
 		t.Fatal("bearer environment reference lost its literal shell quoting")
+	}
+	if !strings.Contains(body, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
+		t.Fatal("bearer+header fallback row lost auth-header-first ordering")
+	}
+	if got := strings.Count(body, "| `bearer` |"); got != 2 {
+		t.Fatalf("shipped bearer rows = %d, want exactly 2 (bearer+header must use a distinct label)", got)
 	}
 	cases[0].Options.URL = "changed"
 	cases[0].DelegationArgs[0] = "changed"
@@ -60,11 +80,11 @@ func TestRenderSelectsActionAndQuotes(t *testing.T) {
 			{Args: []string{"unrelated", "mcp", "add"}},
 			{Args: []string{"claude", "mcp", "remove", "engram"}},
 		}}, nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (setup.Action{Args: args}).Command(); strings.Count(body, "`"+want+"`") != 4 {
+	if want := (setup.Action{Args: args}).Command(); strings.Count(body, "`"+want+"`") != len(Cases()) {
 		t.Fatalf("renderer did not preserve source quoting: %s", body)
 	}
 	if got := commandCell("echo '`a|b`'"); got != "`` echo '`a\\|b`' ``" {
@@ -97,15 +117,119 @@ func TestRenderRejectsInvalidPlans(t *testing.T) {
 					_, _ = env.Run(context.Background(), "claude", nil)
 				}
 				return plan, nil
-			})
+			}, nil)
 			if err == nil || body != "" {
 				t.Fatalf("Render returned body=%q err=%v", body, err)
 			}
 		})
 	}
-	if body, err := Render(nil); err == nil || body != "" {
+	if body, err := Render(nil, nil); err == nil || body != "" {
 		t.Fatalf("nil Plan returned %q, %v", body, err)
 	}
+}
+
+func TestRenderPluginTable(t *testing.T) {
+	body, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr, ok := setup.ClaudeCode.(setup.PluginRuntime)
+	if !ok {
+		t.Fatal("setup.ClaudeCode does not implement setup.PluginRuntime")
+	}
+	rows := []struct {
+		label              string
+		state              setup.PluginState
+		marketplacePresent bool
+	}{
+		{"`absent` (marketplace absent)", setup.PluginAbsent, false},
+		{"`absent` (marketplace present)", setup.PluginAbsent, true},
+		{"`outdated`", setup.PluginOutdated, true},
+		{"`current`", setup.PluginCurrent, true},
+	}
+	for _, r := range rows {
+		actions := pr.PluginActions(r.state, r.marketplacePresent)
+		if r.state == setup.PluginCurrent {
+			if len(actions) != 0 {
+				t.Fatalf("PluginCurrent authored %d action(s), want 0", len(actions))
+			}
+			if !strings.Contains(body, "| `current` | (no action) |") {
+				t.Fatal("missing current row with (no action)")
+			}
+			continue
+		}
+		want := setup.Plan{Actions: actions}.Display()
+		if !strings.Contains(body, "| "+r.label+" | "+commandCell(want)+" |") {
+			t.Fatalf("missing row for %s: %s\nbody:\n%s", r.label, want, body)
+		}
+	}
+
+	for _, argv := range []string{
+		"claude plugin marketplace add seanb4t/engram --scope user; claude plugin install engram@engram --scope user --json -y",
+		"`claude plugin install engram@engram --scope user --json -y`",
+		"claude plugin update engram@engram --scope user --json -y",
+	} {
+		if !strings.Contains(body, argv) {
+			t.Fatalf("body missing expected argv %q", argv)
+		}
+	}
+
+	if idx1, idx2 := strings.Index(body, "### Claude Code plugin delivery (--apply)"), strings.Index(body, "### Claude Code fallback registration"); idx1 <= idx2 {
+		t.Fatalf("plugin table (%d) must be appended after fallback registration table (%d)", idx1, idx2)
+	}
+
+	twoTables, err := Render(setup.ClaudeCode.Plan, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(body, twoTables) {
+		t.Fatal("plugin table changed the two shipped tables")
+	}
+	if strings.Contains(twoTables, "plugin delivery") {
+		t.Fatal("nil pluginFn must render no plugin delivery heading")
+	}
+
+	t.Run("nil-actions-for-absent-is-error", func(t *testing.T) {
+		fn := PluginActionsFunc(func(state setup.PluginState, marketplacePresent bool) []setup.Action {
+			if state == setup.PluginAbsent {
+				return nil
+			}
+			return pr.PluginActions(state, marketplacePresent)
+		})
+		out, err := Render(setup.ClaudeCode.Plan, fn)
+		if err == nil || out != "" {
+			t.Fatalf("Render returned body=%q err=%v, want error with empty body", out, err)
+		}
+		if !strings.Contains(err.Error(), "plugin") || !strings.Contains(err.Error(), "absent") {
+			t.Fatalf("error %q does not name plugin/absent", err)
+		}
+	})
+
+	t.Run("actions-for-current-is-error", func(t *testing.T) {
+		fn := PluginActionsFunc(func(state setup.PluginState, marketplacePresent bool) []setup.Action {
+			if state == setup.PluginCurrent {
+				return []setup.Action{{Args: []string{"claude", "plugin", "install", "engram@engram"}}}
+			}
+			return pr.PluginActions(state, marketplacePresent)
+		})
+		out, err := Render(setup.ClaudeCode.Plan, fn)
+		if err == nil || out != "" {
+			t.Fatalf("Render returned body=%q err=%v, want error with empty body", out, err)
+		}
+	})
+
+	t.Run("non-claude-plugin-argv-is-error", func(t *testing.T) {
+		fn := PluginActionsFunc(func(setup.PluginState, bool) []setup.Action {
+			return []setup.Action{{Args: []string{"codex", "plugin", "add"}}}
+		})
+		out, err := Render(setup.ClaudeCode.Plan, fn)
+		if err == nil || out != "" {
+			t.Fatalf("Render returned body=%q err=%v, want error with empty body", out, err)
+		}
+		if !strings.Contains(err.Error(), "claude plugin") {
+			t.Fatalf("error %q does not name claude plugin", err)
+		}
+	})
 }
 
 func TestWriteRejectsInvalidAnchors(t *testing.T) {
@@ -169,7 +293,7 @@ func TestWriteNoneTracer(t *testing.T) {
 }
 
 func TestCheckReadOnly(t *testing.T) {
-	body, err := Render(setup.ClaudeCode.Plan)
+	body, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,11 +361,11 @@ func mutatedPlan(env setup.Environment, opts setup.Options) (setup.Plan, error) 
 }
 
 func TestPlanMutationChangesRegion(t *testing.T) {
-	baseline, err := Render(setup.ClaudeCode.Plan)
+	baseline, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
 	if err != nil {
 		t.Fatal(err)
 	}
-	mutant, err := Render(mutatedPlan)
+	mutant, err := Render(mutatedPlan, claudeCodePluginActions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +404,7 @@ func TestPlanMutationChangesRegion(t *testing.T) {
 	if changed != 1 {
 		t.Fatalf("changed %d rows, want exactly one", changed)
 	}
-	again, err := Render(setup.ClaudeCode.Plan)
+	again, err := Render(setup.ClaudeCode.Plan, claudeCodePluginActions())
 	if err != nil || again != baseline {
 		t.Fatalf("mutant contaminated real Plan: %v", err)
 	}
@@ -358,14 +482,14 @@ func TestDriftChecks(t *testing.T) {
 				planFn = setup.ClaudeCode.Plan
 			}
 			before := read()
-			if err := check(path, planFn); err == nil {
+			if err := check(path, planFn, claudeCodePluginActions()); err == nil {
 				t.Fatal("read-only lane accepted drift")
 			}
 			if read() != before {
 				t.Fatal("failed check repaired its evidence")
 			}
 			fixtureGit(t, dir, false, "diff", "--exit-code", "--", "command.md")
-			if err := write(path, planFn); err != nil {
+			if err := write(path, planFn, claudeCodePluginActions()); err != nil {
 				t.Fatal(err)
 			}
 			generated := read()
@@ -373,10 +497,10 @@ func TestDriftChecks(t *testing.T) {
 				t.Fatal("writer ignored changed source or stale artifact")
 			}
 			fixtureGit(t, dir, true, "diff", "--exit-code", "--", "command.md")
-			if err := check(path, planFn); err != nil {
+			if err := check(path, planFn, claudeCodePluginActions()); err != nil {
 				t.Fatal(err)
 			}
-			if err := write(path, planFn); err != nil {
+			if err := write(path, planFn, claudeCodePluginActions()); err != nil {
 				t.Fatal(err)
 			}
 			if read() != generated {

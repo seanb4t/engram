@@ -1,0 +1,13 @@
+diff --git a/internal/setup/apply.go b/internal/setup/apply.go
+index 0f4d9af2..b0c6555f 100644
+--- a/internal/setup/apply.go
++++ b/internal/setup/apply.go
+@@ -138,7 +138,7 @@ func runSeam(ctx context.Context, env Environment, path string, args []string) (
+ 	defer cancel()
+ 	rr, err := env.Run(ctx, path, args)
+ 	if err != nil && errors.Is(err, context.DeadlineExceeded) {
+-		err = fmt.Errorf("timed out after %s: %w", execTimeout, err)
++		err = fmt.Errorf("%w", err)
+ 	}
+ 	return rr, err
+ }

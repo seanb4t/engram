@@ -92,6 +92,16 @@ func (openCodeRuntime) Detect(env Environment) bool {
 //     substitution behavior — repo rule m45p2b4bp7 forbids red-gating
 //     third-party behavior engram does not own.
 //
+// Extra headers (D-01, D-04, D-08): opts.Headers is valid with every
+// auth mode this runtime supports and renders here, in this file, as
+// bare "{env:ENVVAR}" references sorted case-insensitively AFTER the
+// auth-mode header — never through a helper shared with claude-code,
+// because the colon-space regression this same comment already records
+// is exactly what a shared formatter produced. `--header` is
+// `[array]`-typed (repeatable) per the 1.18.30 `--help` probe recorded
+// in 02-RESEARCH.md, so several pairs on one invocation are within the
+// verified surface.
+//
 // Every auth mode also authors the SAME SkillTarget (Phase 4, D-05,
 // D-10): skills install to opencode's own documented global skills
 // directory, opencodeConfigRoot(env) joined with "opencode" and "skills"
@@ -117,7 +127,8 @@ func (openCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 		return Plan{
 			Runtime: "opencode",
 			Actions: []Action{{
-				Args:        []string{"opencode", "mcp", "add", "engram", "--url", opts.URL},
+				Args: append([]string{"opencode", "mcp", "add", "engram", "--url", opts.URL},
+					openCodeHeaderArgs(opts.Headers)...),
 				Description: "register engram as an MCP server",
 			}},
 			Probe:  probe,
@@ -127,8 +138,9 @@ func (openCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 		return Plan{
 			Runtime: "opencode",
 			Actions: []Action{{
-				Args: []string{"opencode", "mcp", "add", "engram", "--url", opts.URL,
+				Args: append([]string{"opencode", "mcp", "add", "engram", "--url", opts.URL,
 					"--header", "Authorization=Bearer {env:ENGRAM_TOKEN}"},
+					openCodeHeaderArgs(opts.Headers)...),
 				Description: "register engram as an MCP server (bearer token)",
 			}},
 			Probe:  probe,
@@ -137,6 +149,29 @@ func (openCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 	default:
 		return Plan{}, fmt.Errorf("opencode: auth mode %q: %w", opts.Auth, ErrAuthModeUnsupported)
 	}
+}
+
+// openCodeHeaderArgs renders one "--header" / "NAME={env:ENVVAR}" pair per
+// entry of sortedHeaders(hs) — opencode's own KEY=VALUE dialect
+// (`--help`: "HTTP header for a remote MCP server (KEY=VALUE)"), never the
+// colon-space HTTP-header-string form this file's Plan doc comment above
+// already records as a confirmed live bug. Returns nil for no headers, so
+// appending its result to an existing Args slice is a no-op and every
+// no-header Args slice stays byte-identical to HEAD (D-01, D-04, D-08).
+// This is the ONE place opencode's header dialect is authored — no other
+// runtime's file shares it (the same colon-space regression is exactly the
+// anti-pattern this separation avoids; runtime.go:sortedHeaders orders but
+// never formats).
+func openCodeHeaderArgs(hs []HeaderSpec) []string {
+	sorted := sortedHeaders(hs)
+	if len(sorted) == 0 {
+		return nil
+	}
+	args := make([]string, 0, len(sorted)*2)
+	for _, h := range sorted {
+		args = append(args, "--header", h.Name+"={env:"+h.EnvVar+"}")
+	}
+	return args
 }
 
 // opencodeConfigRoot resolves the operator's own declared configuration

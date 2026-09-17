@@ -6,6 +6,7 @@ package setup
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -15,6 +16,30 @@ import (
 // of this phase).
 var ErrAuthModeUnsupported = errors.New("setup: auth mode is not supported by this runtime")
 
+// ErrHeaderUnsupported is returned by a Runtime's Plan when
+// opts.Headers is non-empty and that runtime's own `mcp add` CLI has no
+// custom-header flag (codex, D-09). It is deliberately distinct from
+// ErrAuthModeUnsupported because a custom header is orthogonal to auth
+// mode (02-CONTEXT.md's framing correction: an ADDITIONAL header that
+// rides alongside whatever --auth produces, never a rename of it) — a
+// caller (Phase 4 drift comparison, docs) must be able to tell a header
+// gap from an auth-mode gap (D-10).
+var ErrHeaderUnsupported = errors.New("setup: custom header is not supported by this runtime")
+
+// HeaderSpec names one additional HTTP header a registration should
+// carry alongside whatever Auth produces. Name is an RFC 7230 token
+// (validated at the CLI boundary, cmd/engram/setup.go's setupResolve,
+// plan 02-03 — this package carries already-validated data). EnvVar is
+// the NAME of an environment variable the runtime itself resolves at its
+// own connect time — it is NEVER dereferenced anywhere in this package
+// (no environment read of a header variable exists here; D-04), so no
+// code path in internal/setup can place a header VALUE on argv, in
+// Config, in preview text, or in a log.
+type HeaderSpec struct {
+	Name   string
+	EnvVar string
+}
+
 // Options carries the resolved, caller-supplied values a Runtime's Plan
 // needs to author its invocation: the MCP endpoint URL (passed through
 // byte-for-byte, D-02 — never appended to, stripped, or normalized), the
@@ -22,11 +47,29 @@ var ErrAuthModeUnsupported = errors.New("setup: auth mode is not supported by th
 // PATH is the whole payload at this layer: Plan must never open, stat, or
 // read it (D-16) — only its path is previewed, as
 // "Bearer <from /path/to/token>".
+//
+// Headers carries zero or more ADDITIONAL headers that ride alongside
+// whatever Auth produces — orthogonal to it, never a substitute for it
+// (D-01). ENGRAM_TOKEN remains bearer's own fixed variable; each extra
+// header names its own EnvVar (D-06).
+//
+// Headers is expected to arrive already validated by the CLI boundary
+// (cmd/engram/setup.go's setupParseHeaders, plan 02-03, 02-RESEARCH.md
+// Pitfall 5): no Authorization collision, no case-insensitive duplicate
+// names, and every EnvVar a POSIX identifier. This package orders and
+// renders the headers it is given deterministically (sortedHeaders below)
+// but does NOT re-validate them — a direct caller of this package that
+// skips that validation owns the consequences (a colliding Authorization
+// header or duplicate names surviving into a rendered invocation). This is
+// a deliberate boundary, not an oversight: 02-RESEARCH.md Pitfall 5
+// requires header validation to live ONCE, at the CLI boundary, rather
+// than duplicated per-runtime inside this package.
 type Options struct {
 	URL       string
 	Auth      string
 	ClientID  string
 	TokenFile string
+	Headers   []HeaderSpec
 }
 
 // Runtime is one agent runtime engram knows how to detect and plan a
@@ -49,7 +92,9 @@ type Runtime interface {
 	// Plan authors the exact invocation this runtime would issue for
 	// opts, without executing it. Returns an error satisfying
 	// errors.Is(err, ErrAuthModeUnsupported) when opts.Auth has no
-	// authorable form on this runtime.
+	// authorable form on this runtime, or errors.Is(err,
+	// ErrHeaderUnsupported) when opts.Headers is non-empty and this
+	// runtime's own CLI has no custom-header flag (D-10).
 	Plan(env Environment, opts Options) (Plan, error)
 }
 
@@ -145,4 +190,39 @@ func Select(names []string) ([]Runtime, error) {
 		out = append(out, rt)
 	}
 	return out, nil
+}
+
+// sortedHeaders returns hs sorted by strings.ToLower(Name) ascending, with
+// ties (names equal under case folding) broken by an exact byte-wise
+// strings.Compare(a.Name, b.Name) — a TOTAL order, so the result never
+// depends on sort stability. This is defense-in-depth for the WR-01 gap:
+// Options.Headers is expected to already be free of case-insensitive
+// duplicate names (see Options' own doc comment), but a direct package
+// caller that skips CLI-boundary validation could hand this function two
+// case-colliding names, and D-08's "deterministic ordering" guarantee must
+// hold even then. The result is a CLONE — the caller's slice is never
+// re-ordered in place (D-08). It returns nil for a nil or empty hs, so
+// append(args, claudeCodeHeaderArgs(sortedHeaders(nil))...) is a no-op and
+// every no-header Args slice stays byte-identical.
+//
+// This function ORDERS but never FORMATS: no runtime dialect string is
+// authored here, because each runtime authors its own ("--header
+// NAME: ${ENVVAR}" for claude-code, "NAME={env:ENVVAR}" for opencode,
+// "NAME": "${ENVVAR}" for generic) — a shared cross-runtime formatter is
+// exactly the opencode colon-space regression this package must not
+// repeat. The auth-mode header (if any) is authored first by each
+// runtime's own case arm; sortedHeaders orders only the EXTRA headers
+// that follow it.
+func sortedHeaders(hs []HeaderSpec) []HeaderSpec {
+	if len(hs) == 0 {
+		return nil
+	}
+	out := slices.Clone(hs)
+	slices.SortFunc(out, func(a, b HeaderSpec) int {
+		if c := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	return out
 }

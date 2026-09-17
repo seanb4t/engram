@@ -1,0 +1,314 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+package main
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/spf13/cobra"
+)
+
+// availableManPageNames mirrors cobra/doc's own GenManTreeFromOpts walk
+// exactly (cobra@v1.10.2/doc/man_docs.go:289-291): for c and every
+// descendant for which IsAvailableCommand() holds and which is not the
+// help command, the expected filename is c.CommandPath() with spaces
+// replaced by dashes plus ".1". This deliberately does NOT reuse this
+// package's own catalog-scoped hidden/help/completion skip predicate or
+// its derived helpers (Pitfall 1: those drop the completion subtree,
+// which D-05 requires to be present).
+func availableManPageNames(c *cobra.Command) map[string]bool {
+	names := make(map[string]bool)
+	names[strings.ReplaceAll(c.CommandPath(), " ", "-")+".1"] = true
+	for _, ch := range c.Commands() {
+		if !ch.IsAvailableCommand() || ch.IsAdditionalHelpTopicCommand() {
+			continue
+		}
+		for name := range availableManPageNames(ch) {
+			names[name] = true
+		}
+	}
+	return names
+}
+
+// findChild returns the direct child of parent named name, or nil. Kept
+// as its own helper, named with a parameter other than root/rootCmd, per
+// cmdwalk.go's doc comment on this package's walker-conversion
+// acceptance gate.
+func findChild(parent *cobra.Command, name string) *cobra.Command {
+	for _, ch := range parent.Commands() {
+		if ch.Name() == name {
+			return ch
+		}
+	}
+	return nil
+}
+
+// recordCommandTree records, for c and every descendant keyed by its
+// CommandPath(), the sorted list of its children's Name()s.
+func recordCommandTree(c *cobra.Command, out map[string][]string) {
+	children := c.Commands()
+	names := make([]string, len(children))
+	for i, ch := range children {
+		names[i] = ch.Name()
+	}
+	sort.Strings(names)
+	out[c.CommandPath()] = names
+	for _, ch := range children {
+		recordCommandTree(ch, out)
+	}
+}
+
+// TestManPagesByteStable drives the REAL registered `man` command twice
+// (via runClient, exercising rootCmd.Execute end to end — not
+// writeManPages directly) into two directories whose "man1" leaf does
+// NOT exist yet, proving the command creates it. D-01/D-02/D-03/D-04.
+func TestManPagesByteStable(t *testing.T) {
+	dir1 := filepath.Join(t.TempDir(), "man1")
+	dir2 := filepath.Join(t.TempDir(), "man1")
+
+	stdout1, stderr1, err1 := runClient(t, "man", dir1)
+	if err1 != nil {
+		t.Fatalf(`runClient(t, "man", dir1): err = %v, want nil`, err1)
+	}
+	if stdout1 != "" {
+		t.Errorf(`runClient(t, "man", dir1): stdout = %q, want empty`, stdout1)
+	}
+	if stderr1 != "" {
+		t.Errorf(`runClient(t, "man", dir1): stderr = %q, want empty`, stderr1)
+	}
+
+	stdout2, stderr2, err2 := runClient(t, "man", dir2)
+	if err2 != nil {
+		t.Fatalf(`runClient(t, "man", dir2): err = %v, want nil`, err2)
+	}
+	if stdout2 != "" {
+		t.Errorf(`runClient(t, "man", dir2): stdout = %q, want empty`, stdout2)
+	}
+	if stderr2 != "" {
+		t.Errorf(`runClient(t, "man", dir2): stderr = %q, want empty`, stderr2)
+	}
+
+	entries1, err := os.ReadDir(dir1)
+	if err != nil {
+		t.Fatalf("os.ReadDir(dir1): %v", err)
+	}
+	entries2, err := os.ReadDir(dir2)
+	if err != nil {
+		t.Fatalf("os.ReadDir(dir2): %v", err)
+	}
+
+	names1 := make([]string, len(entries1))
+	for i, e := range entries1 {
+		names1[i] = e.Name()
+	}
+	names2 := make([]string, len(entries2))
+	for i, e := range entries2 {
+		names2[i] = e.Name()
+	}
+	sort.Strings(names1)
+	sort.Strings(names2)
+
+	if !reflect.DeepEqual(names1, names2) {
+		t.Fatalf("dir1 and dir2 produced different page sets:\ndir1: %v\ndir2: %v", names1, names2)
+	}
+	if len(names1) < 20 {
+		t.Fatalf("generated %d pages, want at least 20", len(names1))
+	}
+
+	wantTHSuffix := `"1" "Jan 1970" "engram ` + version + `" "Engram Manual"`
+	wantRootTH := `.TH "ENGRAM" "1" "Jan 1970" "engram ` + version + `" "Engram Manual"`
+
+	for _, name := range names1 {
+		b1, err := os.ReadFile(filepath.Join(dir1, name))
+		if err != nil {
+			t.Fatalf("reading %s from dir1: %v", name, err)
+		}
+		b2, err := os.ReadFile(filepath.Join(dir2, name))
+		if err != nil {
+			t.Fatalf("reading %s from dir2: %v", name, err)
+		}
+		if !bytes.Equal(b1, b2) {
+			t.Errorf("%s differs between two generation runs, want byte-identical (D-04)", name)
+		}
+
+		content := string(b1)
+		lines := strings.Split(content, "\n")
+		var thLines []string
+		for _, l := range lines {
+			if strings.HasPrefix(l, `.TH "`) {
+				thLines = append(thLines, l)
+			}
+		}
+		if len(thLines) != 1 {
+			t.Errorf("%s: found %d lines with prefix `.TH \"`, want exactly 1", name, len(thLines))
+			continue
+		}
+		thLine := thLines[0]
+		if !strings.Contains(thLine, wantTHSuffix) {
+			t.Errorf("%s: .TH line %q does not contain %q", name, thLine, wantTHSuffix)
+		}
+		if strings.Contains(content, "HISTORY") {
+			t.Errorf("%s contains a HISTORY section, want none (D-03)", name)
+		}
+		if strings.Contains(content, "Auto generated by spf13/cobra") {
+			t.Errorf("%s contains the auto-generated-by footer, want none (D-03)", name)
+		}
+
+		if name == "engram.1" && thLine != wantRootTH {
+			t.Errorf("engram.1 .TH line = %q, want exactly %q", thLine, wantRootTH)
+		}
+	}
+}
+
+// TestManPagesMatchAvailableCommands is D-06's expected-set gate: the
+// generated file set must equal cobra's own IsAvailableCommand() walk —
+// including the completion subtree (D-05) and excluding man/help/the
+// deprecated aliases — with presence AND absence assertions in both
+// directions, never a vacuous presence-only check.
+func TestManPagesMatchAvailableCommands(t *testing.T) {
+	rootCmd.InitDefaultVersionFlag()
+	rootCmd.InitDefaultHelpCmd()
+	rootCmd.InitDefaultCompletionCmd()
+
+	dir := t.TempDir()
+	if err := writeManPages(rootCmd, dir); err != nil {
+		t.Fatalf("writeManPages: %v", err)
+	}
+
+	want := availableManPageNames(rootCmd)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("os.ReadDir(%s): %v", dir, err)
+	}
+	got := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		got[e.Name()] = true
+	}
+
+	for name := range want {
+		if !got[name] {
+			t.Errorf("missing page %s", name)
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("unexpected page %s", name)
+		}
+	}
+
+	for _, name := range []string{
+		"engram.1",
+		"engram-completion.1",
+		"engram-completion-zsh.1",
+		"engram-setup.1",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("expected page %s to exist: %v", name, err)
+		}
+	}
+
+	for _, name := range []string{
+		"engram-man.1",
+		"engram-help.1",
+		"engram-backfill-short-ids.1",
+		"engram-migrate-set-owner.1",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("expected page %s to be absent, stat err = %v", name, err)
+		}
+	}
+
+	// Non-vacuous absence: prove the excluded commands actually exist in
+	// the live tree and are hidden/deprecated, so a future rename can't
+	// silently make the absence assertions above pass for the wrong
+	// reason (the vacuous-gate family this repo keeps hitting).
+	man := findChild(rootCmd, "man")
+	if man == nil {
+		t.Fatal("man command not found in rootCmd's children")
+	} else if !man.Hidden {
+		t.Error("man command Hidden = false, want true")
+	}
+
+	backfill := findChild(rootCmd, "backfill-short-ids")
+	if backfill == nil {
+		t.Fatal("backfill-short-ids command not found in rootCmd's children")
+	} else if backfill.Deprecated == "" {
+		t.Error("backfill-short-ids Deprecated is empty, want non-empty")
+	}
+
+	migrateSetOwner := findChild(rootCmd, "migrate-set-owner")
+	if migrateSetOwner == nil {
+		t.Fatal("migrate-set-owner command not found in rootCmd's children")
+	} else if migrateSetOwner.Deprecated == "" {
+		t.Error("migrate-set-owner Deprecated is empty, want non-empty")
+	}
+}
+
+// TestManCmdHiddenExactArgs asserts manCmd's hidden/args-arity shape and
+// D-03's root-level flag, and that a rejected invocation creates nothing.
+func TestManCmdHiddenExactArgs(t *testing.T) {
+	if !manCmd.Hidden {
+		t.Error("manCmd.Hidden = false, want true")
+	}
+	if !rootCmd.DisableAutoGenTag {
+		t.Error("rootCmd.DisableAutoGenTag = false, want true (D-03)")
+	}
+
+	if _, _, err := runClient(t, "man"); err == nil {
+		t.Error(`runClient(t, "man") with 0 args: err = nil, want non-nil (cobra.ExactArgs(1))`)
+	}
+	if _, _, err := runClient(t, "man", "a", "b"); err == nil {
+		t.Error(`runClient(t, "man", "a", "b") with 2 args: err = nil, want non-nil (cobra.ExactArgs(1))`)
+	}
+
+	for _, name := range []string{"a", "b"} {
+		if _, err := os.Stat(name); !os.IsNotExist(err) {
+			t.Errorf("unexpected side effect: %q exists after a rejected invocation (stat err = %v)", name, err)
+		}
+	}
+}
+
+// TestManGenerationLeavesCommandTreeUnchanged is the regression gate for
+// cobra/doc's help-grafting side effect (writeManPages' doc comment):
+// without the snapshotCommandTree/pruneToSnapshot restore, a subgroup
+// such as "engram migrate" gains a "help" child that a real --help never
+// lists, which makes TestHelpGolden flap depending on test order in this
+// shared-rootCmd binary.
+func TestManGenerationLeavesCommandTreeUnchanged(t *testing.T) {
+	rootCmd.InitDefaultVersionFlag()
+	rootCmd.InitDefaultHelpCmd()
+	rootCmd.InitDefaultCompletionCmd()
+
+	before := make(map[string][]string)
+	recordCommandTree(rootCmd, before)
+
+	if err := writeManPages(rootCmd, t.TempDir()); err != nil {
+		t.Fatalf("writeManPages: %v", err)
+	}
+
+	after := make(map[string][]string)
+	recordCommandTree(rootCmd, after)
+
+	if !reflect.DeepEqual(before, after) {
+		for path, wantChildren := range before {
+			gotChildren, ok := after[path]
+			if !ok || !reflect.DeepEqual(wantChildren, gotChildren) {
+				t.Fatalf("command tree changed at %q: before=%v after=%v", path, wantChildren, gotChildren)
+			}
+		}
+		for path, gotChildren := range after {
+			if _, ok := before[path]; !ok {
+				t.Fatalf("command tree gained a new path %q: children=%v", path, gotChildren)
+			}
+		}
+		t.Fatal("command tree changed after writeManPages, want unchanged")
+	}
+}

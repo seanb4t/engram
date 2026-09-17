@@ -733,6 +733,12 @@
           "usage": "non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag"
         },
         {
+          "name": "header",
+          "type": "stringSlice",
+          "default": "",
+          "usage": "additional HTTP header as NAME=ENVVAR, where ENVVAR names the environment variable the runtime resolves itself at connect time — never a value; repeatable or comma-separated; valid with every --auth mode; codex has no custom-header flag and reports a failed row (default: ENGRAM_HEADERS)"
+        },
+        {
           "name": "output",
           "type": "string",
           "default": "",

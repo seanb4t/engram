@@ -16,6 +16,8 @@ across supported runtimes. The standalone plugin adds the hooks described below.
 
 ## Install the plugin
 
+On a Claude Code whose plugin CLI works, `engram setup --apply` installs this plugin for you — engram's own marketplace and plugin (`seanb4t/engram`, `engram@engram`), added when absent, updated when outdated, and left alone when current. See [Agent Setup](/guides/agent-setup/) for installation. The commands below are the by-hand route.
+
 ```sh
 claude plugin marketplace add seanb4t/engram
 claude plugin install engram@engram
@@ -48,6 +50,13 @@ to obtain v0.16.0 or later, and check `engram version --output json`. Upgrade
 older binaries, including v0.15.1, before using delegation.
 :::
 
+:::note[Unreleased as of v0.16.1]
+Plugin-first installation through `engram setup --apply` and the `preserved`
+result described below are on the main branch and not yet in a cut release
+(the latest tag is v0.16.1). This notice is replaced with the observed
+version once the next release is verified.
+:::
+
 With a setup-capable binary present, `/engram-setup` previews across detected
 runtimes, shows every registration and skills result, and asks for confirmation
 before applying the same inputs. It reports failures without automatically
@@ -76,6 +85,8 @@ To change the URL later on the standalone fallback path:
 claude mcp remove engram --scope user
 # then re-run /engram-setup
 ```
+
+If `engram setup` reports the registration as `preserved` — it carries something setup did not author and cannot reproduce — setup leaves it untouched and never runs this command for you; the `preserved` row's reason names the exact step. See the [results section](/guides/agent-setup/#read-results-and-repeat-safely) of the setup guide.
 
 ## SessionStart hook — memory recall
 

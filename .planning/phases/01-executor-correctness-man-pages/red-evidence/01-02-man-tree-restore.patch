@@ -1,0 +1,14 @@
+diff --git a/cmd/engram/man.go b/cmd/engram/man.go
+index 8e3bea41..b1baa238 100644
+--- a/cmd/engram/man.go
++++ b/cmd/engram/man.go
+@@ -79,9 +79,7 @@ func writeManPages(root *cobra.Command, dir string) error {
+ 		return err
+ 	}
+ 
+-	snap := snapshotCommandTree(root)
+ 	err := doc.GenManTree(root, manHeader(), dir)
+-	pruneToSnapshot(snap)
+ 	return err
+ }
+ 

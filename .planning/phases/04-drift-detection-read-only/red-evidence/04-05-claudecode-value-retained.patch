@@ -1,0 +1,12 @@
+diff --git a/internal/setup/claudecode.go b/internal/setup/claudecode.go
+index ff606cd1..44ed2912 100644
+--- a/internal/setup/claudecode.go
++++ b/internal/setup/claudecode.go
+@@ -473,6 +473,7 @@ func (claudeCodeRuntime) Observe(probeOutput string, opts Options) (Observation,
+ 				continue
+ 			}
+ 			observedHeaders = append(observedHeaders, rawHeader{Name: name, Value: value})
++			unrecognized = append(unrecognized, value)
+ 			continue
+ 		}
+ 		inHeaderBlock = false

@@ -300,15 +300,48 @@ read its current registration state for the report; nothing is written.
 For claude-code and opencode, that read dials the configured URL; for
 codex, it is a pure local read.
 
+For claude-code and codex, that read is compared with what setup would
+write — URL, auth mode, and header names with their environment-variable
+references — and the row is classified already-correct, would-write, or
+preserved. A would-write row names the differing facets (url, auth-mode,
+header-name, header-value-ref) in its facets field, with drift detailing
+each one; a preserved row means the registration carries something setup
+did not author and cannot reproduce — an extra header, an unrecognized
+field — so setup leaves it untouched and names it in the reason. Header
+values read from a runtime are never shown. A registration the read
+cannot parse reads would-write; opencode is not compared (its mcp list
+output is not parsed) and always reads would-write.
+
+--apply makes the same comparison before writing: an already-correct or
+preserved row runs no registration command at all — on claude-code, not
+even its own mcp remove — so repeating setup on a converged claude-code or
+codex registration is a true no-op. Only a would-write row is written and
+then read back, with its registered field showing the new registration,
+redacted. A preserved row's reason names the exact step to clear the entry
+with the runtime's own tool, after which a fresh run reads would-write. On
+claude-code, a would-write row whose existing registration carries no
+Authorization header is treated as OAuth-authenticated, and its notes
+field states — in preview and apply alike — that you will need to log in again
+after the rewrite.
+
 a mutating operator command previews by default and mutates only when apply is set
 
---apply also installs the engram curation skills into each present
-runtime's own user-scope skills location, in addition to registering the
-MCP server — the skills are carried inside the binary itself, so no
-separate plugin install is required. Each present runtime's row reports a
-registration result and a skills result as two separate fields under one
-aggregated outcome, with the full skill content available in the
---output json lane.
+--apply also delivers the engram curation skills to each present runtime. A
+Claude Code or Codex whose own plugin CLI works receives the skills, hooks,
+and the /engram-setup command through its plugin system — engram's own
+marketplace and plugin only (seanb4t/engram, engram@engram): the
+marketplace is added when absent, the plugin installed when absent,
+updated when outdated, and left untouched when current, with the exact
+plugin commands shown in the preview and no consent gate beyond --apply
+itself. Every other runtime — opencode, generic, or a Claude Code/Codex
+without a working plugin CLI — receives the native skills copy carried
+inside the binary itself. The two are mutually exclusive per runtime: a
+plugin-delivered runtime gets no native copy and no index block, and an
+existing native copy or index block beside it is reported, never removed.
+Each present runtime's row reports a registration result, a plugin result
+(absent, outdated, current, or unavailable with a reason), and a skills
+result as separate fields under one aggregated outcome, with the full
+skill content available in the --output json lane.
 
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)
@@ -328,6 +361,18 @@ Accepted --auth modes:
                 when the flag is supplied
   none          a local / no-auth server
 
+Additional headers (--header NAME=ENVVAR, repeatable or comma-separated; default: ENGRAM_HEADERS, a
+comma-separated list that --header on the command line replaces): each header rides alongside whatever
+--auth produces and is valid with every mode. ENVVAR is the NAME of an environment variable the runtime
+resolves itself at connect time — never a value: it must be a POSIX-shell identifier (ASCII letters,
+digits, and underscore, not starting with a digit), and the Authorization header (in any letter case)
+is owned by --auth; use --auth bearer.
+Rendered in each runtime's own syntax — claude-code "NAME: ${ENVVAR}", opencode NAME={env:ENVVAR},
+generic "NAME": "${ENVVAR}" — with the --auth header first and extra headers sorted by name. codex has
+no custom-header flag (codex mcp add exposes only --bearer-token-env-var): its row reports failed
+naming the header; drop --header or exclude codex via --runtime. Example, an API-gateway header:
+--header x-gateway-api-key=GATEWAY_KEY
+
 Usage:
   engram setup [flags]
 
@@ -336,11 +381,13 @@ Examples:
   engram setup --url https://engram.example.com/mcp --runtime claude-code
   engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
   engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
+  engram setup --url https://engram.example.com/mcp --auth oauth --header x-gateway-api-key=GATEWAY_KEY
 
 Flags:
       --apply               a mutating operator command previews by default and mutates only when apply is set
       --auth string         auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH) (default "oauth")
       --client-id string    non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag
+      --header strings      additional HTTP header as NAME=ENVVAR, where ENVVAR names the environment variable the runtime resolves itself at connect time — never a value; repeatable or comma-separated; valid with every --auth mode; codex has no custom-header flag and reports a failed row (default: ENGRAM_HEADERS) (default )
   -h, --help                help for setup
       --output string       output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode, generic (default: ENGRAM_RUNTIME) (default )

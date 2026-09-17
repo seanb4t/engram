@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/seanb4t/engram/internal/setup"
 	"github.com/seanb4t/engram/internal/skills"
@@ -70,7 +71,11 @@ func fakeSetupEnvWithRun(run func(context.Context, string, []string) (setup.RunR
 // so no test in this file ever installs skills to a real home directory
 // (repo rule m45p2b4bp7) — the skills-package analogue of fakeSetupEnv
 // above. MkdirAll is a no-op; the in-memory map has no directory concept
-// to create.
+// to create. Lstat always reports absent (os.ErrNotExist): every test
+// that drives this fake exercises the NATIVE write path
+// (setupApplySkillsFacet), never the plugin-delivered presence report
+// (setupReportNativeSkills), so there is nothing for a real Lstat to
+// find here.
 func fakeSkillsEnv() skills.Environment {
 	store := make(map[string][]byte)
 	return skills.Environment{
@@ -88,6 +93,58 @@ func fakeSkillsEnv() skills.Environment {
 			return nil
 		},
 		MkdirAll: func(string, os.FileMode) error { return nil },
+		Lstat:    func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
+	}
+}
+
+// fakeFileInfo is a minimal os.FileInfo implementation for
+// fakeSkillsEnvWithEntries' Lstat responses — only Mode() is ever
+// consulted by skills.DetectPresence (presence.go), but the interface
+// requires the rest.
+type fakeFileInfo struct {
+	name string
+	mode os.FileMode
+}
+
+func (f fakeFileInfo) Name() string       { return f.name }
+func (f fakeFileInfo) Size() int64        { return 0 }
+func (f fakeFileInfo) Mode() os.FileMode  { return f.mode }
+func (f fakeFileInfo) ModTime() time.Time { return time.Time{} }
+func (f fakeFileInfo) IsDir() bool        { return f.mode.IsDir() }
+func (f fakeFileInfo) Sys() any           { return nil }
+
+// fakeSkillsEnvWithEntries builds an in-memory skills.Environment exactly
+// like fakeSkillsEnv, backed by store, but with a SCRIPTED Lstat: a path
+// present in entries (keyed by its full path, e.g.
+// "/home/fake/.agents/skills" or "/home/fake/.agents/skills/curating-memory")
+// reports a fakeFileInfo carrying that entry's os.FileMode (os.ModeDir,
+// os.ModeSymlink, or 0 for an ordinary file); any other path reports
+// os.ErrNotExist — the D-08 presence-report analogue of fakeSkillsEnv
+// above, for a test exercising setupReportNativeSkills/DetectPresence
+// rather than the native write path.
+func fakeSkillsEnvWithEntries(entries map[string]os.FileMode, store map[string][]byte) skills.Environment {
+	return skills.Environment{
+		ReadFile: func(name string) ([]byte, error) {
+			b, ok := store[name]
+			if !ok {
+				return nil, os.ErrNotExist
+			}
+			return b, nil
+		},
+		WriteFile: func(name string, data []byte, _ os.FileMode) error {
+			cp := make([]byte, len(data))
+			copy(cp, data)
+			store[name] = cp
+			return nil
+		},
+		MkdirAll: func(string, os.FileMode) error { return nil },
+		Lstat: func(name string) (os.FileInfo, error) {
+			mode, ok := entries[name]
+			if !ok {
+				return nil, os.ErrNotExist
+			}
+			return fakeFileInfo{name: filepath.Base(name), mode: mode}, nil
+		},
 	}
 }
 
@@ -111,6 +168,95 @@ func withFakeSetupEnv(t *testing.T, env setup.Environment) {
 	origSkills := skillsEnv
 	skillsEnv = fakeSkillsEnv()
 	t.Cleanup(func() { skillsEnv = origSkills })
+}
+
+// withFakeSetupVersion points the package-level setupVersion seam at a
+// fixed value v for the duration of the test, restoring the original via
+// t.Cleanup — mirrors withFakeSetupEnv above. Every plugin test MUST go
+// through this helper rather than assigning setupVersion directly: a
+// real test binary's resolvedVersion() resolves to "dev" or a derived
+// "-dev.0+g<hash>" form, which D-03 deliberately never treats as
+// comparable, so an un-seamed plugin test would nondeterministically
+// exercise only the non-comparable branch of classifyPluginVersion.
+func withFakeSetupVersion(t *testing.T, v string) {
+	t.Helper()
+	orig := setupVersion
+	setupVersion = func() string { return v }
+	t.Cleanup(func() { setupVersion = orig })
+}
+
+// codexGetEngramBearerJSON is cmd/engram's own copy of
+// internal/setup/drift_test.go's codexGetEngramBearer fixture: the two
+// packages cannot share test code, so this is the SAME 04-RESEARCH.md
+// verbatim `codex mcp get engram --json` document — name "engram", URL
+// https://engram.example.com/mcp, bearer var ENGRAM_TOKEN, every other
+// field null/true exactly as observed — kept in sync by inspection
+// (04-04-PLAN.md Task 1).
+const codexGetEngramBearerJSON = `{"name":"engram","enabled":true,"disabled_reason":null,"transport":{"type":"streamable_http","url":"https://engram.example.com/mcp","bearer_token_env_var":"ENGRAM_TOKEN","http_headers":null,"env_http_headers":null,"http_headers_helper":null},"enabled_tools":null,"disabled_tools":null,"startup_timeout_sec":null,"tool_timeout_sec":null}`
+
+// claudeGetProbeLiteralText is cmd/engram's own copy of
+// internal/setup/claudecode_test.go's literal-header fixture: the two
+// packages cannot share test code, so this is the SAME
+// .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Claude Code — literal value" VERBATIM `claude mcp get` capture
+// (claude 2.1.273, 2026-09-15), with every occurrence of the record's
+// probe entry name "probe-literal-04" rewritten to "engram" (the only
+// edit) — kept in sync by inspection (04-05-PLAN.md Task 3).
+const claudeGetProbeLiteralText = `engram:
+  Scope: User config (available in all your projects)
+  Status: ✘ Failed to connect
+  Issue: ConnectionRefused: Unable to connect. Is the computer able to access the url?
+  Type: http
+  URL: http://127.0.0.1:1/mcp
+  Headers:
+    x-litellm-api-key: sk-DO-NOT-COMMIT-literal-test-abc123
+
+To remove this server, run: claude mcp remove engram -s user
+`
+
+// codexGetProbeLiteralJSON is cmd/engram's own copy of
+// internal/setup/drift_test.go's codexObservedLiteralHeader fixture: the
+// SAME .planning/phases/04-drift-detection-read-only/04-OBSERVATIONS.md
+// §"Codex — literal header (hand-edited)" VERBATIM
+// `codex mcp get probe-literal-04 --json` capture (codex-cli 0.154.0,
+// 2026-09-15), with ONLY "name":"probe-literal-04" rewritten to
+// "name":"engram" — kept in sync by inspection (04-05-PLAN.md Task 3).
+const codexGetProbeLiteralJSON = `{
+  "name": "engram",
+  "enabled": true,
+  "disabled_reason": null,
+  "transport": {
+    "type": "streamable_http",
+    "url": "http://127.0.0.1:1/mcp",
+    "bearer_token_env_var": "DUMMY_04",
+    "http_headers": {
+      "x-litellm-api-key": "sk-DO-NOT-COMMIT-literal-test-abc123"
+    },
+    "env_http_headers": null,
+    "http_headers_helper": null
+  },
+  "enabled_tools": null,
+  "disabled_tools": null,
+  "startup_timeout_sec": null,
+  "tool_timeout_sec": null
+}`
+
+// scriptedSetupRun returns a Run seam that responds to a `mcp get` probe
+// (args[0]=="mcp", args[1]=="get" — codex's own probe shape, plan.go's
+// Probe with the binary already stripped) with mcpGet, and to every
+// other invocation — including the plugin probes — with a bare
+// zero-exit RunResult, exactly like every existing preview test's
+// default fake: the plugin probes then read as unavailable, so no
+// plugin facet folds into a drift-focused test's assertions
+// (04-04-PLAN.md Task 1).
+func scriptedSetupRun(t *testing.T, mcpGet setup.RunResult) func(context.Context, string, []string) (setup.RunResult, error) {
+	t.Helper()
+	return func(_ context.Context, _ string, args []string) (setup.RunResult, error) {
+		if len(args) >= 2 && args[0] == "mcp" && args[1] == "get" {
+			return mcpGet, nil
+		}
+		return setup.RunResult{ExitCode: 0}, nil
+	}
 }
 
 // defaultRuntimeCount returns the number of runtimes a BARE `engram
@@ -667,6 +813,12 @@ func TestSetupPreviewExitsZeroWhenProbeFails(t *testing.T) {
 		if len(doc.Runtimes) != 1 {
 			t.Fatalf("setup preview emitted %d rows, want exactly 1 (a probe failure must not erase the row): %s", len(doc.Runtimes), stdout)
 		}
+		if doc.Runtimes[0].Facets != "" {
+			t.Errorf("Facets = %q, want empty (D-09: a failed probe is ambiguous, never compared)", doc.Runtimes[0].Facets)
+		}
+		if doc.Runtimes[0].Registered != "" {
+			t.Errorf("Registered = %q, want empty (D-09: a failed probe is ambiguous, never compared)", doc.Runtimes[0].Registered)
+		}
 	})
 
 	t.Run("probe-seam-error", func(t *testing.T) {
@@ -689,36 +841,460 @@ func TestSetupPreviewExitsZeroWhenProbeFails(t *testing.T) {
 		if len(doc.Runtimes) != 1 {
 			t.Fatalf("setup preview emitted %d rows, want exactly 1 (a probe seam error must not erase the row): %s", len(doc.Runtimes), stdout)
 		}
+		if doc.Runtimes[0].Facets != "" {
+			t.Errorf("Facets = %q, want empty (D-09: a probe seam error is ambiguous, never compared)", doc.Runtimes[0].Facets)
+		}
+		if doc.Runtimes[0].Registered != "" {
+			t.Errorf("Registered = %q, want empty (D-09: a probe seam error is ambiguous, never compared)", doc.Runtimes[0].Registered)
+		}
 	})
 }
 
-// TestSetupPreviewNeverClassifiesAlreadyCorrect scripts a probe returning
-// IDENTICAL output on every call and asserts no row's outcome is ever
-// "already-correct" under a bare preview (D-10): byte-compare needs a
-// WRITE between two reads, and a preview never writes, so no single probe
-// read — however convincing — has an honest basis for that classification.
-func TestSetupPreviewNeverClassifiesAlreadyCorrect(t *testing.T) {
-	resetClientFlags(t)
-	resetCommandFlagState(t, setupCmd)
-	identicalProbe := func(context.Context, string, []string) (setup.RunResult, error) {
-		return setup.RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}, nil
-	}
-	withFakeSetupEnv(t, fakeSetupEnvWithRun(identicalProbe, "claude", "codex", "opencode"))
+// TestSetupPreviewNeverClassifiesAlreadyCorrectFromAmbiguousRead used to
+// pin "a bare preview never classifies already-correct" outright — Phase
+// 4 overturns that for a PARSED claude-code/codex registration
+// (TestSetupPreviewJSONCarriesDriftFacets/codex-already-correct covers
+// that positive case now). What this retargeted test pins is D-09/D-10:
+// an AMBIGUOUS read — one the scanner cannot frame as a registration at
+// all — never yields already-correct or preserved, however convincing it
+// looks, and opencode is never compared, full stop.
+func TestSetupPreviewNeverClassifiesAlreadyCorrectFromAmbiguousRead(t *testing.T) {
+	t.Run("ambiguous-read-every-runtime", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		identicalProbe := func(context.Context, string, []string) (setup.RunResult, error) {
+			return setup.RunResult{Stdout: "engram: https://engram.example.com/mcp (HTTP)"}, nil
+		}
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(identicalProbe, "claude", "codex", "opencode"))
 
-	stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
-	if err != nil {
-		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) == 0 {
+			t.Fatalf("setup preview emitted no runtimes: %s", stdout)
+		}
+		for _, row := range doc.Runtimes {
+			if row.Outcome == string(setup.OutcomeAlreadyCorrect) || row.Outcome == string(setup.OutcomePreserved) {
+				t.Errorf("%s row.Outcome = %q, want never %q or %q under an ambiguous read (D-09)", row.Name, row.Outcome, setup.OutcomeAlreadyCorrect, setup.OutcomePreserved)
+			}
+			if row.Registration != string(setup.OutcomeWouldWrite) {
+				t.Errorf("%s row.Registration = %q, want %q", row.Name, row.Registration, setup.OutcomeWouldWrite)
+			}
+			if row.Facets != "" {
+				t.Errorf("%s row.Facets = %q, want empty", row.Name, row.Facets)
+			}
+			if row.Registered != "" {
+				t.Errorf("%s row.Registered = %q, want empty (D-03: an unframeable read renders nothing)", row.Name, row.Registered)
+			}
+		}
+	})
+
+	t.Run("opencode-never-compared", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		// A convincing-looking box-drawing table naming engram and its URL
+		// with a connected glyph line — opencode's mcp list shape (D-10) —
+		// must still never be compared, whatever it says.
+		table := "┌────────┬─────────────────────────────────┬───────────┐\n" +
+			"│ name   │ url                             │ status    │\n" +
+			"├────────┼─────────────────────────────────┼───────────┤\n" +
+			"│ engram │ https://engram.example.com/mcp │ connected │\n" +
+			"└────────┴─────────────────────────────────┴───────────┘\n"
+		convincingProbe := func(context.Context, string, []string) (setup.RunResult, error) {
+			return setup.RunResult{Stdout: table}, nil
+		}
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(convincingProbe, "opencode"))
+
+		stdout, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--runtime", "opencode", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		row := rowByName(t, doc.Runtimes, "opencode")
+		if row.Outcome != string(setup.OutcomeWouldWrite) {
+			t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomeWouldWrite)
+		}
+		if row.Facets != "" {
+			t.Errorf("Facets = %q, want empty", row.Facets)
+		}
+		if row.Registered != "" {
+			t.Errorf("Registered = %q, want empty", row.Registered)
+		}
+		wantDrift := "opencode: not compared: runtime authors no registration scanner"
+		if row.Drift != wantDrift {
+			t.Errorf("Drift = %q, want %q", row.Drift, wantDrift)
+		}
+	})
+}
+
+// TestSetupPreviewJSONCarriesDriftFacets proves facets/drift/preserved
+// ride setupRuntimeRow in both output lanes, composed straight from
+// internal/setup's Result.Facets/Result.Drift/Result.Reason (04-01): a
+// would-write URL diff, a preserved unrecognized-content registration
+// (first-class in the raw JSON lane too), an already-correct registration
+// (facets/drift both empty and omitted from JSON), and the flat fields
+// rendered in the text lane (04-04-PLAN.md Task 1).
+func TestSetupPreviewJSONCarriesDriftFacets(t *testing.T) {
+	t.Run("codex-would-write-url", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		stdout := strings.Replace(codexGetEngramBearerJSON,
+			`"url":"https://engram.example.com/mcp"`, `"url":"https://old.example/mcp"`, 1)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: stdout}), "codex"))
+
+		out, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--auth", "bearer", "--runtime", "codex", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+		}
+		row := rowByName(t, doc.Runtimes, "codex")
+		if row.Outcome != string(setup.OutcomeWouldWrite) {
+			t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomeWouldWrite)
+		}
+		if row.Registration != string(setup.OutcomeWouldWrite) {
+			t.Errorf("Registration = %q, want %q", row.Registration, setup.OutcomeWouldWrite)
+		}
+		if row.Facets != "url" {
+			t.Errorf("Facets = %q, want %q", row.Facets, "url")
+		}
+		wantDrift := "url: observed https://old.example/mcp, would write https://engram.example.com/mcp"
+		if row.Drift != wantDrift {
+			t.Errorf("Drift = %q, want %q", row.Drift, wantDrift)
+		}
+		wantRegistered := "url=https://old.example/mcp auth=bearer headers=none"
+		if row.Registered != wantRegistered {
+			t.Errorf("Registered = %q, want %q", row.Registered, wantRegistered)
+		}
+		if row.Reason != "" {
+			t.Errorf("Reason = %q, want empty", row.Reason)
+		}
+		assertFoldedOutcome(t, row)
+	})
+
+	t.Run("codex-preserved-unrecognized-field", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		stdout := strings.Replace(codexGetEngramBearerJSON,
+			`"name":"engram"`, `"name":"engram","oauth_client_id":"x"`, 1)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: stdout}), "codex"))
+
+		out, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--auth", "bearer", "--runtime", "codex", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		if !strings.Contains(out, `"outcome":"preserved"`) {
+			t.Errorf("raw JSON does not carry outcome:preserved: %s", out)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+		}
+		row := rowByName(t, doc.Runtimes, "codex")
+		if row.Outcome != string(setup.OutcomePreserved) {
+			t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+		}
+		if row.Registration != string(setup.OutcomePreserved) {
+			t.Errorf("Registration = %q, want %q", row.Registration, setup.OutcomePreserved)
+		}
+		if row.Facets != "unrecognized-content" {
+			t.Errorf("Facets = %q, want %q", row.Facets, "unrecognized-content")
+		}
+		if row.Drift != "unrecognized-content: oauth_client_id" {
+			t.Errorf("Drift = %q, want %q", row.Drift, "unrecognized-content: oauth_client_id")
+		}
+		wantPrefix := "codex: preserved: unrecognized-content: oauth_client_id; "
+		if !strings.HasPrefix(row.Reason, wantPrefix) {
+			t.Errorf("Reason = %q, want prefix %q", row.Reason, wantPrefix)
+		}
+		if !strings.Contains(row.Reason, "never merge into it") {
+			t.Errorf("Reason = %q, want it to contain %q", row.Reason, "never merge into it")
+		}
+		wantRemediationTail := "then run setup again; the row then reads would-write"
+		if !strings.HasSuffix(row.Reason, wantRemediationTail) {
+			t.Errorf("Reason = %q, want suffix %q (D-05: codex's own manual remediation, appended after the whole-entry note)", row.Reason, wantRemediationTail)
+		}
+		if !strings.HasSuffix(row.Registered, "unrecognized=oauth_client_id") {
+			t.Errorf("Registered = %q, want suffix %q", row.Registered, "unrecognized=oauth_client_id")
+		}
+		assertFoldedOutcome(t, row)
+	})
+
+	t.Run("codex-already-correct", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: codexGetEngramBearerJSON}), "codex"))
+
+		out, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--auth", "bearer", "--runtime", "codex", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+		}
+		row := rowByName(t, doc.Runtimes, "codex")
+		if row.Registration != string(setup.OutcomeAlreadyCorrect) {
+			t.Errorf("Registration = %q, want %q", row.Registration, setup.OutcomeAlreadyCorrect)
+		}
+		if row.Outcome != string(setup.OutcomeAlreadyCorrect) {
+			t.Errorf("Outcome = %q, want %q (already-correct outranks would-write skills)", row.Outcome, setup.OutcomeAlreadyCorrect)
+		}
+		if row.Facets != "" {
+			t.Errorf("Facets = %q, want empty", row.Facets)
+		}
+		if row.Drift != "" {
+			t.Errorf("Drift = %q, want empty", row.Drift)
+		}
+		wantRegistered := "url=https://engram.example.com/mcp auth=bearer headers=none"
+		if row.Registered != wantRegistered {
+			t.Errorf("Registered = %q, want %q", row.Registered, wantRegistered)
+		}
+
+		var raw struct {
+			Runtimes []json.RawMessage `json:"runtimes"`
+		}
+		if uErr := json.Unmarshal([]byte(out), &raw); uErr != nil {
+			t.Fatalf("json.Unmarshal(raw): %v", uErr)
+		}
+		if len(raw.Runtimes) != 1 {
+			t.Fatalf("want exactly 1 runtime row, got %d", len(raw.Runtimes))
+		}
+		var rowMap map[string]any
+		if uErr := json.Unmarshal(raw.Runtimes[0], &rowMap); uErr != nil {
+			t.Fatalf("json.Unmarshal(row): %v", uErr)
+		}
+		if _, ok := rowMap["facets"]; ok {
+			t.Errorf("row JSON carries a facets key for an already-correct row: %v", rowMap)
+		}
+	})
+
+	t.Run("text-lane-renders-flat-fields", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		stdout := strings.Replace(codexGetEngramBearerJSON,
+			`"name":"engram"`, `"name":"engram","oauth_client_id":"x"`, 1)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: stdout}), "codex"))
+
+		out, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+			"--auth", "bearer", "--runtime", "codex", "--output", "text")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		for _, want := range []string{"outcome=preserved", "facets=unrecognized-content", "registration=preserved"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("text output does not contain %q: %s", want, out)
+			}
+		}
+	})
+}
+
+// TestSetupJSONNeverLeaksProbeLiteral is the process-boundary mirror of
+// internal/setup's TestRedactionUnconditional (04-01-SUMMARY.md): a
+// sentinel ("SENTINEL-VALUE-cmd-7c1d4b-DO-NOT-LEAK") planted where codex
+// would carry the bearer env var name must never reach engram setup's
+// stdout or stderr, in EITHER output lane. 04-01's redaction-by-
+// construction already holds this by construction — this test is GREEN
+// on first run, pinning that existing behavior at the CLI process
+// boundary rather than only inside internal/setup. Plan 04-05 extends
+// this with the observed literal-echo shapes from 04-OBSERVATIONS.md
+// (04-04-PLAN.md Task 2).
+func TestSetupJSONNeverLeaksProbeLiteral(t *testing.T) {
+	const sentinel = "SENTINEL-VALUE-cmd-7c1d4b-DO-NOT-LEAK"
+
+	for _, lane := range []string{"json", "text"} {
+		t.Run(lane, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			stdout := strings.Replace(codexGetEngramBearerJSON,
+				`"bearer_token_env_var":"ENGRAM_TOKEN"`, `"bearer_token_env_var":"`+sentinel+`"`, 1)
+			withFakeSetupEnv(t, fakeSetupEnvWithRun(scriptedSetupRun(t, setup.RunResult{Stdout: stdout}), "codex"))
+
+			out, errOut, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+				"--auth", "oauth", "--runtime", "codex", "--output", lane)
+			if err != nil {
+				t.Fatalf("runClient: %v (stderr=%q)", err, errOut)
+			}
+			if strings.Contains(out, sentinel) {
+				t.Errorf("%s stdout leaks the probe sentinel: %s", lane, out)
+			}
+			if strings.Contains(errOut, sentinel) {
+				t.Errorf("%s stderr leaks the probe sentinel: %s", lane, errOut)
+			}
+
+			if lane == "json" {
+				var doc setupReportDoc
+				if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+					t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+				}
+				row := rowByName(t, doc.Runtimes, "codex")
+				if row.Outcome != string(setup.OutcomePreserved) {
+					t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+				}
+				wantRegistered := "url=https://engram.example.com/mcp auth=foreign headers=none"
+				if row.Registered != wantRegistered {
+					t.Errorf("Registered = %q, want %q", row.Registered, wantRegistered)
+				}
+			}
+		})
 	}
-	var doc setupReportDoc
-	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
-		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+
+	// claude-code-observed-shape and codex-observed-shape (04-05-PLAN.md
+	// Task 3) are the SC5 fixture proof at the CLI process boundary
+	// against the OBSERVED shapes .planning/phases/04-drift-detection-read-only/
+	// 04-OBSERVATIONS.md recorded, rather than an assumed one — extending
+	// this test beyond the (still-present) synthetic sentinel case above.
+	const observedLiteral = "sk-DO-NOT-COMMIT-literal-test-abc123"
+
+	// claude-code-observed-shape now also runs the apply lane (Phase 5
+	// Task 1, D-02): a mode loop over preview (no extra arg) and apply
+	// (--apply appended to the argv) — the json-lane Outcome/Facets
+	// assertions hold in both modes; apply mode additionally asserts the
+	// row's Reason carries the D-05 manual-remediation command, proving
+	// the observed literal never crosses the process boundary under
+	// --apply either (the apply-lane extension of the Phase 4 proof).
+	//
+	// pluginCurrentScript (TestSetupApplyPreservedRuntimeSkipsRegistrationWrite's
+	// plugin-current fixture) keeps the plugin lane already-correct under
+	// --apply, so no native skills write happens on this fresh fake
+	// environment's first run — a native skills write would outrank the
+	// preserved registration facet in the aggregate Outcome
+	// (aggregate.go's wrote > preserved precedence), masking the very
+	// property this subtest exists to prove. withFakeSetupVersion pins
+	// the binary-side version the script's plugin JSON claims, so
+	// classifyPluginVersion resolves PluginCurrent rather than PluginOutdated.
+	t.Run("claude-code-observed-shape", func(t *testing.T) {
+		withFakeSetupVersion(t, "0.16.1")
+		pluginCurrentScript := map[string]map[string]setup.RunResult{
+			"claude": {
+				"plugin list --json":      {ExitCode: 0, Stdout: claudeListCurrentJSON},
+				"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplacePresentText},
+			},
+		}
+		for _, mode := range []string{"preview", "apply"} {
+			t.Run(mode, func(t *testing.T) {
+				for _, lane := range []string{"json", "text"} {
+					t.Run(lane, func(t *testing.T) {
+						resetClientFlags(t)
+						resetCommandFlagState(t, setupCmd)
+						withFakeSetupEnv(t, fakeSetupEnvWithRun(
+							fakePluginRun(scriptedSetupRun(t, setup.RunResult{Stdout: claudeGetProbeLiteralText, ExitCode: 0}), pluginCurrentScript),
+							"claude"))
+
+						args := []string{"setup", "--url", "https://engram.example.com/mcp",
+							"--auth", "oauth", "--runtime", "claude-code", "--output", lane}
+						if mode == "apply" {
+							args = append(args, "--apply")
+						}
+						out, errOut, err := runClient(t, args...)
+						if err != nil {
+							t.Fatalf("runClient: %v (stderr=%q)", err, errOut)
+						}
+						if strings.Contains(out, observedLiteral) {
+							t.Errorf("%s/%s stdout leaks the observed literal: %s", mode, lane, out)
+						}
+						if strings.Contains(errOut, observedLiteral) {
+							t.Errorf("%s/%s stderr leaks the observed literal: %s", mode, lane, errOut)
+						}
+
+						if lane == "json" {
+							var doc setupReportDoc
+							if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+								t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+							}
+							row := rowByName(t, doc.Runtimes, "claude-code")
+							if row.Outcome != string(setup.OutcomePreserved) {
+								t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+							}
+							if !strings.Contains(row.Facets, "header-name") {
+								t.Errorf("Facets = %q, want it to contain %q", row.Facets, "header-name")
+							}
+							if mode == "apply" && !strings.Contains(row.Reason, "claude mcp remove engram --scope user") {
+								t.Errorf("Reason = %q, want it to contain the manual-remediation command", row.Reason)
+							}
+						}
+					})
+				}
+			})
+		}
+	})
+
+	t.Run("codex-observed-shape", func(t *testing.T) {
+		for _, lane := range []string{"json", "text"} {
+			t.Run(lane, func(t *testing.T) {
+				resetClientFlags(t)
+				resetCommandFlagState(t, setupCmd)
+				withFakeSetupEnv(t, fakeSetupEnvWithRun(
+					scriptedSetupRun(t, setup.RunResult{Stdout: codexGetProbeLiteralJSON}), "codex"))
+
+				out, errOut, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp",
+					"--auth", "oauth", "--runtime", "codex", "--output", lane)
+				if err != nil {
+					t.Fatalf("runClient: %v (stderr=%q)", err, errOut)
+				}
+				if strings.Contains(out, observedLiteral) {
+					t.Errorf("%s stdout leaks the observed literal: %s", lane, out)
+				}
+				if strings.Contains(errOut, observedLiteral) {
+					t.Errorf("%s stderr leaks the observed literal: %s", lane, errOut)
+				}
+
+				if lane == "json" {
+					var doc setupReportDoc
+					if uErr := json.Unmarshal([]byte(out), &doc); uErr != nil {
+						t.Fatalf("json.Unmarshal(%q): %v", out, uErr)
+					}
+					row := rowByName(t, doc.Runtimes, "codex")
+					if row.Outcome != string(setup.OutcomePreserved) {
+						t.Errorf("Outcome = %q, want %q", row.Outcome, setup.OutcomePreserved)
+					}
+					if !strings.Contains(row.Facets, "header-name") {
+						t.Errorf("Facets = %q, want it to contain %q", row.Facets, "header-name")
+					}
+				}
+			})
+		}
+	})
+}
+
+// TestSetupApplySummaryCountsPreserved pins setupApplySummary's preserved
+// bucket (D-04: preserved is reported, never counted as failed).
+func TestSetupApplySummaryCountsPreserved(t *testing.T) {
+	rows := []setupRuntimeRow{
+		{Name: "a", Outcome: string(setup.OutcomeWrote)},
+		{Name: "b", Outcome: string(setup.OutcomeAlreadyCorrect)},
+		{Name: "c", Outcome: string(setup.OutcomePreserved)},
+		{Name: "d", Outcome: string(setup.OutcomeFailed)},
+		{Name: "e", Outcome: string(setup.OutcomeNotPresent)},
 	}
-	if len(doc.Runtimes) == 0 {
-		t.Fatalf("setup preview emitted no runtimes: %s", stdout)
+	got := setupApplySummary(rows)
+	want := "apply: 1 wrote, 1 already correct, 1 preserved, 1 failed (of 5 selected runtime(s))"
+	if got != want {
+		t.Errorf("setupApplySummary(...) = %q, want %q", got, want)
 	}
-	for _, row := range doc.Runtimes {
-		if row.Outcome == string(setup.OutcomeAlreadyCorrect) {
-			t.Errorf("%s row.Outcome = %q, want never %q under a bare preview (D-10)", row.Name, row.Outcome, setup.OutcomeAlreadyCorrect)
+}
+
+// TestSetupPreviewSummaryNamesComparison pins setupPreviewSummary's
+// comparison wording (REQ-setup-correct-by-reading).
+func TestSetupPreviewSummaryNamesComparison(t *testing.T) {
+	got := setupPreviewSummary([]setupRuntimeRow{{Present: true}})
+	for _, want := range []string{"compared with what setup would write", "opencode is not compared"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("setupPreviewSummary(...) = %q, does not contain %q", got, want)
 		}
 	}
 }
@@ -783,7 +1359,8 @@ func TestSetupExitCodes(t *testing.T) {
 // TestSetupHelpNamesEveryRuntimeAndAuthMode is the golden-backed
 // assertion that `engram setup --help`'s help.golden section names each
 // of claude-code, codex, opencode, oauth, oauth-client, bearer, and none,
-// and states what --apply does.
+// and states what --apply does. 02-03-PLAN.md Task 2 extends this with
+// the --header paragraph's own vocabulary (REQ-header-documented).
 func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "help.golden"))
 	if err != nil {
@@ -796,9 +1373,72 @@ func TestSetupHelpNamesEveryRuntimeAndAuthMode(t *testing.T) {
 		"client-id", "non-secret client ID", "Other auth modes reject --client-id",
 		"MCP_CLIENT_SECRET", "inherited environment", "no interactive stdin",
 		"apply",
+		"--header", "NAME=ENVVAR", "ENGRAM_HEADERS", "x-gateway-api-key=GATEWAY_KEY",
+		"--bearer-token-env-var", "never a value", "owned by --auth",
 	} {
 		if !strings.Contains(section, want) {
 			t.Errorf("## engram setup section does not contain %q:\n%s", want, section)
+		}
+	}
+}
+
+// TestSetupHelpNamesDriftOutcomes proves setupCmd.Long teaches the Phase
+// 4 comparison — the three classifications, the four differing facets,
+// what preserved means, that header values read from a runtime are
+// never shown, and that an unreadable registration reads would-write —
+// and that testdata/help.golden proves the paragraph shipped, not only
+// the in-memory Long (04-04-PLAN.md Task 1).
+func TestSetupHelpNamesDriftOutcomes(t *testing.T) {
+	lower := strings.ToLower(setupCmd.Long)
+	for _, want := range []string{
+		"preserved", "already-correct", "would-write", "facets", "drift",
+		"url", "auth-mode", "header-name", "header-value-ref",
+		"never shown", "not compared", "cannot reproduce",
+	} {
+		if !strings.Contains(lower, want) {
+			t.Errorf("setup long description does not mention %q: %s", want, setupCmd.Long)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join("testdata", "help.golden"))
+	if err != nil {
+		t.Fatalf("read help.golden: %v", err)
+	}
+	section := helpGoldenSection(t, string(data), "engram setup")
+	for _, want := range []string{"preserved", "not compared"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("help.golden's engram setup section does not contain %q:\n%s", want, section)
+		}
+	}
+}
+
+// TestSetupHelpStatesApplyGate proves setupCmd.Long (05-CONTEXT.md D-01,
+// D-04, D-05) teaches the apply-time preserve gate by reading: --apply
+// makes the same comparison before writing, an already-correct or
+// preserved row runs no registration command (Claude Code's tolerant mcp
+// remove included), a preserved row's reason names the manual step in the
+// runtime's own tool, and a Claude Code rewrite of a registration carrying
+// no Authorization header states the operator will need to log in again.
+// testdata/help.golden proves the paragraph shipped, not only the
+// in-memory Long (the TestSetupHelpNamesDriftOutcomes shape).
+func TestSetupHelpStatesApplyGate(t *testing.T) {
+	lower := strings.ToLower(setupCmd.Long)
+	for _, want := range []string{
+		"before writing", "no registration command", "mcp remove", "runtime's own tool", "log in again",
+	} {
+		if !strings.Contains(lower, want) {
+			t.Errorf("setup long description does not mention %q: %s", want, setupCmd.Long)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join("testdata", "help.golden"))
+	if err != nil {
+		t.Fatalf("read help.golden: %v", err)
+	}
+	section := helpGoldenSection(t, string(data), "engram setup")
+	for _, want := range []string{"before writing", "log in again"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("help.golden's engram setup section does not contain %q:\n%s", want, section)
 		}
 	}
 }
@@ -1670,6 +2310,7 @@ func (r *setupE2ERecorder) skillsEnv() skills.Environment {
 			return nil
 		},
 		MkdirAll: func(string, os.FileMode) error { return nil },
+		Lstat:    func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
 	}
 }
 
@@ -1733,10 +2374,12 @@ func namesOf(rts []setup.Runtime) []string {
 // acceptance criteria). Every entry here is a fact this test's own
 // fakes are scripted to produce, pinned by hand.
 var setupOutcomeFoldTable = map[[2]string]string{
-	{string(setup.OutcomeWouldWrite), string(setup.OutcomeWouldWrite)}: string(setup.OutcomeWouldWrite),
-	{string(setup.OutcomeWrote), string(setup.OutcomeWrote)}:           string(setup.OutcomeWrote),
-	{string(setup.OutcomeWrote), string(setup.OutcomeFailed)}:          string(setup.OutcomeFailed),
-	{string(setup.OutcomeFailed), string(setup.OutcomeWrote)}:          string(setup.OutcomeFailed),
+	{string(setup.OutcomeWouldWrite), string(setup.OutcomeWouldWrite)}:     string(setup.OutcomeWouldWrite),
+	{string(setup.OutcomeWrote), string(setup.OutcomeWrote)}:               string(setup.OutcomeWrote),
+	{string(setup.OutcomeWrote), string(setup.OutcomeFailed)}:              string(setup.OutcomeFailed),
+	{string(setup.OutcomeFailed), string(setup.OutcomeWrote)}:              string(setup.OutcomeFailed),
+	{string(setup.OutcomePreserved), string(setup.OutcomeWouldWrite)}:      string(setup.OutcomePreserved),
+	{string(setup.OutcomeAlreadyCorrect), string(setup.OutcomeWouldWrite)}: string(setup.OutcomeAlreadyCorrect),
 }
 
 // assertFoldedOutcome asserts row.Outcome equals setupOutcomeFoldTable's
@@ -2084,7 +2727,12 @@ func TestSetupClientID(t *testing.T) {
 						if !reflect.DeepEqual(call, wantAdd) {
 							t.Errorf("add argv = %q, want %q", call, wantAdd)
 						}
-					} else if !apply && !reflect.DeepEqual(call, []string{"claude", "mcp", "get", "engram"}) {
+					} else if !apply && !reflect.DeepEqual(call, []string{"claude", "mcp", "get", "engram"}) &&
+						!reflect.DeepEqual(call, []string{"claude", "plugin", "list", "--json"}) {
+						// Phase 3: every present claude-code row also runs the D-10
+						// plugin capability-and-state probe (read-only, in both
+						// preview and apply) — a legitimate additional probe call,
+						// never a write.
 						t.Errorf("preview ran a non-probe command: %q", call)
 					}
 				}
@@ -2276,5 +2924,1257 @@ func TestSetupHelpClientIDContract(t *testing.T) {
 	}
 	if flag.DefValue != "" {
 		t.Errorf("client-id default = %q, want empty", flag.DefValue)
+	}
+}
+
+// assertSetupHeaderUsageError fails t unless err is a *cliError carrying
+// exitUsage, names "--header", and contains every substring in want. This
+// is the direct-call analogue of TestSetupClientID's invalid-branch
+// assertions, reused by TestSetupParseHeaders (02-03-PLAN.md Task 1).
+func assertSetupHeaderUsageError(t *testing.T, err error, want ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("setupParseHeaders: got nil error, want a usage error")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want exitUsage (%d): %v", got, exitUsage, err)
+	}
+	if !strings.Contains(err.Error(), "--header") {
+		t.Errorf("error = %v, want it to name --header", err)
+	}
+	for _, w := range want {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("error = %v, want it to contain %q", err, w)
+		}
+	}
+}
+
+// TestSetupParseHeaders exercises setupParseHeaders directly: valid specs
+// convert to setup.HeaderSpec values in INPUT order (the CLI does not
+// sort — runtimes do, D-08); every invalid shape returns a *cliError
+// carrying exitUsage, naming "--header" and the offending NAME, and never
+// echoing anything right of a spec's first "=" (a pasted secret lands
+// exactly there).
+func TestSetupParseHeaders(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			specs []string
+			want  []setup.HeaderSpec
+		}{
+			{"single", []string{"x-gateway-api-key=GATEWAY_KEY"}, []setup.HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}}},
+			{"two_input_order", []string{"x-gateway-api-key=GATEWAY_KEY", "CF-Access-Client-Id=CF_ID"},
+				[]setup.HeaderSpec{{Name: "x-gateway-api-key", EnvVar: "GATEWAY_KEY"}, {Name: "CF-Access-Client-Id", EnvVar: "CF_ID"}}},
+			{"nil", nil, nil},
+			{"empty_slice", []string{}, nil},
+			{"full_token_class", []string{"x!#$%&'*+.^_`|~-1=OK_9"}, []setup.HeaderSpec{{Name: "x!#$%&'*+.^_`|~-1", EnvVar: "OK_9"}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				got, err := setupParseHeaders(tc.specs)
+				if err != nil {
+					t.Fatalf("setupParseHeaders(%q): %v", tc.specs, err)
+				}
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Errorf("setupParseHeaders(%q) = %+v, want %+v", tc.specs, got, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("authorization_collision", func(t *testing.T) {
+		for _, spec := range []string{"Authorization=T", "authorization=T", "AUTHORIZATION=T"} {
+			t.Run(spec, func(t *testing.T) {
+				_, err := setupParseHeaders([]string{spec})
+				assertSetupHeaderUsageError(t, err, "the Authorization header is owned by --auth", "use --auth bearer")
+			})
+		}
+	})
+
+	t.Run("malformed_name", func(t *testing.T) {
+		for _, spec := range []string{"", "=GATEWAY_KEY", "x key=GATEWAY_KEY", "x:key=GATEWAY_KEY", "x-clé=GATEWAY_KEY", "sk-live-RHS-SENTINEL-3a9f"} {
+			t.Run(spec, func(t *testing.T) {
+				_, err := setupParseHeaders([]string{spec})
+				assertSetupHeaderUsageError(t, err, "malformed header name", "NAME=ENVVAR")
+				if spec == "sk-live-RHS-SENTINEL-3a9f" && strings.Contains(err.Error(), "sk-live-RHS-SENTINEL-3a9f") {
+					t.Errorf("error echoed the no-= argument: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("malformed_envvar", func(t *testing.T) {
+		for _, spec := range []string{
+			"x-key=", "x-key=sk-live-RHS-SENTINEL-3a9f", "x-key=${GATEWAY_KEY}", "x-key={env:GATEWAY_KEY}",
+			"x-key=Bearer abc", "x-key=a:b", "x-key=1BAD", "x-key=MY-KEY",
+		} {
+			t.Run(spec, func(t *testing.T) {
+				_, err := setupParseHeaders([]string{spec})
+				assertSetupHeaderUsageError(t, err, "never a value")
+				for _, forbidden := range []string{"sk-live-RHS-SENTINEL-3a9f", "${", "{env:", "Bearer"} {
+					if strings.Contains(err.Error(), forbidden) {
+						t.Errorf("error echoed the right-hand side (%q): %v", forbidden, err)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("duplicate", func(t *testing.T) {
+		_, err := setupParseHeaders([]string{"x-key=A", "X-KEY=B"})
+		assertSetupHeaderUsageError(t, err, "duplicate header name", "X-KEY")
+		_, err = setupParseHeaders([]string{"x-key=A", "x-key=A"})
+		assertSetupHeaderUsageError(t, err, "duplicate header name")
+	})
+}
+
+// TestSetupHeaderEnvDefaultReadsEnv proves ENGRAM_HEADERS is split on ","
+// into --header's default value, and that an unset/empty var yields nil —
+// exercised directly since pflag defaults are bound at init() time, so
+// t.Setenv after the binary has already started cannot retroactively
+// change a live flag's default (mirrors TestSetupRuntimeEnvDefaultReadsEnv
+// above).
+func TestSetupHeaderEnvDefaultReadsEnv(t *testing.T) {
+	t.Setenv("ENGRAM_HEADERS", "x-gateway-api-key=GATEWAY_KEY,CF-Access-Client-Id=CF_ID")
+	got := setupHeaderEnvDefault()
+	want := []string{"x-gateway-api-key=GATEWAY_KEY", "CF-Access-Client-Id=CF_ID"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("setupHeaderEnvDefault() = %v, want %v", got, want)
+	}
+
+	t.Setenv("ENGRAM_HEADERS", "")
+	if got := setupHeaderEnvDefault(); got != nil {
+		t.Errorf("setupHeaderEnvDefault() with empty ENGRAM_HEADERS = %v, want nil", got)
+	}
+}
+
+// setupHeaderInvalidCLI runs `engram setup --url ... <headerArgs>` (and
+// its --apply variant) against a fake claude-code-present Environment
+// recording every runtime/skills effect, asserting exitUsage, that the
+// error names "--header" and every string in want, and that not one
+// countable effect occurred (LookPath/HomeDir/Run/WriteFile/MkdirAll) —
+// TestSetupClientID's own invalid-input branch shape: D-02/D-03 are
+// CLI-boundary usage errors, never a per-runtime capability gap
+// (RESEARCH.md Pitfall 5).
+func setupHeaderInvalidCLI(t *testing.T, headerArgs []string, want ...string) {
+	t.Helper()
+	for _, apply := range []bool{false, true} {
+		lane := "preview"
+		if apply {
+			lane = "apply"
+		}
+		t.Run(lane, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			effects := 0
+			env := fakeSetupEnv("claude")
+			env.LookPath = func(string) (string, error) { effects++; return "", exec.ErrNotFound }
+			env.HomeDir = func() (string, error) { effects++; return "/home/fake", nil }
+			env.Run = func(context.Context, string, []string) (setup.RunResult, error) {
+				effects++
+				return setup.RunResult{}, nil
+			}
+			withFakeSetupEnv(t, env)
+			skillsEnv.WriteFile = func(string, []byte, os.FileMode) error { effects++; return nil }
+			skillsEnv.MkdirAll = func(string, os.FileMode) error { effects++; return nil }
+			args := append([]string{"setup", "--url", "https://engram.example.com/mcp"}, headerArgs...)
+			if apply {
+				args = append(args, "--apply")
+			}
+			_, stderr, err := runClient(t, args...)
+			var coded interface{ ExitCode() int }
+			if !errors.As(err, &coded) || coded.ExitCode() != exitUsage {
+				t.Errorf("error = %v, want ExitCode() == exitUsage (stderr=%q)", err, stderr)
+			}
+			if err == nil || !strings.Contains(err.Error(), "--header") {
+				t.Errorf("error = %v, want it to name --header", err)
+			}
+			for _, w := range want {
+				if err == nil || !strings.Contains(err.Error(), w) {
+					t.Errorf("error = %v, want it to contain %q", err, w)
+				}
+			}
+			if effects != 0 {
+				t.Errorf("invalid --header caused %d runtime/skills effects, want zero", effects)
+			}
+		})
+	}
+}
+
+// TestSetupHeaderRejectsAuthorizationCollision proves --header Authorization=...
+// (in any letter case) is a usage error naming --auth bearer, with zero
+// runtime/skills effects, in both the preview and --apply lane (D-02).
+func TestSetupHeaderRejectsAuthorizationCollision(t *testing.T) {
+	for _, spec := range []string{"Authorization=T", "authorization=T", "AUTHORIZATION=T"} {
+		t.Run(spec, func(t *testing.T) {
+			setupHeaderInvalidCLI(t, []string{"--header", spec}, "the Authorization header is owned by --auth", "use --auth bearer")
+		})
+	}
+}
+
+// TestSetupHeaderRejectsMalformedName proves a --header NAME failing the
+// RFC 7230 token grammar — including an explicitly supplied empty
+// --header (Changed is true but pflag's readAsCSV("") yields a
+// zero-length slice, so it must not silently degrade to "no headers") —
+// is a usage error, with zero runtime/skills effects, in both lanes
+// (D-03).
+func TestSetupHeaderRejectsMalformedName(t *testing.T) {
+	for _, spec := range []string{"", "=GATEWAY_KEY", "x key=GATEWAY_KEY", "x:key=GATEWAY_KEY", "x-clé=GATEWAY_KEY", "sk-live-RHS-SENTINEL-3a9f"} {
+		t.Run(spec, func(t *testing.T) {
+			setupHeaderInvalidCLI(t, []string{"--header", spec}, "malformed header name", "NAME=ENVVAR")
+		})
+	}
+}
+
+// TestSetupHeaderRejectsMalformedEnvVar proves a --header ENVVAR failing
+// the POSIX identifier grammar — including an empty ENVVAR and every
+// literal-looking right-hand side — is a usage error, with zero
+// runtime/skills effects in both lanes, and that the error/stderr never
+// echo the offending right-hand side (D-03, REQ-header-value-env-ref-only).
+func TestSetupHeaderRejectsMalformedEnvVar(t *testing.T) {
+	for _, spec := range []string{
+		"x-key=", "x-key=sk-live-RHS-SENTINEL-3a9f", "x-key=${GATEWAY_KEY}", "x-key={env:GATEWAY_KEY}",
+		"x-key=Bearer abc", "x-key=a:b", "x-key=1BAD", "x-key=MY-KEY",
+	} {
+		t.Run(spec, func(t *testing.T) {
+			setupHeaderInvalidCLI(t, []string{"--header", spec}, "never a value")
+
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			withFakeSetupEnv(t, fakeSetupEnv("claude"))
+			_, stderr, err := runClient(t, "setup", "--url", "https://engram.example.com/mcp", "--header", spec)
+			if err == nil {
+				t.Fatal("want a usage error")
+			}
+			for _, forbidden := range []string{"sk-live-RHS-SENTINEL-3a9f", "${", "{env:", "Bearer"} {
+				if strings.Contains(err.Error(), forbidden) {
+					t.Errorf("error echoed the right-hand side (%q): %v", forbidden, err)
+				}
+				if strings.Contains(stderr, forbidden) {
+					t.Errorf("stderr echoed the right-hand side (%q): %q", forbidden, stderr)
+				}
+			}
+		})
+	}
+}
+
+// TestSetupHeaderRejectsDuplicateName proves two --header entries whose
+// NAMEs are equal case-insensitively — across flag repeats or within one
+// comma list — are a usage error, with zero runtime/skills effects in
+// both lanes (D-03).
+func TestSetupHeaderRejectsDuplicateName(t *testing.T) {
+	t.Run("flag_repeat", func(t *testing.T) {
+		setupHeaderInvalidCLI(t, []string{"--header", "x-key=A", "--header", "X-KEY=B"}, "duplicate header name")
+	})
+	t.Run("comma_list", func(t *testing.T) {
+		setupHeaderInvalidCLI(t, []string{"--header", "x-key=A,X-KEY=B"}, "duplicate header name")
+	})
+}
+
+// setupCodexHeaderDeclineReason is the reason codex's Plan() authors for
+// a declined "x-gateway-api-key" header (internal/setup/codex.go,
+// 02-01), quoted here once so this file's own header-related tests never
+// restate it by hand. Asserted via strings.Contains, matching
+// TestSetupUnsupportedAuthModeIsFailedRow's own precedent: a row whose
+// registration fails still runs the skills facet
+// (setupApplySkillsFacet/setupRuntimeRowFromResult) against the failed
+// Plan()'s zero-value SkillTarget, which itself fails as "unrecognized
+// skill format" and appends onto Reason (setupJoinReason) — a pre-existing
+// property of the row-rendering pipeline, not something this plan's
+// header validation introduces or is responsible for correcting.
+const setupCodexHeaderDeclineReason = "codex: custom header(s) x-gateway-api-key: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: setup: custom header is not supported by this runtime"
+
+// TestSetupHeaderCodexDeclined proves --header + codex is a "failed" row
+// naming the header and the capability gap end-to-end through the CLI —
+// in preview, under --apply with only codex selected (exitSetupFailed),
+// and under --apply with claude-code also present (exitPartial, exactly
+// like oauth-client on opencode) — with zero "add" invocations ever
+// reaching codex (D-09, D-10, REQ-header-codex-declined).
+func TestSetupHeaderCodexDeclined(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+
+	t.Run("preview", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnv("codex"))
+		stdout, stderr, err := runClient(t, "setup", "--url", url,
+			"--header", "x-gateway-api-key=GATEWAY_KEY", "--runtime", "codex", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("rows = %+v, want exactly 1", doc.Runtimes)
+		}
+		row := doc.Runtimes[0]
+		if row.Outcome != "failed" {
+			t.Errorf("row.Outcome = %q, want %q", row.Outcome, "failed")
+		}
+		if row.Command != "" {
+			t.Errorf("row.Command = %q, want empty", row.Command)
+		}
+		if !strings.Contains(row.Reason, setupCodexHeaderDeclineReason) {
+			t.Errorf("row.Reason = %q, want it to contain %q", row.Reason, setupCodexHeaderDeclineReason)
+		}
+	})
+
+	t.Run("apply_codex_only", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		var calls [][]string
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(func(_ context.Context, path string, args []string) (setup.RunResult, error) {
+			calls = append(calls, append([]string{filepath.Base(path)}, args...))
+			return setup.RunResult{}, nil
+		}, "codex"))
+		_, stderr, err := runClient(t, "setup", "--url", url,
+			"--header", "x-gateway-api-key=GATEWAY_KEY", "--runtime", "codex", "--apply", "--output", "json")
+		if got := exitCodeFromError(err); got != exitSetupFailed {
+			t.Fatalf("exit=%d, want exitSetupFailed: %v (stderr=%q)", got, err, stderr)
+		}
+		for _, call := range calls {
+			for _, arg := range call {
+				if arg == "add" {
+					t.Errorf("codex decline still ran an add invocation: %q", call)
+				}
+			}
+		}
+	})
+
+	t.Run("mixed_claude_codex_opencode", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(func(_ context.Context, _ string, _ []string) (setup.RunResult, error) {
+			return setup.RunResult{}, nil
+		}, "claude", "codex"))
+		stdout, stderr, err := runClient(t, "setup", "--url", url,
+			"--header", "x-gateway-api-key=GATEWAY_KEY", "--apply", "--output", "json")
+		if got := exitCodeFromError(err); got != exitPartial {
+			t.Fatalf("exit=%d, want exitPartial: %v (stderr=%q)", got, err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		for _, row := range doc.Runtimes {
+			switch row.Name {
+			case "claude-code":
+				if row.Outcome != "wrote" || !strings.Contains(row.Command, "--header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
+					t.Errorf("claude-code row = %+v, want wrote with the header pair", row)
+				}
+			case "codex":
+				if row.Outcome != "failed" || !strings.Contains(row.Reason, setupCodexHeaderDeclineReason) {
+					t.Errorf("codex row = %+v, want failed with the decline reason", row)
+				}
+			case "opencode":
+				if row.Outcome != "not-present" {
+					t.Errorf("opencode row = %+v, want not-present", row)
+				}
+			default:
+				t.Fatalf("unexpected runtime row: %+v", row)
+			}
+		}
+	})
+}
+
+// TestSetupHeaderValidWithEveryAuthMode proves --header is valid with
+// EVERY --auth mode (D-01): each renders the same sorted extra --header
+// pair after that mode's own auth header, and no code path anywhere in
+// the stack reads any environment variable other than XDG_CONFIG_HOME
+// (opencode's own config-root read, unrelated to headers).
+func TestSetupHeaderValidWithEveryAuthMode(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
+		t.Run(auth, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, setupCmd)
+			env := fakeSetupEnv("claude")
+			env.Getenv = func(key string) string {
+				if key != "XDG_CONFIG_HOME" {
+					t.Errorf("unexpected environment read %q", key)
+				}
+				return ""
+			}
+			withFakeSetupEnv(t, env)
+			args := []string{"setup", "--url", url, "--auth", auth, "--runtime", "claude-code",
+				"--header", "x-gateway-api-key=GATEWAY_KEY", "--output", "json"}
+			if auth == "oauth-client" {
+				args = append(args, "--client-id", "test-client")
+			}
+			stdout, stderr, err := runClient(t, args...)
+			if err != nil {
+				t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+			}
+			var doc setupReportDoc
+			if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+				t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+			}
+			if len(doc.Runtimes) != 1 {
+				t.Fatalf("rows = %+v, want exactly 1", doc.Runtimes)
+			}
+			row := doc.Runtimes[0]
+			if !strings.HasSuffix(row.Command, "--header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
+				t.Errorf("%s: command = %q, want it to end with the header pair", auth, row.Command)
+			}
+			if auth == "bearer" && !strings.Contains(row.Command, "--header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
+				t.Errorf("bearer: command = %q, want auth header then extra header", row.Command)
+			}
+		})
+	}
+
+	t.Run("generic", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		env := fakeSetupEnv()
+		env.Getenv = func(key string) string {
+			if key != "XDG_CONFIG_HOME" {
+				t.Errorf("unexpected environment read %q", key)
+			}
+			return ""
+		}
+		withFakeSetupEnv(t, env)
+		stdout, stderr, err := runClient(t, "setup", "--url", url, "--auth", "bearer",
+			"--token-file", "/home/u/.engram/token", "--runtime", "generic",
+			"--header", "x-gateway-api-key=GATEWAY_KEY", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("rows = %+v, want exactly 1", doc.Runtimes)
+		}
+		row := doc.Runtimes[0]
+		if !strings.Contains(row.Config, `"x-gateway-api-key":"${GATEWAY_KEY}"`) {
+			t.Errorf("generic: config = %q, missing extra header", row.Config)
+		}
+		if !strings.Contains(row.Config, "Bearer \\u003cfrom /home/u/.engram/token\\u003e") {
+			t.Errorf("generic: config = %q, missing bearer provenance", row.Config)
+		}
+	})
+}
+
+// TestSetupHeaderOrderIndependent proves D-08: --header order (flag
+// repeat vs comma list, and either direction) never changes rendered
+// output — three differently-ordered invocations produce byte-identical
+// `--output json` documents, and every present row's flat `headers`
+// facet is comma-joined and sorted case-insensitively regardless of
+// input order (Pitfall 2: the facet is a JSON string, never an
+// array/object — proved directly on the raw decoded JSON below).
+func TestSetupHeaderOrderIndependent(t *testing.T) {
+	const url = "https://engram.example.com/mcp"
+	const wantHeaders = "CF-Access-Client-Id=CF_ID,x-gateway-api-key=GATEWAY_KEY"
+
+	invocations := [][]string{
+		{"--header", "x-gateway-api-key=GATEWAY_KEY", "--header", "CF-Access-Client-Id=CF_ID"},
+		{"--header", "CF-Access-Client-Id=CF_ID", "--header", "x-gateway-api-key=GATEWAY_KEY"},
+		{"--header", "CF-Access-Client-Id=CF_ID,x-gateway-api-key=GATEWAY_KEY"},
+	}
+	stdouts := make([]string, 0, len(invocations))
+	for _, hdrArgs := range invocations {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		setupHeaders = nil
+		withFakeSetupEnv(t, fakeSetupEnv("claude", "codex", "opencode"))
+		args := append([]string{"setup", "--url", url}, hdrArgs...)
+		args = append(args, "--output", "json")
+		stdout, stderr, err := runClient(t, args...)
+		if err != nil {
+			t.Fatalf("runClient(%q): %v (stderr=%q)", hdrArgs, err, stderr)
+		}
+		stdouts = append(stdouts, stdout)
+	}
+	for i := 1; i < len(stdouts); i++ {
+		if stdouts[i] != stdouts[0] {
+			t.Errorf("invocation %d differs from invocation 0:\n%q\n%q", i, stdouts[i], stdouts[0])
+		}
+	}
+
+	var doc setupReportDoc
+	if err := json.Unmarshal([]byte(stdouts[0]), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdouts[0], err)
+	}
+	for _, row := range doc.Runtimes {
+		switch row.Name {
+		case "claude-code":
+			if !strings.Contains(row.Command, "--header 'CF-Access-Client-Id: ${CF_ID}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'") {
+				t.Errorf("claude-code command = %q, want the sorted header pair", row.Command)
+			}
+		case "opencode":
+			if !strings.Contains(row.Command, "--header 'CF-Access-Client-Id={env:CF_ID}' --header 'x-gateway-api-key={env:GATEWAY_KEY}'") {
+				t.Errorf("opencode command = %q, want the sorted header pair", row.Command)
+			}
+		}
+		// Every PRESENT row carries the facet — including codex's failed
+		// row, which reports what was REQUESTED regardless of whether its
+		// own Plan() accepted or declined it (D-08).
+		if row.Present && row.Headers != wantHeaders {
+			t.Errorf("%s: Headers = %q, want %q", row.Name, row.Headers, wantHeaders)
+		}
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(stdouts[0]), &raw); err != nil {
+		t.Fatalf("json.Unmarshal(raw): %v", err)
+	}
+	rawRuntimes, _ := raw["runtimes"].([]any)
+	if len(rawRuntimes) == 0 {
+		t.Fatal("raw runtimes array is empty")
+	}
+	for _, r := range rawRuntimes {
+		row, _ := r.(map[string]any)
+		if v, ok := row["headers"]; ok {
+			if _, isString := v.(string); !isString {
+				t.Errorf("row %+v: headers field type = %T, want string", row, v)
+			}
+		}
+	}
+
+	// Fourth run: only claude-code present, no --header at all — every
+	// row (present or not) must omit the facet entirely (omitempty),
+	// never render it as "".
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	setupHeaders = nil
+	withFakeSetupEnv(t, fakeSetupEnv("claude"))
+	stdout, stderr, err := runClient(t, "setup", "--url", url, "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+	var absentDoc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &absentDoc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	for _, row := range absentDoc.Runtimes {
+		if row.Headers != "" {
+			t.Errorf("%s: Headers = %q, want empty", row.Name, row.Headers)
+		}
+	}
+	if strings.Contains(stdout, `"headers"`) {
+		t.Errorf("stdout with no --header carries a headers key: %s", stdout)
+	}
+}
+
+// --- Phase 3 (Plugin-First Delivery): plugin-facet test infrastructure ---
+
+// claudeListEmptyJSON/claudeListCurrentJSON/claudeMarketplaceAbsentText/
+// claudeMarketplacePresentText/codexListEmptyJSON/codexListCurrentJSON/
+// codexMarketplacePresentText are scripted `plugin list --json`/`plugin
+// marketplace list` responses for the plugin-facet tests below —
+// engram@engram at version 0.16.1, matching withFakeSetupVersion's
+// binary-side operand in those tests so classifyPluginVersion resolves to
+// PluginCurrent.
+const (
+	claudeListEmptyJSON          = "[]"
+	claudeListCurrentJSON        = `[{"id":"engram@engram","version":"0.16.1","scope":"user"}]`
+	claudeMarketplaceAbsentText  = "❯ other\n    Source: GitHub (someone/other)\n"
+	claudeMarketplacePresentText = "❯ engram\n    Source: GitHub (seanb4t/engram)\n"
+	codexListEmptyJSON           = `{"installed":[],"available":[]}`
+	codexListCurrentJSON         = `{"installed":[{"pluginId":"engram@engram","name":"engram","marketplaceName":"engram","version":"0.16.1"}],"available":[]}`
+	codexMarketplacePresentText  = "MARKETPLACE  ROOT\nengram  /home/fake/.codex/plugins/marketplaces/engram\n"
+)
+
+// fakePluginRun builds an env.Run implementation scripting a plugin
+// runtime's responses by (bare binary name, joined argv-after-binary) —
+// the plugin-lane analogue of fakeSetupEnvWithRun's single (path, args)
+// closure. script's outer key is filepath.Base(path) ("claude"/"codex");
+// the inner key is strings.Join(args, " "). Any call not matched by
+// script — including every registration verb and every plugin WRITE verb
+// this test does not care about — delegates to base, unmodified.
+func fakePluginRun(base func(context.Context, string, []string) (setup.RunResult, error), script map[string]map[string]setup.RunResult) func(context.Context, string, []string) (setup.RunResult, error) {
+	return func(ctx context.Context, path string, args []string) (setup.RunResult, error) {
+		if perBinary, ok := script[filepath.Base(path)]; ok {
+			if rr, ok := perBinary[strings.Join(args, " ")]; ok {
+				return rr, nil
+			}
+		}
+		return base(ctx, path, args)
+	}
+}
+
+// recording wraps run, additionally appending
+// append([]string{filepath.Base(path)}, args...) onto *calls for every
+// invocation, in call order — the same idiom
+// TestSetupGeneratedInvocations (setup_delegation_test.go) already uses
+// inline, factored out here so the plugin tests below can layer it on
+// top of fakePluginRun/fakeSetupEnvSucceedingRun.
+func recording(calls *[][]string, run func(context.Context, string, []string) (setup.RunResult, error)) func(context.Context, string, []string) (setup.RunResult, error) {
+	return func(ctx context.Context, path string, args []string) (setup.RunResult, error) {
+		*calls = append(*calls, append([]string{filepath.Base(path)}, args...))
+		return run(ctx, path, args)
+	}
+}
+
+// counterBase is a plugin-test base Run implementation returning a
+// DISTINCT stdout ("read N") per DISTINCT (bare binary name, joined args)
+// key, incrementing on every call to that same key — every OTHER call
+// exits 0 with empty output. This is what makes a runtime's own
+// registration probe (`mcp get engram`, run once before and once after
+// the write) read as two DIFFERENT captures, so the shared executor
+// (apply.go) classifies registration as OutcomeWrote rather than
+// OutcomeAlreadyCorrect — every unscripted plugin write verb, in
+// contrast, only has its ExitCode consulted, so a fixed "read %d" body
+// text is inert there.
+func counterBase() func(context.Context, string, []string) (setup.RunResult, error) {
+	counts := make(map[string]int)
+	return func(_ context.Context, path string, args []string) (setup.RunResult, error) {
+		key := filepath.Base(path) + " " + strings.Join(args, " ")
+		counts[key]++
+		return setup.RunResult{ExitCode: 0, Stdout: fmt.Sprintf("read %d", counts[key])}, nil
+	}
+}
+
+// assertNoPluginWriteVerb fails the test if any recorded call is a
+// plugin WRITE verb (install/update/add/remove, or marketplace add) for
+// either claude or codex — the negative-space half of
+// TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites: a current
+// plugin authors zero plugin actions (03-CONTEXT.md "Specific Ideas").
+// The read-only list/marketplace-list probes are never flagged.
+func assertNoPluginWriteVerb(t *testing.T, calls [][]string) {
+	t.Helper()
+	for _, call := range calls {
+		if len(call) < 3 || call[1] != "plugin" {
+			continue
+		}
+		switch call[2] {
+		case "list":
+			continue
+		case "marketplace":
+			if len(call) >= 4 && call[3] == "list" {
+				continue
+			}
+			t.Errorf("recorded a plugin marketplace write verb: %q", call)
+		default:
+			t.Errorf("recorded a plugin write verb: %q", call)
+		}
+	}
+}
+
+// TestSetupApplyJSONEmitsPluginFacet proves the end-to-end plugin facet
+// under --apply: a claude-code row whose plugin install fails stays
+// `registration=wrote` beside `plugin=failed` (both facets visible,
+// exitPartial), while a codex row whose plugin add succeeds reports
+// `plugin=wrote` — and neither row ever falls back to a native skills
+// write, because BOTH runtimes are plugin-capable this run (D-07/D-12,
+// REQ-plugin-facet-reported).
+func TestSetupApplyJSONEmitsPluginFacet(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupVersion(t, "0.16.1")
+
+	script := map[string]map[string]setup.RunResult{
+		"claude": {
+			"plugin list --json":                                  {ExitCode: 0, Stdout: claudeListEmptyJSON},
+			"plugin marketplace list":                             {ExitCode: 0, Stdout: claudeMarketplaceAbsentText},
+			"plugin install engram@engram --scope user --json -y": {ExitCode: 1, Stderr: "boom: install refused"},
+		},
+		"codex": {
+			"plugin list --json":      {ExitCode: 0, Stdout: codexListEmptyJSON},
+			"plugin marketplace list": {ExitCode: 0, Stdout: codexMarketplacePresentText},
+		},
+	}
+	var calls [][]string
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(recording(&calls, fakePluginRun(counterBase(), script)), "claude", "codex"))
+
+	mutations := 0
+	write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+	skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+		mutations++
+		return write(path, data, mode)
+	}
+	skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+		mutations++
+		return mkdir(path, mode)
+	}
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code,codex", "--output", "json", "--apply")
+	if err == nil {
+		t.Fatal("expected a non-nil error (claude-code's plugin install fails), got nil")
+	}
+	if got := exitCodeFromError(err); got != exitPartial {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitPartial); stdout=%q stderr=%q", got, exitPartial, stdout, stderr)
+	}
+
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 2 {
+		t.Fatalf("emitted %d rows, want 2: %s", len(doc.Runtimes), stdout)
+	}
+
+	claudeRow := rowByName(t, doc.Runtimes, "claude-code")
+	if claudeRow.Outcome != "failed" {
+		t.Errorf("claude-code row.Outcome = %q, want %q", claudeRow.Outcome, "failed")
+	}
+	if claudeRow.Registration != "wrote" {
+		t.Errorf("claude-code row.Registration = %q, want %q", claudeRow.Registration, "wrote")
+	}
+	if claudeRow.Plugin != "failed" {
+		t.Errorf("claude-code row.Plugin = %q, want %q", claudeRow.Plugin, "failed")
+	}
+	if claudeRow.PluginState != "absent" {
+		t.Errorf("claude-code row.PluginState = %q, want %q", claudeRow.PluginState, "absent")
+	}
+	if claudeRow.PluginTarget != "0.16.1" {
+		t.Errorf("claude-code row.PluginTarget = %q, want %q", claudeRow.PluginTarget, "0.16.1")
+	}
+	if claudeRow.PluginInstalled != "" {
+		t.Errorf("claude-code row.PluginInstalled = %q, want empty", claudeRow.PluginInstalled)
+	}
+	wantClaudeCommand := "claude plugin marketplace add seanb4t/engram --scope user; claude plugin install engram@engram --scope user --json -y"
+	if claudeRow.PluginCommand != wantClaudeCommand {
+		t.Errorf("claude-code row.PluginCommand = %q, want %q", claudeRow.PluginCommand, wantClaudeCommand)
+	}
+	wantReasonSubstr := "plugin: claude-code: claude plugin install engram@engram --scope user --json -y exited 1: 'boom: install refused'"
+	if !strings.Contains(claudeRow.Reason, wantReasonSubstr) {
+		t.Errorf("claude-code row.Reason = %q, want it to contain %q", claudeRow.Reason, wantReasonSubstr)
+	}
+	if claudeRow.Skills != setupSkillsPluginDelivered {
+		t.Errorf("claude-code row.Skills = %q, want %q", claudeRow.Skills, setupSkillsPluginDelivered)
+	}
+	if claudeRow.SkillsNative != "none" {
+		t.Errorf("claude-code row.SkillsNative = %q, want %q", claudeRow.SkillsNative, "none")
+	}
+
+	codexRow := rowByName(t, doc.Runtimes, "codex")
+	if codexRow.Outcome != "wrote" {
+		t.Errorf("codex row.Outcome = %q, want %q", codexRow.Outcome, "wrote")
+	}
+	if codexRow.Registration != "wrote" {
+		t.Errorf("codex row.Registration = %q, want %q", codexRow.Registration, "wrote")
+	}
+	if codexRow.Plugin != "wrote" {
+		t.Errorf("codex row.Plugin = %q, want %q", codexRow.Plugin, "wrote")
+	}
+	if codexRow.PluginState != "absent" {
+		t.Errorf("codex row.PluginState = %q, want %q", codexRow.PluginState, "absent")
+	}
+	wantCodexSource := "/home/fake/.codex/plugins/marketplaces/engram"
+	if codexRow.PluginSource != wantCodexSource {
+		t.Errorf("codex row.PluginSource = %q, want %q", codexRow.PluginSource, wantCodexSource)
+	}
+	wantCodexCommand := "codex plugin add engram@engram --json"
+	if codexRow.PluginCommand != wantCodexCommand {
+		t.Errorf("codex row.PluginCommand = %q, want %q", codexRow.PluginCommand, wantCodexCommand)
+	}
+	if codexRow.Skills != setupSkillsPluginDelivered {
+		t.Errorf("codex row.Skills = %q, want %q", codexRow.Skills, setupSkillsPluginDelivered)
+	}
+
+	if mutations != 0 {
+		t.Errorf("skills mutations = %d, want 0 (both runtimes delivered; a failed install must never fall back to a native copy)", mutations)
+	}
+
+	wantClaudeMarketplaceAdd := []string{"claude", "plugin", "marketplace", "add", "seanb4t/engram", "--scope", "user"}
+	wantClaudeInstall := []string{"claude", "plugin", "install", "engram@engram", "--scope", "user", "--json", "-y"}
+	wantCodexAdd := []string{"codex", "plugin", "add", "engram@engram", "--json"}
+	claudeMarketplaceIdx, claudeInstallIdx, codexAddIdx := -1, -1, -1
+	for i, call := range calls {
+		switch {
+		case reflect.DeepEqual(call, wantClaudeMarketplaceAdd):
+			claudeMarketplaceIdx = i
+		case reflect.DeepEqual(call, wantClaudeInstall):
+			claudeInstallIdx = i
+		case reflect.DeepEqual(call, wantCodexAdd):
+			codexAddIdx = i
+		case len(call) >= 4 && call[0] == "codex" && call[1] == "plugin" && call[2] == "marketplace" && call[3] == "add":
+			t.Errorf("codex ran a marketplace add despite an already-present marketplace: %q", call)
+		}
+	}
+	if claudeMarketplaceIdx == -1 || claudeInstallIdx == -1 || claudeMarketplaceIdx >= claudeInstallIdx {
+		t.Errorf("recorded calls did not contain %q followed by %q: %q", wantClaudeMarketplaceAdd, wantClaudeInstall, calls)
+	}
+	if codexAddIdx == -1 {
+		t.Errorf("recorded calls did not contain %q: %q", wantCodexAdd, calls)
+	}
+}
+
+// TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites proves the D-07
+// routing invariant end to end: when both claude-code's and codex's
+// engram plugin are already current, --apply authors ZERO plugin write
+// verbs, ZERO native skills writes (skillsEnv.WriteFile/MkdirAll never
+// called), and NEVER touches codex's existing AGENTS.md index block —
+// while still reporting exactly what already sits at each runtime's
+// native destination via SkillsNative (D-08/D-09).
+func TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupVersion(t, "0.16.1")
+
+	script := map[string]map[string]setup.RunResult{
+		"claude": {
+			"plugin list --json":      {ExitCode: 0, Stdout: claudeListCurrentJSON},
+			"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplacePresentText},
+		},
+		"codex": {
+			"plugin list --json":      {ExitCode: 0, Stdout: codexListCurrentJSON},
+			"plugin marketplace list": {ExitCode: 0, Stdout: codexMarketplacePresentText},
+		},
+	}
+	var calls [][]string
+	// base returns IDENTICAL mcp get output for every call (registration's
+	// own two probe reads therefore compare equal -> already-correct).
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(recording(&calls, fakePluginRun(fakeSetupEnvSucceedingRun, script)), "claude", "codex"))
+
+	inv, invErr := skills.Inventory()
+	if invErr != nil {
+		t.Fatalf("skills.Inventory(): %v", invErr)
+	}
+	const codexAgentsMD = "/home/fake/.codex/AGENTS.md"
+	entries := map[string]os.FileMode{
+		"/home/fake/.agents/skills": os.ModeDir,
+	}
+	for _, s := range inv {
+		entries["/home/fake/.agents/skills/"+s.Name] = os.ModeSymlink
+	}
+	seed := []byte("# Mine\n" + skills.BlockStartMarker + "\nold\n" + skills.BlockEndMarker + "\n")
+	store := map[string][]byte{codexAgentsMD: append([]byte(nil), seed...)}
+	skillsEnv = fakeSkillsEnvWithEntries(entries, store)
+
+	mutations := 0
+	write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+	skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+		mutations++
+		return write(path, data, mode)
+	}
+	skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+		mutations++
+		return mkdir(path, mode)
+	}
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code,codex", "--output", "json", "--apply")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q stdout=%q)", err, stderr, stdout)
+	}
+
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 2 {
+		t.Fatalf("emitted %d rows, want 2: %s", len(doc.Runtimes), stdout)
+	}
+
+	for _, name := range []string{"claude-code", "codex"} {
+		row := rowByName(t, doc.Runtimes, name)
+		if row.Outcome != "already-correct" {
+			t.Errorf("%s row.Outcome = %q, want %q", name, row.Outcome, "already-correct")
+		}
+		if row.Plugin != "already-correct" {
+			t.Errorf("%s row.Plugin = %q, want %q", name, row.Plugin, "already-correct")
+		}
+		if row.PluginState != "current" {
+			t.Errorf("%s row.PluginState = %q, want %q", name, row.PluginState, "current")
+		}
+		if row.PluginInstalled != "0.16.1" {
+			t.Errorf("%s row.PluginInstalled = %q, want %q", name, row.PluginInstalled, "0.16.1")
+		}
+		if row.PluginTarget != "0.16.1" {
+			t.Errorf("%s row.PluginTarget = %q, want %q", name, row.PluginTarget, "0.16.1")
+		}
+		if row.PluginCommand != "" {
+			t.Errorf("%s row.PluginCommand = %q, want empty", name, row.PluginCommand)
+		}
+		if row.PluginNote != "" {
+			t.Errorf("%s row.PluginNote = %q, want empty", name, row.PluginNote)
+		}
+		if row.Skills != setupSkillsPluginDelivered {
+			t.Errorf("%s row.Skills = %q, want %q", name, row.Skills, setupSkillsPluginDelivered)
+		}
+		if row.SkillsDigest != "" || row.SkillsBytes != "" || row.SkillsContent != "" {
+			t.Errorf("%s row carries native skill detail (SkillsDigest=%q SkillsBytes=%q SkillsContent=%q), want all empty (nothing was installed natively)",
+				name, row.SkillsDigest, row.SkillsBytes, row.SkillsContent)
+		}
+	}
+
+	claudeRow := rowByName(t, doc.Runtimes, "claude-code")
+	if claudeRow.SkillsDest != "/home/fake/.claude/skills" {
+		t.Errorf("claude-code row.SkillsDest = %q, want %q", claudeRow.SkillsDest, "/home/fake/.claude/skills")
+	}
+	if claudeRow.SkillsNative != "none" {
+		t.Errorf("claude-code row.SkillsNative = %q, want %q", claudeRow.SkillsNative, "none")
+	}
+
+	codexRow := rowByName(t, doc.Runtimes, "codex")
+	if codexRow.SkillsDest != "/home/fake/.agents/skills" {
+		t.Errorf("codex row.SkillsDest = %q, want %q", codexRow.SkillsDest, "/home/fake/.agents/skills")
+	}
+	if codexRow.SkillsIndex != codexAgentsMD {
+		t.Errorf("codex row.SkillsIndex = %q, want %q", codexRow.SkillsIndex, codexAgentsMD)
+	}
+	wantCodexNative := fmt.Sprintf("%d skills present at /home/fake/.agents/skills (symlink); index block present at /home/fake/.codex/AGENTS.md — remove manually to avoid duplicates", len(inv))
+	if codexRow.SkillsNative != wantCodexNative {
+		t.Errorf("codex row.SkillsNative = %q, want %q", codexRow.SkillsNative, wantCodexNative)
+	}
+
+	if mutations != 0 {
+		t.Errorf("skills mutations = %d, want 0 (both runtimes current and plugin-delivered)", mutations)
+	}
+	if got := store[codexAgentsMD]; string(got) != string(seed) {
+		t.Errorf("store[%q] = %q, want byte-identical to the seed (D-09: no AGENTS.md write)", codexAgentsMD, got)
+	}
+	assertNoPluginWriteVerb(t, calls)
+}
+
+// TestSetupApplyPreservedRuntimeSkipsRegistrationWrite is Phase 5's SC1/SC2
+// process-boundary proof (REQ-apply-preserve-gate, D-01, D-05): `--apply`
+// against the OBSERVED `x-litellm-api-key` Claude Code shape
+// (claudeGetProbeLiteralText, .planning/phases/04-drift-detection-read-only/
+// 04-OBSERVATIONS.md §"Claude Code — literal value") classifies `preserved`
+// BEFORE any write, so it records exactly one `mcp get` call and never a
+// `mcp remove`/`mcp add` — while the plugin lane still runs independently
+// of the registration outcome (Phase 3 D-12), in both plugin shapes.
+func TestSetupApplyPreservedRuntimeSkipsRegistrationWrite(t *testing.T) {
+	withFakeSetupVersion(t, "0.16.1")
+
+	// run drives one --apply invocation against the shared preserved-shape
+	// probe, scripting only the plugin-lane responses named by script — any
+	// other call (including a would-be mcp remove/add) falls through to
+	// scriptedSetupRun's zero-exit default, which is exactly what lets
+	// assertNoRegistrationWrite's argv scan catch a regression rather than
+	// merely a wrong assertion (RESEARCH.md Pitfall 2).
+	run := func(t *testing.T, script map[string]map[string]setup.RunResult) (doc setupReportDoc, calls [][]string, stdout, stderr string) {
+		t.Helper()
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(
+			recording(&calls, fakePluginRun(
+				scriptedSetupRun(t, setup.RunResult{Stdout: claudeGetProbeLiteralText, ExitCode: 0}), script)),
+			"claude"))
+
+		var err error
+		stdout, stderr, err = runClient(t, "setup",
+			"--url", "https://engram.example.com/mcp", "--auth", "oauth",
+			"--runtime", "claude-code", "--output", "json", "--apply")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q stdout=%q)", err, stderr, stdout)
+		}
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		return doc, calls, stdout, stderr
+	}
+
+	// assertNoRegistrationWrite is SC2's structural proof: exactly one
+	// recorded call is the `mcp get` probe, and no recorded call is any
+	// OTHER `mcp` subcommand (`remove`/`add`) — a count-only assertion
+	// could pass if some other action replaced the remove call, so both
+	// checks are required (RESEARCH.md Pitfall 2).
+	assertNoRegistrationWrite := func(t *testing.T, calls [][]string) {
+		t.Helper()
+		want := []string{"claude", "mcp", "get", "engram"}
+		gets := 0
+		for _, c := range calls {
+			if reflect.DeepEqual(c, want) {
+				gets++
+			}
+			if len(c) >= 3 && c[1] == "mcp" && c[2] != "get" {
+				t.Errorf("recorded a registration write call, want none: %q", c)
+			}
+		}
+		if gets != 1 {
+			t.Errorf("recorded %d call(s) equal to %q, want exactly 1: %q", gets, want, calls)
+		}
+	}
+
+	t.Run("plugin-current", func(t *testing.T) {
+		script := map[string]map[string]setup.RunResult{
+			"claude": {
+				"plugin list --json":      {ExitCode: 0, Stdout: claudeListCurrentJSON},
+				"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplacePresentText},
+			},
+		}
+		doc, calls, stdout, stderr := run(t, script)
+		assertNoRegistrationWrite(t, calls)
+
+		row := rowByName(t, doc.Runtimes, "claude-code")
+		if row.Registration != "preserved" {
+			t.Errorf("Registration = %q, want %q", row.Registration, "preserved")
+		}
+		if row.Outcome != "preserved" {
+			t.Errorf("Outcome = %q, want %q (aggregate: preserved outranks the plugin's already-correct)", row.Outcome, "preserved")
+		}
+		if row.Plugin != "already-correct" {
+			t.Errorf("Plugin = %q, want %q", row.Plugin, "already-correct")
+		}
+		if row.Skills != setupSkillsPluginDelivered {
+			t.Errorf("Skills = %q, want %q", row.Skills, setupSkillsPluginDelivered)
+		}
+		if !strings.Contains(row.Facets, "header-name") {
+			t.Errorf("Facets = %q, want it to contain %q", row.Facets, "header-name")
+		}
+		if !strings.Contains(row.Reason, "claude mcp remove engram --scope user") {
+			t.Errorf("Reason = %q, want it to contain the manual-remediation command", row.Reason)
+		}
+		if !strings.HasPrefix(row.Reason, "claude-code: preserved: ") {
+			t.Errorf("Reason = %q, want prefix %q", row.Reason, "claude-code: preserved: ")
+		}
+		const literal = "sk-DO-NOT-COMMIT-literal-test-abc123"
+		if strings.Contains(stdout, literal) {
+			t.Errorf("stdout leaks the observed literal: %s", stdout)
+		}
+		if strings.Contains(stderr, literal) {
+			t.Errorf("stderr leaks the observed literal: %s", stderr)
+		}
+	})
+
+	t.Run("plugin-absent", func(t *testing.T) {
+		script := map[string]map[string]setup.RunResult{
+			"claude": {
+				"plugin list --json":      {ExitCode: 0, Stdout: claudeListEmptyJSON},
+				"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplaceAbsentText},
+			},
+		}
+		doc, calls, _, _ := run(t, script)
+		assertNoRegistrationWrite(t, calls)
+
+		row := rowByName(t, doc.Runtimes, "claude-code")
+		if row.Registration != "preserved" {
+			t.Errorf("Registration = %q, want %q", row.Registration, "preserved")
+		}
+		if row.Plugin != "wrote" {
+			t.Errorf("Plugin = %q, want %q", row.Plugin, "wrote")
+		}
+		if row.PluginState != "absent" {
+			t.Errorf("PluginState = %q, want %q", row.PluginState, "absent")
+		}
+		if row.Outcome != "wrote" {
+			t.Errorf("Outcome = %q, want %q (aggregate: the plugin facet wrote)", row.Outcome, "wrote")
+		}
+
+		wantMarketplaceAdd := []string{"claude", "plugin", "marketplace", "add"}
+		wantInstall := []string{"claude", "plugin", "install"}
+		var sawMarketplaceAdd, sawInstall bool
+		for _, c := range calls {
+			if len(c) >= len(wantMarketplaceAdd) && reflect.DeepEqual(c[:len(wantMarketplaceAdd)], wantMarketplaceAdd) {
+				sawMarketplaceAdd = true
+			}
+			if len(c) >= len(wantInstall) && reflect.DeepEqual(c[:len(wantInstall)], wantInstall) {
+				sawInstall = true
+			}
+		}
+		if !sawMarketplaceAdd {
+			t.Errorf("recorded calls did not contain a %q call: %q", wantMarketplaceAdd, calls)
+		}
+		if !sawInstall {
+			t.Errorf("recorded calls did not contain a %q call: %q", wantInstall, calls)
+		}
+	})
+}
+
+// TestSetupPreviewShowsPluginArgv proves a bare preview (no --apply)
+// shows the exact plugin argv the apply lane would run, and runs no
+// write verb of any kind — the plugin lane's own D-11 read-only
+// discipline, mirrored in both the json and text output lanes.
+func TestSetupPreviewShowsPluginArgv(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, setupCmd)
+	withFakeSetupVersion(t, "0.16.1")
+
+	script := map[string]map[string]setup.RunResult{
+		"claude": {
+			"plugin list --json":      {ExitCode: 0, Stdout: claudeListEmptyJSON},
+			"plugin marketplace list": {ExitCode: 0, Stdout: claudeMarketplaceAbsentText},
+		},
+	}
+	var calls [][]string
+	withFakeSetupEnv(t, fakeSetupEnvWithRun(recording(&calls, fakePluginRun(fakeSetupEnvSucceedingRun, script)), "claude"))
+
+	mutations := 0
+	write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+	skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+		mutations++
+		return write(path, data, mode)
+	}
+	skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+		mutations++
+		return mkdir(path, mode)
+	}
+
+	stdout, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v (stderr=%q)", err, stderr)
+	}
+	var doc setupReportDoc
+	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+	}
+	if len(doc.Runtimes) != 1 {
+		t.Fatalf("emitted %d rows, want 1: %s", len(doc.Runtimes), stdout)
+	}
+	row := doc.Runtimes[0]
+
+	if row.Outcome != "would-write" {
+		t.Errorf("row.Outcome = %q, want %q", row.Outcome, "would-write")
+	}
+	if row.Registration != "would-write" {
+		t.Errorf("row.Registration = %q, want %q", row.Registration, "would-write")
+	}
+	if row.Plugin != "would-write" {
+		t.Errorf("row.Plugin = %q, want %q", row.Plugin, "would-write")
+	}
+	if row.PluginState != "absent" {
+		t.Errorf("row.PluginState = %q, want %q", row.PluginState, "absent")
+	}
+	wantPluginCommand := "claude plugin marketplace add seanb4t/engram --scope user; claude plugin install engram@engram --scope user --json -y"
+	if row.PluginCommand != wantPluginCommand {
+		t.Errorf("row.PluginCommand = %q, want %q", row.PluginCommand, wantPluginCommand)
+	}
+
+	realPlan, planErr := setup.ClaudeCode.Plan(setup.Environment{
+		HomeDir: func() (string, error) { return "/home/fake", nil },
+	}, setup.Options{URL: "https://engram.example.com/mcp", Auth: "oauth"})
+	if planErr != nil {
+		t.Fatalf("setup.ClaudeCode.Plan: %v", planErr)
+	}
+	if row.Command != realPlan.Display() {
+		t.Errorf("row.Command = %q, want the real registration Plan's Display() %q (untouched by the plugin lane)", row.Command, realPlan.Display())
+	}
+	if row.Skills != setupSkillsPluginDelivered {
+		t.Errorf("row.Skills = %q, want %q", row.Skills, setupSkillsPluginDelivered)
+	}
+
+	wantCalls := [][]string{
+		{"claude", "mcp", "get", "engram"},
+		{"claude", "plugin", "list", "--json"},
+		{"claude", "plugin", "marketplace", "list"},
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Errorf("recorded calls = %q, want exactly %q (no write verb)", calls, wantCalls)
+	}
+	if mutations != 0 {
+		t.Errorf("skills mutations = %d, want 0 (a preview never writes)", mutations)
+	}
+
+	resetCommandFlagState(t, setupCmd)
+	stdoutText, stderr, err := runClient(t, "setup",
+		"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "text")
+	if err != nil {
+		t.Fatalf("runClient (text): %v (stderr=%q)", err, stderr)
+	}
+	for _, want := range []string{"plugin=would-write", "plugin_state=absent", "skills=plugin-delivered", "plugin_command="} {
+		if !strings.Contains(stdoutText, want) {
+			t.Errorf("text output does not contain %q: %s", want, stdoutText)
+		}
+	}
+}
+
+// TestSetupPluginUnavailableFallsBackToNative proves D-12: when a
+// present, otherwise plugin-capable runtime's capability probe fails
+// (nonzero exit, or a seam timeout), registration and the native skills
+// copy proceed EXACTLY as today — the row is never failed by the probe —
+// and the plugin facet reports nothing but PluginState=unavailable plus
+// the reason on PluginNote.
+func TestSetupPluginUnavailableFallsBackToNative(t *testing.T) {
+	run := func(t *testing.T, listResponse setup.RunResult, listErr error, wantNoteSubstr string) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, setupCmd)
+		withFakeSetupVersion(t, "0.16.1")
+
+		base := counterBase()
+		var calls [][]string
+		listCallCount := 0
+		runFn := func(ctx context.Context, path string, args []string) (setup.RunResult, error) {
+			if filepath.Base(path) == "claude" && strings.Join(args, " ") == "plugin list --json" {
+				listCallCount++
+				return listResponse, listErr
+			}
+			return base(ctx, path, args)
+		}
+		withFakeSetupEnv(t, fakeSetupEnvWithRun(recording(&calls, runFn), "claude"))
+
+		mutations := 0
+		write, mkdir := skillsEnv.WriteFile, skillsEnv.MkdirAll
+		skillsEnv.WriteFile = func(path string, data []byte, mode os.FileMode) error {
+			mutations++
+			return write(path, data, mode)
+		}
+		skillsEnv.MkdirAll = func(path string, mode os.FileMode) error {
+			mutations++
+			return mkdir(path, mode)
+		}
+
+		stdout, stderr, err := runClient(t, "setup",
+			"--url", "https://engram.example.com/mcp", "--runtime", "claude-code", "--output", "json", "--apply")
+		if err != nil {
+			t.Fatalf("runClient: %v (stderr=%q stdout=%q)", err, stderr, stdout)
+		}
+		var doc setupReportDoc
+		if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, uErr)
+		}
+		if len(doc.Runtimes) != 1 {
+			t.Fatalf("emitted %d rows, want 1: %s", len(doc.Runtimes), stdout)
+		}
+		row := doc.Runtimes[0]
+		if row.Outcome != "wrote" {
+			t.Errorf("row.Outcome = %q, want %q", row.Outcome, "wrote")
+		}
+		if row.Registration != "wrote" {
+			t.Errorf("row.Registration = %q, want %q", row.Registration, "wrote")
+		}
+		if row.Plugin != "" {
+			t.Errorf("row.Plugin = %q, want empty", row.Plugin)
+		}
+		if row.PluginState != "unavailable" {
+			t.Errorf("row.PluginState = %q, want %q", row.PluginState, "unavailable")
+		}
+		if !strings.Contains(row.PluginNote, wantNoteSubstr) {
+			t.Errorf("row.PluginNote = %q, want it to contain %q", row.PluginNote, wantNoteSubstr)
+		}
+		if row.PluginCommand != "" {
+			t.Errorf("row.PluginCommand = %q, want empty", row.PluginCommand)
+		}
+		if row.Skills != "wrote" {
+			t.Errorf("row.Skills = %q, want %q (the native copy proceeded exactly as today)", row.Skills, "wrote")
+		}
+		if row.SkillsNative != "" {
+			t.Errorf("row.SkillsNative = %q, want empty", row.SkillsNative)
+		}
+		if mutations == 0 {
+			t.Error("skills mutations = 0, want > 0 (the native copy must proceed exactly as today)")
+		}
+		if listCallCount != 1 {
+			t.Errorf("claude plugin list --json called %d times, want exactly 1", listCallCount)
+		}
+		for _, call := range calls {
+			if len(call) >= 3 && call[0] == "claude" && call[1] == "plugin" && call[2] == "marketplace" {
+				t.Errorf("recorded a plugin marketplace probe despite the list probe being unavailable: %q", call)
+			}
+		}
+		assertNoPluginWriteVerb(t, calls)
+	}
+
+	t.Run("exit-nonzero", func(t *testing.T) {
+		run(t, setup.RunResult{ExitCode: 1, Stderr: "unknown command plugin"}, nil,
+			"claude-code: claude plugin list --json exited 1: 'unknown command plugin'")
+	})
+	t.Run("timeout", func(t *testing.T) {
+		run(t, setup.RunResult{}, context.DeadlineExceeded, "timed out after 20s")
+	})
+}
+
+// TestSetupHelpNamesPluginDelivery is the golden-adjacent assertion that
+// setupCmd.Long describes plugin-first delivery (Phase 3): a plugin-
+// capable runtime is delivered through engram's own marketplace, mutually
+// exclusive with the native copy, updated when outdated, and an existing
+// native copy or index block is reported rather than removed — and the
+// stale "no separate plugin install is required" claim is gone.
+func TestSetupHelpNamesPluginDelivery(t *testing.T) {
+	lower := strings.ToLower(setupCmd.Long)
+	for _, want := range []string{"plugin", "marketplace", "mutually exclusive", "updated when outdated", "never removed"} {
+		if !strings.Contains(lower, want) {
+			t.Errorf("setup long description does not mention %q: %s", want, setupCmd.Long)
+		}
+	}
+	if strings.Contains(lower, "separate plugin install") {
+		t.Errorf("setup long description still claims a separate plugin install is unnecessary: %s", setupCmd.Long)
 	}
 }

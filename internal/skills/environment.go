@@ -41,15 +41,25 @@ type Environment struct {
 	// MkdirAll mirrors os.MkdirAll: create name and every missing parent
 	// directory.
 	MkdirAll func(name string, perm os.FileMode) error
+	// Lstat mirrors os.Lstat, DELIBERATELY never os.Stat: the whole point
+	// of this seam is to see a symlink AS a symlink rather than resolved
+	// through to its target. It is a report-only seam consumed by
+	// DetectPresence (presence.go) so a fake Environment can script
+	// symlink-vs-copy without touching a real home directory (repo rule
+	// m45p2b4bp7) — Install never calls it; the three fields above were
+	// sized for Install's read-compare-write, and a presence check needs
+	// to distinguish link types without writing anything at all.
+	Lstat func(name string) (os.FileInfo, error)
 }
 
 // OSEnvironment is the real, production Environment: os.ReadFile,
-// os.WriteFile, and os.MkdirAll directly. This is the only Environment
-// value any non-test code path constructs.
+// os.WriteFile, os.MkdirAll, and os.Lstat directly. This is the only
+// Environment value any non-test code path constructs.
 var OSEnvironment = Environment{
 	ReadFile:  os.ReadFile,
 	WriteFile: os.WriteFile,
 	MkdirAll:  os.MkdirAll,
+	Lstat:     os.Lstat,
 }
 
 const (

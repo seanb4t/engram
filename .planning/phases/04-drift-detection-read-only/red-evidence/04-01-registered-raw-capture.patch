@@ -1,0 +1,12 @@
+diff --git a/internal/setup/apply.go b/internal/setup/apply.go
+index 965c37bc..1a6fb9a6 100644
+--- a/internal/setup/apply.go
++++ b/internal/setup/apply.go
+@@ -461,6 +461,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
+ 			return res
+ 		}
+ 		renderClassification(&res, name, c)
++		res.Registered = displayCapture(probe1.Stdout + probe1.Stderr)
+ 		return res
+ 	}
+

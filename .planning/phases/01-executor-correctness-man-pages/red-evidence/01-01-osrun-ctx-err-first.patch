@@ -1,0 +1,13 @@
+diff --git a/internal/setup/environment.go b/internal/setup/environment.go
+index 48834141..5a50c9bb 100644
+--- a/internal/setup/environment.go
++++ b/internal/setup/environment.go
+@@ -120,8 +120,6 @@ func osRun(ctx context.Context, path string, args []string) (RunResult, error) {
+ 	switch {
+ 	case runErr == nil:
+ 		return result, nil
+-	case ctx.Err() != nil:
+-		return RunResult{}, ctx.Err()
+ 	case errors.As(runErr, &exitErr):
+ 		result.ExitCode = exitErr.ExitCode()
+ 		return result, nil

@@ -65,7 +65,9 @@ var envDerivedFlagDefaults = map[string]map[string]bool{
 	"migrate-set-owner": {"owner": true},
 	// setup's --runtime default is read directly via os.Getenv("ENGRAM_RUNTIME")
 	// at init() time (02-01-PLAN.md Task 1, Pitfall 3) — same hazard, same fix.
-	"setup": {"runtime": true},
+	// --header's default is read via os.Getenv("ENGRAM_HEADERS") at init()
+	// time (02-03-PLAN.md Task 1, D-07) — same hazard, same fix.
+	"setup": {"runtime": true, "header": true},
 }
 
 // withGoldenDeterminism pins rootCmd.Version to goldenTestVersion and blanks

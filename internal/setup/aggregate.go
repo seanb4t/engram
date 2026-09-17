@@ -4,18 +4,30 @@
 package setup
 
 // precedenceOrder states D-06's authored aggregation precedence, highest
-// first: failed > wrote > already-correct > would-write > not-present.
+// first: failed > wrote > preserved > already-correct > would-write > not-present.
 // Declared once here so AggregateOutcome's own loop and its doc comment
 // cannot drift from each other.
+//
+// OutcomePreserved (Phase 4) sits between OutcomeWrote and
+// OutcomeAlreadyCorrect — this plan's own recorded decision, resolving
+// 04-RESEARCH.md Open Question 1: a preserved registration facet must
+// never be hidden beneath an already-correct plugin or skills facet at
+// the row's headline Outcome, or an operator scanning outcomes would read
+// a declined write as convergence — the generalized "mixed state resolves
+// UP, never down to already-correct" invariant this precedence table
+// already holds for wrote. A facet that actually wrote is the MORE
+// consequential event and still outranks a preserved one, so preserved
+// sits below wrote, never above it.
 var precedenceOrder = []Outcome{
 	OutcomeFailed,
 	OutcomeWrote,
+	OutcomePreserved,
 	OutcomeAlreadyCorrect,
 	OutcomeWouldWrite,
 	OutcomeNotPresent,
 }
 
-// isRecognizedOutcome reports whether o is one of the five pinned Outcome
+// isRecognizedOutcome reports whether o is one of the six pinned Outcome
 // constants — never true for the zero value ("") or for any other string.
 func isRecognizedOutcome(o Outcome) bool {
 	for _, candidate := range precedenceOrder {
@@ -29,11 +41,11 @@ func isRecognizedOutcome(o Outcome) bool {
 // AggregateOutcome folds two facet outcomes (e.g. a runtime's
 // registration outcome and its skills outcome) into the ONE Outcome a
 // report row carries, by the authored, documented precedence: failed >
-// wrote > already-correct > would-write > not-present. The function is
-// symmetric — AggregateOutcome(a, b) == AggregateOutcome(b, a) for every
-// pair — and treats the zero value or any unrecognized value in EITHER
-// argument as failed, so an unset outcome can never be laundered into a
-// success.
+// wrote > preserved > already-correct > would-write > not-present. The
+// function is symmetric — AggregateOutcome(a, b) == AggregateOutcome(b,
+// a) for every pair — and treats the zero value or any unrecognized value
+// in EITHER argument as failed, so an unset outcome can never be
+// laundered into a success.
 //
 // The generalized invariant this function exists to hold: mixed state
 // resolves UP to wrote, never down to already-correct. Falsely reporting

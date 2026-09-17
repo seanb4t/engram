@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,6 +25,7 @@ var (
 	setupClientID  string
 	setupOutput    string
 	setupRuntime   []string
+	setupHeaders   []string
 	setupApply     bool
 )
 
@@ -38,6 +41,16 @@ var setupEnv = setup.OSEnvironment
 // test, mirroring setupEnv above, so a test drives an in-memory
 // destination instead of a real home directory (repo rule m45p2b4bp7).
 var skillsEnv = skills.OSEnvironment
+
+// setupVersion is the injectable seam supplying the binary-side operand of
+// D-01's plugin-version comparison: resolvedVersion (buildversion.go) in
+// production — the SAME function `engram version` reports, never the raw
+// `version` ldflags var — behind a package-level, t.Cleanup-overridable
+// seam exactly like setupEnv/skillsEnv above, so a test injects a stable
+// release core (a test binary resolves to "dev" or a derived
+// "-dev.0+g<hash>" form via resolvedVersion, which D-03 deliberately never
+// treats as an update trigger).
+var setupVersion = resolvedVersion
 
 // setupSkillsTarget maps a setup.SkillTarget onto a skills.Target — the
 // ONE explicit mapping across the D-05 package boundary, exhaustive over
@@ -76,6 +89,27 @@ func setupSkillsDigestSummary(inv []skills.Skill) string {
 	return strings.Join(parts, ",")
 }
 
+// setupHeadersSummary renders hs as ONE comma-joined "NAME=ENVVAR"
+// string, sorted case-insensitively by Name (D-08) — the same
+// flat-scalar row-field discipline setupSkillsDigestSummary above
+// already uses for a different facet (Pitfall 2:
+// TestOperatorViewFixturesHaveNoUnsanitizedNesting structurally forbids
+// a []string/map[string]string row field). Returns "" for a nil or
+// empty hs, so a header-less present row's facet is omitted by the
+// row's own `omitempty` tag exactly like a not-present row's (which
+// never calls this at all).
+func setupHeadersSummary(hs []setup.HeaderSpec) string {
+	sorted := slices.Clone(hs)
+	slices.SortFunc(sorted, func(a, b setup.HeaderSpec) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	parts := make([]string, len(sorted))
+	for i, h := range sorted {
+		parts[i] = h.Name + "=" + h.EnvVar
+	}
+	return strings.Join(parts, ",")
+}
+
 // setupJoinReason appends next onto existing with "; " when existing is
 // non-empty, mirroring the shared executor's own Notes-joining idiom
 // (internal/setup/apply.go) — used here to fold a skills-facet failure
@@ -103,14 +137,12 @@ func setupJoinReason(existing, next string) string {
 // includeContent gates skills_content population per D-03: populated only
 // when the resolved output format is not text, so the dense text row
 // never carries skill file content.
-func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outcome, planTarget setup.SkillTarget, mutate bool, includeContent bool) setup.Outcome {
-	row.Registration = string(registrationOutcome)
-
+func setupApplySkillsFacet(row *setupRuntimeRow, base setup.Outcome, planTarget setup.SkillTarget, mutate bool, includeContent bool) setup.Outcome {
 	target, targetErr := setupSkillsTarget(planTarget)
 	if targetErr != nil {
 		row.Skills = string(setup.OutcomeFailed)
 		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %s: %v", row.Name, targetErr))
-		return setup.AggregateOutcome(registrationOutcome, setup.OutcomeFailed)
+		return setup.AggregateOutcome(base, setup.OutcomeFailed)
 	}
 
 	inv, invErr := skills.Inventory()
@@ -124,7 +156,7 @@ func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outco
 		row.SkillsDest = target.Dir
 		row.SkillsIndex = target.IndexFile
 		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", invErr))
-		return setup.AggregateOutcome(registrationOutcome, setup.OutcomeFailed)
+		return setup.AggregateOutcome(base, setup.OutcomeFailed)
 	}
 
 	var wrote, alreadyCorrect int
@@ -154,7 +186,125 @@ func setupApplySkillsFacet(row *setupRuntimeRow, registrationOutcome setup.Outco
 	if installErr != nil {
 		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", installErr))
 	}
-	return setup.AggregateOutcome(registrationOutcome, skillsOutcome)
+	return setup.AggregateOutcome(base, skillsOutcome)
+}
+
+// setupApplyPluginFacet composes the plugin facet onto row and returns
+// row's outcome further folded with p's own outcome — the THIRD facet
+// AggregateOutcome folds (registration, then plugin, then skills;
+// AggregateOutcome is symmetric and associative, aggregate.go, so this
+// two-way fold repeated twice is an exact three-way fold), composed the
+// SAME way setupApplySkillsFacet composes the skills facet
+// (03-RESEARCH.md Pattern 2).
+//
+// !p.Attempted means rt does not implement setup.PluginRuntime (opencode,
+// generic), or the registration lane resolved no binary at all (a
+// declined Plan(), e.g. ErrHeaderUnsupported/ErrAuthModeUnsupported) — no
+// plugin facet at all, base returned unchanged.
+//
+// p.Outcome == "" is D-12's PluginUnavailable: the capability probe found
+// no working plugin CLI. PluginState/PluginInstalled/PluginTarget/
+// PluginSource/PluginCommand/PluginNote are still populated (PluginNote
+// carries the unavailable reason), but NOTHING is folded into the
+// aggregate — this is how "never a failed runtime row for a plugin probe
+// failure" (D-12, REQ-plugin-capability-detection) holds by construction,
+// not by a later filter.
+//
+// A failed plugin install folds through setup.AggregateOutcome exactly
+// like any other failed facet (03-CONTEXT.md discretion: "like any other
+// failed facet"), reaching exitPartial beside a succeeding runtime — the
+// failure reason is joined onto row.Reason as "plugin: " plus the
+// describeFailure/describeSeamError text via setupJoinReason, alongside
+// (never instead of) any registration failure already recorded there.
+func setupApplyPluginFacet(row *setupRuntimeRow, base setup.Outcome, p setup.PluginResult) setup.Outcome {
+	if !p.Attempted {
+		return base
+	}
+	row.PluginState = string(p.State)
+	row.PluginInstalled = p.Installed
+	row.PluginTarget = p.Target
+	row.PluginSource = p.Source
+	row.PluginCommand = p.Command
+	row.PluginNote = p.Note
+	if p.Outcome == "" {
+		return base
+	}
+	row.Plugin = string(p.Outcome)
+	if p.Reason != "" {
+		row.Reason = setupJoinReason(row.Reason, "plugin: "+p.Reason)
+	}
+	return setup.AggregateOutcome(base, p.Outcome)
+}
+
+// setupNativePresenceSummary renders p (skills.DetectPresence's read-only
+// D-08/D-09 report) into ONE row-field string, following
+// setupSkillsDigestSummary/setupHeadersSummary's own comma/semicolon-
+// joined idiom (never a struct/slice/map — the same flat-scalar
+// discipline TestOperatorViewFixturesHaveNoUnsanitizedNesting enforces
+// structurally): "N skills present at DIR (symlink|copy)" when
+// p.Skills > 0, "index block present at INDEXFILE" when p.IndexBlock,
+// joined by "; " when both apply and suffixed " — remove manually to
+// avoid duplicates" whenever either part is present (D-08's own example
+// wording, D-09's "index block present"). Returns "none" when neither
+// applies. Nothing here removes anything — it only describes what
+// DetectPresence already found.
+func setupNativePresenceSummary(p skills.Presence, dir, indexFile string) string {
+	var parts []string
+	if p.Skills > 0 {
+		kind := "copy"
+		if p.Symlink {
+			kind = "symlink"
+		}
+		parts = append(parts, fmt.Sprintf("%d skills present at %s (%s)", p.Skills, dir, kind))
+	}
+	if p.IndexBlock {
+		parts = append(parts, fmt.Sprintf("index block present at %s", indexFile))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, "; ") + " — remove manually to avoid duplicates"
+}
+
+// setupReportNativeSkills is the D-07/D-08/D-09 routing counterpart to
+// setupApplySkillsFacet for a runtime whose plugin facet reports
+// Delivered() == true: it never adds anything to the native skills
+// directory and never calls skills.Install — the skills, hooks, and
+// /engram-setup command are already delivered by the runtime's own plugin
+// system. It only REPORTS what already exists at the native destination
+// (a leftover copy from an earlier --apply, or a hand-made symlink),
+// via the read-only skills.DetectPresence, so an operator can remove it
+// by hand if they wish — nothing is ever deleted here.
+//
+// The skills facet contributes NOTHING to the aggregate on this path:
+// nothing was written or compared natively, and the plugin facet (folded
+// separately, via setupApplyPluginFacet) already carries the delivery
+// outcome — so base is returned unchanged except on an authoring-bug
+// failure (an unrecognized SkillTarget format, or a broken skills embed),
+// which stays visible exactly as it would on the native path.
+func setupReportNativeSkills(row *setupRuntimeRow, base setup.Outcome, planTarget setup.SkillTarget) setup.Outcome {
+	target, targetErr := setupSkillsTarget(planTarget)
+	if targetErr != nil {
+		row.Skills = string(setup.OutcomeFailed)
+		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %s: %v", row.Name, targetErr))
+		return setup.AggregateOutcome(base, setup.OutcomeFailed)
+	}
+
+	inv, invErr := skills.Inventory()
+	if invErr != nil {
+		row.Skills = string(setup.OutcomeFailed)
+		row.SkillsDest = target.Dir
+		row.SkillsIndex = target.IndexFile
+		row.Reason = setupJoinReason(row.Reason, fmt.Sprintf("skills: %v", invErr))
+		return setup.AggregateOutcome(base, setup.OutcomeFailed)
+	}
+
+	pres := skills.DetectPresence(skillsEnv, target, inv)
+	row.Skills = setupSkillsPluginDelivered
+	row.SkillsDest = target.Dir
+	row.SkillsIndex = target.IndexFile
+	row.SkillsNative = setupNativePresenceSummary(pres, target.Dir, target.IndexFile)
+	return base
 }
 
 // setupCmd detects which supported agent runtimes are present on the
@@ -196,6 +346,89 @@ func setupRuntimeEnvDefault() []string {
 	return strings.Split(v, ",")
 }
 
+// setupHeaderEnvDefault splits ENGRAM_HEADERS on "," into --header's
+// default value, byte-for-byte the same shape as setupRuntimeEnvDefault
+// above: nil for an unset/empty var, else strings.Split on comma (D-07).
+// ENGRAM_HEADERS gets NO internal/config registry row, for the SAME
+// reason --runtime has none — internal/config/registry.go:105-118's own
+// comment states it verbatim: "--runtime because pflag's
+// StringSliceVar.Value.String() returns the bracketed display form
+// ("[a b]"), which the changed-flag overlay cannot round-trip — its own
+// env default (ENGRAM_RUNTIME) is read directly via os.Getenv in
+// cmd/engram/setup.go's init(), mirroring reindex.go --target." The same
+// limitation applies to any StringSliceVar-backed flag, including this
+// one, so config.Load(cmd.Flags()) stays inert for a flag named "header":
+// flagToKey (internal/config/registry.go) has no row keyed by that name.
+// --header on argv REPLACES this env list wholesale — pflag's own
+// StringSliceVar "flag overrides env-default" semantics need no merge
+// code here (D-07's "replaces" requirement is free).
+func setupHeaderEnvDefault() []string {
+	v := os.Getenv("ENGRAM_HEADERS")
+	if v == "" {
+		return nil
+	}
+	return strings.Split(v, ",")
+}
+
+// setupHeaderNameRe is the RFC 7230 §3.2.6 token grammar a --header NAME
+// must match; setupHeaderEnvVarRe is the POSIX identifier grammar its
+// ENVVAR must match (D-03). Both were verified live via `go run` in
+// 02-RESEARCH.md's "Code Examples" section.
+var setupHeaderNameRe = regexp.MustCompile("^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
+
+var setupHeaderEnvVarRe = regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_]*$")
+
+// setupParseHeaders validates and converts specs (each "NAME=ENVVAR", as
+// supplied via --header/ENGRAM_HEADERS) into setup.HeaderSpec values, in
+// INPUT order — this boundary does not sort; each runtime does (D-08).
+// This function is the WHOLE D-02/D-03 CLI-boundary validation surface:
+// every usage error below fires from setupResolve, before setup.Select
+// dispatches to any runtime (RESEARCH.md Pitfall 5) — a header-name
+// collision or a malformed spec is a CLI usage error, never a per-runtime
+// capability gap (unlike Codex's decline, which genuinely IS per-runtime:
+// claude-code, opencode, and generic CAN express any header name).
+//
+// Rejection order per spec is fixed: (1) Authorization collision
+// (case-insensitive, D-02) — one owner per header; (2) malformed NAME
+// against the RFC 7230 token grammar, which also covers an argument with
+// no "=" at all (name is forced empty rather than echoing the raw spec —
+// a secret pasted without a NAME lands exactly here); (3) malformed
+// ENVVAR against the POSIX identifier grammar, which also covers an empty
+// ENVVAR and every literal-looking right-hand side ($, {, whitespace, :,
+// leading digit, stray punctuation) — REQ-header-value-env-ref-only's
+// guard; (4) a duplicate NAME, compared case-insensitively, across
+// repeats or the env list. No message here ever echoes anything right of
+// a spec's first "=" — the %s/%q verbs below format only the NAME.
+func setupParseHeaders(specs []string) ([]setup.HeaderSpec, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]bool, len(specs))
+	headers := make([]setup.HeaderSpec, 0, len(specs))
+	for _, spec := range specs {
+		name, envVar, found := strings.Cut(spec, "=")
+		if !found {
+			name = ""
+		}
+		if strings.EqualFold(name, "Authorization") {
+			return nil, usageErrorf("--header %s: the Authorization header is owned by --auth; use --auth bearer", name)
+		}
+		if !found || !setupHeaderNameRe.MatchString(name) {
+			return nil, usageErrorf("--header %q: malformed header name; expected NAME=ENVVAR where NAME is an RFC 7230 token", name)
+		}
+		if !setupHeaderEnvVarRe.MatchString(envVar) {
+			return nil, usageErrorf("--header %s: takes an environment variable NAME (NAME=ENVVAR), never a value; the right-hand side must be a POSIX identifier", name)
+		}
+		lower := strings.ToLower(name)
+		if seen[lower] {
+			return nil, usageErrorf("--header %s: duplicate header name (header names compare case-insensitively)", name)
+		}
+		seen[lower] = true
+		headers = append(headers, setup.HeaderSpec{Name: name, EnvVar: envVar})
+	}
+	return headers, nil
+}
+
 // setupRuntimeRow is one runtime's row in setupReportDoc.Runtimes,
 // rendered through renderOperator with zero bespoke rendering code
 // (D-15): viewRow already renders each element as a dense
@@ -232,6 +465,40 @@ func setupRuntimeEnvDefault() []string {
 // tens of kilobytes. Every one of these seven fields is a plain string —
 // the same "never a struct, map, or raw-message type" constraint Config's
 // own comment states above applies identically to each of them.
+//
+// Headers (02-03-PLAN.md Task 2) is the header facet: ONE joined
+// string — "NAME=ENVVAR" entries sorted case-insensitively by name
+// (D-08) and comma-joined with no spaces, the same idiom SkillsDigest
+// above already uses — carrying header NAMEs and env var NAMEs only,
+// never a value. It takes Config's own "never a struct, map, or slice"
+// constraint for the identical reason (Pitfall 2:
+// TestOperatorViewFixturesHaveNoUnsanitizedNesting) — a []string or
+// map[string]string here would fall through viewScalar's kind switch to
+// an unsanitized verbatim render. A not-present row carries no facet,
+// exactly like the skills facet above; a present row's facet reports
+// what was REQUESTED, independent of whether that runtime's own Plan()
+// accepted or declined it (see codex's failed row in setup_test.go's
+// TestSetupHeaderCodexDeclined).
+//
+// Phase 3 (Plugin-First Delivery) adds the plugin facet — the THIRD facet
+// the aggregate folds (registration, then plugin, then skills;
+// AggregateOutcome is symmetric and associative, so a three-way fold via
+// two two-way folds is exact): Plugin is the facet's OWN outcome (one of
+// the five Outcome values, EMPTY when the capability probe found no
+// working plugin CLI — D-12 reports "unavailable" on PluginState and the
+// reason on PluginNote without ever producing an outcome to fold).
+// PluginState is one of absent/outdated/current/unavailable
+// (REQ-plugin-three-way-state). PluginInstalled is the observed installed
+// version; PluginTarget is the binary version it was compared against.
+// PluginSource is the observed marketplace source (D-05) so a fork stays
+// visible. PluginCommand is the exact argv --apply would run/ran (SC2).
+// PluginNote carries D-01's newer-than-binary note, D-03's dev-build
+// note, or D-12's unavailable reason. SkillsNative is D-08/D-09's
+// report of what already sits under the native destination beside a
+// plugin-delivered runtime — path, count, and symlink-vs-copy, never
+// written or removed. Every one of these eight fields takes Config's own
+// "never a struct, map, slice, or raw-message type" constraint for the
+// identical reason.
 type setupRuntimeRow struct {
 	Name       string `json:"name"`
 	Present    bool   `json:"present"`
@@ -241,8 +508,24 @@ type setupRuntimeRow struct {
 	Binary     string `json:"binary,omitempty"`
 	Registered string `json:"registered,omitempty"`
 	TokenFile  string `json:"token_file,omitempty"`
+	Headers    string `json:"headers,omitempty"`
 	Config     string `json:"config,omitempty"`
 	Notes      string `json:"notes,omitempty"`
+
+	// Phase 4 (Drift Detection, D-12/D-03): Facets is the differing
+	// facets of a compared registration, as ONE comma-joined string in
+	// internal/setup's fixed facet order (url, auth-mode, header-name,
+	// header-value-ref, unrecognized-content) — empty for an
+	// already-correct registration and for a not-compared read. Drift
+	// is the corresponding "; "-joined per-facet detail-line text, or
+	// the "<runtime>: not compared: <why>" note when no comparison was
+	// possible at all. Registered's content is now a normalized
+	// rendering rebuilt from parsed-and-redacted fields, with every
+	// header value redacted, rather than a raw probe capture (D-03).
+	// Both new fields take Config's own "never a struct, map, slice, or
+	// raw-message type" constraint for the identical reason.
+	Facets string `json:"facets,omitempty"`
+	Drift  string `json:"drift,omitempty"`
 
 	Registration  string `json:"registration,omitempty"`
 	Skills        string `json:"skills,omitempty"`
@@ -251,7 +534,23 @@ type setupRuntimeRow struct {
 	SkillsDigest  string `json:"skills_digest,omitempty"`
 	SkillsBytes   string `json:"skills_bytes,omitempty"`
 	SkillsContent string `json:"skills_content,omitempty"`
+
+	Plugin          string `json:"plugin,omitempty"`
+	PluginState     string `json:"plugin_state,omitempty"`
+	PluginInstalled string `json:"plugin_installed,omitempty"`
+	PluginTarget    string `json:"plugin_target,omitempty"`
+	PluginSource    string `json:"plugin_source,omitempty"`
+	PluginCommand   string `json:"plugin_command,omitempty"`
+	PluginNote      string `json:"plugin_note,omitempty"`
+	SkillsNative    string `json:"skills_native,omitempty"`
 }
+
+// setupSkillsPluginDelivered is the Skills row-field value for a runtime
+// whose plugin facet reports Delivered() == true: nothing was written or
+// compared natively — the plugin facet (Plugin/PluginState/…) already
+// carries the delivery outcome — so this is deliberately NOT one of the
+// five setup.Outcome values.
+const setupSkillsPluginDelivered = "plugin-delivered"
 
 // setupReportDoc is the one typed document setupPreview and setupApplyRun
 // both render through renderOperator — text and json cannot drift because
@@ -281,20 +580,23 @@ type setupReportDoc struct {
 // state without ever changing this function's own no-command-level-error
 // contract.
 func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup.Runtime, opts setup.Options, includeContent bool) []setupRuntimeRow {
+	headers := setupHeadersSummary(opts.Headers)
 	rows := make([]setupRuntimeRow, 0, len(runtimes))
 	for _, rt := range runtimes {
-		rows = append(rows, setupRuntimeRowFromResult(setup.Preview(ctx, env, rt, opts), false, includeContent))
+		rows = append(rows, setupRuntimeRowFromResult(ctx, env, rt, setup.Preview(ctx, env, rt, opts), headers, false, includeContent))
 	}
 	return rows
 }
 
 // setupPreviewSummary renders the operator-facing one-line PREVIEW
 // headline: how many of the selected runtimes are present, that a bare
-// invocation reads current state from each present runtime's own CLI (D-10
-// — the fact that makes the probe's side effect, including a live network
-// dial for two of the three native runtimes, discoverable by reading
-// rather than by observing, per REQ-setup-correct-by-reading), and both
-// effects --apply actually performs (Phase 4: registration AND the
+// invocation reads current state from each present runtime's own CLI AND
+// compares it with what setup would write (D-10 — the fact that makes
+// the probe's side effect, including a live network dial for two of the
+// three native runtimes, discoverable by reading rather than by
+// observing, per REQ-setup-correct-by-reading), that opencode is
+// exempted from that comparison (its mcp list output is not parsed), and
+// both effects --apply actually performs (Phase 4: registration AND the
 // curation skills install) — never registration alone, which would be a
 // half-truth about what the command now does.
 func setupPreviewSummary(rows []setupRuntimeRow) string {
@@ -305,16 +607,18 @@ func setupPreviewSummary(rows []setupRuntimeRow) string {
 		}
 	}
 	return fmt.Sprintf(
-		"preview: %d/%d selected runtime(s) present; a present runtime's own CLI is read to show current state (two of the three dial the configured URL); run with --apply to register and install skills",
+		"preview: %d/%d selected runtime(s) present; a present runtime's own CLI is read and compared with what setup would write (two of the three dial the configured URL; opencode is not compared); run with --apply to register and install skills",
 		present, len(rows))
 }
 
 // setupResolve resolves --url/--auth through config.Load (CR-01: the
 // ENGRAM_URL/ENGRAM_AUTH environment lane this command's --help has always
-// advertised), validates --auth, and selects runtimes via setupRuntime —
-// the resolution logic setupPlanDoc (preview) and setupApplyRun (apply)
-// both need, kept in exactly one place so it cannot drift between the two
-// closures (D-14's stated shape for setup).
+// advertised), validates --auth, validates --header (setupParseHeaders,
+// D-02/D-03 — the one CLI-boundary usage-error gate for headers, run
+// before setup.Select ever dispatches to a runtime), and selects runtimes
+// via setupRuntime — the resolution logic setupPlanDoc (preview) and
+// setupApplyRun (apply) both need, kept in exactly one place so it cannot
+// drift between the two closures (D-14's stated shape for setup).
 func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 	// flagToKey (internal/config/registry.go) is keyed by flag NAME, and
 	// setup carries flags named "output" and "token-file" that collide with
@@ -348,6 +652,23 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 		return nil, setup.Options{}, usageErrorf("--client-id is only valid for --auth oauth-client")
 	}
 
+	// --header validation (D-02/D-03) runs once, here, before setup.Select
+	// ever dispatches to a runtime (RESEARCH.md Pitfall 5): a header-name
+	// collision or a malformed spec is a CLI usage error, never a
+	// per-runtime capability gap like Codex's decline. An explicitly
+	// supplied empty --header ("" — Changed is true, but pflag's
+	// readAsCSV("") yields a zero-length slice) must not silently degrade
+	// to "no headers": it is itself a malformed NAME, caught here rather
+	// than inside setupParseHeaders (which treats a genuinely EMPTY specs
+	// slice — no --header supplied at all — as "no headers", correctly).
+	if cmd.Flags().Changed("header") && len(setupHeaders) == 0 {
+		return nil, setup.Options{}, usageErrorf("--header %q: malformed header name; expected NAME=ENVVAR where NAME is an RFC 7230 token", "")
+	}
+	headers, err := setupParseHeaders(setupHeaders)
+	if err != nil {
+		return nil, setup.Options{}, err
+	}
+
 	runtimes, err := setup.Select(setupRuntime)
 	if err != nil {
 		return nil, setup.Options{}, usageErrorf("%w", err)
@@ -364,7 +685,7 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 		return nil, setup.Options{}, usageErrorf("--url or ENGRAM_URL is required")
 	}
 
-	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile, ClientID: setupClientID}, nil
+	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile, ClientID: setupClientID, Headers: headers}, nil
 }
 
 // setupPlanDoc resolves --url/--auth/--runtime (setupResolve) and builds
@@ -427,14 +748,43 @@ func setupExitCode(c setup.ExitClass) int {
 // Result field is one more key=value the existing renderOperator pipeline
 // picks up automatically, no bespoke rendering code).
 //
-// For a PRESENT runtime, this also composes the skills facet
-// (setupApplySkillsFacet) and OVERWRITES Outcome with the aggregated
-// value D-06 requires — r.Outcome itself is passed through unchanged as
-// the registration facet's own outcome, folded together with the skills
-// facet's own outcome via setup.AggregateOutcome. A not-present runtime
-// is skipped entirely: it keeps its OutcomeNotPresent row untouched, with
-// no skills facet (D-07).
-func setupRuntimeRowFromResult(r setup.Result, mutate bool, includeContent bool) setupRuntimeRow {
+// For a PRESENT runtime, this also runs the plugin lane and composes both
+// the plugin and skills facets, OVERWRITING Outcome with the fully
+// aggregated value: r.Outcome (registration) is folded with the plugin
+// facet's outcome (setupApplyPluginFacet), which is folded with the
+// skills facet's outcome — either the native write/compare
+// (setupApplySkillsFacet) or, for a plugin-delivered runtime, the D-07
+// report-only path (setupReportNativeSkills). ctx and env are threaded
+// through so the plugin lane (setup.PluginPreview/setup.PluginApply) can
+// exec through the SAME injected seam the registration lane already used
+// (repo rule m45p2b4bp7) — never the real machine. rt is the Runtime
+// itself: the plugin lane needs it for its own PluginRuntime type
+// assertion (never a by-name branch). The plugin lane REUSES r.Binary,
+// the registration lane's already-resolved path — no second LookPath — so
+// a runtime whose registration lane resolved no binary at all (opencode,
+// generic, or a declined Plan()) gets no plugin facet either.
+//
+// Routing is decided by CAPABILITY (p.Delivered(): a working plugin CLI),
+// never by the install's own success — a plugin-capable runtime NEVER
+// receives the native copy in the same run, even when its plugin install
+// just failed, because the re-run that eventually succeeds would
+// otherwise leave a native copy behind ALONGSIDE the plugin, duplicating
+// every skill twice — exactly the defect this phase exists to prevent.
+// The failed facet stays fully visible on the row, and --apply is
+// re-runnable.
+//
+// A not-present runtime is skipped entirely: it keeps its
+// OutcomeNotPresent row untouched, with no plugin facet, no skills facet
+// (D-07), and no header facet (headers is set only inside the same
+// "if r.Present" branch below).
+//
+// headers is the ALREADY-SUMMARIZED (setupHeadersSummary) header facet —
+// computed once by the caller (setupBuildRows/setupApplyRun) from
+// opts.Headers, not re-derived per runtime, since every row in one
+// report shares the same requested header set (D-08: the facet reports
+// what was REQUESTED, independent of whether that runtime's own Plan()
+// accepted or declined it).
+func setupRuntimeRowFromResult(ctx context.Context, env setup.Environment, rt setup.Runtime, r setup.Result, headers string, mutate bool, includeContent bool) setupRuntimeRow {
 	row := setupRuntimeRow{
 		Name:       r.Runtime,
 		Present:    r.Present,
@@ -446,9 +796,26 @@ func setupRuntimeRowFromResult(r setup.Result, mutate bool, includeContent bool)
 		TokenFile:  r.TokenFile,
 		Config:     r.Config,
 		Notes:      r.Notes,
+		Facets:     r.Facets,
+		Drift:      r.Drift,
 	}
 	if r.Present {
-		row.Outcome = string(setupApplySkillsFacet(&row, r.Outcome, r.Skills, mutate, includeContent))
+		row.Headers = headers
+		row.Registration = string(r.Outcome)
+
+		var p setup.PluginResult
+		if mutate {
+			p = setup.PluginApply(ctx, env, rt, r.Binary, setupVersion())
+		} else {
+			p = setup.PluginPreview(ctx, env, rt, r.Binary, setupVersion())
+		}
+		outcome := setupApplyPluginFacet(&row, r.Outcome, p)
+		if p.Delivered() {
+			outcome = setupReportNativeSkills(&row, outcome, r.Skills)
+		} else {
+			outcome = setupApplySkillsFacet(&row, outcome, r.Skills, mutate, includeContent)
+		}
+		row.Outcome = string(outcome)
 	}
 	return row
 }
@@ -471,6 +838,8 @@ func setupResultsFromRows(rows []setupRuntimeRow) []setup.Result {
 			TokenFile:  r.TokenFile,
 			Config:     r.Config,
 			Notes:      r.Notes,
+			Facets:     r.Facets,
+			Drift:      r.Drift,
 		}
 	}
 	return results
@@ -478,21 +847,27 @@ func setupResultsFromRows(rows []setupRuntimeRow) []setup.Result {
 
 // setupApplySummary renders the operator-facing one-line APPLY headline:
 // how many of the selected runtimes were written, were already correct,
-// and failed — replacing Phase 2's "registration lands in a later phase"
-// wording, which is false as of this phase (D-09's stub is retired).
+// were preserved, and failed — replacing Phase 2's "registration lands
+// in a later phase" wording, which is false as of this phase (D-09's
+// stub is retired). Phase 4 (D-04): a preserved registration is a
+// non-failed attempt reported in its own bucket, never counted as
+// failed — setup declining to overwrite something it cannot reproduce is
+// setup performing correctly.
 func setupApplySummary(rows []setupRuntimeRow) string {
-	var wrote, already, failed int
+	var wrote, already, preserved, failed int
 	for _, r := range rows {
 		switch setup.Outcome(r.Outcome) {
 		case setup.OutcomeWrote:
 			wrote++
 		case setup.OutcomeAlreadyCorrect:
 			already++
+		case setup.OutcomePreserved:
+			preserved++
 		case setup.OutcomeFailed:
 			failed++
 		}
 	}
-	return fmt.Sprintf("apply: %d wrote, %d already correct, %d failed (of %d selected runtime(s))", wrote, already, failed, len(rows))
+	return fmt.Sprintf("apply: %d wrote, %d already correct, %d preserved, %d failed (of %d selected runtime(s))", wrote, already, preserved, failed, len(rows))
 }
 
 // setupApplyRun is registerDestructive's apply closure. It resolves
@@ -518,9 +893,10 @@ func setupApplyRun(ctx context.Context, cmd *cobra.Command) error {
 		return err
 	}
 
+	headers := setupHeadersSummary(opts.Headers)
 	rows := make([]setupRuntimeRow, len(runtimes))
 	for i, rt := range runtimes {
-		rows[i] = setupRuntimeRowFromResult(setup.Apply(ctx, setupEnv, rt, opts), true, format != formatText)
+		rows[i] = setupRuntimeRowFromResult(ctx, setupEnv, rt, setup.Apply(ctx, setupEnv, rt, opts), headers, true, format != formatText)
 	}
 	doc := setupReportDoc{Runtimes: rows}
 
@@ -567,8 +943,33 @@ func setupApplySentence() string {
 // that a bare invocation reads each present runtime's own CLI for its
 // current state, including a network dial for two of the three (D-10 —
 // what makes that side effect discoverable by reading rather than by
-// observing); and the four accepted --auth modes, including bearer's
-// narrowed --token-file scope (D-06).
+// observing); the four accepted --auth modes, including bearer's narrowed
+// --token-file scope (D-06); and (02-03-PLAN.md Task 2,
+// REQ-header-documented) a sibling paragraph — AFTER the untouched
+// Accepted --auth modes block, never inside it (D-01) — documenting
+// --header/ENGRAM_HEADERS, the value-is-a-NAME-never-a-value rule
+// (D-02/D-03), the per-runtime rendering (D-04/D-08), and the codex
+// limitation (D-09).
+//
+// Phase 3 (Plugin-First Delivery) rewrites the "--apply also installs"
+// paragraph to describe plugin-first delivery: a plugin-capable Claude
+// Code or Codex receives the skills through engram's own marketplace
+// plugin, mutually exclusive with the native copy every other runtime
+// still receives, with an existing native copy or index block reported
+// rather than removed (D-07, D-12, REQ-plugin-facet-reported) — naming no
+// destination path segment, per TestSetupHelpNamesSkillsInstallation's own
+// structural gate.
+//
+// Phase 5 (Apply-Time Preserve Gate) extends the drift-comparison
+// paragraph with the apply-time consequences of that same comparison
+// (05-CONTEXT.md D-01, D-04, D-05): --apply makes the identical comparison
+// before writing, so an already-correct or preserved row runs no
+// registration command at all — on claude-code, not even its tolerant mcp
+// remove — and only a would-write row is written and then read back; a
+// preserved row's reason names the exact manual step to clear the entry
+// with the runtime's own tool; and a claude-code rewrite of a registration
+// observed with no Authorization header states, in preview and apply
+// alike, that the operator will need to log in again afterward.
 func setupLongDescription() string {
 	return fmt.Sprintf(`Detect installed agent runtimes and preview registering engram as an MCP server.
 
@@ -580,15 +981,48 @@ read its current registration state for the report; nothing is written.
 For claude-code and opencode, that read dials the configured URL; for
 codex, it is a pure local read.
 
+For claude-code and codex, that read is compared with what setup would
+write — URL, auth mode, and header names with their environment-variable
+references — and the row is classified already-correct, would-write, or
+preserved. A would-write row names the differing facets (url, auth-mode,
+header-name, header-value-ref) in its facets field, with drift detailing
+each one; a preserved row means the registration carries something setup
+did not author and cannot reproduce — an extra header, an unrecognized
+field — so setup leaves it untouched and names it in the reason. Header
+values read from a runtime are never shown. A registration the read
+cannot parse reads would-write; opencode is not compared (its mcp list
+output is not parsed) and always reads would-write.
+
+--apply makes the same comparison before writing: an already-correct or
+preserved row runs no registration command at all — on claude-code, not
+even its own mcp remove — so repeating setup on a converged claude-code or
+codex registration is a true no-op. Only a would-write row is written and
+then read back, with its registered field showing the new registration,
+redacted. A preserved row's reason names the exact step to clear the entry
+with the runtime's own tool, after which a fresh run reads would-write. On
+claude-code, a would-write row whose existing registration carries no
+Authorization header is treated as OAuth-authenticated, and its notes
+field states — in preview and apply alike — that you will need to log in again
+after the rewrite.
+
 %s
 
---apply also installs the engram curation skills into each present
-runtime's own user-scope skills location, in addition to registering the
-MCP server — the skills are carried inside the binary itself, so no
-separate plugin install is required. Each present runtime's row reports a
-registration result and a skills result as two separate fields under one
-aggregated outcome, with the full skill content available in the
---output json lane.
+--apply also delivers the engram curation skills to each present runtime. A
+Claude Code or Codex whose own plugin CLI works receives the skills, hooks,
+and the /engram-setup command through its plugin system — engram's own
+marketplace and plugin only (seanb4t/engram, engram@engram): the
+marketplace is added when absent, the plugin installed when absent,
+updated when outdated, and left untouched when current, with the exact
+plugin commands shown in the preview and no consent gate beyond --apply
+itself. Every other runtime — opencode, generic, or a Claude Code/Codex
+without a working plugin CLI — receives the native skills copy carried
+inside the binary itself. The two are mutually exclusive per runtime: a
+plugin-delivered runtime gets no native copy and no index block, and an
+existing native copy or index block beside it is reported, never removed.
+Each present runtime's row reports a registration result, a plugin result
+(absent, outdated, current, or unavailable with a reason), and a skills
+result as separate fields under one aggregated outcome, with the full
+skill content available in the --output json lane.
 
 Accepted --auth modes:
   oauth         OAuth via the runtime's own login/callback flow (default)
@@ -606,17 +1040,32 @@ Accepted --auth modes:
                 carrying the path, never the secret — and has no effect on
                 a native runtime, whose row carries token_file=ignored
                 when the flag is supplied
-  none          a local / no-auth server`,
+  none          a local / no-auth server
+
+Additional headers (--header NAME=ENVVAR, repeatable or comma-separated; default: ENGRAM_HEADERS, a
+comma-separated list that --header on the command line replaces): each header rides alongside whatever
+--auth produces and is valid with every mode. ENVVAR is the NAME of an environment variable the runtime
+resolves itself at connect time — never a value: it must be a POSIX-shell identifier (ASCII letters,
+digits, and underscore, not starting with a digit), and the Authorization header (in any letter case)
+is owned by --auth; use --auth bearer.
+Rendered in each runtime's own syntax — claude-code "NAME: ${ENVVAR}", opencode NAME={env:ENVVAR},
+generic "NAME": "${ENVVAR}" — with the --auth header first and extra headers sorted by name. codex has
+no custom-header flag (codex mcp add exposes only --bearer-token-env-var): its row reports failed
+naming the header; drop --header or exclude codex via --runtime. Example, an API-gateway header:
+--header x-gateway-api-key=GATEWAY_KEY`,
 		strings.Join(setup.Names(), ", "), setupApplySentence())
 }
 
-// setupExample carries four worked invocations
+// setupExample carries five worked invocations
 // (REQ-setup-correct-by-reading, success criterion 5): a bare preview, a
-// --runtime-scoped preview, an OAuth-client preview, and a bearer preview.
+// --runtime-scoped preview, an OAuth-client preview, a bearer preview,
+// and (02-03-PLAN.md Task 2) a gateway preview naming an additional
+// header.
 const setupExample = `  engram setup --url https://engram.example.com/mcp
   engram setup --url https://engram.example.com/mcp --runtime claude-code
   engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
-  engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token`
+  engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
+  engram setup --url https://engram.example.com/mcp --auth oauth --header x-gateway-api-key=GATEWAY_KEY`
 
 func init() {
 	setupCmd.Long = setupLongDescription()
@@ -629,6 +1078,10 @@ func init() {
 	setupCmd.Flags().StringSliceVar(&setupRuntime, "runtime", setupRuntimeEnvDefault(),
 		fmt.Sprintf("runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: %s (default: ENGRAM_RUNTIME)",
 			strings.Join(setup.Names(), ", ")))
+	setupCmd.Flags().StringSliceVar(&setupHeaders, "header", setupHeaderEnvDefault(),
+		"additional HTTP header as NAME=ENVVAR, where ENVVAR names the environment variable the runtime "+
+			"resolves itself at connect time — never a value; repeatable or comma-separated; valid with every "+
+			"--auth mode; codex has no custom-header flag and reports a failed row (default: ENGRAM_HEADERS)")
 	setupCmd.Flags().StringVar(&setupClientID, "client-id", "",
 		"non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag")
 	setupCmd.Flags().StringVar(&setupTokenFile, "token-file", "",

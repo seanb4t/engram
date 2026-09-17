@@ -1,0 +1,13 @@
+diff --git a/cmd/engram/setup.go b/cmd/engram/setup.go
+index 99b1b5f6..a49da714 100644
+--- a/cmd/engram/setup.go
++++ b/cmd/engram/setup.go
+@@ -861,8 +861,6 @@ func setupApplySummary(rows []setupRuntimeRow) string {
+ 			wrote++
+ 		case setup.OutcomeAlreadyCorrect:
+ 			already++
+-		case setup.OutcomePreserved:
+-			preserved++
+ 		case setup.OutcomeFailed:
+ 			failed++
+ 		}

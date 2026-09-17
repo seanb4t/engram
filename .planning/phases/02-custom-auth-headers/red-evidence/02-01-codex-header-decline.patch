@@ -1,0 +1,21 @@
+diff --git a/internal/setup/codex.go b/internal/setup/codex.go
+index 41274756..07db206c 100644
+--- a/internal/setup/codex.go
++++ b/internal/setup/codex.go
+@@ -86,16 +86,6 @@ func (codexRuntime) Detect(env Environment) bool {
+ // reported as a failed row naming this runtime, exactly like any other
+ // Plan() error.
+ func (codexRuntime) Plan(env Environment, opts Options) (Plan, error) {
+-	if len(opts.Headers) > 0 {
+-		sorted := sortedHeaders(opts.Headers)
+-		names := make([]string, len(sorted))
+-		for i, h := range sorted {
+-			names[i] = h.Name
+-		}
+-		return Plan{}, fmt.Errorf("codex: custom header(s) %s: codex mcp add exposes only --bearer-token-env-var (no custom header flag); drop --header or exclude codex via --runtime: %w",
+-			strings.Join(names, ", "), ErrHeaderUnsupported)
+-	}
+-
+ 	home, err := env.HomeDir()
+ 	if err != nil {
+ 		return Plan{}, fmt.Errorf("codex: resolve home directory: %w", err)

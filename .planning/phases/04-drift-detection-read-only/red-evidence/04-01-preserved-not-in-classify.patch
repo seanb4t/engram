@@ -1,0 +1,13 @@
+diff --git a/internal/setup/exit.go b/internal/setup/exit.go
+index fd4de00e..4ae22bae 100644
+--- a/internal/setup/exit.go
++++ b/internal/setup/exit.go
+@@ -61,7 +61,7 @@ func Classify(results []Result) ExitClass {
+ 			// Not an attempt (D-07): contributes to neither class.
+ 		case OutcomeFailed:
+ 			hasFailure = true
+-		case OutcomeAlreadyCorrect, OutcomeWouldWrite, OutcomeWrote, OutcomePreserved:
++		case OutcomeAlreadyCorrect, OutcomeWouldWrite, OutcomeWrote:
+ 			hasNonFailedAttempt = true
+ 		default:
+ 			// The zero-valued Outcome ("") or any other unrecognized

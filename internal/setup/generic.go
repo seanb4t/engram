@@ -4,8 +4,10 @@
 package setup
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // genericRuntime implements Runtime for an MCP client engram has no
@@ -54,11 +56,74 @@ func (genericRuntime) Detect(Environment) bool { return true }
 // genericMCPServer is the one entry generic's config document carries,
 // keyed "engram" in genericConfigDoc.MCPServers. Type is always "http";
 // Headers is nil (omitted from the marshaled document) for every mode
-// except bearer.
+// except bearer and except when extra headers are supplied (opts.Headers,
+// D-05).
 type genericMCPServer struct {
-	Type    string            `json:"type"`
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers,omitempty"`
+	Type    string         `json:"type"`
+	URL     string         `json:"url"`
+	Headers genericHeaders `json:"headers,omitempty"`
+}
+
+// genericHeaders is a named map type wrapping the exact storage an
+// anonymous map[string]string would use — the JSON key "headers" and the
+// map storage are unchanged (D-05: extra headers live in the EXISTING map
+// beside any auth header) — but named so it can implement MarshalJSON.
+// encoding/json marshals an anonymous map's keys in BYTE order, which
+// would put a header such as "Api-Key" before "Authorization"; this type
+// exists solely to fix that ordering to D-08's rule: the auth-mode header
+// (if any) first, then extras sorted case-insensitively by name —
+// identical on argv, in generic JSON, and in generated prose, regardless
+// of flag or env order. omitempty still omits a nil or empty
+// genericHeaders exactly as it did for the anonymous map type.
+type genericHeaders map[string]string
+
+// MarshalJSON orders "Authorization" (if present, case-insensitively)
+// first, then every other key via sortedHeaders' case-insensitive
+// ordering (runtime.go) — the ORDER rule lives once, there. Every key and
+// value is passed through json.Marshal, never hand-rolled: this
+// reproduces encoding/json's own HTML-safe escaping byte-for-byte (e.g.
+// "<" -> "<"), which is what keeps the shipped --token-file document
+// unchanged (REQ-header-bearer-unchanged).
+func (h genericHeaders) MarshalJSON() ([]byte, error) {
+	specs := make([]HeaderSpec, 0, len(h))
+	for k := range h {
+		specs = append(specs, HeaderSpec{Name: k})
+	}
+	sorted := sortedHeaders(specs)
+
+	ordered := make([]string, 0, len(sorted))
+	authKey := ""
+	for _, s := range sorted {
+		if authKey == "" && strings.EqualFold(s.Name, "Authorization") {
+			authKey = s.Name
+			continue
+		}
+		ordered = append(ordered, s.Name)
+	}
+	if authKey != "" {
+		ordered = append([]string{authKey}, ordered...)
+	}
+
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, k := range ordered {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		kb, err := json.Marshal(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(kb)
+		buf.WriteByte(':')
+		vb, err := json.Marshal(h[k])
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(vb)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
 }
 
 // genericConfigDoc is the top-level shape json.Marshal produces for
@@ -114,6 +179,18 @@ type genericConfigDoc struct {
 // phase's earlier waves (03-02, 03-03). Neither form ever carries a
 // credential VALUE — only a variable reference or a path.
 //
+// Extra headers (D-04, D-05, D-08): opts.Headers is valid with every auth
+// mode and is carried in the SAME server.Headers map beside any bearer
+// entry, each valued as the bare shell-style reference "${ENVVAR}" —
+// never a scheme, and --token-file provenance stays bearer-only,
+// unaffected by --header. The map's marshaled JSON key order is fixed by
+// genericHeaders' MarshalJSON (above) to "Authorization" first, then
+// extras sorted case-insensitively — the SAME order argv shows for the
+// native runtimes — via json.Marshal for every key and value so the
+// document's escaping never drifts from what an anonymous map would have
+// produced (REQ-header-bearer-unchanged's zero-header byte-identity is
+// what this preserves).
+//
 // Every returned Plan also authors Skills with the explicit
 // SkillFormatNone value (Phase 4, D-11): generic carries the curation
 // skills in its DELIVERABLE, exactly as it already carries the portable
@@ -142,7 +219,13 @@ func (genericRuntime) Plan(_ Environment, opts Options) (Plan, error) {
 			if opts.TokenFile != "" {
 				headerValue = "Bearer " + bearerProvenance(opts.TokenFile)
 			}
-			server.Headers = map[string]string{"Authorization": headerValue}
+			server.Headers = genericHeaders{"Authorization": headerValue}
+		}
+		for _, h := range sortedHeaders(opts.Headers) { // sorted case-insensitively by Name, D-08
+			if server.Headers == nil {
+				server.Headers = genericHeaders{}
+			}
+			server.Headers[h.Name] = "${" + h.EnvVar + "}"
 		}
 		doc := genericConfigDoc{MCPServers: map[string]genericMCPServer{"engram": server}}
 		b, err := json.Marshal(doc)

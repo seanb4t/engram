@@ -1,0 +1,13 @@
+diff --git a/docs-site/src/content/docs/guides/plugin.md b/docs-site/src/content/docs/guides/plugin.md
+index 1d634d1c..6cfa496e 100644
+--- a/docs-site/src/content/docs/guides/plugin.md
++++ b/docs-site/src/content/docs/guides/plugin.md
+@@ -86,8 +86,6 @@ claude mcp remove engram --scope user
+ # then re-run /engram-setup
+ ```
+ 
+-If `engram setup` reports the registration as `preserved` — it carries something setup did not author and cannot reproduce — setup leaves it untouched and never runs this command for you; the `preserved` row's reason names the exact step. See the [results section](/guides/agent-setup/#read-results-and-repeat-safely) of the setup guide.
+-
+ ## SessionStart hook — memory recall
+ 
+ At the start of every session the `session-start-memory-recall` hook computes the two-tier memory scope (spine + optional workspace overlay) from the local git context and injects an instruction for Claude to call `list_memory` over its own OAuth-authenticated MCP connection. Recall is model-mediated because hooks cannot hold OAuth tokens.

@@ -1,0 +1,268 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "2026-09-13.01 — Setup v2",
+  "phases": [
+    {
+      "number": "9",
+      "name": "Retrieval Eval Harness & Ranking Precision",
+      "status": "complete"
+    },
+    {
+      "number": "10",
+      "name": "Asymmetric Query/Document Embeddings",
+      "status": "complete"
+    },
+    {
+      "number": "11",
+      "name": "Async-on-Write Summaries",
+      "status": "complete"
+    },
+    {
+      "number": "12",
+      "name": "Per-Memory Usage Signals",
+      "status": "complete"
+    },
+    {
+      "number": "13",
+      "name": "Embedder Reliability Foundation",
+      "status": "complete"
+    },
+    {
+      "number": "14",
+      "name": "Embedder Model Options & Eval",
+      "status": "complete"
+    },
+    {
+      "number": "15",
+      "name": "Additive Proto + Stub Write Handlers",
+      "status": "complete"
+    },
+    {
+      "number": "16",
+      "name": "CSRF Interceptor",
+      "status": "complete"
+    },
+    {
+      "number": "17",
+      "name": "Wired Write Handlers (Full CRUD + Schedule)",
+      "status": "complete"
+    },
+    {
+      "number": "18",
+      "name": "Stateless Session Rotation",
+      "status": "complete"
+    },
+    {
+      "number": "19",
+      "name": "Console Write UX",
+      "status": "complete"
+    },
+    {
+      "number": "20",
+      "name": "Correctness & Polish",
+      "status": "complete"
+    },
+    {
+      "number": "21",
+      "name": "CI / Maintenance Hygiene",
+      "status": "complete"
+    },
+    {
+      "number": "22",
+      "name": "Cedar Authz Foundation & Store Enforcement",
+      "status": "complete"
+    },
+    {
+      "number": "23",
+      "name": "Service Auth Chain & Tenancy Isolation",
+      "status": "complete"
+    },
+    {
+      "number": "24",
+      "name": "Idempotent Capture",
+      "status": "complete"
+    },
+    {
+      "number": "25",
+      "name": "Supersession with History",
+      "status": "complete"
+    },
+    {
+      "number": "26",
+      "name": "Structured Citations, Category Filter & Chat Base URL",
+      "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Shared Auth Chain & Connect Bearer Identity",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Headless CLI Client",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Cross-Spine Memory Recall",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Diagnosability",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Operator Config & Reindex Correctness",
+      "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "Rule Capture — Investigation & Fix",
+      "status": "complete"
+    },
+    {
+      "number": "7",
+      "name": "CLI Cross-Spine Wiring",
+      "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Interface Enforceability",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Interface Discoverability",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Spine Curation — Structural (CLI)",
+      "status": "complete"
+    },
+    {
+      "number": "03.1",
+      "name": "Merge Supersession (INSERTED)",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Spine Curation — Semantic (Skill)",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Validation Debt Reconciliation",
+      "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Gate & CI Integrity",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Record Schema Versioning Foundation",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Migration Foundation (Registry, Invariants & Sweep)",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Migration CLI & First Customer",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Connect Record-State Parity",
+      "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "Typed Operator Renderer",
+      "status": "complete"
+    },
+    {
+      "number": "7",
+      "name": "Console & CLI State Surfacing",
+      "status": "complete"
+    },
+    {
+      "number": "8",
+      "name": "Registry & Docs Tail",
+      "status": "complete"
+    },
+    {
+      "number": "9",
+      "name": "Report pending in migrate status",
+      "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Version & Homebrew Distribution",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Setup Command Core",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Runtime Registration",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Skills Distribution",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Slash Command Delegation",
+      "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "Install Documentation",
+      "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Executor Correctness & Man Pages",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Custom Auth Headers",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Plugin-First Delivery",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Drift Detection (Read-Only)",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Apply-Time Preserve Gate & Documentation",
+      "status": "complete"
+    }
+  ],
+  "next": {
+    "command": "/gsd:new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
+  },
+  "updated_at": "2026-09-16T23:26:53.351Z"
+}
