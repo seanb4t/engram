@@ -36,7 +36,7 @@ beforeEach(() => {
 describe('MigrationBanner — silent at zero, while loading, and on failure', () => {
   it('renders nothing for a zero/zero response', async () => {
     migrateStatusSpy.mockResolvedValue(fakeStatus());
-    const screen = renderBanner();
+    const screen = await renderBanner();
     await expect.element(screen.getByText(/pending migration/)).not.toBeInTheDocument();
     await expect.element(screen.getByText(/newer schema version/)).not.toBeInTheDocument();
     expect(screen.container.textContent?.trim()).toBe('');
@@ -50,7 +50,7 @@ describe('MigrationBanner — silent at zero, while loading, and on failure', ()
           resolveFetch = resolve;
         })
     );
-    const screen = renderBanner();
+    const screen = await renderBanner();
     expect(screen.container.textContent?.trim()).toBe('');
     resolveFetch(fakeStatus());
     await expect.poll(() => migrateStatusSpy).toHaveBeenCalledTimes(1);
@@ -63,7 +63,7 @@ describe('MigrationBanner — silent at zero, while loading, and on failure', ()
       queryCache: new QueryCache({ onError: handleQueryError })
     });
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const screen = renderBanner(client);
+    const screen = await renderBanner(client);
     await expect.poll(() => migrateStatusSpy).toHaveBeenCalledTimes(1);
     await expect.poll(() => consoleErrorSpy).toHaveBeenCalledTimes(1);
     await expect.element(screen.getByText(/pending migration/)).not.toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('MigrationBanner — silent at zero, while loading, and on failure', ()
 describe('MigrationBanner — behind-version strip', () => {
   it('renders one neutral strip naming the pending count and the remediation command, for pending > 0 / futureTotal = 0', async () => {
     migrateStatusSpy.mockResolvedValue(fakeStatus({ pending: 4n }));
-    const screen = renderBanner();
+    const screen = await renderBanner();
     await expect
       .element(screen.getByText('4 records pending migration — run engram migrate'))
       .toBeInTheDocument();
@@ -86,7 +86,7 @@ describe('MigrationBanner — behind-version strip', () => {
 
   it('reads "record" (singular) for pending = 1', async () => {
     migrateStatusSpy.mockResolvedValue(fakeStatus({ pending: 1n }));
-    const screen = renderBanner();
+    const screen = await renderBanner();
     await expect
       .element(screen.getByText('1 record pending migration — run engram migrate'))
       .toBeInTheDocument();
@@ -96,7 +96,7 @@ describe('MigrationBanner — behind-version strip', () => {
 describe('MigrationBanner — ahead-version strip', () => {
   it('renders one destructive-toned strip naming the future-version count, for futureTotal > 0 / pending = 0', async () => {
     migrateStatusSpy.mockResolvedValue(fakeStatus({ futureTotal: 2n }));
-    const screen = renderBanner();
+    const screen = await renderBanner();
     await expect
       .element(
         screen.getByText(
@@ -112,7 +112,7 @@ describe('MigrationBanner — ahead-version strip', () => {
 describe('MigrationBanner — both non-zero', () => {
   it('renders two strips, behind-version first in DOM order, ahead-version second', async () => {
     migrateStatusSpy.mockResolvedValue(fakeStatus({ pending: 3n, futureTotal: 2n }));
-    const screen = renderBanner();
+    const screen = await renderBanner();
     await expect
       .element(screen.getByText('3 records pending migration — run engram migrate'))
       .toBeInTheDocument();
