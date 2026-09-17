@@ -40,6 +40,10 @@ export default defineConfig({
             enabled: true,
             provider: playwright(),
             headless: true,
+            // Vitest 5 made locators strict (exact: true) by default; the suite
+            // was written against substring matching (e.g. getByText('v3') on a
+            // "schema v3" chip), so keep the pre-5 semantics explicitly.
+            locators: { exact: false },
             instances: [{ browser: 'chromium' }]
           }
         }

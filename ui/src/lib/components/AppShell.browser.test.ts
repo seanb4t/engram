@@ -26,26 +26,26 @@ beforeEach(() => {
 
 describe('AppShell', () => {
   it('renders nav links and the command trigger', async () => {
-    const screen = renderShell();
+    const screen = await renderShell();
     await expect.element(screen.getByRole('link', { name: /observe/i })).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: /search/i })).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: /toggle theme/i })).toBeInTheDocument();
   });
 
   it('renders the engram brand mark in the header', async () => {
-    const screen = renderShell();
+    const screen = await renderShell();
     await expect.element(screen.getByRole('img', { name: 'engram' })).toBeInTheDocument();
   });
 
   it('renders no migration strip for a zero/zero response', async () => {
-    const screen = renderShell();
+    const screen = await renderShell();
     await expect.element(screen.getByRole('link', { name: /observe/i })).toBeInTheDocument();
     await expect.element(screen.getByText(/pending migration/)).not.toBeInTheDocument();
   });
 
   it('renders a migration strip between the header and the route content row for a non-zero response', async () => {
     migrateStatusSpy.mockResolvedValue(create(MigrateStatusResponseSchema, { pending: 4n, futureTotal: 0n }));
-    const screen = renderShell();
+    const screen = await renderShell();
     await expect.element(screen.getByText(/pending migration/)).toBeInTheDocument();
 
     const shell = screen.container.querySelector('.h-dvh')!;

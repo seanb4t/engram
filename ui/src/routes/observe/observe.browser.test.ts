@@ -204,7 +204,7 @@ describe('observe route — deleting the selected record never flashes a NotFoun
     });
     getMemorySpy.mockResolvedValue({ memory: fakeMemory({ id: 'm1', content: 'the full body', scope: 'repo:x' }) });
 
-    const screen = render(DeleteBannerHarness, { client: qc });
+    const screen = await render(DeleteBannerHarness, { client: qc });
 
     // Detail pane resolved: the record-actions menu is available.
     await expect.element(screen.getByRole('button', { name: 'record actions' })).toBeInTheDocument();
