@@ -34,7 +34,7 @@ covered_files:
   - "release-please-config.json"
   - "skill/engram/.codex-plugin/plugin.json"
   - "skill/engram/commands/engram-setup.md"
-covered_digest: "v1:sha256:20e0d0da77b9f7f32e304c4f3c5213cc73b102bede18ac61e134d4932d38f46a"
+covered_digest: "v1:sha256:c5c8bea94912f12c8c9d6beafbd1a672a70c38ee22e9c5b75111c3c9dc221364"
 overrides_applied: 0
 behavior_unverified: 0
 ---
@@ -175,3 +175,13 @@ for the NEXT unrelated change.
 
 ## Re-fingerprint 2026-09-16 (orchestrator, after Phase 5)
 Phase 5 additively edited five files in this phase's `covered_files` (`internal/setup/{claudecode,codex}.go`, `cmd/engram/{setup.go,testdata/help.golden}`, `internal/store/redevidence_harness_test.go` — a new Phase 5 entry in `redEvidenceDirs`; this phase's entry is untouched). The plugin lane is unchanged (`TestPluginVersionCompare`, `TestPluginPlan`, `TestPluginCapabilityProbeFailureFallsBackToNative`, `TestPluginRuntimeIsOptional`, `TestDetectPresence`, `TestSetupPluginDeliveredRuntimeAuthorsZeroNativeWrites`, `TestSetupApplyJSONEmitsPluginFacet` pass, `-count=1`). This phase's CONCLUSION is unchanged and was re-proven at Phase 5's HEAD (75785b75) before re-fingerprinting; every red-evidence patch this phase registered stayed live under `TestRedEvidencePatchesAreLive` (33/33 across Phases 01–05 at c9034a45). The digest is re-pinned to the current bytes so the staleness signal stays meaningful for the NEXT unrelated change.
+
+## Re-fingerprint 2026-09-18 (orchestrator, after the v0.17.0 post-release observation)
+
+Covered files that moved since the previous digest are value-only, deliberate edits whose
+conclusions were re-proven before re-fingerprinting: this phase's `VALIDATION.md` reconciled to
+`status: validated` by `/gsd-validate-phase` (every per-task command re-run green, PR #572);
+`guides/agent-setup.md`'s `Unreleased as of v0.16.1` aside flipped to `Available since v0.17.0`
+(`TestAgentSetupGuide*` gates re-run green); `skill/engram/.codex-plugin/plugin.json` version
+synced to 0.17.0 by release-please (`TestPluginManifestIdentityMatches` green). No conclusion
+in this record changed.

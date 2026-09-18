@@ -35,10 +35,10 @@ covered_files:
   - "internal/setup/drift_test.go"
   - "internal/setup/plan.go"
   - "internal/store/redevidence_harness_test.go"
-covered_digest: "v1:sha256:3f673b17ac8a8f9f2fc68655fb3a594ec80ca00f8f2c98c8998b35af5e7ba6f9"
+covered_digest: "v1:sha256:74127a6dfc3e28f15ab900e2be004300214c71abfce496b55c41b05c27581547"
 behavior_unverified: 0
 overrides_applied: 0
-post_release_status: pending
+post_release_status: complete
 post_release_tracker: https://github.com/seanb4t/engram/issues/567
 ---
 
@@ -160,3 +160,13 @@ not by omission.
 
 _Verified: 2026-09-16T23:25:16Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Re-fingerprint 2026-09-18 (orchestrator, after the v0.17.0 post-release observation)
+
+`05-RELEASE-0.17.0.md` closed the D-06 handoff: the three guides' `Unreleased as of v0.16.1`
+asides became `Available since v0.17.0`, `install_docs_test.go` / `plugin_docs_test.go` leg 4 now
+requires `Available since v` (fixture + injected-violation case renamed), `05-POST-RELEASE.md`
+reads `status: complete`, and `REQ-docs-setup-v2` is checked off. Every conclusion above was
+re-proven before re-fingerprinting: `go test ./cmd/engram -count=1` green (all three guide gates
+incl. their injected-violation positive controls), `task lint` and `task license:check` clean,
+`pnpm --dir docs-site build` complete. `post_release_status` flipped to `complete` (value only).

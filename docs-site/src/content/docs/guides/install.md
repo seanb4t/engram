@@ -14,11 +14,10 @@ Install the released binary below and check its version before continuing.
 If you have an older binary on `PATH`, upgrade it first.
 :::
 
-:::note[Unreleased as of v0.16.1]
+:::note[Available since v0.17.0]
 The man pages the cask installs below and plugin-first skill delivery through
-`engram setup --apply` are on the main branch and not yet in a cut release
-(the latest tag is v0.16.1). This notice is replaced with the observed
-version once the next release is verified.
+`engram setup --apply` shipped in v0.17.0 and were verified against the
+installed cask on 2026-09-18.
 :::
 
 ## Homebrew
