@@ -25,7 +25,54 @@ runtime it targets. Six phases (1–6); 21 plans, 49 tasks, 25/25 requirements v
 `--reset-phase-numbers`, rule `rvmts69cz1`); candidates live in **Deferred** below and
 `.planning/BACKLOG.md`.
 
-## Current State: 2026-08-23.01 — Distribution & Agent Bootstrap ✅ SHIPPED (2026-09-12, v0.16.0)
+## Current State: 2026-09-13.01 — Setup v2 ✅ SHIPPED (2026-09-17, v0.17.0; observed 2026-09-18)
+
+**Delivered:** `engram setup` is safe to re-run against a real machine. Preview reads the
+runtime's actual registration back through the runtime's own read verb (`claude mcp get`,
+`codex mcp get --json`), parses it totally, and classifies it as exactly one of
+`already-correct` / `would-write` (naming the differing facet) / `preserved` — a registration
+carrying anything setup did not author, including a hand-pasted literal header. `--apply`
+consults that same classification before any action and performs zero registration writes on
+`preserved` or `already-correct` — never Claude Code's tolerant `mcp remove` — closing the
+2026-09-10 overwrite incident (gotcha `ryr82bf2s2`); a reproducible rewrite of an OAuth-shaped
+Claude Code entry says up front that the user will need to log in again. Every observed header
+value is redacted by construction (compared in locals, never retained). `--header NAME=ENVVAR`
+(repeatable, `ENGRAM_HEADERS`-defaulted) expresses a gateway registration on Claude Code,
+opencode, and `generic` as a bare env reference in each runtime's own syntax; Codex declines it
+with a named reason rather than gaining a TOML writer. Claude Code and Codex receive skills,
+hooks, and `/engram-setup` plugin-first through their own plugin CLIs (three-way plugin state;
+the native copy stays for opencode/`generic` and as the fallback, never both). `osRun` names a
+deadline kill instead of misreporting a clean exit (#560), and the binary generates byte-stable
+man pages the cask installs (28 pages) and removes symmetrically. 5 phases, 19 plans, 45 tasks,
+23/23 requirements. Audit `passed` (third pass) — 10/10 seams, 4/4 E2E flows, Nyquist 5/5,
+security 5/5 (88 threats closed). Live observation of v0.17.0 recorded in
+`05-RELEASE-0.17.0.md`. Full detail archived at
+`milestones/2026-09-13.01-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md`.
+
+**What shipped:**
+- **Read-only drift detection** — `Observe` → `Compare` in `internal/setup/drift.go`, one classification shared by preview and apply; `DisallowUnknownFields` + key-set diff (codex) and line-classified labels (claude-code) make unknown content `preserved`, never a false `already-correct`.
+- **Apply-time preserve gate** — `case OutcomeAlreadyCorrect, OutcomePreserved: return res` sits above the write loop; no `--replace` flag exists, the row names the runtime's own manual step.
+- **Custom auth headers** — `HeaderSpec{Name, EnvVar}`, per-runtime rendering with no shared formatter, `Authorization` rejected as a header name, values never on argv.
+- **Plugin-first delivery** — `PluginRuntime` probe (`plugin list --json`), marketplace add only when absent (engram's own marketplace, never a foreign one re-pointed), install/update/remove-then-add per runtime, `skills.DetectPresence` read-only leftovers report.
+- **Executor correctness + man pages** — `ctx.Err()` before `*exec.ExitError`; `engram man <dir>` via `cobra/doc.GenManTree` with an epoch-pinned header and a tree-restoring wrapper; cask `post_install`/`post_uninstall` hooks.
+
+**Standing constraints held:** zero new Go dependencies (`cobra/doc` promoted indirect→direct);
+`internal/setup` stays a stdlib-only leaf; no test invokes a real third-party CLI or touches the
+operator's `$HOME` (rule `m45p2b4bp7` — the literal-echo shapes are maintainer-run observation
+records, `04-OBSERVATIONS.md` and `05-RELEASE-0.17.0.md`).
+
+**Carried tech debt:** Claude Code's `oauth-client` read-back label (`OAuth: client_id
+configured, callback_port N`) is unrecognized content to the scanner, so a setup-authored
+`oauth-client` registration re-reads `preserved` (safe, teachable); two accepted review
+info-findings (03 IN-01 `setupNativePresenceSummary` on a bare symlinked dir; 04 IN-01 a dead
+codex header-comparison branch); the `verify:post` step hooks (secure-phase, validate-phase)
+never dispatched during this milestone — SECURITY.md and VALIDATION.md were reconciled
+retroactively at close, root cause undiagnosed; five cross-milestone `WINDOWS.md` entries.
+
+**Closeout:** `verified_closeout` — open-artifact audit clear, 0 acknowledged, 0 carried forward.
+
+<details>
+<summary>Previous: 2026-08-23.01 — Distribution & Agent Bootstrap ✅ SHIPPED (2026-09-12, v0.16.0)</summary>
 
 **Delivered:** engram is installable in one command and self-configuring across every agent
 runtime it targets. `brew install seanb4t/tap/engram` installs an unsigned static binary through a
@@ -73,6 +120,8 @@ passes; a one-run testcontainer flake). Full disclosure in STATE.md `## Deferred
 five milestones is callable in practice until the next rollout — `engram setup` registers a client
 against whatever server URL it is given, so the bootstrap works today; the server-side features do
 not.
+
+</details>
 
 <details>
 <summary>Previous: 2026-08-12.01 — Record State & Schema Evolution ✅ SHIPPED (2026-08-22)</summary>
@@ -244,52 +293,12 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 
 </details>
 
-## Current Milestone: 2026-09-13.01 Setup v2
+## Next Milestone Goals
 
-**Goal:** `engram setup` is safe to re-run against a real machine — it delivers skills, hooks, and
-`/engram-setup` through the runtime's own plugin system where one exists, can express any working
-auth shape, and never replaces a registration it did not write.
-
-**Target features:**
-
-- **Plugin-first delivery** (backlog 999.5) — Claude Code and Codex both expose a `plugin` CLI
-  (`claude plugin marketplace add` / `claude plugin install|update`, `codex plugin`). Under
-  `--apply`, `setup` installs or updates the engram plugin there and skips the plain skills copy
-  entirely; the plain native-directory install remains for opencode and the `generic` target.
-  MCP registration stays with the runtime's `mcp add` — the plugin carries skills, hooks, and the
-  command, never a per-deployment URL (`skill/engram/.claude-plugin/plugin.json` declares no
-  `mcpServers`). Today `internal/skills/` and `internal/setup/` have no plugin awareness: on the
-  maintainer's machine `--apply` would write a duplicate `curating-memory` next to the plugin's
-  `engram:curating-memory` and replace Codex's marketplace symlinks with static copies pinned to
-  the binary's embedded version.
-- **Custom headers / auth keys** (backlog 999.6) — `--auth` accepts only `oauth | oauth-client |
-  bearer | none`, and `bearer` is hard-wired to `Authorization: Bearer ${ENGRAM_TOKEN}` per
-  runtime (`internal/setup/{claudecode,codex,opencode,generic}.go`). A gateway registration such
-  as LiteLLM's `x-litellm-api-key` cannot be expressed, so `--apply` replaces a working config and
-  breaks it — the root cause behind the 2026-09-10 overwrite (engram `ryr82bf2s2`). The new shape
-  must keep the standing property that a secret is only ever an env-var *reference*, never a
-  literal on argv or in config, and must account for Codex's `--bearer-token-env-var`-only CLI.
-- **Drift detection + reconcile hand-edits** (carried `REQ-setup-drift-detection` /
-  `REQ-setup-reconcile-hand-edits`) — preview compares the *full* existing registration (URL,
-  auth shape, header set) against what it would write; a registration `setup` cannot reproduce
-  is reported as preserved, never as drift to replace. `already-correct` becomes a real
-  comparison rather than a read-probe heuristic.
-- **Shell completions + manpages** (carried `REQ-shell-completions-and-manpages`) — cobra's
-  auto-registered `completion` plus `cobra/doc` (already an indirect dependency); zero new Go
-  dependencies. The cask's `generate_completions_from_executable` hook already expects a
-  completion verb.
-- **#560 `osRun` deadline classification** (carried W01) — a deadline-killed subprocess's
-  `*exec.ExitError` currently becomes exit -1 / nil error without consulting `ctx.Err()`, so the
-  executor's timeout path is bypassed. Small, correctness-affecting, in `internal/setup/environment.go`.
-
-**Key context:** standing constraints carry forward unchanged — zero new Go dependencies, every
-runtime writer is a shell-out to the runtime's own CLI (no third-party config parser enters the
-tree), and verification never touches the operator's `$HOME` or invokes a real third-party CLI from
-a test (rule `m45p2b4bp7`; gotcha `ryr82bf2s2` — a plan that documents `--apply` as a verification
-step is an attractive nuisance). Cursor (`REQ-register-cursor`, the one target needing a
-config-file writer) and the setup-core maintenance nits stay deferred. Milestone labels are CalVer
-and decoupled from release-please's SemVer (rules `e325awbf7x` / `0v4249kc9d`); phase numbering
-restarts at 1 (rule `rvmts69cz1`).
+No milestone is open. Candidates carried in **Deferred** below and `.planning/BACKLOG.md`;
+the next `/gsd-new-milestone` picks from them (Cursor's config-file writer `REQ-register-cursor`,
+the `oauth-client` read-back label, `engram migrate` full-stack E2E, `schema_version` proto
+typing, and the CI/renovate hygiene items are the standing shortlist).
 
 ## Core Value
 
@@ -488,14 +497,21 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **REQ-plugin-facet-reported** — plugin delivery is its own flat-scalar facet in text and `--output json` beside registration and skills, so a `wrote` registration next to a `failed` plugin install stays visible and yields `exitPartial` (8) — 2026-09-13.01 Phase 3
 - ✓ **REQ-codex-plugin-manifest** — `skill/engram/.codex-plugin/plugin.json` ships minimal (`$schema`, `name`, `version`, `description`), release-please-synced like its Claude twin, with `TestPluginManifestIdentityMatches` keeping their identity fields equal — 2026-09-13.01 Phase 3
 - ✓ **REQ-plugin-setupgen-regenerated** — `setupgen.Render(planFn, pluginFn)` appends the Claude Code plugin-delivery table from the runtime's REAL `PluginActions` (never a re-typed literal), the four shipped tables stay byte-identical, and `/engram-setup` was regenerated in the same commit with the `--check-setup` drift gate green — 2026-09-13.01 Phase 3
+- ✓ **REQ-drift-observed-registration** — preview reads the existing registration through the runtime's own read verb (`codex mcp get --json` structured; `claude mcp get` fixed-label text) and normalizes it to the Plan's shape — 2026-09-13.01 Phase 4
+- ✓ **REQ-drift-three-way** — exactly `already-correct` / `would-write` / `preserved`, never collapsed; ambiguity resolves to `would-write` — 2026-09-13.01 Phase 4
+- ✓ **REQ-drift-preserved-outcome** — `preserved` is first-class in text and JSON with a reason naming what setup cannot reproduce; outranks `already-correct` in aggregation — 2026-09-13.01 Phase 4
+- ✓ **REQ-drift-facet-naming** — a `would-write` row names the differing facet(s) (url, auth, header-name, header-value) — 2026-09-13.01 Phase 4
+- ✓ **REQ-drift-redaction** — observed header values are redacted by construction before storage, rendering, JSON, or logs; proven against both runtimes' actually-observed literal-echo shapes — 2026-09-13.01 Phase 4
+- ✓ **REQ-apply-preserve-gate** — `--apply` consults the same classification and performs zero registration writes on `preserved` (never Claude Code's `mcp remove`) while still delivering the plugin facet; observed byte-identical on v0.17.0 — 2026-09-13.01 Phase 5
+- ✓ **REQ-apply-rewrite-consequence** — a reproducible Claude Code remove-then-add on an OAuth-shaped entry states the re-login consequence in preview and apply `notes` — 2026-09-13.01 Phase 5
+- ✓ **REQ-docs-setup-v2** — `install.md`, `agent-setup.md`, `plugin.md` describe the shipped behavior, gated per guide, with the post-release live observation recorded in `05-RELEASE-0.17.0.md` before check-off — 2026-09-13.01 Phase 5 (observed 2026-09-18)
 
 ### Active
 
-Milestone `2026-09-13.01` (Setup v2) is open — see **Current Milestone** above for its goal and
-target features. Scoped requirements with REQ-IDs live in `.planning/REQUIREMENTS.md`, written by
-`/gsd-new-milestone` and mapped to phases by the roadmap. `2026-08-23.01` shipped 2026-09-12 with
-all 25 requirements verified and moved to **Validated** above. Candidates not taken into this
-milestone remain in **Deferred** below and `.planning/BACKLOG.md`.
+No milestone is open. `2026-09-13.01` (Setup v2) shipped 2026-09-17 as v0.17.0 with all 23
+requirements verified and moved to **Validated** above; the post-release observation landed
+2026-09-18. Candidates for the next milestone remain in **Deferred** below and
+`.planning/BACKLOG.md`, and are scoped by `/gsd-new-milestone`.
 
 ### Deferred (carry-forward for next milestone)
 
@@ -515,6 +531,10 @@ milestone remain in **Deferred** below and `.planning/BACKLOG.md`.
 - [ ] **`REQ-register-cursor`** (2026-08-23.01 v2) — Cursor is the one target needing a config-file writer (`~/.cursor/mcp.json`, top-level `mcpServers`) and merge-never-replace is a real reachable defect: a real machine's file already held three unrelated servers. Its CLI surface was unverifiable on the researching machine.
 - [ ] **`REQ-setup-drift-detection` / `REQ-setup-reconcile-hand-edits`** (2026-08-23.01 v2) — binary/plugin/server version-skew reporting, and reconciling an engram MCP entry a user hand-edited away from what `engram setup` writes. The update path today is idempotent re-install.
 - [ ] **Setup-core maintenance observations** (2026-08-23.01) — duplicate failed-count calculation, auth/runtime validation ordered before the missing-URL check, a capture-display comment that says "verbatim" although output is quoted, and the never-captured "emits no warning" half of the Phase 4 native-format human check.
+- [ ] **`oauth-client` read-back label** (2026-09-13.01) — teach `claudeCodeRuntime.Observe` the `OAuth: client_id configured, callback_port N` line so a setup-authored `oauth-client` registration re-reads `already-correct` instead of `preserved` (recorded in `05-RELEASE-0.17.0.md` (g); safe today by D-11).
+- [ ] **`verify:post` hook lapse** (2026-09-13.01) — neither `secure-phase` nor `validate-phase` dispatched from `/gsd-verify-work` all milestone; SECURITY.md/VALIDATION.md were reconciled retroactively at close. Diagnose on the next milestone's first phase verification (engram gotchas `7bw5r7emsd`, `9dkaz4zaeg`).
+- [ ] **Review-bot threads block bot automerge** (2026-09-13.01 close) — `protect-main` requires thread resolution and fovea/octopus comment on `renovate/*` PRs, so green automerge-eligible PRs sit BLOCKED until a human resolves them; exclude renovate branches in those reviewers' config. The self-hosted bot's `gomodTidy` still no-ops (engram `ty3xrfxqnq`, `z2eda4249b`).
+- [ ] **`seanb4t/homebrew-tap` cask DSL deprecation** — `uninstall_postflight` → `uninstall_postflight_steps` (warned twice on the v0.17.0 upgrade).
 
 > **Closed by v0.13.x:** the two-tier CLI error model gap (Phase 1 unified the taxonomy rather than
 > documenting a boundary — what #467 actually asked for), the v0.12.x Nyquist `VALIDATION.md`
@@ -544,6 +564,7 @@ milestone remain in **Deferred** below and `.planning/BACKLOG.md`.
 
 - **Ecosystem:** Go 1.26 static binary (`CGO_ENABLED=0`, distroless), Qdrant gRPC vector store, OpenAI-compatible embeddings/chat gateway. UI/docs built with pnpm + Node (not in the server image).
 - **Surfaces:** MCP tool server (primary, StreamableHTTP at `/mcp`), ConnectRPC `EngramService` v1 (5 read + 6 write RPCs), the `engram search|store|list` headless CLI over the generated Connect stubs, SvelteKit adapter-static operator console vendored via `go:embed`, Astro Starlight docs site on Cloudflare Workers.
+- **Setup v2 (2026-09-13.01, shipped 2026-09-17 as v0.17.0):** `internal/setup/drift.go` owns the single `Observe` → `Compare` classification (`already-correct` / `would-write` + facets / `preserved`) that both preview and `--apply` consult; `apply.go` returns before the write loop on `preserved`/`already-correct` and re-observes after a real write; observed header values never leave a local (`Observation`/`ObservedHeader` carry no value field). `HeaderSpec` renders per runtime with no shared formatter; `ErrHeaderUnsupported` is Codex's decline. `plugin.go`'s `PluginRuntime` probes `plugin list --json` once per run and authors `marketplace add`/`install`/`update` (Codex: remove-then-add) against engram's own marketplace only; `skills.DetectPresence` is read-only. `cmd/engram/man.go` generates byte-stable pages the cask's `post_install` writes to `share/man/man1`. Verification records that stand in for live-CLI tests: `04-OBSERVATIONS.md` (literal-echo shapes) and `05-RELEASE-0.17.0.md` (v0.17.0 observed end-to-end under an isolated `HOME`/`CODEX_HOME`).
 - **Distribution & agent bootstrap (2026-08-23.01, shipped 2026-09-12 as v0.16.0):** the binary ships as a Homebrew cask (`seanb4t/homebrew-tap`, `Casks/engram.rb`) published by GoReleaser's `homebrew_casks:` through a dedicated tap-publisher App — the token field MUST stay the bare `{{ .Env.HOMEBREW_TAP_TOKEN }}` form, since GoReleaser regex-matches it on the raw string and only a real tag exercises it. `internal/setup` is a stdlib-only leaf: a `Runtime` interface authoring `Plan`s of argv `Action`s executed through an injectable `Environment.Run` seam, with Claude Code / Codex / opencode as shell-out writers and `generic` as an opt-in zero-action portable-config emitter; secrets are env-var references, never argv. `internal/skills` embeds the five curation skills (`//go:embed all:data`, drift-gated byte-for-byte against `skill/engram/skills`) and installs them natively per runtime, with Codex additionally getting a delimited AGENTS.md index spliced in place (only `fs.ErrNotExist` is the create case). `internal/setupgen` renders `/engram-setup`'s mechanical prose from real Plans; `surfacesgen --check-setup` and CI's regenerate-and-diff keep it equal. `cmd/engram/releaseconfig_test.go` pins the cask hook ordering, the `SKIP_HOMEBREW_UPLOAD` guard, and the credential shape as own-config text assertions.
 - **Identity:** OIDC bearer tokens on the MCP lane become the memory `actor`; the authz `owner` key is a configurable claim (default `email`). No issuer → single anonymous empty-owner bucket.
 - **VCS/build:** git (branch + PR; never push to `main` directly); `task` runner; buf-generated `gen/` tree committed and CI-checked; release-please-driven releases (binary + image via goreleaser, OCI Helm chart).
@@ -862,7 +883,7 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | `--apply` compares first and never runs an action on `preserved` or `already-correct` (2026-09-13.01 Phase 5, D-01) | The 2026-09-10 incident was `--apply` blindly running Claude Code's remove-then-add; with Phase 4's classification available pre-write, a `preserved` row returns before `plan.Actions[0]` and an `already-correct` row is a true no-op — no remove-then-add churn, no OAuth logout on every re-run. Byte-compare survives only for runtimes without a scanner (opencode) and ambiguous reads | ✓ Good — `TestApplyPreservedNeverRunsClaudeCodeRemove` pins it with a panic-on-overrun harness; ten red-evidence patches registered |
 | The OAuth re-login consequence is decided by observed SHAPE, rendered as a row note in both lanes, and never pauses `--apply` (2026-09-13.01 Phase 5, D-03/D-04) | No read verb exposes auth state and the `oauth-client` read-back shape is unobserved; a registration with no `Authorization` header that classifies `would-write` on Claude Code is warned conservatively (a false warning costs nothing, a missed one is a silent logout). `--apply` stays the only consent gate — preview-by-default is where the operator reads it "before it runs" | ✓ Good — `Observation.RewriteConsequence` authored in `claudecode.go`; bearer/preserved/already-correct rows never carry it |
 | No `--replace-registration` flag: a `preserved` row names the manual step (2026-09-13.01 Phase 5, D-05) | engram never destroys what it cannot reproduce; the destructive step belongs to the runtime's own tool with its own confirmation semantics (`claude mcp remove engram --scope user`; Codex's `[mcp_servers.engram]` table). A second consent flag re-opens the incident class the moment it lands in a script | ✓ Good — `Observation.ManualRemediation` per runtime; the row and the guide both name it |
-| Docs close out on a post-release observation, not from code (2026-09-13.01 Phase 5, D-06/D-07) | The `2026-08-23.01` D-10 precedent: guides split by reader intent (install = binary + cask contents incl. man pages; agent-setup = running setup; plugin = what the plugin is), each pinned by a docs gate; `05-POST-RELEASE.md` (tracker #567) lists the qualifying-release checks; `REQ-docs-setup-v2` stays open and the verification carries `post_release_status: pending` | ◆ Open — closes when `05-RELEASE-<ver>.md` records the observation after the next release |
+| Docs close out on a post-release observation, not from code (2026-09-13.01 Phase 5, D-06/D-07) | The `2026-08-23.01` D-10 precedent: guides split by reader intent (install = binary + cask contents incl. man pages; agent-setup = running setup; plugin = what the plugin is), each pinned by a docs gate; `05-POST-RELEASE.md` (tracker #567) lists the qualifying-release checks; `REQ-docs-setup-v2` stays open and the verification carries `post_release_status: pending` | ✓ Good — `05-RELEASE-0.17.0.md` recorded the v0.17.0 observation on 2026-09-18 and REQ-docs-setup-v2 closed; closes when `05-RELEASE-<ver>.md` records the observation after the next release |
 
 ## Evolution
 
@@ -883,4 +904,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-16 after Phase 5 (2026-09-13.01 Setup v2 — all five phases complete: apply-time preserve gate, OAuth re-login note, and the three guides current; `REQ-docs-setup-v2` open pending the post-release observation, tracker #567).*
+*Last updated: 2026-09-18 after milestone 2026-09-13.01 (Setup v2 shipped 2026-09-17 as v0.17.0, observed 2026-09-18; no milestone open)*

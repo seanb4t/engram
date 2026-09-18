@@ -1,5 +1,44 @@
 # Milestones — engram
 
+## 2026-09-13.01 Setup v2 (Shipped: 2026-09-17)
+
+**Phases completed:** 5 phases (1–5), 19 plans, 45 tasks
+**Requirements:** 23/23 verified · **Audit:** `passed` (third pass; 10/10 integration seams, 4/4 E2E flows, 0 blockers, Nyquist 5/5 COMPLIANT, security 5/5 — 88 threats closed)
+**Git range:** `c3afb92b..0aaba2c4` — 184 files, +37,963 / −1,921; shipped to `main` as #569 (squash, 152 commits) + #571 (ship-note) + #572 (audit) + #578 (post-release), released as **v0.17.0** (#570) and observed live 2026-09-18 (`05-RELEASE-0.17.0.md`, #567)
+**Timeline:** 2026-09-13 → 2026-09-17 (5 days to ship; released and observed 2026-09-18) · **No git tag** — release-please owns the version namespace
+**Closeout:** `verified_closeout` · open-artifact audit clear, 0 acknowledged, 0 carried forward
+**Archived:** `milestones/2026-09-13.01-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md` + `2026-09-13.01-phases/` (33 red-evidence patches, mapping in `RED-EVIDENCE.md`)
+
+**Delivered:** `engram setup` became safe to re-run against a real machine. Preview reads the
+runtime's actual registration back through its own read verb, parses it totally, and classifies
+it `already-correct` / `would-write` (naming the facet) / `preserved`; `--apply` consults that
+same classification and performs zero registration writes on `preserved` or `already-correct` —
+never Claude Code's tolerant `mcp remove` — closing the 2026-09-10 overwrite incident, and warns
+up front when a reproducible Claude Code rewrite would discard an OAuth login. Observed header
+values are redacted by construction. `--header NAME=ENVVAR` expresses gateway registrations as a
+bare env reference per runtime (Codex declines by name). Claude Code and Codex receive skills,
+hooks, and `/engram-setup` plugin-first through their own plugin CLIs. `osRun` names deadline
+kills (#560) and the cask installs the binary's own man pages.
+
+**Key accomplishments:**
+
+- Hidden `engram man <dir>` wraps cobra/doc.GenManTree with a pinned epoch-dated header for byte-stable pages, and the Homebrew cask's hand-rolled hook pair installs/removes them symmetrically with the shipped completions step.
+- `setup.Options.Headers []HeaderSpec` lands with a `sortedHeaders` ordering helper, claude-code renders each as a sorted `--header 'NAME: ${ENVVAR}'` pair on its single `mcp add` action, and codex declines any header up front via the new `ErrHeaderUnsupported` sentinel — never dereferencing a header's environment variable anywhere in the package.
+- opencode renders `--header 'NAME={env:ENVVAR}'` pairs on its single `mcp add` action in every supported mode, and generic carries extras in its existing `headers` JSON object via a new `genericHeaders` named map type whose `MarshalJSON` orders `Authorization` first then extras case-insensitively — both extending 02-01's header vocabulary with zero-header outputs proven byte-identical to HEAD.
+- `engram setup --header NAME=ENVVAR` (repeatable, comma-separated, `ENGRAM_HEADERS`-defaulted) is accepted with every `--auth` mode, validated once at the CLI boundary with four exact usage errors that never echo a pasted value, reported as one flat comma-joined row facet in D-08 order, and documented in `--help` with the `Accepted --auth modes` block byte-identical.
+- Fifth `bearer+header` setupgen case regenerating both `/engram-setup` tables, header-aware `TestSetupGeneratedInvocations` proving codex's decline end-to-end, `/engram-setup` prose and `guides/agent-setup.md`'s Gateway headers section — then, after a checkpoint, the plan's own `x-litellm-api-key`/`LITELLM_KEY` example was renamed to a vendor-neutral `x-gateway-api-key`/`GATEWAY_KEY` across code, tests, and docs to satisfy the shipped-bundle privacy guard.
+- A single-read comparison against already-known intent classifies a Codex registration as already-correct/would-write/preserved, redacting every observed header value by construction so no probe byte ever reaches a rendered or marshaled field.
+- Recorded the maintainer's verbatim capture of `claude mcp get` and `codex mcp get --json` echoing a literal (non-`${VAR}`) custom header value, closing the last unobserved shape gap before plan 04-05's scanner fixtures are written.
+- `guides/agent-setup.md` gains a `preserved` results row, a real facet-naming `would-write`/`already-correct` pair, and an explicit opencode-not-compared statement, all pinned by a new `migrate_docs_test.go`-shaped docs gate with a positive control.
+- `engram setup`'s `--output json`/`text` now render `facets`/`drift` as flat strings copied straight from `internal/setup`, count `preserved` in the apply headline, name the read-and-compare behavior in `--help`, and prove no probe-read literal ever crosses the CLI's stdout/stderr boundary.
+- `claude mcp get engram`'s fixed-label text is now a total D-11 parse into the SAME `Observation`/`Compare` pipeline codex already uses, closing SC2's per-runtime three-state coverage and proving redaction against BOTH runtimes' actually-observed literal-echo shapes end-to-end through the CLI process boundary.
+- `--apply` now consults the same pre-write classification Preview reports before touching any registration action: already-correct and preserved (including Claude Code's tolerant `mcp remove`) issue zero writes, a real write re-observes redaction-safe afterward, and a Claude Code rewrite that would discard an OAuth login says so on the row before it runs.
+- `engram setup --help` and `guides/agent-setup.md` now teach the apply-time preserve gate, the OAuth re-login consequence, and plugin-first delivery by reading — both gated by new/extended tests, with the process-boundary literal-leak proof extended to cover `--apply`.
+- `install.md` now states what the Homebrew cask installs (binary, completions, one man page per command including `man engram-setup`) and `plugin.md` now states that `engram setup --apply` installs the plugin plugin-first and cross-links a `preserved` result to the setup guide's remediation — both gated by new four-leg docs tests with positive controls, both under a truthful `Unreleased as of v0.16.1` notice.
+- `05-POST-RELEASE.md` records the D-06 human handoff in the `06-POST-RELEASE.md` precedent's exact shape with `status: pending` and tracking issue #567, and the full Phase 5 gate — `task`, license, key-links, shuffle, `cmd/engram`, surfaces drift, docs-site build — is green at the final commit, including `internal/store`'s live-Docker red-evidence harness.
+
+---
+
 ## 2026-08-23.01 Distribution & Agent Bootstrap (Shipped: 2026-09-12)
 
 **Phases completed:** 6 phases (1–6), 21 plans, 49 tasks

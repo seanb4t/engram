@@ -2,34 +2,35 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-13.01
 milestone_name: Setup v2
-current_phase: 05
-status: "Milestone 2026-09-13.01 shipped — PR #569 merged (0aaba2c4)"
+status: Awaiting next milestone
 stopped_at: Phase 05 complete — all phases complete
-last_updated: "2026-09-17T21:37:36.785Z"
+last_updated: "2026-09-18T00:56:22.125Z"
 last_activity: 2026-09-17
-state_head: d01efb0b9d46f46e259338ed3ec3b50fa6028247
+last_activity_desc: Milestone 2026-09-13.01 completed and archived
+state_head: 6a746733c5bb274f5e22e7381bcfc3636e2e706b
 progress:
   total_phases: 5
   completed_phases: 5
   total_plans: 19
   completed_plans: 19
+current_phase: 05
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-16 after Phase 5 — 2026-09-13.01 Setup v2)
+See: .planning/PROJECT.md (updated 2026-09-18 after milestone 2026-09-13.01 — Setup v2 shipped as v0.17.0)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 5 — Apply-Time Preserve Gate & Documentation
+**Current focus:** Planning next milestone (`/gsd-new-milestone`); no milestone open
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
-Status: Milestone 2026-09-13.01 shipped — PR #569 merged (0aaba2c4)
-Last activity: 2026-09-17
+Phase: Milestone 2026-09-13.01 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-17 — Milestone 2026-09-13.01 completed and archived
 
 ## Deferred Items
 
@@ -319,15 +320,12 @@ Both prior entries were delivered and had simply never been closed out:
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
-- **Milestone 2026-09-13.01 closeout state (after Phase 5):** all five phases complete and
-  `passed`; `REQ-docs-setup-v2` is DELIBERATELY `[ ]` (D-06) — Phase 5's VERIFICATION carries
-  `post_release_status: pending` / `post_release_tracker: #567`, and closes only when a human records
-  `05-RELEASE-<ver>.md` per `05-POST-RELEASE.md` after the next release. The milestone audit must
-  read that open handoff as designed, not as a gap. Apply lane: `execute()`'s `mutate` branch now
-  shares `classifyProbe`/`renderClassification` with preview; `preserved`/`already-correct` return
-  before `plan.Actions[0]`; byte-compare survives only for non-drift runtimes. 33 red-evidence
-  patches registered across Phases 01–05. Cross-phase: every later phase's shared-file edits flip
-  earlier verifications `stale` — re-prove at HEAD, re-fingerprint with the reason (done after 4 and 5).
+- **Milestone 2026-09-13.01 CLOSED (2026-09-18):** shipped 2026-09-17 (#569), released as v0.17.0
+  (#570), observed live 2026-09-18 (`05-RELEASE-0.17.0.md`, #567 closed), audit `passed` 23/23,
+  archived under `milestones/2026-09-13.01-*`; `redEvidenceDirs` emptied (33 patches → `RED-EVIDENCE.md`).
+  Open carry-forwards live in PROJECT.md **Deferred**: the `oauth-client` read-back label, the
+  `verify:post` hook lapse (secure-phase/validate-phase never dispatched — reconciled retroactively),
+  review-bot threads blocking renovate automerge, the tap's cask DSL deprecation.
 - **Phase 3 (2026-09-13.01) learnings, still binding:** `internal/setup` is a machine-gated
   STDLIB-ONLY LEAF (`TestSetupPackageIsStdlibOnlyLeaf`) — no new import there, ever. Facets are
   composed in `cmd/engram` (flat scalars only); the shared `execute()` stays content-blind.
@@ -372,8 +370,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-16T23:28:40.000Z
-Stopped at: Phase 05 complete — all phases complete
+Last session: 2026-09-18T01:00:00.000Z
+Stopped at: Milestone 2026-09-13.01 archived — awaiting /gsd-new-milestone
 Resume file: None
 
 ## Performance Metrics

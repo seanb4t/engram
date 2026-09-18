@@ -578,22 +578,122 @@ hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
 
 ---
 
+## Milestone: 2026-09-13.01 — Setup v2
+
+**Shipped:** 2026-09-17 (released as v0.17.0 on 2026-09-18, observed live the same day)
+**Phases:** 5 (1–5) | **Plans:** 19 | **Tasks:** 45 | **Requirements:** 23/23
+**Git range:** `c3afb92b..0aaba2c4` — 184 files, +37,963 / −1,921; #569 (squash, 152 commits) + #571 (ship-note) + #572 (audit) + #578 (post-release) + the closeout branch
+**Timeline:** 2026-09-13 → 2026-09-17 (5 days to ship, 6 to observed release) · third CalVer-labeled milestone
+
+### What Was Built
+
+- **Read-only drift detection** — `internal/setup/drift.go`'s single `Observe` → `Compare`
+  classification (`already-correct` / `would-write` + facets / `preserved`), a total parse on both
+  scanners (codex `mcp get --json` under `DisallowUnknownFields` + key-set diff; claude-code's
+  fixed-label text line-classified) so unknown content is `preserved`, never a false
+  `already-correct`; observed header values compared in locals and never retained.
+- **The apply-time preserve gate** — `--apply` consults the same classification and returns before
+  the write loop on `preserved`/`already-correct`; never Claude Code's tolerant `mcp remove`; a
+  post-write re-observe renders `Registered` redaction-safe; the OAuth re-login consequence is
+  decided by observed shape and rendered on `Notes` in both lanes; no `--replace` flag exists.
+- **Custom auth headers** — `HeaderSpec{Name, EnvVar}`, per-runtime rendering with no shared
+  formatter, `Authorization` rejected as a header name, values never on argv; Codex declines by
+  name (`ErrHeaderUnsupported`) instead of gaining a TOML writer.
+- **Plugin-first delivery** — one `plugin list --json` probe decides capability and three-way
+  state, `marketplace add` only when absent against engram's own marketplace, install/update
+  (Codex: remove-then-add), `skills.DetectPresence` read-only leftovers report, native copy as the
+  fallback and never both.
+- **Executor correctness + man pages** — `osRun` checks `ctx.Err()` before `*exec.ExitError`;
+  `engram man <dir>` via `cobra/doc.GenManTree` with an epoch-pinned header and a tree-restoring
+  wrapper; the cask installs 28 pages and removes exactly `engram{,-*}.1`.
+
+### What Worked
+
+- **Observation records instead of live-CLI tests.** Rule `m45p2b4bp7` forbids a test that
+  invokes a real third-party CLI, so the literal-echo shapes both scanners must handle came from a
+  maintainer-run protocol (`04-OBSERVATIONS.md`: throwaway entry, isolated `CODEX_HOME`, loopback
+  URL) and every fixture cites it by name. The same pattern closed the milestone:
+  `05-RELEASE-0.17.0.md` observed v0.17.0 end-to-end under an isolated `HOME`/`CODEX_HOME` with
+  the real registrations hash-verified untouched.
+- **Decide the incident class structurally, then prove it with a negative.** The gate is a
+  `return` above the loop, not a flag inside it; `TestApplyPreservedNeverRunsClaudeCodeRemove`
+  asserts the argv is never issued, and the live observation showed `claude mcp get` byte-identical
+  across `--apply`.
+- **Redaction by construction beat redaction by filter.** `Observation`/`ObservedHeader` carry no
+  value field, so there is nothing to leak; `TestRedactionUnconditional` and the process-boundary
+  `TestSetupJSONNeverLeaksProbeLiteral` are structural proofs, not regex audits.
+- **Grouping coupled dependencies.** Diagnosed during the close: renovate's stacked PRs were three
+  config-level causes (the CI self-heal author freezing rebases, Renovate 42's
+  `timestamp-required` on action digests, review-bot threads vs. required thread resolution) plus
+  two bad groupings — fixed in one config PR (#573) and the queue drained the same night.
+
+### What Was Inefficient
+
+- **The `verify:post` hooks never fired.** `secure-phase` and `validate-phase` are active step
+  hooks, yet no phase received a `SECURITY.md` or a reconciled `VALIDATION.md` from
+  `/gsd-verify-work`. The ship gate caught it (`SECURITY_SHIP_GATE_NO_REVIEW`) and both were
+  reconciled retroactively for all five phases at close — a day of work that should have been zero.
+  Root cause undiagnosed; check after the next milestone's first verification.
+- **The post-release checklist copied last milestone's install-docs ritual wholesale** (four-platform
+  brew matrix, checksums, Rosetta) for a milestone whose only install-path change was the man-page
+  hook. It was right-sized at observation time; the planner should size the handoff to what
+  changed.
+- **Squash-merge orphaned the ship-note** (branch deleted before `track_shipping` ran) and the
+  release-gated docs REQ meant the audit read `tech_debt` until v0.17.0 existed — the close took
+  four planning-only PRs (#571, #572, #578, closeout) around one release PR.
+- **`gsd_run query commit` shape drift** kept its 8th `phase.complete` wrong-row / `git stash`
+  recurrences; verification `stale` flips from value-only edits (VALIDATION.md, REQUIREMENTS.md)
+  needed three re-fingerprint passes.
+
+### Patterns Established
+
+- A drift scanner is a **total parse**: every unclassified line/key is an unaccounted-for facet →
+  `preserved`. A vendor release that adds a field makes setup cautious, never blind.
+- `preserved` outranks `already-correct` in aggregation so a declined write is never laundered into
+  convergence at the row headline.
+- Planning-artifact provenance for live-CLI facts: `NN-OBSERVATIONS.md` / `NN-RELEASE-<ver>.md`
+  with verbatim, redacted captures; fixtures and gates cite the record, never an assumption.
+- Milestone-close sequence for a release-gated requirement: merge → release-please → human
+  observation → check the REQ → re-audit → complete (the D-10 precedent, now followed twice).
+
+### Key Lessons
+
+- `ls .planning/phases/*/*-{SECURITY,VALIDATION}.md` after the FIRST `/gsd-verify-work` of a
+  milestone, not at ship time.
+- A plan-authored `test "$(rg -c …)" -eq 0` gate can never pass on zero matches (`rg -c` prints
+  nothing); count with `rg -o … | wc -l`.
+- Renovate: `gitIgnoredAuthors` for any bot that pushes onto renovate branches; `timestamp-optional`
+  for action digests under Renovate ≥ 42; never group a code-locked image (qdrant) into the
+  non-major batch.
+- Claude Code's `oauth-client` read-back adds an `OAuth:` label the scanner does not know — safe
+  today (`preserved`), but a setup-authored registration should re-read `already-correct`.
+
+### Cost / Process Observations
+
+- Model mix: opus orchestrator + executors; sonnet for the integration checker (~5 min, 45 tool
+  uses, file:line evidence for 10 seams / 4 flows) and code review.
+- Sessions: 5 phase sessions + 1 long close session (ship → security sweep → audit → validate ×5 →
+  renovate triage → release → observation → archive).
+- Notable: the retroactive validate sweep (~40 rows) cost one full `task` run by substituting the
+  gate with a single cited green run; the renovate triage merged 7 PRs and closed 3 in one evening
+  once the three config causes were named.
+
 ## Cross-Milestone Trends
 
 Populated as milestones accumulate.
 
-| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | 2026-08-23.01 | Notes |
-|-------|--------|---------|---------|---------|---------------|---------------|-------|
-| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | 0 (but 2 research risks retired live before roadmapping) | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
-| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | ok; reopened-phase branch trap instead (`q51bxfmwvp`) | Stacked unmerged branch each time; cleared post-merge |
-| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | fake-HOME-only verification, own-config-is-in-scope, known-survivor control for comment strippers, forward-the-collision-set | Applied within-milestone and captured for reuse |
-| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 25/25 | 3-source cross-referenced |
-| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | gaps_found → tech_debt (B01 closed by 04-05; 12/12 seams, 8/8 flows) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
-| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | 1 squashed PR (#557) + docs PR (#558) + closeout branch | v0.13.x did not split per-phase |
-| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | 1 by the milestone audit's integration checker (B01), 0 by review | Both v0.13.x cases were prose contradicting the code it described |
-| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | 2/6 at first audit → 6/6 COMPLIANT (3 Phase 1 gaps → Go tests) | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
-| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | 3 stale Phase 2 checkboxes + 7 progress-table misfires during execution | New trend — all four would have frozen into the immutable archive a day later |
-| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
+| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | 2026-08-23.01 | 2026-09-13.01 | Notes |
+|-------|--------|---------|---------|---------|---------------|---------------|---------------|-------|
+| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | 0 (but 2 research risks retired live before roadmapping) | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
+| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | ok; reopened-phase branch trap instead (`q51bxfmwvp`) | ok (sentinel re-armed before every dispatch) | Stacked unmerged branch each time; cleared post-merge |
+| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | fake-HOME-only verification, own-config-is-in-scope, known-survivor control for comment strippers, forward-the-collision-set | total-parse scanner, redaction-by-construction, observation records (`NN-OBSERVATIONS`/`NN-RELEASE`), renovate `gitIgnoredAuthors` | Applied within-milestone and captured for reuse |
+| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 25/25 | 23/23 (1 release-gated, observed on v0.17.0) | 3-source cross-referenced |
+| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | gaps_found → tech_debt (B01 closed by 04-05; 12/12 seams, 8/8 flows) | tech_debt → tech_debt → **passed** (Nyquist + release observation reconciled) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
+| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | 1 squashed PR (#557) + docs PR (#558) + closeout branch | 1 squashed PR (#569) + 3 planning PRs + closeout | v0.13.x did not split per-phase |
+| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | 1 by the milestone audit's integration checker (B01), 0 by review | 2 warnings fixed (04 WR-01/WR-02), 3 info accepted | Both v0.13.x cases were prose contradicting the code it described |
+| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | 2/6 at first audit → 6/6 COMPLIANT (3 Phase 1 gaps → Go tests) | 0/5 at first audit (hooks never fired) → 5/5 COMPLIANT retroactively | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
+| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | 3 stale Phase 2 checkboxes + 7 progress-table misfires during execution | 5 draft VALIDATION.md + 5 missing SECURITY.md (hook lapse); 1 cross-ref rot (T-03-10) | New trend — all four would have frozen into the immutable archive a day later |
+| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
 
 ---
 
