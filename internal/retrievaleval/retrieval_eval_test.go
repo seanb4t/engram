@@ -30,7 +30,7 @@ const defaultK = 8
 // qdrantImageTag mirrors internal/store/store_test.go's pinned Qdrant image so
 // the eval measures against the same server version the store integration
 // suite is verified against.
-const qdrantImageTag = "qdrant/qdrant:v1.18.2"
+const qdrantImageTag = "qdrant/qdrant:v1.19.1"
 
 // testQdrantAddr is the gRPC host:port the eval seeds and searches against. Set
 // by TestMain: ENGRAM_QDRANT_TEST_ADDR if provided (fast-path override), else

@@ -32,14 +32,14 @@ import (
 // MUST be paired with re-verifying that contract and updating
 // qdrantTOCTOUVerifiedVersion below (the version guard there will fail loudly
 // until you do).
-const qdrantImageTag = "qdrant/qdrant:v1.18.2"
+const qdrantImageTag = "qdrant/qdrant:v1.19.1"
 
 // qdrantTOCTOUVerifiedVersion is the server version (as reported by HealthCheck)
 // whose SetPayload point-ID NotFound semantics TestSetVisibilityTOCTOU was
 // written against. Deliberately a SEPARATE constant from qdrantImageTag so a
 // version bump trips the guard in TestSetVisibilityTOCTOU and forces a conscious
 // re-verification rather than silently tracking the new image.
-const qdrantTOCTOUVerifiedVersion = "1.18.2"
+const qdrantTOCTOUVerifiedVersion = "1.19.1"
 
 // testQdrantAddr is the gRPC host:port the integration tests run against. Set by
 // TestMain: ENGRAM_QDRANT_TEST_ADDR if provided (fast path / override), else an
@@ -1148,7 +1148,7 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 // record deleted between the ownership gate (getWritable) and the SetPayload
 // call must not cause SetVisibility to return nil.
 //
-// Qdrant v1.18.2 with a point-ID selector returns a NotFound gRPC error from
+// Qdrant v1.19.1 (as v1.18.2 before it) with a point-ID selector returns a NotFound gRPC error from
 // SetPayload when the target ID does not exist — so the error propagates
 // through SetVisibility without a separate re-fetch. Parts 1 and 2 are the
 // load-bearing TOCTOU assertions: they confirm at the raw Qdrant level that
@@ -4618,7 +4618,8 @@ func TestSupersedeMultiReconcilesDanglingLinks(t *testing.T) {
 //   - transportFail: a malformed (non-UUID) id — the pinned server rejects
 //     it with a protocol-level InvalidArgument error, NOT NotFound
 //     (confirmed directly against a real v1.18.2 server before writing this
-//     test), so it must land in BOTH ReadFailures and Dangling.
+//     test; re-confirmed on v1.19.1 at the 2026-09-17 bump), so it must land
+//     in BOTH ReadFailures and Dangling.
 //   - pointsElsewhere: SupersededBy is set but to a DIFFERENT id — nothing
 //     to do, must appear in no field.
 func TestSupersedeMultiReconcileClassifiesFailures(t *testing.T) {

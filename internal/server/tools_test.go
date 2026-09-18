@@ -221,7 +221,7 @@ func TestMain(m *testing.M) {
 	// Bound startup so an unreachable daemon or a stalled image pull fails fast
 	// instead of hanging the suite. os.Exit skips defers, so cancel explicitly.
 	startCtx, startCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	container, cerr := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.18.2")
+	container, cerr := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.19.1")
 	if cerr != nil {
 		startCancel()
 		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set ENGRAM_QDRANT_TEST_ADDR or start Docker\n", cerr)

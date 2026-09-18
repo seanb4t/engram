@@ -32,12 +32,12 @@ jobs:
     # The explicit health check below is required, not decoration: GitHub
     # Actions only gates job steps on an image's own HEALTHCHECK or an
     # explicit --health-cmd, and this image ships neither (confirmed via
-    # `docker inspect qdrant/qdrant:v1.18.2 --format '{{.Config.Healthcheck}}'`
+    # `docker inspect qdrant/qdrant:v1.19.1 --format '{{.Config.Healthcheck}}'`
     # -> <nil>) — without it `go test` could start dialing before the
     # listeners are up, reintroducing the same cascade from a different cause.
     #
     # The probe must use only what the image actually ships. Verified by
-    # `docker run --rm --entrypoint sh qdrant/qdrant:v1.18.2 -c 'command -v X'`:
+    # `docker run --rm --entrypoint sh qdrant/qdrant:v1.19.1 -c 'command -v X'`:
     # curl, wget, nc and python3 are all ABSENT; bash IS present. A
     # `curl`-based health-cmd therefore never succeeds, and the job dies at
     # "Initialize containers" with the container itself perfectly healthy
@@ -54,7 +54,7 @@ jobs:
         # the per-package testcontainer fallback (D-18) and this shared
         # service must stay version-locked, since qdrantTOCTOUVerifiedVersion's
         # guard exists to force a conscious re-verification on a bump.
-        image: qdrant/qdrant:v1.18.2
+        image: qdrant/qdrant:v1.19.1
         ports:
           - 6334:6334 # gRPC — what the Go client dials, and what health-cmd probes
           - 6333:6333 # REST — dashboard/readyz, not used by the tests
@@ -77,11 +77,11 @@ jobs:
           ENGRAM_QDRANT_TEST_ADDR: localhost:6334
         run: |
           echo "ENGRAM_QDRANT_TEST_ADDR resolved to: ${ENGRAM_QDRANT_TEST_ADDR}"
-          count=$(docker ps --filter "ancestor=qdrant/qdrant:v1.18.2" --format '{{.ID}}' | wc -l | tr -d '[:space:]')
-          echo "running Qdrant containers (ancestor qdrant/qdrant:v1.18.2): ${count}"
+          count=$(docker ps --filter "ancestor=qdrant/qdrant:v1.19.1" --format '{{.ID}}' | wc -l | tr -d '[:space:]')
+          echo "running Qdrant containers (ancestor qdrant/qdrant:v1.19.1): ${count}"
           if [ "${count}" != "1" ]; then
             echo "::error::expected exactly one Qdrant container, found ${count}"
-            docker ps --filter "ancestor=qdrant/qdrant:v1.18.2"
+            docker ps --filter "ancestor=qdrant/qdrant:v1.19.1"
             exit 1
           fi
       # D-20 claim 3: prove each package actually took the SHARED-Qdrant path.
@@ -142,7 +142,7 @@ jobs:
       - name: qdrant container diagnostics on failure
         if: failure()
         env:
-          QDRANT_IMAGE: qdrant/qdrant:v1.18.2
+          QDRANT_IMAGE: qdrant/qdrant:v1.19.1
         run: |
           echo "--- qdrant container state ---"
           cid=$(docker ps -aq --filter "ancestor=${QDRANT_IMAGE}" | head -n1)

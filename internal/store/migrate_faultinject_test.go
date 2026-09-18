@@ -7,7 +7,7 @@
 // reconciling by re-derivation, never by trusting the write call's own
 // success/failure signal (D-09).
 //
-// The pinned server (qdrant/qdrant:v1.18.2) chunks a multi-ID payload write
+// The pinned server (qdrant/qdrant:v1.19.1) chunks a multi-ID payload write
 // internally and mutates every point it finds before raising an error for
 // one it does not (qdrant/qdrant#9371), already documented twice in this
 // package: store.go:127-140 (qdrantPayloadOpBatchSize, naming the server's
