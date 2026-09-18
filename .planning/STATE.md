@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
 milestone: 2026-09-13.01
-milestone_name: Setup v2
 status: Awaiting next milestone
 stopped_at: Phase 05 complete — all phases complete
-last_updated: "2026-09-18T00:56:22.125Z"
+last_updated: "2026-09-18T17:51:36.193Z"
 last_activity: 2026-09-17
 last_activity_desc: Milestone 2026-09-13.01 completed and archived
-state_head: 6a746733c5bb274f5e22e7381bcfc3636e2e706b
+state_head: 339ab181765660ba4caf7a43d10775419611ff7b
 progress:
   total_phases: 5
   completed_phases: 5
   total_plans: 19
   completed_plans: 19
+milestone_name: Setup v2
 current_phase: 05
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-18 after milestone 2026-09-13.01 — 
 Phase: Milestone 2026-09-13.01 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-09-17 — Milestone 2026-09-13.01 completed and archived
+Last activity: 2026-09-18 - Completed quick task 260918-idl: fix console root route: ListScopes gRPC 4MiB overflow and recent-memories missing cross_spine (#500)
 
 ## Deferred Items
 
@@ -356,6 +356,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 260918-idl | fix console root route: ListScopes gRPC 4MiB overflow and recent-memories missing cross_spine (#500) | 2026-09-18 | 339ab181 | [260918-idl-fix-console-root-route-listscopes-grpc-4](./quick/260918-idl-fix-console-root-route-listscopes-grpc-4/) |
 
 ### Roadmap Evolution
 
