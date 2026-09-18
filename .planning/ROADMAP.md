@@ -343,7 +343,25 @@ Codex; and ships man pages from the cask.
 2. Every test Qdrant client in this milestone's regression tests is constructed through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly.
 3. The independent `qdrant.NewClient` test call sites converge on the shared constructor, so a passing test proves the bounded-read mechanism keeps responses bounded rather than a client-side accident.
 
-**Plans:** 0 plans
+**Plans:** 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 01-01-PLAN.md — `store.NewQdrantClient` shared constructor (production switched, no behavior change); new `internal/store/storetest` package (`RecvLimit` 4 MiB, `QdrantImage`, `Run` lifecycle, single `RequireQdrant` parser, named-limit `Dial`) and the two-shape `SeedOversized` fixture seeder; client-holder gate recognizes the new constructor and write-checks every holder but store.go (D-00–D-06, D-08, D-09, D-11, D-12, D-13; REQ-oversized-fixture-helper, REQ-test-client-parity)
+
+**Wave 2**
+
+- [ ] 01-02-PLAN.md — internal/store's six in-package dial sites converge on `dialTestClient(t, opts...)` → `NewQdrantClient`, proven by a production-span + caller-interceptor parity test (D-07, D-10; REQ-test-client-parity)
+- [ ] 01-03-PLAN.md — internal/server, internal/e2e and internal/retrievaleval run on `storetest.Run`/`storetest.Dial`; retrievaleval keeps its opt-in gate via `IgnoreRequireQdrant` (D-10; REQ-test-client-parity)
+
+**Wave 3**
+
+- [ ] 01-04-PLAN.md — internal/store's TestMain moves to an external `main_test.go` on `storetest.Run` with an in-package hook; the #583 ListScopes regression migrates onto `storetest.Dial` + `SeedOversized` over both shapes, observed RED (D-04, D-05, D-07, D-10; REQ-oversized-fixture-helper, REQ-test-client-parity)
+
+**Wave 4**
+
+- [ ] 01-05-PLAN.md — D-11 convergence AST gate (test files included), CI Qdrant image pinned to `storetest.QdrantImage` by test, and this phase's four red-evidence patches registered so `TestRedEvidencePatchesAreLive` goes green (D-10, D-11, D-13; REQ-test-client-parity, REQ-oversized-fixture-helper)
 
 ---
 
