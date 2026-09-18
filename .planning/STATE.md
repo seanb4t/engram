@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: 2026-09-18.01
 milestone_name: Bounded Reads
 status: planning
-last_updated: "2026-09-18T19:02:26.911Z"
+last_updated: "2026-09-18T20:00:00.000Z"
 last_activity: 2026-09-18
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-18 after opening milestone 2026-09-18.01 — Bounded Reads)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Milestone 2026-09-18.01 Bounded Reads — defining requirements
+**Current focus:** Milestone 2026-09-18.01 Bounded Reads — roadmapped (7 phases, 20/20 requirements mapped), ready for /gsd-discuss-phase 1
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 1 (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-09-18 — Milestone 2026-09-18.01 started
+Status: Roadmapped — ready for /gsd-discuss-phase 1
+Last activity: 2026-09-18 — ROADMAP.md created (7 phases, 20/20 requirements mapped, 0 orphans)
 
 ## Deferred Items
 
@@ -365,6 +365,8 @@ Both prior entries were delivered and had simply never been closed out:
 - Phase 5 edited: edited fields: success_criteria (SC1, SC3) — SC1 widened from six fields (23-28) to eight (23-30, adding summary_model and summary_egress_at) per 2026-08-15 decision D-04/z1fxhaqdek, which reverses zyaa3m2fvd's store-only rule; SC3 rewritten to the property that actually holds per D-09 — identical outward-widened bounds on both read lanes, with NO read-path rounding code added (a constant gate). Applied via edit-phase at plan time as 05-CONTEXT.md requires.
 - Phase 9 added: Report pending in migrate status — closes milestone-audit items W2 (`engram migrate status` omits the canonical `pending` value) and W3 (`guides/migrate.md:279` documents a CLI derivation that does not exist). One code fix closes both. Debt closure against already-satisfied REQ-migrate-status-histogram / REQ-docs-record-state, not new milestone scope.
 - 2026-08-23.01 ROADMAP.md created: 6 phases (1–6), 25/25 requirements mapped, 0 orphans. Phase numbering restarted at 1. The research-suggested 9-phase breakdown collapsed: Codex/Cursor/opencode's separate high-risk Phase 7 merged into one Runtime Registration phase (Phase 3) after live verification retired the TOML/JSONC and opencode-schema risks; `engram version --json` folded into the cask phase (Phase 1) rather than standing alone.
+
+- 2026-09-18.01 ROADMAP.md created: 7 phases (1–7), 20/20 requirements mapped, 0 orphans. Phase numbering restarted at 1. Research's 6-phase build order was refined by splitting its single per-site-migration phase into Phase 4 (List/ListScheduled/Search) and Phase 5 (the five operator sweeps, plus REQ-recv-limit-backstop and REQ-ci-store-green) so the backstop lands only after every regression test in this milestone already passes without it, and so REQ-ci-store-green sits in the LAST phase that adds oversized Qdrant fixtures. Both discuss-phase decision requirements were placed with the phase implementing their outcome: REQ-content-cap-decided in Phase 3 (Shared Bounded-Read Mechanism, the natural complement to byte-budget pages) and REQ-list-limit-contract-decided in Phase 4 (List migration, whose paging shape the decision determines). Phase 6 (Cross-Spine Partial Results, #456) and Phase 7 (Bounded Provider Responses, #457/#347) are independent single-purpose tails per research, kept as standalone phases since each is a real user-observable behavior change, not internal-quality-only work.
 
 ## Session Continuity
 

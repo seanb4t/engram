@@ -83,12 +83,32 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| REQ-oversized-fixture-helper | Phase 1 | Pending |
+| REQ-test-client-parity | Phase 1 | Pending |
+| REQ-ci-store-green | Phase 5 | Pending |
+| REQ-exhausted-sentinel | Phase 2 | Pending |
+| REQ-exhausted-connect | Phase 2 | Pending |
+| REQ-exhausted-mcp | Phase 2 | Pending |
+| REQ-exhausted-cli-docs | Phase 2 | Pending |
+| REQ-bounded-read-mechanism | Phase 5 | Pending |
+| REQ-byte-budget-pages | Phase 3 | Pending |
+| REQ-list-bounded | Phase 4 | Pending |
+| REQ-list-scheduled-bounded | Phase 4 | Pending |
+| REQ-search-k-bounded | Phase 4 | Pending |
+| REQ-sweeps-bounded | Phase 5 | Pending |
+| REQ-list-contract-unchanged | Phase 4 | Pending |
+| REQ-recv-limit-backstop | Phase 5 | Pending |
+| REQ-content-cap-decided | Phase 3 | Pending |
+| REQ-list-limit-contract-decided | Phase 4 | Pending |
+| REQ-cross-spine-partial | Phase 6 | Pending |
+| REQ-provider-drain-bounded | Phase 7 | Pending |
+| REQ-provider-error-body-closed | Phase 7 | Pending |
 
 **Coverage:**
 
 - v1 requirements: 20 total
-- Mapped to phases: 0
-- Unmapped: 20 ⚠️
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
 
