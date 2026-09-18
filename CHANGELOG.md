@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.17.0](https://github.com/seanb4t/engram/compare/v0.16.1...v0.17.0) (2026-09-18)
+
+
+### Features
+
+* **setup:** plugin-first delivery, custom headers, drift detection, apply-time preserve gate (2026-09-13.01) ([#569](https://github.com/seanb4t/engram/issues/569)) ([0aaba2c](https://github.com/seanb4t/engram/commit/0aaba2c4b6d10c9cb5a1d94c588217fd15eb0f4d))
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#547](https://github.com/seanb4t/engram/issues/547)) ([d3cfc56](https://github.com/seanb4t/engram/commit/d3cfc566d5a1152fbb677efe3be794956de17fc1))
+* **deps:** update all non-major dependencies (patch) ([#424](https://github.com/seanb4t/engram/issues/424)) ([5601ab3](https://github.com/seanb4t/engram/commit/5601ab38d921e7f46b5c58d497405e744a59e969))
+* **deps:** update github.com/chromedp/cdproto digest to e85f50d ([#541](https://github.com/seanb4t/engram/issues/541)) ([4c6f0df](https://github.com/seanb4t/engram/commit/4c6f0dfc2fa8fb280997bb7c40e78a8a00cb06b3))
+* **renovate:** unstick stacked dependency PRs ([#573](https://github.com/seanb4t/engram/issues/573)) ([db46d3c](https://github.com/seanb4t/engram/commit/db46d3c9c61caa71f44a5352d51312ab9f1173ce))
+
 ## [0.16.1](https://github.com/seanb4t/engram/compare/v0.16.0...v0.16.1) (2026-09-13)
 
 
