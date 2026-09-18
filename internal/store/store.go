@@ -20,10 +20,12 @@ import (
 	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/telemetry"
+	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -497,6 +499,27 @@ func WithAuthz(pdp *authz.PDP) Option {
 // probe.
 func WithTargetLocker(l TargetLocker) Option {
 	return func(s *Store) { s.locker = l }
+}
+
+// NewQdrantClient is the single constructor for every *qdrant.Client this
+// module builds — the production composition root (internal/server/tools.go's
+// storeFromConfig) and every test (via internal/store/storetest, or directly
+// inside this package's own in-package tests, which cannot import storetest
+// without an import cycle). It applies the shared base dial options — today
+// exactly grpc.WithStatsHandler(otelgrpc.NewClientHandler()), the option
+// production has always used — FIRST, then appends the caller's own opts,
+// mirroring qdrant-go-client's own base-then-Config.GrpcOptions order so
+// caller options take precedence. A receive limit is passed by the caller in
+// upstream vocabulary (grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(n))),
+// never through a wrapper option type. This adds no production behavior on
+// its own — the MaxCallRecvMsgSize backstop is a later requirement
+// (REQ-recv-limit-backstop), set once the regression tests already pass
+// without it.
+func NewQdrantClient(host string, port int, opts ...grpc.DialOption) (*qdrant.Client, error) {
+	dialOpts := make([]grpc.DialOption, 0, 1+len(opts))
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	dialOpts = append(dialOpts, opts...)
+	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: dialOpts})
 }
 
 // New returns a Store backed by the given Qdrant client and collection.

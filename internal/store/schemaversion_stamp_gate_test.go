@@ -746,13 +746,16 @@ type qdrantClientHolder struct {
 }
 
 // qdrantClientHolderAllowlist is verified against source at revision time:
-// exactly TWO members. internal/store/store.go is the one holder the
+// exactly THREE members. internal/store/store.go is the one holder the
 // write-boundary gate above scans. internal/server/tools.go is a
 // COMPOSITION ROOT ONLY — it constructs the client and hands it straight to
 // store.New without issuing a single Qdrant operation on it directly (its
 // own d.st.Upsert(...) calls are calls to *store.Store's already-gated
 // Upsert method, not to the qdrant.Client it briefly holds — see
 // qdrantClientLocalNames's doc comment for why this distinction matters).
+// internal/store/storetest/storetest.go is a test-support dialer: Dial
+// constructs a client via store.NewQdrantClient and hands it to the caller
+// without ever transmitting a write on it itself (D-09).
 var qdrantClientHolderAllowlist = []qdrantClientHolder{
 	{
 		file:          "internal/store/store.go",
@@ -761,6 +764,10 @@ var qdrantClientHolderAllowlist = []qdrantClientHolder{
 	{
 		file:          "internal/server/tools.go",
 		justification: "Composition root only: storeFromConfig constructs the client via qdrant.NewClient and hands it straight to store.New without issuing a single Qdrant operation on the client itself.",
+	},
+	{
+		file:          "internal/store/storetest/storetest.go",
+		justification: "Test-support dialer (D-09): Dial constructs a client via store.NewQdrantClient and hands it to the caller; storetest never transmits a write on a client it holds, and its seeder writes only through *store.Store (D-08).",
 	},
 }
 

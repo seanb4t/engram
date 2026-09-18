@@ -5,19 +5,21 @@
 // shared-CI-Qdrant mitigation (CONTEXT.md, plans 01-04/01-05):
 //
 //   - TestEveryStoreConstructionRoutesThroughSeam (Task 1): a SOURCE-LEVEL
-//     scan proving no live Store construction in any of the four
-//     Qdrant-backed packages' test sources bypasses that package's
-//     newTestStore seam by passing a raw collection-name literal.
-//   - TestCollectionPrefixesAreDisjoint (Task 2): reads all four packages'
-//     testCollectionPrefix constants directly out of their own test
-//     sources and asserts they are pairwise disjoint, including the
-//     leading-substring case.
+//     scan proving no live Store construction in any Qdrant-backed
+//     package's test sources bypasses that package's newTestStore seam by
+//     passing a raw collection-name literal.
+//   - TestCollectionPrefixesAreDisjoint (Task 2): reads every
+//     Qdrant-backed package's testCollectionPrefix constant directly out
+//     of its own test sources and asserts they are pairwise disjoint,
+//     including the leading-substring case.
 //
-// Both tests read the other three packages (internal/server, internal/e2e,
-// internal/retrievaleval) as PLAIN SOURCE TEXT via go/parser, never by
-// importing them — internal/store cannot import any of them without an
-// import cycle (they already import internal/store), and this is what
-// lets ONE test in internal/store's own test scope see all four packages'
+// Both tests read the other Qdrant-backed packages (internal/server,
+// internal/e2e, internal/retrievaleval, internal/store/storetest) as PLAIN
+// SOURCE TEXT via go/parser, never by importing them — internal/store
+// cannot import any of them without an import cycle (they already import
+// internal/store, and storetest additionally imports testing/testcontainers
+// which store itself must never pull in), and this is what lets ONE test in
+// internal/store's own test scope see every Qdrant-backed package's
 // otherwise-unexported test-only declarations. This file lives here, in
 // the package that owns the collection concept, rather than in a new
 // tool or shared helper package; it adds no production dependency and no
@@ -52,13 +54,17 @@ import (
 	"testing"
 )
 
-// qdrantPackage names one of the four Qdrant-backed packages this phase's
+// qdrantPackage names one of the Qdrant-backed packages this phase's
 // shared-CI-Qdrant mitigation covers (CONTEXT.md D-16/D-20): internal/store
-// and internal/server, whose collection names collided before plan 01-04,
-// plus internal/e2e and internal/retrievaleval, which plan 01-05 extended
-// the same testCollectionPrefix/newTestStore seam to. dir is relative to
-// internal/store's own directory, since `go test` runs with the package
-// directory as its working directory. allowUnqualified is true only for
+// and internal/server, whose collection names collided before plan 01-04;
+// internal/e2e and internal/retrievaleval, which plan 01-05 extended the
+// same testCollectionPrefix/newTestStore seam to; and
+// internal/store/storetest, which joins the set as its own
+// testCollectionPrefix-carrying package (milestone 2026-09-18.01, plan
+// 01-01). The full membership is qdrantBackedPackages below — this comment
+// deliberately names no fixed count, since it changes as packages join. dir
+// is relative to internal/store's own directory, since `go test` runs with
+// the package directory as its working directory. allowUnqualified is true only for
 // internal/store itself: Go permits at most one top-level func named New
 // per package, so a BARE `New(...)` call inside internal/store's own test
 // sources can only be that package's own constructor, while every other
@@ -76,6 +82,7 @@ var qdrantBackedPackages = []qdrantPackage{
 	{name: "internal/server", dir: "../server", allowUnqualified: false},
 	{name: "internal/e2e", dir: "../e2e", allowUnqualified: false},
 	{name: "internal/retrievaleval", dir: "../retrievaleval", allowUnqualified: false},
+	{name: "internal/store/storetest", dir: "storetest", allowUnqualified: false},
 }
 
 // storeConstructionFinding is one violation surfaced by scanConstructions:
@@ -206,8 +213,8 @@ func scanConstructions(fset *token.FileSet, src []byte, displayPath string, allo
 }
 
 // scanPackageDir walks every _test.go file directly inside dir (no
-// recursion — each of the four Qdrant-backed packages' test files live
-// flat in their own package directory) and returns every finding plus the
+// recursion — each Qdrant-backed package's test files live flat in its own
+// package directory) and returns every finding plus the
 // count of files actually scanned. A missing directory surfaces as an
 // error, not as a silent zero — the caller's zero-applicability guard
 // (T-01-20) treats "err != nil" and "filesScanned == 0" as the same class
@@ -315,7 +322,7 @@ func TestEveryStoreConstructionRoutesThroughSeam(t *testing.T) {
 			all = append(all, findings...)
 		}
 		if totalFiles == 0 {
-			t.Fatal("scanned zero files across all four packages")
+			t.Fatal("scanned zero files across all Qdrant-backed packages")
 		}
 		t.Logf("scanned %d _test.go files across %d packages", totalFiles, len(qdrantBackedPackages))
 		for _, f := range all {
@@ -327,11 +334,11 @@ func TestEveryStoreConstructionRoutesThroughSeam(t *testing.T) {
 // extractTestCollectionPrefix parses every _test.go file in dir looking
 // for a package-level `const testCollectionPrefix = "..."` declaration and
 // returns its string value. Reading it from source rather than importing
-// the package is what lets this one test see all four values: the
-// constants live in four separate test-only scopes that no single package
-// can import together (internal/server, internal/e2e, and
-// internal/retrievaleval all already import internal/store; internal/store
-// importing any of them back would be a cycle).
+// the package is what lets this one test see every package's value: the
+// constants live in separate test-only scopes that no single package can
+// import together (internal/server, internal/e2e, internal/retrievaleval,
+// and internal/store/storetest all already import internal/store;
+// internal/store importing any of them back would be a cycle).
 func extractTestCollectionPrefix(fset *token.FileSet, dir string) (value string, found bool, err error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -388,9 +395,9 @@ type resolvedPrefix struct {
 	prefix string
 }
 
-// TestCollectionPrefixesAreDisjoint is D-20's fourth checkable claim: the
-// four Qdrant-backed packages' collection-name prefixes are pairwise
-// disjoint, so two packages can never concatenate to the same final
+// TestCollectionPrefixesAreDisjoint is D-20's fourth checkable claim: every
+// Qdrant-backed package's collection-name prefix is pairwise disjoint from
+// every other's, so two packages can never concatenate to the same final
 // collection name on the shared CI Qdrant instance.
 func TestCollectionPrefixesAreDisjoint(t *testing.T) {
 	fset := token.NewFileSet()
@@ -422,9 +429,9 @@ func TestCollectionPrefixesAreDisjoint(t *testing.T) {
 	// Every ORDERED pair, not just unordered pairs: HasPrefix is not
 	// symmetric, and reporting only unordered pairs would still name both
 	// values, but walking ordered pairs is what makes the comparison count
-	// (len(prefixes) * (len(prefixes)-1)) directly checkable against "four
-	// packages" in the SUMMARY rather than requiring the reader to redo
-	// the combinatorics themselves.
+	// (len(prefixes) * (len(prefixes)-1)) directly checkable against
+	// len(qdrantBackedPackages) in the SUMMARY rather than requiring the
+	// reader to redo the combinatorics themselves.
 	comparisons := 0
 	for i := range prefixes {
 		for j := range prefixes {
@@ -443,9 +450,9 @@ func TestCollectionPrefixesAreDisjoint(t *testing.T) {
 			// happens to start with the longer prefix's remainder (e.g.
 			// prefixes "e2e_" and "e2e_x_" would collide on collection
 			// name "x_foo" in the "e2e_" package: "e2e_" + "x_foo" ==
-			// "e2e_x_" + "foo"). A plain set-equality check over the four
-			// values would miss this entirely; naming it here so a future
-			// reader does not simplify this comparison down to one.
+			// "e2e_x_" + "foo"). A plain set-equality check over the whole
+			// value set would miss this entirely; naming it here so a
+			// future reader does not simplify this comparison down to one.
 			if strings.HasPrefix(b.prefix, a.prefix) {
 				t.Errorf("%s's prefix %q is a leading substring of %s's prefix %q: a collection name in %s beginning with %q could collide with one in %s",
 					a.name, a.prefix, b.name, b.prefix, b.name, strings.TrimPrefix(b.prefix, a.prefix), a.name)
