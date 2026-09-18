@@ -2,6 +2,7 @@ import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { persistResume, RESUME_KEY } from '$lib/resume';
+import { listMemoriesKey, PAGE_LIMIT } from '$lib/queries';
 import RootPage from './+page.svelte';
 
 const { gotoSpy, listScopesSpy, listMemoriesSpy } = vi.hoisted(() => ({
@@ -104,5 +105,28 @@ describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', 
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(gotoSpy).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(RESUME_KEY)).toBeNull();
+  });
+});
+
+// Recent memories cross-spine feed (GH #500): the root route's recentQ must
+// send crossSpine: true so the panel renders across every readable scope
+// instead of being rejected invalid_argument (D-04, empty scope without
+// cross_spine is never inferred).
+describe('/ui/ root — Recent memories cross-spine feed (#500)', () => {
+  it('requests listMemories with an empty scope and crossSpine: true', async () => {
+    await renderRoot();
+    await expect.poll(() => listMemoriesSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(listMemoriesSpy.mock.calls[0][0]).toMatchObject({ scope: '', crossSpine: true });
+  });
+
+  it('caches the recent-activity feed under one listMemories entry with crossSpine at key index 9 and visibility at key index 3', async () => {
+    await renderRoot();
+    await expect.poll(() => listMemoriesSpy.mock.calls.length).toBeGreaterThan(0);
+    await expect.poll(() => qc.getQueryCache().findAll({ queryKey: ['listMemories'] }).length).toBe(1);
+    const [entry] = qc.getQueryCache().findAll({ queryKey: ['listMemories'] });
+    const key = entry.queryKey as unknown[];
+    expect(key[3]).toBe('');
+    expect(key[9]).toBe(true);
+    expect(key).toEqual(listMemoriesKey('', [], '', PAGE_LIMIT, 0, false, false, false, true));
   });
 });

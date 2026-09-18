@@ -46,7 +46,7 @@ export function observeSearch(p: ObserveParams): string {
 
 export function listMemoriesKey(
   scope: string, categories: string[], visibility: string, limit: number, offset: number,
-  includeArchived: boolean, includeSuperseded: boolean, includeScheduled: boolean
+  includeArchived: boolean, includeSuperseded: boolean, includeScheduled: boolean, crossSpine: boolean
 ) {
-  return ['listMemories', scope, categories, visibility, limit, offset, includeArchived, includeSuperseded, includeScheduled];
+  return ['listMemories', scope, categories, visibility, limit, offset, includeArchived, includeSuperseded, includeScheduled, crossSpine];
 }
