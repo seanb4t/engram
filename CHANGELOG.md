@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/seanb4t/engram/compare/v0.17.0...v0.17.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* **console:** repair root route ListScopes 4 MiB overflow and missing cross_spine ([#583](https://github.com/seanb4t/engram/issues/583)) ([50a6a75](https://github.com/seanb4t/engram/commit/50a6a75f95442ffaa3c92aa279bee373c8d4a36e))
+
 ## [0.17.0](https://github.com/seanb4t/engram/compare/v0.16.1...v0.17.0) (2026-09-18)
 
 
