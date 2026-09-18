@@ -763,7 +763,7 @@ var qdrantClientHolderAllowlist = []qdrantClientHolder{
 	},
 	{
 		file:          "internal/server/tools.go",
-		justification: "Composition root only: storeFromConfig constructs the client via qdrant.NewClient and hands it straight to store.New without issuing a single Qdrant operation on the client itself.",
+		justification: "Composition root only: storeFromConfig constructs the client via store.NewQdrantClient and hands it straight to store.New without issuing a single Qdrant operation on the client itself.",
 	},
 	{
 		file:          "internal/store/storetest/storetest.go",
@@ -793,7 +793,10 @@ func findModuleRoot() (string, error) {
 // fileRefsQdrantClient reports whether file either names the type
 // qdrant.Client anywhere (a field, parameter, result, or variable
 // declaration — ast.Inspect recurses through a leading *ast.StarExpr for
-// the pointer form automatically) or calls qdrant.NewClient.
+// the pointer form automatically), calls qdrant.NewClient directly, or
+// calls store.NewQdrantClient — the shared constructor (D-01) that itself
+// returns a *qdrant.Client, so a file binding one through it still holds a
+// client and must still be a derived allowlist holder.
 func fileRefsQdrantClient(file *ast.File) bool {
 	found := false
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -803,9 +806,15 @@ func fileRefsQdrantClient(file *ast.File) bool {
 		switch t := n.(type) {
 		case *ast.CallExpr:
 			if sel, ok := t.Fun.(*ast.SelectorExpr); ok {
-				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "qdrant" && sel.Sel.Name == "NewClient" {
-					found = true
-					return false
+				if pkg, ok := sel.X.(*ast.Ident); ok {
+					switch {
+					case pkg.Name == "qdrant" && sel.Sel.Name == "NewClient":
+						found = true
+						return false
+					case pkg.Name == "store" && sel.Sel.Name == "NewQdrantClient":
+						found = true
+						return false
+					}
 				}
 			}
 		case *ast.SelectorExpr:
@@ -878,17 +887,22 @@ func scanRepoForQdrantClientRefs(fset *token.FileSet) (files []string, filesScan
 }
 
 // qdrantClientLocalNames returns the identifier names in file that are bound
-// DIRECTLY to a *qdrant.Client value returned by qdrant.NewClient(...) (the
-// first assigned name in a `name, err := qdrant.NewClient(...)` shape). It
-// exists so TestQdrantClientIsHeldOnlyByStorePackage's composition-root
-// check can tell "the client variable itself issued a write" from "some
-// OTHER value built from that client (e.g. the *store.Store returned by
-// store.New) issued a write" — the latter is already covered by
-// internal/store's own write-boundary gate above and must not be
-// double-counted (and falsely flagged) here. Without this distinction, a
-// blind method-name scan over internal/server/tools.go would flag its
-// entirely legitimate d.st.Upsert(...) calls — calls to *store.Store's
-// already-gated Upsert method — as if they transmitted directly to Qdrant.
+// DIRECTLY to a *qdrant.Client value returned by either qdrant.NewClient(...)
+// or store.NewQdrantClient(...) — the shared constructor (D-01) every
+// composition-root and test dialer now builds through, which returns the
+// same (*Client, error) shape and so binds the client to Lhs index 0
+// identically to the direct-qdrant-package call (the first assigned name in
+// a `name, err := qdrant.NewClient(...)` or `name, err :=
+// store.NewQdrantClient(...)` shape). It exists so
+// TestQdrantClientIsHeldOnlyByStorePackage's write-check can tell "the
+// client variable itself issued a write" from "some OTHER value built from
+// that client (e.g. the *store.Store returned by store.New) issued a
+// write" — the latter is already covered by internal/store's own
+// write-boundary gate above and must not be double-counted (and falsely
+// flagged) here. Without this distinction, a blind method-name scan over
+// internal/server/tools.go would flag its entirely legitimate
+// d.st.Upsert(...) calls — calls to *store.Store's already-gated Upsert
+// method — as if they transmitted directly to Qdrant.
 func qdrantClientLocalNames(file *ast.File) map[string]bool {
 	names := map[string]bool{}
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -906,12 +920,18 @@ func qdrantClientLocalNames(file *ast.File) map[string]bool {
 				continue
 			}
 			pkg, ok := sel.X.(*ast.Ident)
-			if !ok || pkg.Name != "qdrant" || sel.Sel.Name != "NewClient" {
+			if !ok {
 				continue
 			}
-			// qdrant.NewClient returns (*Client, error); in a
-			// `name, err := qdrant.NewClient(...)` shape, len(Rhs)==1 but
-			// len(Lhs)==2 — index 0 of Lhs is the *Client, positionally.
+			isQdrantNewClient := pkg.Name == "qdrant" && sel.Sel.Name == "NewClient"
+			isStoreNewQdrantClient := pkg.Name == "store" && sel.Sel.Name == "NewQdrantClient"
+			if !isQdrantNewClient && !isStoreNewQdrantClient {
+				continue
+			}
+			// Both constructions return (*Client, error); in a
+			// `name, err := qdrant.NewClient(...)` or
+			// `name, err := store.NewQdrantClient(...)` shape, len(Rhs)==1
+			// but len(Lhs)==2 — index 0 of Lhs is the *Client, positionally.
 			if i < len(assign.Lhs) {
 				if id, ok := assign.Lhs[i].(*ast.Ident); ok {
 					names[id.Name] = true
@@ -964,25 +984,15 @@ func TestQdrantClientIsHeldOnlyByStorePackage(t *testing.T) {
 		}
 	}
 
-	// The composition-root entry must never itself issue a write ON THE
-	// CLIENT VARIABLE IT HOLDS.
+	// D-13: every allowlisted client holder except internal/store/store.go
+	// (the one real holder, already governed by the write-boundary gate
+	// above) must never itself issue a write ON THE CLIENT VARIABLE IT
+	// HOLDS. Generalized from a tools.go-only check so storetest.go's D-08
+	// write restriction is gate-enforced (D-09), not merely asserted by
+	// design review.
 	root, err := findModuleRoot()
 	if err != nil {
 		t.Fatalf("findModuleRoot: %v", err)
-	}
-	toolsPath := filepath.Join(root, "internal", "server", "tools.go")
-	toolsSrc, err := os.ReadFile(toolsPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", toolsPath, err)
-	}
-	toolsFset := token.NewFileSet()
-	toolsFile, err := parser.ParseFile(toolsFset, toolsPath, toolsSrc, 0)
-	if err != nil {
-		t.Fatalf("parse %s: %v", toolsPath, err)
-	}
-	clientNames := qdrantClientLocalNames(toolsFile)
-	if len(clientNames) == 0 {
-		t.Fatalf("found no *qdrant.Client-bound identifier in %s — this composition-root check has nothing to verify against; the allowlist entry's own premise may be stale", toolsPath)
 	}
 
 	writeMethods := map[string]bool{}
@@ -992,14 +1002,45 @@ func TestQdrantClientIsHeldOnlyByStorePackage(t *testing.T) {
 	for m := range partialWriteMethods {
 		writeMethods[m] = true
 	}
-	sites, scanErr := scanQdrantCalls(toolsFset, toolsSrc, toolsPath, writeMethods)
-	if scanErr != nil {
-		t.Fatalf("scan %s: %v", toolsPath, scanErr)
-	}
-	for _, s := range sites {
-		if !clientNames[s.receiver] {
-			continue // a call on some other value (e.g. *store.Store), not the qdrant.Client itself
+
+	checked := 0
+	for _, e := range qdrantClientHolderAllowlist {
+		if e.file == "internal/store/store.go" {
+			continue // the one real holder — the write-boundary gate above already scans it.
 		}
-		t.Errorf("composition-root file %s issues a %s call on its own qdrant.Client (%s) at line %d (enclosing %s) — an allowlisted composition root must never itself transmit a write", toolsPath, s.method, s.receiver, s.line, s.enclosingFunc)
+		holderPath := filepath.Join(root, filepath.FromSlash(e.file))
+		holderSrc, readErr := os.ReadFile(holderPath)
+		if readErr != nil {
+			t.Fatalf("read %s: %v", holderPath, readErr)
+		}
+		holderFset := token.NewFileSet()
+		holderFile, parseErr := parser.ParseFile(holderFset, holderPath, holderSrc, 0)
+		if parseErr != nil {
+			t.Fatalf("parse %s: %v", holderPath, parseErr)
+		}
+		clientNames := qdrantClientLocalNames(holderFile)
+		if len(clientNames) == 0 {
+			t.Fatalf("found no *qdrant.Client-bound identifier in %s — this client-holder check has nothing to verify against; the allowlist entry's own premise may be stale", holderPath)
+		}
+		sites, scanErr := scanQdrantCalls(holderFset, holderSrc, holderPath, writeMethods)
+		if scanErr != nil {
+			t.Fatalf("scan %s: %v", holderPath, scanErr)
+		}
+		for _, s := range sites {
+			if !clientNames[s.receiver] {
+				continue // a call on some other value (e.g. *store.Store), not the qdrant.Client itself
+			}
+			t.Errorf("allowlisted client holder %s issues a %s call on its own qdrant.Client (%s) at line %d (enclosing %s) — an allowlisted client holder must never itself transmit a write", holderPath, s.method, s.receiver, s.line, s.enclosingFunc)
+		}
+		names := make([]string, 0, len(clientNames))
+		for n := range clientNames {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		t.Logf("write-checked holder %s (client identifiers: %s)", e.file, strings.Join(names, ", "))
+		checked++
+	}
+	if want := len(qdrantClientHolderAllowlist) - 1; checked != want {
+		t.Errorf("write-checked %d allowlist holders, want %d (every entry except internal/store/store.go)", checked, want)
 	}
 }

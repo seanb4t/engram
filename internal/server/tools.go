@@ -21,11 +21,8 @@ import (
 	"github.com/google/uuid"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/qdrant/go-client/qdrant"
-	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"google.golang.org/grpc"
 
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/embed"
@@ -120,13 +117,7 @@ func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid port in ENGRAM_QDRANT_ADDR %q: %w", cfg.Qdrant.Addr, err)
 	}
-	qc, err := qdrant.NewClient(&qdrant.Config{
-		Host: host,
-		Port: port,
-		GrpcOptions: []grpc.DialOption{
-			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-		},
-	})
+	qc, err := store.NewQdrantClient(host, port)
 	if err != nil {
 		return nil, 0, fmt.Errorf("qdrant client: %w", err)
 	}
