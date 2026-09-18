@@ -1,36 +1,33 @@
 ---
 gsd_state_version: "1.0"
-milestone: 2026-09-13.01
-status: Awaiting next milestone
-stopped_at: Phase 05 complete — all phases complete
-last_updated: "2026-09-18T17:51:36.193Z"
-last_activity: 2026-09-17
-last_activity_desc: Milestone 2026-09-13.01 completed and archived
-state_head: 339ab181765660ba4caf7a43d10775419611ff7b
+milestone: 2026-09-18.01
+milestone_name: Bounded Reads
+status: planning
+last_updated: "2026-09-18T19:02:26.911Z"
+last_activity: 2026-09-18
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
-milestone_name: Setup v2
-current_phase: 05
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-18 after milestone 2026-09-13.01 — Setup v2 shipped as v0.17.0)
+See: .planning/PROJECT.md (updated 2026-09-18 after opening milestone 2026-09-18.01 — Bounded Reads)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone (`/gsd-new-milestone`); no milestone open
+**Current focus:** Milestone 2026-09-18.01 Bounded Reads — defining requirements
 
 ## Current Position
 
-Phase: Milestone 2026-09-13.01 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-18 - Completed quick task 260918-idl: fix console root route: ListScopes gRPC 4MiB overflow and recent-memories missing cross_spine (#500)
+Status: Defining requirements
+Last activity: 2026-09-18 — Milestone 2026-09-18.01 started
 
 ## Deferred Items
 

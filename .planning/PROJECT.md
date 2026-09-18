@@ -21,9 +21,9 @@ v0.16.0:** engram became installable in one command and self-configuring across 
 runtime it targets. Six phases (1–6); 21 plans, 49 tasks, 25/25 requirements verified, audit
 `tech_debt` (0 blockers, Nyquist 6/6). Full detail in `.planning/milestones/2026-08-23.01-ROADMAP.md`.
 
-**Active milestone — none.** The next one opens with `/gsd-new-milestone` (remember
-`--reset-phase-numbers`, rule `rvmts69cz1`); candidates live in **Deferred** below and
-`.planning/BACKLOG.md`.
+**Active milestone — 2026-09-18.01 — Bounded Reads** (opened 2026-09-18): no Qdrant read or
+provider response can fail because of unbounded size (#585 and its read-path siblings, #456,
+#347, #457, #497). See **Current Milestone** below.
 
 ## Current State: 2026-09-13.01 — Setup v2 ✅ SHIPPED (2026-09-17, v0.17.0; observed 2026-09-18)
 
@@ -293,12 +293,35 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 
 </details>
 
-## Next Milestone Goals
+## Current Milestone: 2026-09-18.01 Bounded Reads
 
-No milestone is open. Candidates carried in **Deferred** below and `.planning/BACKLOG.md`;
-the next `/gsd-new-milestone` picks from them (Cursor's config-file writer `REQ-register-cursor`,
-the `oauth-client` read-back label, `engram migrate` full-stack E2E, `schema_version` proto
-typing, and the CI/renovate hygiene items are the standing shortlist).
+**Goal:** No Qdrant read or provider response can fail because of unbounded size — a request
+either succeeds or fails with a clear, named error, never an opaque Connect `internal` / HTTP 500.
+
+**Target features:**
+- **Every Qdrant read path stays under the gRPC 4 MiB receive cap** (#585) — `Store.List`
+  (offset `Limit: 0`, deep offset, 1000-record cursor pages), `ListScheduled`, full-payload
+  `Search` k, and the 256-batch operator sweeps (`migrate`, `revert`, `summarize-missing`,
+  `spine-review`, `reindex`). The qdrant go-client sets no `MaxCallRecvMsgSize` and `content`
+  is unbounded, so any page whose records average past the cap overflows today.
+- **Qdrant `ResourceExhausted` surfaces as a clear error**, not Connect `internal`.
+- **Cross-spine recall keeps successful hits** when the follow-up `ListScopes` fails (#456).
+- **Bounded provider responses** — embed/summarize clients surface a bounded error-body prefix
+  on non-2xx (#347) and bound the drain independently of `http.Client.Timeout` (#457).
+- **A stable Qdrant testcontainer** (#497), since this milestone's regression tests load exactly
+  that CI job.
+
+**Done means:** every exposed path carries a real-Qdrant regression test holding more than
+4 MiB of payload, RED before its fix — the `TestListScopesFullPayloadsOverGRPCLimit` (#583)
+pattern. Raising `MaxCallRecvMsgSize` alone only moves the ceiling (#583 rejected it as a fix);
+it is defense in depth at most.
+
+**Open for discuss-phase:** whether to cap memory `content` size (an
+`ENGRAM_MEMORY_MAX_CONTENT_BYTES` analogue of the summary cap), and whether Connect
+`ListMemories` keeps `limit: 0` = all with numeric offset paging (paged internally) or moves
+to a hard cap plus cursor paging in the console and `engram list`.
+
+**Not in scope:** the planted embedder provider-routing / failover seed stays planted.
 
 ## Core Value
 
@@ -508,10 +531,14 @@ pre-close `REQUIREMENTS.md` snapshot).
 
 ### Active
 
-No milestone is open. `2026-09-13.01` (Setup v2) shipped 2026-09-17 as v0.17.0 with all 23
-requirements verified and moved to **Validated** above; the post-release observation landed
-2026-09-18. Candidates for the next milestone remain in **Deferred** below and
-`.planning/BACKLOG.md`, and are scoped by `/gsd-new-milestone`.
+Milestone `2026-09-18.01` (Bounded Reads) — scoped requirements with REQ-IDs live in
+`.planning/REQUIREMENTS.md`. Summary:
+
+- [ ] Every Qdrant read path stays under the gRPC 4 MiB receive cap (#585)
+- [ ] Qdrant `ResourceExhausted` surfaces as a clear, named error — never Connect `internal`
+- [ ] Cross-spine recall keeps already-successful hits when `ListScopes` fails (#456)
+- [ ] Embed/summarize clients bound the provider error body and drain (#347, #457)
+- [ ] The Qdrant testcontainer survives a full `internal/store` run in CI (#497)
 
 ### Deferred (carry-forward for next milestone)
 
@@ -904,4 +931,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-18 after milestone 2026-09-13.01 (Setup v2 shipped 2026-09-17 as v0.17.0, observed 2026-09-18; no milestone open)*
+*Last updated: 2026-09-18 after opening milestone 2026-09-18.01 (Bounded Reads)*
