@@ -4,17 +4,19 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { engram } from '$lib/client';
-  import { PAGE_LIMIT } from '$lib/queries';
+  import { PAGE_LIMIT, listMemoriesKey } from '$lib/queries';
   import { peekResume, consumeResume, normalizeReturnPath, isAllowedDestination } from '$lib/resume';
   import MemoryList from '$lib/components/MemoryList.svelte';
   import ScopeChip from '$lib/components/ScopeChip.svelte';
   import { Button } from '$lib/components/ui/button';
   // svelte-query v6: options wrapped in a function; results are runes objects read directly (no $).
   const scopesQ = createQuery(() => ({ queryKey: ['listScopes'], queryFn: () => engram.listScopes({}) }));
-  // Recent memories below the scope tiles (first page, server default desc order).
+  // Recent memories below the scope tiles: a cross-spine recent-activity feed
+  // across every scope the caller can read. cross_spine is sent explicitly
+  // per D-04 (never inferred from an empty scope); see #500.
   const recentQ = createQuery(() => ({
-    queryKey: ['listMemories', '', [], '', PAGE_LIMIT, 0],
-    queryFn: () => engram.listMemories({ scope: '', limit: BigInt(PAGE_LIMIT), offset: 0n, categories: [], visibility: '' })
+    queryKey: listMemoriesKey('', [], '', PAGE_LIMIT, 0, false, false, false, true),
+    queryFn: () => engram.listMemories({ scope: '', limit: BigInt(PAGE_LIMIT), offset: 0n, categories: [], visibility: '', crossSpine: true })
   }));
   function openRecord(id: string) { goto(`${base}/observe?sel=${encodeURIComponent(id)}`); }
 
