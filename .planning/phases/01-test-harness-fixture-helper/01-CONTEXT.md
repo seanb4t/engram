@@ -80,6 +80,11 @@ REQ-ci-store-green / #497 is Phase 5's. No read path is fixed here.
 - **D-09:** `storetest` holds a `*qdrant.Client`, so it joins `qdrantClientHolderAllowlist`
   (`schemaversion_stamp_gate_test.go:756`) with a justification (test-support dialer, never
   transmits writes itself).
+- **D-13 (plan-time, 2026-09-18):** Generalize `TestQdrantClientIsHeldOnlyByStorePackage`'s
+  "the allowlisted holder never issues a write through the client it holds" check from the
+  hardcoded `internal/server/tools.go` to EVERY `qdrantClientHolderAllowlist` entry except
+  `internal/store/store.go` (the one real holder), so D-09's justification for `storetest` is
+  gate-enforced rather than asserted (RESEARCH.md Open Question 1 / Pitfall 4).
 
 ### Convergence scope & CI
 
