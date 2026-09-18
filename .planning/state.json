@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "2026-09-18.01",
+  "milestone": "2026-09-18.01 — Bounded Reads",
   "phases": [
     {
       "number": "9",
@@ -257,12 +257,47 @@
       "number": "5",
       "name": "Apply-Time Preserve Gate & Documentation",
       "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Test Harness & Fixture Helper",
+      "status": "in_progress"
+    },
+    {
+      "number": "2",
+      "name": "Error Classification & ResourceExhausted Mapping",
+      "status": "pending"
+    },
+    {
+      "number": "3",
+      "name": "Shared Bounded-Read Mechanism & Content Cap Decision",
+      "status": "pending"
+    },
+    {
+      "number": "4",
+      "name": "List, ListScheduled & Search Bounded Reads",
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Operator Sweeps & CI Backstop",
+      "status": "pending"
+    },
+    {
+      "number": "6",
+      "name": "Cross-Spine Partial Results",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "Bounded Provider Responses",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:discuss-phase",
-    "label": "Discuss the first phase",
-    "reason": "Project initialized — plan your first phase"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 1)",
+    "reason": "Phase 1 of 7 — needs a plan"
   },
-  "updated_at": "2026-09-18T19:02:26.915Z"
+  "updated_at": "2026-09-18T22:41:10.090Z"
 }
