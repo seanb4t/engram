@@ -50,11 +50,10 @@ to obtain v0.16.0 or later, and check `engram version --output json`. Upgrade
 older binaries, including v0.15.1, before using delegation.
 :::
 
-:::note[Unreleased as of v0.16.1]
+:::note[Available since v0.17.0]
 Plugin-first installation through `engram setup --apply` and the `preserved`
-result described below are on the main branch and not yet in a cut release
-(the latest tag is v0.16.1). This notice is replaced with the observed
-version once the next release is verified.
+result described below shipped in v0.17.0 and were verified against the
+installed release on 2026-09-18.
 :::
 
 With a setup-capable binary present, `/engram-setup` previews across detected

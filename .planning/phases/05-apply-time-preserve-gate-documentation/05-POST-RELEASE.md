@@ -1,6 +1,6 @@
 ---
 phase: 05-apply-time-preserve-gate-documentation
-status: pending
+status: complete
 tracker: https://github.com/seanb4t/engram/issues/567
 ---
 

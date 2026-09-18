@@ -66,13 +66,13 @@ func installGuideViolations(doc string) []error {
 		errs = append(errs, fmt.Errorf("%s: no line names both `plugin` and `/guides/agent-setup/` -- the plugin-first pointer is missing", installGuideRelPath))
 	}
 
-	// Leg 4: the D-06 unreleased notice must be present. Version-agnostic
-	// on purpose (matches "Unreleased as of v" rather than a pinned
-	// version string) so the post-release flip to an "available in"
-	// notice (05-POST-RELEASE.md) is a deliberate gate edit, not an
-	// accident this gate would silently miss.
-	if !strings.Contains(doc, "Unreleased as of v") {
-		errs = append(errs, fmt.Errorf("%s: no occurrence of `Unreleased as of v` -- the D-06 unreleased notice is missing", installGuideRelPath))
+	// Leg 4: the D-06 availability notice must be present. Version-agnostic
+	// on purpose (matches "Available since v" rather than a pinned version
+	// string). This leg read "Unreleased as of v" until the v0.17.0
+	// post-release observation (05-RELEASE-0.17.0.md) flipped it -- the
+	// flip is a deliberate gate edit, exactly as 05-POST-RELEASE.md required.
+	if !strings.Contains(doc, "Available since v") {
+		errs = append(errs, fmt.Errorf("%s: no occurrence of `Available since v` -- the D-06 availability notice is missing", installGuideRelPath))
 	}
 
 	return errs
@@ -114,8 +114,8 @@ func TestInstallGuideGateFiresOnInjectedViolation(t *testing.T) {
 	manPageLine := "After a cask install, `man engram` and `man engram-setup` describe the CLI and the setup command."
 	caskContentsLine := "The cask's install hooks check the installed version, generate bash, zsh, and fish completions, and write one man page per command into Homebrew's `share/man/man1` directory."
 	pluginPointerLine := "Setup registers the MCP server and, on a Claude Code or Codex whose plugin CLI works, delivers the curation skills plugin-first through the runtime's plugin system -- see [Agent Setup](/guides/agent-setup/)."
-	unreleasedLine := ":::note[Unreleased as of v0.16.1]"
-	cleanFixture := strings.Join([]string{unreleasedLine, caskContentsLine, manPageLine, pluginPointerLine}, newline) + newline
+	availabilityLine := ":::note[Available since v0.17.0]"
+	cleanFixture := strings.Join([]string{availabilityLine, caskContentsLine, manPageLine, pluginPointerLine}, newline) + newline
 
 	cases := []struct {
 		name            string
@@ -123,10 +123,10 @@ func TestInstallGuideGateFiresOnInjectedViolation(t *testing.T) {
 		expectViolation bool
 	}{
 		{"clean", cleanFixture, false},
-		{"man_page_missing", strings.Join([]string{unreleasedLine, caskContentsLine, pluginPointerLine}, newline) + newline, true},
-		{"cask_contents_missing", strings.Join([]string{unreleasedLine, manPageLine, pluginPointerLine}, newline) + newline, true},
-		{"plugin_pointer_missing", strings.Join([]string{unreleasedLine, caskContentsLine, manPageLine}, newline) + newline, true},
-		{"unreleased_notice_missing", strings.Join([]string{caskContentsLine, manPageLine, pluginPointerLine}, newline) + newline, true},
+		{"man_page_missing", strings.Join([]string{availabilityLine, caskContentsLine, pluginPointerLine}, newline) + newline, true},
+		{"cask_contents_missing", strings.Join([]string{availabilityLine, manPageLine, pluginPointerLine}, newline) + newline, true},
+		{"plugin_pointer_missing", strings.Join([]string{availabilityLine, caskContentsLine, manPageLine}, newline) + newline, true},
+		{"availability_notice_missing", strings.Join([]string{caskContentsLine, manPageLine, pluginPointerLine}, newline) + newline, true},
 	}
 
 	for _, c := range cases {

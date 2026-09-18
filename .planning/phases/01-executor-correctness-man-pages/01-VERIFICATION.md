@@ -24,7 +24,7 @@ covered_files:
   - internal/setup/apply_test.go
   - internal/setup/environment.go
   - internal/setup/environment_test.go
-covered_digest: "v1:sha256:d98cf6fe797d08520b4bb1fe9bf18969e54c65ba5ac6dadb33d7a5ac141144b6"
+covered_digest: "v1:sha256:057830cc3e63a3e0c6b0d92b8ff1b5f8cd0aa02315bcb73e33c4e29bbc45e6e5"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -132,3 +132,13 @@ for the NEXT unrelated change rather than staying permanently tripped.
 
 ## Re-fingerprint 2026-09-16 (orchestrator, after Phase 5)
 Phase 5 (Apply-Time Preserve Gate) rewrote the `mutate == true` branch of `execute()` in `internal/setup/apply.go` (this phase's covered file) to consult the pre-write classification; the osRun/runSeam seam this phase owns is untouched (`TestOsRunReportsContextDeadlineExceeded`, `TestDriftReportedLegibly`, `TestManPagesByteStable` pass, `-count=1`). This phase's CONCLUSION is unchanged and was re-proven at Phase 5's HEAD (75785b75) before re-fingerprinting; every red-evidence patch this phase registered stayed live under `TestRedEvidencePatchesAreLive` (33/33 across Phases 01–05 at c9034a45). The digest is re-pinned to the current bytes so the staleness signal stays meaningful for the NEXT unrelated change.
+
+## Re-fingerprint 2026-09-18 (orchestrator, after the v0.17.0 post-release observation)
+
+Covered files that moved since the previous digest are value-only, deliberate edits whose
+conclusions were re-proven before re-fingerprinting: this phase's `VALIDATION.md` reconciled to
+`status: validated` by `/gsd-validate-phase` (every per-task command re-run green, PR #572);
+`guides/agent-setup.md`'s `Unreleased as of v0.16.1` aside flipped to `Available since v0.17.0`
+(`TestAgentSetupGuide*` gates re-run green); `skill/engram/.codex-plugin/plugin.json` version
+synced to 0.17.0 by release-please (`TestPluginManifestIdentityMatches` green). No conclusion
+in this record changed.

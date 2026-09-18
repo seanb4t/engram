@@ -58,7 +58,7 @@ any working auth shape, and never replaces a registration it did not write.
 
 ### Documentation
 
-- [ ] **REQ-docs-setup-v2**: `guides/install.md`, `guides/agent-setup.md`, and `guides/plugin.md` describe the shipped behavior — plugin-first delivery per runtime, the header shape, the `preserved` outcome and apply gate, and man pages — with a post-release live observation recorded before the requirement is checked off (the `2026-08-23.01` D-10 pattern).
+- [x] **REQ-docs-setup-v2**: `guides/install.md`, `guides/agent-setup.md`, and `guides/plugin.md` describe the shipped behavior — plugin-first delivery per runtime, the header shape, the `preserved` outcome and apply gate, and man pages — with a post-release live observation recorded before the requirement is checked off (the `2026-08-23.01` D-10 pattern).
 
 ## v2 Requirements
 
@@ -110,7 +110,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-plugin-facet-reported | Phase 3 | Complete |
 | REQ-codex-plugin-manifest | Phase 3 | Complete |
 | REQ-plugin-setupgen-regenerated | Phase 3 | Complete |
-| REQ-docs-setup-v2 | Phase 5 | Pending |
+| REQ-docs-setup-v2 | Phase 5 | Complete |
 
 **Coverage:**
 

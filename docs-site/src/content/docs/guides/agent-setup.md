@@ -10,11 +10,10 @@ Follow [Install](/guides/install/) to obtain the released binary, then check
 `engram version --output json`. Upgrade older binaries before using setup.
 :::
 
-:::note[Unreleased as of v0.16.1]
+:::note[Available since v0.17.0]
 `--header`, plugin-first skill delivery, the `preserved` outcome, the apply
-gate described below, and the OAuth re-login note are on the main branch and
-not yet in a cut release (the latest tag is v0.16.1). They ship in the next
-release, after which this notice is replaced with the observed version.
+gate described below, and the OAuth re-login note shipped in v0.17.0 and were
+verified against the installed release on 2026-09-18.
 :::
 
 ## Before you start

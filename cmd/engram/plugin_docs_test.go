@@ -71,13 +71,13 @@ func pluginGuideViolations(doc string) []error {
 		errs = append(errs, fmt.Errorf("%s: no line names both `preserved` and `/guides/agent-setup/` -- the preserved remediation cross-link is missing", pluginGuideRelPath))
 	}
 
-	// Leg 4: the D-06 unreleased notice must be present. Version-agnostic
-	// on purpose (matches "Unreleased as of v" rather than a pinned
-	// version string) so the post-release flip to an "available in"
-	// notice (05-POST-RELEASE.md) is a deliberate gate edit, not an
-	// accident this gate would silently miss.
-	if !strings.Contains(doc, "Unreleased as of v") {
-		errs = append(errs, fmt.Errorf("%s: no occurrence of `Unreleased as of v` -- the D-06 unreleased notice is missing", pluginGuideRelPath))
+	// Leg 4: the D-06 availability notice must be present. Version-agnostic
+	// on purpose (matches "Available since v" rather than a pinned version
+	// string). This leg read "Unreleased as of v" until the v0.17.0
+	// post-release observation (05-RELEASE-0.17.0.md) flipped it -- the
+	// flip is a deliberate gate edit, exactly as 05-POST-RELEASE.md required.
+	if !strings.Contains(doc, "Available since v") {
+		errs = append(errs, fmt.Errorf("%s: no occurrence of `Available since v` -- the D-06 availability notice is missing", pluginGuideRelPath))
 	}
 
 	return errs
@@ -120,8 +120,8 @@ func TestPluginGuideGateFiresOnInjectedViolation(t *testing.T) {
 	agentSetupLinkLine := "See [Agent Setup](/guides/agent-setup/) for runtime support and credential requirements."
 	pluginFirstLine := "On a Claude Code whose plugin CLI works, `engram setup --apply` installs this plugin for you."
 	preservedCrosslinkLine := "If setup reports the registration as `preserved`, see the [results section](/guides/agent-setup/#read-results-and-repeat-safely) of the setup guide."
-	unreleasedLine := ":::note[Unreleased as of v0.16.1]"
-	cleanFixture := strings.Join([]string{agentSetupLinkLine, pluginFirstLine, preservedCrosslinkLine, unreleasedLine}, newline) + newline
+	availabilityLine := ":::note[Available since v0.17.0]"
+	cleanFixture := strings.Join([]string{agentSetupLinkLine, pluginFirstLine, preservedCrosslinkLine, availabilityLine}, newline) + newline
 
 	cases := []struct {
 		name            string
@@ -133,10 +133,10 @@ func TestPluginGuideGateFiresOnInjectedViolation(t *testing.T) {
 		// results-section anchor), so removing agentSetupLinkLine alone
 		// would leave leg 1 satisfied by leg 3's own cross-link -- strip
 		// every occurrence of the substring to isolate leg 1's check.
-		{"agent_setup_link_missing", strings.ReplaceAll(strings.Join([]string{pluginFirstLine, preservedCrosslinkLine, unreleasedLine}, newline)+newline, "/guides/agent-setup/", ""), true},
-		{"plugin_first_missing", strings.Join([]string{agentSetupLinkLine, preservedCrosslinkLine, unreleasedLine}, newline) + newline, true},
-		{"preserved_crosslink_missing", strings.Join([]string{agentSetupLinkLine, pluginFirstLine, unreleasedLine}, newline) + newline, true},
-		{"unreleased_notice_missing", strings.Join([]string{agentSetupLinkLine, pluginFirstLine, preservedCrosslinkLine}, newline) + newline, true},
+		{"agent_setup_link_missing", strings.ReplaceAll(strings.Join([]string{pluginFirstLine, preservedCrosslinkLine, availabilityLine}, newline)+newline, "/guides/agent-setup/", ""), true},
+		{"plugin_first_missing", strings.Join([]string{agentSetupLinkLine, preservedCrosslinkLine, availabilityLine}, newline) + newline, true},
+		{"preserved_crosslink_missing", strings.Join([]string{agentSetupLinkLine, pluginFirstLine, availabilityLine}, newline) + newline, true},
+		{"availability_notice_missing", strings.Join([]string{agentSetupLinkLine, pluginFirstLine, preservedCrosslinkLine}, newline) + newline, true},
 	}
 
 	for _, c := range cases {
