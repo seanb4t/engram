@@ -1,1104 +1,738 @@
-# Pitfalls Research — Setup v2 (2026-09-13.01)
+# Pitfalls Research — Bounded Reads (2026-09-18.01)
 
-**Domain:** Extending an already-shipped, idempotent multi-runtime installer
-(`engram setup`, v0.16.x) with plugin-first delivery, custom auth headers, drift
-detection/reconcile, and cobra completions/manpages — engram
+**Domain:** Adding size-bounded paging to a Qdrant-backed list/search store layer
+(`internal/store`), mapping `ResourceExhausted` to a clear error, and bounding
+provider HTTP error bodies (`internal/embed`, `internal/summarize`) — engram
 (/Volumes/Code/github.com/seanb4t/engram).
-**Researched:** 2026-09-13
-**Confidence:** HIGH for anything cited against this repo's own shipped code
-(`internal/setup/*.go`, `internal/skills/*.go`, `.goreleaser.yaml`,
-`cmd/engram/releaseconfig_test.go`) and against live, read-only `--help`
-output from `claude`/`codex` installed on this machine (claude 2.1.270,
-codex-cli 0.154.0) captured this session. MEDIUM for opencode CLI claims,
-which are carried forward from `opencode.go`'s own code comments (live-verified
-against opencode 1.18.20 in the PRIOR milestone) rather than re-verified this
-session — `opencode --version`/`opencode mcp list --help` were invoked this
-session and both were killed (`Killed: 9`) by the sandbox before producing
-output; no mutating opencode command was attempted per the STRICT quality gate.
-LOW/speculative flagged inline for anything not yet decided by this milestone
-(e.g., the exact plugin-consent UX, since no phase plan exists yet).
 
-**Carried forward from the prior milestone's `PITFALLS.md`** (2026-08-23.01,
-still load-bearing and NOT restated in full below — read that file's git
-history if needed): Pitfall 7 (non-atomic writes / symlinked dotfiles — now
-directly evidenced by `internal/skills/install.go`'s own `installAgentsMDIndex`
-doc comment, which independently arrived at the same "write through, never
-stage-and-rename" symlink-preservation conclusion for `AGENTS.md`), Pitfall 8
-(non-uniform runtime config paths), Pitfall 10 (config-dir presence proves
-nothing), Pitfall 11 (version skew), Pitfall 14 (testing against real
-dotfiles — now enforced in shipped code via the `Environment`/`skills.Environment`
-injectable seams in `cmd/engram/setup.go`). Pitfalls 1–6, 9, 12, 13, 15 from
-that file were Homebrew-cask/release-pipeline and two-paths-equivalence
-pitfalls already resolved by v0.16.0's shipped `.goreleaser.yaml` and
-`internal/setupgen` — superseded, not carried forward, except where this
-milestone's new features can regress them (flagged explicitly below, e.g.
-Pitfall 9 here on completions/manpages regressing the cask-install-gate
-acceptance test).
+**Researched:** 2026-09-18
+**Confidence:** HIGH for anything cited against this repo's own shipped code
+(`internal/store/store.go`, `internal/store/migrate.go`, `internal/store/store_test.go`)
+and against grpc-go's and Qdrant's own documented/issue-tracked behavior (cited
+inline with sources). MEDIUM for the testcontainer flakiness root cause (#497),
+since the issue itself states "not investigated" and the leading theory (runner
+resource pressure from N parallel Qdrant containers) is inferred from timestamps,
+not proven. LOW/speculative flagged inline for anything this milestone has not
+yet decided (e.g., whether `ListMemories` moves off `limit:0`=all — PROJECT.md
+"Open for discuss-phase").
 
 ## Critical Pitfalls
 
-### Pitfall 1: `--apply` still has no opt-out from registration+skills, and that gap is the root cause the 2026-09-10 incident already proved live
+### Pitfall 1: Fixing the *known* 4 MiB overflow sites while missing a sibling one — this bug class recurs by construction, not by surprise
 
 **What goes wrong:**
-The shipped `execute()` (`internal/setup/apply.go`) and `cmd/engram/setup.go`
-give `--apply` exactly one behavior per selected runtime: run the full write
-sequence (remove-then-add for claude-code, a single overwrite-add for codex,
-add for opencode) AND the skills facet, together, with no flag to apply one
-without the other, and no flag to apply only if the runtime is
-"not-yet-registered." This is not a hypothetical — it is the documented
-mechanism of the incident this milestone exists to prevent (engram memory
-`ryr82bf2s2`): an agent ran the plan's own documented verification command,
-`engram setup --url https://engram.example.com/mcp --apply`, to build a test
-fixture, and it overwrote the maintainer's real registrations in all three
-runtimes because there was and is no "only register the fake fixture URL if
-nothing real is already there" mode. **Drift detection alone does not close
-this gap** — a drift/reconcile feature that only changes *preview*'s
-diagnosis of an existing registration does nothing to stop `--apply` from
-running its unconditional remove-then-add or overwrite-add sequence the
-instant a caller invokes it, fixture or not. This milestone's own PROJECT.md
-already carries the corrective language ("a plan that documents `--apply` as
-a verification step is an attractive nuisance") but that is process guidance
-for *plan authors*, not a code-level guard.
+#583 fixed `Store.ListScopes`'s full-payload Scroll. #585 immediately found the
+*same* overflow in `Store.List`'s three modes (offset `Limit:0`=all, deep offset,
+1000-record cursor pages). The milestone also names `ListScheduled` and the
+256-batch operator sweeps (`migrate`/`revert`/`summarize-missing`/`spine-review`/
+`reindex`) as siblings that request full payloads with no page-size ceiling tied
+to payload size. Every one of these call sites shares the identical root cause
+(`internal/server/tools.go:123`'s `qdrant.NewClient` sets no
+`MaxCallRecvMsgSize`, so grpc-go's 4 MiB default applies uniformly), so fixing
+one call site and calling the milestone done reproduces the #583→#585 sequence
+a third time.
 
 **Why it happens:**
-The existing design's philosophy (D-08's byte-compare, D-11's report-not-
-diagnose) is about classifying an *already-performed* write, not about
-gating whether a write happens at all — "detect drift, then decide" and
-"never write blind" are easy to conflate, but they are different features.
-It is tempting to believe shipping drift detection automatically makes
-`--apply` safer, because the review conversation and the incident both
-mention "drift" — but the incident's actual failure was an unconditional
-write with no comparison step *before* the write, and drift detection as
-scoped (`preview compares the full existing registration ... reported as
-preserved, never as drift to replace`) is explicitly a **preview-time**,
-not an **apply-time**, gate.
+The overflow is a property of (page size × per-record payload size), not of any
+one function. Each call site was written independently, at different times, by
+different phases, so a fix scoped to "the path that broke in prod" naturally
+stops at that one function instead of walking every `WithPayload(true)` Scroll/
+Get/Query call in the store layer.
 
 **How to avoid:**
-Decide explicitly, as a written decision this milestone records, whether
-`--apply` itself consults the same full-registration comparison drift
-detection performs, and refuses (or requires an additional confirmation
-flag) to replace a registration it did not write and cannot fully reproduce
-— not just report it in preview. The requirement text ("a registration
-`setup` cannot reproduce is reported as preserved, never as drift to
-replace") must be read as applying to `--apply`'s own write path, not only
-to the preview report string. If the phase plan implements reconcile as
-preview-only prose, that is a scope gap worth surfacing to the user before
-execution, not silently accepting the same shape that caused the incident.
+Before closing this milestone, enumerate every store-layer call that sets
+`WithPayload(true)`/`qdrant.NewWithPayload(true)` or omits a payload-size-aware
+limit, not just the five named in PROJECT.md. Grep once
+(`rg -n 'WithPayload\(true\)|NewWithPayload\(true\)' internal/store/*.go`) and
+treat every hit as in-scope until proven otherwise — this catches
+`Store.Search`'s full-payload `k`-sized Query (#585 names it explicitly) and
+`Store.Get`'s single-point full payload (safe: one record, bounded by
+`ENGRAM_MEMORY_MAX_CONTENT_BYTES`-class caps if any exist, but verify — it is
+not obviously safe just because it is "only one point," since memory `content`
+is currently unbounded per PROJECT.md's "Open for discuss-phase").
 
-**Warning signs:** A test exists proving preview correctly labels an
-unreproducible registration "preserved," but no test proves `--apply`
-against the SAME fixture actually leaves the file/registration byte-for-byte
-untouched — those are two different assertions and only the second one
-would have caught the 2026-09-10 incident.
+**Warning signs:**
+A fix PR whose regression test only covers the exact function named in the
+issue, with no test asserting the *other* four named call sites also hold under
+an equivalent oversized fixture.
 
-**Phase to address:** Drift-detection/reconcile phase, as its OWN explicit
-requirement ("`--apply` must consult the same comparison before writing"),
-verified by a fixture test that runs `--apply` (via the fake `Environment`
-seam, never a real CLI) against a pre-seeded unreproducible registration and
-asserts zero write actions were issued.
+**Phase to address:**
+An early phase should do the full-inventory sweep and land the recall-gate/
+paging fix as one coherent mechanism (e.g., a shared "bounded scroll" helper)
+rather than five independent per-function patches — the repeated-defect pattern
+above is itself evidence that per-function patching under-generalizes here.
 
 ---
 
-### Pitfall 2: Custom-header auth is structurally inexpressible on Codex's own `mcp add` — a naive implementation silently downgrades or drops the header
+### Pitfall 2: Bounding page size alone does not bound response size — record `content` is unbounded, so a *small* page can still overflow
 
 **What goes wrong:**
-Live-verified this session (`codex mcp add --help`, codex-cli 0.154.0):
-Codex's `mcp add` has exactly two auth-shaped flags — `--bearer-token-env-var
-<ENV_VAR>` (names a variable holding a raw bearer token) and
-`--oauth-client-id`/`--oauth-client-registration`/`--oauth-resource` (OAuth).
-**There is no generic `--header` flag at all.** A LiteLLM-shaped registration
-(`x-litellm-api-key: Bearer ${ENGRAM_TOKEN}`, an arbitrary header NAME, not
-`Authorization`) cannot be expressed on Codex's CLI surface in any form —
-not even as a workaround, since `--bearer-token-env-var` hardcodes the header
-name to `Authorization: Bearer <token>` (per `codex.go`'s own comment: "codex
-resolves the token from that named environment variable at its own
-invocation time"). A naive implementation of the new "custom headers" auth
-mode that reuses `--bearer-token-env-var` for a `x-litellm-api-key`-shaped
-request would SILENTLY WRITE THE WRONG HEADER NAME — registering
-`Authorization: Bearer ${ENGRAM_TOKEN}` when the gateway expects
-`x-litellm-api-key: Bearer ${ENGRAM_TOKEN}` — reporting `wrote`/success while
-producing a registration that will fail authentication the moment Codex
-actually connects. This is a second, code-shaped instance of the same root
-cause as the 2026-09-10 incident: a "successful" `--apply` that replaces a
-working config with a broken one.
+`maxListLimit = 1000` (store.go:1458) bounds record *count*, not bytes. #585's
+own PR notes "an average payload above about 4 KiB overflows" at 1000 records —
+but there is no floor preventing a single record's `content` from being far
+larger than 4 KiB. engram's memory `content` field is explicitly called out in
+PROJECT.md as unbounded today (unlike the summary field, which already has
+`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, default 512 bytes). A page of just 4 records
+each holding 1.5 MiB of `content` overflows the same 4 MiB cap that a 1000-record
+page of tiny records would not.
 
 **Why it happens:**
-`--bearer-token-env-var` and a generic custom-header request LOOK like the
-same shape (both are "put a token from an env var into an HTTP auth
-mechanism"), and Codex's own naming ("bearer token env var") invites reusing
-it for anything token-shaped. The distinction — Codex's flag fixes the
-header NAME to `Authorization`, a custom-header request does not — is easy
-to miss without reading Codex's own `--help` line by line, which is exactly
-what this session did to surface it.
+Count-based limits (`maxListLimit`, `reindexBatch = 256`, `migrateBatch = 256`)
+were designed as reasonable *pagination* ergonomics, not as a defense against
+this specific gRPC ceiling — they predate the discovery that payload size, not
+record count, is the actual constraint.
 
 **How to avoid:**
-Treat "custom header name != `Authorization`" as an explicit, tested
-precondition that routes Codex to the SAME preserve/report-unsupported path
-the milestone already scopes for other unreproducible registrations — never
-to a coerced `--bearer-token-env-var` call. Concretely: if the new auth mode
-carries a header name other than `Authorization`, Codex's `Plan()` must
-return an outcome equivalent to `ErrAuthModeUnsupported` (or the new
-drift-detection "cannot reproduce" outcome) for Codex specifically, the same
-way `openCodeRuntime.Plan` already returns `ErrAuthModeUnsupported` for
-`oauth-client` — this repo already has the exact precedent to follow. Only
-when the custom header IS literally `Authorization: Bearer <ref>` does
-Codex's existing `--bearer-token-env-var` remain a faithful (if narrower)
-expression, and that equivalence should be asserted by a test, not assumed.
+Treat "cap page size" and "cap content size" as two independent, complementary
+fixes, and do not let landing one read as having landed the other. PROJECT.md
+already flags the `ENGRAM_MEMORY_MAX_CONTENT_BYTES` question as open for
+discuss-phase — resolve it explicitly (even if the resolution is "not this
+milestone, tracked as a follow-up issue") rather than letting the paging fix
+implicitly stand in for it. If content stays unbounded, the paging fix must be
+resilient to a single record's payload alone exceeding the cap (i.e., page size
+1 can still fail, and that failure must map to a clear error, not `internal`).
 
-**Warning signs:** A fixture test using a non-`Authorization` header name
-(e.g. `x-litellm-api-key`) against Codex's `Plan()` produces an `Action`
-whose `Args` contain `--bearer-token-env-var` rather than an
-unsupported/preserve outcome.
+**Warning signs:**
+A regression test fixture that proves the count-based cap works (e.g., "1000
+tiny records still fit") without a companion test proving a small page of large
+records is handled (either succeeds via smaller effective page size, or fails
+with a clear, named error rather than `internal`).
 
-**Phase to address:** Custom-headers phase, Codex sub-task — this is the
-single highest-value fixture test in the whole milestone, since it directly
-prevents a repeat of the incident this milestone was opened to fix, on a
-runtime the milestone's own scoping text already flags as needing special
-care ("must account for Codex's `--bearer-token-env-var`-only CLI").
+**Phase to address:**
+Same phase as Pitfall 1's inventory — the "done means" bar in PROJECT.md
+("every exposed path carries a real-Qdrant regression test holding more than
+4 MiB of payload") should be read as requiring both a many-small-records
+fixture AND a few-large-records fixture per path, not just one shape.
 
 ---
 
-### Pitfall 3: Three runtimes, three incompatible header-value syntaxes — reusing one runtime's separator for another silently breaks the registration
+### Pitfall 3: Order-by-ties + concurrent inserts break keyset (cursor) paging silently — duplicates or skips with no error
 
 **What goes wrong:**
-Live-verified this session and cross-checked against shipped code:
-- **Claude Code** (`claude mcp add --help`, claude 2.1.270): `-H/--header
-  "X-Api-Key: abc123"` — colon-space, HTTP-header-string form, one shell
-  word per header, repeatable flag.
-- **opencode** (`opencode.go`'s own comment, live-verified prior milestone
-  against opencode 1.18.20, itself documenting a real regression this
-  project already shipped a fix for): `--header KEY=VALUE` — equals sign,
-  NOT colon-space. The colon-space form was "LIVE-REPRODUCED to fail
-  outright ... with an immediate nonzero exit" before the fix landed.
-- **Codex**: no generic header flag exists at all (Pitfall 2).
-
-A custom-header feature built by generalizing ONE runtime's already-working
-syntax into a shared helper (e.g., "format every header as `NAME: VALUE`"
-because that's how bearer mode already renders it for claude-code) will
-silently reproduce the exact opencode regression this project already found
-and fixed once, for the NEW custom-header code path specifically — the fix
-that lives in `opencode.go` today protects only the hardcoded `Authorization`
-bearer case, not a new generalized header-rendering function that a
-different implementer might write without re-deriving the same lesson.
+`listByCursor` (store.go:1463) resumes via `qdrant.NewStartFromDatetime(c.C)`
+plus a `seen` id set for records exactly at the boundary timestamp. This is
+correct *only* if `created_at` collisions are rare enough that the `seen` set
+(capped at `maxListLimit = 1000`, store.go:1479) never needs to hold more ids
+than that. Two failure shapes exist today, both silent (no error returned):
+1. **Tie overflow:** if more than 1000 records share the exact same `created_at`
+   boundary, `decodeCursor` rejects a *client-replayed* oversized cursor
+   (`ErrInvalidArgument`), but the *server* never detects that it under-counted
+   `seen` on the page that produced the cursor — some boundary records are
+   silently skipped rather than surfaced on the next page.
+2. **Concurrent insert at/before the cursor boundary:** a new record inserted
+   with a `created_at` earlier than a page already served, but before the
+   in-flight next-page fetch runs, is invisible to the resumed scan by
+   construction (keyset paging over a mutable, non-append-only key is
+   inherently vulnerable to this) — this is expected/acceptable for created_at-
+   keyed pagination in general, but it must not be *conflated* with the size-
+   bounding work in this milestone as if fixing size bounds also fixed
+   pagination correctness.
 
 **Why it happens:**
-The three runtimes' CLIs are independently designed, and "pass a header" is
-exactly the kind of operation that looks like it should have one shared
-serialization — until the syntax difference surfaces, which for opencode
-only shows up as a live nonzero exit, never a compile-time or type-level
-signal.
+Keyset pagination assumes the ordering key changes rarely relative to page
+size. `created_at` has millisecond (or coarser, depending on stamp precision)
+granularity, so bulk operations (a migration backfill, a bulk import, or many
+records written in the same request-handling tick) can produce more same-
+timestamp records than any one page's `seen` budget anticipates.
 
 **How to avoid:**
-Keep header-value formatting authored per-runtime, in that runtime's own
-file, exactly as bearer mode already does — never introduce a shared
-"format a header" helper across `claudecode.go`/`codex.go`/`opencode.go`.
-`AUTHORED HERE and nowhere else (D-09)` (the package doc comment in
-`runtime.go`) already states this principle for the write invocation as a
-whole; apply it explicitly to header-value rendering too. Write one fixture
-test per runtime asserting the LITERAL separator character in the rendered
-`Action.Args` (`": "` for claude-code, `"="` for opencode), not just that a
-header was included, so a regression toward the wrong separator fails
-immediately rather than needing a live opencode process to surface it again.
+Do not treat "bound the page byte size" and "keyset paging is correct under
+ties/concurrent writes" as the same problem — this milestone's stated scope is
+the former. If the phase touches `listByCursor` at all (e.g., to add a
+byte-size-aware page shrink), add an explicit regression test for >1000
+same-`created_at` records proving the *documented* behavior (skip-with-no-error
+today, or a named error after the fix) rather than silently changing behavior
+as a side effect of the size fix. If out of scope, say so explicitly in the
+phase's SPEC/PLAN so a future auditor does not assume this milestone also
+proved cursor correctness under ties.
 
-**Warning signs:** A generalized `renderHeader(name, value string) string`
-function (or similar) that more than one runtime's `Plan()` calls.
+**Warning signs:**
+A "done" claim for cursor paging that cites only the 4 MiB fixture (many
+records, one `created_at` each) with no same-timestamp tie fixture — the
+existing `TestListScopesFullPayloadsOverGRPCLimit`-style fixture (store.go
+uses distinct sequential UUIDs but a shared `time.Now()` at upsert time — check
+whether all 40 records in that pattern actually share one truncated
+`created_at`, which would make it an accidental tie-fixture already).
 
-**Phase to address:** Custom-headers phase — each runtime's own sub-task,
-enforced by the leaf-purity/no-shared-helper discipline this package already
-follows for everything else.
+**Phase to address:**
+If `listByCursor` needs a byte-size-aware shrink (see Pitfall 5), do the shrink
+in a phase separate from, or explicitly scoped alongside, any change to the
+`seen`-set/boundary logic — and add the tie-overflow regression test in
+whichever phase touches this function, since it is adjacent code that is easy
+to perturb without noticing.
 
 ---
 
-### Pitfall 4: A read-probe genuinely CAN echo a secret value — the existing "probes never see values" claim was proven for ONE shape, not for custom headers
+### Pitfall 4: A two-phase ids→payload read reintroduces TOCTOU that the current one-shot Scroll does not have
 
 **What goes wrong:**
-`claudecode.go`'s own doc comment states a specific, narrow, already-proven
-fact: for the SHIPPED bearer mode, "`claude mcp get` and the on-disk config
-both echo back the literal, unexpanded `${ENGRAM_TOKEN}` text" — i.e., the
-probe is safe because Claude Code stores and displays the UNEXPANDED
-variable reference, never the resolved secret, for that specific header
-value shape (`"Authorization: Bearer ${ENGRAM_TOKEN}"`). **This is a fact
-about Claude Code's own storage/display behavior for that literal string
-shape, verified once, live, at one version — it is not a structural
-guarantee that generalizes to every possible header value a custom-header
-feature might construct.** Two ways it can break for the new feature:
-1. A custom-header value that does NOT keep the entire secret behind a
-   `${VAR}`-shaped reference (e.g., a value with a literal prefix/suffix
-   around the reference, or a caller-supplied raw value passed through
-   unexamined) would have that literal portion echoed by `claude mcp get`
-   exactly as it is stored — the existing proof covers "whole value is a
-   `${VAR}` reference," not "value contains one."
-2. `opencode mcp list`'s printed table is a DIFFERENT surface with no
-   verified claim about its header-echo behavior at all in this repo's own
-   research — `opencode.go`'s comments document `mcp list`'s TIMING and
-   completeness limitations (dials every registered server, ~1.2-1.7s) but
-   say nothing about whether it prints registered header VALUES or just
-   header NAMES. A drift-detection feature that captures `opencode mcp
-   list`'s full stdout into a comparison buffer, a JSON report field, or
-   generated prose, without first establishing (live, once) whether that
-   table ever prints a resolved or stored header value, risks leaking
-   whatever it does print into `--output json`, a CI log, or (via
-   `internal/setupgen`) the generated `/engram-setup` slash-command
-   markdown — a file that ships inside the plugin and is committed to the
-   repository.
-3. Drift detection's OWN stated design — "preview compares the full
-   existing registration (URL, auth shape, header set)" — is new work: it
-   necessarily reads MORE of the runtime's registration state than the
-   existing probes did (the existing probes exist only to detect
-   wrote-vs-already-correct via byte-compare, D-08; they were never
-   designed to extract and RENDER a structured "header set" for a human-
-   or machine-readable diff). Building that structured extraction is new
-   surface area for exactly the leak this pitfall describes, and it did
-   not exist in the shipped v0.16.x code at all.
+#585 lists "fetch only the ids with `WithPayload(false)` and then load payloads
+for just the returned page" as a candidate fix for offset-mode deep paging.
+This converts one atomic-per-page Scroll into two round trips: (1) resolve the
+ordered id window, (2) `Get`/`GetPoints` those ids' payloads. Between phase 1
+and phase 2, a record can be deleted, superseded (`superseded_by` set), or
+archived (`archived_at` set) — its id is still in the phase-1 window but
+`GetPoints` either 404s that id (silently dropping it, changing the page's
+count without adjusting `total`) or — worse — `Get` bypasses the recall gate
+entirely (per this repo's own documented contract: "Store.Get stays ungated,"
+repeated at every soft-hide condition in `store.go`, e.g. lines 1389, 1397,
+1630, 1635), so a record that became superseded/archived/expired between
+phase 1 and phase 2 could be returned to a *list* caller carrying gated state,
+via a path that was never meant to bypass the gate.
 
 **Why it happens:**
-The existing, narrow, already-proven safety property gets remembered as "the
-probes are safe" rather than "THIS ONE probe, for THIS ONE value shape, on
-THIS ONE runtime, was verified safe" — and it's natural to extend that
-confidence to a materially different feature (drift's registration-state
-extraction) built on the same underlying commands.
+`Store.Get` is intentionally ungated (`get_memory` fetch-by-id is documented as
+not recall-gated — this is a **feature** for the existing single-id `get_memory`
+tool, where the caller already has the id and is explicitly asking for it
+regardless of state). Reusing `Get`/`GetPoints` as the payload-fetch half of a
+new two-phase *list* path silently imports that ungated behavior into a
+recall-gated surface, which is exactly the class of bug the repo's own
+"recall-gate AST test pins Scroll call sites" convention exists to prevent —
+and a `Get`/`GetPoints`-based fetch is invisible to a Scroll-call-site AST
+gate by construction.
 
 **How to avoid:**
-Before drift detection ships, live-verify (once, read-only, exactly the
-discipline this research session followed) what each runtime's read verb
-ACTUALLY PRINTS for a header whose value is NOT a bare `${VAR}`/`{env:VAR}`
-reference — this session could not do that verification itself (STRICT: no
-mutating commands), so it must happen in-phase, against a throwaway
-registration, before the drift feature's comparison/rendering code is
-trusted. Whatever the header set comparison consumes, sanitize it through
-the same "reference-only, never resolved value" contract `bearerProvenance`
-and the shipped bearer modes already hold themselves to — treat any header
-VALUE captured from a probe as suspect data, never render it verbatim into
-`Result.Registered`, a JSON report field, or generated prose without first
-confirming (per-runtime) that it can only ever be an unresolved reference,
-never a literal secret. Apply `internal/setup/apply.go`'s existing
-`maxCapturedBytes`/`boundCapture` discipline to this NEW field too, but
-recognize that byte-bounding a leak does not un-leak it — the fix is
-verifying the source never contains a resolved value in the first place,
-not truncating it after the fact.
+If a two-phase ids→payload design is adopted: (a) re-derive the id set's
+current gate-relevant fields (or re-check the filter) in phase 2 rather than
+trusting phase-1 membership as still valid, or (b) keep the filter conditions
+applied in phase 1 as the sole gate and treat phase 2 strictly as a payload
+hydration step that must re-verify each returned id is still in the id set
+(diff against phase-1 ids; drop and adjust reported count for anything that
+vanished, rather than silently shrinking the page or leaking a gated record).
+Whichever approach is chosen, extend (or explicitly justify not extending) the
+recall-gate AST pin to cover the new `Get`/`GetPoints` call site, since that
+convention exists precisely to make "does this new Scroll/Get bypass the gate"
+mechanically checkable rather than a code-review judgment call each time.
 
-**Warning signs:** A drift-detection "header set" field in `--output json`
-or a CI-committed generated markdown file that ever contains anything other
-than a `${VAR}`/`{env:VAR}`-shaped reference or a header NAME with no value.
+**Warning signs:**
+A phase 2 fetch that reuses `Store.Get` or a bare `qdrant.GetPoints` call
+without re-threading the same `Must` filter conditions (superseded/archived/
+scheduled/owner) that phase 1 applied — check the diff for any new `client.Get`
+call in a list/search path that does not also carry a `Filter` re-check.
 
-**Phase to address:** Drift-detection/reconcile phase — the live-verification
-step (what does each read verb actually print for a non-bare-reference
-header) is a prerequisite task, not a nice-to-have, and should block the
-comparison/rendering code from landing until done.
+**Phase to address:**
+Whichever phase implements the two-phase ids→payload approach for offset-mode
+deep paging (if that approach is chosen over an alternative — see Pitfall 1's
+"whatever mechanism" framing) must include this TOCTOU re-verification as an
+explicit acceptance criterion, not an implementation detail assumed correct by
+construction.
 
 ---
 
-### Pitfall 5: Claude Code's remove-then-add window is now ALSO the reconcile feature's collision zone — "preserve" and "converge on re-run" want opposite actions on the same registration
+### Pitfall 5: `qdrant.Get`/`GetPoints` does not preserve requested-id order — a two-phase read silently reorders `created_at`-sorted pages
 
 **What goes wrong:**
-`claudecode.go`'s `claudeCodeRemoveAction` already documents, in its own
-comment, the exact destructive window this milestone must not make worse:
-"if the following (fatal) add action fails or is interrupted after this
-action succeeds, the operator is left with NO claude-code registration where
-they previously had a working one, and engram cannot restore it — it never
-read the prior entry." Layering drift detection on top of the SAME runtime
-creates a direct semantic collision, not just a window-timing risk:
-- **Preserve** (the new reconcile requirement) means: "a registration
-  `setup` cannot reproduce must never be replaced."
-- **Converge on re-run** (the EXISTING idempotency contract, `docs-site
-  guides/agent-setup.md`: "Repeating setup with the same inputs converges
-  on the requested registration without duplicate entries") means: "running
-  `--apply` again should make the machine match what was requested."
-  For claude-code specifically, "converging" is IMPLEMENTED as
-  remove-then-add — there is no in-place update primitive on this CLI (the
-  same `claudeCodeRemoveAction` comment: "`claude mcp add` has no
-  --force/--overwrite flag and refuses ... on an existing name at EVERY
-  scope"). If a caller runs `--apply` with a URL/auth combination that
-  ALREADY has an unreproducible custom-header registration in place, "detect
-  it, report preserved, never replace it" and "converge because that's what
-  `--apply` with a URL always does for claude-code" are contradictory
-  instructions to the SAME code path — and the shipped remove step has NO
-  way to distinguish "the existing registration is one we should preserve"
-  from "the existing registration is stale and should be cleared" without
-  the drift comparison actually gating whether the remove-then-add sequence
-  even runs. Silently choosing "converge always wins" reproduces the
-  2026-09-10 incident's exact mechanism for claude-code, since the remove
-  step has always run unconditionally to date.
+Qdrant's own issue tracker and API documentation state that `GetPoints` does
+not guarantee response order matches the requested id list — the server may
+sort internally (e.g., by id) rather than by request order
+([qdrant/qdrant#5071](https://github.com/qdrant/qdrant/issues/5071); API
+reference notes "if the indices are not sorted, Qdrant will sort them
+internally"). Every list/search path in this store orders by `created_at`
+(store.go:1439, 1497, 1644). A two-phase design that resolves an ordered id
+window in phase 1 via Scroll+`order_by`, then fetches payloads for those ids
+via `GetPoints` in phase 2, will receive payloads back in an *unspecified*
+order — not the `created_at` order phase 1 established — and must not assume
+`GetPoints`'s response order is usable directly.
 
 **Why it happens:**
-The two requirements were written by the same milestone for good reasons —
-idempotent re-run and non-destructive reconcile are both real goals — but
-neither requirement, as scoped, states which one governs when they conflict
-on the ONE runtime whose convergence mechanism (remove-then-add) is itself
-destructive.
+It is an easy, unstated assumption that "I asked for these N ids, I get back
+these N payloads in the same order" — true for many key-value style APIs, not
+guaranteed for Qdrant's batch point-retrieval API.
 
 **How to avoid:**
-Resolve this as an explicit, written decision, not an implicit code
-consequence: reconcile's "preserve" must be checked BEFORE
-`claudeCodeRemoveAction` is scheduled at all, for every apply — i.e., drift
-detection is not merely a preview-time feature (Pitfall 1) but the actual
-GATE that decides whether claude-code's write sequence runs, is skipped
-with a reported "preserved, not converged" outcome, or proceeds normally
-because the existing registration IS one setup wrote and can safely be
-replaced. This makes "preserved" a real THIRD outcome alongside
-`OutcomeWrote`/`OutcomeAlreadyCorrect` for claude-code specifically, not a
-preview-only annotation — a new `Outcome` value (`plan.go`'s five-value enum
-already documents that "every code path ... must set one of the five
-constants" — this is exactly the kind of change that enum's own philosophy
-anticipates needing a sixth, explicit value for, never an implicit fallback
-onto an existing one).
+If phase 2 of a two-phase design uses `GetPoints`, re-sort the returned
+payloads client-side using the id order established in phase 1 (build an
+`id → Memory` map from the `GetPoints` response, then iterate the phase-1
+ordered id list to reconstruct output order) — never assume response order.
+Add a regression test with a page of records whose ids are NOT in `created_at`
+order when sorted lexically/by-id (the two orderings must diverge for the test
+to be meaningful), asserting the final returned order matches `created_at`.
 
-**Warning signs:** A fixture where an existing claude-code registration
-carries a header the new drift comparison flags as unreproducible, followed
-by `--apply` — if the resulting `Result.Outcome` is `OutcomeWrote` (or the
-`claude mcp remove` action ran at all), the collision was resolved in favor
-of the wrong requirement.
+**Warning signs:**
+A two-phase implementation that appends directly to output from a `for _, p
+:= range pts` loop over a `GetPoints` response without an intermediate
+map-and-reorder step — this is the same `fromPayload(p.Id.GetUuid(), p.Payload)`
+loop shape already used elsewhere in this file (e.g., store.go:1446,
+1509, 1651) for *Scroll* results (which the codebase apparently treats as
+order-preserving in request/response — verify this assumption too if any of
+these loops is ever fed by a `GetPoints` call instead of `Scroll`).
 
-**Phase to address:** Drift-detection/reconcile phase, in explicit
-coordination with the claude-code sub-task — this is the single riskiest
-integration point in the whole milestone, since claude-code is also the
-runtime whose OAuth re-login cost (see Pitfall 6) makes an unnecessary
-remove-then-add cycle expensive even when it does succeed.
+**Phase to address:**
+Same phase as Pitfall 4 — order preservation is a correctness requirement of
+the same two-phase mechanism, not a separate concern, and should be proven by
+the same regression test suite (a test with non-monotonic ids interleaved with
+`created_at` order catches both TOCTOU-adjacent count issues and ordering bugs
+in one fixture).
 
 ---
 
-### Pitfall 6: A "successful" reconcile that still runs remove-then-add on an OAuth-authenticated Claude Code registration forces re-login for no observable reason
+### Pitfall 6: A regression test fixture "under 4 MiB" measured the wrong number — grpc-go enforces the *decompressed* size, and the existing fixture already gets this right by accident, not by stated intent
 
 **What goes wrong:**
-`docs-site/guides/agent-setup.md` already states, as a known property of
-the existing design: "Registration and OAuth login are separate steps:
-complete the runtime's OAuth login after successful registration." Claude
-Code's OAuth token is tied to the registration entry `claude mcp remove`
-clears — PROJECT.md's own incident summary confirms this happened for real:
-"Claude Code needed re-auth after `mcp remove` + `mcp add`." If drift
-detection determines a claude-code registration is "already correct" in
-every respect EXCEPT some field the comparison logic considers changed
-(e.g., a normalization difference in how the URL or an unrelated header is
-rendered — see Pitfall 7), and reconcile decides to "converge" by running
-the existing remove-then-add sequence anyway, the operator experiences an
-unprompted OAuth re-login for a registration that, from their perspective,
-was not meaningfully different — with no drift-detection message explaining
-WHY a re-login was suddenly required, since the existing report shape
-(`Result.Reason`/`Result.Notes`) was designed for failure/tolerance
-narration, not for "this write was necessary because X differed."
+grpc-go's `MaxRecvMsgSize`/`MaxCallRecvMsgSize` check applies to the message
+size *after decompression*, not the compressed wire size (confirmed against
+grpc-go's own issue tracker:
+[grpc/grpc-go#4761](https://github.com/grpc/grpc-go/issues/4761), and
+corroborated by community write-ups on the "received message after
+decompression larger than max" error text this repo's own #583/#585 issues
+quote verbatim). A test author who reasons "my fixture is highly compressible
+(e.g., `strings.Repeat("x", n)`), so gRPC-level compression will keep the wire
+message under 4 MiB, so this won't reproduce the bug" has the causality
+backwards: compression (if enabled) would make the WIRE transfer smaller, but
+the RECEIVE-SIZE check still fires because it re-measures after decompressing
+back to the full logical size. The inverse mistake is equally real: assuming a
+fixture's *logical* (decompressed) byte count is what must exceed 4 MiB, and
+then padding it with a compressible filler in a way that happens to convince a
+reviewer the fixture is "smaller than it looks" — it is the decompressed size
+that must exceed the cap, full stop, regardless of compressibility.
 
 **Why it happens:**
-Drift comparison is naturally implemented as a byte- or field-level
-inequality check; ANY field-level difference currently maps to "not already
-correct" under the shipped `execute()` model (`D-08`'s byte-compare is
-binary — identical or not, with no notion of "differs in a way that doesn't
-matter"). Converting "differs" into "requires an OAuth-costly rewrite" is an
-implicit consequence of reusing the existing convergence path, not a
-decision anyone makes explicitly.
+"Compression" and "message size limit" are easy to conflate — many engineers'
+mental model is "compression makes messages smaller, so it should help avoid
+size-limit errors," which is true for the *wire* size but false for a receiver
+that checks decompressed size (which is exactly what protects a receiver from
+a decompression-bomb-style attack — checking pre-decompression size would
+defeat that protection entirely).
 
 **How to avoid:**
-Treat "this field's drift is real and warrants a rewrite" and "this field's
-drift is cosmetic/probe-artifact and should be ignored" as a decision the
-new comparison logic must make explicitly per field (URL normalization,
-header ordering, whitespace) — reusing Pitfall 7's normalization work — and
-surface, in the reported outcome, WHY a claude-code rewrite is about to
-force re-login, so an operator can decide to defer `--apply` rather than
-being surprised. At minimum, the generated report/prose should state the
-re-login consequence explicitly whenever claude-code's remove-then-add path
-is about to run for a registration that was OAuth-authenticated — mirroring
-`claudeCodeRemoveAction`'s existing Description discipline (surfacing a
-consequence via `Result.Notes` even when the step itself succeeds).
+This repo's shipped `TestListScopesFullPayloadsOverGRPCLimit`
+(store_test.go:1798) already gets this right, and its own guard comment
+(`if n*contentBytes <= 4<<20 { t.Fatalf(...) }`, store_test.go:1810) is the
+correct pattern: assert the *logical* fixture size (`n * contentBytes`, the
+decompressed content size Qdrant will actually return) exceeds the cap, not
+some measured wire/gzip size. New regression tests for `Store.List`,
+`ListScheduled`, and the operator sweeps should copy this exact guard-assert
+pattern rather than reasoning freshly about compression each time. Also
+verify (this repo does not appear to enable client-side gRPC compression
+today — no `grpc.UseCompressor`/`WithDefaultCallOptions(grpc.CallContentSubtype`
+hits found in `internal/`) that no future change silently enables compression
+without re-confirming this reasoning still holds.
 
-**Warning signs:** A drift-comparison fixture where only whitespace or key
-ordering differs between the stored and requested registration, and the
-resulting outcome is still "would rewrite" for claude-code with no
-distinguishing note from a genuine credential/URL change.
+**Warning signs:**
+A new fixture that sizes its content based on an estimated *compressed* size,
+or a fixture that uses low-entropy filler content specifically because "it'll
+transmit fast" (compression speed/ratio should never be a factor in choosing
+fixture content — use whatever is simplest, since decompressed size is the
+only thing that matters).
 
-**Phase to address:** Drift-detection/reconcile phase, claude-code sub-task
-— pair directly with Pitfall 5's gating decision, since both concern the
-same remove-then-add sequence.
+**Phase to address:**
+Whichever phase writes new regression tests for `Store.List`/`ListScheduled`/
+operator sweeps should explicitly reuse (or extract into a shared helper) the
+`store_test.go:1810`-style guard-assert, so the reasoning is enforced by a
+compile-time-adjacent check rather than re-derived per test file.
 
 ---
 
-### Pitfall 7: Comparing a normalized registration against a runtime whose OWN read verb is lossy or non-deterministic — `opencode mcp list` is the sharpest case, but not the only one
+### Pitfall 7: A test client that sets its own `MaxCallRecvMsgSize` (or a different default) stops proving anything about production
 
 **What goes wrong:**
-`opencode.go`'s own extensive doc comment already states the core problem
-for the SHIPPED byte-compare (D-08): `opencode mcp list` is "the ONLY read
-verb available," it "renders a human-formatted table with box-drawing and
-status glyphs," it "lists EVERY registered MCP server (not just engram's),"
-and it "dials the network for each of them on every invocation" — so two
-reads of the SAME unchanged state can differ for reasons entirely unrelated
-to engram's own registration (another server's transient connection status
-flipping a status glyph). The shipped code's answer is D-08's own escape
-hatch: ambiguity resolves to `OutcomeWrote`, never `OutcomeAlreadyCorrect,`
-which is SAFE for the binary "did this converge" question but is NOT an
-answer for the NEW question drift detection asks: "does the EXISTING
-registration's URL/auth-shape/header-set match what setup would write."
-Building drift detection's comparison on top of the SAME `mcp list` output
-means:
-1. **False-positive drift.** An unrelated server's status glyph, or the
-   the table's own column-width padding (which can shift when another
-   server's name is longer or shorter), changes the RAW captured bytes
-   between two runs, which a naive full-registration-string comparison
-   would report as "the registration drifted" even though engram's own
-   entry did not change at all.
-2. **False-negative preserve.** Conversely, `mcp list`'s table format may
-   not expose enough structure to reliably ISOLATE engram's own row's
-   header set from the rest of the table at all — parsing a third-party
-   human-formatted table to extract a structured comparison target is
-   EXACTLY the kind of "scraping a format that drifts as easily as the
-   flag surface it claims to protect against" this package's own
-   `apply.go` doc comment already rejects for a different purpose
-   ("no pre-flight probe of any runtime's `--help` output ... matching
-   tokens in help text is scraping a format that drifts").
-3. A parallel, less severe version of the same problem exists for Codex:
-   `codex mcp get <name> --json` DOES return structured JSON (confirmed
-   live this session: `--json` flag exists and is documented as
-   "Output the server configuration as JSON") — a genuinely reliable
-   comparison target — but Claude Code's `claude mcp get <name>` has NO
-   `--json` flag at all (confirmed live this session: `claude mcp get
-   --help` lists only `-h/--help`), so its comparison target is
-   necessarily the SAME kind of human-formatted text `apply.go` already
-   treats as an ambiguity-resolves-safely case for the narrower
-   byte-compare, not a green light for a NEW structured-diff feature to
-   assume the same text is parseable into fields.
+Today, both the production client (`internal/server/tools.go:123`,
+`qdrant.NewClient(&qdrant.Config{...})`) and the test clients (e.g.,
+`internal/store/store_test.go:190`, `internal/e2e/spine_review_test.go:73`) set
+no `MaxCallRecvMsgSize`, so both inherit grpc-go's identical 4 MiB default —
+this is precisely why `TestListScopesFullPayloadsOverGRPCLimit` is a valid
+regression test for the production bug. The milestone's own "done means" bar
+(PROJECT.md: "Raising `MaxCallRecvMsgSize` alone only moves the ceiling — #583
+rejected it as a fix; it is defense in depth at most") already names the
+danger of adopting that mitigation in production. The less obvious version of
+the same mistake: if a future PR adds `MaxCallRecvMsgSize` as defense-in-depth
+to the *production* client (`tools.go:123`) without applying the identical
+value to every test-client construction site (there are at least 9 separate
+`qdrant.NewClient(&qdrant.Config{...})` call sites across
+`internal/store/*_test.go`, `internal/e2e/*_test.go`, `internal/server/*_test.go`,
+and `internal/retrievaleval/*_test.go`), the test suite's receive limit drifts
+from production's, and every existing/new 4 MiB-boundary regression test
+silently stops proving anything about the deployed binary.
 
 **Why it happens:**
-The shipped code already solved the NARROW problem (converge-or-not) by
-choosing to be conservative rather than parse anything — it never needed a
-STRUCTURED comparison. Drift detection's stated design ("preview compares
-the full existing registration ... URL, auth shape, header set") is asking
-for exactly the structured extraction the shipped design avoided, and it is
-easy to reach for "just parse the same output we already read" without
-re-deriving why that output was never trusted for structure before.
+There is no single shared client-construction helper in this repo today for
+test-side Qdrant clients — each test file independently calls
+`qdrant.NewClient(&qdrant.Config{Host: host, Port: port})`, so a change to the
+one production call site (`tools.go`) has no structural mechanism forcing a
+matching update everywhere else.
 
 **How to avoid:**
-For each runtime, decide explicitly which comparison granularity its OWN
-read verb can honestly support, and record that as a per-runtime fact
-(mirroring D-09's "authored here, in the runtime's own file" discipline):
-Codex's `--json` output is the one case where a genuinely structured,
-field-level comparison is honest; Claude Code's and opencode's text output
-should drive a COARSER, more conservative comparison (e.g., "does the whole
-captured text change" — closer to the existing D-08 shape — rather than
-"does the extracted header field change"), with any apparent drift on those
-two runtimes defaulting toward "cannot confidently determine, report as
-preserved/unknown" rather than confidently misreporting either false
-positive or false negative. Never write a parser for `opencode mcp list`'s
-box-drawing table to extract engram's own row — if opencode's comparison
-needs more structure than the raw text safely provides, that is a scope
-boundary to state explicitly ("opencode drift detection is best-effort /
-whole-table-change only"), not a parsing problem to solve.
+If this milestone adds `MaxCallRecvMsgSize` (or any other gRPC dial option) as
+defense-in-depth to the production client, either (a) extract a single shared
+client-construction function that both production and every test call site
+use (closing the drift risk structurally, matching this repo's own stated
+preference for correct-by-construction gates over per-site vigilance — see
+CLAUDE.md's `internal/surfaces` conformance-gate pattern), or (b) explicitly
+add a test (an AST/grep gate, in the spirit of the existing recall-gate AST
+test) asserting every `qdrant.NewClient` call site in the tree uses the same
+dial-option set. Do not rely on manual "remember to update the other 9 files"
+discipline.
 
-**Warning signs:** A drift-detection fixture with an unrelated second MCP
-server present alongside engram's own entry reports drift on engram's
-registration when only the OTHER server's state changed.
+**Warning signs:**
+A PR diff that touches `tools.go`'s `qdrant.NewClient` call but no test file —
+or a regression test that starts passing not because the underlying fetch
+shrank but because the test client's own limit was quietly raised somewhere in
+its construction path.
 
-**Phase to address:** Drift-detection/reconcile phase — decide and record
-per-runtime comparison granularity as an explicit early task, before writing
-any comparison logic, since it changes what the comparison function's
-return type even needs to express (a boolean "matches" vs. a structured
-field-level diff).
+**Phase to address:**
+Whichever phase adds any gRPC dial-option defense-in-depth to the production
+client must, in the same phase, either unify client construction or add the
+drift-detecting gate — this is exactly the kind of gap the "regression tests
+that don't actually go RED" quality gate in this research task is meant to
+catch, and it will not be caught by `task test` passing (all clients agree with
+each other; they just no longer agree with what's shipped, and there's no way
+today to notice that from a green test run).
 
 ---
 
-### Pitfall 8: Plugin install/marketplace-add without consent — and this maintainer's own machine is ALREADY in the exact partial state that makes the consent question real
+### Pitfall 8: `total`/count semantics silently change meaning when paging becomes multi-round-trip or gains a byte-size-aware page shrink
 
 **What goes wrong:**
-Live-inspected this session, read-only, on the machine this research ran on:
-`claude plugin marketplace list` already shows an `engram` marketplace
-configured (source: GitHub `seanb4t/engram`), and
-`~/.claude/plugins/marketplaces/engram` and
-`~/.claude/plugins/cache/engram/engram` both exist on disk — but
-`~/.claude/plugins/installed_plugins.json` shows **no engram entry actually
-installed**, and no `~/.claude/skills/curating-memory` (or any other engram
-skill) directory exists under the plain-install path either. This is a
-REAL, currently-live "marketplace added, plugin not installed, no plain
-skills present" state — not a hypothetical fixture — and it demonstrates
-exactly the ambiguity a plugin-first `--apply` must resolve correctly:
-1. **Marketplace-add is itself a trust decision.** `claude plugin
-   marketplace add <source>` fetches and caches a marketplace definition
-   from a URL/GitHub repo BEFORE any plugin is installed from it — running
-   this unconditionally under `--apply` (with no separate confirmation)
-   adds a new trust surface (a marketplace source, `seanb4t/engram`'s own
-   `.claude-plugin/marketplace.json` if one exists, or the repo itself)
-   that a `bearer`/`none`-auth, no-plugin-opinion user of today's
-   `engram setup` never had to accept. The existing binary-setup docs
-   explicitly draw the line the other way already: "Binary setup does not
-   install the standalone Claude plugin's session hooks" — plugin-first
-   delivery being scoped for `--apply` under the SAME command inverts that
-   documented boundary, and the docs/consent UX must be updated
-   deliberately, not left stale (a stale doc here is worse than usual,
-   since it directly contradicts the new shipped behavior).
-2. **`claude plugin install` and `claude plugin update` both support
-   `--json`/`-y` (`--yes`) flags** (confirmed live this session): `-y`
-   "Accept the displayed marketplace-declared command without the
-   confirmation prompt ... required when stdin or stdout is not a TTY."
-   This means a scripted, non-interactive `engram setup --apply` MUST pass
-   `-y` for plugin install to succeed non-interactively at all — which
-   means engram's own `--apply` invocation, not a human, becomes the thing
-   that accepts "the displayed marketplace-declared command" sight-unseen
-   on the operator's behalf. That is a materially bigger consent
-   surface than anything `engram setup` has shipped to date (every prior
-   write was a single, fully-specified `mcp add`/`mcp remove` invocation
-   engram itself authored and displayed in preview — a plugin's declared
-   install command is AUTHORED BY THE MARKETPLACE, not by engram, and
-   engram's own preview cannot show it without first resolving the
-   marketplace, which itself has side effects per point 1).
-3. **Codex's plugin surface is structurally the same shape**
-   (`codex plugin add <PLUGIN[@MARKETPLACE]>`, confirmed live this
-   session) — `codex plugin marketplace add` similarly requires trusting a
-   marketplace source before `codex plugin add` can resolve `PLUGIN@engram`.
+`Store.List` currently returns an *exact* `total` via `Count` with
+`Exact: qdrant.PtrOf(true)` (store.go:1407) — a real count over the full
+filtered set, computed once, independent of the page-fetch mechanism. Two
+plausible fixes threaten this contract: (1) if offset-mode "all" (`Limit: 0`)
+moves to internally-paged batches to stay under the byte cap, `total` must
+still reflect the *whole* filtered set, not just what fits in memory across the
+batches actually fetched before a caller-visible limit is reached — an easy
+bug is computing `total` as "however many I managed to page through" instead
+of the pre-existing exact `Count` call. (2) If a page's size is *shrunk*
+dynamically because its records are unusually large (a byte-size-aware
+response to Pitfall 2), the *returned item count* for that page becomes
+smaller than the caller's requested `Limit` even though more matching records
+exist and were not filtered out — this is a new, currently-nonexistent
+semantic ("I asked for 50, I got 12, but there's no error and `total` says
+500") that every caller (Connect API, console, `engram list` CLI, MCP
+`list_memory`) needs to handle correctly, especially cursor-based paging logic
+that decides "is this the last page" partly from `len(out) < limit`
+(store.go:1521) — a page shrunk for byte reasons, not exhaustion reasons, must
+not be mistaken by that check for "no next page."
 
 **Why it happens:**
-"Plugin-first" reads, at the requirements level, as a pure DELIVERY
-mechanism change (skills/hooks/command ship via a different channel) — but
-operationally it is also a NEW trust-and-consent surface (a marketplace
-source, plus a marketplace-declared install command neither engram nor the
-operator authored) layered underneath a command (`--apply`) whose entire
-prior design assumed every write action's exact argv was authored and
-previewable by engram itself.
+`total` and per-page `len(items)` are currently orthogonal by construction
+(one is an independent `Count` call; the other is whatever a single Scroll
+returned). Any fix that couples fetch behavior to *payload size* rather than
+purely to *filter results* breaks that independence unless deliberately
+re-established.
 
 **How to avoid:**
-Preview MUST show, in full, both the exact `marketplace add`/`plugin
-install` invocations AND — where the CLI supports it (`claude plugin
-install --json`, `claude plugin details <name>` per the `--help` output
-captured this session) — the marketplace-declared command that install will
-run, BEFORE `--apply` ever passes `-y`/accepts it non-interactively. Decide
-explicitly whether a first-run plugin install needs an EXTRA, separate
-opt-in beyond the existing `--apply` flag (a `--allow-plugin-install` shape,
-or equivalent) given that the marketplace source and declared command are
-not engram's own authored content the way every prior `Action.Args` was —
-and record that decision, since the milestone's own PROJECT.md is silent on
-consent UX specifically. Test against the REAL partial state this session
-found live (marketplace present, plugin not installed) as an explicit
-fixture, not just the two clean-slate cases (nothing present / fully
-installed) — the partial state may be common precisely because prior
-research/experimentation (like this milestone's own predecessor work)
-leaves exactly this residue.
+Keep the `total` computation (the `Count` call) entirely independent of
+whatever page-fetch strategy is chosen for size-bounding — do not let it
+become "the count of what I actually paged through." For cursor mode, if a
+page can legitimately come back shorter than `limit` for a reason *other than*
+exhaustion (byte-size shrink), either (a) do not expose that shrink to the
+caller at all — internally keep fetching in smaller sub-batches until `limit`
+distinct records are assembled or the filtered set really is exhausted (this
+preserves the existing `len(out) < limit` ⇒ no-next-page invariant exactly),
+or (b) if (a) is infeasible under the byte cap, introduce an explicit signal
+(distinct from `nextCursor == ""`) that this page was truncated for size
+reasons and more data is available at the same cursor position — never overload
+`nextCursor == ""`/short-page to mean two different things.
 
-**Warning signs:** `engram setup --apply` for claude-code silently performs
-`marketplace add` before the operator has seen the marketplace source URL
-in preview output; a scripted/CI `--apply` invocation requires discovering
-`-y` semantics by trial and error rather than from engram's own `--help`.
+**Warning signs:**
+A page-shrink implementation that changes the meaning of `len(out) < limit`
+without updating every one of that function's callers (the offset-mode "last
+page" check at store.go:1449, the cursor-mode exhaustion check at store.go:1521,
+and anything downstream in `connectapi.go`/console/CLI that infers "done
+paging" from an empty or short next-cursor).
 
-**Phase to address:** Plugin-first-delivery phase — the consent/preview
-design here is a prerequisite decision, not an implementation detail, given
-this session found the "marketplace present, plugin absent" ambiguity is
-not hypothetical.
+**Phase to address:**
+Whichever phase implements the actual size-bounding mechanism must treat
+`total`/exhaustion-signal preservation as an explicit acceptance criterion with
+its own test (assert `total` is unchanged by whatever internal batching
+happens; assert a size-forced partial fetch does not present as "last page"
+unless it truly is).
 
 ---
 
-### Pitfall 9: Plain-install and plugin-install can double-register the same skill under two different names, and a naive migration can also silently orphan the OLD copy or misuse a stow/chezmoi symlink
+### Pitfall 9: `ResourceExhausted → clear error` becomes an information-leaking or over-generic error-mapping site if done casually
 
 **What goes wrong:**
-Two related risks, both grounded in shipped code:
-1. **Double registration.** `internal/skills/install.go`'s `installFiles`
-   writes each skill at `filepath.Join(dir, s.Name, f.Path)` — for
-   claude-code today, `~/.claude/skills/curating-memory/SKILL.md`. Claude
-   Code's OWN plugin system separately names an installed plugin's skills
-   with a `<plugin>:<skill>` prefix in its own UI/skill-listing (the
-   milestone's own scoping text names this exact collision: "duplicate
-   `curating-memory` next to the plugin's `engram:curating-memory`"). If
-   plugin-first delivery for claude-code is added WITHOUT also making the
-   plain-install path a no-op for claude-code specifically, a machine that
-   runs `--apply` after this milestone ships gets BOTH: the plugin's
-   `engram:curating-memory` (from the marketplace/plugin flow) AND a plain
-   `~/.claude/skills/curating-memory` directory (from the pre-existing,
-   still-unconditional `claudeCodeRuntime.Plan`'s `SkillTarget{Format:
-   SkillFormatNative, Dir: filepath.Join(home, ".claude", "skills")}`) —
-   this is not a hypothetical drift scenario, it is the CURRENT shipped
-   code path, unconditionally executed, that this milestone's PROJECT.md
-   explicitly names as the thing that must change: "Today `internal/skills/`
-   and `internal/setup/` have no plugin awareness: on the maintainer's
-   machine `--apply` would write a duplicate `curating-memory` next to the
-   plugin's `engram:curating-memory`."
-2. **Migration orphan / symlink-replacement risk on cleanup.** The natural
-   fix for (1) — once claude-code is plugin-first, have `--apply` DELETE
-   the stale plain `~/.claude/skills/curating-memory/` directory a PRIOR
-   binary-setup run may have left behind — introduces a NEW write mode
-   (delete) this package has never had (every existing skills-facet write
-   is additive-or-overwrite per `installFiles`'s byte-compare-then-write,
-   never a delete). If that cleanup naively does `os.RemoveAll` on a path
-   that is itself a symlink into a chezmoi/yadm/stow-managed dotfiles repo
-   (the exact scenario `internal/skills/install.go`'s own `WriteFile`
-   doc-comment for `installAgentsMDIndex` already reasons carefully about
-   for a DIFFERENT file: "this repository's own AGENTS.md is one such
-   symlink" and os.WriteFile-through-a-symlink vs.
-   stage-and-rename-replaces-the-symlink), a delete-based cleanup could
-   remove the operator's own dotfiles-managed skill source, not just
-   engram's copy of it — a strictly worse failure mode than merely leaving
-   a stale duplicate.
-3. PROJECT.md's own text ALSO names the symlink-replacement risk directly
-   for a different artifact: "replace Codex's marketplace symlinks with
-   static copies pinned to the binary's embedded version" — i.e., Codex's
-   OWN plugin caching mechanism uses symlinks (confirmed structurally this
-   session: `~/.claude/plugins/marketplaces/engram` and
-   `~/.claude/plugins/cache/engram/engram` both exist as the marketplace's
-   own managed structure) that a plain, binary-embedded skills copy
-   running AFTER plugin install could silently overwrite with static files
-   pinned to whatever version shipped inside that particular `engram`
-   binary — regressing a marketplace-tracked (auto-updatable) skill to a
-   binary-pinned (stale-on-next-plugin-update) one, with no visible error.
+The milestone requires mapping Qdrant's `ResourceExhausted` (currently
+surfaced by `connectError` as an opaque Connect `internal`, per #585's
+reproduction) to "a clear error." Two opposite failure modes are both easy to
+introduce here: (1) **leaking internals** — echoing the raw gRPC error text
+(`"rpc error: code = ResourceExhausted desc = grpc: received message after
+decompression larger than max 4194304"`) verbatim to an API caller exposes
+implementation details (the exact byte ceiling, the fact that the backing
+store is gRPC-based at all, an internal collection/point-count hint) that this
+repo's own existing error-envelope convention (`field=<name> hint=<code>:
+<text>`, documented in CLAUDE.md and `reference/errors.md`) is designed to
+avoid — every other validator on both wires uses a bounded, named hint code,
+not raw upstream text. (2) **over-broad catch** — a naive `strings.Contains(err.Error(), "ResourceExhausted")` or blanket gRPC-status-code
+switch could also catch *legitimate* resource-exhaustion signals unrelated to
+this bug (e.g., a genuine Qdrant memory/disk pressure `ResourceExhausted` that
+has nothing to do with the 4 MiB receive cap), mapping them to a message that
+falsely implies "your request was too large" when the real problem is
+server-side capacity.
 
 **Why it happens:**
-The plain-install path was built and hardened (byte-compare idempotency,
-symlink-preserving `AGENTS.md` writes) BEFORE any plugin awareness existed
-— it is correct in isolation. Plugin-first delivery is a routing decision
-layered on top ("for this runtime, use the plugin path INSTEAD"), and
-"instead" silently implies "and therefore skip/undo the other path," which
-is new logic nothing in the shipped code currently performs — the
-`FormatNone`/`FormatNative`/`FormatAgentsMD` exhaustive switch in
-`skills.Install` has no fourth case for "this runtime is plugin-managed,
-skip skills entirely," and `setupSkillsTarget`'s exhaustive mapping in
-`cmd/engram/setup.go` would need a new case too, with the SAME
-never-silently-coerce discipline it already applies to an unrecognized
-format.
+The fastest fix to "surface a clear error" is often "just pass the upstream
+error string through with a nicer HTTP-ish code," which satisfies "not
+`internal`" without satisfying "clear and safe."
 
 **How to avoid:**
-Route claude-code (and codex, once its plugin path lands) to
-`SkillFormatNone` — the EXISTING no-op value the generic pseudo-runtime
-already uses — the moment plugin-first delivery is selected for that
-runtime, rather than inventing new delete logic. This turns "stop writing
-the plain copy" into a change that reuses an already-tested code path
-(`skills.Install`'s `FormatNone` case: "has nothing to write and returns
-immediately") instead of adding destructive new behavior. For the SEPARATE
-question of a stale plain copy left over from a PRE-plugin-first version of
-engram: report its presence explicitly (a new, additive check — "found a
-plain skill install at X that plugin-first delivery no longer manages;
-remove it yourself if you want to" — surfaced via `Result.Notes`, matching
-the existing tolerant-action-Notes discipline) rather than deleting it
-automatically. Never `os.RemoveAll` a path without first confirming (via
-`os.Lstat`, not `os.Stat`) that it is not itself a symlink the operator's
-own dotfiles tooling manages — mirroring the reasoning
-`installAgentsMDIndex`'s own doc comment already applies to writes, extended
-to the NEW case of deletes.
+Introduce a new named hint code (matching the existing `field=<name>
+hint=<code>` envelope convention, e.g. `hint=result_too_large` or similar) for
+the specific *receive-size* `ResourceExhausted` case, distinguished by
+matching on the gRPC status code (`codes.ResourceExhausted`) AND ideally the
+specific message shape (`"received message after decompression larger than
+max"`) rather than the code alone, so a genuine server-capacity
+`ResourceExhausted` is not mislabeled. The client-facing text should name the
+*actionable* fact (e.g., "the result set is too large for one request; use a
+smaller limit or narrower filter") without echoing the raw byte-count/gRPC
+internals. Add this new hint to `reference/errors.md` per the existing
+`internal/surfaces` conformance-gate convention (CLAUDE.md: "each server-side
+conditional rule is declared once and machine-proven present on every surface
+that advertises it") rather than a one-off `fmt.Errorf` that only one wire
+happens to catch.
 
-**Warning signs:** A fixture with a pre-existing `~/.claude/skills/
-curating-memory/SKILL.md` (simulating a pre-plugin-first install) shows BOTH
-that directory and a successful plugin install after `--apply` runs on the
-post-plugin-first binary; a cleanup step that follows a symlink and deletes
-through it rather than stopping at the link.
+**Warning signs:**
+An error-mapping change whose test asserts only "the HTTP status is no longer
+500" without asserting the response body does NOT contain the raw upstream
+error string, the literal byte ceiling, or the word "grpc"/"Qdrant" verbatim.
 
-**Phase to address:** Plugin-first-delivery phase — the `SkillFormatNone`
-routing decision is small and should land with the plugin-path decision
-itself; the stale-copy detection is a small additive check that should not
-be deferred, since it is the DIRECTLY NAMED failure mode in this milestone's
-own PROJECT.md.
+**Phase to address:**
+The `ResourceExhausted`-mapping phase must land the hint code through the
+`internal/surfaces` declare-once mechanism (if that mechanism covers error
+hints — verify) or an equivalent single-declaration site, with a test
+asserting the response text is scrubbed, not just re-coded.
 
 ---
 
-### Pitfall 10: Hand-edits in Codex's `config.toml` that `codex mcp add` would clobber — "reconcile hand-edits" needs a source Codex's own CLI cannot give it
+### Pitfall 10: Bounding a provider error-body drain (#347/#457) with a limit that doesn't match reality, or that reintroduces the exact hang it fixes
 
 **What goes wrong:**
-`codex.go`'s own doc comment already records the load-bearing fact this
-pitfall turns on: "Codex is the only registered runtime whose `mcp add`
-genuinely overwrites an existing entry silently" — confirmed structurally
-this session (`codex mcp add --help` shows no `--force`/confirmation gate
-at all; it simply writes). This is DIFFERENT from claude-code's refuse-on-
-existing behavior and opencode's (undocumented-either-way) behavior, and it
-is the reason `codexRuntime.Plan` needs no remove-then-add sequence today —
-but it is ALSO exactly the mechanism that makes "reconcile hand-edits"
-structurally harder for Codex than for the other two runtimes: if an
-operator hand-edited `~/.codex/config.toml`'s `[mcp_servers.engram]` table
-directly (adding a comment, a field engram doesn't know about, or a
-provider-specific extension key), `codex mcp add engram --url <...>` does
-not read, merge, or preserve that hand-edited table — it silently
-overwrites the whole entry the moment `--apply` runs, REGARDLESS of what
-drift detection concluded, because Codex exposes NO in-place-update-only
-primitive and no dry-run/diff flag on `mcp add` itself (confirmed: no such
-flag in the `--help` output captured this session). Drift detection can
-tell the operator "this differs from what I would write" via `codex mcp get
---json` (a reliable, structured read — Pitfall 7's one genuinely-honest
-comparison target), but "detected != preserved" for Codex specifically,
-because there is no Codex-native write path that ONLY updates the fields
-engram cares about while leaving unknown TOML keys inside that one table
-untouched — the only tools are "overwrite the whole entry" (`mcp add`) or
-"read-only" (`mcp get`).
+#457's own fix suggestion — `io.Copy(io.Discard, io.LimitReader(resp.Body, N))`
+— is correct in shape, but two implementation mistakes are easy: (1) choosing
+`N` so small that legitimate provider error bodies (which can be verbose JSON
+with nested validation detail) get truncated mid-structure in a way that makes
+the surfaced snippet *look* correct but is actually cut off mid-field,
+producing a misleading partial error to operators; (2) forgetting that
+`io.LimitReader` bounds *bytes read*, not *time* — a slow-loris-style provider
+that dribbles bytes one at a time up to the limit N over an arbitrarily long
+duration is not bounded by `LimitReader` alone. #457 explicitly names
+`WithTimeout(0)` as the scenario this protects against — a `LimitReader`-only
+fix does not actually protect that scenario if the provider trickles the
+allowed N bytes slowly forever; the drain call itself needs either a
+`context.WithTimeout` wrapped around the copy, or a deadline set independent
+of `http.Client.Timeout`, to actually close the gap #457 describes.
 
 **Why it happens:**
-"Reconcile hand-edits" implicitly assumes a merge or partial-update
-capability exists somewhere in the toolchain being reconciled against; for
-Codex, the shipped design deliberately shells out to `codex mcp add` rather
-than hand-writing TOML (the prior milestone's Pitfall 6 already established
-why: zero-new-deps, no comment/ordering-preserving TOML round-trip in
-stdlib) — which means engram has NO write primitive of its own that could
-implement a partial merge even if it wanted to; it is entirely dependent on
-whatever `codex mcp add`'s own semantics happen to be.
+"Bound the read" and "bound the time" are different axes, and `io.LimitReader`
+only ever addresses the first. The fix's own text ("Draining a bounded prefix
+still enables connection reuse... abandoning the connection when the remainder
+exceeds N is strictly better than blocking") is correct for the *size* axis
+but does not by itself close the *time* axis that motivated filing the issue
+(`WithTimeout(0)` removing the only existing bound).
 
 **How to avoid:**
-For Codex, "preserve a hand-edited registration" can only mean "detect that
-one exists (via `codex mcp get --json`'s reliable structured read) and
-REFUSE to run `mcp add` at all for that runtime, reporting the hand-edited
-state as preserved-by-non-action" — never "merge the hand-edit into the new
-write," since no primitive exists to do that merge. This is a materially
-different resolution than claude-code's (Pitfall 5's gate-before-remove) or
-opencode's (Pitfall 7's coarse-comparison) cases, and should be recorded
-explicitly as a Codex-specific limitation in whatever design doc or
-docs-site update this phase produces — an operator hand-editing
-`config.toml` for Codex, unlike an operator hand-editing nothing, needs to
-understand that `engram setup --apply` for Codex will EITHER skip Codex
-entirely (preserving the hand-edit) OR overwrite it whole (destroying the
-hand-edit) — there is no partial-preserve middle ground the CLI can offer.
+Pair the byte-size `LimitReader` with an explicit per-drain deadline (e.g., a
+short `context.WithTimeout` scoped to just the error-body drain, independent
+of the overall request's `http.Client.Timeout`) so that even under
+`WithTimeout(0)`, a slow/hostile body cannot hold the goroutine open
+indefinitely. Choose `N` (the byte prefix) generously enough to capture
+realistic provider error payloads (a few KiB, matching the existing
+`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`-style precedent of ~512 bytes to a few KiB
+for "enough to be useful, not enough to be a vector") and add a test asserting
+a body larger than N is truncated with an explicit "(truncated)"-style marker,
+not silently cut.
 
-**Warning signs:** A fixture with a `[mcp_servers.engram]` table carrying an
-unrecognized extra key (simulating a hand-edit) followed by `--apply` shows
-that key gone from the resulting registration — proving `mcp add`'s
-overwrite-whole-entry behavior actually destroyed the hand-edit rather than
-merely reporting it.
+**Warning signs:**
+A fix that adds `io.LimitReader` to the drain but does not touch how/whether a
+deadline applies to that specific `io.Copy` call — check whether the fix PR's
+regression test actually exercises `WithTimeout(0)` plus a slow/large body
+(the exact scenario #457 names), or only exercises a body that's merely large
+but returns instantly (which `LimitReader` alone already handles fine, making
+the test pass without proving the harder case).
 
-**Phase to address:** Drift-detection/reconcile phase, Codex sub-task —
-this needs its own explicit written decision (skip-whole-runtime vs.
-overwrite-whole-runtime, no partial option), distinct from claude-code's and
-opencode's resolutions, and should be the FIRST Codex reconcile fixture
-written since it is the runtime with the least flexible CLI.
+**Phase to address:**
+The embed/summarize bounded-error-body phase should test both axes
+independently: a large-but-fast body (proves the byte bound) and a
+slow-trickle body under `WithTimeout(0)` (proves the time bound) — landing
+only the first test would look done but leave #457's actual concern open.
 
 ---
 
-### Pitfall 11: Manpage generation regresses the completions design this project ALREADY fixed once — and the milestone's own scoping text is stale about how completions ship today
+### Pitfall 11: Fixing `ListScopes`'s "discards successful hits on failure" (#456) by making `ListScopes` never fail, instead of making its caller resilient
 
 **What goes wrong:**
-PROJECT.md's current milestone scope states: "The cask's
-`generate_completions_from_executable` hook already expects a completion
-verb." **This is factually stale relative to the shipped `.goreleaser.yaml`**
-(read directly this session, lines ~178–200): the cask's `post.install` hook
-explicitly and deliberately does NOT use Homebrew's
-`generate_completions_from_executable` helper at all — it hand-writes
-completions via `system_command binary, args: ["completion", shell]` for
-each of bash/zsh/fish, with its own comment explaining exactly why: "never
-via Homebrew's completion-generation helper — that helper's `write_completion`
-wraps execution in a rescue that downgrades a failure to a warning, so a
-broken binary would install green." `cmd/engram/releaseconfig_test.go`'s
-`TestReleaseConfigCaskInstallGate` enforces this as a hard acceptance gate:
-it asserts the string `generate_completions_from_executable` occurs **zero**
-times anywhere in `.goreleaser.yaml`, including comments — the test's own
-comment explains why even a comment mentioning the helper's name is
-forbidden: "the acceptance gate for this decision is a literal occurrence
-count over this file, so naming it even in a comment destroys the gate's
-ability to tell prose from actual use." Three concrete risks follow for the
-manpage work:
-1. **Following the milestone's stale scoping text literally** (wiring into
-   `generate_completions_from_executable`, or even mentioning it in a new
-   comment while explaining why manpages work differently) would either
-   reintroduce the exact silent-failure trap this project already
-   diagnosed and fixed (prior milestone's Pitfall 3/4: `rescue`-wraps
-   execution, "a warning, never a raise"), or fail the existing acceptance
-   test outright the moment a PR touches `.goreleaser.yaml` near that
-   block.
-2. **cobra/doc's `GenManTree` is a Go API, not a CLI subcommand** — unlike
-   `completion`, which cobra auto-registers as a real subcommand
-   (`cmd/engram/testdata/help.golden` already lists it), there is no
-   built-in `engram man`-shaped verb for a cask postflight hook to exec the
-   way it execs `engram completion <shell>` today. Reusing the EXACT same
-   "generate from the installed binary via `system_command`" pattern for
-   manpages requires FIRST adding a new hidden Cobra command in
-   `cmd/engram` that calls `doc.GenManTree` internally — this is new
-   surface area the milestone's "zero new Go dependencies" framing
-   undersells: `cobra/doc` being "already an indirect dependency" (true,
-   per `go.mod`'s own comment: "transitively today by cobra/doc and buf —
-   no new module is fetched") means no NEW module needs fetching, but the
-   dependency still needs PROMOTING from indirect to direct in `go.mod`
-   (this repo's own precedent: `go.yaml.in/yaml/v3` was promoted the same
-   way for skill frontmatter in the prior milestone) — skipping that
-   promotion risks a `go mod tidy` drift check failing in CI the moment
-   the import is added without the corresponding `go.mod` edit.
-3. **cobra/doc's generated output is non-deterministic by default.** Cobra
-   inserts an "Autogenerated by spf13/cobra" timestamp line into both
-   completion scripts and `GenManTree` output unless the command tree sets
-   `DisableAutoGenTag = true` — this repo relies HEAVILY on golden-file
-   tests (`help.golden`, and the pattern `TestReleaseConfigCaskInstallGate`
-   itself exemplifies) for exactly this class of generated-content
-   determinism; a manpage-generation golden test (or even just a rehearsal
-   run compared byte-for-byte across two invocations) will be spuriously
-   flaky/non-reproducible if this flag is left at its default.
+#456 describes `cross_spine=true` recall discarding valid `search_memory`/
+`list_memory` hits when the follow-up `Store.ListScopes` call (used only to
+populate `searched_scopes`) fails. A tempting shortcut is to make
+`ListScopes` itself more defensive (e.g., swallow its own errors and return an
+empty scope list) rather than changing the caller's (`tools.go:1592-1595`,
+`tools.go:1633-1636`) error-handling to distinguish "the actual recall failed"
+from "the coverage-reporting side-call failed." Swallowing the error inside
+`ListScopes` reintroduces exactly the ambiguity #456's own "why it is
+currently correct" section says the design deliberately avoids: an empty
+`searched_scopes` on error would be indistinguishable from a real "searched
+nothing," defeating `REQ-cross-spine-result-provenance`.
 
 **Why it happens:**
-The milestone's own PROJECT.md was written from an earlier understanding of
-how completions ship (or the phrasing is imprecise shorthand for "the cask
-already has an install-time completions mechanism") — but a phase plan that
-trusts that sentence literally, rather than re-reading `.goreleaser.yaml`
-directly, will build the wrong thing. Separately, cobra's own defaults
-(auto-gen timestamp) are easy to overlook because they only matter once
-something diffs the generated output across two runs, which a first "does
-it produce a man page" smoke test would not surface.
+The path of least resistance for "don't discard successful hits" is "make the
+failing sub-call not fail," which is simpler to write than "return hits AND a
+distinct sentinel for unknown-coverage," but is exactly the wrong simplification
+per this issue's own analysis.
 
 **How to avoid:**
-Re-verify `.goreleaser.yaml`'s actual completions mechanism directly (as
-this research did) before writing the phase plan or requirements text for
-manpages — do not propagate PROJECT.md's `generate_completions_from_
-executable` phrasing into code, comments, or a new test without first
-confirming it against the file. Design manpage generation to MIRROR the
-completions pattern's actual shape (a new hidden cobra command, exec'd from
-the SAME cask postflight block, AFTER the version-assertion gate — the
-existing `checkOrdering` test's third assertion, `"version", "--output",
-"json"` before `args: ["completion"`, should gain a parallel assertion for
-whatever the man verb's marker string is), not the helper it deliberately
-avoids. Set `RootCmd.DisableAutoGenTag = true` before calling `GenManTree`
-(and confirm `GenBashCompletion`'s auto-gen tag setting is already handled
-the same way, if not already verified) so any generated-content comparison
-test is deterministic. Promote `cobra/doc` from indirect to direct in
-`go.mod` in the SAME commit that first imports it, following the
-`go.yaml.in/yaml/v3` precedent exactly.
+Implement the "third state" #456 itself proposes: return the already-computed
+hits plus an explicit sentinel distinguishing "coverage unknown" (the
+`ListScopes` side-call failed) from "coverage empty" (`scopes_truncated`
+already means something specific — a bounded sample — and must not be
+overloaded to also mean "unknown"). This requires a wire-visible field change
+(MCP tool response + Connect proto, mirroring how `searched_scopes`/
+`scopes_truncated` were added in a prior milestone) — plan for that surface
+area rather than assuming a store-layer-only fix suffices.
 
-**Warning signs:** A grep for `generate_completions_from_executable`
-anywhere in a manpage-phase PR's diff (including comments) — the existing
-test already fails loudly on this, so this is more a "catch it before CI"
-warning than a hidden risk, but the failure mode is worth naming since the
-milestone's OWN scoping text points the wrong way. Separately: two
-consecutive local `engram man`-equivalent generation runs producing
-byte-different output (the auto-gen-tag timestamp) is the manpage-specific
-non-determinism signature.
+**Warning signs:**
+A fix that only touches `internal/store/store.go`'s `ListScopes` and does not
+touch `tools.go`'s two call sites or the Connect/MCP response shape — #456's
+own two named sites are the actual bug location, not `ListScopes` itself.
 
-**Phase to address:** Completions/manpages phase — re-verify the actual
-`.goreleaser.yaml` mechanism as the FIRST task, before any code or
-requirements text is written from PROJECT.md's summary of it.
+**Phase to address:**
+The cross-spine-resilience phase must include the wire-shape change (new
+sentinel field) as part of its scope, not just a store-layer retry/fallback,
+and should reuse the existing `searched_scopes`/`scopes_truncated` precedent
+for how a new field gets threaded through MCP + Connect + CLI consistently.
 
 ---
 
-### Pitfall 12: A new hidden `man`-generation command needs the SAME exclusion discipline `completion` already has, or it silently pollutes every surface-conformance and catalog test
+### Pitfall 12: Treating #497's testcontainer flakiness as "add a retry" instead of addressing the actual resource-pressure root cause — and this milestone's regression tests make the failure MORE likely, not less
 
 **What goes wrong:**
-`cmd/engram/cmdwalk.go` already carries a narrow, explicit exclusion:
-"cobra's own `help`/`completion` scaffolding (auto-registered ... ) ... is
-Hidden or its Name() is `help` or `completion`" (`isSkipped`, referenced in
-the doc-comment excerpt captured this session), and multiple tests
-(`cmdwalk_test.go`, `surfaces_test.go`, `golden_test.go`) depend on that
-exact, closed enumeration to keep `--help` output, the operator-command
-catalog (`catalog.go`), and the `internal/surfaces` conformance gate
-(`v0.13.x`'s "declare each conditional rule once, derive presence-checking
-across five surfaces") stable. A new hidden command added for manpage
-generation (whatever it is named — `man`, `gendoc`, `docs`) is, BY
-CONSTRUCTION, a sixth cobra command sibling to `completion` — but nothing in
-`isSkipped`'s current three-way check (`cmd.Hidden`, `Name() == "help"`,
-`Name() == "completion"`) will exclude it automatically. If it is added
-without `Hidden: true` AND without extending the skip predicate, it will
-appear in `Names()`/the operator catalog/`--help` golden output as a
-real, user-facing command — breaking `help.golden` and any exhaustive
-"every command has X" surfaces conformance check the moment it is added,
-in a way that is easy to chase as an unrelated regression rather than
-recognize as "a new hidden command needs the same treatment as
-`completion`."
+#497 documents `internal/store`'s Qdrant testcontainer dying mid-run
+(`connection refused`) 3 times in ~2 hours on 2026-08-12, including on a
+docs-only PR, with the leading theory being CI-runner resource pressure from
+several concurrent per-package Qdrant containers (`TestMain` in each
+Qdrant-backed package, store_test.go:117, provisions its own container) plus
+concurrent Go build/link load, not a code defect. This milestone's own "done
+means" bar requires "a real-Qdrant regression test holding more than 4 MiB of
+payload" for *every* exposed path — meaning this milestone adds several new
+tests that each write multiple MiB of payload into the `internal/store`
+container (mirroring `TestListScopesFullPayloadsOverGRPCLimit`'s existing ~5
+MiB write). Every new large-payload fixture increases exactly the kind of
+memory pressure #497's own theory blames for container death — a superficial
+"retry on failure" fix to #497 would not address that this milestone is about
+to make the underlying resource-pressure condition *worse*, right as CI
+depends on that container's stability more than before.
 
 **Why it happens:**
-`completion`'s exclusion was hand-coded for a SPECIFIC cobra auto-registered
-name, not as a general "any hidden doc-generation utility" rule — adding a
-structurally similar but differently-named command doesn't inherit that
-treatment just because it serves an analogous purpose.
+#497 and this milestone were filed/scoped independently, so the compounding
+effect (more large fixtures → more memory pressure → more container deaths)
+is not obvious from either issue read alone.
 
 **How to avoid:**
-Either (a) mark the new command `Hidden: true` (which `isSkipped` already
-honors regardless of name — the OR-condition `cmd.Hidden || Name() ==
-"help" || Name() == "completion"` covers any hidden command generically),
-which is the simpler and more future-proof choice, or (b) if it must be
-visible for some reason, extend `isSkipped`'s three-way check explicitly
-and update every test that enumerates the excluded set by name
-(`cmdwalk_test.go` at minimum). Prefer (a): mirror `completion`'s own
-"hidden utility, not a first-class user command" positioning rather than
-adding a fourth named exception to a check whose own doc comment implies a
-short, closed list.
+Address #497 as an explicit, early deliverable of this milestone (it is
+already named in PROJECT.md's target features, "since this milestone's
+regression tests load exactly that CI job") — not as an afterthought once the
+new large-payload tests are already flaking CI. Concretely: (a) mark the new
+large-payload regression tests `testing.Short()`-skippable (the existing
+pattern at store_test.go:1799-1801, `"writes about 5 MiB of payload; skipped
+in -short"`) so they do not run in every CI invocation; (b) consider whether
+`internal/store`'s container needs an explicit memory floor/reservation (or
+whether CI should serialize Qdrant-backed packages rather than running them
+in parallel, per #497's own "possible directions"); (c) capture container
+exit reason (`docker inspect`/container logs) on test-container-death so a
+future flake has evidence instead of inference, per #497's own suggestion.
 
-**Warning signs:** `help.golden` (or any `nonHiddenCommands`-driven test)
-fails immediately after the new command is added, listing it as an
-unexpected addition.
+**Warning signs:**
+Any new 4 MiB-plus fixture test added to `internal/store/store_test.go`
+without a `testing.Short()` skip guard, and no CI job change addressing #497's
+container-lifetime/resource-pressure theory before those tests land.
 
-**Phase to address:** Completions/manpages phase — mark the command Hidden
-from its first commit, verified by running the existing golden tests
-(`go test ./cmd/engram/... -run Golden`) before considering the task done,
-not as an afterthought once a test happens to fail.
-
----
-
-### Pitfall 13: `#560`'s `ctx.Err()` fix looks small in isolation but changes the observable contract every OTHER pitfall's fixture tests rely on
-
-**What goes wrong:**
-`environment.go`'s `osRun` currently converts ANY `*exec.ExitError` —
-including one produced by `exec.CommandContext`'s own deadline-triggered
-kill — into `RunResult{ExitCode: exitErr.ExitCode()}` with a **nil** error,
-never consulting `ctx.Err()` to distinguish "the process ran and exited
-nonzero on its own" from "the process was killed because the context
-deadline expired." Every pitfall in THIS document that proposes a new
-timeout-sensitive behavior (Pitfall 4's live-verification probes, Pitfall 7's
-per-runtime read-verb reliability, any new plugin-install `Environment.Run`
-call which may legitimately take longer than `execTimeout`'s existing 20s
-constant given a real network fetch from a marketplace) will be built and
-tested against the CURRENT, buggy contract unless this fix lands FIRST or
-concurrently — a fixture test asserting "a plugin install that times out
-reports a distinguishable timeout reason" cannot be written correctly
-against the current `osRun`, since a deadline-killed process today reports
-as an ordinary nonzero exit (frequently exit -1 on Unix for a SIGKILL'd
-process), indistinguishable in the `RunResult`/`Result.Reason` shape from a
-genuine CLI usage error.
-
-**Why it happens:**
-The bug is narrow and easy to treat as a pure cleanup item ("W01 — fix the
-exit-code conversion") independent of the new features — but plugin
-install is the first NEW call site in this milestone plausibly slow enough
-(network fetch of a marketplace/plugin archive) to actually HIT
-`execTimeout` in practice, where every existing call site (`mcp add`/`mcp
-get`, all under ~2s per the shipped research) essentially never did.
-
-**How to avoid:**
-Land the `#560` fix (consult `ctx.Err()` in `osRun`'s error-classification
-switch — a `context.DeadlineExceeded`/`context.Canceled` check alongside the
-existing `errors.As(runErr, &exitErr)` branch) BEFORE or ALONGSIDE the
-plugin-install phase, not as an independent, later cleanup — and write the
-plugin-install timeout fixture test against the FIXED contract, asserting a
-distinguishable timeout reason (not a bare nonzero-exit `Reason` string)
-reaches the operator. Consider, explicitly, whether plugin install's likely
-longer network latency means `execTimeout`'s existing fixed 20s constant
-(documented as deliberately non-tunable because "every runtime's `mcp
-add`/`mcp get` surface completed in under 2 seconds") needs its own
-per-call-site override now that a genuinely slower operation exists — this
-is the kind of the "not yet earned" tunability that constant's own comment
-already anticipates revisiting.
-
-**Warning signs:** A plugin-install timeout in the wild reports as a bare
-"exited -1" (or similar) rather than a legible timeout message; a fixture
-test for plugin-install timeout handling can only be written by asserting
-on exit code -1 rather than on a distinct seam-error path.
-
-**Phase to address:** This is explicitly carried as its own bullet in
-PROJECT.md ("#560 `osRun` deadline classification") — sequence it before or
-alongside the plugin-first-delivery phase specifically, since that is the
-first phase whose new `Environment.Run` call sites make the bug
-practically reachable rather than theoretical.
+**Phase to address:**
+Address #497 (or at minimum its `testing.Short()` mitigation plus evidence-
+capture) in the SAME phase, or an earlier phase, that starts adding new
+4 MiB-plus regression fixtures — reversing that order (fixtures first,
+stability later) guarantees a CI-stability regression window during the
+milestone.
 
 ---
 
 ## Technical Debt Patterns
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|-----------------|-----------------|
-| Reusing `--bearer-token-env-var` on Codex for any custom-header request that merely "looks token-shaped" | No new Codex-specific unsupported-mode branch to write | Silently writes the wrong header NAME (`Authorization` instead of the requested one), reporting `wrote` for a registration that will fail auth (Pitfall 2) | Never — only literal `Authorization: Bearer <ref>` custom-header requests may reuse it |
-| A shared cross-runtime header-formatting helper | Less code, one place to fix a bug | Reproduces the exact opencode `KEY=VALUE` vs `KEY: VALUE` regression this project already fixed once, for the new code path (Pitfall 3) | Never — keep header rendering authored per-runtime, matching the existing `AUTHORED HERE (D-09)` discipline |
-| Treating drift detection as sufficient protection against `--apply` overwriting a real registration | Ships the "preview shows preserved" requirement text quickly | Does nothing to stop the SAME unconditional write sequence that caused the 2026-09-10 incident, since preview and apply are different code paths today (Pitfall 1) | Never, given this is the literal incident the milestone exists to prevent |
-| Auto-deleting a stale plain-install skill directory once plugin-first ships for that runtime | Cleans up the exact duplicate-skill state PROJECT.md names | `os.RemoveAll` on a path that may be a chezmoi/yadm/stow-managed symlink destroys the operator's own dotfiles source, not just engram's copy (Pitfall 9) | Never automatically — report the stale copy, let the operator remove it |
-| Parsing `opencode mcp list`'s human-formatted table to extract a structured drift comparison | Gets opencode to the same comparison granularity as Codex's `--json` read | Third-party output-format scraping this package's own `apply.go` doc comment already rejects for a different purpose; breaks silently on unrelated servers' status changes (Pitfall 7) | Never — keep opencode's comparison coarse/whole-text, or explicitly best-effort |
-| Deferring the `#560` `ctx.Err()` fix as unrelated cleanup, independent of plugin-install | Smaller, more focused PR for the timeout fix alone | Plugin-install's fixture tests get built against the CURRENT buggy timeout-classification contract and need rework once the fix lands anyway (Pitfall 13) | Only if plugin-install's own timeout-handling tests are written AFTER the fix lands, never before |
+|----------|-------------------|-----------------|------------------|
+| Raise `MaxCallRecvMsgSize` on the Qdrant client without also bounding page size | Fast, one-line fix; unblocks the immediate `ResourceExhausted` | Moves the ceiling instead of removing it — #583 already rejected this as "the fix"; a bigger page or bigger record eventually re-triggers it, at a size that's harder to hit in tests | Only as an explicit, documented defense-in-depth LAYER alongside a real page/content-size bound — never as the sole fix (PROJECT.md states this outright) |
+| Swallow `ListScopes` errors inside the function to avoid discarding cross-spine hits (#456) | Simple, localized change | Reintroduces the exact "coverage unknown vs. coverage empty" ambiguity `searched_scopes`/`scopes_truncated` exist to prevent | Never — the issue's own analysis already rejects this |
+| Skip the byte-size-aware page shrink and just lower `maxListLimit`/`reindexBatch`/`migrateBatch` to a smaller fixed number | No code change beyond a constant | Still fails once average record size grows past whatever new fixed count was chosen (content is unbounded) — a numeric knob turn, not a fix | Acceptable ONLY as an interim mitigation shipped alongside, not instead of, a real fix, and only if content-size capping (`ENGRAM_MEMORY_MAX_CONTENT_BYTES`) is also resolved in the same milestone |
+| Add a retry-on-connection-refused wrapper around the testcontainer test suite instead of investigating #497's resource-pressure theory | Immediately reduces CI red builds | Masks a real future defect the same way #497 itself documents happening on #494's rerun ("the actual defect was a real assertion failure in internal/e2e... dominated the log and initially read as flaky infra") | Never as the only fix; acceptable as a short-term stopgap only alongside the evidence-capture and short-test-skip mitigations |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|-----------------|-------------------|
-| Custom-header auth ↔ Codex's `mcp add` | Assuming a "bearer token env var" flag can express an arbitrary header name | Route any non-`Authorization` custom header to the unsupported/preserve path for Codex specifically (Pitfall 2) |
-| Custom-header auth ↔ opencode's `--header` | Assuming the SAME `NAME: VALUE` rendering that works for claude-code also works for opencode | Author opencode's header rendering with its own `NAME=VALUE` separator, in `opencode.go` only, never a shared formatter (Pitfall 3) |
-| Drift detection ↔ each runtime's read verb | Treating `claude mcp get`/`opencode mcp list`/`codex mcp get --json` as equally structured comparison sources | Grant Codex's `--json` output field-level comparison; treat claude-code's and opencode's text output as coarse/whole-text only (Pitfall 7) |
-| Reconcile ("preserve hand-edits") ↔ Codex's silent-overwrite `mcp add` | Assuming "preserve" can mean "merge the hand-edit into the new write" | For Codex, preserve can only mean "skip the whole runtime's write," since no partial-update primitive exists (Pitfall 10) |
-| Plugin-first delivery ↔ existing plain-install skills path | Leaving `claudeCodeRuntime.Plan`'s `SkillFormatNative` skills target wired unconditionally once plugin delivery is added | Route plugin-managed runtimes to the existing `SkillFormatNone` no-op value; report (never auto-delete) any stale plain copy (Pitfall 9) |
-| Manpage generation ↔ the cask's existing completions mechanism | Wiring into or mentioning Homebrew's `generate_completions_from_executable` helper, per PROJECT.md's stale phrasing | Mirror the ALREADY-SHIPPED `system_command binary, args: ["completion", shell]` pattern with a new hidden cobra command for manpages, never the helper the acceptance test forbids naming (Pitfall 11) |
+| Qdrant `Scroll`/`Query`/`Get` via `qdrant-go-client` | Assuming `WithPayload(true)` full-payload fetches are "safe" below some record count, when the real constraint is bytes | Compute/bound by estimated payload bytes (or content length), not solely by record count; treat `maxListLimit`/`reindexBatch`/`migrateBatch` as ergonomics, not safety bounds, until content size is also capped |
+| Qdrant `GetPoints` | Assuming response order matches requested id order | Re-sort client-side by the id order established upstream (e.g., from a prior ordered Scroll); never rely on `GetPoints` response order (confirmed non-guaranteed: [qdrant/qdrant#5071](https://github.com/qdrant/qdrant/issues/5071)) |
+| grpc-go `MaxRecvMsgSize`/`MaxCallRecvMsgSize` | Assuming compression reduces exposure to the receive-size cap | The cap applies to the DECOMPRESSED size ([grpc/grpc-go#4761](https://github.com/grpc/grpc-go/issues/4761)); compression changes wire size only, never the enforced limit |
+| Connect error mapping (`connectError`) | Passing a Qdrant/gRPC error's raw text straight through on the new `ResourceExhausted` clear-error path | Map to a new named hint code in the existing `field=<name> hint=<code>` envelope; never echo raw gRPC/Qdrant error text to a caller |
+| Embed/summarize provider HTTP clients | Bounding the error-body drain by bytes only (`io.LimitReader`) and treating that as closing #457 | Bound bytes AND time independently — `io.LimitReader` alone does not protect against a slow trickle under `WithTimeout(0)` |
+| testcontainers-go Qdrant module | Adding large-payload regression fixtures to `internal/store` without accounting for #497's container-death pattern | Gate new multi-MiB fixtures behind `testing.Short()` (existing precedent at store_test.go:1799) and address #497's stability question in the same milestone, not after |
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|-----------------|
+| Two-phase ids→payload reads for deep offset paging | Extra Qdrant round trip per page; latency roughly doubles for deep-offset console/CLI paging even when the byte cap was never at risk | Only apply the two-phase path when the single-Scroll approach would actually risk the byte cap (e.g., large offsets specifically, not every page); consider whether a numeric-offset-free redesign (cursor-only) is cheaper overall than patching offset mode | Becomes visible as soon as the console's deep-offset paging (already flagged in #585 as "gets heavier with every page" even before this fix) is used interactively — the two-phase fix does not remove that O(offset) cost, it just avoids failing outright |
+| Byte-size-aware page shrink implemented as "fetch max page, then locally truncate to fit under a byte estimate" | Wastes the fetch already done — the oversized fetch itself is what triggers `ResourceExhausted`, so truncating AFTER the fetch never avoids the failure it's meant to prevent | The shrink must happen BEFORE the Qdrant call (e.g., request a smaller `Limit`, or use `WithPayloadInclude` to shed fields, not truncate a response that already 4-MiB-overflowed on the wire) | Immediately — this is not a scale threshold, it's a logic error: you cannot locally truncate a response that already failed to arrive |
+| 256-batch operator sweeps (`migrateBatch`, `reindexBatch`) re-deriving the backlog each pass under concurrent writes (#501 precedent) | A sweep that never converges, or double-processes records, under sustained concurrent writes during a long sweep | Any size-bounding change to these sweeps must preserve the existing re-derive-each-pass convergence property (`internal/migrate` design) rather than introducing a stale offset/cursor that concurrent writes can invalidate | At collection sizes large enough that a sweep takes multiple passes while writes continue — already a known/handled case (#501); a size-bounding patch must not silently regress it |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Rendering a drift-detection "header set" field from a probe's raw captured output without first confirming that runtime's read verb only ever echoes an unresolved reference | A resolved secret value reaches `--output json`, a CI log, or a committed generated markdown file via `internal/setupgen` (Pitfall 4) | Live-verify each read verb's echo behavior for a non-bare-reference header value BEFORE trusting its output in any rendered field; sanitize/bound exactly as `apply.go`'s existing `maxCapturedBytes` discipline already does for other captures |
-| Accepting a marketplace-declared plugin-install command non-interactively (`-y`) inside `--apply` without first previewing its exact content | `--apply` executes an install command authored by a third-party marketplace, not by engram, with no prior operator visibility — a materially larger trust surface than any prior `Action.Args` engram itself authored | Preview the marketplace source and the declared install command explicitly before `--apply` ever passes `-y`/accepts it (Pitfall 8) |
-| Auto-deleting a file/directory that turns out to be a dotfiles-managed symlink, in service of the new plugin-vs-plain-install cleanup | Silently destroys the operator's own dotfiles repository content, not just engram's managed copy | `os.Lstat` (never `os.Stat`) before any delete; report stale plain-install copies rather than removing them automatically (Pitfall 9) |
-| Running `codex mcp add`/`claude mcp add` against a hand-edited registration without checking for unknown/extra fields first | Silently destroys operator-authored config (comments, provider-specific keys) with no way to recover it, since neither CLI reads-merges-writes | Detect via the runtime's own structured read verb where one exists (Codex's `--json`); skip the write and report preserved-by-non-action rather than overwrite (Pitfall 10) |
+| Echoing raw Qdrant/gRPC error text (including the literal byte ceiling, "grpc", collection internals) in the new `ResourceExhausted` clear-error response | Leaks internal architecture (backing store is gRPC-based, exact size ceiling, potentially collection/point-count hints) to any authenticated caller, aiding reconnaissance | Map to a bounded, named hint code with operator-actionable but implementation-silent text, per the existing `field=<name> hint=<code>` envelope convention |
+| Provider (embed/summarize) error-body surfacing (#347) exposing the FULL non-2xx body, including any secrets a misconfigured self-hosted gateway might echo back (e.g., a reflected Authorization header in a verbose error page) | A bounded-prefix fix that is bounded in size but not in WHAT is captured could still leak a credential fragment if a gateway's error page echoes request headers | Bound the byte count (#347/#457 already specify this) AND consider whether the captured prefix should be scanned/redacted for header-echo patterns, or documented as "operator's own gateway's responsibility to not echo secrets in error bodies" — pick one explicitly rather than leaving it undecided |
+| Two-phase ids→payload read bypassing the recall gate via `Store.Get`/`GetPoints` (Pitfall 4) | A superseded/archived/expired record briefly visible through a list surface that is supposed to hide it — a real authz-adjacent correctness bug, not just a UX glitch, since some of these states exist specifically to hide corrected-away or expired content | Re-verify gate-relevant filter conditions in phase 2 of any two-phase design; extend the recall-gate AST pin to cover any new `Get`/`GetPoints` call site introduced by this milestone |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
-|---------|--------------|-------------------|
-| `--apply` forces an unprompted Claude Code OAuth re-login for a registration the operator considered unchanged | Erodes trust in "idempotent re-run" exactly the way the existing docs-site guide already promises it won't ("converges ... without duplicate entries") | Distinguish cosmetic drift (whitespace/ordering) from substantive drift (URL/auth/header change) before deciding claude-code's remove-then-add sequence runs at all; state the re-login consequence explicitly when it will (Pitfall 6) |
-| A scripted/CI `--apply` invocation discovers `claude plugin install`'s `-y` requirement only via a hung/failing non-interactive run | Confusing failure with no clear remediation, especially since none of engram's OWN existing write actions ever needed a confirmation-bypass flag before | Document and surface the plugin-consent flag/flow explicitly in `--help` and the docs-site guide the moment plugin-first delivery ships, not as a later doc pass |
-| A machine with a stale plain-installed skill directory (from a pre-plugin-first `engram` binary) gets a silent, unexplained duplicate skill listing after upgrading and re-running `--apply` | Operator has no idea why their agent suddenly shows `curating-memory` twice, or which copy is "current" | Report the stale copy explicitly in the setup output the FIRST time plugin-first delivery detects it, rather than leaving the operator to notice the duplicate independently (Pitfall 9) |
-| Codex operators with a hand-edited `config.toml` MCP entry get either a silent full-overwrite or a silent full-skip with no visible reasoning for which happened | Feels arbitrary — "sometimes engram touches my Codex config, sometimes it doesn't" — without the CLI ever explaining Codex's binary skip-or-clobber limitation | State plainly, in the reported outcome, that Codex offers no partial-preserve option and which of the two behaviors applied and why (Pitfall 10) |
+|---------|-------------|-------------------|
+| A byte-size-forced page shrink silently returning fewer records than the caller's `Limit` with no indication why | Console/CLI users see an unexplained, seemingly-arbitrary page size that doesn't match what they asked for, and may assume it's a bug or that they've reached the end when they haven't | Surface an explicit signal (new field or documented convention) distinguishing "fewer than requested because the set is exhausted" from "fewer than requested because of a size bound," mirroring how `scopes_truncated` already communicates a bounded-sample condition |
+| `ResourceExhausted` mapped to a generic "internal server error"-flavored message that's merely a differently-coded 500 | Operators still can't tell whether to retry, narrow their filter, or file a bug — trading one opaque error for another | The clear-error text should name the actionable remediation (narrow the filter, use a smaller limit/date range) directly, matching the existing hint-code convention's intent |
+| Deep offset-mode paging in the console silently getting slower page-by-page (already true today per #585) with no visible indication | Users clicking "next page" repeatedly see increasing latency with no explanation, may assume the app is broken | Independent of this milestone's core scope, but worth flagging: if the two-phase fix is adopted, consider whether the console should nudge deep-offset users toward cursor-based paging instead of silently absorbing the O(offset) cost |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **`--apply` non-destructive guarantee:** Often verified only against a
-  CLEAN fixture (no prior registration) — verify against a fixture with an
-  EXISTING, unreproducible (custom-header) registration and confirm
-  `--apply` performs ZERO write actions for that runtime, not just that
-  preview reports it correctly (Pitfall 1).
-- [ ] **Custom-header Codex handling:** Often verified only for the literal
-  `Authorization: Bearer <ref>` shape — verify with a non-`Authorization`
-  header name and confirm Codex routes to unsupported/preserve, never to a
-  coerced `--bearer-token-env-var` call (Pitfall 2).
-- [ ] **Drift-detection secret safety:** Often verified only for the
-  already-proven bare-`${VAR}`-reference shape — verify what each read verb
-  ACTUALLY prints for a header value that is NOT a bare reference, live,
-  before trusting the comparison/rendering code (Pitfall 4).
-- [ ] **Plugin-vs-plain skill de-duplication:** Often tested only against a
-  clean machine — verify against a fixture pre-seeded with a PRE-existing
-  plain-installed skill directory, confirming plugin-first delivery neither
-  writes a second copy nor silently deletes the stale one (Pitfall 9).
-- [ ] **Manpage generation determinism:** Often verified by "it produced a
-  man page" — verify two consecutive generation runs are byte-identical
-  (`DisableAutoGenTag` actually set), and that the new command is excluded
-  from `help.golden`/the operator catalog the same way `completion` is
-  (Pitfalls 11, 12).
-- [ ] **`#560` timeout classification:** Often "fixed" by inspection of the
-  diff alone — verify a fixture that forces a real context-deadline kill
-  and asserts `Result.Reason` is DISTINGUISHABLE from an ordinary nonzero
-  exit (Pitfall 13).
+- [ ] **`Store.List` full-payload fix:** Verify a fixture with a SMALL number of LARGE records (not just many tiny records) also passes — count-based caps alone do not prove byte-size safety (Pitfall 2).
+- [ ] **Two-phase ids→payload read (if adopted):** Verify a test proves output order matches the original `created_at` ordering when phase-2 `GetPoints` ids are NOT naturally id-sorted in that order (Pitfall 5) — a fixture where lexical id order happens to match `created_at` order would pass even with a real ordering bug.
+- [ ] **Two-phase ids→payload read (if adopted):** Verify a test proves a record deleted/superseded/archived between phase 1 and phase 2 is handled correctly (dropped with adjusted count, not silently gate-bypassed) (Pitfall 4).
+- [ ] **`ResourceExhausted` clear-error mapping:** Verify the response body does NOT contain the raw upstream gRPC error string, byte ceiling, or "grpc"/"Qdrant" literal (Pitfall 9) — not just that the HTTP status changed.
+- [ ] **Bounded provider error-body drain (#347/#457):** Verify a test exercises `WithTimeout(0)` combined with a slow-trickle body, not just a large-but-fast body (Pitfall 10).
+- [ ] **Cross-spine `ListScopes` resilience (#456):** Verify the fix changes the wire shape (a new coverage-unknown sentinel) rather than only retrying/softening the store-layer call (Pitfall 11).
+- [ ] **New 4 MiB-plus regression fixtures:** Verify each is gated behind `testing.Short()` per the existing precedent, and that #497's container-stability question was addressed before or alongside adding them (Pitfall 12).
+- [ ] **Any new gRPC dial-option defense-in-depth (e.g., `MaxCallRecvMsgSize`) on the production client:** Verify every test-side `qdrant.NewClient` call site either shares the change or there's an explicit gate proving they can't silently drift (Pitfall 7).
+- [ ] **`total`/exhaustion semantics:** Verify `total` is computed identically before and after whatever paging mechanism changed, and that "short page" still means "last page" everywhere it's checked (offset mode store.go:1449, cursor mode store.go:1521, and any Connect/console/CLI caller inferring done-ness from an empty next-cursor) (Pitfall 8).
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
-|---------|----------------|------------------|
-| A custom-header Codex registration got silently coerced to `--bearer-token-env-var` (Pitfall 2), breaking auth against a gateway expecting a different header name | LOW–MEDIUM, per-user | `codex mcp remove engram` then manually re-register via a shell script or the gateway's own documented Codex integration path, since `codex mcp add` cannot express the header directly |
-| An operator's Codex hand-edit was silently overwritten by `mcp add` (Pitfall 10) | HIGH if the hand-edit is not otherwise recorded | No engram-side recovery exists — `mcp add` never preserved the prior entry; restore from the operator's own backup/dotfiles history if one exists, which is exactly why this milestone should route to skip-not-overwrite once detected |
-| Duplicate `curating-memory` (plain) and `engram:curating-memory` (plugin) both present (Pitfall 9) | LOW, per-user | Manually remove the reported stale plain directory (`~/.claude/skills/curating-memory`) once `engram setup` names it; never delete automatically |
-| Claude Code forced an unwanted OAuth re-login during a reconcile-triggered rewrite (Pitfall 6) | LOW, per-user, but disruptive | Re-run `/mcp` → select `engram` → re-authenticate, exactly as the existing docs-site flow already documents for a fresh registration |
-| A repeat of the 2026-09-10-shaped incident despite drift detection shipping (Pitfall 1) | HIGH — same recovery as the original incident | Restore the real registration manually per-runtime (`claude mcp add`/`codex mcp add`/`opencode mcp add` with the operator's own known-correct values); there is no automated undo, which is precisely why Pitfall 1's apply-time gate must exist before this milestone is considered done |
+|---------|-----------------|-------------------|
+| A sibling overflow site missed in this milestone (Pitfall 1) surfaces in production later | MEDIUM | File a new issue following the exact #583→#585 template (mechanism, live log excerpt if available, regression test pattern to reuse); the fix mechanism from this milestone should generalize directly since the root cause is identical |
+| A two-phase read's TOCTOU gap (Pitfall 4) lets a superseded/archived record leak through a list surface | MEDIUM-HIGH | Treat as a recall-gate defect (same severity class as the repo's existing recall-gate AST test protects against); patch the specific call site to re-verify filter membership in phase 2, then retroactively extend the AST pin to cover it so the class of bug can't recur silently |
+| `total`/exhaustion semantics regressed (Pitfall 8) and shipped, causing console/CLI to report wrong page counts or stop paging early | LOW-MEDIUM | Since `total` is derived from an independent `Count` call, a fix is typically a revert-and-reapply of just the page-fetch change without touching the count path; add the missing regression test before re-landing |
+| #497-class testcontainer flakiness reappears mid-milestone because new large fixtures compounded the resource-pressure condition (Pitfall 12) | LOW | `gh run rerun --failed` clears it short-term (established precedent); the durable fix is retroactively adding `testing.Short()` gates to the offending new fixtures and/or serializing Qdrant-backed packages in CI |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
-|---------|--------------------|----------------|
-| 1. `--apply` has no opt-out / drift detection doesn't gate writes | Drift-detection/reconcile phase | Fixture: `--apply` against a pre-seeded unreproducible registration issues ZERO write actions, not just a correct preview label |
-| 2. Custom headers structurally inexpressible on Codex | Custom-headers phase, Codex sub-task | Fixture with a non-`Authorization` header name routes to unsupported/preserve, never `--bearer-token-env-var` |
-| 3. Per-runtime header-syntax divergence | Custom-headers phase, per-runtime sub-tasks | Fixture asserting the literal separator character (`": "` vs `"="`) in each runtime's rendered `Action.Args` |
-| 4. Read-probes may echo secret values for non-bare-reference headers | Drift-detection/reconcile phase | Live, read-only verification of each read verb's echo behavior (task, before comparison code lands); bound/sanitize any captured header text |
-| 5. "Preserve" vs "converge on re-run" collide on claude-code's destructive remove-then-add | Drift-detection/reconcile phase, claude-code sub-task | Fixture: an unreproducible existing registration never reaches `claudeCodeRemoveAction` |
-| 6. Reconcile forces unnecessary Claude Code OAuth re-login | Drift-detection/reconcile phase, claude-code sub-task | Fixture: cosmetic-only drift (whitespace/ordering) does not trigger the remove-then-add rewrite |
-| 7. Lossy/non-deterministic read verbs undermine structured comparison | Drift-detection/reconcile phase | Per-runtime comparison-granularity decision recorded; fixture with an unrelated second MCP server proves opencode comparison isn't polluted by it |
-| 8. Plugin install/marketplace-add without adequate consent | Plugin-first-delivery phase | Preview shows the marketplace source and declared install command before `--apply` ever passes `-y`; fixture reproduces the live "marketplace present, plugin absent" partial state found this session |
-| 9. Plugin vs plain-install double registration / unsafe cleanup | Plugin-first-delivery phase | Fixture with a pre-existing plain skill directory: plugin-first delivery reports (never deletes) it; `SkillFormatNone` routing confirmed for plugin-managed runtimes |
-| 10. Codex hand-edits clobbered by `mcp add`'s silent overwrite | Drift-detection/reconcile phase, Codex sub-task | Fixture with an unrecognized extra TOML key: `--apply` either skips Codex's write entirely or documents the overwrite, never a silent partial merge that doesn't exist |
-| 11. Manpage generation regresses the completions design / follows stale PROJECT.md phrasing | Completions/manpages phase | `.goreleaser.yaml` re-verified directly (not from PROJECT.md prose) as the first task; `generate_completions_from_executable` absent from the diff; `DisableAutoGenTag` set |
-| 12. New hidden man-generation command pollutes surface/catalog tests | Completions/manpages phase | `go test ./cmd/engram/... -run Golden` green with the new command present and `Hidden: true` |
-| 13. `#560` `ctx.Err()` fix ships after, not before, plugin-install's timeout-sensitive tests are written | Sequenced before or alongside plugin-first-delivery phase | Fixture forcing a real context-deadline kill asserts a distinguishable `Result.Reason`, written against the FIXED `osRun` contract |
+|---------|-------------------|----------------|
+| 1. Sibling overflow sites missed | Early phase: full-inventory sweep of `WithPayload(true)`/unbounded-scroll call sites, landed as one mechanism | A single grep-derived checklist of every call site, each with its own oversized-fixture regression test, tracked to 100% before phase close |
+| 2. Content-size vs. page-size conflation | Same early phase, paired with an explicit discuss-phase resolution of `ENGRAM_MEMORY_MAX_CONTENT_BYTES` | A few-large-records fixture test alongside the many-small-records fixture, for every fixed path |
+| 3. Cursor paging ties/concurrent inserts | Whichever phase touches `listByCursor`'s internals for byte-bounding; explicitly scoped in/out | A >1000-same-`created_at` tie fixture with documented (not accidental) behavior |
+| 4 & 5. Two-phase read TOCTOU + GetPoints ordering | Phase implementing offset-mode deep-paging fix, IF a two-phase design is chosen | Delete/supersede-mid-fetch fixture; non-monotonic-id ordering fixture |
+| 6. Fixture-size reasoning (compression) | Every phase writing a new oversized-payload regression test | Reuse/extend the `store_test.go:1810` guard-assert pattern; code review checks for compression-based size reasoning |
+| 7. Test/prod client limit drift | Phase adding any gRPC dial-option defense-in-depth | Either unify client construction or add an explicit cross-file dial-option consistency gate |
+| 8. `total`/exhaustion semantics | Phase implementing the actual size-bounding mechanism | Test asserting `total` unchanged; test asserting short-page-but-not-exhausted is distinguishable from real exhaustion |
+| 9. `ResourceExhausted` error-mapping leaks | Dedicated error-mapping phase (or folded into the fix phase) | Response-body content assertion (no raw upstream text), new hint code registered via `internal/surfaces`-equivalent single-declaration site |
+| 10. Provider error-body drain bound (byte + time) | Embed/summarize bounded-response phase | `WithTimeout(0)` + slow-trickle-body test, in addition to large-but-fast-body test |
+| 11. Cross-spine `ListScopes` failure discarding hits | Dedicated cross-spine resilience phase | Wire-shape change (new sentinel) verified end-to-end (store → tools.go → MCP/Connect response), not just a store-layer retry |
+| 12. Testcontainer flakiness (#497) | Same phase as, or before, the phase adding the first new multi-MiB fixture | `testing.Short()` gates present on all new large fixtures; evidence-capture (container logs/exit reason) added; CI green across at least a few real runs before declaring stable |
 
 ## Sources
 
-**First-party (HIGH confidence — direct reads of this repo's own shipped
-code and tests, this session):**
-- `/Volumes/Code/github.com/seanb4t/engram/.planning/PROJECT.md` (Current
-  Milestone: 2026-09-13.01 Setup v2 section)
-- `/Volumes/Code/github.com/seanb4t/engram/.planning/research/PITFALLS.md`
-  (prior milestone, 2026-08-23.01 — read first per the required-reading
-  instruction; superseded pitfalls noted above, carried-forward ones cited
-  by number)
-- `internal/setup/claudecode.go`, `codex.go`, `opencode.go`, `generic.go`,
-  `apply.go`, `plan.go`, `runtime.go`, `environment.go` (read directly)
-- `internal/skills/install.go`, `agentsmd.go` (read directly)
-- `docs-site/src/content/docs/guides/agent-setup.md` (read directly)
-- `.goreleaser.yaml` (postflight hook, lines ~140–211, read directly)
-- `cmd/engram/releaseconfig_test.go` (`TestReleaseConfigCaskInstallGate`,
-  read directly)
-- `cmd/engram/cmdwalk.go` (`isSkipped` doc-comment excerpt, read via grep
-  context)
-- `go.mod` (cobra/doc indirect-dependency comment, read directly)
-- Live filesystem/JSON inspection of this machine's own
-  `~/.claude/plugins/{installed_plugins.json,marketplaces/,cache/}` and
-  `~/.claude/skills/` (read-only; no mutation) — the "marketplace present,
-  plugin not installed, no plain skill copy" state cited in Pitfall 8 is
-  this machine's REAL, current state, not a constructed fixture.
-
-**First-party, live CLI `--help` output (HIGH confidence, read-only,
-captured this session — no mutating command run, per the STRICT quality
-gate):**
-- `claude --version` (2.1.270), `claude plugin --help`, `claude plugin
-  marketplace --help`, `claude plugin install --help`, `claude plugin
-  update --help`, `claude mcp add --help`, `claude mcp get --help`
-- `codex --version` (codex-cli 0.154.0), `codex plugin --help`, `codex
-  plugin marketplace --help`, `codex plugin add --help`, `codex mcp add
-  --help`, `codex mcp get --help`
-
-**Not independently re-verified this session (MEDIUM confidence, carried
-from `opencode.go`'s own code comments, themselves live-verified in the
-PRIOR milestone against opencode 1.18.20):**
-- `opencode mcp list`'s table shape, timing, and completeness limitations
-- `opencode --header KEY=VALUE` syntax and the historical colon-space
-  regression
-- opencode's `{env:VAR}` substitution reliability
-  (anomalyco/opencode#5299) — this session did not attempt to re-check that
-  issue's current status; treat as still-open per the last recorded check
+- This repo, read directly (HIGH confidence): `internal/store/store.go` (List, listByCursor, ListScheduled, ListScopes, Search, Get, Reindex — lines cited inline above), `internal/store/migrate.go` (`migrateBatch = 256`), `internal/store/store_test.go` (`TestMain` container lifecycle, `TestListScopesFullPayloadsOverGRPCLimit` fixture pattern), `internal/server/tools.go:123` (`qdrant.NewClient`, no `MaxCallRecvMsgSize` set), `.planning/PROJECT.md` (milestone scope and "done means" bar).
+- `gh issue view 497/585/583/456/347/457` (this repo's own issue tracker — HIGH confidence, primary source for the bug mechanisms and prior fix rationale).
+- grpc-go receive-size-after-decompression semantics: [grpc/grpc-go#4761 "Make MaxCallRecvMsgSize errors clear whether it's compressed or uncompressed"](https://github.com/grpc/grpc-go/issues/4761) (HIGH confidence — grpc-go's own issue tracker, cross-checked against multiple independent write-ups describing the same "received message after decompression larger than max" error text this repo's own logs show).
+- Qdrant `GetPoints` response-order non-guarantee: [qdrant/qdrant#5071 "GET points/<id> != POST points { ids: [<ids>] }"](https://github.com/qdrant/qdrant/issues/5071) and Qdrant's own API reference for Retrieve Points (HIGH confidence — primary-source issue tracker plus official API docs).
 
 ---
-*Pitfalls research for: engram Setup v2 (plugin-first delivery, custom auth
-headers, drift detection/reconcile, shell completions + manpages, #560)*
-*Researched: 2026-09-13*
+*Pitfalls research for: engram — milestone 2026-09-18.01 "Bounded Reads"*
+*Researched: 2026-09-18*

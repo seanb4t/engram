@@ -1,334 +1,189 @@
-# Feature Research: `engram setup` v2 (Plugin Delivery, Custom Auth, Drift, Completions)
+# Feature Research
 
-**Domain:** CLI installer extending an already-shipped multi-runtime MCP bootstrap
-**Milestone:** 2026-09-13.01 — Setup v2
-**Researched:** 2026-09-13
-**Confidence:** MEDIUM-HIGH overall — HIGH for Claude Code plugin CLI, header syntax, and
-Codex MCP registration flags (primary vendor docs, cross-checked against the shipped
-`internal/setup/*.go` source in this repo); MEDIUM for Codex's plugin CLI (young feature,
-best source is an in-flight PR, not a stable docs page); LOW/version-dependent for whether
-`codex mcp add` carries a generic custom-header flag (flagged explicitly below — the
-milestone's own PROJECT.md context already treats this as settled: `--bearer-token-env-var`
-only, no generic header flag; live-verify against the installed `codex` binary before
-committing an implementation, matching this repo's own precedent of live-verifying CLI
-surfaces before coding against them).
+**Domain:** Bounded-size reads/pagination for a vector-DB-backed memory/RAG server (Qdrant + Connect API)
+**Researched:** 2026-09-18
+**Confidence:** MEDIUM-HIGH (cross-checked against official docs for Qdrant, Weaviate, Milvus, and the Google AIP-158 standard text; GitHub issues/blog posts used for corroborating detail only)
 
-This file supersedes the FEATURES.md from milestone 2026-08-23.01 (Distribution & Agent
-Bootstrap), which is now historical baseline — its table-stakes items (detect-by-PATH,
-preview-by-default, merge-never-clobber, non-interactive flags, native skill formats) are
-now **shipped** and are treated here as load-bearing prerequisites, not open questions.
+## Context
 
-## Correction Surfaced By This Research (read before phase planning)
+This is a **subsequent-milestone** feature scan for engram's "Bounded Reads" milestone
+(#585 and siblings #456/#347/#457/#497), not a whole-product feature landscape. The question
+is narrow and technical: how do comparable systems bound list/search/pagination response
+size, and what should a caller see when a request would exceed the bound. Findings below are
+scoped to that question and mapped onto engram's two open discuss-phase decisions:
 
-PROJECT.md's milestone context describes the completions/manpages item as "cobra's
-auto-registered `completion` plus `cobra/doc`... the cask's `generate_completions_from_executable`
-hook already expects a completion verb." Reading the actual shipped
-`.goreleaser.yaml`/`releaseconfig_test.go` shows this is imprecise in one respect worth
-correcting before scoping: **shell completions are already fully shipped**, not partially
-scaffolded. The cask's `post_install` hook already calls `engram completion <shell>`
-(cobra's auto-registered command, live-exercised — a broken binary fails cask install
-rather than installing with a swallowed warning) and writes bash/zsh/fish completion
-files; `post_uninstall` already removes them; `releaseconfig_test.go` already pins the
-ordering (version-check before completion-generation) and **forbids** re-introducing the
-declarative `generate_completions_from_executable` Cask DSL field by literal occurrence
-count. **Man pages are the only genuinely new surface in this category** — `cobra/doc` is
-an indirect dependency already in `go.sum` but nothing in the tree calls it
-(`GenManTree`, `GenMarkdownTree`, etc. — zero occurrences). Scope and complexity estimates
-below reflect this: "shell completions" carries near-zero remaining work; "man pages" is
-the real item.
+- **(A)** cap memory `content` size?
+- **(B)** keep Connect `ListMemories` `limit: 0` = all + numeric offset (paged internally),
+  or move to a hard cap + cursor paging?
 
----
+## Feature Landscape
 
-## Category 1 — Plugin-First Delivery
+### Table Stakes (Every Comparable System Already Does This)
 
-### Table Stakes
+Features every vector DB / memory API in this survey already has. Missing these on a read
+path is a correctness bug, not a stylistic gap — this is the class of thing #585 exists to fix.
 
 | Feature | Why Expected | Complexity | Notes |
-|---|---|---|---|
-| Detect plugin-CLI *capability*, not just runtime presence | A runtime binary can be on `PATH` while its `plugin` subcommand is absent (pre-plugin-era version) or non-functional — the exact "capability vs. binary" gap this repo already treats as a first-class failure mode for `--auth` support (`opencode` + `oauth-client` → a `failed` row with a reason, not a silent skip) | LOW-MEDIUM | Probe `claude plugin list --json` / `codex plugin list` and treat a nonzero exit or unrecognized-subcommand error as "plugin delivery unsupported for this runtime, fall back to native skill copy" — never as a hard failure of the whole runtime row |
-| Never install a plugin when one already satisfies the requirement | Anthropic's own docs (code.claude.com/docs/en/plugins-reference, /discover-plugins) warn plugins "can execute arbitrary code on your machine" — re-running an installer that reinstalls/reclones an already-correct plugin on every invocation is both wasteful and a trust problem, matching this repo's own idempotent-reapply convention | LOW | `claude plugin list --json` returns installed plugins with enough identity (`name@marketplace`) to test presence before calling `install` |
-| Skip the plain skills copy on the plugin-delivery path, entirely | This is the milestone's literal motivation (backlog 999.6/999.5): the maintainer's real-machine failure was `--apply` writing a duplicate `curating-memory` skill next to the plugin's `engram:curating-memory`, and replacing Codex's marketplace symlinks with static files | LOW | The two delivery modes (plugin vs. native skills copy) must be mutually exclusive per runtime per run — extend the existing `setup.SkillTarget`/`skills.Target` seam with a `FormatPluginManaged` (or equivalent no-op-for-skills) value analogous to the already-shipped `FormatNone` used by `generic`, rather than teaching the skills package about plugins directly |
-| Add engram's own marketplace/plugin source, never a foreign one, without asking | The milestone's plugin is engram's own (`skill/engram/.claude-plugin/plugin.json`/`marketplace.json`, already shipped) — registering *that* source is in scope; auto-adding or auto-trusting some *other* discovered marketplace is not, and Anthropic's docs draw exactly this trust line ("Only install plugins and add marketplaces from sources you trust") | LOW | `claude plugin marketplace add <engram's own source>` is deterministic and known at build time — no user choice needed, unlike a generic marketplace picker |
-| Report plugin delivery as its own facet, mirroring the shipped Registration/Skills split | `setupRuntimeRow` already carries two independently-reported facets (`Registration`, `Skills`) aggregated via `setup.AggregateOutcome` — a `wrote` registration next to a `failed` plugin-install must remain visible, not collapsed | LOW-MEDIUM | Reuse the existing two-facet aggregation shape; a third facet ("Delivery": `plugin` \| `skills-copy`) is cleaner than overloading the existing `Skills` field with two different meanings |
-| Claude Code: `--json` on every plugin subcommand for scriptable, parseable install/update | `claude plugin install/uninstall/update/list/enable/disable --json` (v2.1.268+) all emit a structured envelope (`{"command","outcome":"ok"\|"failed","message","pluginId","scope","failureCode"}`) on their **last line**, with marketplace-refresh chatter printed *ahead* of it — this is exactly the "parse the final JSON line only" contract already familiar from `engram setup --output json`'s own convention | LOW | Confirmed HIGH-confidence primary docs (code.claude.com/docs/en/plugins-reference) |
-| Codex: use `codex plugin marketplace add`/`plugin add`/`plugin list`/`plugin remove` | Confirmed to exist (openai/codex PR #21396, primary source: the actual CLI arg definitions) — `plugin add <PLUGIN[@MARKETPLACE]>`, `plugin marketplace add <SOURCE> [--ref REF] [--sparse PATH]`, `plugin marketplace upgrade [NAME]`, `plugin marketplace remove <NAME>`, `plugin remove <PLUGIN[@MARKETPLACE]>` | MEDIUM | **No `--json` flag confirmed on any Codex plugin subcommand** in the PR under review — treat Codex's plugin delivery as text-output-only until verified otherwise against the installed binary; this materially lowers how much of the report can be machine-checked for Codex vs. Claude Code |
+|---------|--------------|------------|-------|
+| Enforced maximum page/result size, independent of what the caller asks for | AIP-158: a paginated RPC "must be actually implemented with a non-infinite default value"; Weaviate (`QUERY_MAXIMUM_RESULTS`, default 100000), Milvus (`topk`/`nq` capped at 16,384; query `offset+limit` capped at 65,536), and Qdrant (server-side JSON body cap, default 32 MiB) all enforce a real ceiling regardless of client input | LOW–MEDIUM | Today's `Limit: 0` = all is the anti-pattern AIP-158 calls out by name; a hard ceiling closes #585's root cause, not just its symptom |
+| Named, non-opaque error when a request would exceed a bound | Milvus rejects with `query results exceed the limit size` (explicit reason, not a 500); AIP-158 requires `INVALID_ARGUMENT` for a negative/invalid `page_size`; gRPC's own status-code table names `RESOURCE_EXHAUSTED` for exactly "sent or received message was larger than configured limit" | LOW | This is #585 exactly — replace opaque Connect `internal`/HTTP 500 with a classified, named error |
+| Coerce-down (not silently truncate-and-hope) an oversized `page_size` request | AIP-158: "If the user specifies `page_size` greater than the maximum permitted... the API should coerce down to the maximum permitted page size" — never silently drop rows without a signal | LOW | Applies directly to `ListMemoriesRequest.limit` / `SearchMemoriesRequest.k` |
+| Opaque page token; server owns pagination state | AIP-158: page tokens "must be opaque... and must not be user-parseable"; must not encode authorization | LOW | engram's `page_token` cursor mode already does this; carry the same rule into any new cursor path |
+| Bounded provider/dependency I/O — never trust a downstream response body or drain to be small | General gRPC/HTTP hardening guidance (grpc.io error docs, oneuptime.com, statuscodefyi.com): treat any unary response as attacker- or bug-controlled size until proven bounded | LOW–MEDIUM | Maps directly to #347/#457 (embed/summarize client error-body and drain bounds) |
+| Iterator/cursor escape hatch for full-collection scans | Milvus's `query_iterator` and Weaviate's `after` cursor exist specifically because offset-based paging degrades or hard-fails past a threshold (Weaviate: `offset+limit` cannot exceed `QUERY_MAXIMUM_RESULTS`; Milvus: `offset+limit` capped at 65,536) | MEDIUM | engram already has `cursor_mode` on `ListMemoriesRequest`; the gap is that offset mode has no page-count/byte ceiling today |
 
-### Differentiators
+### Differentiators (Where Engram Can Do Better Than the Baseline)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---|---|---|---|
-| Auto-detect "plugin already installed and current" vs. "installed but outdated" vs. "absent" as three distinct outcomes | Neither vendor's plugin CLI exposes a clean, documented "up to date" vs. "updated" distinction in its own JSON envelope (Claude's `update` command's own doc only states "updates to latest version... fails if plugin not found" — no `no-op` outcome documented; Codex has no per-plugin `update` at all, only a marketplace-wide `plugin marketplace upgrade` that refreshes snapshots) — engram doing this comparison itself (installed version from `plugin list --json` vs. the version pinned in its own `plugin.json`/marketplace entry) is genuinely more precise than what either vendor CLI reports on its own | MEDIUM | This is the plugin-delivery analogue of "already-correct becomes a real comparison" (Category 3) — the same comparison discipline applies to both features and should probably share code |
-| One `setup --apply` call handles plugin-vs-skills-copy transparently per runtime | No surveyed prior-art multi-runtime installer (getmcp, mx setup, mcp-config) has to choose between two entirely different *delivery mechanisms* for the same payload (skills) depending on what's already present on the machine — this is a genuinely novel shape born from Claude Code and Codex acquiring first-party plugin managers only in 2026 | MEDIUM-HIGH | The differentiator is honest reconciliation of "what's already there," not offering more delivery mechanisms — see Anti-Features below |
-
-### Anti-Features
-
-| Anti-Feature | Why It Seems Appealing | Why Problematic | Do Instead |
-|---|---|---|---|
-| Installing/updating the engram plugin without `--apply` | "Zero friction" | Plugins execute arbitrary code (Anthropic's own words) — this is *more* invasive than the already-shipped skills-copy path, so it must sit behind at least the same gate, arguably a stricter one | Keep behind `--apply`; preview must show the exact `claude plugin install .../codex plugin add ...` invocation, not just a summary sentence |
-| Silently reinstalling a plugin the maintainer's machine already manages via marketplace auto-update | "Consistency — always converge to the pinned version" | This is precisely the reported real-world bug (backlog 999.6): Claude's own marketplace auto-update may already be tracking `latest`, and a forced reinstall from `engram setup` can fight that mechanism or downgrade/pin unexpectedly | Detect present-and-tracked-by-marketplace as `already-correct`; only act when genuinely absent or when the installed source doesn't match engram's own marketplace entry |
-| Writing plain skill files into `~/.claude/skills/` (or Codex's `~/.agents/skills/`) *in addition to* the plugin, "just in case" | "Belt and suspenders" | This is the exact defect this milestone exists to fix — duplicate `curating-memory` next to `engram:curating-memory`, replacing Codex's marketplace symlinks with static files pinned to a stale embedded version | Delivery modes are exclusive per runtime per run: plugin-capable → plugin only; not plugin-capable → native skills copy only (unchanged shipped behavior) |
-| Silently falling back to the plain skills copy when the plugin CLI errors, with no reported reason | "Best effort, don't block on plugin flakiness" | Contradicts the shipped principle that an unsupported/failed facet is always a named `failed` row, never a silent substitution the operator has to infer from a diff | Report a `failed` delivery facet naming the plugin-CLI error; require an explicit re-run or flag to fall back to skills-copy, mirroring how an unsupported `(runtime, auth)` pair already fails loudly rather than silently degrading |
-
----
-
-## Category 2 — Custom Auth Headers / Auth Keys
-
-### Grounding from the shipped code (`internal/setup/*.go`, read directly — not inferred)
-
-The milestone's framing ("`--auth` accepts only `oauth\|oauth-client\|bearer\|none`, and
-`bearer` is hard-wired to `Authorization: Bearer ${ENGRAM_TOKEN}`") is accurate for
-*today's shipped behavior*, but the per-runtime CLIs it shells out to are **already more
-expressive than engram currently uses**:
-
-| Runtime | Shipped bearer invocation today | Underlying CLI capability (already present, unused for anything but `Authorization`) |
-|---|---|---|
-| `claude-code` | `claude mcp add ... --header "Authorization: Bearer ${ENGRAM_TOKEN}"` | `--header` is a repeatable, arbitrary `"Name: value"` flag — HIGH confidence, confirmed by both Anthropic's docs and community write-ups (`claude mcp add --header "x-litellm-api-key: Bearer sk-..."` is a documented LiteLLM pattern) |
-| `codex` | `codex mcp add ... --bearer-token-env-var ENGRAM_TOKEN` | Confirmed narrow — this flag only ever produces an `Authorization: Bearer <env>` shape. The broader TOML schema Codex actually reads (`http_headers` for literal values, `env_http_headers` for `{"HeaderName": "ENV_VAR_NAME"}` pairs) is NOT confirmed reachable through `codex mcp add` itself — openai/codex#5180 ("Add support for custom headers for streamable HTTP MCP servers") shows this was an open feature request, and secondary sources explicitly hedge with "check `codex mcp add --help` on your build." **Live-verify before implementing; PROJECT.md's own framing treats the CLI as bearer-only, which this research corroborates as the safer assumption.** |
-| `opencode` | `codex`-analogous: `--header "Authorization=Bearer {env:ENGRAM_TOKEN}"` (KEY=VALUE, not colon-space — already a fixed, live-verified bug per the shipped code comment) | Same flag, any header name: opencode's own docs independently confirm arbitrary `headers: {"X-Name": "{env:VAR}"}` in `opencode.json`, and disabling `oauth: false` for API-key-style auth |
-| `generic` | `Headers map[string]string` populated only for `bearer`, key hardcoded to `"Authorization"` | Already a map — trivially generalizable |
-
-**Implication:** for `claude-code`, `opencode`, and `generic`, expressing an arbitrary
-header name (`x-litellm-api-key`) plus an arbitrary env-var-reference value is a
-**parameter-generalization** of an already-shipped code path, not new CLI capability
-research. `codex` is the one runtime where the underlying CLI's expressiveness is
-genuinely uncertain and needs a live check.
-
-### Table Stakes
-
-| Feature | Why Expected | Complexity | Notes |
-|---|---|---|---|
-| Accept a header **name** in addition to a header **value reference** | This is the entire feature — LiteLLM's `x-litellm-api-key: Bearer <key>` cannot be expressed today because the header name is hardcoded to `Authorization` in three of four runtime writers | LOW (claude-code, opencode, generic); MEDIUM (codex, pending live verification) | A new `--header-name`/`--auth-header` flag (or an `--auth gateway`-shaped extension) replacing the implicit `"Authorization"` constant in `claudecode.go`, `opencode.go`, `generic.go` |
-| Value stays an env-var **reference**, never a literal, on every runtime including the new shape | Standing constraint carried explicitly forward in PROJECT.md; a secret on argv or in a written config file is a stronger regression than the header-name limitation this milestone exists to fix | LOW | No behavior change needed here — extend the existing `bearerProvenance`/`${ENGRAM_TOKEN}`-reference pattern to the generalized header name, don't introduce a second secret-handling path |
-| Never echo the resolved secret value anywhere in preview, apply output, or logs | Universal across every prior-art example surveyed (engram's own docs already state this for the existing bearer path: "the token never appears on any command line or in any config engram writes") | LOW | Preview must render the **reference form** (`${ENGRAM_TOKEN}` or `{env:ENGRAM_TOKEN}`), never a resolved value, exactly as today |
-| `--auth bearer` keeps working unmodified when no custom header is requested | Backward compatibility — this is an additive capability, not a breaking change to the four accepted `--auth` values | LOW | The new header-name flag should be optional, defaulting to today's `Authorization` behavior when omitted |
-| Reject the combination the runtime cannot express, the same way `oauth-client` is already rejected for unsupported runtimes | `opencode` + `oauth-client` already fails as an unsupported `(runtime, auth)` pair with a named reason — a custom header name Codex's CLI can't accept (pending verification) must fail the same way, never silently downgrade to `Authorization` | LOW-MEDIUM | Reuses the existing `ErrAuthModeUnsupported`-shaped mechanism; extend it to also gate on header-name support once Codex's actual capability is confirmed |
-
-### Differentiators
+Not required by any comparable system, but consistent with engram's existing design
+invariants (explicit, named-error, zero-silent-data-loss) and worth building into this
+milestone rather than deferring.
 
 | Feature | Value Proposition | Complexity | Notes |
+|---------|--------------------|------------|-------|
+| Byte-budget-aware paging (stop a scroll page before it crosses a size ceiling, not just at a record count) | A fixed record-count cap (e.g. "500 records") is not a size guarantee if per-record `content` is unbounded — Milvus learned this the hard way (`maxOutputSize` quota, default 100 MiB, is a **byte** budget, not a row-count budget, precisely because row-count-only caps still OOM'd on wide rows) | MEDIUM–HIGH | This is the strongest argument for pairing decision (B)'s page cap with decision (A)'s content cap — see Feature Dependencies below |
+| Named `field=<name> hint=<code>` classification for `ResourceExhausted` | No comparable system in this survey ties a size-exceeded error into a structured, machine-parseable envelope the way engram's `reference/errors.md` already does for every other rejection class | LOW | Pure reuse of an existing engram mechanism (`argError`) — this is "finish the pattern," not "invent one" |
+| Partial-success on cross-spine follow-up failure (#456) | No system surveyed does two-phase (search + follow-up ListScopes) recall, so there is no external precedent — but the general principle ("a request's already-succeeded work must not be discarded by a downstream metadata call's failure") matches every read-path hardening doc found | MEDIUM | Independent of the pagination-bound work; ships in the same milestone because it's another instance of "one exhausted subsystem should not turn a good partial result into a 500" |
+| Keep numeric-offset paging for the console/CLI UX while giving it a real ceiling internally | AIP-158 explicitly allows offset/`skip`-style paging as a documented option (not just cursor-only), and Weaviate/Milvus both keep offset paging as the default UX while bounding it — engram doesn't need to force cursor-only paging onto console/CLI callers to fix #585 | LOW–MEDIUM | Directly informs decision (B): the research does **not** support ripping out `limit: 0`/offset in favor of cursor-only; it supports capping what `limit: 0`/oversized `limit` actually does server-side |
+
+### Anti-Features (Attractive-Looking, Wrong for This Milestone)
+
+| Anti-Feature | Why It Looks Appealing | Why Problematic | Alternative |
 |---|---|---|---|
-| First-party support for the specific LiteLLM/gateway header shape, verified against the actual product | Generic MCP installers (`getmcp`, `mcp-config`) treat headers as an opaque pass-through the *user* must already know how to fill in; engram naming the exact LiteLLM convention (`x-litellm-api-key: Bearer <key>`) in its own `--help`/docs, and reproducing it correctly through `--apply`, is a concrete fix for a reported real incident (engram gotcha `ryr82bf2s2`), not a speculative feature | LOW-MEDIUM | The value is in *correctness of reproduction* (Category 3), not in inventing new syntax |
-
-### Anti-Features
-
-| Anti-Feature | Why It Seems Appealing | Why Problematic | Do Instead |
-|---|---|---|---|
-| A generic "arbitrary key=value config passthrough" flag that lets a caller inject anything into the written config | "Maximum flexibility, solves every gateway shape at once" | Reopens exactly the parsed-third-party-config-format risk this repo has structurally avoided since v0.16.0 ("every runtime writer is a shell-out to the runtime's own CLI... no third-party config format" — rule `m45p2b4bp7`-adjacent standing constraint); an unbounded passthrough also makes secret-redaction and drift-comparison (Category 3) intractable, since the tool no longer knows what shape it wrote | Scope this milestone to exactly one new degree of freedom — the header **name** — keeping the value strictly an env-var reference and the header count bounded to what each runtime's own CLI accepts |
-| Accepting a literal header value on the command line "for convenience, just this once, for non-secret headers" | Some headers genuinely aren't secrets (e.g., `X-Client-Version: 3`) | Blurs the one bright line this feature depends on for safety; a caller who *thinks* a header is non-secret is exactly the failure mode the whole env-var-reference design defends against | Keep the env-var-reference requirement universal, even for headers a caller believes are safe to inline |
-
----
-
-## Category 3 — Drift Detection + Reconcile Hand-Edits
-
-### Prior art convergence (Terraform `plan`/`refresh`, Ansible `--check --diff`, pre-commit's "migration mode")
-
-Every mature convergence tool in this space separates exactly three states, not two:
-
-1. **Matches what I'd write** → no action (`already-correct`, already the shipped outcome name).
-2. **Differs, and I can express the difference** → previewed as a concrete replacement, applied only under `--apply` (this is what "would-write"/"wrote" already mean in the shipped taxonomy — the gap is that today's "differs" detection is a coarse read-probe, not a structural comparison of URL/auth-shape/headers).
-3. **Differs, and I cannot express what's there** → **must never be silently classified into (2).** Terraform's own drift-detection literature is explicit that an out-of-band change the tool doesn't understand should be surfaced, not overwritten; pre-commit's "migration mode" is the sharpest analogue — an existing hook pre-commit didn't install is *moved aside and preserved*, never deleted, with the preservation stated in the tool's own output.
-
-This milestone's own framing ("a registration `setup` cannot reproduce is reported as
-preserved, never as drift to replace") is state (3) above, and is the harder half of the
-three — Terraform, Ansible, and pre-commit all treat it as the case requiring the most
-deliberate design, not an edge case to bolt on.
-
-### Table Stakes
-
-| Feature | Why Expected | Complexity | Notes |
-|---|---|---|---|
-| Compare the **full** existing registration (URL, auth shape, header set), not just presence | The milestone's own stated gap: `already-correct` today is "a read-probe heuristic," not a real comparison — `codex mcp get engram --json` and `claude mcp get engram --json` (implied by the existing `Registered` field/probe pattern) already return enough structure to diff against the `Plan`'s own `Action` | MEDIUM-HIGH | Requires parsing each runtime's own probe-command JSON output into the same shape the `Plan` already authors (URL, auth mode, header map) — a small, bounded parser per runtime, not a general config-format parser (keeps the standing zero-new-dependency, no-third-party-format-parsing constraint intact, since this parses the runtime's *own CLI's own JSON output*, not its underlying config file) |
-| Three-way classification: identical / reproducible-diff / non-reproducible | This is the entire feature — collapsing (2) and (3) is the exact bug this milestone exists to prevent (the 2026-09-10 overwrite, gotcha `ryr82bf2s2`) | MEDIUM | Extend `setup.Outcome` with a value distinct from `wrote`/`already-correct`/`failed` for case (3) — e.g. a `preserved` outcome — analogous to how `not-present` is already a fourth non-failure state alongside the write outcomes |
-| `preserved` is reported, never silently absorbed into `already-correct` | A silent no-op is indistinguishable from a bug to the operator (this exact principle is already stated in the prior milestone's own research and echoed by `mise`'s and `pre-commit`'s explicit skip-logging) | LOW | `preserved` must appear as its own outcome/row detail, with a reason naming *what* couldn't be reproduced (e.g., "existing header set includes `X-Custom-Signing` which engram does not author") |
-| Preview shows the comparison result before `--apply`, exactly like today's registration/skills rows | Standing convention (preview-by-default, `--apply` mutates) — drift comparison is a **read-only** enrichment of the existing preview, not a new command | LOW | The comparison itself never mutates; it only changes what a `would-write` row's `Reason`/`Notes` field says |
-
-### Differentiators
-
-| Feature | Value Proposition | Complexity | Notes |
-|---|---|---|---|
-| Naming *which specific facet* differs (URL vs. auth mode vs. header name vs. header value-reference) rather than a bare "differs" | Generic MCP installers surveyed previously (getmcp, mx setup) report "will update the entry" without stating which field changed; naming the facet is what lets an operator trust a `wrote` outcome touched only what they expected | MEDIUM | Directly reuses the parsed-comparison structure from the table-stakes row above — this is presentation of the same data, not new mechanism |
-| `already-correct` becomes provably a real comparison (testable, not "probably fine") | The milestone explicitly calls this out as a required outcome, and it is exactly the kind of property this repo already tests structurally (e.g., `TestOperatorViewFixturesHaveNoUnsanitizedNesting`, `TestDestructiveCommandsRouteThroughGate`) rather than by convention | MEDIUM | A dedicated comparison function with unit coverage for "identical," "differs-reproducible," and "differs-non-reproducible" cases per runtime is the natural shape |
-
-### Anti-Features
-
-| Anti-Feature | Why It Seems Appealing | Why Problematic | Do Instead |
-|---|---|---|---| 
-| Auto-migrating/rewriting a hand-edited registration to engram's canonical shape without `--apply`, or without a named reason in preview | "Just fix it for them" | This is precisely the cardinal sin identified across every surveyed tool (getmcp: "never overwrites"; mx setup: "other servers are untouched") and the milestone's own stated goal is the opposite — never replace what it cannot reproduce | Preserve; report the non-reproducible facet by name; let the operator decide, matching pre-commit's "migration mode" transparency |
-| Treating "I can't parse the existing registration's headers" as a hard failure of the whole runtime row | "Fail loud, fail safe" | An unparseable extra header is not an error — it is exactly the reproducibility gap this feature is designed to name and preserve, not reject | Classify as `preserved` (a non-failure outcome), never `failed`, unless the registration is entirely absent/corrupt in a way that blocks read at all |
-| Silently widening "already-correct" to include "close enough" (e.g., ignoring header ordering, case, or an extra runtime-injected header) without stating the tolerance | "Reduce false-positive drift noise" | An undocumented tolerance is itself a hidden behavior a future contributor or auditor cannot verify — exactly the class of implicit convention this repo's Nyquist/surfaces-conformance discipline exists to prevent | If a tolerance is needed (e.g., a runtime injects its own default header engram never authored), name it explicitly in code and in the reported reason, not as silent equality-relaxation |
-
----
-
-## Category 4 — Shell Completions + Man Pages
-
-### Table Stakes
-
-| Feature | Why Expected | Complexity | Notes |
-|---|---|---|---|
-| Shell completions for bash/zsh/fish | **Already shipped** — cobra's auto-registered `completion` command plus the cask's hand-rolled `post_install`/`post_uninstall` hooks (`.goreleaser.yaml`) that exercise the real binary and fail the install if it can't produce completions | **DONE — zero remaining work** | Do not re-scope this as new work; verify it stays this way (`releaseconfig_test.go` already pins the ordering and forbids the declarative Homebrew DSL field by occurrence count) |
-| Man pages, generated from the same cobra command tree | `cobra/doc`'s `GenManTree`/`GenMarkdownTree` walk the live command tree the same way the shipped `completion` command and the existing golden-help tests already do — zero new Go dependency, since `cobra/doc` is already indirect in `go.sum` | LOW-MEDIUM | Mirror the completions precedent exactly: a hidden/internal generation path invoked by the binary itself (not a build-time-only script divorced from the actual released binary), so a broken command tree fails the same way a broken completions generator does today |
-| Man pages installed and removed by the cask, symmetric with completions | The completions hook already demonstrates the pattern (write on `post_install`, `rm_f` the exact paths on `post_uninstall`, never a recursive directory removal) | LOW | `#{HOMEBREW_PREFIX}/share/man/man1/engram.1` (and per-subcommand pages if `GenManTree` produces one per command, matching `GenManTree`'s documented per-command-and-descendants output) — note cobra's own docs flag a naming caveat for hyphenated command names ("If you have a `sub`/`sub-third` split it is undefined which file wins") that engram's flat-ish command tree likely avoids but should be checked |
-| CI ordering/golden coverage matching the completions precedent | The existing `releaseconfig_test.go` already treats "version-check before completion-generation" and "the declarative DSL field is absent" as tested properties, not conventions | LOW-MEDIUM | Add the equivalent assertions for the man-page generation step once it exists, rather than leaving it as an untested cask-script addition |
-
-### Differentiators
-
-| Feature | Value Proposition | Complexity | Notes |
-|---|---|---|---|
-| Man pages generated from the live command tree rather than hand-maintained prose | Zero drift between `--help` output and the shipped man page — the same "correct by construction, not by convention" discipline this repo already applies to its CLI catalog goldens and `setupLongDescription` (which derives its runtime list from `setup.Names()` rather than a hand-typed string) | LOW | Not a differentiator over other CLIs generally (most mature Cobra-based tools already do this — kubectl, helm, gh), but is a differentiator over engram's own prior state (zero man pages today) |
-
-### Anti-Features
-
-| Anti-Feature | Why It Seems Appealing | Why Problematic | Do Instead |
-|---|---|---|---|
-| Hand-writing static man page(s) once and committing them | "Ship something now" | Guaranteed to drift the moment a flag or subcommand changes — this repo has repeatedly treated exactly this class of drift (help text, catalog goldens, `setupLongDescription`) as a defect worth a dedicated gate, not a documentation nit | Generate from the live `cobra.Command` tree via `cobra/doc`, exercised through the real binary at release/install time, matching the completions precedent |
-| Re-introducing Homebrew's declarative `generate_completions_from_executable` (or an equivalent man-page helper) for either surface | "Less code to maintain" | This repo already rejected that path explicitly for completions, with a test enforcing the rejection by occurrence count, because the helper swallows a failing binary as a warning instead of failing the install — the same swallowed-failure risk applies to any equivalent man-page helper | Hand-roll the man-page install/uninstall hooks the same way completions are hand-rolled, exercising the real installed binary and letting a failure raise |
-
----
+| Just raise `MaxCallRecvMsgSize` (e.g. to 64 MiB or 128 MiB, as several Qdrant-client wrappers have done — Bifrost's Qdrant integration defaults to 64 MiB) | One-line fix, no proto/behavior change | Only moves the ceiling — the exact conclusion PROJECT.md and #583 already reached ("Raising `MaxCallRecvMsgSize` alone only moves the ceiling... it is defense in depth at most"); a collection that grows past the new ceiling reproduces the same opaque failure | Bound the *query* (page size, content size), not just the transport frame; raising the recv limit is fine as a secondary safety margin, never the fix |
+| Replace unary `List`/`Search` with server-streaming RPCs to sidestep size limits entirely | gRPC's own "chunking large messages" guidance suggests streaming for genuinely unbounded responses | Backwards-incompatible proto surface change (new RPC shapes, new client code in console + CLI + MCP lane) far outside this milestone's stated scope; AIP-158's whole point is that paginated *unary* RPCs are the standard shape — streaming is for a different problem (continuous/large blobs), not "my page is occasionally too big" | Bound the page; keep unary RPCs (matches AIP-158 and every comparable system surveyed) |
+| Force cursor-only paging everywhere, deprecating numeric offset | "Cursor is the correct design" is a common purist take (Weaviate's own docs push `after` for full scans) | Breaking change to the console's URL-shareable offset UX and the CLI's existing flags; ADR `engram-1frj` already chose offset-for-UI deliberately; AIP-158 tolerates `skip`-style paging as a first-class option, it does not mandate cursor-only | Keep both modes (already mutually-exclusive by rule `paging-trio-mutually-exclusive`); just bound both |
+| A silent, unsignaled truncation of oversized `limit`/`k` requests (return fewer rows with no indication a cap was applied) | Simplest implementation — clamp and return | AIP-158 requires the *coercion* to happen, but page metadata should still let a caller detect they hit a ceiling (via `next_page_token` presence, or a documented max); a totally silent clamp makes a "why did I get fewer than I asked for" bug report indistinguishable from "that's just how many there are" | Coerce `limit`/`k` down to the documented maximum; rely on `next_page_token`/`total` (already on the wire) to signal more exists — no new field needed |
+| Treat this milestone as an excuse to redesign the whole pagination model (e.g. add GraphQL-style connections, invent a new envelope) | Bounded Reads touches pagination code anyway | Out of stated scope (`Not in scope: the planted embedder provider-routing / failover seed stays planted` — same discipline applies here); every comparable system's pagination *shape* (page_size/page_token, offset/limit, cursor) is unremarkable — the gap is enforcement, not design | Reuse the existing `ListMemoriesRequest`/`ListMemoriesResponse` shape; add bounds and errors, not new pagination primitives |
 
 ## Feature Dependencies
 
 ```
-Plugin-first delivery
-    └──requires──> capability detection distinct from binary-on-PATH detection
-                    (claude plugin list --json / codex plugin list, both read-only)
-    └──requires──> a third reportable facet (Delivery) alongside the shipped
-                    Registration/Skills facets, OR a repurposed Skills facet value
-                    that means "plugin-managed, no filesystem write performed"
-    └──conflicts with──> writing the plain native skills copy for the same
-                    runtime in the same run (must be exclusive, per the milestone's
-                    own stated motivation)
-    └──lower-confidence-on──> Codex's plugin CLI scriptability (no confirmed --json;
-                    best source is an in-flight PR, not a stable docs page) — verify
-                    live against the installed `codex` binary before locking behavior
+Bounded page (record-count cap on ListMemories/ListScheduled/Search k)
+    └──insufficient alone for a byte guarantee, unless──> Content size cap (open decision A)
+                                                               (a per-record content ceiling turns
+                                                               "cap records per page" into an actual
+                                                               "cap bytes per page" guarantee — see
+                                                               Milvus's maxOutputSize precedent)
 
-Custom auth headers
-    └──requires──> generalizing the hardcoded "Authorization" header-name constant
-                    in claudecode.go / opencode.go / generic.go (LOW complexity —
-                    three already-shipped writers, same env-var-reference pattern)
-    └──requires──> live-verifying whether `codex mcp add` accepts a header-name flag
-                    at all, or whether Codex needs a scoped TOML edit limited to the
-                    env_http_headers key of the ALREADY-EXISTING [mcp_servers.engram]
-                    table (created by `codex mcp add` itself) — this is a much
-                    narrower risk than the prior milestone's full-TOML-writer question,
-                    since MCP registration for Codex is already confirmed to be a
-                    shell-out, not a file-write
-    └──shares design with──> drift detection's structural comparison (both need the
-                    same "parsed header name/value-reference shape" as their unit of
-                    comparison — build once, use in both features)
+Bounded page ──requires──> ResourceExhausted → named error mapping
+                               (the store layer must catch qdrant client's grpc status and
+                               translate through the existing field=/hint= envelope, not let
+                               Connect's default internal-error mapping apply)
 
-Drift detection + reconcile hand-edits
-    └──requires──> parsing each runtime's own read-probe JSON output into the same
-                    shape the Plan already authors (bounded, per-runtime, NOT a
-                    general third-party config-file parser — keeps the standing
-                    zero-new-dependency / shell-out-only constraint intact)
-    └──requires──> a new non-failure Outcome value ("preserved") distinct from
-                    already-correct/wrote/failed/not-present
-    └──requires──> custom auth headers landing first (or concurrently) — you cannot
-                    correctly classify "differs because of an unreproducible header"
-                    until the header-name generalization exists to even attempt
-                    reproduction
+Operator sweeps (migrate/revert/summarize-missing/spine-review/reindex 256-batch scrolls)
+    ──shares the same root cause as──> Store.List / ListScheduled / Search
+        (all are qdrant.ScrollPoints/Search calls with unbounded per-record payload;
+         fixing the shared scanCap/page-budget mechanism in internal/store fixes all of them
+         without a per-command special case)
 
-Shell completions + man pages
-    └──requires──> NOTHING new for shell completions (already shipped — do not
-                    re-plan this half)
-    └──requires──> cobra/doc (already an indirect dependency, zero new Go deps) for
-                    man-page generation, invoked through the real binary the same
-                    way `engram completion <shell>` already is
-    └──independent-of──> the other three features — no shared code, can land in
-                    any order relative to them
+Cross-spine partial-success (#456) ──independent of──> page-size bounding
+    (different failure class: a *second* call — ListScopes — failing after a *first* call —
+     search/list — already succeeded; fixed by decoupling the two calls' error handling,
+     not by bounding either call's page size)
 
-#560 osRun deadline classification
-    └──independent-of──> all four features above — a correctness fix in
-                    internal/setup/environment.go's subprocess-timeout handling,
-                    isolated from the delivery/auth/drift/docs work
+Bounded provider error body/drain (#347/#457) ──independent of──> Qdrant page bounding
+    (different subsystem — internal/embed's HTTP client — but same design principle:
+     never trust an unbounded downstream response)
+
+Qdrant testcontainer stability (#497) ──blocks──> every regression test this milestone needs
+    ("Done means... a real-Qdrant regression test holding more than 4 MiB of payload" —
+     a flaky testcontainer makes that gate unreliable, so #497 is a prerequisite for
+     proving any of the above fixed, not merely nice-to-have CI hygiene)
 ```
 
-## MVP Recommendation
+### Dependency Notes
 
-Prioritize, in dependency order:
+- **Content cap (A) strengthens the record-count-cap-alone approach:** Milvus's own history is
+  the cautionary tale — a fixed row/topk cap (`16,384`) was not sufficient on its own; Milvus
+  additionally enforces a **byte**-budget quota (`maxOutputSize`, default 100 MiB) precisely
+  because wide rows blow past a row-count-only cap. engram's own schema already accepts this
+  logic elsewhere: `Citation.excerpt` is capped at `max_bytes: 16384` and `StoreDiscoveryRequest.content`
+  at `max_bytes: 65536` — `content` on a plain memory is the one text field left uncapped. A
+  record-count page cap on `ListMemories`/`Search` cannot promise "this page stays under 4 MiB"
+  without either (a) a content ceiling, or (b) per-page running-byte-total accounting during the
+  scroll (more code, no proto change, weaker guarantee under concurrent large writes). Recommend
+  the roadmap treat (A) as effectively required for a *provable* fix, not merely a nice-to-have
+  alongside (B).
+- **(B) offset-vs-cursor is not the load-bearing decision; the cap is.** Every comparable system
+  surveyed keeps offset/`skip`-style paging as a supported, documented option (AIP-158 explicitly
+  allows it) while still enforcing a hard ceiling underneath. The research does not support
+  discarding `limit: 0`/offset paging in the console and CLI to fix #585 — it supports ending the
+  `limit: 0` = "return everything" behavior (the literal AIP-158 anti-pattern) and adding an
+  enforced max regardless of paging mode.
+- **Operator sweeps share the fix, not a parallel one.** `migrate`, `revert`, `summarize-missing`,
+  `spine-review`, and `reindex` all reuse `qdrant.ScrollPoints` with the same unbounded-payload
+  shape as `Store.List`. A phase that lands the byte-budget/record-cap mechanism in
+  `internal/store` once and threads it through every scroll call site avoids five one-off fixes
+  and five sets of regression tests duplicating the same `TestListScopesFullPayloadsOverGRPCLimit`
+  pattern.
 
-1. **Custom auth headers (Category 2)** — smallest, most mechanical change for three of
-   four runtimes (parameter generalization of an already-shipped code path); directly
-   fixes a reported real-world breakage (gotcha `ryr82bf2s2`); and its parsed
-   header-shape is a prerequisite building block for drift detection.
-2. **Drift detection + reconcile (Category 3)** — depends on (1) for header comparison to
-   be meaningful; delivers the milestone's headline promise ("never replaces a
-   registration it did not write").
-3. **Plugin-first delivery (Category 1)** — independent of (1)/(2) but the highest
-   complexity and the one item with a genuine external-capability confidence gap
-   (Codex's plugin CLI maturity); scope Claude Code's plugin path first (HIGH
-   confidence, fully documented, `--json` everywhere) and treat Codex's plugin path as
-   the item most likely to need a live-verification spike before implementation,
-   mirroring how the prior milestone treated opencode's MCP schema uncertainty.
-4. **Man pages (Category 4)** — fully independent, low complexity, no coupling to the
-   other three; safe to parallelize with any of the above. Shell completions require no
-   action.
+## MVP Definition
 
-Defer/verify-first:
-- Whether `codex mcp add` (or `codex plugin add`) exposes any scriptable JSON output —
-  treat Codex's report fidelity as text-only until confirmed otherwise.
-- Whether Codex's custom-header support requires a scoped TOML edit (narrow: one key,
-  one already-existing table) rather than a pure CLI flag — a 10-minute
-  `codex mcp add --help` check against the installed binary resolves this before
-  committing an implementation, exactly as this repo's own `03-RESEARCH.md` precedent
-  did for the original bearer/URL/header syntax across all three native runtimes.
+### Must Ship This Milestone (per PROJECT.md's stated "Done means")
+
+- [ ] Every Qdrant scroll/search call site in `internal/store` (List, ListScheduled, Search k,
+      and the five operator sweeps) enforces a real page/byte ceiling instead of `Limit: 0` — table
+      stakes, closes #585's root cause per every comparable system surveyed.
+- [ ] `ResourceExhausted` from the qdrant client is caught and mapped to the existing
+      `field=<name> hint=<code>` envelope, never left to fall through to Connect `internal` —
+      table stakes, matches the gRPC status-code table's own guidance.
+- [ ] Cross-spine recall (#456) returns already-successful search/list hits even when the
+      follow-up `ListScopes` call fails — independent of the paging fix, ships alongside it.
+- [ ] Embed/summarize HTTP clients bound their error-body read and their drain independently
+      of `http.Client.Timeout` (#347/#457) — table stakes per general HTTP/gRPC hardening
+      guidance.
+- [ ] Stable Qdrant testcontainer (#497) — prerequisite for proving any of the above with a
+      real-Qdrant regression test holding >4 MiB of payload, per the milestone's own "Done means."
+
+### Decide in Discuss-Phase (this research informs, does not decide)
+
+- [ ] **(A) Content size cap** — research leans toward yes, sized in the same family as
+      engram's existing text-field caps (`Citation.excerpt` 16 KiB, discovery `content` 64 KiB),
+      because a record-count-only page cap cannot *guarantee* a byte ceiling without one (see
+      Milvus precedent above). An `ENGRAM_MEMORY_MAX_CONTENT_BYTES` analogue of
+      `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` is the shape already established in this codebase.
+- [ ] **(B) Connect `ListMemories` paging shape** — research supports keeping `limit`/offset as a
+      supported mode (matches AIP-158 and every surveyed system) while ending `limit: 0` = "all"
+      and enforcing a real coerced-down maximum server-side, regardless of which paging mode
+      (`offset`, `page_token` cursor, or unset) the caller uses.
+
+### Explicitly Out of This Milestone
+
+- Any new pagination primitive (GraphQL-style connections, streaming RPCs) — no comparable
+  system's *shape* is the gap here, only its enforcement.
+- Deprecating numeric-offset paging in the console/CLI.
+- The planted embedder provider-routing/failover seed (per PROJECT.md's own "Not in scope").
+
+## Comparable-System Reference Table
+
+| System | Default page/result cap | Max/hard ceiling | Behavior on exceed | Byte-level guard |
+|---|---|---|---|---|
+| **Qdrant** (gRPC client, e.g. grpc-go) | scroll `limit` defaults to 10 in client SDKs; server sets no receive cap itself | grpc-go client default `MaxCallRecvMsgSize` = 4 MiB (4,194,304 bytes) unless overridden | `ResourceExhausted`: "received message larger than max" | REST JSON body capped at 32 MiB (`33554432 bytes`) by default, configurable |
+| **Qdrant** (REST/JSON insert) | — | 32 MiB request body (default) | `400`, "Payload error: JSON payload (...) is larger than allowed" | Same 32 MiB body cap |
+| **Weaviate** | `QUERY_DEFAULTS_LIMIT` = 10 | `QUERY_MAXIMUM_RESULTS` = 100,000 (soft cap on `offset+limit`) | GraphQL error "query maximum results exceeded" (a REST-endpoint variant of this was filed as a bug for returning `500` instead of `4xx`) | None separate from the count cap; `after` cursor exists specifically to bypass it for full scans |
+| **Milvus** | — | `topk`/`nq` hard cap 16,384; `query` `offset+limit` hard cap 65,536; per-RPC input/output cap 64 MB each | `query results exceed the limit size` (rejected, not truncated); tunable `quotaAndLimits.limits.maxOutputSize` (default 100 MiB, "definitely don't recommend higher than 10 GB") | Yes — `maxOutputSize` is an explicit **byte** budget, independent of the row-count cap |
+| **Google AIP-158 (standard, not a product)** | API-documented default (example: 50) | API-documented max (example: 1000); oversized `page_size` **coerced down**, not rejected (contested — see aip-dev issue #1428 proposing rejection instead) | Negative `page_size` → `INVALID_ARGUMENT`; end of collection signaled only by an empty `next_page_token` | Not addressed directly — AIP-158 is a shape standard, not a resource-limit standard |
+| **mem0** (v3 API) | `page_size` default 100 | `page_size` max 200; `top_k` (search) 1–1000, default 10 | Not documented as erroring — page/page_size are validated query params with min/max | Not documented |
+| **Zep** | `lastn` (message count) bounds session-memory recall by recency, not a byte cap | Client-side `limit`/`cursor` (sessions list) — server max undocumented in surveyed pages | Not documented | Not documented — recency-bounding (`lastn`) is Zep's substitute for a byte cap on the hot "get memory" path |
+| **engram (today, pre-milestone)** | `scanCap` = 1000 records (List's internal aggregate scan); `Limit: 0` on `ListMemoriesRequest` = "all" | None enforced on per-record `content` size or total page bytes | Opaque Connect `internal` / HTTP 500 (the bug this milestone fixes) | None — `content` has no cap; `summary` capped at `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` (512 B default) |
 
 ## Sources
 
-**Primary vendor docs (HIGH confidence):**
-- code.claude.com/docs/en/plugins-reference, /discover-plugins — full `claude plugin`
-  CLI syntax (install/uninstall/update/list/enable/disable, `--json` v2.1.268+,
-  `--scope`, version pinning via `plugin.json`/marketplace-entry `version`,
-  marketplace add/list/update/remove, refresh-before-lookup semantics, security
-  warning language) — fetched 2026-09-13
-- litellm.ai/docs/mcp, /docs/mcp_oauth, /docs/auth_overview,
-  github.com/BerriAI/litellm PR #12460 — `x-litellm-api-key` header shape, the exact
-  gateway pattern this milestone must reproduce, and `claude mcp add --header` usage
-  against it
-- developers.openai.com/codex/mcp (via redirect to learn.chatgpt.com/docs/plugins for
-  the plugins page) — Codex TOML `http_headers`/`env_http_headers`/`http_headers_helper`
-  schema, `~/.codex/config.toml` vs. `.codex/config.toml` (trusted-projects-only) scoping
-- opencode.ai/docs/mcp-servers/, opencode.ai/docs/config/ — `headers`/`{env:VAR}`
-  interpolation, `oauth: false` for API-key auth, KEY=VALUE `--header` shape
-  (independently corroborates the shipped `internal/setup/opencode.go` comment)
-- Homebrew Cask Cookbook (docs.brew.sh/Cask-Cookbook),
-  github.com/Homebrew/brew PR #21781/#21293 — `generate_completions_from_executable`
-  DSL and its rejected-by-this-repo swallowed-failure behavior
-- pkg.go.dev/github.com/spf13/cobra/doc — `GenManTree`/`GenMarkdownTree` API and the
-  hyphenated-command-name caveat
-
-**Primary source code (HIGH confidence, this repository):**
-- `internal/setup/claudecode.go`, `codex.go`, `opencode.go`, `generic.go` — shipped
-  bearer-header invocations per runtime, read directly rather than inferred
-- `cmd/engram/setup.go` — outcome vocabulary, exit taxonomy, Registration/Skills facet
-  aggregation, `registerDestructive` preview/apply gate
-- `.goreleaser.yaml`, `cmd/engram/releaseconfig_test.go` — the actual shipped
-  completions mechanism (hand-rolled, not the declarative Homebrew DSL), which
-  corrects PROJECT.md's own framing of this milestone item
-- `docs-site/src/content/docs/guides/agent-setup.md` — shipped outcome-vocabulary
-  table (`not-present`/`would-write`/`already-correct`/`wrote`/`failed`) this research
-  extends with a proposed `preserved` value
-
-**Primary source, in-flight (MEDIUM confidence — not yet a stable release):**
-- github.com/openai/codex/pull/21396 — `codex plugin`/`codex plugin marketplace`
-  subcommand definitions (add/list/remove/upgrade); no `--json` flag found
-- github.com/openai/codex/issues/5180 — open request for custom-header support on
-  streamable-HTTP MCP servers via the CLI, evidence that CLI-level header support is
-  newer/less certain than the TOML schema itself
-
-**Third-party/community (MEDIUM confidence, corroborating only):**
-- Prior-art convergence on the three-way drift classification (identical /
-  reproducible-diff / non-reproducible): spacelift.io and scalr.com Terraform
-  drift-detection guides, docs.ansible.com check-mode/diff-mode docs,
-  pre-commit.com + `pre_commit/commands/install_uninstall.py`'s "migration mode"
-  (all carried forward from the prior milestone's FEATURES.md, re-applied here to the
-  reconcile-hand-edits requirement specifically)
-- codex.danielvaughan.com (2026-04 to 2026-06 posts) — corroborating detail on Codex
-  plugin cache paths (`~/.codex/plugins/cache/...`) and marketplace commands; treated
-  as MEDIUM since it is a single unofficial blog, cross-checked against the PR source
-  above rather than trusted alone
+- Qdrant gRPC message-size behavior: [qdrant/migration PR #66](https://github.com/qdrant/migration/pull/66), [qdrant/migration issue #30](https://github.com/qdrant/migration/issues/30) — both confirm grpc-go's default 4 MiB (`4194304` byte) client receive cap and that Qdrant's own server disables the limit internally.
+- Qdrant REST JSON payload cap: [qdrant/qdrant issue #2537](https://github.com/qdrant/qdrant/issues/2537), [qdrant-client issue #463](https://github.com/qdrant/qdrant-client/issues/463) — both show the literal `"limit: 33554432 bytes"` (32 MiB) error text.
+- Qdrant capacity/payload docs: [Qdrant Capacity Planning](https://qdrant.tech/documentation/capacity-planning/), [Qdrant Payload docs](https://qdrant.tech/documentation/manage-data/payload/) — default `hits` limit of 10, payload sizing guidance.
+- Qdrant client scroll defaults: [qdrant-client `qdrant_client.py`](https://github.com/qdrant/qdrant-client/blob/cd5eb259/qdrant_client/qdrant_client.py) — `limit: int = 10` default, offset described as point-ID continuation (not a skip count).
+- Qdrant configurable recv-size precedent: [Bifrost Qdrant integration commit](https://github.com/maximhq/bifrost/commit/78778fb0bd009184ab946e4feee75393108ea946) — real-world example of a 64 MiB `max_recv_msg_size_mb` knob, i.e. "raise the ceiling" as a config option, not a fix.
+- Weaviate pagination: [Weaviate GraphQL Additional operators](https://docs.weaviate.io/weaviate/api/graphql/additional-operators), [Weaviate Default cluster settings](https://docs.weaviate.io/cloud/manage-clusters/default-settings), [Weaviate Search basics](https://docs.weaviate.io/weaviate/search/basics) — `QUERY_DEFAULTS_LIMIT`/`QUERY_MAXIMUM_RESULTS` values and cursor (`after`) design.
+- Weaviate exceed-limit behavior: [weaviate/weaviate issue #2929](https://github.com/weaviate/weaviate/issues/2929) — "query maximum results exceeded" error and the REST-endpoint 500-vs-4xx follow-up bug report; [weaviate/weaviate issue #2302](https://github.com/weaviate/weaviate/issues/2302) — cursor design rationale.
+- Milvus limits: [Milvus Limitations docs](https://milvus.io/docs/limitations.md) — per-RPC 64 MB input/output caps, `topk`/`nq` 16,384 cap.
+- Milvus query-window and maxOutputSize: [milvus-io/milvus issue #39480](https://github.com/milvus-io/milvus/issues/39480) (offset+limit 65,536 window), [milvus-io/milvus issue #44578](https://github.com/milvus-io/milvus/issues/44578) (`quotaAndLimits.limits.maxOutputSize`, default 100 MiB), [milvus-io/milvus `search_reduce_util.go`](https://github.com/milvus-io/milvus/blob/5def5ced/internal/proxy/search_reduce_util.go) (byte-budget enforcement in code), [milvus-sdk-java issue #1287](https://github.com/milvus-io/milvus-sdk-java/issues/1287) (iterator pattern for full scans).
+- Google AIP-158 (pagination standard): [google.aip.dev/158](https://google.aip.dev/158), [aip-dev/google.aip.dev source](https://github.com/aip-dev/google.aip.dev/blob/master/aip/general/0158.md), [AIP-132 List method](https://google.aip.dev/132) — page_size/page_token/next_page_token contract, coercion-not-rejection default (contested: [aip-dev issue #1428](https://github.com/aip-dev/google.aip.dev/issues/1428) proposes rejecting oversized `page_size` instead).
+- mem0 pagination: [mem0 Get Memories API reference](https://docs.mem0.ai/api-reference/memory/get-memories), [mem0 v2→v3 migration guide](https://docs.mem0.ai/migration/platform-v2-to-v3), [mem0 Search docs](https://docs.mem0.ai/core-concepts/memory-operations/search) — `page`/`page_size` envelope, `top_k` 1–1000 bound.
+- Zep pagination/recency-bounding: [Zep `list_sessions` client reference](https://getzep.github.io/zep-python/memory/client.html), [Zep Sessions guide](https://help.getzep.com/v2/sessions.mdx), [Zep Get Session Memory reference](https://help.getzep.com/v2/sdk-reference/memory/get.mdx) — `limit`/`cursor` and `page_size`/`page_number` shapes; `lastn` as a recency-bound substitute for a byte cap.
+- gRPC size-limit and pagination hardening guidance: [grpc.io Error handling guide](https://grpc.io/docs/guides/error/) (status-code table naming `RESOURCE_EXHAUSTED`), [grpc/grpc `doc/statuscodes.md`](https://github.com/grpc/grpc/blob/master/doc/statuscodes.md), [grpc-go issue #7024](https://github.com/grpc/grpc-go/issues/7024) (ResourceExhausted detail gap), [oneuptime.com gRPC "Message Too Large" guide](https://oneuptime.com/blog/post/2026-01-24-fix-message-too-large-errors-grpc/view), [statuscodefyi.com RESOURCE_EXHAUSTED scenario](https://statuscodefyi.com/scenarios/grpc/grpc-resource-exhausted-message-size/) — clamp-vs-reject-vs-page tradeoffs, pagination/streaming as the "correct long-term fix" vs raising limits as a stopgap.
+- engram's own precedent for text-field size caps: `proto/engram/v1/engram.proto` (`Citation.excerpt` `max_bytes: 16384`, `StoreDiscoveryRequest.content` `max_bytes: 65536`), `internal/config/validate.go` (`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`), `internal/store/store.go` (`scanCap = 1000`, gRPC 4 MiB overflow comment at `store.go:1670-1672`).
 
 ---
-*Feature research for: engram `engram setup` v2 — plugin delivery, custom auth headers,
-drift detection, completions/manpages*
-*Researched: 2026-09-13*
+*Feature research for: engram — Bounded Reads milestone (2026-09-18.01)*
+*Researched: 2026-09-18*

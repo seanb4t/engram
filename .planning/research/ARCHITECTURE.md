@@ -1,211 +1,213 @@
-# Architecture Research: `engram setup` v2 — Plugin Delivery, Custom Headers, Drift Detection, Completions
+# Architecture Research
 
-**Domain:** Go CLI subcommand extension — widening an already-shipped `internal/setup` writer abstraction, never replacing it.
-**Milestone:** `2026-09-13.01` — Setup v2.
-**Researched:** 2026-09-13
-**Confidence:** HIGH for structural integration points (every claim below cites a real `file:line` read in this pass). MEDIUM for exact third-party CLI syntax not yet live-verified this milestone (`claude plugin`, `codex plugin`, codex's arbitrary-header capability) — flagged explicitly, never guessed, following this repo's own established discipline (see prior `.planning/research/ARCHITECTURE.md`, §"Sources").
+**Domain:** Go + Qdrant memory server — bounded-read integration for milestone 2026-09-18.01 "Bounded Reads"
+**Researched:** 2026-09-18
+**Confidence:** HIGH (all findings read directly from source at the commit on `feat/2026-09-18.01`, HEAD `ec79d4bd`; GitHub issue bodies for #585/#456/#347/#457/#497 read verbatim via `gh issue view`)
 
-## 0. What already exists (read first, do not rebuild)
+## System Overview
 
-`internal/setup` (package doc, `internal/setup/plan.go:1-17`) already ships the whole writer abstraction the prior milestone's research proposed: a `Runtime` interface (`internal/setup/runtime.go:38-54`) with four registered implementations — `ClaudeCode`, `Codex`, `OpenCode`, `Generic` (`internal/setup/runtime.go:70`) — a five-value `Outcome` enum (`internal/setup/plan.go:32-55`), a `Plan`/`Action`/`Result` triple (`internal/setup/plan.go:93-252`), a shared `execute()` executor that is the ONLY place any process gets run (`internal/setup/apply.go:213-369`), and a `SkillFormat`/`SkillTarget` pair (`internal/setup/plan.go:57-91`) that already threads skills delivery through the same Plan a runtime authors for MCP registration. `cmd/engram/setup.go` is the thin cobra entrypoint: it resolves flags into `setup.Options` (`setupResolve`, `cmd/engram/setup.go:318-368`), builds one report row per runtime via `setup.Preview`/`setup.Apply` (`setupBuildRows`/`setupApplyRun`, `cmd/engram/setup.go:283-289,511-546`), and folds each runtime's registration facet with its skills facet through `setup.AggregateOutcome` (`internal/setup/aggregate.go:43-56`) into ONE outcome per row (`setupRuntimeRowFromResult`, `cmd/engram/setup.go:437-454`). `internal/setupgen` already generates the `/engram-setup` fallback/delegation tables FROM `setup.ClaudeCode.Plan` (`internal/setupgen/setupgen.go:136-179`), diffed against the checked-in `skill/engram/commands/engram-setup.md` region by a CI gate (`Check`/`compare`, same file lines 136-163). None of this is new — it is the substrate every feature below extends.
-
-Everything this milestone adds is a widening of THIS substrate, not a parallel structure. The governing discipline already encoded in the package (worth restating because every recommendation below depends on it): every runtime-specific string is **authored in that runtime's own file** (`internal/setup/plan.go:11-16`'s package doc, "AUTHORED HERE and nowhere else"); the shared executor never special-cases a runtime by name; an unrecognized enum value is a **hard error**, never a silent default (`setup.SkillFormat`'s doc comment, `plan.go:57-66`, and `cmd/engram/setup.go:54-64`'s `setupSkillsTarget` switch, which has NO `default:` fallback case — an authoring bug surfaces as an error naming the unknown value).
-
-## 1. Plugin-first delivery — where it fits
-
-### It is not a new Action kind
-
-`Action` (`internal/setup/plan.go:93-116`) is already a generic `{Args []string; Tolerant bool; Description string}` — argv, a tolerance flag, and a label. Claude Code's Plan already authors TWO actions in sequence today (`claudeCodeRemoveAction` then `mcp add`, `internal/setup/claudecode.go:62-172`), executed by the same shared loop with no per-action type discrimination (`apply.go:310-345`). A `claude plugin marketplace add ...` / `claude plugin install|update engram@...` step is **structurally identical** to the existing tolerant-remove-then-fatal-add shape — it is one or two more `Action` values appended to the SAME `Plan.Actions` slice, in `claudecode.go`'s own `Plan()`, authored alongside the `mcp add` action it already authors. **No new field on `Action`, no new "kind" enum, no change to `execute()`** — the shared executor already runs an arbitrary ordered sequence of tolerant/fatal argv actions and reports the first fatal failure while preserving prior tolerant-step notes (`apply.go:309-345`). This is the cheapest and most consistent place to land plugin management, and it is the one place the package's own AUTHORED-HERE discipline already expects new runtime behavior to appear.
-
-Two real unknowns to verify live before locking the exact `Action.Args`, flagged rather than guessed (mirroring the prior research pass's treatment of unverified CLI surfaces):
-- Whether `claude plugin install`/`codex plugin` refuse-on-already-installed (like `claude mcp add`, `claudecode.go:33-39`) or silently overwrite/update (like `codex mcp add`, `codex.go:39-41`) — this decides whether the plugin step needs its own tolerant-then-fatal pair or a single idempotent call.
-- Whether `codex plugin` exists at all as a stable, documented surface (the milestone context asserts it does; this was not independently re-verified in this pass — treat as MEDIUM confidence pending a live check, same standard the prior research applied to codex/opencode's `mcp add` surface before it was live-verified).
-
-### The skills-skip signal: extend `SkillFormat`, not `Outcome`
-
-The milestone requires that when the plugin path is used, `internal/skills.Install` must **never run** for that runtime — the plugin already carries `skill/engram/skills/*` byte-identical (vendored via `task skills:vendor` against the same source tree, per `PROJECT.md`'s "What shipped" bullet on skills distribution). Today `cmd/engram/setup.go:106-158`'s `setupApplySkillsFacet` unconditionally calls `skills.Inventory()`/`skills.Install()` for every present runtime whose `SkillTarget.Format` is not `skills.FormatNone`. The correct extension point is a **new, fourth `SkillFormat` value** — e.g. `SkillFormatPlugin` — added to `internal/setup/plan.go:69-79`'s const block, alongside `SkillFormatNone`/`SkillFormatNative`/`SkillFormatAgentsMD`. `cmd/engram/setup.go:54-64`'s `setupSkillsTarget` switch gets one more `case`, mapping `SkillFormatPlugin` to a **new no-op path that never calls `skills.Install`** at all (structurally the same as `FormatNone`'s already-no-op branch in `internal/skills/install.go:72-74`, but semantically distinct — "no destination" vs. "someone else's job" — so it must NOT collapse to `skills.FormatNone` itself, or a future reader loses the reason). This satisfies "no default case ever maps an unrecognized value to a destination nobody authored" (the existing comment at `cmd/engram/setup.go:47-53`) by construction: `SkillFormatPlugin` is a real, named, explicitly-handled value, not a fallback.
-
-`setup.SkillsOutcome` (`internal/setup/aggregate.go:78-95`) already special-cases `format == SkillFormatNone` as a permanent `OutcomeWouldWrite`. It needs a parallel arm for `SkillFormatPlugin` — but with a DIFFERENT verdict: a plugin-delivered runtime's skills facet should read as `OutcomeAlreadyCorrect`-shaped once the plugin action itself succeeds (there is nothing further to converge on the skills side — the plugin call already did the whole job), not `OutcomeWouldWrite` forever. The cleanest reading: **fold the plugin's own install/update Outcome directly into what was previously the "skills" facet slot** — i.e., for a plugin-delivery runtime, `row.Skills` (or a renamed/adjacent field) reports the PLUGIN action's own classified outcome (would-write / wrote / already-correct / failed, exactly as computed by the shared executor for that action), not a separate `skills.Install` report. This keeps `AggregateOutcome`'s existing two-facet fold (`cmd/engram/setup.go:451`, `AggregateOutcome(registrationOutcome, skillsOutcome)`) working **unchanged** — the "skills facet" is just sourced differently depending on `SkillFormat`, and the fold itself needs no new arity. (A three-facet fold — registration + plugin + skills — is only needed if a future runtime needs BOTH a plugin AND a filesystem skills write simultaneously; nothing in this milestone requires that, so do not build it speculatively.)
-
-### Report rows: additive fields only
-
-`setupRuntimeRow` (`cmd/engram/setup.go:235-254`) already carries seven skills-facet fields (`Skills`, `SkillsDest`, `SkillsIndex`, `SkillsDigest`, `SkillsBytes`, `SkillsContent`) as plain `string` fields with `omitempty` JSON tags — the exact shape a plugin facet needs. Add parallel fields, e.g. `Plugin string \`json:"plugin,omitempty"\`` (the plugin action's classified outcome, reusing the `Outcome` string vocabulary verbatim — no new type) and optionally `PluginVersion`/`PluginMarketplace` detail strings for `--output json`. This is **purely additive to the JSON schema** — every existing field stays present and unchanged, satisfying "extend without breaking the shipped vocabulary" literally: an old consumer parsing today's JSON still finds every field it expects; a new consumer additionally finds `plugin`. No renderer code is needed for any of this — `renderOperator`'s `viewFields` walks the marshaled struct generically (the same "falls out for free" property the prior milestone's research already established and this milestone's own code comments restate, `cmd/engram/setup.go:224-234`).
-
-### Interaction with drift detection's probe model
-
-Plugin state needs its own read-verb for the shared executor's before/after byte-compare (D-08, `apply.go:107-119,363-367`) to classify `wrote` vs. `already-correct` honestly for the plugin facet, exactly as `Plan.Probe` already does for MCP registration. Today `Plan.Probe` is a single `[]string` (`plan.go:136-147`) — ONE probe per runtime. Once a runtime plans BOTH an MCP-registration probe and a plugin-state probe, the field needs to widen. Rather than inventing a second flat field, generalize to a **small, named slice** at this point — see §4, which needs the identical generalization for header/URL drift comparison. Do this widening ONCE, for both features together, not twice.
-
-## 2. `setupgen` and the generated `/engram-setup` command
-
-`internal/setupgen/setupgen.go:24-46`'s `PlanFunc`/`Case`/`Cases()` already drive four synthetic `setup.Options` (oauth, oauth-client, bearer, none) through `setup.ClaudeCode.Plan` and render two tables: a "Claude Code fallback registration" table and a "Delegation preview" table (`Render`, lines 50-91). The fallback table is built by filtering `plan.Actions` for the ONE action shaped `{"claude","mcp","add",...}` (lines 78-86) and **hard-failing if it does not find EXACTLY ONE such action** (`if len(adds) != 1 { return "", fmt.Errorf(...) }`). Once `claudecode.go`'s `Plan()` starts appending plugin-management actions to the SAME `Plan.Actions` slice (§1), this filter still finds exactly one `mcp add` action among several — **it will not break by itself**. But it will also not RENDER the new plugin actions, which is precisely the gap the milestone's own framing warns about ("the CI drift gate will fail otherwise") — not because the existing gate breaks mechanically, but because the generated prose would then be **incomplete relative to what `--apply` now does**, which is exactly the class of drift `setupgen` exists to prevent (see the prior milestone's research, §3, "Two-paths-must-agree").
-
-Concrete change to `internal/setupgen/setupgen.go`:
-- Add a second filter loop alongside the existing `adds` loop (lines 78-83), matching actions shaped `{"claude","plugin",...}`, and assert a count invariant appropriate to however many plugin actions `Plan()` ends up authoring (one or two, per §1's open question).
-- Add a third rendered section (e.g. `### Claude Code plugin installation`) to `Render`'s output (after line 90's `fallback.String()`), using the same `commandCell` escaping helper (lines 93-104) — no new escaping logic needed.
-- `readRegion`/`compare`/`Check`/`Write` (lines 106-179) are **generic over the whole rendered blob** — they byte-compare the ENTIRE region against a fresh `Render()` call and do not know or care how many tables are inside it. **No change needed to the drift-detection mechanism itself** — only to what `Render()` produces. Once `Render()`'s shape changes, the checked-in `skill/engram/commands/engram-setup.md` region (regenerated via `task surfaces:gen` per the prior milestone's established workflow) is what must be regenerated and committed in the SAME change — this is the literal mechanism by which "the CI drift gate will fail otherwise" cashes out: it is a feature of the design working as intended, not a defect to route around.
-- `Cases()` (lines 34-46) does not need a new case for plugin delivery itself — plugin actions are auth-mode-independent (every one of the four synthetic auth options should author the identical plugin-management actions), so the SAME four cases already exercise it. `Cases()` DOES need a new case once custom headers (§3) introduce a mode distinct from `bearer` that the fallback table should document — add a fifth `Case` entry there, following the exact pattern the existing four already use (lines 36-44).
-
-## 3. Custom headers as "bearer generalized," not a new top-level mode
-
-### Current shape
-
-`Options` (`internal/setup/runtime.go:18-30`) carries a bare `Auth string` (one of `oauth|oauth-client|bearer|none`, validated by `config.ValidateSetupAuth`, `cmd/engram/setup.go:330-341`) plus `TokenFile string`, whose ONLY effect today is (a) a literal-vs-reference choice for the `generic` pseudo-runtime's placeholder text (`bearerProvenance`, `internal/setup/plan.go:254-277`) and (b) a `token_file=ignored` marker on every native runtime's report row (`tokenFileIgnoredMarker`, `internal/setup/apply.go:41-52,266-281`). Every native runtime's `bearer` case hard-codes ONE header: `Authorization: Bearer ${ENGRAM_TOKEN}` in claude-code's own dialect (`claudecode.go:161-163`), `--bearer-token-env-var ENGRAM_TOKEN` in codex's OWN flag (`codex.go:106-111` — codex has NO generic `--header` flag at all, only this one fixed shape), and `Authorization=Bearer {env:ENGRAM_TOKEN}` in opencode's `KEY=VALUE` dialect (`opencode.go:126-135`).
-
-### The gap this milestone must close
-
-A gateway header like LiteLLM's `x-litellm-api-key` cannot be named today — `bearer` is a single, fixed header name AND value shape, wired per-runtime, with no way to supply an arbitrary header. The fix must (1) keep the secret-as-env-var-reference-only invariant every runtime's bearer path already honors, (2) not change `--auth`'s four existing accepted values or their help text, and (3) explicitly account for codex's narrower CLI (no generic `--header`, only the one fixed `--bearer-token-env-var` flag).
-
-### Recommended model
-
-Add a new field, `Options.Headers []HeaderSpec`, where `HeaderSpec{Name string; EnvVar string}` — `Name` is the literal HTTP header name (`Authorization`, `x-litellm-api-key`, ...), `EnvVar` is an environment-variable NAME (never dereferenced by engram — no `os.Getenv` call anywhere in this package today except opencode's unrelated `XDG_CONFIG_HOME` read, `opencode.go:154-163`, and this must stay that way). This is additive to `Options` — nothing existing is removed or renamed.
-
-- **`bearer` stays byte-identical.** Do not collapse `bearer` into the new header vocabulary at the CLI-flag or help-text layer — `setupResolve` (`cmd/engram/setup.go:318-368`) keeps accepting exactly `oauth|oauth-client|bearer|none` with unchanged validation and unchanged `setupLongDescription` prose (`cmd/engram/setup.go:562-611`), satisfying "without breaking existing tests and help text" literally. Internally, `bearer`'s existing per-runtime `case "bearer":` arms can OPTIONALLY be rewritten to synthesize `[]HeaderSpec{{Name: "Authorization", EnvVar: "ENGRAM_TOKEN"}}` and call a new shared per-runtime header-rendering helper — but this is a refactor for code reuse, not a behavior change, and is not required for correctness; the safer, lower-risk path is to leave every existing `bearer` arm untouched and add headers as a genuinely parallel case.
-- **A new `--auth header` mode** (exact name a planning decision — `header`, `custom-header`, and `bearer-custom` are all defensible) requires a new, repeatable `--header NAME=ENVVAR` flag (cobra `StringArray`, mirroring the existing `--client-id` requiredness-gating pattern at `cmd/engram/setup.go:343-349`: required when `--auth header`, rejected for every other mode). Each runtime's `Plan()` gets one more `case "header":` arm:
-  - **claude-code**: repeat `--header "Name: ${ENVVAR}"` per `HeaderSpec` — its `--header` flag already accepts arbitrary text (live-verified for the bearer form, `claudecode.go:82-92`), so this generalizes directly.
-  - **opencode**: repeat `--header "Name={env:ENVVAR}"` per `HeaderSpec` — same generalization, its `KEY=VALUE` dialect already supports any key (`opencode.go:44-60`).
-  - **codex**: **a real capability gap, not a rendering detail.** Codex's only header-shaped flag is `--bearer-token-env-var`, fixed to `Authorization: Bearer <value>` (`codex.go:34-41`). A `--auth header` request naming any header OTHER than exactly `{Authorization, <one EnvVar>}` has **no expressible form on codex's CLI today** and must return `ErrAuthModeUnsupported` (the same sentinel opencode already returns for `oauth-client`, `opencode.go:35-41`) — reported as an explicit per-runtime failed row naming the mode, never silently dropped or downgraded. A request naming exactly one `Authorization` header CAN degrade to the existing `--bearer-token-env-var` call. This asymmetry is exactly the kind of "states plainly which are unsupported for that runtime" case `REQ-register-auth-modes` already covers for opencode/oauth-client, and it needs live re-verification against `codex mcp add --help` at implementation time (flagged, not guessed) before this arm is written.
-  - **generic**: trivial — `genericMCPServer.Headers` is already `map[string]string` (`generic.go:58-62`); add every `HeaderSpec` to it, reusing `bearerProvenance`'s existing literal-vs-reference choice per entry (`generic.go:99-115` already documents this exact tradeoff for the one bearer header).
-- **No new `Outcome` value.** Header authoring only changes what argv/config an action carries — it does not change the five-value classification vocabulary at all.
-- **`Options.TokenFile`'s existing scope stays intact** — it remains meaningful only for `generic` and only for the pre-existing `bearer`/single-header case; it is not generalized to apply per-`HeaderSpec` (a multi-header set with per-header provenance files is out of scope unless a concrete need surfaces).
-
-## 4. Drift detection + reconcile hand-edits — the hardest, riskiest slice
-
-### Why today's probe model cannot answer this question
-
-`Plan.Probe` (`plan.go:136-147`) and the shared executor's convergence check (`apply.go:213-369`, esp. 355-367) are **deliberately content-blind**: two raw reads are byte-compared, and the ONLY question answered is "did anything change" — never "what changed" or "should this difference be preserved." This is not an oversight; it is a load-bearing design choice stated repeatedly in the package's own comments (`apply.go:29-35`, "sanitizeViewValue strips only C0 controls... never string-matched to decide an Outcome"; `opencode.go:79-93`, an EXPLICIT prior decision to never parse `mcp list`'s table output because "that would buy a dependency on a third-party output format this design already rejected"). Real drift detection — "compare the full existing registration (URL, auth shape, header set) against what it would write" — requires INTERPRETING probe output, which is a genuinely new capability this package does not have anywhere today, for any runtime.
-
-### What each runtime's probe actually gives you
-
-| Runtime | Probe (`plan.go` field) | Format | Parseable safely? |
-|---|---|---|---|
-| claude-code | `claude mcp get engram` (`claudecode.go:94-100,134,152,166`) | Human-readable block (Type/URL/Headers/Scope) | Structured enough to line-scan, but format is third-party and undocumented as a stable contract |
-| codex | `codex mcp get engram --json` (`codex.go:44-45,84`) | **JSON** | Yes — `encoding/json`, stdlib, zero new dependency; the best-case runtime |
-| opencode | `opencode mcp list` (`opencode.go:62-93`) | Box-drawing human table, lists EVERY server, dials the network for each | **No** — the file's own doc comment (lines 68-81) already forbids parsing this; treating it as parseable would silently reopen a rejected decision |
-| generic | none (`generic.go:76-88`, zero Actions, zero Probe) | N/A | N/A — nothing to observe; drift detection is meaningless for a pseudo-runtime that never writes |
-
-This table is the crux of part (d): **the executor "only sees argv + stdout," and one of three real runtimes has already had output-parsing explicitly rejected for it.** Real drift detection cannot be uniform. It must be a per-runtime, opt-in capability that degrades safely (falls back to today's raw byte-compare, which already never falsely claims convergence) rather than a shared parser the executor applies blindly.
-
-### Recommended shape
-
-1. **A normalized `ObservedRegistration` struct**, new file `internal/setup/observe.go`:
-   ```go
-   type ObservedRegistration struct {
-       Parseable bool              // false => caller MUST fall back to raw byte-compare, never guess
-       URL       string
-       Headers   map[string]string // header NAME -> value AS ECHOED (still the literal "${ENGRAM_TOKEN}"-shaped reference text — mirrors D-05's already-observed behavior that a runtime's own `get`/`list` never resolves the secret)
-       Raw       string            // always retained for Reason/Notes and as the fallback compare basis
-   }
-   ```
-2. **One parser per runtime, authored in that runtime's own file** — `parseClaudeCodeRegistration` in `claudecode.go`, `parseCodexRegistration` (via `encoding/json`, the easy case) in `codex.go` — mirroring the existing AUTHORED-HERE discipline for `Plan()`/`Probe` (`plan.go:11-16`). **opencode authors none** — its probe stays raw-compare-only, exactly as today, and this must be a conscious, documented omission, not a gap discovered later.
-3. **One comparison function**, e.g. `compareRegistration(observed ObservedRegistration, plan Plan, opts Options) DriftReport`, living in ONE place (not scattered per-runtime) so the **"cannot reproduce → preserve" decision is centrally auditable** — the same discipline `AggregateOutcome`'s single declared `precedenceOrder` (`aggregate.go:10-16`) already models for outcome-folding. A field engram cannot prove wrong (an operator-added header it doesn't recognize, or ANY field on a non-`Parseable` runtime) classifies as **preserved**, never as drift.
-4. **A new `Outcome` value is a real vocabulary widening, not a free addition.** `precedenceOrder` (`aggregate.go:10-16`), `isRecognizedOutcome`'s implicit exhaustiveness (same file), and `Classify`'s exhaustive switch (`exit.go:48-74`) all hard-code today's five values and explicitly treat anything unrecognized as failure. Adding `OutcomePreserved` means touching all three sites in one commit, plus `setupApplySummary`'s cmd/engram-side tally (`cmd/engram/setup.go:479-496`, currently `wrote`/`already`/`failed` only). Recommend `OutcomePreserved` sit in the precedence table between `OutcomeAlreadyCorrect` and `OutcomeWouldWrite` (a preserved hand-edit means "correctly wrote nothing," closer in spirit to already-correct than to a bare preview). This is the one part of the whole milestone that widens the shipped Outcome vocabulary — call it out explicitly in planning, unlike every other addition above, which stays purely additive to structs/fields.
-5. **Reconciliation (actually merging a preserved header into the write) requires a genuinely new hook**, because `execute()` today runs probe #1 and then the write action UNCONDITIONALLY, never branching on probe content by design (`apply.go`'s repeated "report rather than diagnose" framing). Recommend an OPTIONAL, explicitly-named second-stage authoring step — e.g. `Runtime` gains an optional `Reconcile(observed ObservedRegistration, opts Options) (Plan, error)` a runtime may implement (an interface-assertion pattern exactly like `optInOnlyRuntime`, `runtime.go:72-84`) — called after probe #1, before the write, to let a runtime rewrite ITS OWN actions to append a preserved element. This is new surface, not a repurposing of D-11's failure-reporting discipline, and should be scoped and reviewed as its own decision, not folded silently into the executor's existing failure path.
-6. **Given the size and risk here, split delivery**: ship **read-only drift reporting** first (report what differs and what would be preserved, `--output json` only, zero behavior change to what `--apply` writes) as an independently shippable slice; defer **actual write-time reconciliation** (the `Reconcile` hook, header-merging into the live write) as a following slice — matching this repo's own pattern of shipping the legible, non-destructive half of a feature before the mutating half (see the prior milestone's `spine-review scan`→`consolidate` sequencing, `PROJECT.md` v0.13.x section).
-
-## 5. Shell completions + manpages — completions are already shipped
-
-**Correction to the milestone framing:** shell completions are **not new work**. Cobra auto-registers `completion` (never disabled — no `CompletionOptions.DisableDefaultCmd` anywhere in `cmd/engram`, confirmed by search), and `cmd/engram/cmdwalk.go:23`'s `commandWalkSkip` predicate (`cmd.Hidden || cmd.Name() == "help" || cmd.Name() == "completion"`) explicitly excludes it from `buildCatalog`'s walk — proving it already exists as a live command deliberately kept out of the classified surface. More importantly, `.goreleaser.yaml`'s `homebrew_casks.hooks.post.install` **already calls it**: `completion = system_command binary, args: ["completion", shell]` for bash/zsh/fish, writing all three completion files, with a matching `hooks.post.uninstall` cleanup — shipped in the PRIOR milestone's Phase 1 (`.planning/milestones/2026-08-23.01-phases/01-version-homebrew-distribution/01-CONTEXT.md` D-09/D-10, `01-SUMMARY.md`). `PROJECT.md`'s "Carried tech debt" line bundling "shell completions / man pages via the cask" as still-open is imprecise — **only manpages remain.** Flag this to the roadmapper as a scope correction before phases are cut.
-
-### Manpages — the real remaining work
-
-`cobra/doc`'s `GenManTree` is NOT auto-registered like `completion` — it needs an explicit call site, and it is confirmed already an indirect dependency (per the milestone's own framing), so promoting it to direct in `go.mod` is metadata-only, identical in kind to the prior milestone's `go.yaml.in/yaml/v3` promotion — **not a new dependency**.
-
-Recommended integration, following the completions precedent exactly:
-- A new **hidden** cobra command, e.g. `engram man <output-dir>` (`cmd.Hidden = true`), whose `RunE` calls `doc.GenManTree(rootCmd, &doc.GenManHeader{...}, outputDir)`. Because it is `Hidden`, `cmdwalk.go:23`'s existing skip predicate excludes it from `buildCatalog`'s walk **with zero changes to `cmdwalk.go` or `internal/surfaces/toolclass.go`** — no golden regen, no classification row required, mirroring exactly how `completion` needed none.
-- Extend `.goreleaser.yaml`'s `hooks.post.install` with a fourth step: `system_command binary, args: ["man", tmpdir]` then copy each generated roff file to `#{HOMEBREW_PREFIX}/share/man/man1/`, with a matching `hooks.post.uninstall` `rm_f` sweep — the SAME hand-written, `must_succeed: true` pattern already used for the version gate and completions (`01-CONTEXT.md` D-09/D-10), never Homebrew's `generate_completions_from_executable`-style rescuing helper (already explicitly rejected in this codebase, and there is no cask-native `manpages:` DSL field to reach for instead).
-- `cmd/engram/releaseconfig_test.go:146`'s forbidden-strings assertion (`generate_completions_from_executable`, `brews:`, `rm_rf`) is the natural place to extend with a parallel assertion once the manpage hook lands, proving the same non-rescuing pattern, rather than inventing a new test shape.
-
-## 6. `osRun` deadline classification — #560
-
-### The defect, precisely
-
-`osRun` (`internal/setup/environment.go:84-104`) runs `cmd.Run()` and classifies the result in a switch that checks ONLY `runErr == nil` vs. `errors.As(runErr, &exitErr)` vs. everything else. When `ctx`'s deadline kills the subprocess, `exec.CommandContext` still typically surfaces the failure as an `*exec.ExitError` (the process was signaled/killed, `Wait` returns that shape) — so today's code takes the `errors.As` branch, reports a clean `RunResult{ExitCode: -1}` with a **nil error**, and the caller (`runSeam`/`execute`, `apply.go:125-129,213-369`) has no way to distinguish this from an ordinary nonzero exit. `Environment.Run`'s own doc comment (`environment.go:44-49`) already states the correct contract: "a non-nil error means the process never produced an exit status at all — it failed to start, or ctx's deadline expired before it exited." A deadline kill is being silently miscategorized into the WRONG side of that contract.
-
-### Minimal fix
-
-Add one case at the top of the existing switch, checking `ctx.Err()` before the `errors.As` branch:
-
-```go
-runErr := cmd.Run()
-result := RunResult{Stdout: stdout.String(), Stderr: stderr.String()}
-
-var exitErr *exec.ExitError
-switch {
-case ctx.Err() != nil:
-    return RunResult{}, ctx.Err()
-case runErr == nil:
-    return result, nil
-case errors.As(runErr, &exitErr):
-    result.ExitCode = exitErr.ExitCode()
-    return result, nil
-default:
-    return result, runErr
-}
+```
+┌────────────────────────────────────────────────────────────────────┐
+│ cmd/engram (cobra)                                                  │
+│  client tier: get/search/list/store  --limit uint64 (0=all,        │
+│    engram/client_list.go:20,58,122)                                 │
+│  operator tier: reindex / migrate / summarize-missing /             │
+│    spine-review / prune-expired (act on Qdrant directly)            │
+└───────────────────────────┬──────────────────────────────────────┬─┘
+                             │ Connect (HTTP)                        │ direct
+┌────────────────────────────▼──────────────┐   ┌───────────────────▼─────┐
+│ internal/server                            │   │ internal/store           │
+│  connectapi.go: ListMemories, SearchMemories│   │  6 recall-gated entry   │
+│    -> connectError(ctx, err) (SINGLE mapper,│   │  points (Search, Search-│
+│    connecterror.go:55) — no ResourceExhausted│  │  Reranked, SearchDisc., │
+│    arm today, falls to CodeInternal          │  │  List, ListScheduled,   │
+│  tools.go: MCP tool closures                 │   │  ListScopes) — an AST   │
+│    -> raw Go error return (no equivalent     │   │  gate proves schema_    │
+│    single mapper; MCP SDK renders it)        │   │  version never gates   │
+│  tools.go: deps.searchedScopes (#456 site)   │   │  any of their filters  │
+└───────────────────────────┬──────────────┘   │  (schemaversion_       │
+                             │                    │  recallgate_test.go)   │
+┌────────────────────────────▼──────────────────┴─────────────────────┐
+│ Qdrant go-client (qdrant.NewClient, internal/server/tools.go:123)     │
+│  GrpcOptions: only otelgrpc stats handler — NO MaxCallRecvMsgSize set │
+│  => grpc-go default 4 MiB client receive cap applies to every RPC     │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-This is a three-line diff, zero new imports (`context` is already imported), zero interface change, and zero cross-package impact: `runSeam`/`execute` already treat "non-nil error = seam error" correctly today (`describeSeamError`, `apply.go:148-155`, already exercised for start-failure cases) — a deadline kill starts correctly classifying as `OutcomeFailed` via the EXISTING seam-error path with no changes needed anywhere outside `environment.go`. Checking `ctx.Err()` post-`Run()` (rather than racing it against the process's own exit) is the standard idiom `os/exec`'s own documentation expects for exactly this pattern; no additional synchronization is needed. This is the smallest, most independently shippable, and lowest-risk item in the whole milestone.
+### Component Responsibilities
 
-## 7. New vs. modified components
+| Component | Responsibility | Bounded-reads relevance |
+|-----------|-----------------|--------------------------|
+| `internal/server/tools.go:123` `storeFromConfig` | Constructs the one `*qdrant.Client` the whole process shares | Sole site to add `grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(...))` as defense-in-depth (milestone explicitly says this alone is not the fix — #583 rejected it) |
+| `internal/store/store.go` | `Store.List`, `Store.listByCursor`, `Store.ListScheduled`, `Store.ListScopes`, `Store.Search`, `Store.SearchDiscovery`, `Store.Reindex` | Every one of these calls `WithPayload(true)` (or, for `ListScopes`, a scoped `WithPayloadInclude`) against Qdrant with no per-page byte ceiling |
+| `internal/store/spine.go` | `scrollAllPoints` — the package's one paginated whole-spine iterator (256/page); `ScanSpine`, `EnumerateCitations`, `NearDuplicates`, `derivePurgeEligible` route through it | Already paginates by *record count* (256), not bytes — same unbounded-content risk as the others, just already batched |
+| `internal/store/migrate.go`, `revert.go`, `summarize.go` | Independent `ScrollAndOffset` loops at 256/page (`migrateBatch`, own literal `256`) — NOT routed through `scrollAllPoints` | Three more full-payload paginated loops outside the shared helper; a byte-aware fix touching only `scrollAllPoints` would miss them |
+| `internal/server/connecterror.go:55` `connectError` | The **single** production mapper from a `deps.*`/`store.*` error to a Connect code | Correct place to add the `ResourceExhausted` arm for the Connect lane — everything else already routes through it |
+| `internal/server/tools.go` (MCP closures) | Each MCP tool returns a raw `error`; there is **no MCP-side equivalent of `connectError`** | A second mapping site is needed (or the store-layer classification must be lane-agnostic so both lanes read the same sentinel) |
+| `internal/server/tools.go:1639` `(*deps).searchedScopes` | Cross-spine coverage report — `Store.ListScopes` scan, called *after* a successful search/list | #456: its error today discards the already-computed hits at both call sites |
+| `internal/embed/embed.go`, `internal/summarize/summarize.go` | OpenAI-compatible HTTP clients | Non-2xx error body is **already** bounded (`maxErrorBodyBytes` / 4096-byte `io.LimitReader`) from a prior milestone; the drain (`io.Copy(io.Discard, resp.Body)`) after both the error path and the success path is **not** bounded — relies entirely on `http.Client.Timeout`, which `WithTimeout(0)` explicitly disables |
+| `internal/store/store_test.go:117` `TestMain` | Per-package ephemeral Qdrant testcontainer, or `ENGRAM_QDRANT_TEST_ADDR` | #497: `internal/store`'s container (the largest suite, last of several concurrent Qdrant containers to start) has died mid-run 3× in ~2h under CI resource pressure, unrelated to code |
 
-| Component | New / Modified | Why |
-|---|---|---|
-| `internal/setup/environment.go` (`osRun`) | **Modified** | #560 fix — add `ctx.Err()` precedence check (§6) |
-| `internal/setup/plan.go` (`SkillFormat` const block) | **Modified** | Add `SkillFormatPlugin` (§1) |
-| `internal/setup/plan.go` (`Plan.Probe` field) | **Modified** | Generalize from one probe to a small named set — shared prerequisite for plugin-state convergence (§1) and drift comparison (§4) |
-| `internal/setup/claudecode.go` | **Modified** | Append plugin-management `Action`s; add `case "header":`; add `parseClaudeCodeRegistration` |
-| `internal/setup/codex.go` | **Modified** | Append plugin-management `Action`s (pending live verification); add `case "header":` with `ErrAuthModeUnsupported` for non-`Authorization` headers; add `parseCodexRegistration` (JSON, easy case) |
-| `internal/setup/opencode.go` | **Modified** | Add `case "header":`; deliberately NO observation parser (documented omission, §4) |
-| `internal/setup/generic.go` | **Modified** | Extend `Headers` map population for the new header mode |
-| `internal/setup/runtime.go` (`Options`) | **Modified** | Add `Headers []HeaderSpec` |
-| `internal/setup/aggregate.go` | **Modified** | New `OutcomePreserved` precedence tier (§4); `SkillsOutcome` gains a `SkillFormatPlugin` arm (§1) |
-| `internal/setup/exit.go` (`Classify`) | **Modified** | Must recognize `OutcomePreserved` in its exhaustive switch (§4) |
-| `internal/setup/observe.go` | **New** | `ObservedRegistration` struct + `compareRegistration` (§4) |
-| `internal/setup/headers.go` (or inline in `runtime.go`) | **New** | `HeaderSpec` type + validation helper (§3) |
-| `cmd/engram/setup.go` | **Modified** | New `--header` flag + `--auth header` validation branch; `setupSkillsTarget` gains `SkillFormatPlugin` case; `setupRuntimeRow` gains `Plugin`-facet field(s); `setupApplySummary` gains a `preserved` tally bucket |
-| `internal/setupgen/setupgen.go` | **Modified** | `Render()` gains a plugin-actions filter + third table; `Cases()` gains a header-mode case (§2) |
-| `skill/engram/commands/engram-setup.md` | **Modified (generated)** | Regenerated via `task surfaces:gen` once `Render()` changes (§2) — never hand-edited |
-| `cmd/engram/man.go` (or similar) | **New** | Hidden `engram man <dir>` command wrapping `doc.GenManTree` (§5) |
-| `.goreleaser.yaml` | **Modified** | Fourth `hooks.post.install`/`hooks.post.uninstall` step for manpages (§5) |
-| `cmd/engram/releaseconfig_test.go` | **Modified** | Extend the forbidden-strings assertion for the manpage hook (§5) |
-| `go.mod` | **Modified** | Promote `github.com/spf13/cobra/doc` from indirect to direct (§5) — not a new dependency |
+## Full-payload Qdrant read site inventory
 
-Not modified by this milestone: `internal/skills/*` (install/inventory/agentsmd logic is untouched — plugin delivery SKIPS this package for the affected runtimes rather than changing it), `internal/surfaces/toolclass.go` (no new top-level `engram` command is added — `man` is `Hidden` and needs no classification row), `cmd/engram/cmdwalk.go` (its existing skip predicate already covers a `Hidden` command).
+Found via `rg -n 'NewWithPayload(true)|Scroll(|ScrollAndOffset(|\.Query('` across `internal/store/*.go` (non-test). "Bound today" is the per-RPC record/byte ceiling as coded; "worst case" is what actually reaches the 4 MiB grpc-go client receive cap given **content is currently unbounded** (`ENGRAM_MEMORY_MAX_CONTENT_BYTES` does not exist — confirmed absent from `internal/config/registry.go`; only `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, default 512 B, caps `summary`).
 
-## 8. Build order
+| Site (file:line) | Method | Bound today | Worst case | Recall-gated? |
+|---|---|---|---|---|
+| `store.go:1435` `Store.List` offset-mode, `Limit:0` ("all") | `Scroll` | `fetch = total` — literally every matching record in one RPC | Unbounded — a scope with N large-content records always overflows past some N | Yes — `recallTransmitters` |
+| `store.go:1435` `Store.List` offset-mode, deep `Offset` | `Scroll` | `fetch = opts.Offset + opts.Limit` | Grows with page depth — console page 50 at page-size 50 already fetches+discards 2500 records' full payload | Yes |
+| `store.go:1493` `Store.listByCursor` | `Scroll` | `fetch = limit + len(seen) + 1`, `limit` clamped to `maxListLimit = 1000` (store.go:1458) | 1000 full payloads; overflows once average payload exceeds ~4 KiB (already the #583 shape) | Yes |
+| `store.go:1641` `Store.ListScheduled` | `Scroll` | `Limit: qdrant.PtrOf(uint32(limit))`, `limit` defaults to 20 but is **caller-supplied via `opts.Limit` with no ceiling** | Unbounded if a caller passes a large `Limit` | Yes |
+| `store.go:1689` `Store.ListScopes` | `Scroll` | `scanCap = 1000`, but `WithPayloadInclude("scope")` only (fixed by #583) | Bounded already — kept as `Scroll` deliberately for the recall-gate AST test (comment at store.go:1665-1672) | Yes |
+| `store.go:1139` `Store.Search` | `Query` | `Limit: qdrant.PtrOf(k)` — **`k` is caller-controlled with no maximum anywhere** (no `MaxK` constant found in `internal/store` or `internal/server`) | Unbounded — MCP `search_memory`/Connect `SearchMemories` accept any `k` | Yes |
+| `store.go:1230` `Store.SearchDiscovery` | `Query` | Same shape as Search, `k` uncapped | Unbounded | Yes |
+| `store.go:3199` `Store.Reindex` | `ScrollAndOffset` | `batch` defaults to `reindexBatch = 256` (store.go:3084) | 256 full payloads/page — overflows once average content exceeds ~16 KiB | No (operator tier) |
+| `spine.go:49` `scrollAllPoints` (shared iterator) | `ScrollAndOffset` | `spineScrollBatch = 256` (var, spine.go:28) | Same 256-record/~16 KiB-average ceiling; feeds `ScanSpine`, `EnumerateCitations`, `NearDuplicates`' id-enum (payload-frugal, low risk), `derivePurgeEligible`, and `revert.go`'s `previewRevertWithSteps` | No |
+| `migrate.go:314`, `:377`, `:531` (three sites) | `ScrollAndOffset` | `batch` defaults to `migrateBatch = 256` (migrate.go:22) | Same 256-record ceiling — **not** routed through `scrollAllPoints`, an independent loop | No |
+| `revert.go:431` (`revertWithSteps` write loop) | `ScrollAndOffset` | 256/page (mirrors migrate.go) | Same ceiling; `previewRevertWithSteps` (revert.go:278) instead uses `scrollAllPoints` | No |
+| `summarize.go:145` `Store.SummarizeMissing` | `ScrollAndOffset` | Hardcoded `uint32(256)` literal (not a named const) | Same ceiling | No |
+| `store.go:3418` `reindexTargetContents` | `Get` (batch by ids from `pts`) | Bounded by the calling page's `batch` (256) | Same ceiling, one `Get` per reindex page | No |
 
-Ordered by genuine dependency, per the question's own framing (header model before drift comparison; plugin action before setupgen regeneration):
+Every row above requests `qdrant.NewWithPayload(true)` — full `content`/`summary`/`tags`/`citations` — except `ListScopes` (already payload-scoped) and the `NearDuplicates` id-enumeration step (`WithPayloadInclude("short_id","scope")`, spine.go:558, already payload-frugal by design).
 
-1. **`osRun` deadline fix (#560)** — zero dependency on anything else in this milestone; smallest, independently shippable, ship first. Test: a real short-lived subprocess (e.g. `sleep`) under a tiny `context.WithTimeout`, asserting a non-nil error and zero `RunResult` — this exercises engram's OWN exec-wrapping logic, not a third-party CLI's flag surface, so it does not run afoul of rule `m45p2b4bp7`.
-2. **Manpages (`engram man` hidden command + `.goreleaser.yaml` hook)** — fully independent of every other item; small; zero interaction with `Options`/`Plan`. Land any time; grouped early here as a second quick, low-risk win.
-3. **Custom headers (`Options.Headers`, `HeaderSpec`, per-runtime `case "header":` arms, `--header`/`--auth header` CLI surface, codex's capability-gap handling)** — must land BEFORE drift detection (step 5), because `compareRegistration` needs the authored header vocabulary to exist before it can compare against it. Independent of plugin delivery (step 4) — the two touch overlapping files (`claudecode.go`, `codex.go`) but not overlapping logic; sequence before step 4 only to reduce merge risk in shared files, not because of a real dependency.
-4. **Plugin-first delivery (`Plan.Actions` gains plugin actions in `claudecode.go`/`codex.go`; `SkillFormatPlugin`; report row fields)** — depends on live verification of `claude plugin`/`codex plugin` CLI syntax (flagged in §1) before the exact `Action.Args` can be locked; otherwise independent of step 3.
-5. **`setupgen` regeneration for plugin actions** — hard, same-commit dependency on step 4 (§2): the generated prose must reflect the real `Plan.Actions` shape the moment it changes, exactly as the prior milestone's research established for `internal/surfaces` + `buildCatalog` (a command's classification and its golden regen land atomically, never across separate PRs).
-6. **Drift detection, read-only half** (`ObservedRegistration`, per-runtime parsers for claude-code/codex only, `compareRegistration`, `OutcomePreserved` touching the three exhaustive sites, report-only surfacing) — depends on steps 3 and 4 being stable, since the comparison surface (headers, plugin state) must exist before it can be compared against. This is the largest and riskiest single slice; do not start it until 1–5 are merged and stable.
-7. **Drift detection, reconcile half** (the optional `Reconcile` hook; write-time merging of preserved elements into the live write) — depends on step 6; recommend treating this as an explicitly separable follow-on within the milestone (or a deliberately deferred slice, per the milestone's own tolerance for carrying "hand-edit reconciliation" forward if it does not fit), never bundled into step 6's own commit.
+## Architectural Patterns
 
-`REQ-register-cursor` stays out of scope per `PROJECT.md`'s explicit deferral and is not sequenced here.
+### Pattern 1: Two-phase ids-then-payload read
 
-## Zero-new-Go-dependencies check
+**What:** Scroll/Query with `WithPayload(false)` (ids + order key only) to establish the page's identity set, then a single `Get`/batched fetch for just that page's payloads.
+**When to use:** Offset-mode `Store.List` (deep-offset skip) and `Store.ListScopes`-style aggregation, where most of the scrolled range is discarded anyway.
+**Trade-offs:** Removes the "scroll N to skip to page K" cost entirely for the skipped prefix; adds a second round trip for the page actually returned. Does not by itself bound a *single* page's payload size if the page's own records are individually huge — needs pairing with Pattern 2 or a content cap.
+**Where it already exists in this codebase:** `Store.Reindex`'s `--resume` lookup (`reindexTargetContents`, store.go:3407) is exactly this shape today (id-keyed page, then a scoped payload lookup) — reuse its structure rather than inventing a new one.
 
-Every mechanism above is stdlib-plus-already-vendored: `context`/`os/exec` (already used, §6), `encoding/json` for codex's structured probe (§4), `go/doc` — actually `github.com/spf13/cobra/doc`, already an indirect module dependency per the milestone's own framing, promoted to direct (metadata-only, §5) — and cobra/pflag for the new `--header` flag and hidden `man` command (already a direct dependency). No new third-party config-format parser enters the tree at any point: plugin management is argv shelled to `claude`/`codex`'s own CLI (same pattern as `mcp add` today); headers are argv strings or a JSON map already produced by stdlib `encoding/json` (`generic.go:147-149`); drift observation for codex uses stdlib JSON decoding of codex's own `--json` probe output; opencode's probe is explicitly NOT parsed, so no format-specific dependency is needed or wanted there. **No proposal in this document requires a new Go dependency.**
+### Pattern 2: Byte-aware page loop
+
+**What:** A page loop that keeps requesting/accumulating records but stops a page (returns a partial page + continuation cursor, or errors clearly) once accumulated payload size crosses a configured ceiling — independent of record count.
+**When to use:** Any of the five 256(or 1000)-record-count loops in the inventory above, since record count alone cannot bound bytes while `content` is unbounded.
+**Trade-offs:** Needs a size estimate per record (sum of `len(content)+len(summary)+...` from the already-decoded `Memory`, or the payload's own wire size) computed *after* the RPC already returned — it cannot prevent a single over-large RPC from itself exceeding 4 MiB. It only helps choose the **next** page's size; the current page can still overflow if one page's oversized *first* record already blew the receive cap.
+**Implication:** Byte-aware paging alone does not fix the fundamental problem — it reduces steady-state risk (average record size) but does not cap worst case (one pathological record). A content-size cap (`ENGRAM_MEMORY_MAX_CONTENT_BYTES`, open per PROJECT.md) is the complementary fix that bounds the worst case; byte-aware paging bounds the aggregate.
+
+### Pattern 3: Single bounded-scroll helper, reused across all recall-gated methods
+
+**What:** One `Store` method — e.g. `boundedScroll` or a `scrollAllPoints`-with-byte-budget variant — that every recall-gated read (`Search`/`Query` excluded, since vector queries have no page-count knob other than `k`) and every operator sweep calls, parameterized by page size, byte budget, and payload selector.
+**When to use:** This is the recommended default over five independent per-site fixes, because:
+- `scrollAllPoints` (spine.go:30-69) already proves the shape works and is already unit-tested against forced single-record pagination (`spineScrollBatch` is a `var`, not a `const`, specifically so a test can force page size to 1 — spine.go:23-28).
+- The AST completeness gate (`schemaversion_recallgate_test.go`) asserts by **enclosing function name**, not call count or line number — routing `Store.List`/`Store.ListScheduled` through a shared helper only requires adding new entries to `recallTransmitters` (moving `scrollAllPoints` itself out of `operatorMigrationEmitters`, since it would newly become reachable from the recall entry-point seeds) with a fresh justification. This is explicitly anticipated in the test's own comment (schemaversion_recallgate_test.go:546-549: "if a future recall path ever routes through it... the suite goes RED" — a deliberate tripwire, not a hard prohibition).
+- The other AST gate (`TestSchemaVersionNeverGatesRecall`, Task 3) proves correctness by capturing the actual wire-transmitted `*qdrant.Filter` via a gRPC interceptor — it is agnostic to which internal function issued the call, so consolidating call sites behind a shared helper cannot break it as long as the caller still builds and passes the same filter.
+**Trade-offs:** Touches five files (`store.go`, `spine.go`, `migrate.go`, `revert.go`, `summarize.go`) and both `spineScrollBatch`-style pagination and `Store.List`'s two different modes (offset vs. cursor) need to converge on one signature — `Store.List`'s offset-mode `Scroll` (single RPC with `OrderBy`+`Limit`) is a different Qdrant call shape than `scrollAllPoints`'s `ScrollAndOffset` loop, so "one helper" really means two: one for `ORDER BY`-ranked bounded pages (List/ListScheduled/ListScopes) and one for unordered whole-spine sweeps (the existing `scrollAllPoints`, extended with a byte budget). Recommend NOT trying to unify these two into a single call shape — the ordering semantics differ and forcing them into one function would make the diff far larger than the actual defect.
+**Recommendation:** Prefer this consolidated approach over five independent per-site patches. Per-site fixes duplicate the byte-budget logic five times and give five chances to under-fix one site (exactly the failure #585 predicts for `Store.List` after #583 fixed only `ListScopes`).
+
+## Where the ResourceExhausted mapping belongs
+
+Three lanes need to agree, and the codebase's own documented discipline ("declared once, checked everywhere" — e.g. `PurgeFilterPathActive`, `expiredFilter`) says the mapping must live at the lowest common layer that both lanes already call through:
+
+1. **`internal/store`** should classify the raw gRPC `ResourceExhausted` status into a **typed sentinel** (e.g. `store.ErrResponseTooLarge`, mirroring the existing `store.ErrInvalidArgument`/`store.ErrNotFound`/`store.ErrAmbiguousShortID` pattern) at the point each read RPC's error is returned — or, more simply, as a small `classifyQdrantErr(err) error` helper called uniformly by `Store.List`, `listByCursor`, `Search`, `SearchDiscovery`, `ListScheduled`, `ListScopes`, and the operator sweeps, using `status.Code(err) == codes.ResourceExhausted` (grpc-go's own `google.golang.org/grpc/status` / `codes` packages, already an indirect dependency via qdrant-go-client).
+2. **`internal/server/connecterror.go`'s `connectError`** already has the exact right shape for the Connect lane: a `case errors.Is(err, store.ErrResponseTooLarge): return connect.NewError(connect.CodeResourceExhausted, err)` arm, added to the switch **before** the `default` — this is the single mapper every Connect handler already calls (per its own doc comment, "every Connect... handler calls it instead of hand-rolling its own per-handler mapping"). The CLI side is *already* ready for this: `cmd/engram/client_common.go`'s `exitCodeForConnectErr` already has a `{connect.CodeResourceExhausted, exitGeneric}` test row — the client-side exit-code taxonomy anticipates this arriving; only the server-side emission is missing.
+3. **The MCP lane has no equivalent single mapper.** MCP tool closures in `tools.go` return the raw Go `error` from `deps.*`/`store.*` and the mcp-go SDK renders it as a tool-call error; there is no `connectError`-style chokepoint today. Two options: (a) let the raw `store.ErrResponseTooLarge` sentinel's `Error()` text alone carry the clear message (cheapest, consistent with today's undifferentiated MCP error surface, but the milestone's "clear, named error" bar is stronger than "readable string"); (b) introduce a matching MCP-side mapper analogous to `argErrf`/`conditionalErrf` (already used for validation errors, e.g. tools.go:1602) so `ErrResponseTooLarge` renders with a stable, greppable hint code, mirroring the existing `field=<name> hint=<code>` envelope described in CLAUDE.md's "Memory contract" section. Recommend (b) for consistency with the existing diagnosability discipline (`internal/server/argerror.go`), even though it is new surface, not a location fix.
+
+**Recommendation:** classify once in `internal/store` (sentinel), map once per lane at the existing single chokepoints (`connectError` for Connect; a new, equally singular MCP-side mapper for MCP) — never inline `status.Code(err)` checks scattered across `tools.go`/`connectapi.go` call sites.
+
+## #456 partial-result semantics: how they should flow to searched_scopes/scopes_truncated
+
+Confirmed by reading both call sites verbatim:
+
+- MCP: `tools.go:2414-2417` (`search_memory`) and `tools.go:2469-2472` (`list_memory`) — both call `d.searchMemory`/`d.listMemory` (succeeds, `ms`/`res` populated), then call `d.searchedScopes(ctx, c, a.CrossSpine)`, and on error `return nil, nil, err` — **discarding the already-computed hits**.
+- Connect: `connectapi.go:301-304` (`ListMemories`) and `connectapi.go:364-367` (`SearchMemories`) — identical shape: `res`/`ms` populated, then `searchedScopes` error causes `return nil, connectError(ctx, err)`, discarding `res`/`ms`.
+- The GitHub issue (#456, filed as an *accepted, documented trade-off* during a prior phase review, not a fresh defect) explicitly proposes the fix already scoped for this milestone: **return the already-computed hits with an explicit sentinel distinguishing "coverage unknown" from "coverage empty"** — a third state, not reusing `scopes_truncated` (whose meaning is already fixed: "the scope list itself is a bounded/truncated sample", from `ListScopes`' `scanCap` semantics, store.go:1667).
+
+Recommended flow, consistent with `recallResultMap`'s existing on/off-by-`crossSpine` shape (tools.go:1663-1669):
+
+1. On `searchedScopes` failure, callers should still return `hits`/`mems` (the real, already-fetched, already-authorized results) rather than discarding them.
+2. `searched_scopes` becomes `nil`/absent (not an empty slice — proto3 already treats `nil` as absent per the existing `(nil, false, nil)` scope-confined-call convention noted at connectapi.go:296-300 and :361-363) when the coverage query itself failed.
+3. Add a **new** boolean (not a reused field) — e.g. `scopes_unknown` (Connect) / `"scopes_unknown"` (MCP result map) — set `true` only on this failure path, alongside `searched_scopes` absent and `scopes_truncated` **also absent/false**, so a consumer can distinguish three states: (a) non-cross-spine call → neither key present; (b) cross-spine call, coverage known → `searched_scopes` populated, `scopes_truncated` present; (c) cross-spine call, coverage query failed → `scopes_unknown: true`, `searched_scopes` absent. This is additive on the wire (new proto field, non-breaking) and additive in the MCP result map (D-14's existing "only added when crossSpine is true" discipline extends naturally).
+4. `searchedScopes` itself should **not** silently swallow the error into a zero value — its own doc comment (tools.go:1636-1638) is correct that "an error from ListScopes fails the call rather than degrading to an empty list" was right for the *coverage claim*; it was wrong only in also discarding the *hits*. The fix separates these: keep failing loudly on the coverage claim, stop discarding the hits.
+
+This requires a **proto change** (new field on `ListMemoriesResponse`/`SearchMemoriesResponse`) plus MCP result-map and `recallResultMap` changes — both call sites (`tools.go` MCP closures, `connectapi.go` handlers) need the same restructuring from "propagate `searchedScopes`'s error" to "capture it, still return hits, set the new flag."
+
+## What the structural gates / AST tests constrain
+
+Two AST-based gates already exist in `internal/store` and both are name-keyed, not line-number-keyed — safe to refactor around as long as names/classifications are updated in the same change:
+
+1. **`schemaversion_recallgate_test.go`** — derives every `Query`/`QueryBatch`/`Scroll`/`ScrollAndOffset`/`Count` call site in the package via `go/ast`, closes a same-package call graph from six named recall entry-point seeds (`recallEntryPointSeeds`, schemaversion_recallgate_test.go:357-364: `Store.Search`, `Store.SearchReranked`, `Store.SearchDiscovery`, `Store.List`, `Store.ListScheduled`, `Store.ListScopes`), and requires every derived emission site to land in exactly one of three hand-maintained, justified lists (`recallTransmitters`, `operatorMigrationEmitters`, `otherNonRecallEmitters`). **Constraint for this milestone:** introducing a new helper function reachable from any of the six seeds (e.g. a shared bounded-page helper called by `Store.List`) makes that new function name newly appear in the derived reachable set — it must be added to `recallTransmitters` with a justification, or the "reachable emission completeness" subtest goes RED by design. Reusing the *existing* `scrollAllPoints` from a recall-gated method reclassifies it from `operatorMigrationEmitters` to `recallTransmitters` — anticipated explicitly in that function's own current justification text.
+2. **`TestSchemaVersionNeverGatesRecall`** (same file, Task 3) — a real gRPC interceptor captures the actual `*qdrant.Filter` transmitted by the six entry points against a live Qdrant and asserts `schema_version` never appears (via the recursive `walkFilterKeys`/`walkFilter` walker covering all seven `qdrant.Condition` oneof variants). **Constraint:** any refactor of filter-building code inside `List`/`Search`/etc. must still pass the identical, already-built `*qdrant.Filter` value to whatever RPC-issuing call replaces the current `Scroll`/`Query` — this test is agnostic to *how* the RPC is issued, only to *what filter reaches the wire*, so it does not block consolidating call sites.
+3. **`TestListScopesFullPayloadsOverGRPCLimit`** (`store_test.go:1798`, the #583 regression pattern named explicitly in PROJECT.md's "Done means") — real-Qdrant, `testing.Short()`-skipped, seeds `n=40` records of `128<<10` (128 KiB) content each (`>4 MiB` total, asserted by a self-check `t.Fatalf` if the fixture ever shrinks below the 4 MiB threshold) into one scope, then calls the method under test and expects success. **This exact pattern — real Qdrant, oversized fixture, RED before the fix — is what the milestone's "Done means" section requires for every one of #585's remaining paths** (`List` in all three modes, `ListScheduled`, `Search`'s `k`, and the five 256-record operator sweeps). A shared byte-aware helper should get **one** such fixture-and-proof test per call site it replaces (proving the specific caller's request shape stays under the cap), not one test for the helper in isolation — the existing `TestListScopesFullPayloadsOverGRPCLimit` proves the *caller's* shape, not `Scroll` in the abstract (its own doc comment: "This test covers OUR request shape, not Qdrant's own behavior").
+4. There is **no** enforced "exactly one `ScrollAndOffset` call site" AST test in the repository today — that phrasing in the milestone's `<required_reading>` context is a paraphrase of spine.go's *doc-comment* discipline (spine.go:40-45, and repeated at multiple call sites, e.g. spine.go:319-320, 489-491, 966-967: "internal/store/spine.go must carry exactly one `client.ScrollAndOffset` call site" — enforced by convention/comment/code-review, not by a compiled/tested gate). `rg` confirms four *other* non-test `ScrollAndOffset` call sites already exist outside `spine.go` (`migrate.go`×3, `revert.go`×1, `store.go`'s `Reindex`×1, `summarize.go`×1) — the doc comment's claim is scoped to *within spine.go itself*, not the whole package, and the `schemaversion_recallgate_test.go` file's own comment independently confirms this ("cycle-2 review found four non-test ScrollAndOffset call sites"). **Do not add a new hard "count == 1" AST assertion as part of this milestone's fix** — it would be a novel invented gate with no existing template, and the milestone's actual done-bar (a real-Qdrant regression test per fixed path) is the correct, already-precedented gate instead.
+
+## Data Flow: a bounded read today (List, offset mode, `Limit=0`)
+
+```
+cmd/engram list --limit 0            engram console (offset paging)
+        │                                    │
+        ▼                                    ▼
+  ListMemoriesRequest{Limit:0}  ──Connect──▶  connectapi.go ListMemories
+                                                    │
+                                                    ▼
+                                          deps.listMemory → Store.List(ctx, scope, subj, opts)
+                                                    │
+                                    total,_ := Count(...)      [store.go:1407]
+                                    fetch := total  (Limit==0) [store.go:1421-1424]
+                                                    │
+                                    Scroll(Limit:fetch, WithPayload(true)) [store.go:1435]
+                                                    │
+                                    ── ResourceExhausted if Σ payload > 4 MiB ──▶
+                                                    │
+                                    connectError(ctx, err) → CodeInternal (today)
+```
+
+### Key Data Flows After the Fix
+
+1. **Bounded List (all three modes):** `Store.List` gains a byte budget threaded into whichever bounded-page helper (Pattern 2/3) replaces its single `Scroll`/`listByCursor`'s `Scroll` — `Limit:0` ("all") specifically needs either a hard cap or internal re-paging that still returns the full logical result to the caller (Connect's `ListMemories` contract keeps "0 = all", per PROJECT.md's still-open discuss-phase question) or, per the "Open for discuss-phase" note, is renegotiated to a hard cap + cursor paging.
+2. **Cross-spine coverage with partial failure (#456):** `deps.searchMemory`/`listMemory` succeeds → `searchedScopes` fails → hits still flow to the caller, `scopes_unknown` (new field) signals the coverage gap, per the section above.
+3. **Provider response draining (#457):** `embed.go`/`summarize.go`'s `io.Copy(io.Discard, resp.Body)` calls (four sites total: embed.go:295 error path, :309 success path; summarize.go:182 error path, :191 success path) gain `io.LimitReader(resp.Body, N)` wrapping, independent of `c.http.Timeout`.
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: Raising `MaxCallRecvMsgSize` and calling it done
+
+**What people do:** Set `grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(64<<20))` on the Qdrant client and consider #585 closed.
+**Why it's wrong:** #583's own PR explicitly rejected this as *the* fix — it only moves the ceiling to a bigger number; the same unbounded-`Limit`/unbounded-content shapes still overflow at a larger N, and PROJECT.md's "Done means" section states this outright ("Raising `MaxCallRecvMsgSize` alone only moves the ceiling... it is defense in depth at most").
+**Do this instead:** Add it anyway (defense in depth, one-line change at `internal/server/tools.go:123`), but treat every row in the read-site inventory above as needing its own real-Qdrant regression test and bounded-page fix regardless.
+
+### Anti-Pattern 2: A second, independently-written pagination loop
+
+**What people do:** Fix `Store.List`'s offset mode with a new bespoke bounded loop, then fix `ListScheduled` with a *different* bespoke bounded loop, and so on for five call sites — exactly the failure mode `expiredFilter`'s and `derivePurgeEligible`'s doc comments elsewhere in this codebase explicitly warn against ("two independently constructed conditions... could silently drift").
+**Why it's wrong:** Five independent implementations of "stop before N bytes" is five independent chances to get the boundary condition (a single oversized record) wrong, and five sets of tests to keep in sync — the exact problem #583→#585 already demonstrates (fixing `ListScopes` alone left `List` open).
+**Do this instead:** Pattern 3 — one ordered-page helper (List/ListScheduled/ListScopes) and one extension to the existing `scrollAllPoints` (whole-spine sweeps), each proven once, reused everywhere.
+
+## Suggested Build Order
+
+Ordered by hard dependency, not by issue number. Each phase names what it unblocks.
+
+**Phase 1 — Test harness stability (#497) and a >4 MiB fixture helper.**
+Every other phase's "done" bar is "a real-Qdrant regression test holding more than 4 MiB of payload, RED before the fix" (PROJECT.md, citing `TestListScopesFullPayloadsOverGRPCLimit`). If `internal/store`'s testcontainer keeps dying mid-run under CI resource pressure (#497), every subsequent phase's CI signal is unreliable before it even reaches the new tests. This phase should also extract `TestListScopesFullPayloadsOverGRPCLimit`'s fixture-seeding shape (`n` records × `contentBytes`, with the `n*contentBytes <= 4<<20` self-check) into a small reusable test helper in `internal/store`, since the next five phases each need their own copy of it. Do not touch production code in this phase beyond what #497 requires (e.g., shared container, resource caps, or diagnostic capture per the issue's "Possible directions").
+
+**Phase 2 — Store-layer error classification + `connectError` `ResourceExhausted` arm.**
+Independent of the read-site fixes themselves (it classifies whatever error a Qdrant RPC returns today, oversized or not) and is a prerequisite for writing any of Phase 1's regression tests to assert *the right failure mode* pre-fix (RED should show a clear `ResourceExhausted`-mapped error once this lands, not a bare `internal` — makes the "RED before the fix" state itself legible). Also unblocks the CLI's already-anticipated `exitCodeForConnectErr` row. Add the MCP-side equivalent mapper in the same phase, since both lanes need it before any read-path fix can be verified end-to-end.
+
+**Phase 3 — Shared bounded-read mechanism (Pattern 3).**
+Build the ordered-page helper (for `List`/`ListScheduled`/`ListScopes`-shaped reads) and extend `scrollAllPoints` with a byte budget (for the whole-spine sweeps). This is the single largest phase and should land with the AST-gate updates (`recallTransmitters` reclassification) in the same change, since the gate will go RED the moment the new helper is wired in — never a separate follow-up commit.
+
+**Phase 4 — Per-site migration onto the shared mechanism, one caller at a time, each with its own real-Qdrant regression test.**
+Order within this phase by risk/exposure, matching #585's own ordering: `Store.List` (all three modes — highest exposure, hit live per #585's report) → `Store.ListScheduled` → `Store.Search`/`SearchDiscovery` (cap `k` server-side in addition to bounding pages) → the five 256-record operator sweeps (`migrate.go`×3, `revert.go`, `summarize.go`; `reindex` and `scrollAllPoints`'s existing callers get the byte budget "for free" from Phase 3's extension, but each still needs its own oversized-fixture proof per the #583 pattern's own stated scope). Raise `MaxCallRecvMsgSize` (Anti-Pattern 1's "add it anyway") in this phase too, since it is a one-line, low-risk addition alongside the real fixes.
+
+**Phase 5 — #456 partial-result semantics.**
+Independent of the byte-bounding work (it is a pure error-handling/proto-shape change to `searchedScopes` and its two call sites in each lane) — could run in parallel with Phase 3/4, but is sequenced after Phase 2 so `connectError`'s classification discipline (single mapper, typed sentinels) is already the established pattern to extend for the new `scopes_unknown` field's error path.
+
+**Phase 6 — Bounded provider responses (#457; #347 is effectively already shipped).**
+Fully independent of the Qdrant read-path work (`internal/embed`/`internal/summarize` share no code with `internal/store`). Confirmed by reading the current source: #347's "discard the error body" defect is **already fixed** (bounded `io.LimitReader` on the error path in both clients, landed in a prior milestone per PROJECT.md's v0.12.x changelog — the GitHub issue was simply never closed). The only remaining work is #457: wrap all four `io.Copy(io.Discard, resp.Body)` drain calls (embed.go:295,309; summarize.go:182,191) in `io.LimitReader(resp.Body, N)`. Can run at any point — placed last only because it has zero dependency on and zero risk to the rest of the milestone, so it should not block the Qdrant-side work's critical path.
 
 ## Sources
 
-All findings above are grounded in repository reads performed in this research pass:
-
-- `.planning/PROJECT.md` ("Current Milestone: 2026-09-13.01 Setup v2" section; prior-milestone "Carried tech debt"/"Deferred" entries)
-- `.planning/research/ARCHITECTURE.md` (previous milestone's research — read first, superseded by this file per the milestone's own instruction)
-- `cmd/engram/setup.go` (whole file)
-- `internal/setup/plan.go`, `runtime.go`, `environment.go`, `apply.go`, `aggregate.go`, `exit.go`, `claudecode.go`, `codex.go`, `opencode.go`, `generic.go`
-- `internal/skills/install.go`, `agentsmd.go`, `environment.go`, `inventory.go`
-- `internal/setupgen/setupgen.go`
-- `skill/engram/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
-- `cmd/engram/cmdwalk.go` (`commandWalkSkip` predicate proving `completion` is already live and deliberately unclassified)
-- `.goreleaser.yaml` (existing `homebrew_casks.hooks.post.install`/`post.uninstall` completions wiring)
-- `.planning/milestones/2026-08-23.01-phases/01-version-homebrew-distribution/01-CONTEXT.md`, `01-RESEARCH.md`, `01-SUMMARY.md` (D-09/D-10: completions already shipped via `system_command`, never `generate_completions_from_executable`)
-- `cmd/engram/releaseconfig_test.go` (forbidden-strings assertion pattern)
-- `.planning/BACKLOG.md` (checked; items 999.5/999.6 detail lives in `PROJECT.md`'s milestone section, not as separately numbered backlog prose)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/store/store.go` (List, listByCursor, ListScheduled, ListScopes, Search, SearchDiscovery, Reindex, reindexTargetContents — line numbers as cited above)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/store/spine.go` (scrollAllPoints and every whole-spine sweep built on it)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/store/migrate.go`, `revert.go`, `summarize.go` (independent ScrollAndOffset loops)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/store/schemaversion_recallgate_test.go` (the recall-gate AST completeness + wire-capture gates)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/store/store_test.go:1793-1839` (`TestListScopesFullPayloadsOverGRPCLimit`, the #583 regression pattern)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/server/connecterror.go`, `connectapi.go`, `tools.go` (connectError, searchedScopes, recallResultMap, MCP tool closures)
+- `/Volumes/Code/github.com/seanb4t/engram/internal/embed/embed.go`, `internal/summarize/summarize.go` (bounded error body already present; unbounded drain confirmed)
+- `/Volumes/Code/github.com/seanb4t/engram/cmd/engram/client_common.go` (`exitCodeForConnectErr`'s existing `CodeResourceExhausted` row)
+- GitHub issues #585, #456, #347, #457, #497 (bodies read verbatim via `gh issue view --json body`)
+- `/Volumes/Code/github.com/seanb4t/engram/.planning/PROJECT.md` (milestone goal, "Done means", open discuss-phase questions)
 
 ---
-*Architecture research for: engram `setup` v2 — plugin delivery, custom headers, drift detection, completions*
-*Researched: 2026-09-13*
+*Architecture research for: engram bounded reads (milestone 2026-09-18.01)*
+*Researched: 2026-09-18*
