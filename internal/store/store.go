@@ -1665,6 +1665,11 @@ type ScopeCount struct {
 // ALL scopes — ownerOrSharedCondition, not ownerScopeFilter which pins a scope)
 // bounded by scanCap and aggregates in-process. The second return is true when
 // the scan hit scanCap, meaning the counts are a bounded sample, not exact.
+//
+// The scan requests only the scope payload key, because the aggregation needs
+// nothing else: requesting full payloads for up to scanCap points overflowed
+// grpc-go's default 4 MiB client receive limit in production, failing with
+// ResourceExhausted (surfaced by Connect as internal).
 func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount, more bool, err error) {
 	ctx, span := tracer.Start(ctx, "store.ListScopes",
 		trace.WithAttributes(attribute.String("engram.owner", ownerOf(subj))))
@@ -1685,14 +1690,14 @@ func (s *Store) ListScopes(ctx context.Context, subj Subject) (out []ScopeCount,
 		CollectionName: s.collection,
 		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{s.ownerOrSharedCondition(ctx, subj)}},
 		Limit:          qdrant.PtrOf(uint32(scanCap)),
-		WithPayload:    qdrant.NewWithPayload(true),
+		WithPayload:    qdrant.NewWithPayloadInclude("scope"),
 	})
 	if err != nil {
 		return nil, false, err
 	}
 	counts := map[string]uint64{}
 	for _, p := range pts {
-		counts[fromPayload(p.Id.GetUuid(), p.Payload).Scope]++
+		counts[p.GetPayload()["scope"].GetStringValue()]++
 	}
 	out = make([]ScopeCount, 0, len(counts))
 	for sc, n := range counts {
