@@ -44,9 +44,11 @@ const sessionCookieName = "engram_session"
 // owner, since the fixture record this test writes is scoped to it.
 const testFixtureOwner = "console-e2e-owner@example.com"
 
-// fixtureScope is the scope the seed record is written under, and the scope
-// this test navigates the browser to via /ui/observe?scope=. It is shared
-// between the write and the navigation so the two never drift apart.
+// fixtureScope is the scope the seed record is written under: the scope the
+// root route's Recent memories panel must render the record in via its
+// cross-spine feed, and the scope this test also navigates the browser to
+// via /ui/observe?scope= to prove the scoped round trip. It is shared across
+// the write and both navigations so none of the three ever drift apart.
 const fixtureScope = "repo:e2e-console-roundtrip"
 
 // consoleAssetPathPrefix is the served path prefix for every immutable SPA
@@ -325,11 +327,27 @@ const hydrationPollExpr = `(() => {
 // appear in any bundled chunk, and reaches the DOM only if the bundle
 // loaded, SvelteKit hydrated, the session cookie authenticated the Connect
 // lane, and ListMemories returned the record — a strictly stronger proof
-// than any data-testid could offer. No data-testid was added to ui/, and the
-// vendored bundle is deliberately untouched by this plan.
+// than any data-testid could offer. No data-testid was added to ui/.
 func markerPollExpr(marker string) string {
 	markerJSON, _ := json.Marshal(marker)
 	return fmt.Sprintf(`(() => document.body.innerText.includes(%s))()`, markerJSON)
+}
+
+// rootRoutePollExpr is satisfied ONLY once BOTH the root route's scope tiles
+// AND its Recent memories panel have settled: the marker is visible in the
+// live rendered page text, and the scope tiles' "loading scopes" text is no
+// longer present. Waiting on both queries settling (not just the marker)
+// means the next navigation cannot abort an in-flight ListScopes request.
+//
+// The marker can only reach the root page through the Recent memories
+// panel's cross-spine ListMemories — the scope tiles render scope names and
+// counts, never a record's summary.
+func rootRoutePollExpr(marker string) string {
+	markerJSON, _ := json.Marshal(marker)
+	return fmt.Sprintf(`(() => {
+		const body = document.body.innerText;
+		return body.includes(%s) && !body.includes("loading scopes");
+	})()`, markerJSON)
 }
 
 // TestConsoleBundleRendersRecordInBrowser drives a REAL headless Chrome
@@ -342,26 +360,15 @@ func markerPollExpr(marker string) string {
 // between the Connect write lane and the console read lane.
 //
 // The browser visits TWO routes in the same session, deliberately:
-//  1. /ui/ (the root route) proves hydration via the <h1> hook.
+//  1. /ui/ (the root route) proves hydration via the <h1> hook AND the round
+//     trip through the cross-spine Recent memories feed: it sends an empty
+//     scope with cross_spine=true (fixed in #500 — it previously sent an
+//     empty scope WITHOUT cross_spine and was rejected invalid_argument by
+//     design, per D-04's "never infer cross_spine from an empty scope"
+//     rule), and renders the seeded record's marker.
 //  2. /ui/observe?scope=<fixtureScope> — the SAME link the root route's own
-//     scope tile navigates to on click — proves the round trip by rendering
-//     the seeded record's marker.
-//
-// Route 2 is required because the root route's own "Recent memories" query
-// (ui/src/routes/+page.svelte's recentQ, calling listMemories with an empty
-// scope and no cross_spine) predates the "scope required unless cross_spine"
-// server-side constraint (proto/engram/v1/engram.proto, commit 9ba6449b,
-// 2026-08-12) — SearchMemories/ListMemories deliberately do NOT infer
-// cross_spine from an empty scope (internal/server/connectapi.go's D-04
-// note), unlike SearchDiscoveries. That predates-the-constraint gap is a
-// REAL, currently-shipped console bug this test discovered (its "recent
-// memories" panel always errors "scope is required unless cross_spine is
-// true" — confirmed live in this run's diagnostic dump), which is exactly
-// what an e2e test that actually renders is FOR (G9-D3). Fixing ui/ source
-// is out of this plan's file scope (frontmatter prohibitions), so this test
-// proves the round trip via the scoped /observe route instead — a real,
-// already-working, user-reachable path — and the root-route regression is
-// filed separately (05-04-SUMMARY.md deviations; follow-up GitHub issue).
+//     scope tile navigates to on click — proves the scoped round trip
+//     through that link by rendering the seeded record's marker again.
 func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
 	fixture := startConsoleServer(t)
@@ -378,7 +385,7 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
 	t.Cleanup(browserCancel)
 
-	runCtx, runCancel := context.WithTimeout(browserCtx, 90*time.Second)
+	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
 	defer runCancel()
 
 	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
@@ -405,6 +412,28 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	}
 	if !hydrated {
 		t.Fatal("hydration poll returned without error but hydrated=false")
+	}
+
+	var rootRouteRendered bool
+	rootRouteErr := chromedp.Run(runCtx,
+		chromedp.Poll(rootRoutePollExpr(marker), &rootRouteRendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	)
+	if rootRouteErr != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("root-route Recent memories render wait failed (cross_spine ListMemories, #500): %v", rootRouteErr)
+	}
+	if !rootRouteRendered {
+		t.Fatal("root-route poll returned without error but rootRouteRendered=false")
+	}
+	var rootRouteBody string
+	if err := chromedp.Run(runCtx, chromedp.Evaluate(`document.body.innerText`, &rootRouteBody)); err != nil {
+		t.Fatalf("read root-route body text: %v", err)
+	}
+	if strings.Contains(rootRouteBody, "failed to load") {
+		t.Fatalf("root route body contains %q: %q", "failed to load", rootRouteBody)
 	}
 
 	observeURL := fixture.srv.baseURL() + "/ui/observe?scope=" + url.QueryEscape(fixtureScope)
@@ -454,6 +483,7 @@ type browserObserver struct {
 	failedURLs     map[string]string   // url -> reason (HTTP status or loading-failed error text)
 	successAppURLs map[string]struct{} // distinct _app/immutable URLs that loaded with a non-error status
 	exceptions     []string
+	failedRPCs     map[string]string // ListScopes/ListMemories RPC url -> "HTTP <status>"
 }
 
 func newBrowserObserver() *browserObserver {
@@ -461,6 +491,7 @@ func newBrowserObserver() *browserObserver {
 		urlsByRequest:  make(map[network.RequestID]string),
 		failedURLs:     make(map[string]string),
 		successAppURLs: make(map[string]struct{}),
+		failedRPCs:     make(map[string]string),
 	}
 }
 
@@ -485,6 +516,10 @@ func (o *browserObserver) attach(ctx context.Context) {
 			switch {
 			case e.Response.Status >= 400:
 				o.failedURLs[u] = fmt.Sprintf("HTTP %d", e.Response.Status)
+				if strings.Contains(u, engramv1connect.EngramServiceListScopesProcedure) ||
+					strings.Contains(u, engramv1connect.EngramServiceListMemoriesProcedure) {
+					o.failedRPCs[u] = fmt.Sprintf("HTTP %d", e.Response.Status)
+				}
 			case strings.Contains(u, consoleAssetPathPrefix):
 				o.successAppURLs[u] = struct{}{}
 			}
@@ -524,6 +559,13 @@ func (o *browserObserver) assertClean(t *testing.T) {
 	}
 	if len(o.exceptions) > 0 {
 		t.Fatalf("browser observed uncaught JS exceptions: %v", o.exceptions)
+	}
+	if len(o.failedRPCs) > 0 {
+		rpcOffenders := make([]string, 0, len(o.failedRPCs))
+		for u, reason := range o.failedRPCs {
+			rpcOffenders = append(rpcOffenders, fmt.Sprintf("%s: %s", u, reason))
+		}
+		t.Fatalf("browser observed failed ListScopes/ListMemories RPC(s): %v", rpcOffenders)
 	}
 	if len(o.successAppURLs) == 0 {
 		t.Fatalf("zero %s URLs were observed loading successfully — non-vacuity check failed (zero requests trivially yields zero failures)", consoleAssetPathPrefix)
