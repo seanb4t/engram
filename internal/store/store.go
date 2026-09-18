@@ -125,8 +125,9 @@ func (e *MultiTargetError) Unwrap() error {
 }
 
 // qdrantPayloadOpBatchSize mirrors the pinned Qdrant server's own
-// payload-operation batch size (qdrant/qdrant:v1.18.2,
-// lib/shard/src/update.rs, PAYLOAD_OP_BATCH_SIZE): the server chunks a
+// payload-operation batch size (qdrant/qdrant:v1.19.1,
+// lib/shard/src/update/payload.rs, PAYLOAD_OP_BATCH_SIZE — unchanged at 32
+// since v1.18.2's lib/shard/src/update.rs): the server chunks a
 // multi-ID payload write (SetPayload/DeletePayload/UpdateVectors/
 // OverwritePayload) by this many point ids, and a later chunk can error
 // after an earlier chunk has fully committed. Store.Supersede's target set
@@ -2169,7 +2170,7 @@ func (s *Store) defaultDeletePoint(ctx context.Context, id string) error {
 //
 // TOCTOU note: if the record is deleted between the getWritable ownership gate
 // and the SetPayload call, Qdrant's point-ID-selector SetPayload returns a
-// NotFound gRPC error (verified against v1.18.2). That error propagates
+// NotFound gRPC error (verified against v1.18.2, re-verified v1.19.1). That error propagates
 // unchanged, so SetVisibility is fail-closed with respect to concurrent
 // deletion — no additional re-fetch is required.
 func (s *Store) SetVisibility(ctx context.Context, id string, subj Subject, shared bool) (err error) {
@@ -2281,8 +2282,8 @@ func (s *Store) lockTargets(ctx context.Context, targets []string) (unlock func(
 // if a target is deleted between its getWritable ownership gate and the
 // back-stamp SetPayload, Qdrant's point-ID-selector SetPayload returns a
 // NotFound gRPC error that propagates unchanged — fail-closed, no re-fetch
-// needed (D-02). At the pinned server (qdrant/qdrant:v1.18.2,
-// lib/shard/src/update.rs) a multi-ID SetPayload chunks point ids (in
+// needed (D-02). At the pinned server (qdrant/qdrant:v1.19.1,
+// lib/shard/src/update/payload.rs) a multi-ID SetPayload chunks point ids (in
 // batches of qdrantPayloadOpBatchSize) and mutates every point it finds
 // BEFORE raising a missing-id error for one it doesn't, so an error from
 // this call means possibly-partial, never nothing-written — the reason

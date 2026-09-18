@@ -136,7 +136,7 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 	startCtx, startCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	container, cerr := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.18.2")
+	container, cerr := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.19.1")
 	if cerr != nil {
 		startCancel()
 		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); Qdrant-backed e2e tests will skip\n", cerr)
