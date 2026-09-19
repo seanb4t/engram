@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-18 after opening milestone 2026-09-18.01 — Bounded Reads)
+See: .planning/PROJECT.md (updated 2026-09-18 after Phase 1 of milestone 2026-09-18.01 — Bounded Reads)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 01 — Test Harness & Fixture Helper
+**Current focus:** Phase 2 — Error Classification & ResourceExhausted Mapping
 
 ## Current Position
 
