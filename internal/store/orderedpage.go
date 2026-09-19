@@ -25,8 +25,8 @@
 // correctness under concurrent inserts, or a tie exceeding maxListLimit ids,
 // is REQ-cursor-tie-safety (v2), unchanged by this file.
 //
-// D-05: the two-phase ids->payload design (a stored payload_bytes field, a
-// schema-version step, a GetPoints re-fetch) is NOT adopted here — this
+// D-05: the two-phase ids->payload design (a stored byte-count field on the
+// payload, a schema-version step, a GetPoints re-fetch) is NOT adopted here — this
 // helper never calls Get/GetPoints, so the TOCTOU-on-delete/supersede/
 // archive and GetPoints-order acceptance criteria that design would need do
 // not apply to it.
@@ -35,6 +35,8 @@ package store
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -104,10 +106,33 @@ func sortedSeenIDs(seen map[string]bool) []string {
 // created_at in dir, resuming from from, via one or more Scroll RPCs each
 // sized from view's byte-derived per-RPC ceiling (boundedread.go's
 // perRPCLimit) and the page's still-remaining byte budget — never more than
-// fits either. D-07's legacy-oversized-record fallback (batch-of-1 on
-// ErrResponseTooLarge) and input validation are added by plan 03-04's Task
-// 2; see the file doc comment for the page contract this method upholds.
+// fits either.
+//
+// D-07's legacy-oversized-record fallback mirrors scrollAllPoints's own: when
+// an RPC of a computed Limit greater than 1 fails matching the named
+// ErrResponseTooLarge sentinel (a pre-cap legacy record made this window
+// overflow), the SAME keyset position — same StartFrom, same seen set,
+// nothing emitted — is re-issued at Limit 1, repeated for exactly that many
+// RPCs before resuming the computed count. If a single record still
+// overflows at Limit 1, or any other error occurs, the error is returned
+// UNCHANGED and the page discarded (orderedPage{}, err) — never a partial
+// page and never a silently skipped or truncated record.
+//
+// See the file doc comment for the page contract this method upholds.
 func (s *Store) scrollOrderedPage(ctx context.Context, f *qdrant.Filter, view readView, dir qdrant.Direction, from listCursor, limit uint64) (orderedPage, error) {
+	if limit == 0 {
+		return orderedPage{}, fmt.Errorf("ordered page: limit must be > 0: %w", ErrInvalidArgument)
+	}
+	if !view.budgeted() {
+		return orderedPage{}, fmt.Errorf("ordered page: view has no byte-derived ceiling: %w", ErrInvalidArgument)
+	}
+	if from.C == "" && len(from.Seen) > 0 {
+		return orderedPage{}, fmt.Errorf("ordered page: resume position carries Seen ids but no boundary: %w", ErrInvalidArgument)
+	}
+	if len(from.Seen) > maxListLimit {
+		return orderedPage{}, fmt.Errorf("ordered page: resume Seen set too large: %w", ErrInvalidArgument)
+	}
+
 	boundary := from.C
 	seen := make(map[string]bool, len(from.Seen))
 	for _, id := range from.Seen {
@@ -121,22 +146,28 @@ func (s *Store) scrollOrderedPage(ctx context.Context, f *qdrant.Filter, view re
 	items := make([]Memory, 0, limit)
 	var totalBytes int
 	var cutByBudget, exhausted bool
+	var fallbackLeft int
 
 	for uint64(len(items)) < limit {
-		want := int(limit - uint64(len(items)))
-		n := perRPCLimit(view.maxRecordBytes)
-		if n > want {
-			n = want
-		}
-		if byBudget := (pageByteBudget - totalBytes) / view.maxRecordBytes; n > byBudget {
-			n = byBudget
-		}
-		if n <= 0 {
-			if len(items) > 0 {
-				cutByBudget = true
-				break
-			}
+		var n int
+		if fallbackLeft > 0 {
 			n = 1
+		} else {
+			want := int(limit - uint64(len(items)))
+			n = perRPCLimit(view.maxRecordBytes)
+			if n > want {
+				n = want
+			}
+			if byBudget := (pageByteBudget - totalBytes) / view.maxRecordBytes; n > byBudget {
+				n = byBudget
+			}
+			if n <= 0 {
+				if len(items) > 0 {
+					cutByBudget = true
+					break
+				}
+				n = 1
+			}
 		}
 
 		pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
@@ -151,6 +182,10 @@ func (s *Store) scrollOrderedPage(ctx context.Context, f *qdrant.Filter, view re
 			WithPayload: view.selector,
 		})
 		if err != nil {
+			if n > 1 && errors.Is(err, ErrResponseTooLarge) {
+				fallbackLeft = n
+				continue
+			}
 			return orderedPage{}, err
 		}
 
@@ -165,6 +200,10 @@ func (s *Store) scrollOrderedPage(ctx context.Context, f *qdrant.Filter, view re
 				startFrom = qdrant.NewStartFromDatetime(ts)
 			}
 			seen[m.ID] = true
+		}
+
+		if fallbackLeft > 0 {
+			fallbackLeft--
 		}
 
 		if len(pts) < n {
