@@ -23,39 +23,26 @@ import (
 	"github.com/seanb4t/engram/internal/authz"
 	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/shortid"
-	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 	"google.golang.org/grpc"
 )
 
-// qdrantImageTag is the Qdrant image the integration suite boots via
-// testcontainers. The SetPayload-on-deleted-point fail-closed contract that
-// TestSetVisibilityTOCTOU depends on was verified against this image; bumping it
-// MUST be paired with re-verifying that contract and updating
-// qdrantTOCTOUVerifiedVersion below (the version guard there will fail loudly
-// until you do).
-const qdrantImageTag = "qdrant/qdrant:v1.19.1"
-
 // qdrantTOCTOUVerifiedVersion is the server version (as reported by HealthCheck)
 // whose SetPayload point-ID NotFound semantics TestSetVisibilityTOCTOU was
-// written against. Deliberately a SEPARATE constant from qdrantImageTag so a
-// version bump trips the guard in TestSetVisibilityTOCTOU and forces a conscious
-// re-verification rather than silently tracking the new image.
+// written against. Deliberately a SEPARATE constant from storetest.QdrantImage
+// (internal/store/storetest, the package that now owns the pinned image tag and
+// container lifecycle, D-10) so a version bump trips the guard in
+// TestSetVisibilityTOCTOU and forces a conscious re-verification rather than
+// silently tracking the new image.
 const qdrantTOCTOUVerifiedVersion = "1.19.1"
 
-// testQdrantAddr is the gRPC host:port the integration tests run against. Set by
-// TestMain: ENGRAM_QDRANT_TEST_ADDR if provided (fast path / override), else an
-// ephemeral testcontainer. Empty when neither is available (Docker absent), in
-// which case the integration tests skip.
-var testQdrantAddr string
-
-// testQdrantContainerBooted records whether TestMain booted its OWN
-// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
-// fast path onto a shared instance. Set true only inside the testcontainer
-// branch, immediately after the container's gRPC endpoint resolves; the env-var
-// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
-// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
-// an inference from logs (CONTEXT.md D-20).
-var testQdrantContainerBooted bool
+// noQdrantHandler is storetest's skip-or-fail decision, handed across the
+// store/store_test package boundary by internal/store's external TestMain
+// (main_test.go, package store_test) calling SetNoQdrantHandler before any
+// test runs. Package store cannot import storetest directly (storetest
+// imports store — an import cycle, D-07), so this hook is the only channel:
+// storetest.SkipOrFailNoQdrant stays the SOLE ENGRAM_REQUIRE_QDRANT parser,
+// and in-package tests merely delegate to whatever was installed.
+var noQdrantHandler func(testing.TB)
 
 // testCollectionPrefix namespaces this package's integration-test Qdrant
 // collection names so a single shared Qdrant instance (CI's ENGRAM_QDRANT_TEST_ADDR
@@ -88,110 +75,36 @@ func newTestStore(t testing.TB, c *qdrant.Client, name string, opts ...Option) *
 	return New(c, name, opts...)
 }
 
-// requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed in this
-// package, mirroring internal/server/tools_test.go's requireQdrant: TestMain and
-// dialTestClient act only on its result, never parsing the env var themselves.
-// Unset/empty -> (false, nil): local dev ergonomics unchanged (integration tests
-// still skip without Qdrant). A truthy/falsey value parses via
-// strconv.ParseBool. Any non-empty invalid value returns a non-nil error rather
-// than being coerced to false — coercing a parse error to false would silently
-// re-enable skipping and defeat the fail-closed gate the CI `test` job relies on.
-func requireQdrant() (bool, error) {
-	v := os.Getenv("ENGRAM_REQUIRE_QDRANT")
-	if v == "" {
-		return false, nil
-	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return false, fmt.Errorf("ENGRAM_REQUIRE_QDRANT: invalid value %q: %w", v, err)
-	}
-	return b, nil
-}
-
-// TestMain provisions Qdrant for this package's integration tests. It prefers an
-// existing instance via ENGRAM_QDRANT_TEST_ADDR; otherwise it boots an ephemeral
-// Qdrant via testcontainers and tears it down afterward. If neither is available
-// the suite still runs and the integration tests skip with a clear message —
-// UNLESS ENGRAM_REQUIRE_QDRANT is set (mirrors internal/server/tools_test.go: the
-// CI `test` job sets it), in which case TestMain exits non-zero instead of
-// letting the suite run with the real-store authz gate silently skipped.
-func TestMain(m *testing.M) {
-	required, rerr := requireQdrant()
-	if rerr != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", rerr)
-		os.Exit(1)
-	}
-	if addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR"); addr != "" {
-		testQdrantAddr = addr
-		os.Exit(m.Run())
-	}
-	// Bound startup so an unreachable daemon or a stalled image pull fails fast
-	// instead of hanging the suite. os.Exit skips defers, so cancel explicitly.
-	startCtx, startCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	container, err := tcqdrant.Run(startCtx, qdrantImageTag)
-	if err != nil {
-		startCancel()
-		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set ENGRAM_QDRANT_TEST_ADDR or start Docker\n", err)
-		if required {
-			fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set — failing instead of skipping")
-			os.Exit(1)
-		}
-		os.Exit(m.Run())
-	}
-	testQdrantAddr, err = container.GRPCEndpoint(startCtx)
-	startCancel()
-	if err != nil {
-		terminateQdrant(container)
-		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", err)
-		os.Exit(1)
-	}
-	testQdrantContainerBooted = true
-	if required && testQdrantAddr == "" {
-		terminateQdrant(container)
-		fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set but no Qdrant address resolved")
-		os.Exit(1)
-	}
-	code := m.Run()
-	terminateQdrant(container)
-	os.Exit(code)
-}
-
-// terminateQdrant tears down the container under a bounded context so a slow
-// Docker shutdown cannot hang the suite.
-func terminateQdrant(c *tcqdrant.QdrantContainer) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	_ = c.Terminate(ctx)
-}
-
 // dialTestClient dials the integration-test Qdrant and returns the bare client.
-// Skips when no Qdrant is available. It is the single in-package dialing
-// primitive: every in-package test client flows through it and therefore
-// through NewQdrantClient, the same constructor production uses — so an
-// in-package client carries production's dial options (the otelgrpc stats
-// handler) plus whatever the caller appends via opts (interceptors for fault
-// injection, capture, or counting). testStore wraps it with a ready
-// collection, and the reindex tests use it directly to drive two collections
-// and read points back verbatim.
+// Skips (or fails, per the installed noQdrantHandler) when no Qdrant is
+// available. It is the single in-package dialing primitive: every in-package
+// test client flows through it and therefore through NewQdrantClient, the same
+// constructor production uses — so an in-package client carries production's
+// dial options (the otelgrpc stats handler) plus whatever the caller appends
+// via opts (interceptors for fault injection, capture, or counting). testStore
+// wraps it with a ready collection, and the reindex tests use it directly to
+// drive two collections and read points back verbatim.
+//
+// The address comes from ENGRAM_QDRANT_TEST_ADDR — the cross-package channel
+// internal/store's external TestMain (main_test.go, package store_test) sets
+// via storetest.Run before any test runs; the skip-or-fail decision comes from
+// noQdrantHandler, installed the same way (D-07/D-10).
 func dialTestClient(t *testing.T, opts ...grpc.DialOption) *qdrant.Client {
 	t.Helper()
-	if testQdrantAddr == "" {
-		required, err := requireQdrant()
-		if err != nil {
-			t.Fatalf("%v", err)
+	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
+	if addr == "" {
+		if noQdrantHandler == nil {
+			t.Fatal("noQdrantHandler is nil: internal/store's external TestMain (main_test.go) must call store.SetNoQdrantHandler before tests run")
 		}
-		if required {
-			t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
-		}
-		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
+		noQdrantHandler(t)
 	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
+	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
+		t.Fatalf("invalid Qdrant address %q: %v", addr, err)
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
+		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, addr, err)
 	}
 	c, err := NewQdrantClient(host, port, opts...)
 	if err != nil {
@@ -200,72 +113,12 @@ func dialTestClient(t *testing.T, opts ...grpc.DialOption) *qdrant.Client {
 	return c
 }
 
-// TestRequireQdrant mirrors internal/server/tools_test.go's TestRequireQdrant:
-// verifies parsing semantics for the env var this package's fail-closed gate
-// relies on.
-func TestRequireQdrant(t *testing.T) {
-	cases := []struct {
-		name    string
-		val     string
-		want    bool
-		wantErr bool
-	}{
-		{name: "unset_or_empty", val: "", want: false},
-		{name: "truthy_true", val: "true", want: true},
-		{name: "truthy_1", val: "1", want: true},
-		{name: "falsey_false", val: "false", want: false},
-		{name: "falsey_0", val: "0", want: false},
-		{name: "malformed", val: "treu", wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("ENGRAM_REQUIRE_QDRANT", tc.val)
-			got, err := requireQdrant()
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("requireQdrant() with %q = (%v, nil), want a non-nil error (must not coerce to false)", tc.val, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("requireQdrant() with %q: unexpected error: %v", tc.val, err)
-			}
-			if got != tc.want {
-				t.Errorf("requireQdrant() with %q = %v, want %v", tc.val, got, tc.want)
-			}
-		})
-	}
-}
-
-// TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
-// fast path rather than booting its own testcontainer, whenever
-// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
-// package could boot a container and coincidentally resolve the same address —
-// so the load-bearing assertion is testQdrantContainerBooted == false
-// (CONTEXT.md D-20). Skips (does not fail) when the env var is unset: a
-// developer running locally without it is not the case this test is about.
-func TestSharedQdrantAddressHonored(t *testing.T) {
-	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
-	if addr == "" {
-		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
-	}
-	if testQdrantAddr != addr {
-		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
-	}
-	if testQdrantContainerBooted {
-		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
-	}
-}
-
 // TestDialTestClientSkipsWhenNotRequired proves dialTestClient preserves its
 // original skip-not-fail behavior with no Qdrant available and
 // ENGRAM_REQUIRE_QDRANT unset, so local development without Docker still
-// works. Runs against a saved/restored testQdrantAddr so it does not depend on
-// whether TestMain actually provisioned a live Qdrant.
+// works.
 func TestDialTestClientSkipsWhenNotRequired(t *testing.T) {
-	savedAddr := testQdrantAddr
-	t.Cleanup(func() { testQdrantAddr = savedAddr })
-	testQdrantAddr = ""
+	t.Setenv("ENGRAM_QDRANT_TEST_ADDR", "")
 	t.Setenv("ENGRAM_REQUIRE_QDRANT", "")
 
 	passed := t.Run("inner", func(t *testing.T) {
@@ -285,10 +138,13 @@ func TestDialTestClientSkipsWhenNotRequired(t *testing.T) {
 // binary run as FAIL regardless of how the outer test reads t.Run's returned
 // bool), so this re-execs the test binary as a subprocess and asserts on its
 // exit code and output — the standard Go idiom for testing an intentional
-// test failure.
+// test failure. The child's ENGRAM_QDRANT_TEST_ADDR carries a placeholder so
+// its own TestMain always takes storetest's fast path and never boots a
+// container; the helper branch below clears it before dialing so that
+// placeholder is never actually dialed.
 func TestDialTestClientFailsWhenRequiredAndUnavailable(t *testing.T) {
 	if os.Getenv("ENGRAM_STORE_TEST_DIAL_FAIL_HELPER") == "1" {
-		testQdrantAddr = ""
+		t.Setenv("ENGRAM_QDRANT_TEST_ADDR", "")
 		dialTestClient(t)
 		return
 	}
@@ -296,6 +152,7 @@ func TestDialTestClientFailsWhenRequiredAndUnavailable(t *testing.T) {
 	cmd.Env = append(os.Environ(),
 		"ENGRAM_STORE_TEST_DIAL_FAIL_HELPER=1",
 		"ENGRAM_REQUIRE_QDRANT=1",
+		"ENGRAM_QDRANT_TEST_ADDR=127.0.0.1:1",
 	)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -1163,8 +1020,9 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 // covers the simpler pre-entry case — the record is already gone when
 // SetVisibility is called, so the getWritable gate rejects it. A version guard
 // at the top of this function enforces the image-version coupling: bumping
-// qdrantImageTag without updating qdrantTOCTOUVerifiedVersion will fail loudly
-// here, requiring conscious re-verification of Parts 1–2 before proceeding.
+// storetest.QdrantImage without updating qdrantTOCTOUVerifiedVersion will fail
+// loudly here, requiring conscious re-verification of Parts 1–2 before
+// proceeding.
 func TestSetVisibilityTOCTOU(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -1172,8 +1030,8 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 	// Version guard: the SetPayload-on-deleted-point fail-closed contract asserted
 	// in Parts 1-2 was verified against Qdrant qdrantTOCTOUVerifiedVersion. When the
 	// suite boots the pinned testcontainer (no ENGRAM_QDRANT_TEST_ADDR override),
-	// enforce that the running server matches — so bumping qdrantImageTag without
-	// re-verifying Parts 1-2 and updating qdrantTOCTOUVerifiedVersion fails loudly
+	// enforce that the running server matches — so bumping storetest.QdrantImage
+	// without re-verifying Parts 1-2 and updating qdrantTOCTOUVerifiedVersion fails loudly
 	// here. An operator-supplied external instance owns its own version, so the
 	// check is skipped on that path to avoid a spurious failure.
 	if os.Getenv("ENGRAM_QDRANT_TEST_ADDR") == "" {
@@ -1182,7 +1040,7 @@ func TestSetVisibilityTOCTOU(t *testing.T) {
 			t.Fatalf("qdrant health check: %v", err)
 		}
 		if v := hc.GetVersion(); v != qdrantTOCTOUVerifiedVersion {
-			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics (Parts 1-2), then update qdrantTOCTOUVerifiedVersion and qdrantImageTag together", v, qdrantTOCTOUVerifiedVersion)
+			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics (Parts 1-2), then update qdrantTOCTOUVerifiedVersion and storetest.QdrantImage together", v, qdrantTOCTOUVerifiedVersion)
 		}
 	}
 
@@ -4055,7 +3913,7 @@ func TestSupersedeTOCTOU(t *testing.T) {
 			t.Fatalf("qdrant health check: %v", err)
 		}
 		if v := hc.GetVersion(); v != qdrantTOCTOUVerifiedVersion {
-			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and qdrantImageTag together", v, qdrantTOCTOUVerifiedVersion)
+			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and storetest.QdrantImage together", v, qdrantTOCTOUVerifiedVersion)
 		}
 	}
 
@@ -4162,7 +4020,7 @@ func TestSupersedeMultiTOCTOU(t *testing.T) {
 			t.Fatalf("qdrant health check: %v", err)
 		}
 		if v := hc.GetVersion(); v != qdrantTOCTOUVerifiedVersion {
-			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and qdrantImageTag together", v, qdrantTOCTOUVerifiedVersion)
+			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and storetest.QdrantImage together", v, qdrantTOCTOUVerifiedVersion)
 		}
 	}
 
@@ -4298,7 +4156,7 @@ func TestSupersedeMultiTOCTOUNoDanglingLink(t *testing.T) {
 			t.Fatalf("qdrant health check: %v", err)
 		}
 		if v := hc.GetVersion(); v != qdrantTOCTOUVerifiedVersion {
-			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and qdrantImageTag together", v, qdrantTOCTOUVerifiedVersion)
+			t.Fatalf("Qdrant version %q != verified %q: re-verify SetPayload point-ID NotFound semantics, then update qdrantTOCTOUVerifiedVersion and storetest.QdrantImage together", v, qdrantTOCTOUVerifiedVersion)
 		}
 	}
 

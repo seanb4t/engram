@@ -85,7 +85,7 @@ func seedRecallSpanRecords(t *testing.T, s *Store, scope string, subj Subject, n
 }
 
 func TestStoreSearchEmitsSpan(t *testing.T) {
-	st := testStore(t) // skips if testQdrantAddr == "" (see store_test.go helpers)
+	st := testStore(t) // skips (or fails, under ENGRAM_REQUIRE_QDRANT) when no Qdrant is available (see store_test.go helpers)
 	sr := withSpanRecorder(t)
 
 	// testStore ensures a 3-dim collection (store_test.go: EnsureCollection(ctx, 3)).
