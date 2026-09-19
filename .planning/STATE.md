@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 02
 current_phase_name: Error Classification & ResourceExhausted Mapping
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-09-19T15:43:04.857Z"
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-09-19T16:18:50.720Z"
 last_activity: 2026-09-19
 last_activity_desc: Phase 02 execution started
-state_head: fa6bb6106510f8aef0c0ae65b10961a5877d6f3e
+state_head: f63c551725ac179a3e4d4ddc1a51c112bf1ccc48
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-18 after Phase 1 of milestone 2026-09
 ## Current Position
 
 Phase: 02 (Error Classification & ResourceExhausted Mapping) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-19 — Phase 02 execution started
 
@@ -308,6 +308,8 @@ milestone needs in working memory.
 - [Phase 02]: 02-01: isRecvLimitMessage matches grpc-go's four receive shapes on prefix+substring, never code alone, so a genuine server-side ResourceExhausted stays untouched for qdrant-go-client's own rate-limit interceptor.
 - [Phase 02]: argError.Error() extracted into renderHintEnvelope(fields, hint, detail); Connect arm and MCP mapper both call it — never construct an *argError for store.ErrResponseTooLarge
 - [Phase 02]: addToolMiddleware(s, record) is the ONE registration site for the tool-call middleware stack (instrumentTools outermost, mapResponseTooLarge innermost); pinned by a go/parser source gate, TestRegisterInstallsToolMiddleware
+- [Phase 02]: 02-03: exitTooLarge=10 applied to both the Connect client tier and the operator tier (classifyOperatorErr's store.ErrResponseTooLarge arm), per D-10
+- [Phase 02]: 02-03: internal/server/hintcodedocs_test.go derives the hint-code vocabulary via go/parser over argerror.go's const block, never a second hand-typed list -- closes the D-05 surfaces-verification finding (surfaces declares conditional-rule sentences only, not the hint vocabulary)
 
 ### Pending Todos
 
@@ -382,8 +384,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-19T15:43:04.741Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-09-19T16:18:50.698Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -523,6 +525,7 @@ Resume file: None
 | Phase 01 P05 | 55min | 3 tasks | 12 files |
 | Phase 02 P01 | 45min | 2 tasks | 4 files |
 | Phase 02 P02 | 45min | 3 tasks | 7 files |
+| Phase 02 P03 | 55min | 3 tasks | 12 files |
 
 ## Operator Next Steps
 

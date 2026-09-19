@@ -380,7 +380,7 @@ Plans:
 3. MCP tools return the same named hint envelope through one shared MCP-side mapper, rather than each tool closure surfacing the raw error.
 4. The `engram` CLI maps the new code to a documented exit code, and the hint code is documented in docs-site `reference/errors.md`.
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -393,7 +393,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 02-03-PLAN.md — `exitTooLarge = 10` for `resource_exhausted` (client verbs) and the store sentinel (operator tier), catalog + golden + baseline rows, CLI guide, upgrade guide, errors.md's eleventh hint code, and a doc gate binding errors.md to `argerror.go` (D-05, D-07; REQ-exhausted-cli-docs)
+- [x] 02-03-PLAN.md — `exitTooLarge = 10` for `resource_exhausted` (client verbs) and the store sentinel (operator tier), catalog + golden + baseline rows, CLI guide, upgrade guide, errors.md's eleventh hint code, and a doc gate binding errors.md to `argerror.go` (D-05, D-07; REQ-exhausted-cli-docs)
 
 **Wave 4**
 
