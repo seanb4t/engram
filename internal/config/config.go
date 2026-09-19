@@ -86,8 +86,9 @@ type EmbedConfig struct {
 	Timeout string `koanf:"timeout"`
 }
 
-// MemoryConfig bounds the ordinary store_memory/update_memory `summary`
-// field (04-diagnosability D-06a/D-18): issue #360's misattributed
+// MemoryConfig bounds the ordinary store_memory/update_memory `summary` and
+// `content` fields (04-diagnosability D-06a/D-18; 03-shared-bounded-read-
+// mechanism D-01/D-09): issue #360's misattributed
 // "missing properties: [\"content\"]" traces to an oversized `summary`
 // decoding in a way that made `content` read as absent, and there was no
 // bound on a memory summary to reject it deterministically — only
@@ -100,6 +101,13 @@ type MemoryConfig struct {
 	// embed.timeout/summarize.max_tokens already use for their own escape
 	// hatches (validate.go).
 	MaxSummaryBytes string `koanf:"max_summary_bytes"`
+	// MaxContentBytes caps storeArgs.Content on every memory create path
+	// (default "65536" — 64 KiB, D-01). UNLIKE MaxSummaryBytes above, this
+	// bound is ALWAYS enforced: "0" and negative values fail
+	// Config.Validate rather than being honored as "disabled" (D-09),
+	// because the read-side per-record ceiling (plan 03-02) is derived from
+	// this cap.
+	MaxContentBytes string `koanf:"max_content_bytes"`
 }
 
 // SummarizeConfig selects the recall-summary model and the character cap shared

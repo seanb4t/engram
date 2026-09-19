@@ -42,6 +42,13 @@ var registry = []field{
 	// the bound did not exist before this phase, so there is nothing retired to
 	// guard against.
 	{Key: "memory.max_summary_bytes", Env: "ENGRAM_MEMORY_MAX_SUMMARY_BYTES", Default: "512"},
+	// memory.max_content_bytes (D-01/D-09): a brand-new key, no Legacy value —
+	// this bound did not exist before this phase. UNLIKE memory.max_summary_bytes,
+	// it is ALWAYS enforced: Config.Validate rejects "0" and non-positive values
+	// rather than honoring them as "disabled", because plan 03-02 derives the
+	// read-side per-record ceiling from this cap and a disabled cap would
+	// silently remove that provable bound.
+	{Key: "memory.max_content_bytes", Env: "ENGRAM_MEMORY_MAX_CONTENT_BYTES", Default: "65536"},
 	{Key: "summarize.model", Env: "ENGRAM_SUMMARY_MODEL"},
 	{Key: "summarize.max_chars", Env: "ENGRAM_SUMMARY_MAX_CHARS", Default: "280"},
 	{Key: "summarize.max_tokens", Env: "ENGRAM_SUMMARY_MAX_TOKENS", Default: "1024"},

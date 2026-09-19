@@ -61,7 +61,7 @@ func TestIssue360SummaryLengthNamesSummary(t *testing.T) {
 				Category: "decision",
 				Summary:  zzRepeat("s", tc.summaryLen),
 			}
-			err := validateStoreArgs(a, 512) // 512 == the approved default (D-18)
+			err := validateStoreArgs(a, 512, memoryWriteCaps{}) // 512 == the approved default (D-18)
 			if err == nil {
 				t.Fatalf("validateStoreArgs with a %d-byte summary: want an error, got nil", tc.summaryLen)
 			}
@@ -98,7 +98,7 @@ func TestIssue360PositiveControl(t *testing.T) {
 			Source:   "agent-inferred",
 			Category: "decision",
 		}
-		if err := validateStoreArgs(a, 512); err != nil {
+		if err := validateStoreArgs(a, 512, memoryWriteCaps{}); err != nil {
 			t.Errorf("validateStoreArgs(2203-byte content, no summary) = %v, want nil", err)
 		}
 	})
@@ -110,7 +110,7 @@ func TestIssue360PositiveControl(t *testing.T) {
 			Category: "decision",
 			Summary:  zzRepeat("s", 28),
 		}
-		if err := validateStoreArgs(a, 512); err != nil {
+		if err := validateStoreArgs(a, 512, memoryWriteCaps{}); err != nil {
 			t.Errorf("validateStoreArgs(28-byte summary) = %v, want nil", err)
 		}
 	})
@@ -161,22 +161,22 @@ func TestSchemaRequiredMovedToGoLevel(t *testing.T) {
 		{"storeArgs.Content", "content", HintRequired, func() error {
 			a := validStore()
 			a.Content = ""
-			return validateStoreArgs(a, 512)
+			return validateStoreArgs(a, 512, memoryWriteCaps{})
 		}},
 		{"storeArgs.Scope", "scope", HintRequired, func() error {
 			a := validStore()
 			a.Scope = ""
-			return validateStoreArgs(a, 512)
+			return validateStoreArgs(a, 512, memoryWriteCaps{})
 		}},
 		{"storeArgs.Source", "source", HintRequired, func() error {
 			a := validStore()
 			a.Source = ""
-			return validateStoreArgs(a, 512)
+			return validateStoreArgs(a, 512, memoryWriteCaps{})
 		}},
 		{"storeArgs.Category", "category", HintRequired, func() error {
 			a := validStore()
 			a.Category = ""
-			return validateStoreArgs(a, 512)
+			return validateStoreArgs(a, 512, memoryWriteCaps{})
 		}},
 
 		// supersedeArgs.Supersedes — deps.supersedeMemory, MCP-only.

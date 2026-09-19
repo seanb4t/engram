@@ -80,6 +80,78 @@ type deps struct {
 	// EmbedderIdentity is json:"-"), so an empty value there just persists
 	// as an empty stamp, never surfacing on any wire path.
 	embedderIdentity string
+	// writeCaps holds the always-enforced memory content/tags write bounds
+	// (D-01/D-09/D-10). A zero-value memoryWriteCaps (a bare &deps{} test
+	// literal that never called buildDepsFromEnv) is NEVER uncapped: every
+	// consumer calls writeCaps.resolved() first, which fills any zero field
+	// with its documented default.
+	writeCaps memoryWriteCaps
+}
+
+// memoryWriteCaps holds the always-enforced memory content/tags write
+// bounds (D-01/D-09/D-10): contentBytes caps storeArgs.Content,
+// tags caps the NUMBER of storeArgs.Tags entries, and tagBytes caps the
+// byte length of a single entry. UNLIKE deps.maxSummaryBytes, none of these
+// three fields is an operator escape hatch — Config.Validate rejects "0"
+// and negative values for all three (D-09), so a fully-loaded
+// memoryWriteCaps never carries a zero field. A zero field DOES appear in a
+// bare &deps{} test literal that never called memoryWriteCapsFromConfig;
+// resolved() is what keeps that literal capped at the documented defaults
+// instead of silently becoming unbounded.
+type memoryWriteCaps struct {
+	contentBytes, tags, tagBytes int
+}
+
+// The always-enforced memory write defaults (D-01/D-09/D-10), mirroring the
+// registry defaults for ENGRAM_MEMORY_MAX_CONTENT_BYTES/_MAX_TAGS/
+// _MAX_TAG_BYTES — TestMemoryWriteCapDefaultsMatchRegistry pins the
+// equality by test, not by reading.
+const (
+	defaultMaxContentBytes = 64 * 1024
+	defaultMaxTags         = 128
+	defaultMaxTagBytes     = 128
+)
+
+// resolved returns c with every field that is <= 0 replaced by its
+// documented default, so a zero-value memoryWriteCaps (a bare &deps{} test
+// literal) is never uncapped.
+func (c memoryWriteCaps) resolved() memoryWriteCaps {
+	if c.contentBytes <= 0 {
+		c.contentBytes = defaultMaxContentBytes
+	}
+	if c.tags <= 0 {
+		c.tags = defaultMaxTags
+	}
+	if c.tagBytes <= 0 {
+		c.tagBytes = defaultMaxTagBytes
+	}
+	return c
+}
+
+// positiveIntOrDefault parses value as a positive int, returning def on any
+// parse error or a non-positive result. Config.Validate already rejects
+// these three env vars' "0"/negative/non-integer values at startup (D-09),
+// so this is defense in depth, never the enforcement point — the slog.Warn
+// only fires for a value that somehow reached here unparseable (e.g. a
+// hand-built config.Config in a test that skipped Validate).
+func positiveIntOrDefault(value, envName string, def int) int {
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		if value != "" {
+			slog.Warn(envName+" is set but unparseable or non-positive; using default",
+				"value", value, "default", def)
+		}
+		return def
+	}
+	return n
+}
+
+// memoryWriteCapsFromConfig builds the always-enforced memory write caps
+// from the loaded config (D-01/D-09/D-10).
+func memoryWriteCapsFromConfig(cfg *config.Config) memoryWriteCaps {
+	return memoryWriteCaps{
+		contentBytes: positiveIntOrDefault(cfg.Memory.MaxContentBytes, "ENGRAM_MEMORY_MAX_CONTENT_BYTES", defaultMaxContentBytes),
+	}
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -216,6 +288,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		summaryQueue:     buildSummaryQueue(cfg, st, sqm),
 		usageQueue:       buildUsageQueue(cfg, st, uqm),
 		embedderIdentity: identity,
+		writeCaps:        memoryWriteCapsFromConfig(cfg),
 	}, nil
 }
 
@@ -829,6 +902,16 @@ func requireID(id string) error {
 	return nil
 }
 
+// checkContentBytes rejects content whose length in BYTES (deliberately not
+// runes — the bound is a wire/storage size, not a character count) exceeds
+// maxBytes. Reused by every content-bearing rejection (D-01).
+func checkContentBytes(content string, maxBytes int) error {
+	if len(content) > maxBytes {
+		return argErrf(classOutOfRange, HintTooLong, "content", "content too large: %d bytes (max %d)", len(content), maxBytes)
+	}
+	return nil
+}
+
 // validateStoreArgs enforces storeArgs' presence requirements in Go (D-06a):
 // content/scope/source/category, which carry no schema-level "required"
 // after this plan's omitempty relaxation — this validator IS engram's
@@ -837,6 +920,13 @@ func requireID(id string) error {
 // embed storeArgs) on both the MCP and Connect lanes: Connect's create-style
 // write RPCs (StoreMemory/ScheduleMemory) have no field-mask semantics, so
 // there is no asymmetric-nil case here the way there is for updateArgs.Content.
+// This is the ONE enforcement point for D-01's content-byte cap and D-10's
+// tags caps on all three create paths, on both lanes (connectapi.go routes
+// StoreMemory/ScheduleMemory through the same deps.storeMemory/
+// scheduleMemory methods that call this).
+//
+// Order: summary bound (#360) -> content presence -> content bytes -> scope
+// -> source -> category -> tag count -> tag bytes.
 //
 // The summary-length bound (maxSummaryBytes, ENGRAM_MEMORY_MAX_SUMMARY_BYTES,
 // D-18) is checked FIRST, before content presence — this order is what makes
@@ -846,12 +936,21 @@ func requireID(id string) error {
 // in the case where the underlying decode anomaly also drops `content`.
 // maxSummaryBytes<=0 means the bound is disabled (D-18's "0 is honored as
 // disabled" convention).
-func validateStoreArgs(a storeArgs, maxSummaryBytes int) error {
+//
+// UNLIKE maxSummaryBytes, caps.contentBytes (and, from Task 3, caps.tags/
+// caps.tagBytes) is ALWAYS enforced — no ">0" guard is needed or wanted:
+// caps.resolved() guarantees a positive value, and Config.Validate already
+// rejects "0"/negative at startup (D-09), so a guard here would be dead code.
+func validateStoreArgs(a storeArgs, maxSummaryBytes int, caps memoryWriteCaps) error {
+	caps = caps.resolved()
 	if maxSummaryBytes > 0 && len(a.Summary) > maxSummaryBytes {
 		return argErrf(classOutOfRange, HintTooLong, "summary", "summary too large: %d bytes (max %d)", len(a.Summary), maxSummaryBytes)
 	}
 	if a.Content == "" {
 		return argErrf(classMalformed, HintRequired, "content", "content is required")
+	}
+	if err := checkContentBytes(a.Content, caps.contentBytes); err != nil {
+		return err
 	}
 	if a.Scope == "" {
 		return argErrf(classMalformed, HintRequired, "scope", "scope is required")
@@ -1148,7 +1247,7 @@ func (d *deps) resolveLostMergeRace(ctx context.Context, a supersedeArgs, target
 }
 
 func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, string, error) {
-	if err := validateStoreArgs(a, d.maxSummaryBytes); err != nil {
+	if err := validateStoreArgs(a, d.maxSummaryBytes, d.writeCaps); err != nil {
 		return "", "", err
 	}
 	if err := validateCitations(a.Citations, 0); err != nil {
@@ -1229,7 +1328,7 @@ func (d *deps) clock() time.Time {
 }
 
 func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (string, string, error) {
-	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
+	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes, d.writeCaps); err != nil {
 		return "", "", err
 	}
 	// checkIdempotentReplay runs BEFORE parseWindow's future-only validation
@@ -2110,7 +2209,7 @@ func (d *deps) validateSupersedeTargetState(_ context.Context, _ caller, targets
 // async summary-on-write like any other store_memory write, exactly once
 // regardless of target-set size.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
-	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
+	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes, d.writeCaps); err != nil {
 		return "", "", err
 	}
 	if err := validateCitations(a.Citations, 0); err != nil {
