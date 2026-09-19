@@ -505,19 +505,29 @@ func WithTargetLocker(l TargetLocker) Option {
 // module builds — the production composition root (internal/server/tools.go's
 // storeFromConfig) and every test (via internal/store/storetest, or directly
 // inside this package's own in-package tests, which cannot import storetest
-// without an import cycle). It applies the shared base dial options — today
-// exactly grpc.WithStatsHandler(otelgrpc.NewClientHandler()), the option
-// production has always used — FIRST, then appends the caller's own opts,
-// mirroring qdrant-go-client's own base-then-Config.GrpcOptions order so
-// caller options take precedence. A receive limit is passed by the caller in
-// upstream vocabulary (grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(n))),
-// never through a wrapper option type. This adds no production behavior on
-// its own — the MaxCallRecvMsgSize backstop is a later requirement
+// without an import cycle). It applies the shared base dial options — the
+// otelgrpc stats handler (the option production has always used) and, as of
+// Phase 2 (D-01), the receive-limit classifier interceptor installed via
+// grpc.WithChainUnaryInterceptor with classifyResponseTooLarge — FIRST, then
+// appends the caller's own opts, mirroring qdrant-go-client's own
+// base-then-Config.GrpcOptions order so caller options take precedence. The
+// classifier sits INSIDE qdrant-go-client's own rate-limit interceptor
+// (getRateLimitInterceptor, installed before Config.GrpcOptions in the dial
+// chain), so a genuine server-side ResourceExhausted still reaches that
+// interceptor's own retry-after handling untouched (D-02). A caller option
+// added via grpc.WithChainUnaryInterceptor therefore runs INSIDE the
+// classifier (sees its output); one added via grpc.WithUnaryInterceptor is
+// outermost of every interceptor, caller and base alike. A receive limit is
+// passed by the caller in upstream vocabulary
+// (grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(n))), never through a
+// wrapper option type. This adds no production read-bounding behavior on its
+// own — the MaxCallRecvMsgSize backstop is a later requirement
 // (REQ-recv-limit-backstop), set once the regression tests already pass
 // without it.
 func NewQdrantClient(host string, port int, opts ...grpc.DialOption) (*qdrant.Client, error) {
-	dialOpts := make([]grpc.DialOption, 0, 1+len(opts))
+	dialOpts := make([]grpc.DialOption, 0, 2+len(opts))
 	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	dialOpts = append(dialOpts, grpc.WithChainUnaryInterceptor(classifyResponseTooLarge))
 	dialOpts = append(dialOpts, opts...)
 	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: dialOpts})
 }
