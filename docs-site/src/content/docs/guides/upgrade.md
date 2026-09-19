@@ -386,6 +386,29 @@ case, or an agent parsing raw MCP error text for it — retry with a smaller
 `--limit`/`--k` or without `--full` instead of retrying the identical
 request unchanged.
 
+### 15. Memory content and tags are now capped: an oversized write is rejected
+
+Before this release, a memory write with any content size or tag count was
+stored. It now rejects content over 64 KiB, more than 128 tags, or a tag
+over 128 bytes with the existing `too_long`/`too_many` hints — see the
+[error envelope reference](/reference/errors/#the-envelope-grammar) and the
+[configure guide](/guides/configure/#memory). This applies on
+`store_memory`/`schedule_memory`/`supersede_memory`, on `update_memory` when
+it changes `content` or `tags`, on the Connect `StoreMemory`/
+`ScheduleMemory`/`UpdateMemory` RPCs, and on `engram store` (CLI exit `2`).
+An idempotent retry (`idempotency_key`) of such a write is rejected the same
+way — retrying the identical request unchanged fails again for the same
+reason. Stored records are never rewritten: an existing over-cap record
+stays readable.
+
+**Who should act:** an agent or script storing large documents or
+tag-heavy records — shorten the content, split it into multiple records, or
+trim the tag set. Raising the cap is possible via
+`ENGRAM_MEMORY_MAX_CONTENT_BYTES`/`ENGRAM_MEMORY_MAX_TAGS`/
+`ENGRAM_MEMORY_MAX_TAG_BYTES`, but never to `0` — unlike
+`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, these three are always enforced and
+reject `0` at startup.
+
 ---
 
 ## v0.7.10 — Recall returns summaries by default

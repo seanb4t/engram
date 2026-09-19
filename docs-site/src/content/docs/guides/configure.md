@@ -42,12 +42,22 @@ Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFrom
 | Environment variable | Default | Description |
 |----------------------|---------|-------------|
 | `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` | `512` | Max byte length of a memory `summary` on `store_memory`/`schedule_memory`/`supersede_memory`/`update_memory`. A caller-supplied summary over this bound is rejected (`field=summary hint=too_long`) rather than silently truncated. `0` disables the bound. |
+| `ENGRAM_MEMORY_MAX_CONTENT_BYTES` | `65536` | Max byte length of a memory `content` on `store_memory`/`schedule_memory`/`supersede_memory`/`update_memory` (when the content changes), on MCP, Connect and `engram store`. An over-cap write is rejected (`field=content hint=too_long`), never truncated. |
+| `ENGRAM_MEMORY_MAX_TAGS` | `128` | Max number of `tags` on those same write paths. An over-cap write is rejected (`field=tags hint=too_many`). |
+| `ENGRAM_MEMORY_MAX_TAG_BYTES` | `128` | Max byte length of one tag on those same write paths. An over-cap tag is rejected (`field=tags hint=too_long`). |
 
 This is separate from `ENGRAM_SUMMARY_MAX_CHARS` below: this bound is enforced at write
 time against a **caller-authored** summary; `ENGRAM_SUMMARY_MAX_CHARS` caps the length of a
 **server-generated** one.
 
-Source: `internal/config` (registry) + `internal/server/tools.go` (`maxMemorySummaryBytes`, `validateStoreArgs`/`validateUpdateArgs`).
+Unlike `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, the three caps above are **always enforced** — `0`
+or a negative value fails startup, because the server sizes its bounded reads from them and a
+disabled cap would silently remove that provable ceiling. Existing records larger than a cap
+are never rewritten — they stay stored and readable (`get_memory`), and their owner can trim
+one with `update_memory`. `store_discovery` and `store_rule` keep their own, separate content
+bounds.
+
+Source: `internal/config` (registry) + `internal/server/tools.go` (`maxMemorySummaryBytes`, `memoryWriteCapsFromConfig`, `checkContentBytes`, `checkTags`, `validateStoreArgs`/`validateUpdateArgs`).
 
 ## Auto-summary
 

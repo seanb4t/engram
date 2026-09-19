@@ -75,11 +75,11 @@ or timestamps.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `content` | string | yes | The memory text to persist |
+| `content` | string | yes | The memory text to persist. Max `ENGRAM_MEMORY_MAX_CONTENT_BYTES` bytes (default 65536; see [Configuration](/guides/configure/)). |
 | `scope` | string | yes | `run:tier:repo` identifier, e.g. `eval-2026-05:project:selfhosted-cluster` |
 | `source` | string | yes | `user-said` or `agent-inferred` |
 | `category` | string | yes | `decision`, `preference`, `convention`, or `gotcha` |
-| `tags` | string[] | no | Free-form labels |
+| `tags` | string[] | no | Free-form labels. At most `ENGRAM_MEMORY_MAX_TAGS` tags (default 128) of at most `ENGRAM_MEMORY_MAX_TAG_BYTES` bytes each (default 128). |
 | `repo` | string | no | Repository name or URL |
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
@@ -103,11 +103,11 @@ normally via `search_memory`/`list_memory`.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `content` | string | yes | The memory text to persist |
+| `content` | string | yes | The memory text to persist. Max `ENGRAM_MEMORY_MAX_CONTENT_BYTES` bytes (default 65536; see [Configuration](/guides/configure/)). |
 | `scope` | string | yes | `run:tier:repo` identifier |
 | `source` | string | yes | `user-said` or `agent-inferred` |
 | `category` | string | yes | `decision`, `preference`, `convention`, or `gotcha` |
-| `tags` | string[] | no | Free-form labels |
+| `tags` | string[] | no | Free-form labels. At most `ENGRAM_MEMORY_MAX_TAGS` tags (default 128) of at most `ENGRAM_MEMORY_MAX_TAG_BYTES` bytes each (default 128). |
 | `repo` | string | no | Repository name or URL |
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
@@ -358,9 +358,9 @@ summary), or clear it (empty `summary`) — or the update is rejected.
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `id` | string | yes | The UUID **or `short_id`** of the memory to update |
-| `content` | string | yes | The replacement text (re-embedded) |
+| `content` | string | yes | The replacement text (re-embedded). Max `ENGRAM_MEMORY_MAX_CONTENT_BYTES` bytes (default 65536; see [Configuration](/guides/configure/)); enforced when the content changes. |
 | `shared` | bool | no | `true` = shared, `false` = private; omit to keep current visibility |
-| `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags |
+| `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags. At most `ENGRAM_MEMORY_MAX_TAGS` tags (default 128) of at most `ENGRAM_MEMORY_MAX_TAG_BYTES` bytes each (default 128); enforced when the tag set changes. |
 | `summary` | string | no | Replace the summary; empty string clears it. Omit to keep the current summary. When changing `content`, must be addressed if `summary_source=client`. Max `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bytes (default 512). |
 
 Only the record owner can update. Returns `"updated"` on success.

@@ -26,6 +26,21 @@ this release and will again.
 field=summary hint=too_long: summary must be at most 512 bytes (got 700)
 ```
 
+The same shape covers every capped field, carrying only sizes — never the submitted value.
+An oversized `content` on `store_memory`/`schedule_memory`/`update_memory`:
+
+```
+field=content hint=too_long: content too large: 70000 bytes (max 65536)
+```
+
+Too many `tags` on the same write paths:
+
+```
+field=tags hint=too_many: too many tags: 129 (max 128)
+```
+
+No new hint code was added for either of these — both reuse `too_long`/`too_many`.
+
 **Relational example** — fields that cannot be combined, on `list_memory`:
 
 ```
@@ -103,7 +118,7 @@ off one by one against that file — this table cannot list a code the server do
 | `required` | The field was absent entirely. | Supply it — it was missing, not malformed. |
 | `conditional_required` | The field is required only given another field's value or the call's shape (e.g. a caller-authored summary being addressed on `update_memory`). | Supply the field, given the condition named in the detail text. |
 | `too_long` | The field exceeds a maximum length/byte bound. | Shorten the field's value — do not resend the whole record; only this field failed. |
-| `too_many` | A collection field (e.g. `citations`) exceeds a maximum count. | Trim the collection to the stated bound. |
+| `too_many` | A collection field (e.g. `citations`, `tags`) exceeds a maximum count. | Trim the collection to the stated bound. |
 | `enum` | The value is not one of the accepted set. | Resend with one of the accepted values named in the detail text. |
 | `format` | The value fails a structural check (e.g. an RFC3339 timestamp). | Correct the value's shape; the constraint is named in the detail text. |
 | `prefix` | The value must start with a required prefix (e.g. a discovery scope must start with `discovery:`). | Prepend the required prefix. |
