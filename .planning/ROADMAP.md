@@ -319,7 +319,7 @@ Codex; and ships man pages from the cask.
 
 </details>
 
-- [ ] **Phase 1: Test Harness & Fixture Helper** - A shared real-Qdrant oversized-fixture helper and test-client constructor every later regression test in this milestone reuses
+- [x] **Phase 1: Test Harness & Fixture Helper** - A shared real-Qdrant oversized-fixture helper and test-client constructor every later regression test in this milestone reuses (completed 2026-09-18)
 - [ ] **Phase 2: Error Classification & ResourceExhausted Mapping** - A response exceeding the receive limit classifies into one typed sentinel, surfaced as a clear, named error on Connect, MCP, and the CLI
 - [ ] **Phase 3: Shared Bounded-Read Mechanism & Content Cap Decision** - Two shared bounded-read primitives are built and proven, every full-payload read site is inventoried and assigned to its migrating phase, and whether memory `content` gets a size cap is decided
 - [ ] **Phase 4: List, ListScheduled & Search Bounded Reads** - `Store.List` (every mode), `list_scheduled`, and `search_memory`/`search_discovery` stay under the receive limit, and the `ListMemories` paging contract is decided
@@ -343,7 +343,7 @@ Codex; and ships man pages from the cask.
 2. Every test Qdrant client in this milestone's regression tests is constructed through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly.
 3. The independent `qdrant.NewClient` test call sites converge on the shared constructor, so a passing test proves the bounded-read mechanism keeps responses bounded rather than a client-side accident.
 
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 **Wave 1**
@@ -562,7 +562,7 @@ Plans:
 | 3. Plugin-First Delivery | 2026-09-13.01 | 7/7 | Complete | 2026-09-15 |
 | 4. Drift Detection (Read-Only) | 2026-09-13.01 | 5/5 | Complete | 2026-09-15 |
 | 5. Apply-Time Preserve Gate & Documentation | 2026-09-13.01 | 4/4 | Complete | 2026-09-16 |
-| 1. Test Harness & Fixture Helper | 2026-09-18.01 | 0/2 | Not started | - |
+| 1. Test Harness & Fixture Helper | 2026-09-18.01 | 2/2 | Complete | 2026-09-18 |
 | 2. Error Classification & ResourceExhausted Mapping | 2026-09-18.01 | 0/4 | Not started | - |
 | 3. Shared Bounded-Read Mechanism & Content Cap Decision | 2026-09-18.01 | 0/2 | Not started | - |
 | 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 0/5 | Not started | - |
