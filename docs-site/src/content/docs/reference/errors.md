@@ -1,12 +1,14 @@
 ---
 title: Error Envelope & Hint Codes
-description: The field-and-hint grammar every engram argument rejection carries, the ten hint codes, and the Connect error-code mapping — what a caller (agent or integrator) needs to parse and act on a rejection.
+description: The field-and-hint grammar every engram argument rejection (plus the one response-too-large rejection) carries, the eleven hint codes, and the Connect error-code mapping — what a caller (agent or integrator) needs to parse and act on a rejection.
 ---
 
-Every argument-validation rejection engram produces — on both the MCP tool-call lane and
-the Connect RPC lane — carries the same structured envelope: the field(s) that failed, a
-machine-stable hint code naming *why*, and a human-readable detail. This page is the
-complete, checked-off reference for that vocabulary.
+Every argument-validation rejection engram produces, plus the one rejection that is not
+about an input at all ([a response too large to return](#response-too-large-resource_exhausted-and-exit-10))
+— on both the MCP tool-call lane and the Connect RPC lane — carries the same structured
+envelope: the field(s) that failed (or the fixed pseudo-field `response`), a machine-stable
+hint code naming *why*, and a human-readable detail. This page is the complete,
+checked-off reference for that vocabulary.
 
 ## The envelope grammar
 
@@ -86,12 +88,12 @@ target is already superseded: a1b2c3d4e5, m1n2p3q4r5
 ```
 
 These four rejections are **sentinel-shaped**, not field-and-hint shaped — they name
-offending targets, not a field, and the ten-code hint vocabulary above is unchanged;
+offending targets, not a field, and the eleven-code hint vocabulary above is unchanged;
 no new hint code was added for this verb. Set-shape rejections (empty array, blank
 entry) DO use the field-and-hint grammar above, naming the `supersedes` argument
 itself rather than any target value.
 
-## The ten hint codes
+## The eleven hint codes
 
 Transcribed directly from `internal/server/argerror.go`'s `HintCode` constants and checked
 off one by one against that file — this table cannot list a code the server does not emit.
@@ -108,6 +110,12 @@ off one by one against that file — this table cannot list a code the server do
 | `ordering` | A before/after or numeric ordering constraint is violated — usually between two fields, but sometimes between one field and a fixed reference such as the current time. | Adjust so the stated ordering holds. Read `field=`: it lists every field involved, which may be one or two. |
 | `mutually_exclusive` | Two or more fields cannot be combined at once. | Drop all but one — every field the constraint relates is listed under `field=`. |
 | `not_applicable` | The field does not apply given another field's value on this call. | Omit the field entirely rather than sending an empty or default value. |
+| `too_large` | The result the request would produce exceeds what one response can carry — not a rejected input; `field=` is always the fixed pseudo-field `response`. | Retry with a smaller `limit` or `k`, or omit `full`; retrying the identical request fails the same way. See [Response too large](#response-too-large-resource_exhausted-and-exit-10). |
+
+`too_long` and `too_large` are easy to conflate but name opposite directions: `too_long`
+means an INPUT field you sent exceeded a bound — shorten that field and resend. `too_large`
+means the RESPONSE your request would produce exceeds a bound — the request itself was
+fine; ask for less of it (a smaller `limit`/`k`, or without `full`).
 
 `required` and `conditional_required` are two different codes for a reason: `required`
 means the field is unconditionally missing; `conditional_required` means it is missing
@@ -127,9 +135,9 @@ to a second field can fix.
 
 ## Operator-tier hint codes (`engram migrate revert`)
 
-These two codes use the same `field=<name> hint=<code>: <text>` grammar as the ten-code
+These two codes use the same `field=<name> hint=<code>: <text>` grammar as the eleven-code
 table above, but they are produced by `internal/store/revert.go`'s `RevertRefusalError` —
-not by `internal/server/argerror.go` — so they are not `HintCode` constants and the ten-code
+not by `internal/server/argerror.go` — so they are not `HintCode` constants and the eleven-code
 table above remains exactly what it claims to be: a transcription of `argerror.go`. They
 surface only from an `engram migrate revert` refusal (see below for the two places that can
 happen), never from any memory-tool call.
@@ -243,6 +251,10 @@ individually length-bounded (see the [MCP Tools reference](/reference/tools/) fo
 per-entry cap) so the echo itself can never carry an oversized or arbitrary blob. Every
 other field in this grammar, including `supersede_memory`'s own set-shape (class 1)
 rejection, still names the field alone and never echoes its value.
+
+**The `too_large` envelope carries no number at all.** No byte ceiling, no observed size,
+and no upstream transport text — those are logged server-side only; the wire text is the
+fixed, generic detail shown in [Response too large](#response-too-large-resource_exhausted-and-exit-10).
 
 **The MCP 401 auth body is a separate, unchanged contract.** A bearer-token rejection
 (missing or invalid credential) is produced by the MCP SDK's own auth middleware, before

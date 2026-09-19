@@ -34,6 +34,7 @@ one predictable, migration-safe contract.
 | rely on a CLI call blocking until the server answers | §5 |
 | set client configuration through environment variables | §7 |
 | pattern-match the exact `field=` value of an argument rejection (not just check a field name's presence) | §8 |
+| branch on exit status, a Connect error code, or MCP error text for `list`/`search` (or an operator command reading Qdrant directly) | §14 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -218,7 +219,7 @@ specific field's presence in the list — the documented, correct way to read
 
 **The `mutually_exclusive` hint's documented shape widened from "always two
 fields" to "two or more fields"** to match the paging-trio case above — see
-the [error envelope reference](/reference/errors/#the-ten-hint-codes) for the
+the [error envelope reference](/reference/errors/#the-eleven-hint-codes) for the
 updated wording. No code that already reads `field=` as a list is affected.
 
 ### 9. `prune-expired` now previews by default; `--apply` performs the deletion
@@ -366,6 +367,24 @@ delegates to — it is never hard-removed.
 **Who should act:** any operator who scripts bare `backfill-short-ids`
 expecting it to apply. Add `--apply` to restore the previous behavior, or
 switch to `engram migrate`.
+
+### 14. New exit code 10 and resource_exhausted for a response too large to return
+
+Before this release, a server response that exceeded the client's receive
+limit surfaced as Connect `internal` and CLI exit `1`, and as the raw
+upstream transport error text on the MCP lane. It now surfaces as Connect
+`resource_exhausted` (HTTP 429) carrying `field=response hint=too_large`,
+CLI exit **`10`** for `engram list` / `engram search` (and for an operator
+command whose own Qdrant read overflows, previously exit `1` there too),
+and the identical scrubbed envelope as the MCP tool-result text. See the
+[error envelope reference](/reference/errors/#response-too-large-resource_exhausted-and-exit-10)
+and the [CLI guide's exit-code table](/guides/cli/#exit-codes).
+
+**Who should act:** a script currently treating exit `1` as "retry later"
+for `list`/`search`, a Connect client branching on `internal` for this
+case, or an agent parsing raw MCP error text for it — retry with a smaller
+`--limit`/`--k` or without `--full` instead of retrying the identical
+request unchanged.
 
 ---
 
