@@ -568,8 +568,12 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 }
 
 // otherNonRecallEmitters — the third category the previous binary partition
-// had no home for: neither recall nor operator, two entries. Each
-// justification is per-item and specific, never shared boilerplate.
+// had no home for: neither recall nor operator. No count is restated here
+// because a restated count is a second, unenforced assertion that goes
+// stale silently (mirrors operatorMigrationEmitters' own no-restated-count
+// note); the enforced claim is the set-equality gate below
+// (TestRecallEmissionSetIsCompleteAndClassified). Each justification is
+// per-item and specific, never shared boilerplate.
 var otherNonRecallEmitters = []recallEmissionClassification{
 	{
 		enclosingFunc: "Store.ResolvePointID",
@@ -578,6 +582,10 @@ var otherNonRecallEmitters = []recallEmissionClassification{
 	{
 		enclosingFunc: "Store.MintShortID",
 		justification: "Emits Count (store.go:2705). A collision probe on a candidate short id during minting. It reads no caller-visible result set.",
+	},
+	{
+		enclosingFunc: "Store.scrollOrderedPage",
+		justification: "Emits Scroll (orderedpage.go). The shared ordered-page primitive (milestone 2026-09-18.01 Phase 3, D-03 item 1) is not yet wired into any recall entry point, so it is unreachable from recallEntryPointSeeds. Phase 4 moves it to recallTransmitters in the same change that wires Store.List/listByCursor/ListScheduled onto it; if anything reaches it from a seed before then, reachability pulls it in, it stops matching this entry, and the suite goes RED.",
 	},
 }
 

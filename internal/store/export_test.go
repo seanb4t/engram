@@ -65,3 +65,32 @@ func PageByteBudget() int { return pageByteBudget }
 func (s *Store) ScrollAllPoints(ctx context.Context, filter *qdrant.Filter, v ReadView, fn func(*qdrant.RetrievedPoint) error) error {
 	return s.scrollAllPoints(ctx, filter, v, fn)
 }
+
+// OrderedPage exposes the internal orderedPage type to package store_test.
+type OrderedPage = orderedPage
+
+// ListCursor exposes the internal listCursor type to package store_test.
+type ListCursor = listCursor
+
+// ScrollOrderedPage exposes (*Store).scrollOrderedPage to package
+// store_test, building the caller's filter through the same listFilter every
+// in-package caller uses.
+func (s *Store) ScrollOrderedPage(ctx context.Context, scope string, subj Subject, v ReadView, dir qdrant.Direction, from ListCursor, limit uint64) (OrderedPage, error) {
+	f := s.listFilter(ctx, scope, subj, ListOptions{})
+	return s.scrollOrderedPage(ctx, f, v, dir, from, limit)
+}
+
+// PerRPCLimit exposes perRPCLimit to package store_test.
+func PerRPCLimit(v ReadView) int { return perRPCLimit(v.maxRecordBytes) }
+
+// UnbudgetedView exposes unbudgetedView to package store_test.
+func UnbudgetedView(sel *qdrant.WithPayloadSelector) ReadView { return unbudgetedView(sel) }
+
+// SetByteBudgets overrides rpcByteBudget/pageByteBudget for t's duration,
+// restoring both via t.Cleanup.
+func SetByteBudgets(t testing.TB, rpc, page int) {
+	t.Helper()
+	oldRPC, oldPage := rpcByteBudget, pageByteBudget
+	rpcByteBudget, pageByteBudget = rpc, page
+	t.Cleanup(func() { rpcByteBudget, pageByteBudget = oldRPC, oldPage })
+}
