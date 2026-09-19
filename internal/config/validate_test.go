@@ -127,6 +127,45 @@ func TestMemoryCapsRejectZeroAndNonPositive(t *testing.T) {
 	})
 }
 
+// TestOverflowValueRejectedByValidate proves WR-01's fix: a value that
+// parses via strconv.ParseUint (up to math.MaxUint64) but does NOT
+// round-trip through strconv.Atoi's platform-int range — the exact parser
+// internal/server's positiveIntOrDefault/maxMemorySummaryBytes use to build
+// the LIVE enforced cap — must fail Config.Validate(). Before the WR-01 fix,
+// validatePositiveCap (and the MaxSummaryBytes check) parsed with
+// strconv.ParseUint alone, so this value passed Validate() cleanly while the
+// runtime side silently fell back to its documented default with only a
+// slog.Warn — a validated-vs-enforced divergence D-09 exists specifically to
+// prevent. The validated range must equal the enforced range for all four
+// fields, including ENGRAM_MEMORY_MAX_SUMMARY_BYTES (whose "0 disables"
+// semantics are unrelated to and unaffected by this overflow-range fix).
+func TestOverflowValueRejectedByValidate(t *testing.T) {
+	const overflow = "9223372036854775808" // math.MaxInt64 + 1: valid uint64, invalid int
+
+	fields := []struct {
+		envName string
+		mutate  func(*Config, string)
+	}{
+		{"ENGRAM_MEMORY_MAX_CONTENT_BYTES", func(c *Config, v string) { c.Memory.MaxContentBytes = v }},
+		{"ENGRAM_MEMORY_MAX_TAGS", func(c *Config, v string) { c.Memory.MaxTags = v }},
+		{"ENGRAM_MEMORY_MAX_TAG_BYTES", func(c *Config, v string) { c.Memory.MaxTagBytes = v }},
+		{"ENGRAM_MEMORY_MAX_SUMMARY_BYTES", func(c *Config, v string) { c.Memory.MaxSummaryBytes = v }},
+	}
+	for _, f := range fields {
+		t.Run(f.envName, func(t *testing.T) {
+			c := validConfig()
+			f.mutate(c, overflow)
+			err := c.Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil for %s=%s, want error: this value parses via strconv.ParseUint but overflows the strconv.Atoi range the runtime enforcement side actually uses — the validated range must equal the enforced range (D-09/WR-01)", f.envName, overflow)
+			}
+			if !strings.Contains(err.Error(), f.envName) {
+				t.Errorf("Validate() error = %q, want it to name %s", err, f.envName)
+			}
+		})
+	}
+}
+
 // summarizeEnabled returns a valid Config with auto-summary turned on, so a test
 // can mutate a single summarize field to exercise one rule.
 func summarizeEnabled() *Config {

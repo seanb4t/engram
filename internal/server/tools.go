@@ -134,9 +134,17 @@ func (c memoryWriteCaps) resolved() memoryWriteCaps {
 // so this is defense in depth, never the enforcement point — the slog.Warn
 // only fires for a value that somehow reached here unparseable (e.g. a
 // hand-built config.Config in a test that skipped Validate).
+//
+// Parses via config.ParsePositiveIntCap — the SAME function
+// validatePositiveCap calls on the Config.Validate side (WR-01 fix) — so
+// the range this function accepts can never diverge from the range
+// Validate() already guaranteed at startup. Previously this parsed with a
+// second, independent strconv.Atoi call while Validate used the wider
+// strconv.ParseUint(value, 10, 64); a value between math.MaxInt64 and
+// math.MaxUint64 passed Validate() but silently fell back to def here.
 func positiveIntOrDefault(value, envName string, def int) int {
-	n, err := strconv.Atoi(value)
-	if err != nil || n <= 0 {
+	n, err := config.ParsePositiveIntCap(value)
+	if err != nil {
 		if value != "" {
 			slog.Warn(envName+" is set but unparseable or non-positive; using default",
 				"value", value, "default", def)
@@ -394,9 +402,15 @@ func buildUsageQueue(cfg *config.Config, st *store.Store, uqm *telemetry.UsageQu
 // non-negative integer) and is honored as "bound disabled" — it is NOT
 // coerced to the default, mirroring embedTimeout's/summaryTimeout's own
 // "0 = escape hatch" convention. Only an unparseable value falls back.
+//
+// Parses via config.ParseNonNegativeIntCap — the SAME function Config.Validate
+// calls for this field (WR-01 fix) — so this function's accepted range can
+// never diverge from what Validate() already guaranteed at startup. The "0
+// disables" semantics are unaffected: this function still decides that for
+// itself, ParseNonNegativeIntCap only bounds the parse.
 func maxMemorySummaryBytes(cfg *config.Config) int {
-	n, err := strconv.Atoi(cfg.Memory.MaxSummaryBytes)
-	if err != nil || n < 0 {
+	n, err := config.ParseNonNegativeIntCap(cfg.Memory.MaxSummaryBytes)
+	if err != nil {
 		if cfg.Memory.MaxSummaryBytes != "" {
 			slog.Warn("ENGRAM_MEMORY_MAX_SUMMARY_BYTES is set but unparseable or negative; using default 512",
 				"value", cfg.Memory.MaxSummaryBytes)

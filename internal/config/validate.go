@@ -75,9 +75,12 @@ func (c *Config) Validate() error {
 	// memory.max_summary_bytes (D-06a/D-18): a non-negative integer; "0"
 	// disables the bound (validated unconditionally, mirroring
 	// ENGRAM_CONNECT_HEADLESS below — a typo must fail startup, not silently
-	// read as the compiled-in default).
-	if _, err := strconv.ParseUint(c.Memory.MaxSummaryBytes, 10, 64); err != nil {
-		errs = append(errs, fmt.Errorf("ENGRAM_MEMORY_MAX_SUMMARY_BYTES %q: must be a non-negative integer: %w", c.Memory.MaxSummaryBytes, err))
+	// read as the compiled-in default). Parsed with ParseNonNegativeIntCap —
+	// the same strconv.Atoi-width parser maxMemorySummaryBytes uses to build
+	// the live bound (WR-01) — so a value that passes here can never
+	// overflow that parser and fall back to the default silently.
+	if _, err := ParseNonNegativeIntCap(c.Memory.MaxSummaryBytes); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_MEMORY_MAX_SUMMARY_BYTES %q: %w", c.Memory.MaxSummaryBytes, err))
 	}
 
 	// memory.max_content_bytes / max_tags / max_tag_bytes (D-09/D-10): UNLIKE
@@ -259,13 +262,55 @@ func (c *Config) Validate() error {
 // "0" is rejected outright rather than honored as "disabled" — these caps
 // feed the read-side per-record ceiling (plan 03-02), and a disabled cap
 // would silently remove that provable bound.
+//
+// Parses via ParsePositiveIntCap — the SAME strconv.Atoi-width parser
+// internal/server's positiveIntOrDefault uses to build the live enforced
+// cap (WR-01 fix) — rather than the wider strconv.ParseUint(value, 10, 64)
+// this used before. ParseUint's uint64 range let a value like
+// 9223372036854775808 (one more than math.MaxInt64) pass this check while
+// positiveIntOrDefault's strconv.Atoi silently fell back to the documented
+// default at runtime (only a slog.Warn, no error) — a validated-vs-enforced
+// divergence D-09 exists specifically to prevent. Both sides now call the
+// one exported parser so the validated range can never diverge from the
+// enforced range again.
 func validatePositiveCap(value, envName string) error {
-	switch n, err := strconv.ParseUint(value, 10, 64); {
-	case err != nil:
-		return fmt.Errorf("%s %q: must be a positive integer: %w", envName, value, err)
-	case n == 0:
-		return fmt.Errorf("%s must be greater than 0: this cap is always enforced (unlike ENGRAM_MEMORY_MAX_SUMMARY_BYTES, 0 does not disable it)", envName)
-	default:
-		return nil
+	if _, err := ParsePositiveIntCap(value); err != nil {
+		return fmt.Errorf("%s %q: %w: this cap is always enforced (unlike ENGRAM_MEMORY_MAX_SUMMARY_BYTES, 0 does not disable it)", envName, value, err)
 	}
+	return nil
+}
+
+// ParsePositiveIntCap parses value as a positive integer, using exactly the
+// parser (strconv.Atoi, platform int width) that runtime enforcement builds
+// the live cap with. Exported so internal/server's positiveIntOrDefault can
+// call this SAME function rather than keeping a second parser in sync by
+// convention (D-00: one shared helper over two parsers kept in sync by
+// convention) — see validatePositiveCap's doc for the divergence this
+// closes (WR-01).
+func ParsePositiveIntCap(value string) (int, error) {
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("must be a positive integer: %w", err)
+	}
+	if n <= 0 {
+		return 0, errors.New("must be greater than 0")
+	}
+	return n, nil
+}
+
+// ParseNonNegativeIntCap parses value as a non-negative integer, using
+// exactly the parser (strconv.Atoi, platform int width) that runtime
+// enforcement builds the live bound with (internal/server's
+// maxMemorySummaryBytes). Zero is a valid result — callers that treat zero
+// as an escape hatch (ENGRAM_MEMORY_MAX_SUMMARY_BYTES's "0 disables", D-18)
+// decide that themselves; this function only bounds the parse.
+func ParseNonNegativeIntCap(value string) (int, error) {
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("must be a non-negative integer: %w", err)
+	}
+	if n < 0 {
+		return 0, errors.New("must be a non-negative integer")
+	}
+	return n, nil
 }
