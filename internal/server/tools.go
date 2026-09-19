@@ -151,6 +151,8 @@ func positiveIntOrDefault(value, envName string, def int) int {
 func memoryWriteCapsFromConfig(cfg *config.Config) memoryWriteCaps {
 	return memoryWriteCaps{
 		contentBytes: positiveIntOrDefault(cfg.Memory.MaxContentBytes, "ENGRAM_MEMORY_MAX_CONTENT_BYTES", defaultMaxContentBytes),
+		tags:         positiveIntOrDefault(cfg.Memory.MaxTags, "ENGRAM_MEMORY_MAX_TAGS", defaultMaxTags),
+		tagBytes:     positiveIntOrDefault(cfg.Memory.MaxTagBytes, "ENGRAM_MEMORY_MAX_TAG_BYTES", defaultMaxTagBytes),
 	}
 }
 
@@ -937,10 +939,10 @@ func checkContentBytes(content string, maxBytes int) error {
 // maxSummaryBytes<=0 means the bound is disabled (D-18's "0 is honored as
 // disabled" convention).
 //
-// UNLIKE maxSummaryBytes, caps.contentBytes (and, from Task 3, caps.tags/
-// caps.tagBytes) is ALWAYS enforced — no ">0" guard is needed or wanted:
-// caps.resolved() guarantees a positive value, and Config.Validate already
-// rejects "0"/negative at startup (D-09), so a guard here would be dead code.
+// UNLIKE maxSummaryBytes, caps.contentBytes/caps.tags/caps.tagBytes are
+// ALWAYS enforced — no ">0" guard is needed or wanted: caps.resolved()
+// guarantees a positive value, and Config.Validate already rejects
+// "0"/negative at startup (D-09), so a guard here would be dead code.
 func validateStoreArgs(a storeArgs, maxSummaryBytes int, caps memoryWriteCaps) error {
 	caps = caps.resolved()
 	if maxSummaryBytes > 0 && len(a.Summary) > maxSummaryBytes {
@@ -960,6 +962,26 @@ func validateStoreArgs(a storeArgs, maxSummaryBytes int, caps memoryWriteCaps) e
 	}
 	if a.Category == "" {
 		return argErrf(classMalformed, HintRequired, "category", "category is required")
+	}
+	if err := checkTags(a.Tags, caps.tags, caps.tagBytes); err != nil {
+		return err
+	}
+	return nil
+}
+
+// checkTags enforces D-10's tags caps: count first (a caller with too many
+// tags learns that before any per-tag detail), then per tag a byte-length
+// bound. The shape mirrors validateCitations above; the detail carries the
+// index and byte counts, never the tag text itself (value-echo discipline,
+// T-03-01-02).
+func checkTags(tags []string, maxTags, maxTagBytes int) error {
+	if len(tags) > maxTags {
+		return argErrf(classOutOfRange, HintTooMany, "tags", "too many tags: %d (max %d)", len(tags), maxTags)
+	}
+	for i, tag := range tags {
+		if len(tag) > maxTagBytes {
+			return argErrf(classOutOfRange, HintTooLong, "tags", "tag %d too large: %d bytes (max %d)", i, len(tag), maxTagBytes)
+		}
 	}
 	return nil
 }

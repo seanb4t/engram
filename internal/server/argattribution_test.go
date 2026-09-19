@@ -66,6 +66,33 @@ func TestValidationErrorAttributionMatrix(t *testing.T) {
 		})
 	}
 
+	// --- validateStoreArgs' D-01/D-10 content/tags caps (03-shared-bounded-
+	// read-mechanism plan 03-01) ---
+	validStore := storeArgs{Content: "c", Scope: "s", Source: "src", Category: "decision"}
+	contentTooLarge := validStore
+	contentTooLarge.Content = strings.Repeat("a", defaultMaxContentBytes+1)
+	tooManyTags := validStore
+	tooManyTags.Tags = make([]string, defaultMaxTags+1)
+	tagTooLong := validStore
+	tagTooLong.Tags = []string{strings.Repeat("a", defaultMaxTagBytes+1)}
+
+	writeCapCases := []struct {
+		name string
+		a    storeArgs
+		want wantEnvelope
+	}{
+		{"store_content_too_large", contentTooLarge, wantEnvelope{[]string{"content"}, HintTooLong}},
+		{"store_too_many_tags", tooManyTags, wantEnvelope{[]string{"tags"}, HintTooMany}},
+		{"store_tag_too_long", tagTooLong, wantEnvelope{[]string{"tags"}, HintTooLong}},
+	}
+	for _, tc := range writeCapCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateStoreArgs(tc.a, 512, memoryWriteCaps{})
+			assertEnvelope(t, err, tc.want.fields, tc.want.hint)
+		})
+	}
+
 	// --- validateCitations, rows 6-11 ---
 	citationCases := []struct {
 		name     string
@@ -300,6 +327,16 @@ func TestHintNeverEchoesValue(t *testing.T) {
 			Content: "x", Kind: "fact", Scope: marker,
 			Citations: []citationArg{{Kind: "file", Ref: "f"}},
 		})
+		assertNoEcho(t, err)
+	})
+
+	// tag_value_no_echo (D-10, T-03-01-02): a 200-byte tag starting with the
+	// marker is rejected for its byte length, and the marker itself must not
+	// appear in the rejection text.
+	t.Run("tag_value_no_echo", func(t *testing.T) {
+		tag := marker + strings.Repeat("a", 200-len(marker))
+		a := storeArgs{Content: "c", Scope: "s", Source: "src", Category: "decision", Tags: []string{tag}}
+		err := validateStoreArgs(a, 512, memoryWriteCaps{})
 		assertNoEcho(t, err)
 	})
 }
