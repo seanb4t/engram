@@ -120,6 +120,9 @@ var redEvidenceDirs = map[string]map[string]string{
 		"02-03-operator-arm-removed.patch":                       "TestClassifyOperatorErrCodesAreDistinct",             // reverts: classifyOperatorErr's ErrResponseTooLarge arm, applying D-07's exit code to the operator tier (D-07/D-10)
 		"02-03-errors-doc-drops-too-large.patch":                 "TestErrorsDocHintCodesMatchArgErrorConstants",        // reverts: errors.md's too_large row of the eleven-code hint table (D-05)
 	},
+	".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/red-evidence": {
+		"03-01-content-cap-removed.patch": "TestMemoryWriteCapsRejectOnEveryCreateLane", // reverts: validateStoreArgs' content cap on store/schedule/supersede, MCP and Connect (D-01)
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than

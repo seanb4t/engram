@@ -1,0 +1,14 @@
+diff --git a/internal/server/tools.go b/internal/server/tools.go
+index c9a6e195..615f6816 100644
+--- a/internal/server/tools.go
++++ b/internal/server/tools.go
+@@ -975,9 +975,6 @@ func validateStoreArgs(a storeArgs, maxSummaryBytes int, caps memoryWriteCaps) e
+ 	if a.Content == "" {
+ 		return argErrf(classMalformed, HintRequired, "content", "content is required")
+ 	}
+-	if err := checkContentBytes(a.Content, caps.contentBytes); err != nil {
+-		return err
+-	}
+ 	if a.Scope == "" {
+ 		return argErrf(classMalformed, HintRequired, "scope", "scope is required")
+ 	}
