@@ -48,6 +48,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -790,14 +791,64 @@ func findModuleRoot() (string, error) {
 	}
 }
 
+// storeImportPath is the import path of the internal/store package whose
+// NewQdrantClient constructor fileRefsQdrantClient and qdrantClientLocalNames
+// track. Resolved via importLocalNames rather than hardcoded, mirroring how
+// qdrantImportPath (qdrant_client_convergence_test.go, D-11) is already
+// resolved (01-REVIEW.md WR-01, gap 2: both functions below used to hardcode
+// the literal identifier "store", blind to an aliased import).
+const storeImportPath = "github.com/seanb4t/engram/internal/store"
+
+// importLocalNames collects the local identifier bound to EVERY import spec
+// in file whose path equals importPath: the default package name
+// (defaultName) when unaliased, an explicit alias when present, or nothing
+// for a blank ("_") or dot (".") import — a blank import binds no usable
+// name, and a dot-import makes calls unqualified, which is out of scope for
+// the selector-based matches below (same pre-existing scope as
+// fileRefsQdrantClient/qdrantClientLocalNames; D-11's dot-import handling is
+// deliberately NOT duplicated here). Mirrors scanQdrantClientConstructions's
+// own import-resolution loop so this file resolves aliases the SAME way
+// instead of hardcoding a package's default name.
+func importLocalNames(file *ast.File, importPath, defaultName string) map[string]bool {
+	names := map[string]bool{}
+	for _, imp := range file.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil || path != importPath {
+			continue
+		}
+		switch {
+		case imp.Name == nil:
+			names[defaultName] = true
+		case imp.Name.Name == "_", imp.Name.Name == ".":
+			// Blank import binds no usable name; dot-import is out of scope.
+		default:
+			names[imp.Name.Name] = true
+		}
+	}
+	return names
+}
+
 // fileRefsQdrantClient reports whether file either names the type
 // qdrant.Client anywhere (a field, parameter, result, or variable
 // declaration — ast.Inspect recurses through a leading *ast.StarExpr for
-// the pointer form automatically), calls qdrant.NewClient directly, or
-// calls store.NewQdrantClient — the shared constructor (D-01) that itself
-// returns a *qdrant.Client, so a file binding one through it still holds a
-// client and must still be a derived allowlist holder.
+// the pointer form automatically), calls qdrant.NewClient directly, calls
+// store.NewQdrantClient — the shared constructor (D-01) that itself returns
+// a *qdrant.Client, so a file binding one through it still holds a client
+// and must still be a derived allowlist holder — or references either
+// constructor as a bare (non-call) VALUE, e.g. `var dial =
+// store.NewQdrantClient` (the function-value-alias bypass named in
+// 01-REVIEW.md WR-01, gap 1: a later call through such an alias,
+// `dial(host, port)`, calls a plain *ast.Ident and stays invisible to the
+// CallExpr case forever). Local names for both the qdrant and internal/store
+// import paths are resolved via importLocalNames rather than hardcoded
+// default identifiers, so an aliased import of either
+// (`qc "github.com/qdrant/go-client/qdrant"`,
+// `st "github.com/seanb4t/engram/internal/store"`) is no longer invisible to
+// this scanner (01-REVIEW.md WR-01, gap 2).
 func fileRefsQdrantClient(file *ast.File) bool {
+	qdrantNames := importLocalNames(file, qdrantImportPath, "qdrant")
+	storeNames := importLocalNames(file, storeImportPath, "store")
+
 	found := false
 	ast.Inspect(file, func(n ast.Node) bool {
 		if found {
@@ -808,19 +859,28 @@ func fileRefsQdrantClient(file *ast.File) bool {
 			if sel, ok := t.Fun.(*ast.SelectorExpr); ok {
 				if pkg, ok := sel.X.(*ast.Ident); ok {
 					switch {
-					case pkg.Name == "qdrant" && sel.Sel.Name == "NewClient":
+					case qdrantNames[pkg.Name] && sel.Sel.Name == "NewClient":
 						found = true
 						return false
-					case pkg.Name == "store" && sel.Sel.Name == "NewQdrantClient":
+					case storeNames[pkg.Name] && sel.Sel.Name == "NewQdrantClient":
 						found = true
 						return false
 					}
 				}
 			}
 		case *ast.SelectorExpr:
-			if pkg, ok := t.X.(*ast.Ident); ok && pkg.Name == "qdrant" && t.Sel.Name == "Client" {
-				found = true
-				return false
+			if pkg, ok := t.X.(*ast.Ident); ok {
+				switch {
+				case qdrantNames[pkg.Name] && t.Sel.Name == "Client":
+					found = true
+					return false
+				case qdrantNames[pkg.Name] && t.Sel.Name == "NewClient":
+					found = true
+					return false
+				case storeNames[pkg.Name] && t.Sel.Name == "NewQdrantClient":
+					found = true
+					return false
+				}
 			}
 		}
 		return true
@@ -903,7 +963,66 @@ func scanRepoForQdrantClientRefs(fset *token.FileSet) (files []string, filesScan
 // internal/server/tools.go would flag its entirely legitimate
 // d.st.Upsert(...) calls — calls to *store.Store's already-gated Upsert
 // method — as if they transmitted directly to Qdrant.
+//
+// Two extensions close the false-negative shapes named in 01-REVIEW.md
+// WR-01: local names for the qdrant and internal/store import paths are
+// resolved via importLocalNames (an aliased import of either no longer
+// escapes this scan — gap 2), and a first pass records any identifier bound
+// DIRECTLY to a bare-value reference to one of the two sanctioned
+// constructors (`var dial = store.NewQdrantClient`), so a SECOND assignment
+// that calls that alias (`c, err := dial(...)`) is still recognized as
+// binding the client (gap 1). Without this, a write through such an
+// aliased construction would be completely unguarded by the write-boundary
+// gate, since the client-bound identifier itself would never be registered.
+// This is deliberately one level of alias-following only — never full
+// value-flow analysis — matching 01-REVIEW.md's "cheap partial close"
+// guidance.
 func qdrantClientLocalNames(file *ast.File) map[string]bool {
+	qdrantNames := importLocalNames(file, qdrantImportPath, "qdrant")
+	storeNames := importLocalNames(file, storeImportPath, "store")
+
+	// isConstructorSelector reports whether sel is a qualified reference
+	// (qdrant.NewClient or store.NewQdrantClient) to one of the two
+	// sanctioned constructors, using the alias-resolved name sets above.
+	isConstructorSelector := func(sel *ast.SelectorExpr) bool {
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return false
+		}
+		isQdrantNewClient := qdrantNames[pkg.Name] && sel.Sel.Name == "NewClient"
+		isStoreNewQdrantClient := storeNames[pkg.Name] && sel.Sel.Name == "NewQdrantClient"
+		return isQdrantNewClient || isStoreNewQdrantClient
+	}
+
+	// First pass: identifiers bound directly to a bare-value reference to a
+	// sanctioned constructor, e.g. `var dial = store.NewQdrantClient`. A
+	// later call through such an identifier is itself a construction.
+	constructorAliases := map[string]bool{}
+	recordAlias := func(lhsName string, rhs ast.Expr) {
+		if sel, ok := rhs.(*ast.SelectorExpr); ok && isConstructorSelector(sel) {
+			constructorAliases[lhsName] = true
+		}
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch decl := n.(type) {
+		case *ast.ValueSpec:
+			for i, name := range decl.Names {
+				if i < len(decl.Values) {
+					recordAlias(name.Name, decl.Values[i])
+				}
+			}
+		case *ast.AssignStmt:
+			for i, lhs := range decl.Lhs {
+				id, ok := lhs.(*ast.Ident)
+				if !ok || i >= len(decl.Rhs) {
+					continue
+				}
+				recordAlias(id.Name, decl.Rhs[i])
+			}
+		}
+		return true
+	})
+
 	names := map[string]bool{}
 	ast.Inspect(file, func(n ast.Node) bool {
 		assign, ok := n.(*ast.AssignStmt)
@@ -915,23 +1034,23 @@ func qdrantClientLocalNames(file *ast.File) map[string]bool {
 			if !ok {
 				continue
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				continue
+			isConstructorCall := false
+			switch fn := call.Fun.(type) {
+			case *ast.SelectorExpr:
+				isConstructorCall = isConstructorSelector(fn)
+			case *ast.Ident:
+				isConstructorCall = constructorAliases[fn.Name]
 			}
-			pkg, ok := sel.X.(*ast.Ident)
-			if !ok {
-				continue
-			}
-			isQdrantNewClient := pkg.Name == "qdrant" && sel.Sel.Name == "NewClient"
-			isStoreNewQdrantClient := pkg.Name == "store" && sel.Sel.Name == "NewQdrantClient"
-			if !isQdrantNewClient && !isStoreNewQdrantClient {
+			if !isConstructorCall {
 				continue
 			}
 			// Both constructions return (*Client, error); in a
 			// `name, err := qdrant.NewClient(...)` or
 			// `name, err := store.NewQdrantClient(...)` shape, len(Rhs)==1
 			// but len(Lhs)==2 — index 0 of Lhs is the *Client, positionally.
+			// A call through a constructorAliases-registered identifier has
+			// the identical (*Client, error) shape, so the same positional
+			// rule applies.
 			if i < len(assign.Lhs) {
 				if id, ok := assign.Lhs[i].(*ast.Ident); ok {
 					names[id.Name] = true
@@ -1042,5 +1161,80 @@ func TestQdrantClientIsHeldOnlyByStorePackage(t *testing.T) {
 	}
 	if want := len(qdrantClientHolderAllowlist) - 1; checked != want {
 		t.Errorf("write-checked %d allowlist holders, want %d (every entry except internal/store/store.go)", checked, want)
+	}
+}
+
+// TestFileRefsQdrantClientDetectsAliasedStoreImport is 01-REVIEW.md WR-01
+// gap 2: fileRefsQdrantClient must still detect a client constructed via
+// store.NewQdrantClient when internal/store is imported under an alias,
+// not just the literal identifier "store".
+func TestFileRefsQdrantClientDetectsAliasedStoreImport(t *testing.T) {
+	fset := token.NewFileSet()
+	src, err := os.ReadFile(filepath.Join("testdata", "qdrantclient", "bad_store_aliased_import.go.txt"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	file, err := parser.ParseFile(fset, "internal/example/aliased_holder.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	if !fileRefsQdrantClient(file) {
+		t.Error("fileRefsQdrantClient must detect a client held via an aliased internal/store import")
+	}
+}
+
+// TestFileRefsQdrantClientDetectsFunctionValueAlias is 01-REVIEW.md WR-01
+// gap 1 (the fileRefsQdrantClient half): a bare reference to
+// store.NewQdrantClient as a VALUE (`var dial = store.NewQdrantClient`)
+// must still mark the file as a client holder, even though the later call
+// through that alias (`dial(host, port)`) is invisible to a plain
+// CallExpr-shape match.
+func TestFileRefsQdrantClientDetectsFunctionValueAlias(t *testing.T) {
+	fset := token.NewFileSet()
+	src, err := os.ReadFile(filepath.Join("testdata", "qdrantclient", "bad_store_funcalias_holder.go.txt"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	file, err := parser.ParseFile(fset, "internal/example/funcalias_holder.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	if !fileRefsQdrantClient(file) {
+		t.Error("fileRefsQdrantClient must detect a function-value alias of store.NewQdrantClient")
+	}
+}
+
+// TestQdrantClientLocalNamesFollowsFunctionValueAlias is 01-REVIEW.md WR-01
+// gap 1 (the qdrantClientLocalNames half, and the one with a real
+// consequence): the identifier bound to the client THROUGH a
+// function-value alias (`var dial = store.NewQdrantClient; c, err :=
+// dial(...)`) must be registered, or a write on it would be completely
+// unguarded by TestQdrantClientIsHeldOnlyByStorePackage's write-boundary
+// check — the identifier itself would never have been recognized as
+// client-bound.
+func TestQdrantClientLocalNamesFollowsFunctionValueAlias(t *testing.T) {
+	fset := token.NewFileSet()
+	src, err := os.ReadFile(filepath.Join("testdata", "qdrantclient", "bad_store_funcalias_holder.go.txt"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	file, err := parser.ParseFile(fset, "internal/example/funcalias_holder.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	got := qdrantClientLocalNames(file)
+	want := map[string]bool{"c": true}
+	if len(got) != len(want) {
+		t.Errorf("qdrantClientLocalNames = %v, want %v", got, want)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("qdrantClientLocalNames missing %q — full result: %v", name, got)
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("qdrantClientLocalNames has unexpected %q — full result: %v", name, got)
+		}
 	}
 }

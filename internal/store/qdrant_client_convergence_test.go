@@ -59,10 +59,15 @@ var qdrantClientConstructors = map[string]bool{
 
 // clientConstruction is one call site this gate found: either a genuine
 // qdrantClientConstructors call through a locally-bound name of
-// qdrantImportPath, or (callee == "dot-import") a dot-import of that path
-// itself, recorded as a violation in its own right — a dot-import makes an
-// unqualified constructor call invisible to this scanner, so the import
-// spec is flagged rather than silently trusted.
+// qdrantImportPath, a BARE (non-call) reference to one of those constructors
+// as a VALUE (the function-value-alias bypass named in 01-REVIEW.md WR-01,
+// e.g. `var dial = qdrant.NewClient`, recorded under the same callee name
+// as a call would be, since the escape happens at the point the raw
+// constructor is bound to something other than a direct call), or
+// (callee == "dot-import") a dot-import of that path itself, recorded as a
+// violation in its own right — a dot-import makes an unqualified
+// constructor call invisible to this scanner, so the import spec is
+// flagged rather than silently trusted.
 type clientConstruction struct {
 	path          string
 	line          int
@@ -97,7 +102,15 @@ func isSanctionedConstruction(c clientConstruction) bool {
 // (schemaversion_stamp_gate_test.go) does — enclosingFuncDisplayName for
 // FuncDecls, "<package-level>" otherwise — recording every *ast.CallExpr
 // whose Fun is a selector on one of the collected local names with Sel.Name
-// in qdrantClientConstructors.
+// in qdrantClientConstructors, AND every BARE (non-call) *ast.SelectorExpr
+// reference to one of those same names (e.g. `var dial = qdrant.NewClient`)
+// — the function-value-alias bypass named in 01-REVIEW.md WR-01: a later
+// call through such an alias (`dial(cfg)`) calls a plain *ast.Ident, never
+// a *ast.SelectorExpr, so it stays permanently invisible to the CallExpr
+// case; catching the point where the raw constructor escapes as a value is
+// what closes the gap instead, without needing full value-flow analysis. A
+// selector already recorded via the CallExpr case is never double-counted
+// (tracked by node identity, not by value equality).
 func scanQdrantClientConstructions(fset *token.FileSet, src []byte, displayPath string) ([]clientConstruction, error) {
 	file, err := parser.ParseFile(fset, displayPath, src, 0)
 	if err != nil {
@@ -135,26 +148,53 @@ func scanQdrantClientConstructions(fset *token.FileSet, src []byte, displayPath 
 	}
 
 	visit := func(enclosing string, n ast.Node) {
-		ast.Inspect(n, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
+		// Pre-pass: mark every CallExpr's own Fun selector by node identity,
+		// so the bare-value-reference case below never double-counts the
+		// ordinary `qdrant.NewClient(cfg)` call shape as a second, spurious
+		// violation (that selector is also visited independently as a child
+		// node of the CallExpr).
+		callFuncSelectors := map[*ast.SelectorExpr]bool{}
+		ast.Inspect(n, func(inner ast.Node) bool {
+			if call, ok := inner.(*ast.CallExpr); ok {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+					callFuncSelectors[sel] = true
+				}
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			ident, ok := sel.X.(*ast.Ident)
-			if !ok || !localNames[ident.Name] || !qdrantClientConstructors[sel.Sel.Name] {
-				return true
-			}
-			pos := fset.Position(call.Pos())
+			return true
+		})
+
+		record := func(pos token.Pos, callee string) {
+			p := fset.Position(pos)
 			sites = append(sites, clientConstruction{
 				path:          displayPath,
-				line:          pos.Line,
+				line:          p.Line,
 				enclosingFunc: enclosing,
-				callee:        sel.Sel.Name,
+				callee:        callee,
 			})
+		}
+
+		ast.Inspect(n, func(inner ast.Node) bool {
+			switch node := inner.(type) {
+			case *ast.CallExpr:
+				sel, ok := node.Fun.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				ident, ok := sel.X.(*ast.Ident)
+				if !ok || !localNames[ident.Name] || !qdrantClientConstructors[sel.Sel.Name] {
+					return true
+				}
+				record(node.Pos(), sel.Sel.Name)
+			case *ast.SelectorExpr:
+				if callFuncSelectors[node] {
+					return true // already recorded by the CallExpr case above
+				}
+				ident, ok := node.X.(*ast.Ident)
+				if !ok || !localNames[ident.Name] || !qdrantClientConstructors[node.Sel.Name] {
+					return true
+				}
+				record(node.Pos(), node.Sel.Name)
+			}
 			return true
 		})
 	}
@@ -352,6 +392,27 @@ func TestQdrantClientConstructedOnlyByNewQdrantClient(t *testing.T) {
 			{enclosingFunc: "sneakyDial", callee: "NewClient"}: true,
 		}
 		assertPairSetEqual(t, pairSet(violations), want, violations)
+	})
+
+	t.Run("bad function-value-alias fixture", func(t *testing.T) {
+		fset := token.NewFileSet()
+		src, err := os.ReadFile(filepath.Join("testdata", "qdrantclient", "bad_valueref_test.go.txt"))
+		if err != nil {
+			t.Fatalf("read bad value-ref fixture: %v", err)
+		}
+		sites, err := scanQdrantClientConstructions(fset, src, "internal/example/valueref_test.go")
+		if err != nil {
+			t.Fatalf("scan bad value-ref fixture: %v", err)
+		}
+		want := map[calleePair]bool{
+			{enclosingFunc: "<package-level>", callee: "NewClient"}: true,
+		}
+		assertPairSetEqual(t, pairSet(sites), want, sites)
+		for _, s := range sites {
+			if isSanctionedConstruction(s) {
+				t.Errorf("bad value-ref fixture: %v must not be sanctioned", s)
+			}
+		}
 	})
 
 	t.Run("real module", func(t *testing.T) {
