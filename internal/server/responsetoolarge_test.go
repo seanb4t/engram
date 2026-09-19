@@ -143,11 +143,7 @@ func noASCIIDigit(s string) bool {
 // against (rule m45p2b4bp7).
 func TestConnectListMemoriesResponseTooLarge(t *testing.T) {
 	d, st := testDepsWithStore(t)
-	fx := storetest.SeedOversized(t, st, storetest.Spec{
-		Limit:  storetest.RecvLimit,
-		Shape:  storetest.FewLarge,
-		Vector: []float32{0.1, 0.2, 0.3},
-	})
+	fx := storetest.SeedOversized(t, st, storetest.Spec{Limit: storetest.RecvLimit, Shape: storetest.FewLarge, Vector: []float32{0.1, 0.2, 0.3}})
 
 	resolve := func(_ context.Context, _ connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
 		return &mcpauth.TokenInfo{Extra: map[string]any{auth.OwnerClaimExtraKey: fx.Owner}}, auth.LaneBearer, nil
@@ -257,11 +253,7 @@ func (r *toolCallRecorder) has(tool, outcome string) bool {
 // server-side (D-08).
 func TestMCPListMemoryResponseTooLarge(t *testing.T) {
 	d, st := testDepsWithStore(t)
-	fx := storetest.SeedOversized(t, st, storetest.Spec{
-		Limit:  storetest.RecvLimit,
-		Shape:  storetest.FewLarge,
-		Vector: []float32{0.1, 0.2, 0.3},
-	})
+	fx := storetest.SeedOversized(t, st, storetest.Spec{Limit: storetest.RecvLimit, Shape: storetest.FewLarge, Vector: []float32{0.1, 0.2, 0.3}})
 
 	rec := captureSlog(t)
 	tcRec := &toolCallRecorder{}
