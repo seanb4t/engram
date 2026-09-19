@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 01
 current_phase_name: Test Harness & Fixture Helper
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-09-19T00:16:38.948Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-09-19T00:34:48.565Z"
 last_activity: 2026-09-18
 last_activity_desc: Phase 01 execution started
-state_head: b51f5712594e29d4b8756c4da2a7973e3a407222
+state_head: 283e80eb0f125d0f7832215fc05533124b8db3f0
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-18 after opening milestone 2026-09-18
 ## Current Position
 
 Phase: 01 (Test Harness & Fixture Helper) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-09-18 — Phase 01 execution started
 
@@ -301,6 +301,7 @@ milestone needs in working memory.
 - [Phase 5]: Opened GitHub issue #567 before writing 05-POST-RELEASE.md so the frontmatter tracker URL is real, not a placeholder
 - [Phase 5]: 05-POST-RELEASE.md deliberately omits the '## Current disposition' section the 06-POST-RELEASE.md precedent grew after its own observation — this handoff is still open
 - [Phase 01]: D-13: generalized TestQdrantClientIsHeldOnlyByStorePackage's never-writes check to every qdrantClientHolderAllowlist entry except store.go, gate-enforcing storetest's D-08 write restriction instead of leaving it asserted by review only.
+- [Phase 01]: 01-03: internal/retrievaleval delegates via storetest.Run(m, storetest.IgnoreRequireQdrant()) after its ENGRAM_RETRIEVAL_EVAL gate, preserving its pre-phase never-consults-ENGRAM_REQUIRE_QDRANT behavior; internal/e2e keeps its early storetest.RequireQdrant() parse and local binary build before delegating to storetest.Run(m), newly inheriting storetest's post-boot empty-address fail-closed check
 
 ### Pending Todos
 
@@ -375,8 +376,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-19T00:16:38.916Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-09-19T00:34:36.814Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -511,6 +512,7 @@ Resume file: None
 | Phase 05 P04 | 15min | 2 tasks | 1 files |
 | Phase 01 P01 | 45min | 3 tasks | 8 files |
 | Phase 01 P02 | 10min | 2 tasks | 6 files |
+| Phase 01 P03 | 40min | 2 tasks | 6 files |
 
 ## Operator Next Steps
 

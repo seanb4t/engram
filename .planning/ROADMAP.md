@@ -343,7 +343,7 @@ Codex; and ships man pages from the cask.
 2. Every test Qdrant client in this milestone's regression tests is constructed through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly.
 3. The independent `qdrant.NewClient` test call sites converge on the shared constructor, so a passing test proves the bounded-read mechanism keeps responses bounded rather than a client-side accident.
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 Plans:
 **Wave 1**
@@ -353,7 +353,7 @@ Plans:
 **Wave 2**
 
 - [x] 01-02-PLAN.md — internal/store's six in-package dial sites converge on `dialTestClient(t, opts...)` → `NewQdrantClient`, proven by a production-span + caller-interceptor parity test (D-07, D-10; REQ-test-client-parity)
-- [ ] 01-03-PLAN.md — internal/server, internal/e2e and internal/retrievaleval run on `storetest.Run`/`storetest.Dial`; retrievaleval keeps its opt-in gate via `IgnoreRequireQdrant` (D-10; REQ-test-client-parity)
+- [x] 01-03-PLAN.md — internal/server, internal/e2e and internal/retrievaleval run on `storetest.Run`/`storetest.Dial`; retrievaleval keeps its opt-in gate via `IgnoreRequireQdrant` (D-10; REQ-test-client-parity)
 
 **Wave 3**
 
