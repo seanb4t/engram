@@ -343,7 +343,7 @@ Codex; and ships man pages from the cask.
 2. Every test Qdrant client in this milestone's regression tests is constructed through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly.
 3. The independent `qdrant.NewClient` test call sites converge on the shared constructor, so a passing test proves the bounded-read mechanism keeps responses bounded rather than a client-side accident.
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 **Wave 1**
@@ -361,7 +361,7 @@ Plans:
 
 **Wave 4**
 
-- [ ] 01-05-PLAN.md — D-11 convergence AST gate (test files included), CI Qdrant image pinned to `storetest.QdrantImage` by test, and this phase's four red-evidence patches registered so `TestRedEvidencePatchesAreLive` goes green (D-10, D-11, D-13; REQ-test-client-parity, REQ-oversized-fixture-helper)
+- [x] 01-05-PLAN.md — D-11 convergence AST gate (test files included), CI Qdrant image pinned to `storetest.QdrantImage` by test, and this phase's four red-evidence patches registered so `TestRedEvidencePatchesAreLive` goes green (D-10, D-11, D-13; REQ-test-client-parity, REQ-oversized-fixture-helper)
 
 ---
 

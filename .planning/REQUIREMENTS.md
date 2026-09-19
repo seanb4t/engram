@@ -23,8 +23,8 @@ HTTP 500.
 
 ### Test Harness
 
-- [ ] **REQ-oversized-fixture-helper**: A shared real-Qdrant test helper seeds a scope whose full payloads exceed a named receive limit, self-asserting the logical (post-decompression) byte count as `TestListScopesFullPayloadsOverGRPCLimit` (#583) does, in two shapes — many small records and a few large records. Every read-path regression test in this milestone uses it, and each is RED against the pre-fix code.
-- [ ] **REQ-test-client-parity**: Test Qdrant clients are built through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly — so a regression test proves the mechanism keeps responses bounded regardless of any production backstop (`REQ-recv-limit-backstop`), and the independent `qdrant.NewClient` test call sites converge on it.
+- [x] **REQ-oversized-fixture-helper**: A shared real-Qdrant test helper seeds a scope whose full payloads exceed a named receive limit, self-asserting the logical (post-decompression) byte count as `TestListScopesFullPayloadsOverGRPCLimit` (#583) does, in two shapes — many small records and a few large records. Every read-path regression test in this milestone uses it, and each is RED against the pre-fix code.
+- [x] **REQ-test-client-parity**: Test Qdrant clients are built through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly — so a regression test proves the mechanism keeps responses bounded regardless of any production backstop (`REQ-recv-limit-backstop`), and the independent `qdrant.NewClient` test call sites converge on it.
 - [ ] **REQ-ci-store-green**: The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused` / `code = Unavailable` recurrence — with fixtures sized to prove overflow without avoidable runner memory pressure. #497 is closed with that evidence.
 
 ### Error Surface
@@ -83,8 +83,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-oversized-fixture-helper | Phase 1 | Pending |
-| REQ-test-client-parity | Phase 1 | Pending |
+| REQ-oversized-fixture-helper | Phase 1 | Complete |
+| REQ-test-client-parity | Phase 1 | Complete |
 | REQ-ci-store-green | Phase 5 | Pending |
 | REQ-exhausted-sentinel | Phase 2 | Pending |
 | REQ-exhausted-connect | Phase 2 | Pending |

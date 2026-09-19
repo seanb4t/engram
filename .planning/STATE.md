@@ -4,17 +4,17 @@ milestone: 2026-09-18.01
 milestone_name: Bounded Reads
 current_phase: 01
 current_phase_name: Test Harness & Fixture Helper
-status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-09-19T00:52:49.884Z"
+status: verifying
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-09-19T01:12:43.351Z"
 last_activity: 2026-09-18
 last_activity_desc: Phase 01 execution started
-state_head: 3b458e184df44a73edaace5bb1a7f72b99562d83
+state_head: 575756f84b7c6964b7af9cebb6caf58564e28187
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-18 after opening milestone 2026-09-18
 
 Phase: 01 (Test Harness & Fixture Helper) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-18 — Phase 01 execution started
 
 ## Deferred Items
@@ -302,6 +302,8 @@ milestone needs in working memory.
 - [Phase 5]: 05-POST-RELEASE.md deliberately omits the '## Current disposition' section the 06-POST-RELEASE.md precedent grew after its own observation — this handoff is still open
 - [Phase 01]: D-13: generalized TestQdrantClientIsHeldOnlyByStorePackage's never-writes check to every qdrantClientHolderAllowlist entry except store.go, gate-enforcing storetest's D-08 write restriction instead of leaving it asserted by review only.
 - [Phase 01]: 01-03: internal/retrievaleval delegates via storetest.Run(m, storetest.IgnoreRequireQdrant()) after its ENGRAM_RETRIEVAL_EVAL gate, preserving its pre-phase never-consults-ENGRAM_REQUIRE_QDRANT behavior; internal/e2e keeps its early storetest.RequireQdrant() parse and local binary build before delegating to storetest.Run(m), newly inheriting storetest's post-boot empty-address fail-closed check
+- [Phase 01]: D-11's convergence gate is a new, narrower AST walker rather than a reuse of the existing type-reference gate, because that gate conflates type references with calls and excludes _test.go files -- the opposite of what D-11 needs on both axes.
+- [Phase 01]: Each of Task 3's four red-evidence patches was independently hand-verified (git apply --check/apply/go test -run '^Target$'/apply -R) to fail its named target test before registration in redEvidenceDirs, closing TestRedEvidencePatchesAreLive.
 
 ### Pending Todos
 
@@ -376,8 +378,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-19T00:52:49.868Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-09-19T01:12:43.334Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -514,6 +516,7 @@ Resume file: None
 | Phase 01 P02 | 10min | 2 tasks | 6 files |
 | Phase 01 P03 | 40min | 2 tasks | 6 files |
 | Phase 01 P04 | 25min | 2 tasks | 5 files |
+| Phase 01 P05 | 55min | 3 tasks | 12 files |
 
 ## Operator Next Steps
 
