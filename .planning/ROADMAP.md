@@ -320,7 +320,7 @@ Codex; and ships man pages from the cask.
 </details>
 
 - [x] **Phase 1: Test Harness & Fixture Helper** - A shared real-Qdrant oversized-fixture helper and test-client constructor every later regression test in this milestone reuses (completed 2026-09-18)
-- [ ] **Phase 2: Error Classification & ResourceExhausted Mapping** - A response exceeding the receive limit classifies into one typed sentinel, surfaced as a clear, named error on Connect, MCP, and the CLI
+- [x] **Phase 2: Error Classification & ResourceExhausted Mapping** - A response exceeding the receive limit classifies into one typed sentinel, surfaced as a clear, named error on Connect, MCP, and the CLI (completed 2026-09-19)
 - [ ] **Phase 3: Shared Bounded-Read Mechanism & Content Cap Decision** - Two shared bounded-read primitives are built and proven, every full-payload read site is inventoried and assigned to its migrating phase, and whether memory `content` gets a size cap is decided
 - [ ] **Phase 4: List, ListScheduled & Search Bounded Reads** - `Store.List` (every mode), `list_scheduled`, and `search_memory`/`search_discovery` stay under the receive limit, and the `ListMemories` paging contract is decided
 - [ ] **Phase 5: Operator Sweeps & CI Backstop** - The five 256-batch operator sweeps stay bounded, `MaxCallRecvMsgSize` lands as defense-in-depth, and `internal/store` CI stays green with this milestone's oversized fixtures
@@ -380,7 +380,7 @@ Plans:
 3. MCP tools return the same named hint envelope through one shared MCP-side mapper, rather than each tool closure surfacing the raw error.
 4. The `engram` CLI maps the new code to a documented exit code, and the hint code is documented in docs-site `reference/errors.md`.
 
-**Plans:** 4/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -580,7 +580,7 @@ Plans:
 | 4. Drift Detection (Read-Only) | 2026-09-13.01 | 5/5 | Complete | 2026-09-15 |
 | 5. Apply-Time Preserve Gate & Documentation | 2026-09-13.01 | 4/4 | Complete | 2026-09-16 |
 | 1. Test Harness & Fixture Helper | 2026-09-18.01 | 2/2 | Complete | 2026-09-18 |
-| 2. Error Classification & ResourceExhausted Mapping | 2026-09-18.01 | 0/4 | Not started | - |
+| 2. Error Classification & ResourceExhausted Mapping | 2026-09-18.01 | 4/4 | Complete | 2026-09-19 |
 | 3. Shared Bounded-Read Mechanism & Content Cap Decision | 2026-09-18.01 | 0/2 | Not started | - |
 | 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 0/5 | Not started | - |
 | 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 0/4 | Not started | - |
