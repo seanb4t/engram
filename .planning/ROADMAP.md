@@ -415,12 +415,12 @@ Plans:
 2. A page ends on an accumulated-byte budget as well as a record count, proven against a fixture of a few very large records that a count-only cap would not catch.
 3. Whether memory `content` gets a size cap is decided and recorded in PROJECT.md Key Decisions; if adopted, a registry-declared `ENGRAM_MEMORY_MAX_CONTENT_BYTES` with a documented default rejects an oversized write on every write path (MCP, Connect, CLI) with a named hint, while existing oversized records stay readable.
 
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — always-enforced `ENGRAM_MEMORY_MAX_CONTENT_BYTES` / `_TAGS` / `_TAG_BYTES` in the config registry (0 rejected) and enforced in `validateStoreArgs` on every create lane, MCP and Connect (D-01, D-09, D-10; REQ-content-cap-decided)
+- [x] 03-01-PLAN.md — always-enforced `ENGRAM_MEMORY_MAX_CONTENT_BYTES` / `_TAGS` / `_TAG_BYTES` in the config registry (0 rejected) and enforced in `validateStoreArgs` on every create lane, MCP and Connect (D-01, D-09, D-10; REQ-content-cap-decided)
 - [ ] 03-02-PLAN.md — per-view record ceiling from the configured caps, 2 MiB byte budgets, and the in-place byte-budget `scrollAllPoints` extension with batch-of-1 fallback, proven on both oversized fixtures (D-02..D-04, D-06, D-07; REQ-byte-budget-pages)
 
 **Wave 2**
