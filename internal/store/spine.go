@@ -42,9 +42,21 @@ var spineScrollBatch uint32 = 256
 // summaryView) sizes every RPC's Limit from the byte budget (D-02) via
 // sweepLimit, so no single RPC can overflow for a record that respects the
 // caps; an unbudgetedView keeps the pre-Phase-3 count-only loop unchanged —
-// spineScrollBatch per RPC. For a sweep, one RPC IS the page: there is no
-// separate page-level byte accumulation here (that belongs to the
-// ordered-page helper, plan 03-04, for List-shaped reads).
+// spineScrollBatch per RPC, no fallback. For a sweep, one RPC IS the page:
+// there is no separate page-level byte accumulation here (that belongs to
+// the ordered-page helper, plan 03-04, for List-shaped reads).
+//
+// D-07's legacy-oversized-record fallback: for a BUDGETED view only, when a
+// request at a computed Limit greater than 1 fails with a match against the
+// named ErrResponseTooLarge sentinel — a pre-cap legacy record made this
+// window overflow — the SAME offset position is re-issued at Limit 1,
+// repeated for exactly that many RPCs (fallbackLeft), before resuming the
+// computed count. A cap-respecting spine pays nothing extra; a legacy
+// over-cap record costs one wasted RPC per window it falls in. If a single
+// record still overflows at Limit 1, the error (the named sentinel) is
+// returned UNCHANGED — never silently skipped or truncated (silent
+// truncation is milestone Out of Scope). An unbudgeted view never takes
+// this branch: any error is returned unchanged, exactly as before Phase 3.
 //
 // s.client.Scroll must NEVER be used for a whole-spine sweep: in
 // qdrant/go-client@v1.18.3 (points.go:70-76) it issues exactly ONE RPC and
@@ -54,21 +66,33 @@ var spineScrollBatch uint32 = 256
 // Only ScrollAndOffset (:88-94) and ScrollAll (:419) actually paginate.
 func (s *Store) scrollAllPoints(ctx context.Context, filter *qdrant.Filter, view readView, fn func(*qdrant.RetrievedPoint) error) error {
 	var offset *qdrant.PointId
+	var fallbackLeft int
 	for {
+		limit := sweepLimit(view)
+		if view.budgeted() && fallbackLeft > 0 {
+			limit = 1
+		}
 		pts, next, err := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
 			CollectionName: s.collection,
 			Filter:         filter,
-			Limit:          qdrant.PtrOf(sweepLimit(view)),
+			Limit:          qdrant.PtrOf(limit),
 			Offset:         offset,
 			WithPayload:    view.selector,
 		})
 		if err != nil {
+			if view.budgeted() && limit > 1 && errors.Is(err, ErrResponseTooLarge) {
+				fallbackLeft = int(limit)
+				continue
+			}
 			return err
 		}
 		for _, p := range pts {
 			if ferr := fn(p); ferr != nil {
 				return ferr
 			}
+		}
+		if view.budgeted() && fallbackLeft > 0 {
+			fallbackLeft--
 		}
 		if next == nil {
 			return nil
