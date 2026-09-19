@@ -6,6 +6,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -21,10 +22,13 @@ import (
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	grpccodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/auth"
+	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/store/storetest"
 )
 
@@ -432,5 +436,162 @@ func TestRegisterInstallsToolMiddleware(t *testing.T) {
 	}
 	if !isCallTo(call.Args[1], "mapResponseTooLarge") {
 		t.Errorf("AddReceivingMiddleware arg 1 is not a call to mapResponseTooLarge: %#v", call.Args[1])
+	}
+}
+
+// TestMapResponseTooLargePassesOtherResultsThrough drives mapResponseTooLarge
+// directly against a fake next (instrument_test.go's house style), pinning
+// D-09's pass-through guarantee and the mapper's empty/adjacency edges: every
+// method other than "tools/call", every non-error result, every OTHER tool
+// error (an *argError, store.ErrNotFound, an unclassified server-side
+// ResourceExhausted), and a Go-level error from next are all returned
+// completely unchanged; only store.ErrResponseTooLarge is rewritten.
+func TestMapResponseTooLargePassesOtherResultsThrough(t *testing.T) {
+	mw := mapResponseTooLarge()
+
+	t.Run("non_tools_call_method", func(t *testing.T) {
+		calls := 0
+		want := &mcp.ListToolsResult{}
+		next := func(context.Context, string, mcp.Request) (mcp.Result, error) {
+			calls++
+			return want, nil
+		}
+		res, err := mw(next)(context.Background(), "tools/list", &mcp.ListToolsRequest{})
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
+		}
+		if res != want {
+			t.Errorf("result pointer changed: got %#v, want %#v", res, want)
+		}
+		if calls != 1 {
+			t.Errorf("next called %d times, want 1", calls)
+		}
+	})
+
+	t.Run("no_error_result", func(t *testing.T) {
+		want := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok"}}}
+		next := func(context.Context, string, mcp.Request) (mcp.Result, error) { return want, nil }
+		res, err := mw(next)(context.Background(), "tools/call", &mcp.CallToolRequest{})
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
+		}
+		ctr, ok := res.(*mcp.CallToolResult)
+		if !ok || ctr != want {
+			t.Fatalf("result changed: got %#v, want the same pointer as %#v", res, want)
+		}
+		if ctr.IsError {
+			t.Errorf("IsError = true, want false")
+		}
+		tc, ok := ctr.Content[0].(*mcp.TextContent)
+		if !ok || tc.Text != "ok" {
+			t.Errorf("content changed: %+v", ctr.Content)
+		}
+	})
+
+	t.Run("arg_error_passes_through", func(t *testing.T) {
+		errVal := argErrf(classOutOfRange, HintTooLong, "summary", "summary too large: %d bytes (max %d)", 700, 512)
+		ctr := &mcp.CallToolResult{}
+		ctr.SetError(errVal)
+		next := func(context.Context, string, mcp.Request) (mcp.Result, error) { return ctr, nil }
+		res, err := mw(next)(context.Background(), "tools/call", &mcp.CallToolRequest{})
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
+		}
+		got := res.(*mcp.CallToolResult)
+		if len(got.Content) != 1 {
+			t.Fatalf("content = %+v, want 1 item", got.Content)
+		}
+		tc, ok := got.Content[0].(*mcp.TextContent)
+		if !ok || tc.Text != errVal.Error() {
+			t.Errorf("content text = %+v, want byte-identical to errVal.Error() = %q", got.Content, errVal.Error())
+		}
+	})
+
+	t.Run("not_found_passes_through", func(t *testing.T) {
+		ctr := &mcp.CallToolResult{}
+		ctr.SetError(fmt.Errorf("%w: some-id", store.ErrNotFound))
+		wantText := ctr.Content[0].(*mcp.TextContent).Text
+		next := func(context.Context, string, mcp.Request) (mcp.Result, error) { return ctr, nil }
+		res, err := mw(next)(context.Background(), "tools/call", &mcp.CallToolRequest{})
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
+		}
+		got := res.(*mcp.CallToolResult)
+		if gotText := got.Content[0].(*mcp.TextContent).Text; gotText != wantText {
+			t.Errorf("content text changed: got %q, want %q", gotText, wantText)
+		}
+	})
+
+	t.Run("unclassified_resource_exhausted_passes_through", func(t *testing.T) {
+		ctr := &mcp.CallToolResult{}
+		ctr.SetError(status.Error(grpccodes.ResourceExhausted, "Too many requests"))
+		wantText := ctr.Content[0].(*mcp.TextContent).Text
+		next := func(context.Context, string, mcp.Request) (mcp.Result, error) { return ctr, nil }
+		res, err := mw(next)(context.Background(), "tools/call", &mcp.CallToolRequest{})
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
+		}
+		got := res.(*mcp.CallToolResult)
+		if gotText := got.Content[0].(*mcp.TextContent).Text; gotText != wantText {
+			t.Errorf("content text changed: got %q, want %q (an unclassified server-side ResourceExhausted must not be relabeled)", gotText, wantText)
+		}
+	})
+
+	t.Run("go_error_from_next_passes_through", func(t *testing.T) {
+		someErr := errors.New("boom")
+		next := func(context.Context, string, mcp.Request) (mcp.Result, error) { return nil, someErr }
+		res, err := mw(next)(context.Background(), "tools/call", &mcp.CallToolRequest{})
+		if res != nil {
+			t.Errorf("res = %v, want nil", res)
+		}
+		if !errors.Is(err, someErr) {
+			t.Errorf("err = %v, want %v", err, someErr)
+		}
+	})
+
+	t.Run("response_too_large_maps", func(t *testing.T) {
+		ctr := &mcp.CallToolResult{}
+		ctr.SetError(fmt.Errorf("list: %w", &store.ResponseTooLargeError{Method: "/m"}))
+		next := func(context.Context, string, mcp.Request) (mcp.Result, error) { return ctr, nil }
+		res, err := mw(next)(context.Background(), "tools/call", &mcp.CallToolRequest{})
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
+		}
+		got := res.(*mcp.CallToolResult)
+		if !got.IsError {
+			t.Errorf("IsError = false, want true")
+		}
+		if len(got.Content) != 1 {
+			t.Fatalf("content = %+v, want 1 item", got.Content)
+		}
+		tc, ok := got.Content[0].(*mcp.TextContent)
+		if !ok || tc.Text != responseTooLargeEnvelope() {
+			t.Errorf("content text = %+v, want %q", got.Content, responseTooLargeEnvelope())
+		}
+	})
+}
+
+// TestResponseTooLargeEnvelopeShape pins the envelope's wording contract
+// (D-04): it starts with the field/hint prefix, carries no ASCII digit and
+// no "later"/"again" wording (never steers the caller to retry the
+// identical request — the ceiling it hit does not change between
+// requests), and names every remedy (limit, k, full).
+func TestResponseTooLargeEnvelopeShape(t *testing.T) {
+	env := responseTooLargeEnvelope()
+	if !strings.HasPrefix(env, "field=response hint=too_large: ") {
+		t.Errorf("envelope %q does not start with the field/hint prefix", env)
+	}
+	if !noASCIIDigit(env) {
+		t.Errorf("envelope %q contains an ASCII digit (a byte ceiling must never reach the wire)", env)
+	}
+	for _, banned := range []string{"later", "again"} {
+		if strings.Contains(env, banned) {
+			t.Errorf("envelope %q contains banned wording %q — never steer the caller toward a retry that cannot work", env, banned)
+		}
+	}
+	for _, want := range []string{"limit", "k", "full"} {
+		if !strings.Contains(env, want) {
+			t.Errorf("envelope %q does not name remedy %q", env, want)
+		}
 	}
 }
