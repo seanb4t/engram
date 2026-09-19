@@ -1857,6 +1857,20 @@ func (d *deps) updateMemory(ctx context.Context, c caller, a updateArgs) (mutati
 		}
 	}
 	contentChanged := a.Content != nil && *a.Content != cur.Content
+	// The content/tags caps must live HERE, not in validateUpdateArgs,
+	// because Connect's UpdateMemory RPC calls deps.updateMemory directly
+	// (connectapi.go:471-481), bypassing validateUpdateArgs entirely — the
+	// #360-shaped trap D-09 names. Gated on contentChanged / a changed tag
+	// set (below) so an unchanged legacy over-cap record can still be
+	// re-shared, re-summarized, or have its OTHER field changed (D-07); this
+	// runs AFTER FetchForUpdate's owner gate above, so a non-owner learns
+	// nothing beyond the existing uniform not-found (T-03-03-03).
+	caps := d.writeCaps.resolved()
+	if contentChanged {
+		if err := checkContentBytes(*a.Content, caps.contentBytes); err != nil {
+			return mutationResult{}, err
+		}
+	}
 	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
 	// embed call. The owner gate has already run, so a rejected caller never
 	// reaches here and never learns whether a summary exists.
