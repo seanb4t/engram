@@ -111,7 +111,14 @@ var redEvidenceDirs = map[string]map[string]string{
 		"01-05-ci-qdrant-image-drift.patch":            "TestQdrantImageMatchesCIService",                  // reverts: CI's services.qdrant image drifting from storetest.QdrantImage (D-10)
 	},
 	".planning/phases/02-error-classification-resourceexhausted-mapping/red-evidence": {
-		"02-02-connect-arm-removed.patch": "TestConnectListMemoriesResponseTooLarge", // reverts: connectError's ErrResponseTooLarge -> resource_exhausted arm (D-06)
+		"02-01-classifier-not-in-base-options.patch":             "TestResponseTooLargeClassifierSitsInsideCallerChain", // reverts: NewQdrantClient no longer installing the classifier in its base dial options (D-01)
+		"02-01-classifier-requires-two-number-shape.patch":       "TestStoreListOverflowIsResponseTooLarge",             // reverts: isRecvLimitMessage additionally requiring the two-number shape, missing real traffic's single-number shape (RESEARCH.md Pitfall 1)
+		"02-01-classifier-relabels-any-resource-exhausted.patch": "TestClassifyResponseTooLarge",                        // reverts: classifyResponseTooLarge dropping its isRecvLimitMessage message-shape check, relabeling every ResourceExhausted (D-02)
+		"02-02-connect-arm-removed.patch":                        "TestConnectListMemoriesResponseTooLarge",             // reverts: connectError's ErrResponseTooLarge -> resource_exhausted arm (D-06)
+		"02-02-mcp-mapper-unregistered.patch":                    "TestMCPListMemoryResponseTooLarge",                   // reverts: addToolMiddleware no longer registering mapResponseTooLarge (D-08)
+		"02-03-exit-mapping-reverted.patch":                      "TestExitCodeBaseline",                                // reverts: exitCodeForConnectErr's CodeResourceExhausted -> exitTooLarge case (D-07)
+		"02-03-operator-arm-removed.patch":                       "TestClassifyOperatorErrCodesAreDistinct",             // reverts: classifyOperatorErr's ErrResponseTooLarge arm, applying D-07's exit code to the operator tier (D-07/D-10)
+		"02-03-errors-doc-drops-too-large.patch":                 "TestErrorsDocHintCodesMatchArgErrorConstants",        // reverts: errors.md's too_large row of the eleven-code hint table (D-05)
 	},
 }
 

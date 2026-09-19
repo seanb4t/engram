@@ -1,0 +1,19 @@
+diff --git a/cmd/engram/operror.go b/cmd/engram/operror.go
+index 34b6090c..c9b9f941 100644
+--- a/cmd/engram/operror.go
++++ b/cmd/engram/operror.go
+@@ -115,14 +115,6 @@ func classifyOperatorErr(err error) error {
+ 		// the closer fit than exitUsage. See 01-05-SUMMARY.md for the
+ 		// recorded rationale.
+ 		return unavailableErrorf("%w", err)
+-	case errors.Is(err, store.ErrResponseTooLarge):
+-		// Live trigger: any operator sweep whose own Qdrant read exceeds
+-		// the receive limit (Phase 5 bounds the sweeps). The store
+-		// classifier (D-01) already relabeled the transport error, so
+-		// this arm matches the SENTINEL, never text. Exit 10 is the same
+-		// code the Connect lane's client verbs report (D-07/D-10,
+-		// client_common.go's exitCodeForConnectErr).
+-		return &cliError{code: exitTooLarge, err: err}
+ 	case errors.Is(err, store.ErrIdempotencyConflict):
+ 		// No live trigger from these four commands' call paths today (only
+ 		// the MCP-facing store_memory/schedule_memory keyed writes raise

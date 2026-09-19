@@ -1,0 +1,12 @@
+diff --git a/docs-site/src/content/docs/reference/errors.md b/docs-site/src/content/docs/reference/errors.md
+index decc805a..f4fe5c4e 100644
+--- a/docs-site/src/content/docs/reference/errors.md
++++ b/docs-site/src/content/docs/reference/errors.md
+@@ -110,7 +110,6 @@ off one by one against that file — this table cannot list a code the server do
+ | `ordering` | A before/after or numeric ordering constraint is violated — usually between two fields, but sometimes between one field and a fixed reference such as the current time. | Adjust so the stated ordering holds. Read `field=`: it lists every field involved, which may be one or two. |
+ | `mutually_exclusive` | Two or more fields cannot be combined at once. | Drop all but one — every field the constraint relates is listed under `field=`. |
+ | `not_applicable` | The field does not apply given another field's value on this call. | Omit the field entirely rather than sending an empty or default value. |
+-| `too_large` | The result the request would produce exceeds what one response can carry — not a rejected input; `field=` is always the fixed pseudo-field `response`. | Retry with a smaller `limit` or `k`, or omit `full`; retrying the identical request fails the same way. See [Response too large](#response-too-large-resource_exhausted-and-exit-10). |
+ 
+ `too_long` and `too_large` are easy to conflate but name opposite directions: `too_long`
+ means an INPUT field you sent exceeded a bound — shorten that field and resend. `too_large`

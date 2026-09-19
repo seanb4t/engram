@@ -1,0 +1,13 @@
+diff --git a/internal/store/responsetoolarge.go b/internal/store/responsetoolarge.go
+index dbbb1bfe..defa8f44 100644
+--- a/internal/store/responsetoolarge.go
++++ b/internal/store/responsetoolarge.go
+@@ -135,7 +135,7 @@ func isRecvLimitMessage(msg string) bool {
+ 	if !strings.Contains(msg, "larger than max") {
+ 		return false
+ 	}
+-	return strings.Contains(msg, "received message") || strings.Contains(msg, "message after decompression")
++	return (strings.Contains(msg, "received message") || strings.Contains(msg, "message after decompression")) && strings.Contains(msg, " vs. ")
+ }
+ 
+ // newResponseTooLargeError builds a *ResponseTooLargeError for method and

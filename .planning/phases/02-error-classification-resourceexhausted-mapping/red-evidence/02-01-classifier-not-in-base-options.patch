@@ -1,0 +1,12 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index dca913c9..b7bbf331 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -527,7 +527,6 @@ func WithTargetLocker(l TargetLocker) Option {
+ func NewQdrantClient(host string, port int, opts ...grpc.DialOption) (*qdrant.Client, error) {
+ 	dialOpts := make([]grpc.DialOption, 0, 2+len(opts))
+ 	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+-	dialOpts = append(dialOpts, grpc.WithChainUnaryInterceptor(classifyResponseTooLarge))
+ 	dialOpts = append(dialOpts, opts...)
+ 	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: dialOpts})
+ }
