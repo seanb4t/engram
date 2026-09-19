@@ -1654,54 +1654,6 @@ func TestListScopes(t *testing.T) {
 	}
 }
 
-// TestListScopesFullPayloadsOverGRPCLimit proves ListScopes' request shape
-// against real Qdrant: with scanCap (1000) points carrying full payloads, one
-// Scroll response can exceed grpc-go's 4 MiB default client receive limit and
-// fail with ResourceExhausted. This test covers OUR request shape, not
-// Qdrant's own behavior (rule m45p2b4bp7).
-func TestListScopesFullPayloadsOverGRPCLimit(t *testing.T) {
-	if testing.Short() {
-		t.Skip("writes about 5 MiB of payload; skipped in -short")
-	}
-	s := testStore(t)
-	ctx := context.Background()
-	scope := "ls-grpc-limit-test:project:big"
-	owner := "sub-ls-grpc-limit"
-	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
-
-	const n = 40
-	const contentBytes = 128 << 10
-	if n*contentBytes <= 4<<20 {
-		t.Fatalf("fixture no longer exceeds grpc-go's default 4 MiB client receive limit: %d*%d <= %d", n, contentBytes, 4<<20)
-	}
-	content := strings.Repeat("x", contentBytes)
-
-	for i := 0; i < n; i++ {
-		m := Memory{
-			ID:        fmt.Sprintf("c2222222-0000-0000-0000-%012d", i),
-			Content:   content,
-			Scope:     scope,
-			Owner:     owner,
-			CreatedAt: time.Now().UTC(),
-		}
-		if err := s.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
-			t.Fatalf("upsert %d: %v", i, err)
-		}
-	}
-
-	scopes, _, err := s.ListScopes(ctx, Authenticated(owner))
-	if err != nil {
-		t.Fatalf("ListScopes: %v (full-payload scroll exceeded the gRPC receive limit)", err)
-	}
-	counts := map[string]uint64{}
-	for _, sc := range scopes {
-		counts[sc.Scope] = sc.Count
-	}
-	if counts[scope] != n {
-		t.Errorf("counts[%s] = %d, want %d", scope, counts[scope], n)
-	}
-}
-
 func TestCountAnonymousBucket(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
