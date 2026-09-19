@@ -1871,6 +1871,15 @@ func (d *deps) updateMemory(ctx context.Context, c caller, a updateArgs) (mutati
 			return mutationResult{}, err
 		}
 	}
+	// Gated on a CHANGED tag set (slices.Equal), mirroring contentChanged
+	// above, so resending a legacy record's own tags never locks its owner
+	// out; an empty set (clear) is always within bounds since checkTags'
+	// count check compares against 0.
+	if a.Tags != nil && !slices.Equal(*a.Tags, cur.Tags) {
+		if err := checkTags(*a.Tags, caps.tags, caps.tagBytes); err != nil {
+			return mutationResult{}, err
+		}
+	}
 	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
 	// embed call. The owner gate has already run, so a rejected caller never
 	// reaches here and never learns whether a summary exists.
