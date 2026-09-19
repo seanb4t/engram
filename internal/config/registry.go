@@ -49,6 +49,12 @@ var registry = []field{
 	// read-side per-record ceiling from this cap and a disabled cap would
 	// silently remove that provable bound.
 	{Key: "memory.max_content_bytes", Env: "ENGRAM_MEMORY_MAX_CONTENT_BYTES", Default: "65536"},
+	// memory.max_tags / memory.max_tag_bytes (D-10): the tag-COUNT cap and the
+	// per-tag byte cap, both brand-new, both always enforced — same D-09
+	// divergence as memory.max_content_bytes above ("0" is rejected, never
+	// honored as disabled).
+	{Key: "memory.max_tags", Env: "ENGRAM_MEMORY_MAX_TAGS", Default: "128"},
+	{Key: "memory.max_tag_bytes", Env: "ENGRAM_MEMORY_MAX_TAG_BYTES", Default: "128"},
 	{Key: "summarize.model", Env: "ENGRAM_SUMMARY_MODEL"},
 	{Key: "summarize.max_chars", Env: "ENGRAM_SUMMARY_MAX_CHARS", Default: "280"},
 	{Key: "summarize.max_tokens", Env: "ENGRAM_SUMMARY_MAX_TOKENS", Default: "1024"},

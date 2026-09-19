@@ -14,7 +14,7 @@ func validConfig() *Config {
 	return &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval"},
 		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024", Timeout: "30s"},
-		Memory:    MemoryConfig{MaxSummaryBytes: "512"},
+		Memory:    MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{OnWrite: "false", Workers: "2", QueueSize: "256"},
 		Usage:     UsageConfig{Signals: "true"},
@@ -74,6 +74,57 @@ func TestValidateFieldRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMemoryCapsRejectZeroAndNonPositive proves D-09: ENGRAM_MEMORY_MAX_CONTENT_BYTES,
+// ENGRAM_MEMORY_MAX_TAGS and ENGRAM_MEMORY_MAX_TAG_BYTES are ALWAYS enforced —
+// "0", a negative value, and a non-integer all fail Validate() naming the
+// variable; "1" and the registry default are accepted. A sibling case proves
+// the deliberate divergence: ENGRAM_MEMORY_MAX_SUMMARY_BYTES="0" still passes
+// (it disables that bound, D-18) — these three caps do NOT.
+func TestMemoryCapsRejectZeroAndNonPositive(t *testing.T) {
+	fields := []struct {
+		envName string
+		mutate  func(*Config, string)
+		def     string
+	}{
+		{"ENGRAM_MEMORY_MAX_CONTENT_BYTES", func(c *Config, v string) { c.Memory.MaxContentBytes = v }, "65536"},
+		{"ENGRAM_MEMORY_MAX_TAGS", func(c *Config, v string) { c.Memory.MaxTags = v }, "128"},
+		{"ENGRAM_MEMORY_MAX_TAG_BYTES", func(c *Config, v string) { c.Memory.MaxTagBytes = v }, "128"},
+	}
+	badValues := []string{"0", "-1", "abc", ""}
+	for _, f := range fields {
+		for _, bad := range badValues {
+			t.Run(f.envName+"/"+bad, func(t *testing.T) {
+				c := validConfig()
+				f.mutate(c, bad)
+				err := c.Validate()
+				if err == nil {
+					t.Fatalf("Validate() = nil, want error naming %s for value %q", f.envName, bad)
+				}
+				if !strings.Contains(err.Error(), f.envName) {
+					t.Errorf("Validate() error = %q, want it to name %s", err, f.envName)
+				}
+			})
+		}
+		for _, good := range []string{"1", f.def} {
+			t.Run(f.envName+"/"+good, func(t *testing.T) {
+				c := validConfig()
+				f.mutate(c, good)
+				if err := c.Validate(); err != nil {
+					t.Errorf("Validate() with %s=%q = %v, want nil", f.envName, good, err)
+				}
+			})
+		}
+	}
+
+	t.Run("ENGRAM_MEMORY_MAX_SUMMARY_BYTES/0 still disables (D-18, unchanged)", func(t *testing.T) {
+		c := validConfig()
+		c.Memory.MaxSummaryBytes = "0"
+		if err := c.Validate(); err != nil {
+			t.Errorf("Validate() with MaxSummaryBytes=0 = %v, want nil (D-18: 0 disables this bound)", err)
+		}
+	})
 }
 
 // summarizeEnabled returns a valid Config with auto-summary turned on, so a test

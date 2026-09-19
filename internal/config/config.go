@@ -86,9 +86,9 @@ type EmbedConfig struct {
 	Timeout string `koanf:"timeout"`
 }
 
-// MemoryConfig bounds the ordinary store_memory/update_memory `summary` and
-// `content` fields (04-diagnosability D-06a/D-18; 03-shared-bounded-read-
-// mechanism D-01/D-09): issue #360's misattributed
+// MemoryConfig bounds the ordinary store_memory/update_memory `summary`,
+// `content` and `tags` fields (04-diagnosability D-06a/D-18; 03-shared-
+// bounded-read-mechanism D-01/D-09/D-10): issue #360's misattributed
 // "missing properties: [\"content\"]" traces to an oversized `summary`
 // decoding in a way that made `content` read as absent, and there was no
 // bound on a memory summary to reject it deterministically — only
@@ -108,6 +108,14 @@ type MemoryConfig struct {
 	// because the read-side per-record ceiling (plan 03-02) is derived from
 	// this cap.
 	MaxContentBytes string `koanf:"max_content_bytes"`
+	// MaxTags caps the NUMBER of storeArgs.Tags entries on every memory
+	// create path (default "128", D-10). Same D-09 always-enforced
+	// divergence as MaxContentBytes.
+	MaxTags string `koanf:"max_tags"`
+	// MaxTagBytes caps the byte length of a SINGLE storeArgs.Tags entry
+	// (default "128", D-10). Same D-09 always-enforced divergence as
+	// MaxContentBytes.
+	MaxTagBytes string `koanf:"max_tag_bytes"`
 }
 
 // SummarizeConfig selects the recall-summary model and the character cap shared

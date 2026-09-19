@@ -80,6 +80,21 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_MEMORY_MAX_SUMMARY_BYTES %q: must be a non-negative integer: %w", c.Memory.MaxSummaryBytes, err))
 	}
 
+	// memory.max_content_bytes / max_tags / max_tag_bytes (D-09/D-10): UNLIKE
+	// ENGRAM_MEMORY_MAX_SUMMARY_BYTES above, these three are ALWAYS enforced —
+	// "0" fails validation rather than disabling the bound, because the
+	// read-side per-record ceiling (plan 03-02) is derived from these caps and
+	// a disabled cap would silently remove that provable bound.
+	if err := validatePositiveCap(c.Memory.MaxContentBytes, "ENGRAM_MEMORY_MAX_CONTENT_BYTES"); err != nil {
+		errs = append(errs, err)
+	}
+	if err := validatePositiveCap(c.Memory.MaxTags, "ENGRAM_MEMORY_MAX_TAGS"); err != nil {
+		errs = append(errs, err)
+	}
+	if err := validatePositiveCap(c.Memory.MaxTagBytes, "ENGRAM_MEMORY_MAX_TAG_BYTES"); err != nil {
+		errs = append(errs, err)
+	}
+
 	switch u, err := url.Parse(c.OpenAI.BaseURL); {
 	case c.OpenAI.BaseURL == "":
 		errs = append(errs, errors.New("ENGRAM_OPENAI_BASE_URL is empty: must be an http(s) URL"))
@@ -237,4 +252,20 @@ func (c *Config) Validate() error {
 		return nil
 	}
 	return fmt.Errorf("invalid configuration: %w", errors.Join(errs...))
+}
+
+// validatePositiveCap validates an always-enforced memory write cap (D-09):
+// value must parse as a positive integer. Unlike ENGRAM_MEMORY_MAX_SUMMARY_BYTES,
+// "0" is rejected outright rather than honored as "disabled" — these caps
+// feed the read-side per-record ceiling (plan 03-02), and a disabled cap
+// would silently remove that provable bound.
+func validatePositiveCap(value, envName string) error {
+	switch n, err := strconv.ParseUint(value, 10, 64); {
+	case err != nil:
+		return fmt.Errorf("%s %q: must be a positive integer: %w", envName, value, err)
+	case n == 0:
+		return fmt.Errorf("%s must be greater than 0: this cap is always enforced (unlike ENGRAM_MEMORY_MAX_SUMMARY_BYTES, 0 does not disable it)", envName)
+	default:
+		return nil
+	}
 }

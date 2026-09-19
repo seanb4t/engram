@@ -267,9 +267,7 @@ func validConfigForServiceAuthTests() *Config {
 			Dim:     "1024",
 			Timeout: "30s",
 		},
-		Memory: MemoryConfig{
-			MaxSummaryBytes: "512",
-		},
+		Memory: MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI: OpenAIConfig{
 			BaseURL: "http://localhost:4000",
 		},
