@@ -415,7 +415,7 @@ Plans:
 2. A page ends on an accumulated-byte budget as well as a record count, proven against a fixture of a few very large records that a count-only cap would not catch.
 3. Whether memory `content` gets a size cap is decided and recorded in PROJECT.md Key Decisions; if adopted, a registry-declared `ENGRAM_MEMORY_MAX_CONTENT_BYTES` with a documented default rejects an oversized write on every write path (MCP, Connect, CLI) with a named hint, while existing oversized records stay readable.
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -430,7 +430,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 03-05-PLAN.md — the caps proven through the real `engram store` binary, documented on docs-site, recorded in PROJECT.md Key Decisions, and stated in CLAUDE.md and the curating-memory skill (D-01, D-09, D-10; REQ-content-cap-decided)
+- [x] 03-05-PLAN.md — the caps proven through the real `engram store` binary, documented on docs-site, recorded in PROJECT.md Key Decisions, and stated in CLAUDE.md and the curating-memory skill (D-01, D-09, D-10; REQ-content-cap-decided)
 
 **Wave 4**
 

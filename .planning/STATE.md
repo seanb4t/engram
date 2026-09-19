@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 03
 current_phase_name: Shared Bounded-Read Mechanism & Content Cap Decision
 status: executing
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-09-19T22:05:41.918Z"
+stopped_at: Completed 03-05-PLAN.md
+last_updated: "2026-09-19T22:24:30.236Z"
 last_activity: 2026-09-19
 last_activity_desc: Phase 03 execution started
-state_head: fe45ce4316cb7d4a44fe68ed513c543aec2164a1
+state_head: bb00e18ea101e1f0e48a51b93ab72d8b6b87b1eb
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 2 of milestone 2026-09
 ## Current Position
 
 Phase: 03 (Shared Bounded-Read Mechanism & Content Cap Decision) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-09-19 — Phase 03 execution started
 
@@ -317,6 +317,7 @@ milestone needs in working memory.
 - [Phase 03]: D-09: content-cap check on update lives inside deps.updateMemory itself (not validateUpdateArgs), because Connect's UpdateMemory RPC calls deps.updateMemory directly.
 - [Phase 03]: D-10 gating: tags check on update runs only when the supplied set differs from the stored set (slices.Equal), mirroring D-09's contentChanged precedent.
 - [Phase 03]: D-02/D-09 read-side link: recordCapsFromConfig reuses memoryWriteCapsFromConfig + maxMemorySummaryBytes verbatim rather than a second config parse.
+- [Phase 03]: 03-05: CLI proof closes REQ-content-cap-decided's last unexercised lane; decision A recorded in PROJECT.md Key Decisions; CLAUDE.md and the curating-memory skill state the content/tags bounds beside the summary bound.
 
 ### Pending Todos
 
@@ -391,8 +392,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-19T22:05:41.890Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-09-19T22:24:30.210Z
+Stopped at: Completed 03-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -538,6 +539,7 @@ Resume file: None
 | Phase 03 P02 | 25min | 2 tasks | 8 files |
 | Phase 03 P03 | 10min | 3 tasks | 3 files |
 | Phase 03 P04 | 38min | 3 tasks | 5 files |
+| Phase 03 P05 | 20min | 3 tasks | 10 files |
 
 ## Operator Next Steps
 
