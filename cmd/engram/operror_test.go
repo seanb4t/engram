@@ -78,6 +78,21 @@ func TestClassifyOperatorErr(t *testing.T) {
 		wantExitCode(t, classifyOperatorErr(err), exitUsage)
 	})
 
+	t.Run("store.ErrResponseTooLarge", func(t *testing.T) {
+		// Live trigger: an operator sweep (reindex, migrate, spine-review,
+		// etc.) whose own Qdrant read overflows the client's receive limit
+		// reaches this classifier as store.ErrResponseTooLarge itself,
+		// wrapped exactly the way the sweep's own call site wraps it.
+		// D-10: the same exitTooLarge the Connect lane's client verbs
+		// report (client_common.go's exitCodeForConnectErr).
+		err := fmt.Errorf("reindex scroll: %w", &store.ResponseTooLargeError{Method: "/qdrant.Points/Scroll", Limit: 4194304})
+		classified := classifyOperatorErr(err)
+		wantExitCode(t, classified, exitTooLarge)
+		if !errors.Is(classified, store.ErrResponseTooLarge) {
+			t.Errorf("classifyOperatorErr(store.ErrResponseTooLarge) lost the errors.Is chain: %v", classified)
+		}
+	})
+
 	t.Run("config-load/validate error", func(t *testing.T) {
 		// A representative, unsentineled config/parse error, exactly the
 		// shape server.StoreAndSummarizerFromEnv / storeFromConfig raise --
@@ -153,6 +168,7 @@ func TestClassifyOperatorErrCodesAreDistinct(t *testing.T) {
 		"ErrShortIDExhausted":    store.ErrShortIDExhausted,
 		"ErrIdempotencyConflict": store.ErrIdempotencyConflict,
 		"ErrAlreadySuperseded":   store.ErrAlreadySuperseded,
+		"ErrResponseTooLarge":    store.ErrResponseTooLarge,
 	}
 
 	got := make(map[int]bool)
@@ -165,7 +181,7 @@ func TestClassifyOperatorErrCodesAreDistinct(t *testing.T) {
 		got[ec.ExitCode()] = true
 	}
 
-	want := map[int]bool{exitNotFound: true, exitUsage: true, exitUnavailable: true}
+	want := map[int]bool{exitNotFound: true, exitUsage: true, exitUnavailable: true, exitTooLarge: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("sentinel exit codes = {%s}, want {%s}", sortedIntKeys(got), sortedIntKeys(want))
 	}

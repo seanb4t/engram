@@ -356,7 +356,9 @@ The CLI uses the following exit-code meanings. Codes `8` and `9` belong to
 setup, available from v0.16.0. See
 [Agent Setup](/guides/agent-setup/) for availability and result handling.
 Code `10` comes from a client verb whose server response overflowed what one
-response can carry — in practice `list` and `search`.
+response can carry — in practice `list` and `search` — or from an operator
+command whose own Qdrant read overflows (Phase 5 of this milestone bounds
+those sweeps).
 
 | Code | Meaning |
 |------|---------|
