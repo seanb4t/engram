@@ -156,6 +156,26 @@ func memoryWriteCapsFromConfig(cfg *config.Config) memoryWriteCaps {
 	}
 }
 
+// recordCapsFromConfig builds the store's read-side record ceiling
+// (store.RecordCaps, D-02) from EXACTLY the parsers memoryWriteCapsFromConfig
+// and maxMemorySummaryBytes already use for the write caps, plus the
+// server's own citation constants (maxDiscoveryCitations,
+// maxCitationExcerptBytes) — never a second, independent read of the
+// config. The read side must size its ceilings from exactly the caps the
+// write side enforces, so this reuses the same parsers rather than parsing
+// twice (D-09).
+func recordCapsFromConfig(cfg *config.Config) store.RecordCaps {
+	wc := memoryWriteCapsFromConfig(cfg)
+	return store.RecordCaps{
+		ContentBytes:         wc.contentBytes,
+		SummaryBytes:         maxMemorySummaryBytes(cfg),
+		Tags:                 wc.tags,
+		TagBytes:             wc.tagBytes,
+		Citations:            maxDiscoveryCitations,
+		CitationExcerptBytes: maxCitationExcerptBytes,
+	}
+}
+
 // configLoad is the indirection seam for loading koanf config from the process
 // environment. buildDepsFromEnv must perform exactly one load per startup; tests
 // override this to count loads.
@@ -178,6 +198,10 @@ func loadAndValidate() (*config.Config, error) {
 
 // storeFromConfig builds the Qdrant-backed Store (without ensuring the collection)
 // from an already-loaded config and returns the configured embed dimension.
+// The returned Store carries the record caps derived from this same cfg via
+// the WithRecordCaps option below (D-02/D-09) — plan 03-02's read-side
+// per-record ceiling is derived from exactly the caps this same config
+// enforces on write, not a second, independent read.
 func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
 	embedDim, err := strconv.ParseUint(cfg.Embed.Dim, 10, 64)
 	if err != nil {
@@ -195,7 +219,7 @@ func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("qdrant client: %w", err)
 	}
-	return store.New(qc, cfg.Qdrant.Collection), embedDim, nil
+	return store.New(qc, cfg.Qdrant.Collection, store.WithRecordCaps(recordCapsFromConfig(cfg))), embedDim, nil
 }
 
 // ensureStoreFromConfig builds the Store from an already-loaded config and ensures
