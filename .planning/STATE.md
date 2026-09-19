@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09-18.01 — Bounded Reads)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 03 — Shared Bounded-Read Mechanism & Content Cap Decision
+**Current focus:** Phase 4 — List, ListScheduled & Search Bounded Reads
 
 ## Current Position
 
