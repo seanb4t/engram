@@ -24,6 +24,7 @@ import (
 	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/shortid"
 	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
+	"google.golang.org/grpc"
 )
 
 // qdrantImageTag is the Qdrant image the integration suite boots via
@@ -164,10 +165,15 @@ func terminateQdrant(c *tcqdrant.QdrantContainer) {
 }
 
 // dialTestClient dials the integration-test Qdrant and returns the bare client.
-// Skips when no Qdrant is available. It is the single dialing primitive: testStore
-// wraps it with a ready collection, and the reindex tests use it directly to drive
-// two collections and read points back verbatim.
-func dialTestClient(t *testing.T) *qdrant.Client {
+// Skips when no Qdrant is available. It is the single in-package dialing
+// primitive: every in-package test client flows through it and therefore
+// through NewQdrantClient, the same constructor production uses — so an
+// in-package client carries production's dial options (the otelgrpc stats
+// handler) plus whatever the caller appends via opts (interceptors for fault
+// injection, capture, or counting). testStore wraps it with a ready
+// collection, and the reindex tests use it directly to drive two collections
+// and read points back verbatim.
+func dialTestClient(t *testing.T, opts ...grpc.DialOption) *qdrant.Client {
 	t.Helper()
 	if testQdrantAddr == "" {
 		required, err := requireQdrant()
@@ -187,7 +193,7 @@ func dialTestClient(t *testing.T) *qdrant.Client {
 	if err != nil || port <= 0 {
 		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
 	}
-	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+	c, err := NewQdrantClient(host, port, opts...)
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}
