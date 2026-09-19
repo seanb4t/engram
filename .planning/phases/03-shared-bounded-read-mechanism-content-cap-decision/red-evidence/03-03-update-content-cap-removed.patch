@@ -1,0 +1,16 @@
+diff --git a/internal/server/tools.go b/internal/server/tools.go
+index c9a6e195..076b8bb8 100644
+--- a/internal/server/tools.go
++++ b/internal/server/tools.go
+@@ -1890,11 +1890,6 @@ func (d *deps) updateMemory(ctx context.Context, c caller, a updateArgs) (mutati
+ 	// runs AFTER FetchForUpdate's owner gate above, so a non-owner learns
+ 	// nothing beyond the existing uniform not-found (T-03-03-03).
+ 	caps := d.writeCaps.resolved()
+-	if contentChanged {
+-		if err := checkContentBytes(*a.Content, caps.contentBytes); err != nil {
+-			return mutationResult{}, err
+-		}
+-	}
+ 	// Gated on a CHANGED tag set (slices.Equal), mirroring contentChanged
+ 	// above, so resending a legacy record's own tags never locks its owner
+ 	// out; an empty set (clear) is always within bounds since checkTags'

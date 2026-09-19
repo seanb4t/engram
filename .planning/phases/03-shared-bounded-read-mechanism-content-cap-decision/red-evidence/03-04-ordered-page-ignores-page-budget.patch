@@ -1,0 +1,14 @@
+diff --git a/internal/store/orderedpage.go b/internal/store/orderedpage.go
+index 63dbb6e1..c0f06b07 100644
+--- a/internal/store/orderedpage.go
++++ b/internal/store/orderedpage.go
+@@ -158,9 +158,6 @@ func (s *Store) scrollOrderedPage(ctx context.Context, f *qdrant.Filter, view re
+ 			if n > want {
+ 				n = want
+ 			}
+-			if byBudget := (pageByteBudget - totalBytes) / view.maxRecordBytes; n > byBudget {
+-				n = byBudget
+-			}
+ 			if n <= 0 {
+ 				if len(items) > 0 {
+ 					cutByBudget = true

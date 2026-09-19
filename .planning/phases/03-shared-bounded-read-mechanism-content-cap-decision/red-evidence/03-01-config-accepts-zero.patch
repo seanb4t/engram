@@ -1,0 +1,17 @@
+diff --git a/internal/config/validate.go b/internal/config/validate.go
+index 3ea48d86..3d47f612 100644
+--- a/internal/config/validate.go
++++ b/internal/config/validate.go
+@@ -260,11 +260,9 @@ func (c *Config) Validate() error {
+ // feed the read-side per-record ceiling (plan 03-02), and a disabled cap
+ // would silently remove that provable bound.
+ func validatePositiveCap(value, envName string) error {
+-	switch n, err := strconv.ParseUint(value, 10, 64); {
++	switch _, err := strconv.ParseUint(value, 10, 64); {
+ 	case err != nil:
+ 		return fmt.Errorf("%s %q: must be a positive integer: %w", envName, value, err)
+-	case n == 0:
+-		return fmt.Errorf("%s must be greater than 0: this cap is always enforced (unlike ENGRAM_MEMORY_MAX_SUMMARY_BYTES, 0 does not disable it)", envName)
+ 	default:
+ 		return nil
+ 	}

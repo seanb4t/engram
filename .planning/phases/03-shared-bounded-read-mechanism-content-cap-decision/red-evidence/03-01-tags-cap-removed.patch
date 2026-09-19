@@ -1,0 +1,14 @@
+diff --git a/internal/server/tools.go b/internal/server/tools.go
+index c9a6e195..f16e3d1a 100644
+--- a/internal/server/tools.go
++++ b/internal/server/tools.go
+@@ -987,9 +987,6 @@ func validateStoreArgs(a storeArgs, maxSummaryBytes int, caps memoryWriteCaps) e
+ 	if a.Category == "" {
+ 		return argErrf(classMalformed, HintRequired, "category", "category is required")
+ 	}
+-	if err := checkTags(a.Tags, caps.tags, caps.tagBytes); err != nil {
+-		return err
+-	}
+ 	return nil
+ }
+ 

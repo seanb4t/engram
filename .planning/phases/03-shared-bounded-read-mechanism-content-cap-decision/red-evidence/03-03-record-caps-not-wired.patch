@@ -1,0 +1,13 @@
+diff --git a/internal/server/tools.go b/internal/server/tools.go
+index c9a6e195..6de74a92 100644
+--- a/internal/server/tools.go
++++ b/internal/server/tools.go
+@@ -219,7 +219,7 @@ func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
+ 	if err != nil {
+ 		return nil, 0, fmt.Errorf("qdrant client: %w", err)
+ 	}
+-	return store.New(qc, cfg.Qdrant.Collection, store.WithRecordCaps(recordCapsFromConfig(cfg))), embedDim, nil
++	return store.New(qc, cfg.Qdrant.Collection), embedDim, nil
+ }
+ 
+ // ensureStoreFromConfig builds the Store from an already-loaded config and ensures

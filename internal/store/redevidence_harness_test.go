@@ -121,7 +121,19 @@ var redEvidenceDirs = map[string]map[string]string{
 		"02-03-errors-doc-drops-too-large.patch":                 "TestErrorsDocHintCodesMatchArgErrorConstants",        // reverts: errors.md's too_large row of the eleven-code hint table (D-05)
 	},
 	".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/red-evidence": {
-		"03-01-content-cap-removed.patch": "TestMemoryWriteCapsRejectOnEveryCreateLane", // reverts: validateStoreArgs' content cap on store/schedule/supersede, MCP and Connect (D-01)
+		"03-01-content-cap-removed.patch":                 "TestMemoryWriteCapsRejectOnEveryCreateLane",         // reverts: validateStoreArgs' content cap on store/schedule/supersede, MCP and Connect (D-01)
+		"03-01-tags-cap-removed.patch":                    "TestMemoryWriteCapBoundaries",                       // reverts: validateStoreArgs' checkTags call, removing the tags/tag-bytes cap on every create lane (D-10)
+		"03-01-config-accepts-zero.patch":                 "TestMemoryCapsRejectZeroAndNonPositive",             // reverts: validatePositiveCap's zero/non-positive rejection arm, letting 0 configure an always-enforced cap (D-09)
+		"03-02-sweep-count-not-byte-derived.patch":        "TestScrollAllPointsByteBudget",                      // reverts: sweepLimit deriving its per-RPC count from the byte budget, back to the bare spineScrollBatch count (D-02)
+		"03-02-ceiling-drops-citations.patch":             "TestRecordCeilingHoldsForMaxCapRecord",              // reverts: fullRecordCeiling accounting for citations, dropping the dominant per-record term (RESEARCH.md "content alone" pitfall)
+		"03-02-sweep-fallback-removed.patch":              "TestScrollAllPointsBatchOfOneFallback",              // reverts: scrollAllPoints' batch-of-1 fallback for a legacy over-cap record (D-07)
+		"03-02-sweep-swallows-single-overflow.patch":      "TestScrollAllPointsSingleOversizedRecordFailsNamed", // reverts: a single-record overflow at the batch-of-1 fallback failing named rather than being silently swallowed (D-07)
+		"03-03-update-content-cap-removed.patch":          "TestUpdateMemoryContentCap",                         // reverts: deps.updateMemory's content-cap check on Connect's field-mask UpdateMemory lane (D-09)
+		"03-03-update-gates-on-presence-not-change.patch": "TestUpdateMemoryLegacyOversizedRecord",              // reverts: the update content-cap check's contentChanged gate, widened to presence so an unchanged legacy record is rejected (D-07/D-09)
+		"03-03-record-caps-not-wired.patch":               "TestStoreFromConfigCarriesRecordCaps",               // reverts: storeFromConfig wiring store.WithRecordCaps(recordCapsFromConfig(cfg)) into the production Store (D-02/D-09)
+		"03-04-ordered-page-ignores-page-budget.patch":    "TestScrollOrderedPageByteBudget",                    // reverts: scrollOrderedPage's remaining-page-budget clamp on its per-RPC count (D-02)
+		"03-04-budget-cut-reported-exhausted.patch":       "TestScrollOrderedPageByteBudget",                    // reverts: a budget-cut page's Exhausted staying false, distinct from CutByBudget (REQ-list-contract-unchanged precondition)
+		"03-04-ordered-page-tie-exclusion-removed.patch":  "TestScrollOrderedPageTiesAcrossRPCBoundaries",       // reverts: excludeSeen's must_not has_id exclusion of already-emitted ids at the tie boundary (D-03)
 	},
 }
 

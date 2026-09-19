@@ -1,0 +1,24 @@
+diff --git a/internal/store/orderedpage.go b/internal/store/orderedpage.go
+index 63dbb6e1..8148dba5 100644
+--- a/internal/store/orderedpage.go
++++ b/internal/store/orderedpage.go
+@@ -77,18 +77,7 @@ type orderedPage struct {
+ // admit one f itself would have excluded (e.g. another owner's private
+ // record at the same created_at).
+ func excludeSeen(f *qdrant.Filter, ids []string) *qdrant.Filter {
+-	if len(ids) == 0 {
+-		return f
+-	}
+-	pointIDs := make([]*qdrant.PointId, len(ids))
+-	for i, id := range ids {
+-		pointIDs[i] = qdrant.NewID(id)
+-	}
+-	var must []*qdrant.Condition
+-	if f != nil {
+-		must = []*qdrant.Condition{qdrant.NewFilterAsCondition(f)}
+-	}
+-	return &qdrant.Filter{Must: must, MustNot: []*qdrant.Condition{qdrant.NewHasID(pointIDs...)}}
++	return f
+ }
+ 
+ // sortedSeenIDs returns seen's keys sorted, for a deterministic (and

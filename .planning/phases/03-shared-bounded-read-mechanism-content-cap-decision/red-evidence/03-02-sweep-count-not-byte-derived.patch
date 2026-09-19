@@ -1,0 +1,15 @@
+diff --git a/internal/store/boundedread.go b/internal/store/boundedread.go
+index 7b0d8f90..858fe28d 100644
+--- a/internal/store/boundedread.go
++++ b/internal/store/boundedread.go
+@@ -242,9 +242,5 @@ func unbudgetedView(sel *qdrant.WithPayloadSelector) readView {
+ // spineScrollBatch when v is unbudgeted (today's behavior, unchanged), else
+ // the smaller of spineScrollBatch and v's byte-derived perRPCLimit.
+ func sweepLimit(v readView) uint32 {
+-	if !v.budgeted() {
+-		return spineScrollBatch
+-	}
+-	lim := uint32(perRPCLimit(v.maxRecordBytes))
+-	return min(spineScrollBatch, lim)
++	return spineScrollBatch
+ }
