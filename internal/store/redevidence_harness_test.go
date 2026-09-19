@@ -104,9 +104,12 @@ import (
 // DURING one. TestRedEvidencePatchesAreLive tells those apart rather than
 // treating zero directories as vacuously green — see its empty-map guard.
 var redEvidenceDirs = map[string]map[string]string{
-	// Empty: no milestone is open. See the SCOPE note above before adding
-	// an archived path here — the guard below fails if an active-milestone
-	// phase directory exists while this map is empty.
+	".planning/phases/01-test-harness-fixture-helper/red-evidence": {
+		"01-01-storetest-raw-client-write.patch":       "TestQdrantClientIsHeldOnlyByStorePackage",         // reverts: D-13's per-holder write-check catching an injected storetest.Dial write
+		"01-04-listscopes-full-payload-selector.patch": "TestListScopesFullPayloadsOverGRPCLimit",          // reverts: ListScopes' scope-only WithPayload selector back to full payloads (#583)
+		"01-05-bare-qdrant-newclient-in-test.patch":    "TestQdrantClientConstructedOnlyByNewQdrantClient", // reverts: a bare qdrant.NewClient bypass injected into a _test.go file outside internal/store (D-11)
+		"01-05-ci-qdrant-image-drift.patch":            "TestQdrantImageMatchesCIService",                  // reverts: CI's services.qdrant image drifting from storetest.QdrantImage (D-10)
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
