@@ -343,12 +343,12 @@ Codex; and ships man pages from the cask.
 2. Every test Qdrant client in this milestone's regression tests is constructed through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly.
 3. The independent `qdrant.NewClient` test call sites converge on the shared constructor, so a passing test proves the bounded-read mechanism keeps responses bounded rather than a client-side accident.
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — `store.NewQdrantClient` shared constructor (production switched, no behavior change); new `internal/store/storetest` package (`RecvLimit` 4 MiB, `QdrantImage`, `Run` lifecycle, single `RequireQdrant` parser, named-limit `Dial`) and the two-shape `SeedOversized` fixture seeder; client-holder gate recognizes the new constructor and write-checks every holder but store.go (D-00–D-06, D-08, D-09, D-11, D-12, D-13; REQ-oversized-fixture-helper, REQ-test-client-parity)
+- [x] 01-01-PLAN.md — `store.NewQdrantClient` shared constructor (production switched, no behavior change); new `internal/store/storetest` package (`RecvLimit` 4 MiB, `QdrantImage`, `Run` lifecycle, single `RequireQdrant` parser, named-limit `Dial`) and the two-shape `SeedOversized` fixture seeder; client-holder gate recognizes the new constructor and write-checks every holder but store.go (D-00–D-06, D-08, D-09, D-11, D-12, D-13; REQ-oversized-fixture-helper, REQ-test-client-parity)
 
 **Wave 2**
 
