@@ -37,21 +37,30 @@ var spineScrollBatch uint32 = 256
 // is exactly the failure mode that could silently diverge and truncate
 // differently.
 //
+// view carries the caller's payload selector bundled with its per-record
+// byte ceiling (readView, boundedread.go, D-04): a budgeted view (fullView/
+// summaryView) sizes every RPC's Limit from the byte budget (D-02) via
+// sweepLimit, so no single RPC can overflow for a record that respects the
+// caps; an unbudgetedView keeps the pre-Phase-3 count-only loop unchanged —
+// spineScrollBatch per RPC. For a sweep, one RPC IS the page: there is no
+// separate page-level byte accumulation here (that belongs to the
+// ordered-page helper, plan 03-04, for List-shaped reads).
+//
 // s.client.Scroll must NEVER be used for a whole-spine sweep: in
 // qdrant/go-client@v1.18.3 (points.go:70-76) it issues exactly ONE RPC and
 // discards the response's NextPageOffset, so a sweep built on it silently
 // reports only the first page as the whole spine — no error, no nonzero
 // exit code, and no grep for the token "Scroll" can tell the two apart.
 // Only ScrollAndOffset (:88-94) and ScrollAll (:419) actually paginate.
-func (s *Store) scrollAllPoints(ctx context.Context, filter *qdrant.Filter, withPayload *qdrant.WithPayloadSelector, fn func(*qdrant.RetrievedPoint) error) error {
+func (s *Store) scrollAllPoints(ctx context.Context, filter *qdrant.Filter, view readView, fn func(*qdrant.RetrievedPoint) error) error {
 	var offset *qdrant.PointId
 	for {
 		pts, next, err := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
 			CollectionName: s.collection,
 			Filter:         filter,
-			Limit:          qdrant.PtrOf(spineScrollBatch),
+			Limit:          qdrant.PtrOf(sweepLimit(view)),
 			Offset:         offset,
-			WithPayload:    withPayload,
+			WithPayload:    view.selector,
 		})
 		if err != nil {
 			return err
@@ -242,7 +251,7 @@ func (s *Store) ScanSpine(ctx context.Context, opts SpineScanOptions) (res Spine
 	now := s.now()
 	res.ScannedAt = now
 
-	scanErr := s.scrollAllPoints(ctx, filter, qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
+	scanErr := s.scrollAllPoints(ctx, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 		res.Total++
 		counts[bucketKey{scope: m.Scope, category: m.Category}]++
@@ -349,7 +358,7 @@ func (s *Store) EnumerateCitations(ctx context.Context, opts SpineScanOptions) (
 	}
 
 	res = []CitationRecord{}
-	scanErr := s.scrollAllPoints(ctx, filter, qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
+	scanErr := s.scrollAllPoints(ctx, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 		if len(m.Citations) == 0 {
 			return nil
@@ -555,7 +564,7 @@ func (s *Store) NearDuplicates(ctx context.Context, opts NearDuplicateOptions) (
 
 	var ids []string
 	identities := make(map[string]nearDuplicateIdentity)
-	enumErr := s.scrollAllPoints(ctx, enumFilter, qdrant.NewWithPayloadInclude("short_id", "scope"), func(p *qdrant.RetrievedPoint) error {
+	enumErr := s.scrollAllPoints(ctx, enumFilter, unbudgetedView(qdrant.NewWithPayloadInclude("short_id", "scope")), func(p *qdrant.RetrievedPoint) error {
 		id := p.Id.GetUuid()
 		ids = append(ids, id)
 		identities[id] = nearDuplicateIdentity{
@@ -1016,7 +1025,7 @@ func (s *Store) derivePurgeEligible(ctx context.Context, opts PurgeOptions) (can
 	archivedCutoff := now.Add(-archivedWindow)
 	filterAgeCutoff := now.Add(-opts.OlderThan)
 
-	scanErr := s.scrollAllPoints(ctx, filter, qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
+	scanErr := s.scrollAllPoints(ctx, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 
 		if slices.Contains(m.Tags, purgeMilestoneSummaryTag) {

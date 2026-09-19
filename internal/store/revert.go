@@ -275,7 +275,7 @@ func (s *Store) previewRevertWithSteps(ctx context.Context, to migrate.Version, 
 	unsupportedCounts := map[migrate.Version]uint64{}
 	var observedChains [][]migrate.Step
 
-	err := s.scrollAllPoints(ctx, aboveTargetFilter(to), qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
+	err := s.scrollAllPoints(ctx, aboveTargetFilter(to), unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
 		plan.Candidates++
 		v := versionOf(p.Payload)
 

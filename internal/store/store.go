@@ -473,6 +473,12 @@ type Store struct {
 	// sync.Mutex-backed implementation in New(); WithTargetLocker overrides it
 	// (e.g. with a future distributed lock). See TargetLocker's doc comment.
 	locker TargetLocker
+
+	// caps holds the write caps (boundedread.go's RecordCaps) this Store's
+	// read-side record ceilings are derived from. nil means
+	// DefaultRecordCaps() (RecordCaps() resolves the default); WithRecordCaps
+	// sets a normalized value here.
+	caps *RecordCaps
 }
 
 // Option configures a Store at construction.

@@ -4,6 +4,7 @@
 package store
 
 import (
+	"context"
 	"testing"
 
 	"github.com/qdrant/go-client/qdrant"
@@ -36,3 +37,31 @@ func PrefixedTestCollection(name string) string { return testCollection(name) }
 // test can pin storetest.ManySmallRecords against it without duplicating the
 // value (D-05).
 const MaxListLimit = maxListLimit
+
+// ReadView exposes the internal readView type to package store_test — the
+// D-07 cycle-breaker (storetest imports store, so store_test's own oversized
+// tests cannot import a helper package for this).
+type ReadView = readView
+
+// FullView exposes (*Store).fullView to package store_test.
+func (s *Store) FullView() ReadView { return s.fullView() }
+
+// SummaryView exposes (*Store).summaryView to package store_test.
+func (s *Store) SummaryView() ReadView { return s.summaryView() }
+
+// ViewMaxRecordBytes exposes readView.maxRecordBytes to package store_test.
+func ViewMaxRecordBytes(v ReadView) int { return v.maxRecordBytes }
+
+// SweepLimit exposes sweepLimit to package store_test.
+func SweepLimit(v ReadView) int { return int(sweepLimit(v)) }
+
+// RPCByteBudget exposes rpcByteBudget to package store_test.
+func RPCByteBudget() int { return rpcByteBudget }
+
+// PageByteBudget exposes pageByteBudget to package store_test.
+func PageByteBudget() int { return pageByteBudget }
+
+// ScrollAllPoints exposes (*Store).scrollAllPoints to package store_test.
+func (s *Store) ScrollAllPoints(ctx context.Context, filter *qdrant.Filter, v ReadView, fn func(*qdrant.RetrievedPoint) error) error {
+	return s.scrollAllPoints(ctx, filter, v, fn)
+}
