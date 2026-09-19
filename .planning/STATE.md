@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 02
 current_phase_name: Error Classification & ResourceExhausted Mapping
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-09-19T14:58:35.268Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-09-19T15:43:04.857Z"
 last_activity: 2026-09-19
 last_activity_desc: Phase 02 execution started
-state_head: 23591c357aa3a7e5a0ce21e5efa6e205db0f7bad
+state_head: fa6bb6106510f8aef0c0ae65b10961a5877d6f3e
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-18 after Phase 1 of milestone 2026-09
 ## Current Position
 
 Phase: 02 (Error Classification & ResourceExhausted Mapping) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-19 — Phase 02 execution started
 
@@ -306,6 +306,8 @@ milestone needs in working memory.
 - [Phase 01]: Each of Task 3's four red-evidence patches was independently hand-verified (git apply --check/apply/go test -run '^Target$'/apply -R) to fail its named target test before registration in redEvidenceDirs, closing TestRedEvidencePatchesAreLive.
 - [Phase 02]: 02-01: Classifier lives inside NewQdrantClient's base dial options, appended after the otelgrpc stats handler and before caller opts — every production and test client gets it automatically.
 - [Phase 02]: 02-01: isRecvLimitMessage matches grpc-go's four receive shapes on prefix+substring, never code alone, so a genuine server-side ResourceExhausted stays untouched for qdrant-go-client's own rate-limit interceptor.
+- [Phase 02]: argError.Error() extracted into renderHintEnvelope(fields, hint, detail); Connect arm and MCP mapper both call it — never construct an *argError for store.ErrResponseTooLarge
+- [Phase 02]: addToolMiddleware(s, record) is the ONE registration site for the tool-call middleware stack (instrumentTools outermost, mapResponseTooLarge innermost); pinned by a go/parser source gate, TestRegisterInstallsToolMiddleware
 
 ### Pending Todos
 
@@ -380,8 +382,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-19T14:58:35.240Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-09-19T15:43:04.741Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -520,6 +522,7 @@ Resume file: None
 | Phase 01 P04 | 25min | 2 tasks | 5 files |
 | Phase 01 P05 | 55min | 3 tasks | 12 files |
 | Phase 02 P01 | 45min | 2 tasks | 4 files |
+| Phase 02 P02 | 45min | 3 tasks | 7 files |
 
 ## Operator Next Steps
 

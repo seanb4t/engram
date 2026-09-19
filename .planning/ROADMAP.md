@@ -380,7 +380,7 @@ Plans:
 3. MCP tools return the same named hint envelope through one shared MCP-side mapper, rather than each tool closure surfacing the raw error.
 4. The `engram` CLI maps the new code to a documented exit code, and the hint code is documented in docs-site `reference/errors.md`.
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 **Wave 1**
@@ -389,7 +389,7 @@ Plans:
 
 **Wave 2**
 
-- [ ] 02-02-PLAN.md — one shared `field=response hint=too_large` envelope (`HintTooLarge`, `renderHintEnvelope`): `connectError` → `resource_exhausted` and a `tools/call` receiving middleware on MCP, raw error logged once, every other error untouched (D-04–D-06, D-08, D-09; REQ-exhausted-connect, REQ-exhausted-mcp)
+- [x] 02-02-PLAN.md — one shared `field=response hint=too_large` envelope (`HintTooLarge`, `renderHintEnvelope`): `connectError` → `resource_exhausted` and a `tools/call` receiving middleware on MCP, raw error logged once, every other error untouched (D-04–D-06, D-08, D-09; REQ-exhausted-connect, REQ-exhausted-mcp)
 
 **Wave 3**
 
