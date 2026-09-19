@@ -17,7 +17,7 @@ affects: ["02-03", "02-04"]
 actuals:
   tokens: 9473
   tasks: 3
-  commits: 3
+  commits: 6
 
 tech-stack:
   added: []
@@ -132,7 +132,7 @@ duration: 45min
 completed: 2026-09-19
 status: complete
 plan_head_before: 69110cd0c803492733916315ad5e0ae6b0019adc
-commits: 3
+commits: 6
 ---
 
 # Phase 2 Plan 2: Map ErrResponseTooLarge Across the Connect and MCP Lanes Summary
@@ -163,8 +163,9 @@ Each task was committed atomically:
 1. **Task 1: Connect end to end** — `9e32210e` (feat)
 2. **Task 2: MCP end to end** — `03ef104a` (feat)
 3. **Task 3: The mappers' edges** — `fa6bb610` (test)
+4. **Post-SUMMARY fix: one-line `SeedOversized` fixture calls** — `3fce30e3` (fix, see Deviations)
 
-**Plan metadata:** commit pending (this SUMMARY + STATE/ROADMAP)
+**Plan metadata:** `1ec24155` (docs: SUMMARY + STATE/ROADMAP), superseded by a second metadata commit after the fix above landed.
 
 ## Files Created/Modified
 
@@ -194,7 +195,17 @@ See `key-decisions` in frontmatter — the renderer extraction, the Connect arm'
 
 ---
 
-**Total deviations:** 1 organizational (0 auto-fixed bugs/missing-functionality/blockers). **Impact:** None on behavior or test genuineness — every RED/GREEN cycle described in the plan was independently, genuinely observed.
+**2. [Rule 1 - Bug] `SeedOversized` fixture calls wrapped across multiple lines, breaking the plan's own key link**
+- **Found during:** Post-SUMMARY verification (`go test ./internal/keylinks/ -count=1`, required by 02-02-PLAN.md's `<phase_expectations>`)
+- **Issue:** Both `TestConnectListMemoriesResponseTooLarge` and `TestMCPListMemoryResponseTooLarge` wrote `storetest.SeedOversized(t, st, storetest.Spec{...})` as a multi-line struct literal. `02-02-PLAN.md`'s own `key_links` entry for this file requires the literal substring `storetest.Spec{Limit: storetest.RecvLimit` (the plan's `<behavior>` text explicitly calls for "a one-line literal"), and the multi-line form broke that match, failing `TestActiveMilestoneKeyLinksSatisfiable`.
+- **Fix:** Collapsed both calls back to the one-line literal form. No other change.
+- **Files modified:** `internal/server/responsetoolarge_test.go`
+- **Verification:** `go test ./internal/keylinks/ -count=1` passes; both affected regression tests re-verified GREEN; `gofmt -l` reports no reformatting; `golangci-lint run ./internal/server/...` clean.
+- **Committed in:** `3fce30e3`
+
+---
+
+**Total deviations:** 2 (1 organizational, 1 auto-fixed bug). **Impact:** The bug fix was required for the phase's own key-link gate to pass — no scope creep; the organizational note has no behavioral impact.
 
 ## RED Evidence (per task)
 
@@ -240,4 +251,4 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-All 7 files (2 created, 5 modified) verified present on disk; all three task commits (`9e32210e`, `03ef104a`, `fa6bb610`) verified present in `git log --oneline --all`. Every acceptance criterion for all three tasks re-run and confirmed passing (`HintTooLarge`/`HintCode` counts, `renderHintEnvelope` call count, the Connect arm's exact expression and case ordering, the `addToolMiddleware`/`Register` wiring, `git diff --numstat` on `tools.go` = `1 1`, the `argErrf(classOutOfRange, HintTooLong` literal, 7 pass-through subtests). `go vet ./internal/server/...` and `golangci-lint run ./internal/server/...` both clean. The full plan-level `<verification>` block passes: `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/... ./internal/store/... -count=1` ok; `task lint` all green; `git diff --exit-code HEAD -- go.mod go.sum` exits 0; `go test ./internal/keylinks/ -count=1` ok; `TestRedEvidencePatchesAreLive` still passes.
+All 7 files (2 created, 5 modified) verified present on disk; all task/fix commits (`9e32210e`, `03ef104a`, `fa6bb610`, `3fce30e3`) verified present in `git log --oneline --all`. Every acceptance criterion for all three tasks re-run and confirmed passing (`HintTooLarge`/`HintCode` counts, `renderHintEnvelope` call count, the Connect arm's exact expression and case ordering, the `addToolMiddleware`/`Register` wiring, `git diff --numstat` on `tools.go` = `1 1`, the `argErrf(classOutOfRange, HintTooLong` literal, 7 pass-through subtests). `go vet ./internal/server/...` and `golangci-lint run ./internal/server/...` both clean. The full plan-level `<verification>` block passes: `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/... ./internal/store/... -count=1` ok; `task lint` all green; `git diff --exit-code HEAD -- go.mod go.sum` exits 0; `go test ./internal/keylinks/ -count=1` ok (re-verified GREEN after the post-SUMMARY fix in `3fce30e3`); `TestRedEvidencePatchesAreLive` still passes.
