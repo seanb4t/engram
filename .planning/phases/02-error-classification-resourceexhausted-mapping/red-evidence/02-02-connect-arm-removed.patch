@@ -1,0 +1,14 @@
+diff --git a/internal/server/connecterror.go b/internal/server/connecterror.go
+index 9f7f7870..78fcc2d8 100644
+--- a/internal/server/connecterror.go
++++ b/internal/server/connecterror.go
+@@ -100,9 +100,6 @@ func connectError(ctx context.Context, err error) error {
+ 		return connect.NewError(connect.CodeCanceled, err)
+ 	case errors.Is(err, context.DeadlineExceeded):
+ 		return connect.NewError(connect.CodeDeadlineExceeded, err)
+-	case errors.Is(err, store.ErrResponseTooLarge):
+-		slog.ErrorContext(ctx, "connect handler: response too large", "error", err)
+-		return connect.NewError(connect.CodeResourceExhausted, errors.New(responseTooLargeEnvelope()))
+ 	default:
+ 		slog.ErrorContext(ctx, "connect handler: unexpected error", "error", err)
+ 		return connect.NewError(connect.CodeInternal, errors.New("internal error"))

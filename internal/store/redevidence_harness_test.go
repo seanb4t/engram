@@ -110,6 +110,9 @@ var redEvidenceDirs = map[string]map[string]string{
 		"01-05-bare-qdrant-newclient-in-test.patch":    "TestQdrantClientConstructedOnlyByNewQdrantClient", // reverts: a bare qdrant.NewClient bypass injected into a _test.go file outside internal/store (D-11)
 		"01-05-ci-qdrant-image-drift.patch":            "TestQdrantImageMatchesCIService",                  // reverts: CI's services.qdrant image drifting from storetest.QdrantImage (D-10)
 	},
+	".planning/phases/02-error-classification-resourceexhausted-mapping/red-evidence": {
+		"02-02-connect-arm-removed.patch": "TestConnectListMemoriesResponseTooLarge", // reverts: connectError's ErrResponseTooLarge -> resource_exhausted arm (D-06)
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
