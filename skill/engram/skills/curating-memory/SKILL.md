@@ -491,6 +491,12 @@ A `summary` is bounded — 512 bytes by default (`ENGRAM_MEMORY_MAX_SUMMARY_BYTE
 with `field=summary hint=too_long`; keep it a short caveat-bearing digest, not a
 second copy of the content.
 
+`content` is bounded too — 64 KiB by default (`ENGRAM_MEMORY_MAX_CONTENT_BYTES`) —
+and `tags` to 128 entries of 128 bytes each (`ENGRAM_MEMORY_MAX_TAGS` /
+`ENGRAM_MEMORY_MAX_TAG_BYTES`); an oversized write is rejected with
+`field=content hint=too_long` or `field=tags hint=too_many|too_long`, so store a
+durable fact, not a document, and split or trim instead of retrying.
+
 ## Tools and auth
 
 All tools are on the `engram` server: `mcp__engram__store_memory`,

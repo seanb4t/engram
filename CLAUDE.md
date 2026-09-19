@@ -103,7 +103,9 @@ full content via `get_memory`. `search_memory` results carry an always-on per-re
 add auto-extraction. A rejected call names the failing field and a machine-stable hint
 code in one envelope (`field=<name> hint=<code>: <text>`; see docs-site
 `reference/errors.md`), with a memory `summary` bounded at `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`
-(default 512 bytes).
+(default 512 bytes), `content` bounded at `ENGRAM_MEMORY_MAX_CONTENT_BYTES` (default 65536
+bytes), and `tags` at `ENGRAM_MEMORY_MAX_TAGS` entries of `ENGRAM_MEMORY_MAX_TAG_BYTES` bytes
+each (default 128 / 128), always enforced.
 
 With `ENGRAM_SUMMARY_ON_WRITE=true` (and `ENGRAM_SUMMARY_MODEL` set), auto-generated
 summaries are filled **asynchronously** shortly after `store_memory`/`schedule_memory`
