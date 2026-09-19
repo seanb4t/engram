@@ -343,7 +343,7 @@ Codex; and ships man pages from the cask.
 2. Every test Qdrant client in this milestone's regression tests is constructed through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly.
 3. The independent `qdrant.NewClient` test call sites converge on the shared constructor, so a passing test proves the bounded-read mechanism keeps responses bounded rather than a client-side accident.
 
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -357,7 +357,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 01-04-PLAN.md — internal/store's TestMain moves to an external `main_test.go` on `storetest.Run` with an in-package hook; the #583 ListScopes regression migrates onto `storetest.Dial` + `SeedOversized` over both shapes, observed RED (D-04, D-05, D-07, D-10; REQ-oversized-fixture-helper, REQ-test-client-parity)
+- [x] 01-04-PLAN.md — internal/store's TestMain moves to an external `main_test.go` on `storetest.Run` with an in-package hook; the #583 ListScopes regression migrates onto `storetest.Dial` + `SeedOversized` over both shapes, observed RED (D-04, D-05, D-07, D-10; REQ-oversized-fixture-helper, REQ-test-client-parity)
 
 **Wave 4**
 
