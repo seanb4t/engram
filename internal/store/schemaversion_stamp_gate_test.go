@@ -1238,3 +1238,40 @@ func TestQdrantClientLocalNamesFollowsFunctionValueAlias(t *testing.T) {
 		}
 	}
 }
+
+// TestQdrantClientLocalNamesDetectsAliasedStoreImport is 01-REVIEW.md
+// iteration-2 WR-01: qdrantClientLocalNames must still bind the client
+// identifier when internal/store is imported under an alias
+// (`st "github.com/seanb4t/engram/internal/store"`) and the client is built
+// via a direct `c, err := st.NewQdrantClient(...)` call — the
+// write-boundary-relevant quadrant of the gap-2 fix that
+// TestFileRefsQdrantClientDetectsAliasedStoreImport does not exercise,
+// since that test only asserts fileRefsQdrantClient's holder-detection, not
+// qdrantClientLocalNames's identifier-binding that feeds
+// TestQdrantClientIsHeldOnlyByStorePackage's write-check.
+func TestQdrantClientLocalNamesDetectsAliasedStoreImport(t *testing.T) {
+	fset := token.NewFileSet()
+	src, err := os.ReadFile(filepath.Join("testdata", "qdrantclient", "bad_store_aliased_import.go.txt"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	file, err := parser.ParseFile(fset, "internal/example/aliased_holder.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	got := qdrantClientLocalNames(file)
+	want := map[string]bool{"c": true}
+	if len(got) != len(want) {
+		t.Errorf("qdrantClientLocalNames = %v, want %v", got, want)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("qdrantClientLocalNames missing %q — full result: %v", name, got)
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("qdrantClientLocalNames has unexpected %q — full result: %v", name, got)
+		}
+	}
+}

@@ -3,13 +3,18 @@
 
 // Package badstorealiasedimport is a synthetic KNOWN-BAD fixture for
 // schemaversion_stamp_gate_test.go's fileRefsQdrantClient (exercised by
-// TestFileRefsQdrantClientDetectsAliasedStoreImport). It imports
-// internal/store under the alias "st" and constructs a *qdrant.Client via
-// st.NewQdrantClient — the aliased-import bypass named in 01-REVIEW.md
-// WR-01, gap 2: a matcher hardcoded to the literal identifier "store" is
-// blind to this shape, so a new allowlist violation in a file shaped like
-// this one would previously go undetected. fileRefsQdrantClient must still
-// report true.
+// TestFileRefsQdrantClientDetectsAliasedStoreImport) AND
+// qdrantClientLocalNames (exercised by
+// TestQdrantClientLocalNamesDetectsAliasedStoreImport, 01-REVIEW.md
+// iteration-2 WR-01). It imports internal/store under the alias "st" and
+// constructs a *qdrant.Client via a direct `c, err := st.NewQdrantClient(...)`
+// call — the aliased-import bypass named in 01-REVIEW.md WR-01, gap 2: a
+// matcher hardcoded to the literal identifier "store" is blind to this
+// shape, so a new allowlist violation in a file shaped like this one would
+// previously go undetected. fileRefsQdrantClient must still report true,
+// and qdrantClientLocalNames must still bind the client to "c" (the first
+// assigned name in the `c, err := ...` shape) so a later write on it would
+// still trip TestQdrantClientIsHeldOnlyByStorePackage's write-check.
 //
 // Deliberately does NOT name the *qdrant.Client type anywhere (no qdrant
 // import at all) — the return value is left untyped (`any`) so this
@@ -27,5 +32,6 @@ import (
 )
 
 func dial(host string, port int) (any, error) {
-	return st.NewQdrantClient(host, port)
+	c, err := st.NewQdrantClient(host, port)
+	return c, err
 }
