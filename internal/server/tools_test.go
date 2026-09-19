@@ -9,13 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,12 +25,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/qdrant/go-client/qdrant"
 	flag "github.com/spf13/pflag"
-	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/store/storetest"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
 
@@ -117,22 +115,6 @@ func TestToolArgSchemasDoNotPanic(t *testing.T) {
 	})
 }
 
-// testQdrantAddr is the gRPC host:port the integration tests run against. Set by
-// TestMain: ENGRAM_QDRANT_TEST_ADDR if provided (fast path / override), else an
-// ephemeral testcontainer. Empty when neither is available (Docker absent), in
-// which case the integration tests skip — unless ENGRAM_REQUIRE_QDRANT is set,
-// in which case they fail (see requireQdrant).
-var testQdrantAddr string
-
-// testQdrantContainerBooted records whether TestMain booted its OWN
-// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
-// fast path onto a shared instance. Set true only inside the testcontainer
-// branch, immediately after the container's gRPC endpoint resolves; the env-var
-// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
-// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
-// an inference from logs (CONTEXT.md D-20).
-var testQdrantContainerBooted bool
-
 // testCollectionPrefix namespaces this package's integration-test Qdrant
 // collection names so a single shared Qdrant instance (CI's ENGRAM_QDRANT_TEST_ADDR
 // path) can host internal/store's and internal/server's test suites
@@ -162,159 +144,20 @@ func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
 	return store.New(c, name)
 }
 
-// requireQdrant is the SOLE place ENGRAM_REQUIRE_QDRANT is read/parsed
-// (round-6 MED, round-7 LOW + round-8 LOW, Codex): TestMain and
-// failOrSkipNoQdrant act only on its result, never parsing the env var
-// themselves. Unset/empty -> (false, nil): local dev ergonomics unchanged
-// (integration tests still skip without Qdrant). A truthy/falsey value
-// parses via strconv.ParseBool. Any NON-EMPTY INVALID value (a CI typo like
-// "treu") returns a NON-NIL error rather than being coerced to false
-// (round-8 LOW) — coercing a parse error to false would silently re-enable
-// skipping and defeat the fail-closed gate the CI `test` job relies on.
-func requireQdrant() (bool, error) {
-	v := os.Getenv("ENGRAM_REQUIRE_QDRANT")
-	if v == "" {
-		return false, nil
-	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return false, fmt.Errorf("ENGRAM_REQUIRE_QDRANT: invalid value %q: %w", v, err)
-	}
-	return b, nil
-}
-
-// failOrSkipNoQdrant is the shared "no Qdrant available" handler for every
-// per-test integration call site (testDepsWithStore and the sibling
-// TestBuildDepsFromEnvLoadsConfigOnce gate). Under ENGRAM_REQUIRE_QDRANT it
-// t.Fatal's (fail-closed, round-6 MED) instead of skipping, so CI cannot go
-// green with the real-store authz/parity gate silently skipped; otherwise it
-// preserves today's t.Skip (local dev ergonomics unchanged).
-func failOrSkipNoQdrant(t *testing.T) {
-	t.Helper()
-	required, err := requireQdrant()
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-	if required {
-		t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping (round-6 MED)")
-	}
-	t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
-}
-
-// TestMain provisions Qdrant for this package's integration tests. It prefers an
-// existing instance via ENGRAM_QDRANT_TEST_ADDR; otherwise it boots an ephemeral
-// Qdrant via testcontainers and tears it down afterward. If neither is available
-// the suite still runs and the integration tests skip with a clear message —
-// UNLESS ENGRAM_REQUIRE_QDRANT is set (round-6 MED, Codex: the CI `test` job
-// sets it), in which case TestMain exits non-zero instead of letting the
-// suite run with the real-store authz gate silently skipped.
+// TestMain delegates this package's Qdrant container lifecycle to storetest:
+// the ENGRAM_QDRANT_TEST_ADDR fast path onto the shared CI instance, the
+// bounded testcontainer fallback, and the ENGRAM_REQUIRE_QDRANT fail-closed
+// gate CI's `test` job relies on all live in storetest (plan 01-01).
 func TestMain(m *testing.M) {
-	required, err := requireQdrant()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
-		os.Exit(1)
-	}
-	if addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR"); addr != "" {
-		testQdrantAddr = addr
-		os.Exit(m.Run())
-	}
-	// Bound startup so an unreachable daemon or a stalled image pull fails fast
-	// instead of hanging the suite. os.Exit skips defers, so cancel explicitly.
-	startCtx, startCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	container, cerr := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.19.1")
-	if cerr != nil {
-		startCancel()
-		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); integration tests will skip — set ENGRAM_QDRANT_TEST_ADDR or start Docker\n", cerr)
-		if required {
-			fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set — failing instead of skipping (round-6 MED)")
-			os.Exit(1)
-		}
-		os.Exit(m.Run())
-	}
-	testQdrantAddr, cerr = container.GRPCEndpoint(startCtx)
-	startCancel()
-	if cerr != nil {
-		terminateQdrant(container)
-		fmt.Fprintf(os.Stderr, "qdrant grpc endpoint: %v\n", cerr)
-		os.Exit(1)
-	}
-	testQdrantContainerBooted = true
-	if required && testQdrantAddr == "" {
-		terminateQdrant(container)
-		fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set but no Qdrant address resolved")
-		os.Exit(1)
-	}
-	code := m.Run()
-	terminateQdrant(container)
-	os.Exit(code)
-}
-
-// terminateQdrant tears down the container under a bounded context so a slow
-// Docker shutdown cannot hang the suite.
-func terminateQdrant(c *tcqdrant.QdrantContainer) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	_ = c.Terminate(ctx)
+	os.Exit(storetest.Run(m))
 }
 
 // TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
 // fast path rather than booting its own testcontainer, whenever
-// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
-// package could boot a container and coincidentally resolve the same address —
-// so the load-bearing assertion is testQdrantContainerBooted == false
-// (CONTEXT.md D-20). Skips (does not fail) when the env var is unset: a
-// developer running locally without it is not the case this test is about.
+// ENGRAM_QDRANT_TEST_ADDR is set. Delegates to storetest, which holds the
+// booted-container state TestMain populated.
 func TestSharedQdrantAddressHonored(t *testing.T) {
-	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
-	if addr == "" {
-		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
-	}
-	if testQdrantAddr != addr {
-		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
-	}
-	if testQdrantContainerBooted {
-		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
-	}
-}
-
-// TestRequireQdrant pins requireQdrant's parse contract (round-7 LOW + round-8
-// LOW, Codex): unset/empty and recognized truthy/falsey values parse cleanly,
-// and — the round-8 fix — a malformed value (a CI typo like "treu") returns a
-// NON-NIL error rather than being silently coerced to false, which would
-// re-enable skipping and defeat the fail-closed gate. Driven entirely via
-// t.Setenv; needs no Qdrant.
-func TestRequireQdrant(t *testing.T) {
-	cases := []struct {
-		name    string
-		val     string
-		want    bool
-		wantErr bool
-	}{
-		{name: "unset_or_empty", val: "", want: false},
-		{name: "truthy_true", val: "true", want: true},
-		{name: "truthy_1", val: "1", want: true},
-		{name: "falsey_false", val: "false", want: false},
-		{name: "falsey_0", val: "0", want: false},
-		{name: "malformed", val: "treu", wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("ENGRAM_REQUIRE_QDRANT", tc.val)
-			got, err := requireQdrant()
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("requireQdrant() with %q = (%v, nil), want a non-nil error (must not coerce to false)", tc.val, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("requireQdrant() with %q: unexpected error: %v", tc.val, err)
-			}
-			if got != tc.want {
-				t.Errorf("requireQdrant() with %q = %v, want %v", tc.val, got, tc.want)
-			}
-		})
-	}
+	storetest.AssertSharedAddressHonored(t)
 }
 
 // fakeEmbedder returns a fixed vector so handler tests don't need a live embedder.
@@ -363,21 +206,7 @@ func testDeps(t *testing.T) *deps {
 // narrower memStore deps.st now is — review round-2 BLOCKER 1).
 func testDepsWithStore(t *testing.T) (*deps, *store.Store) {
 	t.Helper()
-	if testQdrantAddr == "" {
-		failOrSkipNoQdrant(t)
-	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
-	if err != nil {
-		t.Fatalf("client: %v", err)
-	}
+	c := storetest.Dial(t, storetest.RecvLimit)
 	st := newTestStore(t, c, testCollection("mem_eval_test"))
 	if err := st.EnsureCollection(context.Background(), 3); err != nil {
 		t.Fatalf("ensure: %v", err)
@@ -5332,8 +5161,9 @@ func TestStoreAndEmbedderFromEnvNoEnsureValidatesConfig(t *testing.T) {
 // store + embedder at startup must parse the env config exactly once, not once
 // per dependency. The configLoad seam counts loads across the whole build.
 func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
-	if testQdrantAddr == "" {
-		failOrSkipNoQdrant(t)
+	addr := storetest.Addr()
+	if addr == "" {
+		storetest.SkipOrFailNoQdrant(t)
 	}
 	// buildDepsFromEnv reads the data-plane config from the process env; point it
 	// at the test Qdrant with a dedicated collection so EnsureCollection succeeds.
@@ -5342,7 +5172,7 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	// invariant), so an ambient summary-on-write env can never start a real
 	// summary queue this test never shuts down — that would leak 2 worker
 	// goroutines for the test binary's lifetime.
-	t.Setenv("ENGRAM_QDRANT_ADDR", testQdrantAddr)
+	t.Setenv("ENGRAM_QDRANT_ADDR", addr)
 	t.Setenv("ENGRAM_QDRANT_COLLECTION", testCollection("mem_load_once_test"))
 	t.Setenv("ENGRAM_EMBED_DIM", "3")
 	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
@@ -5382,9 +5212,10 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 // single-load invariant: the reindex build path must parse the env config
 // exactly once, not once per dependency (previously StoreFromEnvNoEnsure +
 // EmbedderFromEnv each loaded). No live Qdrant is needed: storeFromConfig only
-// constructs the client. qdrant.NewClient does fire a one-shot version
-// HealthCheck at construction, but against the refused loopback port it
-// fast-fails and is ignored, so the build still completes in milliseconds.
+// constructs the client. store.NewQdrantClient (which wraps qdrant.NewClient)
+// does fire a one-shot version HealthCheck at construction, but against the
+// refused loopback port it fast-fails and is ignored, so the build still
+// completes in milliseconds.
 func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 	t.Setenv("ENGRAM_QDRANT_ADDR", "localhost:6334")
 	t.Setenv("ENGRAM_EMBED_DIM", "3")
@@ -6050,28 +5881,13 @@ func warnPendingMigrationsFindAttr(r slog.Record, key string) (slog.Value, bool)
 	return v, found
 }
 
-// dialWarnPendingMigrationsTestClient dials a raw *qdrant.Client against the
-// package's shared test Qdrant instance, used only to inject raw
-// schema_version values this test needs to construct pending/current/future
-// fixtures — the same pattern testDepsWithStore's own dial uses.
+// dialWarnPendingMigrationsTestClient dials a raw *qdrant.Client through
+// storetest, used only to inject raw schema_version values this test needs
+// to construct pending/current/future fixtures — the same shared constructor
+// testDepsWithStore's own dial uses.
 func dialWarnPendingMigrationsTestClient(t *testing.T) *qdrant.Client {
 	t.Helper()
-	if testQdrantAddr == "" {
-		failOrSkipNoQdrant(t)
-	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
-	if err != nil {
-		t.Fatalf("client: %v", err)
-	}
-	return c
+	return storetest.Dial(t, storetest.RecvLimit)
 }
 
 // seedWarnPendingMigrationsRecord upserts an ordinary record through st
