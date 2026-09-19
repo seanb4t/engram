@@ -187,6 +187,32 @@ message text — selects the Connect error code:
 `engram` CLI needs no change. A Connect client branching on the error code directly (not
 through the CLI) does need to widen from `CodeInvalidArgument` alone to all three.
 
+## Response too large: resource_exhausted and exit 10
+
+Every other rejection on this page is about an input: something you sent was wrong. This
+one is not. The request was fine — the RESULT it would produce exceeds what one response
+can carry. It uses the same `field=<name> hint=<code>: <detail>` grammar as every other
+rejection above, but with the fixed pseudo-field `response`: the response overflowed, not
+an argument you supplied, so there is no caller-supplied field to name.
+
+It is **not** one of the three argument classes in the mapping above — a Qdrant read that
+overflows the client's receive limit is a transport-layer event, not a malformed, out of
+range, or preconditioned argument — so it does not map to exit `2`.
+
+| Hint code | Connect code | CLI exit |
+|---|---|---|
+| `too_large` | `resource_exhausted` (`CodeResourceExhausted`, HTTP 429) | [`10`](/guides/cli/#exit-codes) |
+
+On the MCP lane the same envelope is the tool result's text content, with `IsError` true.
+
+```
+field=response hint=too_large: the result is too large to return in one response; retry with a smaller limit or k, or omit full
+```
+
+The remedy is a smaller `limit` or `k`, or omitting `full` — retrying the identical
+request fails the same way, since the ceiling that tripped it does not change between
+requests.
+
 ## The one exit code with no hint-code or Connect-code counterpart
 
 Every exit code the CLI's taxonomy publishes elsewhere is reachable through this page's

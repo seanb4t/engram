@@ -1248,6 +1248,10 @@
     {
       "code": 9,
       "meaning": "every runtime engram setup attempted failed; a runtime that is not installed does not count as an attempt"
+    },
+    {
+      "code": 10,
+      "meaning": "a server response exceeded what one response can carry (Connect resource_exhausted); retry with a smaller --limit or --k, or without --full"
     }
   ],
   "notes": [

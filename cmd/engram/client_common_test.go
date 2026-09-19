@@ -43,7 +43,7 @@ func TestExitCodeForConnectErrTable(t *testing.T) {
 		{connect.CodeNotFound, exitNotFound},
 		{connect.CodeAlreadyExists, exitGeneric},
 		{connect.CodePermissionDenied, exitAuth},
-		{connect.CodeResourceExhausted, exitGeneric},
+		{connect.CodeResourceExhausted, exitTooLarge},
 		{connect.CodeFailedPrecondition, exitUsage},
 		{connect.CodeAborted, exitGeneric},
 		{connect.CodeOutOfRange, exitUsage},
@@ -104,7 +104,7 @@ func TestExitCodeTimeoutDistinctFromUnavailable(t *testing.T) {
 	}
 
 	// The full set of codes producible across every connect.Code plus a
-	// non-connect error plus exitOK must equal exactly {0,1,2,3,4,5,6}.
+	// non-connect error plus exitOK must equal exactly {0,1,2,3,4,5,6,10}.
 	got := map[int]bool{exitOK: true}
 	for i := 1; i <= 16; i++ {
 		got[exitCodeForConnectErr(connect.NewError(connect.Code(i), errors.New("boom")))] = true
@@ -113,9 +113,33 @@ func TestExitCodeTimeoutDistinctFromUnavailable(t *testing.T) {
 	want := map[int]bool{
 		exitOK: true, exitGeneric: true, exitUsage: true, exitAuth: true,
 		exitNotFound: true, exitUnavailable: true, exitTimeout: true,
+		exitTooLarge: true,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("codes producible by exitCodeForConnectErr = %v, want %v", got, want)
+	}
+}
+
+// TestExitCodeTooLargeDistinct is the D-07 gate: exitTooLarge is the
+// published literal 10, exitCodeForConnectErr maps CodeResourceExhausted to
+// it, and it is distinct by explicit inequality (not merely "not the
+// default") from every other classified exit code, per memory 667p88n2be —
+// a test asserting only "not the default" would still pass on a silent
+// switch-arm collapse.
+func TestExitCodeTooLargeDistinct(t *testing.T) {
+	if exitTooLarge != 10 {
+		t.Fatalf("exitTooLarge = %d, want 10 (published scripting contract, D-07)", exitTooLarge)
+	}
+
+	got := exitCodeForConnectErr(connect.NewError(connect.CodeResourceExhausted, errors.New("boom")))
+	if got != exitTooLarge {
+		t.Errorf("exitCodeForConnectErr(CodeResourceExhausted) = %d, want %d (exitTooLarge)", got, exitTooLarge)
+	}
+
+	for _, other := range []int{exitGeneric, exitUsage, exitUnavailable, exitTimeout} {
+		if exitTooLarge == other {
+			t.Errorf("exitTooLarge (%d) == %d, want distinct", exitTooLarge, other)
+		}
 	}
 }
 

@@ -355,6 +355,8 @@ signature; it is not shipped here.
 The CLI uses the following exit-code meanings. Codes `8` and `9` belong to
 setup, available from v0.16.0. See
 [Agent Setup](/guides/agent-setup/) for availability and result handling.
+Code `10` comes from a client verb whose server response overflowed what one
+response can carry — in practice `list` and `search`.
 
 | Code | Meaning |
 |------|---------|
@@ -368,6 +370,7 @@ setup, available from v0.16.0. See
 | 7 | Findings reported under an explicit opt-in flag (e.g. `spine-review verify --fail-on`) — the command itself succeeded; the data just didn't pass the check |
 | 8 | Setup partially failed: some attempted runtimes succeeded and some failed |
 | 9 | All attempted setup runtimes failed |
+| 10 | Response too large — the server's result exceeded what one response can carry (Connect `resource_exhausted`, hint `too_large`); retry with a smaller `--limit` or `--k`, or without `--full`; retrying the same request fails the same way. |
 
 Absent runtimes are skipped and do not count as failed setup attempts.
 

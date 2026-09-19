@@ -228,7 +228,7 @@ func TestCatalogEnumeratesEveryFlag(t *testing.T) {
 // what makes the next code addition (after D-06's exitTimeout) not repeat
 // the drift TestCatalogListsEveryExitCode's own hard-coded "6"/"0-5"
 // literals caused when exitTimeout was added.
-var wantExitCodes = []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout, exitFindings, exitPartial, exitSetupFailed}
+var wantExitCodes = []int{exitOK, exitGeneric, exitUsage, exitAuth, exitNotFound, exitUnavailable, exitTimeout, exitFindings, exitPartial, exitSetupFailed, exitTooLarge}
 
 // TestCatalogListsEveryExitCode asserts the catalog carries exactly one
 // entry per constant in wantExitCodes, with no duplicates and no code
