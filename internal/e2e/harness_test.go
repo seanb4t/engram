@@ -14,7 +14,6 @@
 package e2e
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -32,29 +31,15 @@ import (
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
-	tcqdrant "github.com/testcontainers/testcontainers-go/modules/qdrant"
 
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/store/storetest"
 )
 
 // engramBin is the binary under test, built once by TestMain. Always non-empty
 // once TestMain returns: a build failure is fatal, never a skip — a test tier
 // that silently stops building the thing it tests is worse than no tier.
 var engramBin string
-
-// testQdrantAddr is the gRPC endpoint of the ephemeral Qdrant, or empty when
-// Docker is unavailable (Qdrant-backed tests then skip, or fail under
-// ENGRAM_REQUIRE_QDRANT — mirroring internal/server and internal/store).
-var testQdrantAddr string
-
-// testQdrantContainerBooted records whether TestMain booted its OWN
-// testcontainer for this run, as opposed to taking the ENGRAM_QDRANT_TEST_ADDR
-// fast path onto a shared instance. Set true only inside the testcontainer
-// branch, immediately after the container's gRPC endpoint resolves; the env-var
-// branch leaves it false. TestSharedQdrantAddressHonored asserts on it directly
-// so "the CI test job uses one shared Qdrant" is a checkable claim rather than
-// an inference from logs (CONTEXT.md D-20).
-var testQdrantContainerBooted bool
 
 // testCollectionPrefix namespaces this package's integration-test Qdrant
 // collection names so a single shared Qdrant instance (CI's
@@ -90,24 +75,19 @@ func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
 	return store.New(c, name)
 }
 
-// requireQdrant mirrors internal/server's helper: ENGRAM_REQUIRE_QDRANT makes a
-// missing Qdrant fatal rather than a skip, so CI cannot go green with this tier
-// silently sitting out. An unparseable value is an error, never coerced to false.
-func requireQdrant() (bool, error) {
-	v := os.Getenv("ENGRAM_REQUIRE_QDRANT")
-	if v == "" {
-		return false, nil
-	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return false, fmt.Errorf("ENGRAM_REQUIRE_QDRANT: invalid value %q: %w", v, err)
-	}
-	return b, nil
-}
-
+// TestMain builds the engram binary under test (orthogonal to storetest —
+// no other package in this milestone needs a subprocess binary), then
+// delegates Qdrant container lifecycle to storetest.Run: the
+// ENGRAM_QDRANT_TEST_ADDR fast path, the bounded testcontainer fallback, and
+// the ENGRAM_REQUIRE_QDRANT fail-closed gate all live there (plan 01-01).
+// This package also now inherits storetest's post-boot "required but empty
+// address" check, which its own copy lacked — a deliberate normalization
+// toward the store/server harness (plan 01-03). The early
+// storetest.RequireQdrant parse happens BEFORE the build so a malformed
+// ENGRAM_REQUIRE_QDRANT fails fast instead of paying the build cost first,
+// preserving today's ordering.
 func TestMain(m *testing.M) {
-	required, err := requireQdrant()
-	if err != nil {
+	if _, err := storetest.RequireQdrant(); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
@@ -117,7 +97,6 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "fatal: temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() { _ = os.RemoveAll(tmp) }()
 
 	engramBin = filepath.Join(tmp, "engram")
 	build := exec.Command("go", "build", "-o", engramBin, "github.com/seanb4t/engram/cmd/engram")
@@ -127,79 +106,17 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// Qdrant is needed only by the boot tests; TestStartupRejectsMalformedChatBaseURL
-	// is hermetic and runs even without Docker.
-	if addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR"); addr != "" {
-		testQdrantAddr = addr
-		code := m.Run()
-		_ = os.RemoveAll(tmp)
-		os.Exit(code)
-	}
-	startCtx, startCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	container, cerr := tcqdrant.Run(startCtx, "qdrant/qdrant:v1.19.1")
-	if cerr != nil {
-		startCancel()
-		fmt.Fprintf(os.Stderr, "qdrant testcontainer unavailable (%v); Qdrant-backed e2e tests will skip\n", cerr)
-		if required {
-			fmt.Fprintln(os.Stderr, "fatal: ENGRAM_REQUIRE_QDRANT is set — failing instead of skipping")
-			_ = os.RemoveAll(tmp)
-			os.Exit(1)
-		}
-		code := m.Run()
-		_ = os.RemoveAll(tmp)
-		os.Exit(code)
-	}
-	testQdrantAddr, cerr = container.GRPCEndpoint(startCtx)
-	startCancel()
-	if cerr != nil {
-		terminateQdrant(container)
-		fmt.Fprintf(os.Stderr, "fatal: qdrant grpc endpoint: %v\n", cerr)
-		_ = os.RemoveAll(tmp)
-		os.Exit(1)
-	}
-	testQdrantContainerBooted = true
-	code := m.Run()
-	terminateQdrant(container)
+	code := storetest.Run(m)
 	_ = os.RemoveAll(tmp)
 	os.Exit(code)
 }
 
-func terminateQdrant(c *tcqdrant.QdrantContainer) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	_ = c.Terminate(ctx)
-}
-
-func skipOrFailNoQdrant(t *testing.T) {
-	t.Helper()
-	required, err := requireQdrant()
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-	if required {
-		t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
-	}
-	t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
-}
-
 // TestSharedQdrantAddressHonored proves this package took the CI shared-Qdrant
 // fast path rather than booting its own testcontainer, whenever
-// ENGRAM_QDRANT_TEST_ADDR is set. Address equality alone is not enough — a
-// package could boot a container and coincidentally resolve the same address —
-// so the load-bearing assertion is testQdrantContainerBooted == false
-// (CONTEXT.md D-20). Skips (does not fail) when the env var is unset: a
-// developer running locally without it is not the case this test is about.
+// ENGRAM_QDRANT_TEST_ADDR is set. Delegates to storetest, which holds the
+// booted-container state TestMain populated.
 func TestSharedQdrantAddressHonored(t *testing.T) {
-	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
-	if addr == "" {
-		t.Skip("ENGRAM_QDRANT_TEST_ADDR not set: this test only asserts the shared-instance path")
-	}
-	if testQdrantAddr != addr {
-		t.Errorf("testQdrantAddr = %q, want %q (shared CI Qdrant address not honored)", testQdrantAddr, addr)
-	}
-	if testQdrantContainerBooted {
-		t.Error("testQdrantContainerBooted = true, want false: ENGRAM_QDRANT_TEST_ADDR was set but this package booted its own testcontainer anyway")
-	}
+	storetest.AssertSharedAddressHonored(t)
 }
 
 // childEnv builds the subprocess environment from SCRATCH rather than extending
@@ -318,15 +235,16 @@ func (s *serverProc) baseURL() string { return "http://" + s.addr }
 // override it) so a test can vary a single variable.
 func startServer(t *testing.T, extraEnv map[string]string) *serverProc {
 	t.Helper()
-	if testQdrantAddr == "" {
-		skipOrFailNoQdrant(t)
+	qdrantAddr := storetest.Addr()
+	if qdrantAddr == "" {
+		storetest.SkipOrFailNoQdrant(t)
 	}
 	embed := stubEmbedder(t, 1024)
 	port := freePort(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 
 	env := map[string]string{
-		"ENGRAM_QDRANT_ADDR":       testQdrantAddr,
+		"ENGRAM_QDRANT_ADDR":       qdrantAddr,
 		"ENGRAM_QDRANT_COLLECTION": testCollection(strconv.FormatInt(int64(port), 10)),
 		"ENGRAM_EMBED_DIM":         "1024",
 		"ENGRAM_LISTEN_ADDR":       addr,
