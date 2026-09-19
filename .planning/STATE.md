@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-18.01
 milestone_name: Bounded Reads
-current_phase: 2
+current_phase: 02
 current_phase_name: Error Classification & ResourceExhausted Mapping
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-09-19T14:38:37.472Z"
-last_activity: 2026-09-18
-last_activity_desc: Phase 01 complete, transitioned to Phase 2
-state_head: a1c25b5daccfea5c736ead8d48a9b5896767cc0a
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-09-19T14:58:35.268Z"
+last_activity: 2026-09-19
+last_activity_desc: Phase 02 execution started
+state_head: 23591c357aa3a7e5a0ce21e5efa6e205db0f7bad
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-18 after Phase 1 of milestone 2026-09-18.01 — Bounded Reads)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 2 — Error Classification & ResourceExhausted Mapping
+**Current focus:** Phase 02 — Error Classification & ResourceExhausted Mapping
 
 ## Current Position
 
-Phase: 2 (Error Classification & ResourceExhausted Mapping) — READY TO EXECUTE
-Plan: Not started
+Phase: 02 (Error Classification & ResourceExhausted Mapping) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-09-18 — Phase 01 complete, transitioned to Phase 2
+Last activity: 2026-09-19 — Phase 02 execution started
 
 ## Deferred Items
 
@@ -304,6 +304,8 @@ milestone needs in working memory.
 - [Phase 01]: 01-03: internal/retrievaleval delegates via storetest.Run(m, storetest.IgnoreRequireQdrant()) after its ENGRAM_RETRIEVAL_EVAL gate, preserving its pre-phase never-consults-ENGRAM_REQUIRE_QDRANT behavior; internal/e2e keeps its early storetest.RequireQdrant() parse and local binary build before delegating to storetest.Run(m), newly inheriting storetest's post-boot empty-address fail-closed check
 - [Phase 01]: D-11's convergence gate is a new, narrower AST walker rather than a reuse of the existing type-reference gate, because that gate conflates type references with calls and excludes _test.go files -- the opposite of what D-11 needs on both axes.
 - [Phase 01]: Each of Task 3's four red-evidence patches was independently hand-verified (git apply --check/apply/go test -run '^Target$'/apply -R) to fail its named target test before registration in redEvidenceDirs, closing TestRedEvidencePatchesAreLive.
+- [Phase 02]: 02-01: Classifier lives inside NewQdrantClient's base dial options, appended after the otelgrpc stats handler and before caller opts — every production and test client gets it automatically.
+- [Phase 02]: 02-01: isRecvLimitMessage matches grpc-go's four receive shapes on prefix+substring, never code alone, so a genuine server-side ResourceExhausted stays untouched for qdrant-go-client's own rate-limit interceptor.
 
 ### Pending Todos
 
@@ -378,9 +380,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-19T10:23:48.892Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-error-classification-resourceexhausted-mapping/02-CONTEXT.md
+Last session: 2026-09-19T14:58:35.240Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -517,6 +519,7 @@ Resume file: .planning/phases/02-error-classification-resourceexhausted-mapping/
 | Phase 01 P03 | 40min | 2 tasks | 6 files |
 | Phase 01 P04 | 25min | 2 tasks | 5 files |
 | Phase 01 P05 | 55min | 3 tasks | 12 files |
+| Phase 02 P01 | 45min | 2 tasks | 4 files |
 
 ## Operator Next Steps
 

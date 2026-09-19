@@ -380,12 +380,12 @@ Plans:
 3. MCP tools return the same named hint envelope through one shared MCP-side mapper, rather than each tool closure surfacing the raw error.
 4. The `engram` CLI maps the new code to a documented exit code, and the hint code is documented in docs-site `reference/errors.md`.
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — `store.ErrResponseTooLarge` + `ResponseTooLargeError` classified by a unary interceptor in `NewQdrantClient`'s base options (code AND receive-limit message shape), proven on a real named-limit overflow and synthetic statuses (D-00–D-03; REQ-exhausted-sentinel)
+- [x] 02-01-PLAN.md — `store.ErrResponseTooLarge` + `ResponseTooLargeError` classified by a unary interceptor in `NewQdrantClient`'s base options (code AND receive-limit message shape), proven on a real named-limit overflow and synthetic statuses (D-00–D-03; REQ-exhausted-sentinel)
 
 **Wave 2**
 
