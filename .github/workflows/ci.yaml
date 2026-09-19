@@ -50,10 +50,11 @@ jobs:
     # "qdrant is not serving" rather than merely "a container exists".
     services:
       qdrant:
-        # Keep byte-identical to internal/store/store_test.go's qdrantImageTag:
-        # the per-package testcontainer fallback (D-18) and this shared
-        # service must stay version-locked, since qdrantTOCTOUVerifiedVersion's
-        # guard exists to force a conscious re-verification on a bump.
+        # Keep byte-identical to internal/store/storetest.QdrantImage —
+        # enforced by TestQdrantImageMatchesCIService, not by this comment.
+        # Every testcontainer fallback and this shared service must stay
+        # version-locked, since qdrantTOCTOUVerifiedVersion's guard exists to
+        # force a conscious re-verification on a bump.
         image: qdrant/qdrant:v1.19.1
         ports:
           - 6334:6334 # gRPC — what the Go client dials, and what health-cmd probes
@@ -93,7 +94,7 @@ jobs:
       # COUNTS, so it fails rather than merely reporting.
       #
       # Expected 3 PASS + 1 SKIP, not 4 PASS. internal/retrievaleval's TestMain
-      # returns before setting testQdrantAddr unless ENGRAM_RETRIEVAL_EVAL=1,
+      # returns before calling storetest.Run unless ENGRAM_RETRIEVAL_EVAL=1,
       # so in CI that package never dials Qdrant and does not participate in
       # the shared instance at all. Both counts are pinned: a package that
       # stops honoring the shared address (3 -> 2) and retrievaleval quietly
@@ -119,11 +120,12 @@ jobs:
           # ubuntu-latest ships Docker, so the existing testcontainers boot
           # path provisions Qdrant; with this flag a boot/pull failure FAILS
           # the job instead of letting TestMain silently skip the integration
-          # suite (see internal/server/tools_test.go requireQdrant/TestMain).
+          # suite (see internal/store/storetest's RequireQdrant/Run).
           ENGRAM_REQUIRE_QDRANT: "1"
           # Points every Qdrant-backed package's TestMain fast path at the
           # shared services: container above instead of each booting its own
-          # (D-15). All four TestMain chains already honor this var.
+          # (D-15). Every Qdrant-backed package's TestMain delegates to
+          # storetest.Run, which honors this var.
           ENGRAM_QDRANT_TEST_ADDR: localhost:6334
           # G-05-9 fail-closed browser gate, mirroring ENGRAM_REQUIRE_QDRANT
           # above: makes a browser-less runner FAIL TestConsoleBundleRendersRecordInBrowser
