@@ -6,6 +6,9 @@ package server
 import (
 	"context"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,9 +16,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
@@ -205,5 +210,227 @@ func TestConnectListMemoriesResponseTooLarge(t *testing.T) {
 	}
 	if !found && !strings.Contains(larger[0].msg, "/qdrant.Points/Scroll") {
 		t.Errorf("the one raw-error log record does not contain the RPC method /qdrant.Points/Scroll: %+v", larger[0])
+	}
+}
+
+// toolCallRecord is one (tool, outcome) pair recorded by toolCallRecorder.
+type toolCallRecord struct {
+	tool, outcome string
+}
+
+// toolCallRecorder is a mutex-guarded recordFunc sink, used to assert D-08's
+// "instrumentTools still records outcome=error for the mapped result" edge
+// (the mapper must not run so early that instrumentTools never sees the
+// tool call at all).
+type toolCallRecorder struct {
+	mu    sync.Mutex
+	calls []toolCallRecord
+}
+
+func (r *toolCallRecorder) record(_ context.Context, tool, outcome string, _ float64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, toolCallRecord{tool, outcome})
+}
+
+func (r *toolCallRecorder) has(tool, outcome string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.calls {
+		if c.tool == tool && c.outcome == outcome {
+			return true
+		}
+	}
+	return false
+}
+
+// TestMCPListMemoryResponseTooLarge is the MCP lane's end-to-end proof at
+// the named limit (rule m45p2b4bp7): a real 4 MiB-named overflow through the
+// real list_memory tool, reached over an in-memory transport against a
+// server built with addToolMiddleware and registerTools, comes back as an
+// IsError result carrying the ONE shared envelope, with instrumentTools
+// still recording outcome=error and the raw error logged exactly once
+// server-side (D-08).
+func TestMCPListMemoryResponseTooLarge(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	fx := storetest.SeedOversized(t, st, storetest.Spec{
+		Limit:  storetest.RecvLimit,
+		Shape:  storetest.FewLarge,
+		Vector: []float32{0.1, 0.2, 0.3},
+	})
+
+	rec := captureSlog(t)
+	tcRec := &toolCallRecorder{}
+
+	s := mcp.NewServer(&mcp.Implementation{Name: "engram-test", Version: "test"}, nil)
+	addToolMiddleware(s, tcRec.record)
+	if err := registerTools(s, d); err != nil {
+		t.Fatalf("registerTools: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	ss, err := s.Connect(authedContext(t, fx.Owner), serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ss.Close() })
+
+	c := mcp.NewClient(&mcp.Implementation{Name: "engram-test-client", Version: "test"}, nil)
+	cs, err := c.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "list_memory",
+		Arguments: map[string]any{"scope": fx.Scope, "limit": len(fx.IDs)},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: got Go error %v, want nil (the mapped result must still be a normal, non-erroring CallTool round trip)", err)
+	}
+	if !res.IsError {
+		t.Fatalf("CallTool: IsError = false, want true")
+	}
+	if len(res.Content) != 1 {
+		t.Fatalf("CallTool: len(Content) = %d, want 1 (content: %+v)", len(res.Content), res.Content)
+	}
+	tc, ok := res.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("CallTool: Content[0] is %T, want *mcp.TextContent", res.Content[0])
+	}
+	if want := responseTooLargeEnvelope(); tc.Text != want {
+		t.Fatalf("CallTool: Text = %q, want %q", tc.Text, want)
+	}
+	for _, banned := range []string{"grpc", "larger than max", "qdrant", "Scroll"} {
+		if strings.Contains(tc.Text, banned) {
+			t.Errorf("CallTool: text %q leaks banned substring %q", tc.Text, banned)
+		}
+	}
+	if !noASCIIDigit(tc.Text) {
+		t.Errorf("CallTool: text %q contains an ASCII digit (a byte ceiling must never reach the wire)", tc.Text)
+	}
+
+	larger := rec.containing("larger than max")
+	if len(larger) != 1 {
+		t.Fatalf("captured log records containing %q: got %d, want exactly 1 (log records: %+v)", "larger than max", len(larger), rec.records)
+	}
+	if larger[0].level != slog.LevelError {
+		t.Errorf("the one raw-error log record has level %v, want ERROR", larger[0].level)
+	}
+
+	if !tcRec.has("list_memory", "error") {
+		t.Errorf("recorded (tool,outcome) pairs do not include (list_memory, error): %+v", tcRec.calls)
+	}
+}
+
+// findFuncDecl returns the top-level *ast.FuncDecl named name in af, or nil.
+func findFuncDecl(af *ast.File, name string) *ast.FuncDecl {
+	for _, decl := range af.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == name {
+			return fn
+		}
+	}
+	return nil
+}
+
+// countCallsByIdent counts CallExpr nodes within fn whose Fun is a bare
+// *ast.Ident matching name (an unqualified function call, e.g.
+// addToolMiddleware(...)).
+func countCallsByIdent(fn *ast.FuncDecl, name string) int {
+	n := 0
+	ast.Inspect(fn, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == name {
+			n++
+		}
+		return true
+	})
+	return n
+}
+
+// findSelectorCalls returns every CallExpr within fn whose Fun is a
+// *ast.SelectorExpr with the given selector name (e.g. s.AddReceivingMiddleware(...)).
+func findSelectorCalls(fn *ast.FuncDecl, name string) []*ast.CallExpr {
+	var calls []*ast.CallExpr
+	ast.Inspect(fn, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == name {
+			calls = append(calls, call)
+		}
+		return true
+	})
+	return calls
+}
+
+// isCallTo reports whether expr is a CallExpr invoking the bare, unqualified
+// function name.
+func isCallTo(expr ast.Expr, name string) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	ident, ok := call.Fun.(*ast.Ident)
+	return ok && ident.Name == name
+}
+
+// TestRegisterInstallsToolMiddleware is D-08's source gate (go/parser over
+// this package's own tools.go and instrument.go, mirroring
+// conditionalsweep_test.go's house style): Register contains exactly one
+// call to addToolMiddleware and no direct AddReceivingMiddleware call;
+// addToolMiddleware contains exactly one AddReceivingMiddleware call whose
+// arguments are, in order, a call to instrumentTools and a call to
+// mapResponseTooLarge, and no other arguments. This is what pins the
+// ordering (instrumentTools outermost, mapper innermost) structurally,
+// rather than by convention.
+func TestRegisterInstallsToolMiddleware(t *testing.T) {
+	fset := token.NewFileSet()
+
+	toolsAst, err := parser.ParseFile(fset, "tools.go", nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("ParseFile(tools.go): %v", err)
+	}
+	registerFn := findFuncDecl(toolsAst, "Register")
+	if registerFn == nil {
+		t.Fatal("Register FuncDecl not found in tools.go")
+	}
+	if n := countCallsByIdent(registerFn, "addToolMiddleware"); n != 1 {
+		t.Errorf("Register calls addToolMiddleware %d times, want 1", n)
+	}
+	if calls := findSelectorCalls(registerFn, "AddReceivingMiddleware"); len(calls) != 0 {
+		t.Errorf("Register calls AddReceivingMiddleware directly %d times, want 0 (must go through addToolMiddleware)", len(calls))
+	}
+
+	instrumentAst, err := parser.ParseFile(fset, "instrument.go", nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("ParseFile(instrument.go): %v", err)
+	}
+	addToolFn := findFuncDecl(instrumentAst, "addToolMiddleware")
+	if addToolFn == nil {
+		t.Fatal("addToolMiddleware FuncDecl not found in instrument.go")
+	}
+	calls := findSelectorCalls(addToolFn, "AddReceivingMiddleware")
+	if len(calls) != 1 {
+		t.Fatalf("addToolMiddleware contains %d AddReceivingMiddleware calls, want 1", len(calls))
+	}
+	call := calls[0]
+	if len(call.Args) != 2 {
+		t.Fatalf("AddReceivingMiddleware call has %d args, want 2 (got %d)", len(call.Args), len(call.Args))
+	}
+	if !isCallTo(call.Args[0], "instrumentTools") {
+		t.Errorf("AddReceivingMiddleware arg 0 is not a call to instrumentTools: %#v", call.Args[0])
+	}
+	if !isCallTo(call.Args[1], "mapResponseTooLarge") {
+		t.Errorf("AddReceivingMiddleware arg 1 is not a call to mapResponseTooLarge: %#v", call.Args[1])
 	}
 }

@@ -2259,7 +2259,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 		return nil, fmt.Errorf("mount connect: %w", err)
 	}
 
-	s.AddReceivingMiddleware(instrumentTools(tm.Record))
+	addToolMiddleware(s, tm.Record)
 
 	if err := registerTools(s, d); err != nil {
 		return nil, fmt.Errorf("register tools: %w", err)
