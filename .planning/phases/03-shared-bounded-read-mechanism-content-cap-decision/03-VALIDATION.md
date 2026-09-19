@@ -44,12 +44,21 @@ to task IDs and real test names (re-resolve every `-run` against `go test -list`
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | TBD | REQ-byte-budget-pages | — | N/A | integration (real Qdrant) | ordered-page helper stops on bytes AND count | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-byte-budget-pages | — | N/A | integration (real Qdrant) | `scrollAllPoints` byte-budget extension | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-byte-budget-pages (D-07) | — | never skip a record | integration (raw `package store` write) | batch-of-1 fallback → `ErrResponseTooLarge` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-content-cap-decided | — | oversized write rejected on every lane | integration | content/tags cap rejection, all write paths, MCP + Connect + CLI | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-content-cap-decided | — | N/A | integration | existing over-cap records stay readable | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | REQ-content-cap-decided | — | N/A | unit | config validation rejects 0 / non-positive caps | ❌ W0 | ⬜ pending |
+| 03-01-T1 | 03-01 | 1 | REQ-content-cap-decided | T-03-01-01 | configured content cap reaches the MCP `store_memory` rejection | unit (hermetic, spy store) | `go test ./internal/server/ -run '^TestMemoryContentCapFlowsFromConfig$' -count=1` | ❌ W0 | ⬜ pending |
+| 03-01-T2 | 03-01 | 1 | REQ-content-cap-decided | T-03-01-03 | `0` / non-positive caps fail startup | unit | `go test ./internal/config/ -run '^TestMemoryCap' -count=1` (`TestMemoryCapsRejectZeroAndNonPositive`, `TestMemoryCapDefaultsAndEnv`) | ❌ W0 | ⬜ pending |
+| 03-01-T3 | 03-01 | 1 | REQ-content-cap-decided | T-03-01-01, T-03-01-02, T-03-01-04 | every create lane rejects over-cap content/tags; no value echo | unit (hermetic MCP + Connect) | `go test ./internal/server/ -run '^TestMemoryWriteCap' -count=1` (`…RejectOnEveryCreateLane`, `…Boundaries`, `…DefaultsMatchRegistry`) plus 03-01 Task 3 verify for `TestHintNeverEchoesValue` | ❌ W0 | ⬜ pending |
+| 03-02-T1 | 03-02 | 1 | REQ-byte-budget-pages | T-03-02-01 | per-RPC count derived from the view ceiling | integration (real Qdrant) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestScrollAllPointsByteBudget$' -count=1` | ❌ W0 | ⬜ pending |
+| 03-02-T2 | 03-02 | 1 | REQ-byte-budget-pages (D-07) | T-03-02-02, T-03-02-03 | never skip a record; ceiling holds at every cap | integration (legacy records via `Store.Upsert`) + unit | 03-02 Task 2 verify (`TestScrollAllPointsBatchOfOneFallback`, `TestScrollAllPointsSingleOversizedRecordFailsNamed`, `TestRecordCeilingHoldsForMaxCapRecord`, `TestRecordCeilingDerivesFromCaps`, `TestWithRecordCapsNormalizesNonPositive`, `TestSweepLimit`) | ❌ W0 | ⬜ pending |
+| 03-03-T1 | 03-03 | 2 | REQ-content-cap-decided | T-03-03-01 | Connect field-mask update lane capped inside `deps.updateMemory` | unit (hermetic Connect) | `go test ./internal/server/ -run '^TestUpdateMemoryContentCap$' -count=1` | ❌ W0 | ⬜ pending |
+| 03-03-T2 | 03-03 | 2 | REQ-content-cap-decided | T-03-03-02 | existing over-cap records stay readable and trimmable | unit (hermetic MCP + Connect) | `go test ./internal/server/ -run '^TestUpdateMemoryTagsCap$' -count=1`; `go test ./internal/server/ -run '^TestUpdateMemoryLegacyOversizedRecord$' -count=1` | ❌ W0 | ⬜ pending |
+| 03-03-T3 | 03-03 | 2 | REQ-byte-budget-pages | T-03-03-04 | read ceilings derive from the enforced caps | unit + integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/ -run 'RecordCaps' -count=1` | ❌ W0 | ⬜ pending |
+| 03-04-T1 | 03-04 | 2 | REQ-byte-budget-pages | T-03-04-01, T-03-04-04 | ordered page stops on accumulated bytes | integration (real Qdrant) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestScrollOrderedPageByteBudget$' -count=1` | ❌ W0 | ⬜ pending |
+| 03-04-T2 | 03-04 | 2 | REQ-byte-budget-pages (D-07) | T-03-04-02, T-03-04-03 | caller filter never widened; budget-cut page never final; nothing skipped | integration (real Qdrant) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestScrollOrderedPage' -count=1` | ❌ W0 | ⬜ pending |
+| 03-04-T3 | 03-04 | 2 | REQ-byte-budget-pages (D-08 inventory) | — | N/A | artifact set-equality | 03-04 Task 3 verify (derived set equals the inventory table, 27 functions) | ❌ W0 | ⬜ pending |
+| 03-05-T1 | 03-05 | 3 | REQ-content-cap-decided | T-03-05-01 | CLI lane rejected through the real binary | e2e (real server + Qdrant) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/e2e/ -run '^TestCLIStoreRejectsOversizedContentAndTags$' -count=1` | ❌ W0 | ⬜ pending |
+| 03-05-T2 | 03-05 | 3 | REQ-content-cap-decided | T-03-05-03 | N/A | docs build + doc gates | 03-05 Task 2 verify (docs build, four doc-gate tests, errors.md patch still applies) | ✅ | ⬜ pending |
+| 03-05-T3 | 03-05 | 3 | REQ-content-cap-decided | — | N/A | drift gate | `go test ./internal/skills/ -run '^TestSkillsEmbedMatchesVendored$' -count=1` | ✅ | ⬜ pending |
+| 03-06-T1/T2 | 03-06 | 4 | REQ-byte-budget-pages, REQ-content-cap-decided | T-03-06-01, T-03-06-02 | every guarantee has a live RED proof | red-evidence harness | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestRedEvidencePatchesAreLive$' -count=1 -timeout 60m` (25 `confirmed RED:`) | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -57,11 +66,11 @@ to task IDs and real test names (re-resolve every `-run` against `go test -list`
 
 ## Wave 0 Requirements
 
-- [ ] ordered-page helper test file
-- [ ] `scrollAllPoints` byte-budget test coverage
-- [ ] raw-write legacy over-cap fixture helper in `package store`
-- [ ] content/tags cap rejection tests (all write paths, both lanes, CLI)
-- [ ] this phase's `redEvidenceDirs` entry + hand-verified patches
+- [ ] ordered-page helper test file — `internal/store/orderedpage_oversized_test.go` (03-04)
+- [ ] `scrollAllPoints` byte-budget test coverage — `internal/store/boundedread_oversized_test.go`, `internal/store/boundedread_test.go` (03-02)
+- [ ] legacy over-cap fixtures written with `Store.Upsert` (the raw write; `SeedOversized` refuses a single record at or over the limit) — in `boundedread_oversized_test.go` and `orderedpage_oversized_test.go` (`package store_test`, so they can name `storetest.RecvLimit`)
+- [ ] content/tags cap rejection tests (all write paths, both lanes, CLI) — `internal/server/contentcap_test.go` (03-01), `internal/server/updatecap_test.go` (03-03), `internal/e2e/contentcap_cli_test.go` (03-05)
+- [ ] this phase's `redEvidenceDirs` entry + 13 hand-verified patches (03-06)
 
 ---
 

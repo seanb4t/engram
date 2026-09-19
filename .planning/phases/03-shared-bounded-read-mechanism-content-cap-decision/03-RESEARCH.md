@@ -920,7 +920,7 @@ against Qdrant's own documentation as the correct, sanctioned mechanism, not a w
 | A2 | `ENGRAM_MEMORY_MAX_CONTENT_BYTES` should follow `MaxSummaryBytes`'s "0 disables" convention | Content Cap Enforcement (D-01) | If the milestone intends an always-enforced cap with no disable escape hatch, following the wrong precedent would let an operator accidentally disable a REQ-locked guarantee; low risk since discuss-phase can confirm before implementation, and the decision is easily reversible (a one-line validation change) |
 | A3 | The full-view/sweep `maxRecordBytes` should be derived from content+citations+tags-worst-case, and citations' `Ref`/`Locator`/`Pin` fields' realistic size is small (a few hundred bytes) despite having no hard cap | Payload Ceiling Derivation (D-02) | If a caller writes citations with very large `Ref`/`Locator`/`Pin` values in practice, the derived constant could still be an undercount; this is a genuinely unbounded field this research flags rather than resolves — the byte-budget mechanism's MEASURED-bytes accounting (not just the pre-computed `Limit`) is the actual safety net regardless of this assumption's accuracy |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `ENGRAM_MEMORY_MAX_CONTENT_BYTES` support a "0 disables" escape hatch?**
    - What we know: `MaxSummaryBytes` has one; D-01's text doesn't explicitly say either way for
@@ -931,6 +931,7 @@ against Qdrant's own documentation as the correct, sanctioned mechanism, not a w
      discuss-phase explicitly confirms the `MaxSummaryBytes` convention should extend — a
      REQ-locked write-rejection contract (per D-01's "Reversibility: one-way" note) is a stronger
      guarantee if it cannot be silently turned off.
+   - RESOLVED: always enforced, config rejects 0 and non-positive values (CONTEXT D-09, user-confirmed 2026-09-19).
 
 2. **Should `tags` gain a cap in this phase, or purely be flagged as a follow-up?**
    - What we know: D-01 scopes only `content`; tags has zero validation anywhere.
@@ -940,6 +941,7 @@ against Qdrant's own documentation as the correct, sanctioned mechanism, not a w
    - Recommendation: leave tags uncapped this phase (matches D-01's explicit scope), but the
      planner should record a follow-up issue/backlog note — this research surfaced a real,
      previously-undocumented gap.
+   - RESOLVED: the user chose to cap tags THIS phase — `ENGRAM_MEMORY_MAX_TAGS` 128 and `ENGRAM_MEMORY_MAX_TAG_BYTES` 128, always enforced (CONTEXT D-10); the remaining uncapped fields get a 16 KiB allowance and follow-up GitHub #589 (CONTEXT D-11).
 
 ## Environment Availability
 
