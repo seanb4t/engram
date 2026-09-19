@@ -65,12 +65,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -912,39 +910,14 @@ func recallCaptureInterceptor(t *testing.T, capture *recallCapture) grpc.UnaryCl
 	}
 }
 
-// dialCapturingTestClient is dialTestClient's capturing sibling: it wires a
-// grpc.WithUnaryInterceptor into the client's dial options so capture
-// records every outgoing request the interceptor recognizes as
-// filter-carrying. Skips exactly like dialTestClient when no Qdrant is
-// available.
+// dialCapturingTestClient is dialTestClient's capturing sibling: it wires
+// recallCaptureInterceptor as a caller option into dialTestClient, which
+// owns the address, the skip/fail-closed behavior, and the
+// shared-constructor dial (so this client also carries production's dial
+// options).
 func dialCapturingTestClient(t *testing.T, capture *recallCapture) *qdrant.Client {
 	t.Helper()
-	if testQdrantAddr == "" {
-		required, err := requireQdrant()
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
-		if required {
-			t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
-		}
-		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
-	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{
-		Host: host, Port: port,
-		GrpcOptions: []grpc.DialOption{grpc.WithUnaryInterceptor(recallCaptureInterceptor(t, capture))},
-	})
-	if err != nil {
-		t.Fatalf("capturing client: %v", err)
-	}
-	return c
+	return dialTestClient(t, grpc.WithUnaryInterceptor(recallCaptureInterceptor(t, capture)))
 }
 
 // The invocation table's fixed inputs: one scope, one query vector (shared
