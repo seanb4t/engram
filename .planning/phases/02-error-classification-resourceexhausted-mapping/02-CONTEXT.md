@@ -80,6 +80,8 @@ the RIGHT failure mode.
   exit-code table (`guides/cli.md` "## Exit codes") update in the same change. —
   **Reversibility:** one-way — exit codes are a scripting contract. The user chose this exact option in discuss-phase (2026-09-19) — do not insert a checkpoint to re-ask.
 
+- **D-10 (plan-time, user-confirmed 2026-09-19):** `exitTooLarge = 10` applies on BOTH tiers — the Connect client commands (D-07) AND the operator-tier commands that act on Qdrant directly (`classifyOperatorErr`: migrate, summarize-missing, spine-review, reindex), so one failure class has one exit code whichever tier hit it. Overflowing operator commands change from exit 1 to 10; documented; own red-evidence patch.
+
 ### MCP lane
 
 - **D-08:** The single MCP-side mapper is a **receiving middleware** on `tools/call`

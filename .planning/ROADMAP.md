@@ -380,7 +380,24 @@ Plans:
 3. MCP tools return the same named hint envelope through one shared MCP-side mapper, rather than each tool closure surfacing the raw error.
 4. The `engram` CLI maps the new code to a documented exit code, and the hint code is documented in docs-site `reference/errors.md`.
 
-**Plans:** 0 plans
+**Plans:** 4 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — `store.ErrResponseTooLarge` + `ResponseTooLargeError` classified by a unary interceptor in `NewQdrantClient`'s base options (code AND receive-limit message shape), proven on a real named-limit overflow and synthetic statuses (D-00–D-03; REQ-exhausted-sentinel)
+
+**Wave 2**
+
+- [ ] 02-02-PLAN.md — one shared `field=response hint=too_large` envelope (`HintTooLarge`, `renderHintEnvelope`): `connectError` → `resource_exhausted` and a `tools/call` receiving middleware on MCP, raw error logged once, every other error untouched (D-04–D-06, D-08, D-09; REQ-exhausted-connect, REQ-exhausted-mcp)
+
+**Wave 3**
+
+- [ ] 02-03-PLAN.md — `exitTooLarge = 10` for `resource_exhausted` (client verbs) and the store sentinel (operator tier), catalog + golden + baseline rows, CLI guide, upgrade guide, errors.md's eleventh hint code, and a doc gate binding errors.md to `argerror.go` (D-05, D-07; REQ-exhausted-cli-docs)
+
+**Wave 4**
+
+- [ ] 02-04-PLAN.md — this phase's eight red-evidence patches registered in `redEvidenceDirs`, full `task` gate green (all four REQs)
 
 ---
 
