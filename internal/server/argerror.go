@@ -6,6 +6,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"connectrpc.com/connect"
 
@@ -19,10 +20,16 @@ import (
 // every authoring site (D-10).
 type HintCode string
 
-// The approved hint vocabulary (04-CONTEXT.md D-09/D-17 checkpoint). Do not
-// add a code here without updating the checkpoint record in
-// 04-01-SUMMARY.md — the vocabulary is a published wire contract on the MCP
-// lane.
+// The approved hint vocabulary — a published wire contract on BOTH lanes
+// (the MCP tool-result text content and the Connect error message). Its
+// origin record is the archived
+// .planning/milestones/v0.12.x-phases/04-diagnosability/04-01-SUMMARY.md
+// D-09/D-17 checkpoint. HintTooLarge was added by milestone 2026-09-18.01
+// Phase 2 D-05, for a RESPONSE that exceeded the client's receive limit —
+// not a rejected input, so its attributed field is the fixed pseudo-field
+// "response", never a caller argument. Adding a code here requires the
+// matching row in docs-site reference/errors.md, which plan 02-03's doc
+// gate enforces.
 const (
 	HintRequired            HintCode = "required"
 	HintConditionalRequired HintCode = "conditional_required"
@@ -34,6 +41,7 @@ const (
 	HintOrdering            HintCode = "ordering"
 	HintMutuallyExclusive   HintCode = "mutually_exclusive"
 	HintNotApplicable       HintCode = "not_applicable"
+	HintTooLarge            HintCode = "too_large"
 )
 
 // argClass is the failure CLASS that selects the Connect error code (D-11,
@@ -74,23 +82,28 @@ type argError struct {
 	Class  argClass
 }
 
-// Error renders the field-first grammar approved in the D-17 checkpoint:
+// renderHintEnvelope is the ONE renderer of the field/hint grammar
+// (field=<f1>,<f2> hint=<code>: <detail>) — (*argError).Error() and the
+// response-too-large envelope (responsetoolarge.go) both call it, so the
+// wire text can never drift into two hand-built copies (D-04). On the MCP
+// lane go-sdk v1.8.0 carries this string as the tool result's text content
+// (CallToolResult.SetError); on the Connect lane it is the *connect.Error
+// message.
+func renderHintEnvelope(fields []string, hint HintCode, detail string) string {
+	return "field=" + strings.Join(fields, ",") + " hint=" + string(hint) + ": " + detail
+}
+
+// Error renders the field-first grammar approved in the D-17 checkpoint via
+// renderHintEnvelope:
 //
 //	field=<f1>,<f2> hint=<code>: <detail>
 //
-// Per go-sdk@v1.6.1/mcp/server.go:340-354, the SDK discards the built
-// *CallToolResult on a non-nil error and returns only err.Error() as text —
-// this string IS the entire MCP wire payload for a rejected tool call, not a
-// debug aid.
+// Per go-sdk@v1.8.0 (mcp/protocol.go's SetError), an ordinary typed-handler
+// error becomes CallToolResult.SetError(err), which populates the result's
+// text content from err.Error() — this string IS the entire MCP wire
+// payload for a rejected tool call, not a debug aid.
 func (e *argError) Error() string {
-	fields := ""
-	for i, f := range e.Fields {
-		if i > 0 {
-			fields += ","
-		}
-		fields += f
-	}
-	return "field=" + fields + " hint=" + string(e.Hint) + ": " + e.Detail
+	return renderHintEnvelope(e.Fields, e.Hint, e.Detail)
 }
 
 // Unwrap returns store.ErrInvalidArgument. Load-bearing for back-compat:

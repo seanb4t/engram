@@ -45,6 +45,13 @@ import (
 //     02): pre-positioning only — supersede_memory is MCP-only this phase, no
 //     Connect RPC exposes it yet — kept so the sentinel switch stays
 //     exhaustive, exactly like the ErrIdempotencyConflict case below.
+//   - store.ErrResponseTooLarge -> CodeResourceExhausted, carrying the shared
+//     field=response hint=too_large envelope (responsetoolarge.go) — never
+//     CodeInternal (02-CONTEXT.md D-06). The raw error (RPC method, byte
+//     counts, upstream grpc-go text) is logged server-side first, exactly
+//     like the default arm's own split below. This sentinel is never
+//     constructed as (or wrapped by) an *argError, so it cannot collide with
+//     the errors.As(err, &ae) case above.
 //
 // Everything else falls through to CodeInternal, which logs the underlying
 // error via slog.ErrorContext(ctx, ...) (request-scoped trace/log fields) and
@@ -93,6 +100,9 @@ func connectError(ctx context.Context, err error) error {
 		return connect.NewError(connect.CodeCanceled, err)
 	case errors.Is(err, context.DeadlineExceeded):
 		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	case errors.Is(err, store.ErrResponseTooLarge):
+		slog.ErrorContext(ctx, "connect handler: response too large", "error", err)
+		return connect.NewError(connect.CodeResourceExhausted, errors.New(responseTooLargeEnvelope()))
 	default:
 		slog.ErrorContext(ctx, "connect handler: unexpected error", "error", err)
 		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
