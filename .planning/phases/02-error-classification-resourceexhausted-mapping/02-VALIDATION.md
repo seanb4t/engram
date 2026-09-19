@@ -3,9 +3,9 @@ phase: "2"
 slug: "error-classification-resourceexhausted-mapping"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-09-19"
 ---
 
@@ -46,24 +46,24 @@ so a missing Qdrant fails instead of skipping.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 02-01-T1 | 02-01 | 1 | REQ-exhausted-sentinel | T-02-01-04 | real overflow classified at the named limit; never a success-shaped page | integration (real Qdrant, both fixture shapes) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestStoreListOverflowIsResponseTooLarge$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-01-T2 | 02-01 | 1 | REQ-exhausted-sentinel | T-02-01-01, T-02-01-02 | non-matching ResourceExhausted returned as the identical value | unit (synthetic statuses: 4 receive shapes, 8 pass-through, nil; idempotency; concurrency) | `go test ./internal/store/ -run '^TestClassifyResponseTooLarge' -race -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-01-T2 | 02-01 | 1 | REQ-exhausted-sentinel | T-02-01-01 | caller interceptor sits inside the classifier; server-sent ResourceExhausted unrelabeled | integration (real client chain) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestResponseTooLargeClassifierSitsInsideCallerChain$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-02-T1 | 02-02 | 2 | REQ-exhausted-connect | T-02-02-01, T-02-02-04 | no raw gRPC/Qdrant text, no byte ceiling on the Connect wire; raw error logged once | integration (Connect over httptest + real Qdrant) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/ -run '^TestConnectListMemoriesResponseTooLarge$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-02-T2 | 02-02 | 2 | REQ-exhausted-mcp | T-02-02-02, T-02-02-04 | envelope-only tool result; raw error logged once | integration (MCP in-memory transport + real Qdrant) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/ -run '^TestMCPListMemoryResponseTooLarge$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-02-T2 | 02-02 | 2 | REQ-exhausted-mcp | T-02-02-02 | mapper registered innermost in the one production middleware call | source gate (go/parser) | `go test ./internal/server/ -run '^TestRegisterInstallsToolMiddleware$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-02-T3 | 02-02 | 2 | REQ-exhausted-connect | T-02-02-03 | non-relabeled ResourceExhausted still scrubbed to internal; new code distinct | unit (existing table, extended) | `go test ./internal/server/ -run '^TestConnectError$' -v -count=1` | ✅ (rows new) | ⬜ pending |
-| 02-02-T3 | 02-02 | 2 | REQ-exhausted-mcp | T-02-02-05 | every other tool error keeps its exact text (D-09) | unit | `go test ./internal/server/ -run '^TestMapResponseTooLargePassesOtherResultsThrough$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-02-T3 | 02-02 | 2 | REQ-exhausted-connect, REQ-exhausted-mcp | T-02-02-01 | envelope carries no number, no upstream text, no false remedy | unit | `go test ./internal/server/ -run '^TestResponseTooLargeEnvelopeShape$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-01 | N/A | CLI command path (stub Connect server) | `go test ./cmd/engram/ -run '^TestExitCodeBaseline$' -v -count=1` | ✅ (rows new) | ⬜ pending |
-| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-02 | N/A | unit | `go test ./cmd/engram/ -run '^TestExitCodeTooLargeDistinct$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-02 | N/A | unit (existing table, row edited) | `go test ./cmd/engram/ -run '^TestExitCodeForConnectErrTable$' -v -count=1` | ✅ | ⬜ pending |
-| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-02 | N/A | unit (existing mechanical gate) | `go test ./cmd/engram/ -run '^TestCatalogExitCodesMatchMapper$' -v -count=1` | ✅ | ⬜ pending |
-| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-02 | N/A | unit (existing gate, `wantExitCodes` edited) | `go test ./cmd/engram/ -run '^TestCatalogListsEveryExitCode$' -v -count=1` | ✅ | ⬜ pending |
-| 02-03-T2 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-01 | N/A | unit (existing distinct-set test, extended) | `go test ./cmd/engram/ -run '^TestClassifyOperatorErrCodesAreDistinct$' -v -count=1` | ✅ | ⬜ pending |
-| 02-03-T3 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-03 | N/A | doc gate (errors.md vs argerror.go) | `go test ./internal/server/ -run '^TestErrorsDocHintCodesMatchArgErrorConstants$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-03-T3 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-03 | N/A | unit (doc-gate parser self-test) | `go test ./internal/server/ -run '^TestParseHintCodeTable$' -v -count=1` | ❌ W0 | ⬜ pending |
-| 02-04-T1/T2 | 02-04 | 4 | all four | T-02-04-01..03 | N/A | red-evidence harness (12 confirmed REDs) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestRedEvidencePatchesAreLive$' -v -count=1 -timeout 30m` | ✅ | ⬜ pending |
+| 02-01-T1 | 02-01 | 1 | REQ-exhausted-sentinel | T-02-01-04 | real overflow classified at the named limit; never a success-shaped page | integration (real Qdrant, both fixture shapes) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestStoreListOverflowIsResponseTooLarge$' -v -count=1` | ✅ | ✅ green |
+| 02-01-T2 | 02-01 | 1 | REQ-exhausted-sentinel | T-02-01-01, T-02-01-02 | non-matching ResourceExhausted returned as the identical value | unit (synthetic statuses: 4 receive shapes, 8 pass-through, nil; idempotency; concurrency) | `go test ./internal/store/ -run '^TestClassifyResponseTooLarge' -race -v -count=1` | ✅ | ✅ green |
+| 02-01-T2 | 02-01 | 1 | REQ-exhausted-sentinel | T-02-01-01 | caller interceptor sits inside the classifier; server-sent ResourceExhausted unrelabeled | integration (real client chain) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestResponseTooLargeClassifierSitsInsideCallerChain$' -v -count=1` | ✅ | ✅ green |
+| 02-02-T1 | 02-02 | 2 | REQ-exhausted-connect | T-02-02-01, T-02-02-04 | no raw gRPC/Qdrant text, no byte ceiling on the Connect wire; raw error logged once | integration (Connect over httptest + real Qdrant) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/ -run '^TestConnectListMemoriesResponseTooLarge$' -v -count=1` | ✅ | ✅ green |
+| 02-02-T2 | 02-02 | 2 | REQ-exhausted-mcp | T-02-02-02, T-02-02-04 | envelope-only tool result; raw error logged once | integration (MCP in-memory transport + real Qdrant) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/ -run '^TestMCPListMemoryResponseTooLarge$' -v -count=1` | ✅ | ✅ green |
+| 02-02-T2 | 02-02 | 2 | REQ-exhausted-mcp | T-02-02-02 | mapper registered innermost in the one production middleware call | source gate (go/parser) | `go test ./internal/server/ -run '^TestRegisterInstallsToolMiddleware$' -v -count=1` | ✅ | ✅ green |
+| 02-02-T3 | 02-02 | 2 | REQ-exhausted-connect | T-02-02-03 | non-relabeled ResourceExhausted still scrubbed to internal; new code distinct | unit (existing table, extended) | `go test ./internal/server/ -run '^TestConnectError$' -v -count=1` | ✅ | ✅ green |
+| 02-02-T3 | 02-02 | 2 | REQ-exhausted-mcp | T-02-02-05 | every other tool error keeps its exact text (D-09) | unit | `go test ./internal/server/ -run '^TestMapResponseTooLargePassesOtherResultsThrough$' -v -count=1` | ✅ | ✅ green |
+| 02-02-T3 | 02-02 | 2 | REQ-exhausted-connect, REQ-exhausted-mcp | T-02-02-01 | envelope carries no number, no upstream text, no false remedy | unit | `go test ./internal/server/ -run '^TestResponseTooLargeEnvelopeShape$' -v -count=1` | ✅ | ✅ green |
+| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-01 | N/A | CLI command path (stub Connect server) | `go test ./cmd/engram/ -run '^TestExitCodeBaseline$' -v -count=1` | ✅ | ✅ green |
+| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-02 | N/A | unit | `go test ./cmd/engram/ -run '^TestExitCodeTooLargeDistinct$' -v -count=1` | ✅ | ✅ green |
+| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-02 | N/A | unit (existing table, row edited) | `go test ./cmd/engram/ -run '^TestExitCodeForConnectErrTable$' -v -count=1` | ✅ | ✅ green |
+| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-02 | N/A | unit (existing mechanical gate) | `go test ./cmd/engram/ -run '^TestCatalogExitCodesMatchMapper$' -v -count=1` | ✅ | ✅ green |
+| 02-03-T1 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-02 | N/A | unit (existing gate, `wantExitCodes` edited) | `go test ./cmd/engram/ -run '^TestCatalogListsEveryExitCode$' -v -count=1` | ✅ | ✅ green |
+| 02-03-T2 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-01 | N/A | unit (existing distinct-set test, extended) | `go test ./cmd/engram/ -run '^TestClassifyOperatorErrCodesAreDistinct$' -v -count=1` | ✅ | ✅ green |
+| 02-03-T3 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-03 | N/A | doc gate (errors.md vs argerror.go) | `go test ./internal/server/ -run '^TestErrorsDocHintCodesMatchArgErrorConstants$' -v -count=1` | ✅ | ✅ green |
+| 02-03-T3 | 02-03 | 3 | REQ-exhausted-cli-docs | T-02-03-03 | N/A | unit (doc-gate parser self-test) | `go test ./internal/server/ -run '^TestParseHintCodeTable$' -v -count=1` | ✅ | ✅ green |
+| 02-04-T1/T2 | 02-04 | 4 | all four | T-02-04-01..03 | N/A | red-evidence harness (12 confirmed REDs) | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestRedEvidencePatchesAreLive$' -v -count=1 -timeout 30m` | ✅ | ✅ green |
 
 The research-seeded `internal/e2e` `TestCLIExitCodes` row is intentionally dropped: `engram serve`
 dials Qdrant with no named receive limit until Phase 5's REQ-recv-limit-backstop, so a binary-level
@@ -77,11 +77,11 @@ joined at the Connect wire (02-02-T1 real overflow → `resource_exhausted`; 02-
 
 ## Wave 0 Requirements
 
-- [ ] `internal/store/responsetoolarge_oversized_test.go` — real-overflow `Store.List` test (02-01-T1)
-- [ ] `internal/store/responsetoolarge_test.go` — classifier unit, idempotency, concurrency, chain-position tests (02-01-T2)
-- [ ] `internal/server/responsetoolarge_test.go` — Connect-lane and MCP-lane overflow tests, registration gate, pass-through and envelope-shape units (02-02)
-- [ ] `internal/server/hintcodedocs_test.go` — errors.md ↔ `argerror.go` doc gate (02-03-T3)
-- [ ] this phase's `redEvidenceDirs` entry + eight hand-verified patches (02-04)
+- [x] `internal/store/responsetoolarge_oversized_test.go` — real-overflow `Store.List` test (02-01-T1)
+- [x] `internal/store/responsetoolarge_test.go` — classifier unit, idempotency, concurrency, chain-position tests (02-01-T2)
+- [x] `internal/server/responsetoolarge_test.go` — Connect-lane and MCP-lane overflow tests, registration gate, pass-through and envelope-shape units (02-02)
+- [x] `internal/server/hintcodedocs_test.go` — errors.md ↔ `argerror.go` doc gate (02-03-T3)
+- [x] this phase's `redEvidenceDirs` entry + eight hand-verified patches (02-04)
 
 ---
 
@@ -89,7 +89,7 @@ joined at the Connect wire (02-02-T1 real overflow → `resource_exhausted`; 02-
 
 | Behavior | Why manual | Where |
 |----------|------------|-------|
-| Remedy prose in `reference/errors.md`, `guides/cli.md` and `guides/upgrade.md` §14 correctly describes the flags and fields (edge probe row REQ-exhausted-cli-docs was `unclassified`; flagged assumption A-E1) | Prose correctness is not structurally checkable beyond the doc gate's table, count-word, envelope and anchor checks | 02-03-PLAN.md `<surfaced_assumptions>` |
+| Remedy prose in `reference/errors.md`, `guides/cli.md` and `guides/upgrade.md` §14 correctly describes the flags and fields (edge probe row REQ-exhausted-cli-docs was `unclassified`; flagged assumption A-E1) | Prose correctness is not structurally checkable beyond the doc gate's table, count-word, envelope and anchor checks | 02-03-PLAN.md `<surfaced_assumptions>` — observed 2026-09-19 (orchestrator): `limit`/`k`/`full` exist as CLI flags (`client_list.go:122,132`, `client_search.go:110,112`) and MCP args (`tools.go:666-692`); the doc detail string equals `responseTooLargeDetail` verbatim |
 
 Every other phase behavior has automated verification.
 
@@ -97,11 +97,21 @@ Every other phase behavior has automated verification.
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-09-19
+
+## Validation Audit 2026-09-19
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
+
+Orchestrator re-ran every per-task command at HEAD in one `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ ./internal/server/ ./cmd/engram/ -count=1 -v` run: exit 0, 0 top-level `--- FAIL`, all 20 named tests `--- PASS` (none skipped), `TestRedEvidencePatchesAreLive` with 12 `confirmed RED`; `go test ./internal/store/ -run ^TestClassifyResponseTooLarge -race` exit 0, no `DATA RACE`. Post-merge gate `ENGRAM_REQUIRE_QDRANT=1 task` green after the last plan.
