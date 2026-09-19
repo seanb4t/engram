@@ -29,10 +29,10 @@ HTTP 500.
 
 ### Error Surface
 
-- [ ] **REQ-exhausted-sentinel**: `internal/store` classifies a Qdrant response that exceeded the client's receive limit into one typed sentinel, matching both the gRPC `ResourceExhausted` code and the receive-limit message shape, so an unrelated server-capacity `ResourceExhausted` is not relabeled.
-- [ ] **REQ-exhausted-connect**: Connect RPCs return `resource_exhausted` — never `internal` — for that sentinel, carrying a named hint code in the `field=<name> hint=<code>` envelope; the message contains no raw gRPC/Qdrant text and no byte ceiling.
-- [ ] **REQ-exhausted-mcp**: MCP tools return the same named hint envelope for that sentinel through a single MCP-side mapper, rather than each tool closure surfacing the raw error.
-- [ ] **REQ-exhausted-cli-docs**: The `engram` CLI maps the new code to a documented exit code, and the hint code is documented in docs-site `reference/errors.md`.
+- [x] **REQ-exhausted-sentinel**: `internal/store` classifies a Qdrant response that exceeded the client's receive limit into one typed sentinel, matching both the gRPC `ResourceExhausted` code and the receive-limit message shape, so an unrelated server-capacity `ResourceExhausted` is not relabeled.
+- [x] **REQ-exhausted-connect**: Connect RPCs return `resource_exhausted` — never `internal` — for that sentinel, carrying a named hint code in the `field=<name> hint=<code>` envelope; the message contains no raw gRPC/Qdrant text and no byte ceiling.
+- [x] **REQ-exhausted-mcp**: MCP tools return the same named hint envelope for that sentinel through a single MCP-side mapper, rather than each tool closure surfacing the raw error.
+- [x] **REQ-exhausted-cli-docs**: The `engram` CLI maps the new code to a documented exit code, and the hint code is documented in docs-site `reference/errors.md`.
 
 ### Bounded Qdrant Reads
 
@@ -86,10 +86,10 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-oversized-fixture-helper | Phase 1 | Complete |
 | REQ-test-client-parity | Phase 1 | Complete |
 | REQ-ci-store-green | Phase 5 | Pending |
-| REQ-exhausted-sentinel | Phase 2 | Pending |
-| REQ-exhausted-connect | Phase 2 | Pending |
-| REQ-exhausted-mcp | Phase 2 | Pending |
-| REQ-exhausted-cli-docs | Phase 2 | Pending |
+| REQ-exhausted-sentinel | Phase 2 | Complete |
+| REQ-exhausted-connect | Phase 2 | Complete |
+| REQ-exhausted-mcp | Phase 2 | Complete |
+| REQ-exhausted-cli-docs | Phase 2 | Complete |
 | REQ-bounded-read-mechanism | Phase 5 | Pending |
 | REQ-byte-budget-pages | Phase 3 | Pending |
 | REQ-list-bounded | Phase 4 | Pending |

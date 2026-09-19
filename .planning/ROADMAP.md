@@ -380,7 +380,7 @@ Plans:
 3. MCP tools return the same named hint envelope through one shared MCP-side mapper, rather than each tool closure surfacing the raw error.
 4. The `engram` CLI maps the new code to a documented exit code, and the hint code is documented in docs-site `reference/errors.md`.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -397,7 +397,7 @@ Plans:
 
 **Wave 4**
 
-- [ ] 02-04-PLAN.md — this phase's eight red-evidence patches registered in `redEvidenceDirs`, full `task` gate green (all four REQs)
+- [x] 02-04-PLAN.md — this phase's eight red-evidence patches registered in `redEvidenceDirs`, full `task` gate green (all four REQs)
 
 ---
 
