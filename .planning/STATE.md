@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 03
 current_phase_name: Shared Bounded-Read Mechanism & Content Cap Decision
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-09-19T21:02:14.178Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-09-19T21:23:27.593Z"
 last_activity: 2026-09-19
 last_activity_desc: Phase 03 execution started
-state_head: e3d5245f1bb6240063096d5f4f0c301e84f044b9
+state_head: cf16ff6c452580c6c9523aa775e9596eee764781
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 2 of milestone 2026-09
 ## Current Position
 
 Phase: 03 (Shared Bounded-Read Mechanism & Content Cap Decision) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-09-19 — Phase 03 execution started
 
@@ -314,6 +314,9 @@ milestone needs in working memory.
 - [Phase 02]: 02-04: Each of the eight red-evidence patches is the smallest single-statement or single-line mutation that trips exactly its target test while the tree still compiles, matching Phase 1's own mutation-size discipline.
 - [Phase 03]: 03-01: D-01/D-09/D-10 implemented — ENGRAM_MEMORY_MAX_CONTENT_BYTES (65536), ENGRAM_MEMORY_MAX_TAGS (128), ENGRAM_MEMORY_MAX_TAG_BYTES (128) are registry-declared and ALWAYS enforced (0/negative rejected, diverging from MaxSummaryBytes' 0-disables), enforced once in validateStoreArgs shared by store_memory/schedule_memory/supersede_memory on MCP and Connect, reusing the existing too_long/too_many hints.
 - [Phase 03]: D-02/D-06 implemented with rpcByteBudget = pageByteBudget = 2 MiB, yielding perRPCLimit 2 (full view) and 61 (summary view) at DefaultRecordCaps() — scrollAllPoints extended in place with a D-07 batch-of-1 fallback.
+- [Phase 03]: D-09: content-cap check on update lives inside deps.updateMemory itself (not validateUpdateArgs), because Connect's UpdateMemory RPC calls deps.updateMemory directly.
+- [Phase 03]: D-10 gating: tags check on update runs only when the supplied set differs from the stored set (slices.Equal), mirroring D-09's contentChanged precedent.
+- [Phase 03]: D-02/D-09 read-side link: recordCapsFromConfig reuses memoryWriteCapsFromConfig + maxMemorySummaryBytes verbatim rather than a second config parse.
 
 ### Pending Todos
 
@@ -388,8 +391,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-19T21:02:14.152Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-09-19T21:23:27.566Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -533,6 +536,7 @@ Resume file: None
 | Phase 02 P04 | 25min | 2 tasks | 9 files |
 | Phase 03 P01 | 35min | 3 tasks | 10 files |
 | Phase 03 P02 | 25min | 2 tasks | 8 files |
+| Phase 03 P03 | 10min | 3 tasks | 3 files |
 
 ## Operator Next Steps
 

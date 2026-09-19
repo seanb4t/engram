@@ -415,7 +415,7 @@ Plans:
 2. A page ends on an accumulated-byte budget as well as a record count, proven against a fixture of a few very large records that a count-only cap would not catch.
 3. Whether memory `content` gets a size cap is decided and recorded in PROJECT.md Key Decisions; if adopted, a registry-declared `ENGRAM_MEMORY_MAX_CONTENT_BYTES` with a documented default rejects an oversized write on every write path (MCP, Connect, CLI) with a named hint, while existing oversized records stay readable.
 
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 Plans:
 **Wave 1**
@@ -425,7 +425,7 @@ Plans:
 
 **Wave 2**
 
-- [ ] 03-03-PLAN.md — caps inside `deps.updateMemory` (Connect field-mask lane), the legacy over-cap record contract, and the production store deriving its ceilings from the configured caps (D-01, D-07, D-09, D-10; REQ-content-cap-decided, REQ-byte-budget-pages)
+- [x] 03-03-PLAN.md — caps inside `deps.updateMemory` (Connect field-mask lane), the legacy over-cap record contract, and the production store deriving its ceilings from the configured caps (D-01, D-07, D-09, D-10; REQ-content-cap-decided, REQ-byte-budget-pages)
 - [ ] 03-04-PLAN.md — the ordered-page primitive bounded by a measured page budget with tie-safe keyset resume, its recall-gate classification, and the D-08 call-site inventory (D-02..D-05, D-07, D-08; REQ-byte-budget-pages)
 
 **Wave 3**
