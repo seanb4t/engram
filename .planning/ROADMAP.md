@@ -415,7 +415,7 @@ Plans:
 2. A page ends on an accumulated-byte budget as well as a record count, proven against a fixture of a few very large records that a count-only cap would not catch.
 3. Whether memory `content` gets a size cap is decided and recorded in PROJECT.md Key Decisions; if adopted, a registry-declared `ENGRAM_MEMORY_MAX_CONTENT_BYTES` with a documented default rejects an oversized write on every write path (MCP, Connect, CLI) with a named hint, while existing oversized records stay readable.
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -434,7 +434,7 @@ Plans:
 
 **Wave 4**
 
-- [ ] 03-06-PLAN.md — this phase's thirteen red-evidence patches registered in `redEvidenceDirs`, full `task` gate green (both REQs)
+- [x] 03-06-PLAN.md — this phase's thirteen red-evidence patches registered in `redEvidenceDirs`, full `task` gate green (both REQs)
 
 ---
 

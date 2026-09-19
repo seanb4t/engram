@@ -37,7 +37,7 @@ HTTP 500.
 ### Bounded Qdrant Reads
 
 - [ ] **REQ-bounded-read-mechanism**: Every full-payload Qdrant read in `internal/store` goes through one shared bounded-read mechanism — an ordered-page helper for `List`-shaped reads and a byte-budget extension of `scrollAllPoints` for sweeps. An inventory of every `WithPayload(true)` / unbounded `Scroll` / `ScrollAndOffset` / `Query` site is recorded, and each site is migrated or its exemption justified; the recall-gate AST test's classifications are updated in the same change.
-- [ ] **REQ-byte-budget-pages**: Pages end on an accumulated-byte budget as well as a record count, so a page of a few very large records stays under the receive limit.
+- [x] **REQ-byte-budget-pages**: Pages end on an accumulated-byte budget as well as a record count, so a page of a few very large records stays under the receive limit.
 - [ ] **REQ-list-bounded**: `Store.List` succeeds — or fails with the named error — against a scope whose payloads exceed the receive limit, in every mode: offset `limit: 0`, deep offset, and cursor pages; reachable through MCP `list_memory`, Connect `ListMemories`, the console, and `engram list`. GitHub #585.
 - [ ] **REQ-list-scheduled-bounded**: `list_scheduled` with a large explicit limit stays under the receive limit.
 - [ ] **REQ-search-k-bounded**: `search_memory` and `search_discovery` coerce `k` down to a documented server-side maximum, and their full-payload results stay under the receive limit.
@@ -47,7 +47,7 @@ HTTP 500.
 
 ### Decisions (resolved in discuss-phase)
 
-- [ ] **REQ-content-cap-decided**: Whether memory `content` gets a size cap is decided and recorded in PROJECT.md Key Decisions. If adopted, a registry-declared `ENGRAM_MEMORY_MAX_CONTENT_BYTES` with a documented default rejects an oversized write on every write path (MCP, Connect, CLI) with a named hint, and existing oversized records stay readable.
+- [x] **REQ-content-cap-decided**: Whether memory `content` gets a size cap is decided and recorded in PROJECT.md Key Decisions. If adopted, a registry-declared `ENGRAM_MEMORY_MAX_CONTENT_BYTES` with a documented default rejects an oversized write on every write path (MCP, Connect, CLI) with a named hint, and existing oversized records stay readable.
 - [ ] **REQ-list-limit-contract-decided**: Whether Connect `ListMemories` keeps `limit: 0` = all with numeric offset paging (bounded internally) or moves to a hard cap plus cursor paging in the console and `engram list` is decided and recorded in PROJECT.md Key Decisions; the chosen contract is implemented and documented, and any wire-visible change is additive or explicitly called out as breaking.
 
 ### Cross-Spine Recall
@@ -91,14 +91,14 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-exhausted-mcp | Phase 2 | Complete |
 | REQ-exhausted-cli-docs | Phase 2 | Complete |
 | REQ-bounded-read-mechanism | Phase 5 | Pending |
-| REQ-byte-budget-pages | Phase 3 | Pending |
+| REQ-byte-budget-pages | Phase 3 | Complete |
 | REQ-list-bounded | Phase 4 | Pending |
 | REQ-list-scheduled-bounded | Phase 4 | Pending |
 | REQ-search-k-bounded | Phase 4 | Pending |
 | REQ-sweeps-bounded | Phase 5 | Pending |
 | REQ-list-contract-unchanged | Phase 4 | Pending |
 | REQ-recv-limit-backstop | Phase 5 | Pending |
-| REQ-content-cap-decided | Phase 3 | Pending |
+| REQ-content-cap-decided | Phase 3 | Complete |
 | REQ-list-limit-contract-decided | Phase 4 | Pending |
 | REQ-cross-spine-partial | Phase 6 | Pending |
 | REQ-provider-drain-bounded | Phase 7 | Pending |
