@@ -45,6 +45,9 @@ closes in Phase 5).
   the user chose this exact option in discuss-phase (2026-09-19) — do not insert a checkpoint to
   re-ask.
 
+- **D-09 (plan-time, user-confirmed 2026-09-19):** `ENGRAM_MEMORY_MAX_CONTENT_BYTES` is ALWAYS enforced — config validation rejects `0` and non-positive values (a deliberate, documented divergence from `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`'s `0 disables` escape hatch), because D-02 derives the per-RPC record count from this cap and a disabled cap would silently remove the provable bound. The content check lives where EVERY lane reaches it — including inside `deps.updateMemory` (gated on `contentChanged`), since Connect's `UpdateMemory` bypasses `validateUpdateArgs` (RESEARCH finding; same shape as #360). — **Reversibility:** one-way (user-chosen; do not re-gate).
+- **D-10 (plan-time, user-confirmed 2026-09-19):** Cap memory `tags` in THIS phase (same failure class as content): registry-declared `ENGRAM_MEMORY_MAX_TAGS` (default **128**) and `ENGRAM_MEMORY_MAX_TAG_BYTES` (default **128**), always enforced and > 0, on every memory write path that accepts tags (store/schedule/supersede/update, MCP + Connect + CLI), rejected with the EXISTING hints — `field=tags hint=too_many` (count) and `field=tags hint=too_long` (a tag's bytes). Defaults give ~2x headroom over this repo's heaviest real records (~60 tags of ~60 bytes). Existing records stay readable. The tag bound (16 KiB) folds into `maxRecordBytes`, making the per-record ceiling fully provable. Document both variables beside the content cap. — **Reversibility:** one-way (user-chosen; do not re-gate).
+
 ### Byte-budget mechanism (REQ-byte-budget-pages)
 
 - **D-02:** Pages end on an accumulated-byte budget AS WELL AS a record count, built as **small
@@ -53,8 +56,9 @@ closes in Phase 5).
   can overflow; the logical page accumulates the MEASURED bytes of what it received and stops at
   the page byte budget or the record limit, whichever comes first. `maxRecordBytes` must be the
   TRUE per-record payload ceiling under the caps (content cap + summary cap + citations bound
-  (count × excerpt cap) + tags + every other payload field + protobuf overhead) — research must
-  derive it from the actual schema, not assume content dominates.
+  (count × excerpt cap) + tags bound (D-10) + every other payload field + protobuf overhead),
+  derived PER VIEW — summary view (content and citations projected out) vs full/sweep view
+  (citations dominate: 50 × 16 KiB ≈ 800 KiB) — per 03-RESEARCH.md.
 - **D-03:** Two primitives, both in `internal/store`:
   1. an **ordered-page helper** for `List`-shaped reads (OrderBy `created_at`), generalizing
      `listByCursor`'s existing keyset paging (`created_at` `start_from` + boundary-id `seen` set) so
