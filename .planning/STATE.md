@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 4
 current_phase_name: List, ListScheduled & Search Bounded Reads
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-09-20T05:30:57.789Z"
-last_activity: 2026-09-19
-last_activity_desc: Phase 03 complete, transitioned to Phase 4
-state_head: 1832bdec12e423325959ce83aadacc6cb2a6223d
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-09-20T05:55:57.526Z"
+last_activity: 2026-09-20
+last_activity_desc: Phase 4 execution started
+state_head: df54df9bd059bd608b160e194d3faf1b7f1d15b8
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 23
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 
 ## Current Position
 
-Phase: 4 (List, ListScheduled & Search Bounded Reads) — READY TO EXECUTE
-Plan: Not started
+Phase: 4 (List, ListScheduled & Search Bounded Reads) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-09-19 — Phase 03 complete, transitioned to Phase 4
+Last activity: 2026-09-20 — Phase 4 execution started
 
 ## Deferred Items
 
@@ -319,6 +319,8 @@ milestone needs in working memory.
 - [Phase 03]: D-02/D-09 read-side link: recordCapsFromConfig reuses memoryWriteCapsFromConfig + maxMemorySummaryBytes verbatim rather than a second config parse.
 - [Phase 03]: 03-05: CLI proof closes REQ-content-cap-decided's last unexercised lane; decision A recorded in PROJECT.md Key Decisions; CLAUDE.md and the curating-memory skill state the content/tags bounds beside the summary bound.
 - [Phase 03]: 03-06: Thirteen Phase 3 red-evidence patches registered (D-01/D-02/D-03/D-07/D-09/D-10); TestRedEvidencePatchesAreLive confirms 25 REDs (Phase 1's four, Phase 2's eight, Phase 3's thirteen); the runtime contingency's per-package narrowing did not fire (111s default-timeout run, well under go test's 10-minute default). Phase 3 closes with task fully green.
+- [Phase 4]: D-11 executed: HintTooLarge renamed to HintResponseTooLarge (wire value too_large -> response_too_large); Connect resource_exhausted and CLI exit 10 unchanged.
+- [Phase 4]: D-10 executed: HintOutOfRange added and classified classMalformed (Connect invalid_argument, CLI exit 2) by explicit decision, not classOutOfRange.
 
 ### Pending Todos
 
@@ -393,9 +395,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T00:50:03.278Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-list-listscheduled-search-bounded-reads/04-CONTEXT.md
+Last session: 2026-09-20T05:55:57.497Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -542,6 +544,7 @@ Resume file: .planning/phases/04-list-listscheduled-search-bounded-reads/04-CONT
 | Phase 03 P04 | 38min | 3 tasks | 5 files |
 | Phase 03 P05 | 20min | 3 tasks | 10 files |
 | Phase 03 P06 | 20min | 2 tasks | 14 files |
+| Phase 04 P01 | 22min | 2 tasks | 10 files |
 
 ## Operator Next Steps
 

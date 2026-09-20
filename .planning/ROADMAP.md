@@ -454,12 +454,12 @@ Plans:
 4. `total`, `next_cursor` (empty = last page), result ordering, and recall gating are unchanged by the new batching, and a page cut short by the byte budget is never reported as the last page.
 5. Whether Connect `ListMemories` keeps `limit: 0` = all with numeric offset paging or moves to a hard cap plus cursor paging is decided and recorded in PROJECT.md Key Decisions; the chosen contract is implemented and documented, and any wire-visible change is additive or explicitly called out as breaking.
 
-**Plans:** 8 plans
+**Plans:** 1/8 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — the `out_of_range` hint added and the overflow hint renamed to `response_too_large` across source, docs and Phase 2's red evidence (D-10, D-11)
+- [x] 04-01-PLAN.md — the `out_of_range` hint added and the overflow hint renamed to `response_too_large` across source, docs and Phase 2's red evidence (D-10, D-11)
 
 **Wave 2**
 
