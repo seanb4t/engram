@@ -534,16 +534,12 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 		justification: "Emits Count (store.go:2983). D-16 operator command (`engram migrate-remap-owner`); same Phase 3 rationale.",
 	},
 	{
-		enclosingFunc: "Store.Reindex",
-		justification: "Emits ScrollAndOffset (store.go:3199). D-16 operator command (`engram reindex`). Plan 02-01 already corrected Reindex's doc comment: its per-point write copies the source payload map verbatim and never advances schema_version, and its scroll read is likewise outside the recall boundary.",
-	},
-	{
 		enclosingFunc: "Store.Migrate",
 		justification: "Emits Count (internal/store/migrate.go), against backlogFilter. As of Phase 5, its three former ScrollAndOffset loops (DryRun projection, Manifest-limited apply, default sweep-mode pass) all route through Store.scrollAllPoints instead (already classified below) — Migrate itself no longer emits ScrollAndOffset directly. D-16 operator command — Phase 3's migration sweep must be able to filter/count by schema_version to find its own backlog, so a blanket ban across every Qdrant query in this package would make Phase 3 unimplementable. backlogFilter is never reachable from any recallEntryPointSeeds member.",
 	},
 	{
 		enclosingFunc: "Store.scrollAllPoints",
-		justification: "Emits ScrollAndOffset (spine.go:49). The package's ONE shared paginated whole-spine iterator, behind ScanSpine/EnumerateCitations/NearDuplicates/derivePurgeEligible/previewRevertWithSteps and, as of Phase 5, Store.Migrate's three former loops (DryRun projection, Manifest-limited apply, default sweep-mode pass) and Store.revertWithSteps' own former pass-mode loop — all operator-tier today. This entry buys something specific: if a future recall path ever routes through it, reachability pulls it into the reachable set, it stops matching this entry, and the suite goes RED.",
+		justification: "Emits ScrollAndOffset (spine.go:49). The package's ONE shared paginated whole-spine iterator, behind ScanSpine/EnumerateCitations/NearDuplicates/derivePurgeEligible/previewRevertWithSteps and, as of Phase 5, Store.Migrate's three former loops (DryRun projection, Manifest-limited apply, default sweep-mode pass), Store.revertWithSteps' own former pass-mode loop, Store.SummarizeMissing's former sweep, and Store.Reindex's former walk over its effective source collection — all operator-tier today. This entry buys something specific: if a future recall path ever routes through it, reachability pulls it into the reachable set, it stops matching this entry, and the suite goes RED.",
 	},
 	{
 		enclosingFunc: "Store.CountExpired",

@@ -3333,6 +3333,20 @@ type ReindexResult struct {
 // reindexBatch is the default scroll page size when ReindexOptions.Batch is 0.
 const reindexBatch = 256
 
+// errReindexPageFull is a control-flow marker Reindex's page-accumulator
+// flush closure (flushReindexPage) returns when it just flushed a FULL page
+// (the closure-scoped accumulator reached batch) — distinguishing that call
+// site from the trailing, possibly-partial flush after the shared iterator
+// exhausts the source — never a failure. It is produced and unwrapped with
+// errors.Is right where it is returned, inside the scrollAllPoints callback,
+// and never crosses scrollAllPoints itself: a callback error always halts
+// the walk outright (spine.go:88-94), so a page-full condition must never
+// escape the callback the way it does — the callback swallows this marker
+// and always returns nil so the walk continues over the remaining source
+// points. Never shared with any other sweep's sentinel — each sweep's
+// early-stop or batch-boundary reason is declared separately.
+var errReindexPageFull = errors.New("reindex: page accumulator full")
+
 // Reindex re-embeds every point in the source collection (opts.Source, or
 // s.collection when unset) into a
 // new Target collection, enabling a migration to an embedder with a different
@@ -3442,21 +3456,25 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		}
 	}
 
-	var offset *qdrant.PointId
-	for {
-		var pts []*qdrant.RetrievedPoint
-		var next *qdrant.PointId
-		pts, next, err = s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: source,
-			Limit:          qdrant.PtrOf(batch),
-			Offset:         offset,
-			WithPayload:    qdrant.NewWithPayload(true),
-			WithVectors:    qdrant.NewWithVectors(false),
-		})
-		if err != nil {
-			return res, fmt.Errorf("reindex: scroll source: %w", err)
+	// flushReindexPage runs the resume lookup (page-batched: one
+	// reindexTargetContents call per accumulated page, never per record —
+	// T-05-04-03) with its dry-run CollectionExists guard, followed by the
+	// per-point embed/skip/upsert body, over the currently accumulated
+	// page held in the closure-scoped `page` slice below, then clears it.
+	// Called from both the mid-scan threshold branch inside the
+	// scrollAllPoints callback (full=true) and the trailing,
+	// possibly-partial flush after the iterator exhausts (full=false) — so
+	// there is exactly ONE copy of this body; a second copy is the drift
+	// this file's own dry-run predicate comment already warns about. The
+	// trailing flush matters: a walk that returned with records still in
+	// the accumulator would silently drop them (T-05-04-04).
+	var page []*qdrant.RetrievedPoint
+	var reindexFlushes int
+	flushReindexPage := func(full bool) error {
+		if len(page) == 0 {
+			return nil
 		}
-		// Resume: fetch this batch's ids from the target once so a point already
+		// Resume: fetch this page's ids from the target once so a point already
 		// embedded with identical content and tags (AND a matching stamped
 		// identity) can be skipped (engram-irhg; identity-awareness per Phase 13
 		// SC3 review; tag-awareness per #345, D-07..D-12). One Get per page keeps
@@ -3475,19 +3493,21 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 			// dry run promises not to cross.
 			lookup := true
 			if opts.DryRun {
-				lookup, err = s.client.CollectionExists(ctx, opts.Target)
-				if err != nil {
-					return res, fmt.Errorf("reindex: check target %q: %w", opts.Target, err)
+				var lerr error
+				lookup, lerr = s.client.CollectionExists(ctx, opts.Target)
+				if lerr != nil {
+					return fmt.Errorf("reindex: check target %q: %w", opts.Target, lerr)
 				}
 			}
 			if lookup {
-				targetInfo, err = s.reindexTargetContents(ctx, opts.Target, pts)
-				if err != nil {
-					return res, fmt.Errorf("reindex: resume lookup in %q: %w", opts.Target, err)
+				var terr error
+				targetInfo, terr = s.reindexTargetContents(ctx, opts.Target, page)
+				if terr != nil {
+					return fmt.Errorf("reindex: resume lookup in %q: %w", opts.Target, terr)
 				}
 			}
 		}
-		for _, p := range pts {
+		for _, p := range page {
 			res.Scanned++
 			m := fromPayload(p.Id.GetUuid(), p.Payload)
 			content := m.Content
@@ -3528,12 +3548,11 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				res.WouldUpsert++
 				continue
 			}
-			var vec []float32
 			// Embed content + tags (EmbedText) so a re-embed folds curated tags
 			// into the vector exactly as the store path does.
-			vec, err = embed(ctx, EmbedText(m.Content, m.Tags))
-			if err != nil {
-				return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
+			vec, eerr := embed(ctx, EmbedText(m.Content, m.Tags))
+			if eerr != nil {
+				return fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), eerr)
 			}
 			if opts.Identity != "" {
 				// The one intentional additive exception to the verbatim-payload
@@ -3541,7 +3560,7 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				// Memory/payload() round-trip (see the Reindex doc comment).
 				p.Payload[embedderIdentityKey] = qdrant.NewValueString(opts.Identity)
 			}
-			if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
+			if _, uerr := s.client.Upsert(ctx, &qdrant.UpsertPoints{
 				CollectionName: opts.Target,
 				Wait:           qdrant.PtrOf(true),
 				Points: []*qdrant.PointStruct{{
@@ -3549,19 +3568,55 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 					Vectors: qdrant.NewVectors(vec...),
 					Payload: p.Payload,
 				}},
-			}); err != nil {
-				return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
+			}); uerr != nil {
+				return fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, uerr)
 			}
 			res.Upserted++
 		}
-		// Surface running totals after each scanned page (engram-xddn).
+		page = page[:0]
+		// Surface running totals after each flushed page (engram-xddn).
 		if opts.Progress != nil {
 			opts.Progress(res)
 		}
-		if next == nil {
-			break
+		if full {
+			reindexFlushes++
+			return errReindexPageFull
 		}
-		offset = next
+		return nil
+	}
+
+	// This walk reads through the shared byte-budget iterator over the
+	// EFFECTIVE source collection (source, never s.collection
+	// unconditionally — T-05-04-01) instead of a hand-rolled
+	// batch-sized ScrollAndOffset loop. reindexTargetContents needs the
+	// FULL page's points at once (one Get per PAGE, not per record), which
+	// is incompatible with scrollAllPoints' per-record callback shape
+	// unless the callback accumulates a page-sized batch itself — exactly
+	// what `page` and flushReindexPage do above. A callback error always
+	// halts scrollAllPoints outright (spine.go:88-94, "a callback error
+	// propagates out of scrollAllPoints unchanged"), so a page-full
+	// condition must never escape this callback: errReindexPageFull is
+	// produced and consumed right here, purely to count full-page flushes,
+	// and the callback always returns nil afterward so the scan continues
+	// over the remaining source points.
+	scanErr := s.scrollAllPoints(ctx, source, nil, s.fullView(), func(p *qdrant.RetrievedPoint) error {
+		page = append(page, p)
+		if uint32(len(page)) < batch {
+			return nil
+		}
+		if ferr := flushReindexPage(true); ferr != nil && !errors.Is(ferr, errReindexPageFull) {
+			return ferr
+		}
+		return nil
+	})
+	if scanErr != nil {
+		err = scanErr
+		return res, err
+	}
+	// Flush the trailing, possibly-partial final page.
+	if ferr := flushReindexPage(false); ferr != nil {
+		err = ferr
+		return res, err
 	}
 	return res, nil
 }
