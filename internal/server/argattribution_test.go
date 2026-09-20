@@ -6,11 +6,14 @@ package server
 import (
 	"context"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+
+	"github.com/seanb4t/engram/internal/store"
 )
 
 // TestValidationErrorAttributionMatrix is criterion 2's central verification
@@ -224,6 +227,37 @@ func TestValidationErrorAttributionMatrix(t *testing.T) {
 			assertEnvelope(t, err, tc.want.fields, tc.want.hint)
 		})
 	}
+
+	// --- rejectOverMaximumCount (D-10, plan 04-06): one list row, one search
+	// row. Both run against a REAL Qdrant-backed *deps (testDeps), not a
+	// zero-value one: the whole point of these rows is to prove the
+	// rejection fires BEFORE the store/embed call is reached, so the row
+	// must be able to reach that call (and fail loudly with a nil-pointer
+	// panic, not a clean assertion failure) if the rejection is ever
+	// missing — a zero-value *deps here would confuse "the check is doing
+	// its job" with "there is nothing behind it to call."
+	overMaxCases := []struct {
+		name string
+		run  func(t *testing.T) error
+		want wantEnvelope
+	}{
+		{"list_memory_limit_over_maximum", func(t *testing.T) error {
+			d := testDeps(t)
+			_, err := d.listMemory(context.Background(), caller{}, coreListRequest{Scope: "tool:project:x", Limit: store.MaxRecallLimit + 1})
+			return err
+		}, wantEnvelope{[]string{"limit"}, HintOutOfRange}},
+		{"search_memory_k_over_maximum", func(t *testing.T) error {
+			d := testDeps(t)
+			_, err := d.searchMemory(context.Background(), caller{}, coreSearchRequest{Scope: "tool:project:x", Query: "q", K: store.MaxRecallLimit + 1})
+			return err
+		}, wantEnvelope{[]string{"k"}, HintOutOfRange}},
+	}
+	for _, tc := range overMaxCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			assertEnvelope(t, tc.run(t), tc.want.fields, tc.want.hint)
+		})
+	}
 }
 
 // assertEnvelope asserts err is non-nil FIRST (guarding the vacuous-row
@@ -338,6 +372,21 @@ func TestHintNeverEchoesValue(t *testing.T) {
 		a := storeArgs{Content: "c", Scope: "s", Source: "src", Category: "decision", Tags: []string{tag}}
 		err := validateStoreArgs(a, 512, memoryWriteCaps{})
 		assertNoEcho(t, err)
+	})
+
+	// recall_count_over_maximum_no_echo (D-10, plan 04-06, T-04-06-02): the
+	// rejection message states the field and the documented maximum, but
+	// must never echo the caller's own rejected count.
+	t.Run("recall_count_over_maximum_no_echo", func(t *testing.T) {
+		overVal := uint64(store.MaxRecallLimit + 424242)
+		d := testDeps(t)
+		_, err := d.listMemory(context.Background(), caller{}, coreListRequest{Scope: "tool:project:x", Limit: overVal})
+		if err == nil {
+			t.Fatalf("expected a non-nil error, got nil")
+		}
+		if strings.Contains(err.Error(), strconv.FormatUint(overVal, 10)) {
+			t.Errorf("err.Error() = %q contains the rejected value %d", err.Error(), overVal)
+		}
 	})
 }
 

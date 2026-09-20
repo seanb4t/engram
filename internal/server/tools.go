@@ -1618,6 +1618,38 @@ type coreSearchRequest struct {
 	IncludeScheduled  bool
 }
 
+// rejectOverMaximumCount is the published wire-boundary rejection for D-10: a
+// recall count (a list `limit` or a search `k`) above store.MaxRecallLimit is
+// refused by NAME, before any downstream work — scope resolution, the embed
+// call, or the store call — never silently clamped. It is called as the
+// FIRST count validation in each of the four shared core methods below
+// (deps.listMemory, deps.listScheduled, deps.searchMemory,
+// deps.searchDiscovery), which is every surface named in D-02's own
+// enumeration; no per-handler duplicate check is needed anywhere else. A
+// count of zero is never rejected here — it is each surface's own signal to
+// apply its documented default (D-08), resolved by the caller after this
+// check runs.
+//
+// store.MaxRecallLimit's own rejectOverMaximum stays wired as a backstop
+// (internal/store/store.go) — this is the boundary that actually stops a
+// caller before it costs anything, and the store's copy exists only to
+// guard any future recall entry point that bypasses this one.
+//
+// Classified classMalformed (Connect invalid_argument, CLI exit 2) BY
+// DECISION, per HintOutOfRange's own doc comment (argerror.go) — not
+// classOutOfRange, even though that class exists and reads closer: D-10
+// locks this classification and both classes already group under the CLI's
+// usage exit. Do not repoint this at classOutOfRange.
+func rejectOverMaximumCount(field string, count uint64) error {
+	// Named once so the number is never re-literalled at either use site
+	// below (the comparison and the message).
+	const max = store.MaxRecallLimit
+	if count <= max {
+		return nil
+	}
+	return argErrf(classMalformed, HintOutOfRange, field, "%s exceeds the maximum of %d", field, max)
+}
+
 // listMemory returns a page of the caller's readable records in scope on the
 // transport-neutral typed core contract (D-07): every Connect list field
 // (offset/categories/visibility/exact total/cursor/cursor_mode) survives the
@@ -1627,6 +1659,9 @@ type coreSearchRequest struct {
 // means "all", CursorMode carried from the request) before calling here
 // (round-3 HIGH-2, round-4 finding-7).
 func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (coreListResult, error) {
+	if err := rejectOverMaximumCount("limit", req.Limit); err != nil {
+		return coreListResult{}, err
+	}
 	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
 	if err != nil {
 		return coreListResult{}, err
@@ -1657,6 +1692,9 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 	// (list_scheduled has no Connect RPC — MCP-only).
 	if a.Scope == "" {
 		return nil, argErrf(classMalformed, HintRequired, "scope", "scope is required")
+	}
+	if err := rejectOverMaximumCount("limit", a.Limit); err != nil {
+		return nil, err
 	}
 	if a.Limit == 0 {
 		a.Limit = 20
@@ -1705,6 +1743,9 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 	// SearchMemories both build coreSearchRequest before calling here).
 	if req.Query == "" {
 		return nil, argErrf(classMalformed, HintRequired, "query", "query is required")
+	}
+	if err := rejectOverMaximumCount("k", req.K); err != nil {
+		return nil, err
 	}
 	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
 	if err != nil {
@@ -1834,6 +1875,9 @@ func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryA
 	// calling here).
 	if a.Query == "" {
 		return nil, argErrf(classMalformed, HintRequired, "query", "query is required")
+	}
+	if err := rejectOverMaximumCount("k", a.K); err != nil {
+		return nil, err
 	}
 	scope, err := effectiveDiscoveryScope(a)
 	if err != nil {
