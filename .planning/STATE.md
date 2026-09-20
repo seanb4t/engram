@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 4
 current_phase_name: List, ListScheduled & Search Bounded Reads
 status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-09-20T08:36:12.390Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-09-20T09:25:24.297Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 4 execution started
-state_head: 425cd9fc0a9c156b0074c8e79c33e4b503920d78
+state_head: bb3fc7700e4046d8c1e34d4a0b9cb78dc2d8af31
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 23
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (List, ListScheduled & Search Bounded Reads) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 4 execution started
 
@@ -328,6 +328,9 @@ milestone needs in working memory.
 - [Phase 4]: Plan 04-03: collectOrderedPages narrowed to (items, err) after task lint's unparam flagged the dead next/exhausted returns once ListScheduled became a second real caller.
 - [Phase 04]: Plan 04-04: D-09 executed - two-phase search adopted for Store.Search/SearchReranked/SearchDiscovery only, never List; the caller holds ranking and the identical filter is re-applied on fetch. — List's TOCTOU/GetPoints-order concerns do not apply to search, since the fetch phase never reorders and always re-applies the same filter the query used.
 - [Phase 04]: Plan 04-04: SearchReranked forces Full=true unconditionally on its delegated Search call; SearchDiscovery's fetch always uses the full view (no discovery surface exposes a full flag). — The lexical reranker scores against content for every candidate and candidateK clamps the pool at 100, so the fetch view is fixed by an internal consumer, not the caller; no discovery wire contract has a projection knob to honor.
+- [Phase 04]: Plan 04-05: recallView/isSummaryView route only Store.List's projection selection; Store.Search's own pre-existing (04-04) inline summaryView/fullView selection was left untouched per the plan's own action text.
+- [Phase 04]: Plan 04-05: Rule 2 fix - wired ListOptions.Full/coreListRequest.Full through Connect ListMemories and MCP list_memory; without it full=true silently returned empty citations once List's default fetch became summary-shaped.
+- [Phase 04]: Plan 04-05: rejectOverMaximum (D-10) wired as the FIRST validation in List/ListScheduled/Search/SearchDiscovery; listByCursor's silent clamp to MaxRecallLimit deleted, replaced by refusal. SearchReranked needs no call of its own (candidateK(k) bounds it already).
 
 ### Pending Todos
 
@@ -402,8 +405,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T08:36:12.360Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-09-20T09:25:01.344Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -555,6 +558,7 @@ Resume file: None
 | Phase 04 P02 | 51min | 3 tasks | 13 files |
 | Phase 04 P03 | 40min | 2 tasks | 6 files |
 | Phase 04 P04 | 35min | 2 tasks | 5 files |
+| Phase 04 P05 | 40min | 2 tasks | 11 files |
 
 ## Operator Next Steps
 
