@@ -281,12 +281,12 @@
     {
       "number": "5",
       "name": "Operator Sweeps & CI Backstop",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "6",
       "name": "Cross-Spine Partial Results",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "7",
@@ -297,7 +297,7 @@
   "next": {
     "command": "/gsd:progress --next",
     "label": "Advance to the next step",
-    "reason": "Phase 5 of 7 · executing"
+    "reason": "Phase 6 of 7 · executing"
   },
-  "updated_at": "2026-09-20T19:08:04.657Z"
+  "updated_at": "2026-09-20T21:51:58.699Z"
 }
