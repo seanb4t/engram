@@ -4,17 +4,17 @@ milestone: 2026-09-18.01
 milestone_name: Bounded Reads
 current_phase: 4
 current_phase_name: List, ListScheduled & Search Bounded Reads
-status: executing
-stopped_at: Completed 04-07-PLAN.md
-last_updated: "2026-09-20T10:43:13.355Z"
+status: verifying
+stopped_at: Completed 04-08-PLAN.md — phase 4 closed
+last_updated: "2026-09-20T11:31:08.878Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 4 execution started
-state_head: 76428575df6be337543ba4680dbd343f27c93fda
+state_head: 2dcfb0a3d2ef4b4bed010cd107719461d02f437d
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 23
-  completed_plans: 22
+  completed_plans: 23
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 
 Phase: 4 (List, ListScheduled & Search Bounded Reads) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-20 — Phase 4 execution started
 
 ## Deferred Items
@@ -334,6 +334,7 @@ milestone needs in working memory.
 - [Phase 04]: list_rules threads a.Full into its direct Store.List call (the one caller outside the typed core), closing 04-RESEARCH Pattern 6's last unwired gap — 04-05 already wired coreListRequest.Full through Connect ListMemories and MCP list_memory; the rule listing bypasses the typed core entirely and would silently regress to summary-shaped full=true reads without its own thread
 - [Phase 04]: rejectOverMaximumCount added as the published D-10 wire-boundary rejection, called first in all four shared core methods, ahead of scope resolution and the embed call — Store's own rejectOverMaximum (04-05) is a backstop; the server boundary is what actually stops a caller before it costs anything and is what carries the field=<f> hint=out_of_range envelope
 - [Phase 04]: Decision B recorded in PROJECT.md: one documented maximum (1000) for every recall count knob; Connect ListMemories' limit:0 now resolves to that maximum (was unbounded "all"); an over-maximum count is rejected, never clamped, via a new out_of_range hint (2026-09-18.01 Phase 4, D-01/D-02/D-03/D-10)
+- [Phase 4]: Phase 4 closed: seventeen registered red-evidence patches confirm 42 REDs; the plan's own no-op zero-limit mutation was replaced with the historically-accurate unbounded-Scroll revert recovered from git history; five requirements ticked against verified intent (13 total, not the plan's miscounted 12).
 
 ### Pending Todos
 
@@ -409,8 +410,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T10:43:13.324Z
-Stopped at: Completed 04-07-PLAN.md
+Last session: 2026-09-20T11:31:08.848Z
+Stopped at: Completed 04-08-PLAN.md — phase 4 closed
 Resume file: None
 
 ## Performance Metrics
@@ -565,6 +566,7 @@ Resume file: None
 | Phase 04 P05 | 40min | 2 tasks | 11 files |
 | Phase 04 P06 | ~35min | 3 tasks | 6 files |
 | Phase 04 P07 | ~25min | 3 tasks | 14 files |
+| Phase 04 P08 | 65min | 3 tasks | 21 files |
 
 ## Operator Next Steps
 

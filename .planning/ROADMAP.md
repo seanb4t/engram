@@ -454,7 +454,7 @@ Plans:
 4. `total`, `next_cursor` (empty = last page), result ordering, and recall gating are unchanged by the new batching, and a page cut short by the byte budget is never reported as the last page.
 5. Whether Connect `ListMemories` keeps `limit: 0` = all with numeric offset paging or moves to a hard cap plus cursor paging is decided and recorded in PROJECT.md Key Decisions; the chosen contract is implemented and documented, and any wire-visible change is additive or explicitly called out as breaking.
 
-**Plans:** 7/8 plans executed
+**Plans:** 8/8 plans executed
 
 Plans:
 **Wave 1**
@@ -484,7 +484,7 @@ Plans:
 
 **Wave 7**
 
-- [ ] 04-08-PLAN.md — this phase's seventeen red-evidence patches registered, the five requirements marked complete, full `task` gate green (all five REQs)
+- [x] 04-08-PLAN.md — this phase's seventeen red-evidence patches registered, the five requirements marked complete, full `task` gate green (all five REQs)
 
 ---
 
