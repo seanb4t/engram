@@ -41,6 +41,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/qdrant/go-client/qdrant"
@@ -91,6 +92,15 @@ func includeIDs(f *qdrant.Filter, ids []string) *qdrant.Filter {
 // by walking its OWN returned id order, never this map's iteration order.
 // An id absent from every batch's response is simply absent from the
 // returned map — the drop-on-disappear semantics, not an error.
+//
+// Each batch carries the same D-07 batch-of-1 legacy-oversized-record
+// fallback scrollOrderedPage (orderedpage.go) and scrollAllPoints
+// (boundedread.go) both implement: when a batch's Scroll fails with
+// ErrResponseTooLarge and the batch held more than one id, fetchPayloadBatch
+// retries every id in that batch individually at Limit: 1, isolating the
+// single oversized record so the rest of the batch — and every other
+// batch — still succeeds. Only a single id's own Scroll still overflowing
+// at Limit: 1 propagates the error.
 func (s *Store) fetchPayloadsByID(ctx context.Context, f *qdrant.Filter, view readView, ids []string) (map[string]Memory, error) {
 	if len(ids) == 0 {
 		return map[string]Memory{}, nil
@@ -106,22 +116,43 @@ func (s *Store) fetchPayloadsByID(ctx context.Context, f *qdrant.Filter, view re
 		if end > len(ids) {
 			end = len(ids)
 		}
-		batch := ids[start:end]
-		pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
-			CollectionName: s.collection,
-			Filter:         includeIDs(f, batch),
-			Limit:          qdrant.PtrOf(uint32(len(batch))),
-			WithPayload:    view.selector,
-		})
-		if err != nil {
+		if err := s.fetchPayloadBatch(ctx, f, view, ids[start:end], out); err != nil {
 			return nil, err
-		}
-		for _, p := range pts {
-			id := p.Id.GetUuid()
-			out[id] = fromPayload(id, p.Payload)
 		}
 	}
 	return out, nil
+}
+
+// fetchPayloadBatch fetches batch's payloads in one Scroll and merges them
+// into out (keyed by id). On ErrResponseTooLarge with len(batch) > 1 — a
+// legacy pre-cap record somewhere in the batch exceeding view's assumed
+// per-record ceiling — it retries every id in batch individually at
+// Limit: 1 (the D-07 batch-of-1 fallback), so one oversized record cannot
+// fail its neighbors. A single id whose own Scroll still overflows at
+// Limit: 1 returns that named ErrResponseTooLarge to the caller.
+func (s *Store) fetchPayloadBatch(ctx context.Context, f *qdrant.Filter, view readView, batch []string, out map[string]Memory) error {
+	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: s.collection,
+		Filter:         includeIDs(f, batch),
+		Limit:          qdrant.PtrOf(uint32(len(batch))),
+		WithPayload:    view.selector,
+	})
+	if err != nil {
+		if len(batch) > 1 && errors.Is(err, ErrResponseTooLarge) {
+			for _, id := range batch {
+				if fbErr := s.fetchPayloadBatch(ctx, f, view, []string{id}, out); fbErr != nil {
+					return fbErr
+				}
+			}
+			return nil
+		}
+		return err
+	}
+	for _, p := range pts {
+		id := p.Id.GetUuid()
+		out[id] = fromPayload(id, p.Payload)
+	}
+	return nil
 }
 
 // backfillNoSummaryContent restores Content on every item in items whose
