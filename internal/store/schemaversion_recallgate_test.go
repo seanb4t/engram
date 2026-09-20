@@ -498,11 +498,7 @@ var recallTransmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.scrollOrderedPage",
-		justification: "Emits Scroll (orderedpage.go), its own transmission. Reachable from the List seeds as of plan 04-02: Store.List's offset mode (via collectOrderedPages) and its cursor mode (via listByCursor) both compose this shared primitive instead of issuing a Scroll of their own (03-INVENTORY closing check (d)). Serves List's offset-mode and cursor-mode paths.",
-	},
-	{
-		enclosingFunc: "Store.ListScheduled",
-		justification: "Emits Scroll (store.go:1573), its own transmission. Serves ListScheduled.",
+		justification: "Emits Scroll (orderedpage.go), its own transmission. Reachable from the List seeds as of plan 04-02: Store.List's offset mode (via collectOrderedPages) and its cursor mode (via listByCursor) both compose this shared primitive instead of issuing a Scroll of their own (03-INVENTORY closing check (d)). Reachable from the ListScheduled seed as of plan 04-03: ListScheduled (via collectOrderedPages) now composes this same shared primitive instead of issuing a Scroll of its own, so it no longer has a classification row of its own below. Serves List's offset-mode and cursor-mode paths, and ListScheduled's single assembled page.",
 	},
 	{
 		enclosingFunc: "Store.ListScopes",

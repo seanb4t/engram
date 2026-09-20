@@ -1442,22 +1442,25 @@ func (s *Store) walkOffsetPrefix(ctx context.Context, f *qdrant.Filter, dir qdra
 // Scroll's error path did before this change. Callers of this loop are
 // bounded by COUNT alone — at most MaxRecallLimit times the view's
 // per-record ceiling for any offset-mode List call — never by
-// pageByteBudget.
-func (s *Store) collectOrderedPages(ctx context.Context, f *qdrant.Filter, view readView, dir qdrant.Direction, from listCursor, want uint64) (items []Memory, next listCursor, exhausted bool, err error) {
-	next = from
+// pageByteBudget. Only items and err are returned: neither of this plan's
+// two callers (Store.List's offset mode, Store.ListScheduled) needs the
+// resume cursor or the exhaustion flag scrollOrderedPage's own page
+// contract already tracks internally — a genuine exhaustion before `want`
+// is reached simply yields fewer than `want` items, never an error.
+func (s *Store) collectOrderedPages(ctx context.Context, f *qdrant.Filter, view readView, dir qdrant.Direction, from listCursor, want uint64) (items []Memory, err error) {
+	next := from
 	for uint64(len(items)) < want {
 		page, pErr := s.scrollOrderedPage(ctx, f, view, dir, next, want-uint64(len(items)))
 		if pErr != nil {
-			return nil, listCursor{}, false, pErr
+			return nil, pErr
 		}
 		items = append(items, page.Items...)
 		next = page.Next
 		if page.Exhausted {
-			exhausted = true
 			break
 		}
 	}
-	return items, next, exhausted, nil
+	return items, nil
 }
 
 // List returns a CreatedAt-ordered page of the caller's readable records in scope
@@ -1564,7 +1567,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		// client-side slice).
 		return []Memory{}, total, "", nil
 	}
-	items, _, _, err = s.collectOrderedPages(ctx, f, s.fullView(), dir, from, effectiveLimit)
+	items, err = s.collectOrderedPages(ctx, f, s.fullView(), dir, from, effectiveLimit)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -1662,9 +1665,16 @@ func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condit
 // shared-read grant): a `shared` scheduled/expired record belonging to another
 // actor stays invisible here until it becomes active, preserving the deferred-
 // reveal guarantee. It does not reuse List (whose gate would exclude exactly
-// these records). Server-side order_by created_at desc bounded directly by
-// opts.Limit (default 20); the created_at window (opts.CreatedAfter/Before) is
-// applied as a DatetimeRange. opts.Offset is ignored — paginates by Limit alone.
+// these records). The page is assembled from the SAME D-05 bounded-page-
+// assembly loop Store.List's offset mode uses (collectOrderedPages,
+// scrollOrderedPage): the filter is built ONCE, above, and passed unchanged
+// to every one of the (potentially several) budgeted RPCs the loop issues —
+// so the owner-only, state-gated, created_at-windowed envelope holds on
+// every RPC, not just the first. Ordering stays created_at desc, bounded
+// directly by opts.Limit (default 20). ListScheduled deliberately carries no
+// full/summary knob — it always reads s.fullView(), exactly as before this
+// change — because no surface exposes one for this method (04-RESEARCH.md
+// Pitfall 6). opts.Offset is ignored — paginates by Limit alone.
 func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
 	if !state.valid() {
 		return nil, fmt.Errorf("invalid scheduled state %q (want scheduled|expired|all)", state)
@@ -1707,18 +1717,9 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
-	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: s.collection, Filter: f,
-		Limit:       qdrant.PtrOf(uint32(limit)),
-		OrderBy:     &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(qdrant.Direction_Desc)},
-		WithPayload: qdrant.NewWithPayload(true),
-	})
+	items, err = s.collectOrderedPages(ctx, f, s.fullView(), qdrant.Direction_Desc, listCursor{}, limit)
 	if err != nil {
 		return nil, err
-	}
-	items = make([]Memory, 0, len(pts))
-	for _, p := range pts {
-		items = append(items, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
 	return items, nil
 }
