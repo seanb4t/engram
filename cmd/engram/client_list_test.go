@@ -433,6 +433,13 @@ func TestClientListCrossSpineEndToEnd(t *testing.T) {
 	}
 }
 
+// coverageUnknownFooterLine is the exact D-05 third-footer-form literal,
+// shared by TestClientListCoverageUnknownFooter and its search-lane sibling
+// TestClientSearchCoverageUnknownFooter (client_search_test.go) so both
+// tests prove the shared-renderer claim against the same expected value
+// rather than asserting it twice independently.
+const coverageUnknownFooterLine = "scopes_unknown: true"
+
 // TestClientListCoverageUnknownFooter pins D-05's third footer form: when
 // the server reports scopes_unknown=true (the coverage-enumeration query
 // itself failed after hits were already produced), the text-mode footer
@@ -462,7 +469,7 @@ func TestClientListCoverageUnknownFooter(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	totalIdx := strings.Index(stdout, "total: 1")
-	footerIdx := strings.Index(stdout, "scopes_unknown: true")
+	footerIdx := strings.Index(stdout, coverageUnknownFooterLine)
 	if totalIdx < 0 {
 		t.Errorf("stdout = %q, want the existing total line", stdout)
 	}
