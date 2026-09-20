@@ -131,8 +131,10 @@ arg and returns `{memories, next_cursor}` (empty `next_cursor` = last page);
 its `limit` defaults to 20 and rejects any value above the shared maximum, 1000.
 `search_memory` and `list_memory` also accept `cross_spine` (bool) to span every
 scope the caller can read, with the response reporting `searched_scopes` and
-`scopes_truncated`; the `engram search`/`engram list` CLI verbs reach the same
-capability and report the same two fields.
+`scopes_truncated`, or, if the coverage enumeration itself failed after hits
+were already found, `scopes_unknown` (the call still succeeds; `searched_scopes`
+is then absent rather than an empty list); the `engram search`/`engram list`
+CLI verbs reach the same capability and report the same three fields.
 Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
 migrate-remap-owner --from-missing --to <owner>` (the `migrate-set-owner` command

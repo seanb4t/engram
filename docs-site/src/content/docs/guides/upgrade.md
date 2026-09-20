@@ -36,6 +36,7 @@ one predictable, migration-safe contract.
 | pattern-match the exact `field=` value of an argument rejection (not just check a field name's presence) | §8 |
 | branch on exit status, a Connect error code, or MCP error text for `list`/`search` (or an operator command reading Qdrant directly) | §14 |
 | call `ListMemories`/`engram list` with `limit: 0` (or `--limit` omitted) expecting every matching record back in one response, or rely on an over-1000 `limit`/`k` being clamped rather than rejected | §16 |
+| treat a cross-spine `search`/`list` failure as "no results", or branch on its error to detect a coverage-enumeration problem | §17 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -443,6 +444,28 @@ remainder by `--offset`/`offset` or `--page-token`/`page_token`; and any
 caller that relied on an over-1000 cursor-mode page silently shrinking to
 1000 rather than being rejected — pass a `limit`/`k` at or below 1000
 instead.
+
+### 17. A cross-spine `search`/`list` whose coverage enumeration failed now succeeds instead of erroring
+
+Before this release, a cross-spine `search_memory`/`list_memory` MCP call,
+Connect `SearchMemories`/`ListMemories` RPC, or `engram search --cross-spine`
+/`engram list --cross-spine` invocation whose follow-up scope-coverage
+enumeration failed — after already-authorized hits had been found — returned
+an error and no results, discarding real, already-computed data over an
+unrelated coverage-accounting failure. **It now succeeds**: the hits are
+returned, the new `scopes_unknown` field/key is `true`, and `searched_scopes`
+is absent (never an empty list, which would read as "searched nothing") with
+`scopes_truncated` absent/false. No new exit code and no stderr warning are
+introduced for this state — the call genuinely succeeded. See the
+[tools reference](/reference/tools/#search_memory) and the
+[CLI guide's output contract](/guides/cli/#output-contract) for the full
+three-state shape.
+
+**Who should act:** any caller that treated a cross-spine recall failure as
+"no results" or branched on the error itself to detect a coverage problem —
+branch on `scopes_unknown`/`GetScopesUnknown()` instead, which is the only
+place this state is now signaled; the call's exit status/error path no
+longer distinguishes it.
 
 ---
 

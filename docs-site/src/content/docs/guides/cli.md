@@ -111,11 +111,20 @@ or, when the server reports the authorized span was truncated:
 searched_scopes: 3  scopes_truncated: true
 ```
 
+or, when the server's own coverage-enumeration query failed after hits were
+already found — the call still succeeds, but there is no count to report:
+
+```text
+scopes_unknown: true
+```
+
 The footer reports a **count** of the scopes searched, never the scope names
-themselves. It prints only on a `--cross-spine` call — output for every other
-invocation is unchanged, byte-for-byte, from before this capability existed.
-The JSON lane already carried `searched_scopes` and `scopes_truncated` on
-every response before this release and is unaffected by this change.
+themselves — except the `scopes_unknown` form, which carries no count
+because there is none. It prints only on a `--cross-spine` call — output for
+every other invocation is unchanged, byte-for-byte, from before this
+capability existed. The JSON lane already carried `searched_scopes` and
+`scopes_truncated` on every response before this release, now joined by
+`scopes_unknown`, and is unaffected by this change beyond that addition.
 
 ### Operator commands
 

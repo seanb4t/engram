@@ -161,6 +161,11 @@ enumeration hit its bounded ceiling and the list may be incomplete. Both keys
 are omitted entirely on a scope-confined call, so an existing consumer's
 response shape is unchanged.
 
+If the coverage enumeration itself fails after hits were already found, the
+call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is absent
+(never an empty list, which would read as "searched nothing"), and
+`scopes_truncated` is absent/false.
+
 ---
 
 ## list_memory
@@ -189,6 +194,11 @@ On a cross-spine call (`cross_spine=true`), the response also carries
 scopes that produced results — and `scopes_truncated`, true when that scope
 enumeration hit its bounded ceiling and the list may be incomplete. Both keys
 are omitted entirely on a scope-confined call.
+
+If the coverage enumeration itself fails after results were already found,
+the call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is
+absent (never an empty list, which would read as "searched nothing"), and
+`scopes_truncated` is absent/false.
 
 Pass an explicit `limit` on a cross-spine list. The underlying total becomes
 an exact count across every readable scope rather than one scope (visible as
