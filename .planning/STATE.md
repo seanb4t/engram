@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 5
 current_phase_name: Operator Sweeps & CI Backstop
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-09-20T14:32:04.755Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-09-20T15:30:33.680Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 5 execution started
-state_head: 324b4d780a9ba66c3a5ab865d80a7553777b22c2
+state_head: 32b7c3af92612d395f7cc7be98b9127f8284348a
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 29
-  completed_plans: 23
+  completed_plans: 24
 ---
 
 # Project State
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 5 (Operator Sweeps & CI Backstop) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 5
+Plan: 2 of 6
+Status: Ready to execute
 Last activity: 2026-09-20 — Phase 5 execution started
 
 ## Deferred Items
@@ -335,6 +335,7 @@ milestone needs in working memory.
 - [Phase 04]: rejectOverMaximumCount added as the published D-10 wire-boundary rejection, called first in all four shared core methods, ahead of scope resolution and the embed call — Store's own rejectOverMaximum (04-05) is a backstop; the server boundary is what actually stops a caller before it costs anything and is what carries the field=<f> hint=out_of_range envelope
 - [Phase 04]: Decision B recorded in PROJECT.md: one documented maximum (1000) for every recall count knob; Connect ListMemories' limit:0 now resolves to that maximum (was unbounded "all"); an over-maximum count is rejected, never clamped, via a new out_of_range hint (2026-09-18.01 Phase 4, D-01/D-02/D-03/D-10)
 - [Phase 4]: Phase 4 closed: seventeen registered red-evidence patches confirm 42 REDs; the plan's own no-op zero-limit mutation was replaced with the historically-accurate unbounded-Scroll revert recovered from git history; five requirements ticked against verified intent (13 total, not the plan's miscounted 12).
+- [Phase 05]: Plan 05-01: derivePurgeEligible reuses s.summaryView() rather than a fourth constructor; NearDuplicates QueryBatch confirmed exempt (no payload requested); scrollAllPoints gained an explicit collection parameter for plan 05-04's Store.Reindex — Its callback reads exactly what summaryView already includes, and summaryRecordCeiling already budgets the tags term it reads -- a narrower view would not pay.
 
 ### Pending Todos
 
@@ -410,9 +411,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T13:41:25.577Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-operator-sweeps-ci-backstop/05-CONTEXT.md
+Last session: 2026-09-20T15:30:15.421Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -567,6 +568,7 @@ Resume file: .planning/phases/05-operator-sweeps-ci-backstop/05-CONTEXT.md
 | Phase 04 P06 | ~35min | 3 tasks | 6 files |
 | Phase 04 P07 | ~25min | 3 tasks | 14 files |
 | Phase 04 P08 | 65min | 3 tasks | 21 files |
+| Phase 05 P01 | 56min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 

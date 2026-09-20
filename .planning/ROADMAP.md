@@ -503,12 +503,12 @@ Plans:
 3. The production Qdrant client raises `MaxCallRecvMsgSize` in exactly one place, documented as a backstop only, added after the sweep and per-site regression tests already pass without it.
 4. The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused`/`code = Unavailable` recurrence — closing #497 with that evidence.
 
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — the sweep iterator parameterised by collection, the per-sweep projected views, and `spine-review`'s four read-only sweeps migrated with their oversized regressions (D-01, D-03, D-04)
+- [x] 05-01-PLAN.md — the sweep iterator parameterised by collection, the per-sweep projected views, and `spine-review`'s four read-only sweeps migrated with their oversized regressions (D-01, D-03, D-04)
 
 **Wave 2**
 
