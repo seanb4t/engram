@@ -503,7 +503,7 @@ Plans:
 3. The production Qdrant client raises `MaxCallRecvMsgSize` in exactly one place, documented as a backstop only, added after the sweep and per-site regression tests already pass without it.
 4. The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused`/`code = Unavailable` recurrence — closing #497 with that evidence.
 
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 
 Plans:
 **Wave 1**
@@ -512,7 +512,7 @@ Plans:
 
 **Wave 2**
 
-- [ ] 05-02-PLAN.md — the revert preflight on a one-field projection, and the count-only view constructor deleted with all four of its test-file callers (D-01, D-03, D-04)
+- [x] 05-02-PLAN.md — the revert preflight on a one-field projection, and the count-only view constructor deleted with all four of its test-file callers (D-01, D-03, D-04)
 
 **Wave 3**
 

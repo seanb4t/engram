@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 5
 current_phase_name: Operator Sweeps & CI Backstop
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-09-20T15:30:33.680Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-09-20T16:36:19.947Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 5 execution started
-state_head: 32b7c3af92612d395f7cc7be98b9127f8284348a
+state_head: 75989a9d774f3b3b66ff67d00b2b2dd81c81c1ba
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 29
-  completed_plans: 24
+  completed_plans: 25
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 5 (Operator Sweeps & CI Backstop) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 5 execution started
 
@@ -336,6 +336,8 @@ milestone needs in working memory.
 - [Phase 04]: Decision B recorded in PROJECT.md: one documented maximum (1000) for every recall count knob; Connect ListMemories' limit:0 now resolves to that maximum (was unbounded "all"); an over-maximum count is rejected, never clamped, via a new out_of_range hint (2026-09-18.01 Phase 4, D-01/D-02/D-03/D-10)
 - [Phase 4]: Phase 4 closed: seventeen registered red-evidence patches confirm 42 REDs; the plan's own no-op zero-limit mutation was replaced with the historically-accurate unbounded-Scroll revert recovered from git history; five requirements ticked against verified intent (13 total, not the plan's miscounted 12).
 - [Phase 05]: Plan 05-01: derivePurgeEligible reuses s.summaryView() rather than a fourth constructor; NearDuplicates QueryBatch confirmed exempt (no payload requested); scrollAllPoints gained an explicit collection parameter for plan 05-04's Store.Reindex — Its callback reads exactly what summaryView already includes, and summaryRecordCeiling already budgets the tags term it reads -- a narrower view would not pay.
+- [Phase 5]: Phase 5 Plan 2: previewRevertWithSteps' refusal against production migrate.Registry is an Irreversible-chain refusal, never Unsupported -- the reverse chain IS reachable (StepsFrom finds it), it simply declines to run backward; test asserts Irreversible[0].To equals seeded schema version, Unsupported stays empty.
+- [Phase 5]: Phase 5 Plan 2: orderedpage_oversized_test.go's 'unbudgeted view' table row kept (retargeted to store.ReadView{}), not deleted -- scrollOrderedPage's own argument validation independently rejects any zero-ceiling view, a standing production invariant unrelated to the unbudgetedView constructor's existence.
 
 ### Pending Todos
 
@@ -411,8 +413,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T15:30:15.421Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-09-20T16:36:19.273Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -569,6 +571,7 @@ Resume file: None
 | Phase 04 P07 | ~25min | 3 tasks | 14 files |
 | Phase 04 P08 | 65min | 3 tasks | 21 files |
 | Phase 05 P01 | 56min | 3 tasks | 6 files |
+| Phase 05 P02 | 62min | 2 tasks | 8 files |
 
 ## Operator Next Steps
 
