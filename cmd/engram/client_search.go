@@ -79,7 +79,7 @@ var searchCmd = &cobra.Command{
 			if err := renderMemoryTable(cmd.OutOrStdout(), resp.Msg.GetMemories(), true); err != nil {
 				return err
 			}
-			if err := renderCoverageFooter(cmd.OutOrStdout(), searchCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated()); err != nil {
+			if err := renderCoverageFooter(cmd.OutOrStdout(), searchCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated(), resp.Msg.GetScopesUnknown()); err != nil {
 				return err
 			}
 			// The migration advisory is the least-related fact on screen,

@@ -433,6 +433,50 @@ func TestClientListCrossSpineEndToEnd(t *testing.T) {
 	}
 }
 
+// TestClientListCoverageUnknownFooter pins D-05's third footer form: when
+// the server reports scopes_unknown=true (the coverage-enumeration query
+// itself failed after hits were already produced), the text-mode footer
+// prints "scopes_unknown: true" with no count, and prints no
+// "searched_scopes" text at all — an emitted-but-empty count would read as
+// a legitimate "searched nothing" answer, which is exactly what D-03
+// forbids.
+func TestClientListCoverageUnknownFooter(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return &engramv1.ListMemoriesResponse{
+				Memories:        []*engramv1.Memory{{ShortId: "AAAA111111"}},
+				Total:           1,
+				SearchedScopes:  nil,
+				ScopesTruncated: false,
+				ScopesUnknown:   true,
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "list",
+		"--server", url, "--cross-spine", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	totalIdx := strings.Index(stdout, "total: 1")
+	footerIdx := strings.Index(stdout, "scopes_unknown: true")
+	if totalIdx < 0 {
+		t.Errorf("stdout = %q, want the existing total line", stdout)
+	}
+	if footerIdx < 0 {
+		t.Errorf("stdout = %q, want the coverage-unknown footer line", stdout)
+	}
+	if totalIdx >= 0 && footerIdx >= 0 && footerIdx < totalIdx {
+		t.Errorf("stdout = %q, want the coverage footer to appear after the total line", stdout)
+	}
+	if strings.Contains(stdout, "searched_scopes") {
+		t.Errorf("stdout = %q, must not contain searched_scopes on a coverage-unknown response", stdout)
+	}
+}
+
 // TestClientListMissingScopeIsUsageErrorBeforeDialing pins D-01: with
 // neither --scope nor --cross-spine, the guard fires before any network
 // call.

@@ -330,9 +330,21 @@ func requireScopeUnlessCrossSpine(scope string, crossSpine bool) error {
 // field names verbatim (searched_scopes / scopes_truncated), so the text
 // lane and the JSON lane agree about what the coverage information is
 // called (Phase 2 D-08).
-func renderCoverageFooter(w io.Writer, crossSpine bool, searchedScopes []string, scopesTruncated bool) error {
+//
+// A third form (Phase 6 D-05) prints scopes_unknown: true with NO count:
+// when the server's own coverage-enumeration query fails after hits were
+// already found, the RPC still succeeds and the hits are still returned,
+// but there is no scope count to report at all. Printing a count of zero
+// here would read as "searched nothing", which is a different, false
+// claim — so this branch is checked BEFORE the truncated/count branches,
+// and it never falls through to them.
+func renderCoverageFooter(w io.Writer, crossSpine bool, searchedScopes []string, scopesTruncated, scopesUnknown bool) error {
 	if !crossSpine {
 		return nil
+	}
+	if scopesUnknown {
+		_, err := fmt.Fprintf(w, "scopes_unknown: true\n")
+		return err
 	}
 	if scopesTruncated {
 		_, err := fmt.Fprintf(w, "searched_scopes: %d  scopes_truncated: true\n", len(searchedScopes))

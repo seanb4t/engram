@@ -91,7 +91,7 @@ var listCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			if err := renderCoverageFooter(cmd.OutOrStdout(), listCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated()); err != nil {
+			if err := renderCoverageFooter(cmd.OutOrStdout(), listCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated(), resp.Msg.GetScopesUnknown()); err != nil {
 				return err
 			}
 			// The migration advisory is the least-related fact on screen,
