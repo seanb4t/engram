@@ -1,0 +1,13 @@
+diff --git a/internal/store/migrate.go b/internal/store/migrate.go
+index 248451ce..c9eceeab 100644
+--- a/internal/store/migrate.go
++++ b/internal/store/migrate.go
+@@ -600,7 +600,7 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
+ 			}
+ 			return nil
+ 		})
+-		if scanErr != nil && !errors.Is(scanErr, errMigratePassBatchComplete) {
++		if scanErr != nil {
+ 			err = scanErr
+ 			return res, err
+ 		}

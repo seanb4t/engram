@@ -1,0 +1,13 @@
+diff --git a/internal/store/spine.go b/internal/store/spine.go
+index 8eccd796..cf1d00fb 100644
+--- a/internal/store/spine.go
++++ b/internal/store/spine.go
+@@ -405,7 +405,7 @@ func (s *Store) EnumerateCitations(ctx context.Context, opts SpineScanOptions) (
+ 	}
+ 
+ 	res = []CitationRecord{}
+-	scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.citationsView(), func(p *qdrant.RetrievedPoint) error {
++	scanErr := s.scrollAllPoints(ctx, s.collection, filter, readView{selector: qdrant.NewWithPayload(true), maxRecordBytes: 0}, func(p *qdrant.RetrievedPoint) error {
+ 		m := fromPayload(p.Id.GetUuid(), p.Payload)
+ 		if len(m.Citations) == 0 {
+ 			return nil

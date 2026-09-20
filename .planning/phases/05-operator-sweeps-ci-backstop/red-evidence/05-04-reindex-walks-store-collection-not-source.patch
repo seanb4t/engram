@@ -1,0 +1,13 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 87ee332e..842f5d42 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -3640,7 +3640,7 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
+ 	// produced and consumed right here, purely to count full-page flushes,
+ 	// and the callback always returns nil afterward so the scan continues
+ 	// over the remaining source points.
+-	scanErr := s.scrollAllPoints(ctx, source, nil, s.fullView(), func(p *qdrant.RetrievedPoint) error {
++	scanErr := s.scrollAllPoints(ctx, s.collection, nil, s.fullView(), func(p *qdrant.RetrievedPoint) error {
+ 		page = append(page, p)
+ 		if uint32(len(page)) < batch {
+ 			return nil

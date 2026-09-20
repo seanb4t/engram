@@ -1,0 +1,13 @@
+diff --git a/internal/store/spine.go b/internal/store/spine.go
+index 8eccd796..f4255bc4 100644
+--- a/internal/store/spine.go
++++ b/internal/store/spine.go
+@@ -298,7 +298,7 @@ func (s *Store) ScanSpine(ctx context.Context, opts SpineScanOptions) (res Spine
+ 	now := s.now()
+ 	res.ScannedAt = now
+ 
+-	scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.scanView(), func(p *qdrant.RetrievedPoint) error {
++	scanErr := s.scrollAllPoints(ctx, s.collection, filter, readView{selector: qdrant.NewWithPayload(true), maxRecordBytes: 0}, func(p *qdrant.RetrievedPoint) error {
+ 		m := fromPayload(p.Id.GetUuid(), p.Payload)
+ 		res.Total++
+ 		counts[bucketKey{scope: m.Scope, category: m.Category}]++

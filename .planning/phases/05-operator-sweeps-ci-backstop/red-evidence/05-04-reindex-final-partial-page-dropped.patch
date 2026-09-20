@@ -1,0 +1,16 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 87ee332e..c2f04509 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -3654,11 +3654,6 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
+ 		err = scanErr
+ 		return res, err
+ 	}
+-	// Flush the trailing, possibly-partial final page.
+-	if ferr := flushReindexPage(false); ferr != nil {
+-		err = ferr
+-		return res, err
+-	}
+ 	return res, nil
+ }
+ 

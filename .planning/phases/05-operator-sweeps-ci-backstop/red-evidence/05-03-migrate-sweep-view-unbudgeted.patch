@@ -1,0 +1,13 @@
+diff --git a/internal/store/migrate.go b/internal/store/migrate.go
+index 248451ce..dc9c89c7 100644
+--- a/internal/store/migrate.go
++++ b/internal/store/migrate.go
+@@ -546,7 +546,7 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
+ 		// migrate.AddedKeys, so nothing narrower than the full view
+ 		// (s.fullView()) is legitimate.
+ 		processed := uint32(0)
+-		scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.fullView(), func(p *qdrant.RetrievedPoint) error {
++		scanErr := s.scrollAllPoints(ctx, s.collection, filter, readView{selector: qdrant.NewWithPayload(true), maxRecordBytes: 0}, func(p *qdrant.RetrievedPoint) error {
+ 			id := p.Id.GetUuid()
+ 			fromV := versionOf(p.Payload)
+ 

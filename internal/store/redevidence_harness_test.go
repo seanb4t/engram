@@ -155,7 +155,17 @@ var redEvidenceDirs = map[string]map[string]string{
 		"04-07-cli-help-drops-the-maximum.patch":             "TestRecallMaximumIsStatedNumerically",         // reverts: the CLI list --limit flag's usage string stating the numeric maximum (D-01, D-04)
 	},
 	".planning/phases/05-operator-sweeps-ci-backstop/red-evidence": {
-		"05-05-backstop-appended-after-caller-options.patch": "TestQdrantRecvLimitBackstopPrecedesCallerOptions", // reverts: qdrantDialOptions appending the productionRecvLimit backstop BEFORE caller options, so a caller's own receive limit still wins (D-05, D-06)
+		"05-01-scanspine-view-unbudgeted.patch":                 "TestScanSpineBoundedOverGRPCLimit",                // reverts: ScanSpine's scanView projection back to a zero-ceiling full-payload view (D-01, D-04)
+		"05-01-citations-view-unbudgeted.patch":                 "TestEnumerateCitationsBoundedOverGRPCLimit",       // reverts: EnumerateCitations' citationsView projection back to a zero-ceiling full-payload view (D-04)
+		"05-01-purge-view-unbudgeted.patch":                     "TestPreviewPurgeBoundedOverGRPCLimit",             // reverts: derivePurgeEligible's reuse of summaryView back to a zero-ceiling full-payload view (D-04)
+		"05-02-revert-preview-view-unbudgeted.patch":            "TestRevertPreviewBoundedOverGRPCLimit",            // reverts: previewRevertWithSteps' schemaVersionOnlyView back to a zero-ceiling full-payload view (D-01, D-04)
+		"05-03-migrate-sweep-view-unbudgeted.patch":             "TestMigrateBoundedOverGRPCLimit",                  // reverts: Store.Migrate's default sweep-mode pass view back to a zero-ceiling full-payload view (D-01)
+		"05-03-migrate-pass-sentinel-escapes-as-failure.patch":  "TestMigrateBoundedOverGRPCLimit",                  // reverts: the call site's errors.Is unwrap of errMigratePassBatchComplete, so a completed pass is returned to the caller as a sweep failure (D-01)
+		"05-03-revert-pass-sentinel-escapes-as-failure.patch":   "TestRevertApplyBoundedOverGRPCLimit",              // reverts: the call site's errors.Is unwrap of errRevertPassBatchComplete, so a completed pass is returned to the caller as a sweep failure (D-01)
+		"05-04-summarize-limit-sentinel-escapes.patch":          "TestSummarizeMissingBoundedOverGRPCLimit",         // reverts: the call site's errors.Is unwrap of errSummarizeLimitReached, so the caller's own limit sub-case is observed as an error (D-01)
+		"05-04-reindex-walks-store-collection-not-source.patch": "TestReindexSourceOverride",                        // reverts: Reindex's source walk passing s.collection instead of the effective source, so a source override silently scans nothing (D-01)
+		"05-04-reindex-final-partial-page-dropped.patch":        "TestReindexBoundedOverGRPCLimit",                  // reverts: the trailing flush of the accumulator's final partial page, silently skipping a scope's last records (D-01)
+		"05-05-backstop-appended-after-caller-options.patch":    "TestQdrantRecvLimitBackstopPrecedesCallerOptions", // reverts: qdrantDialOptions appending the productionRecvLimit backstop BEFORE caller options, so a caller's own receive limit still wins (D-05, D-06)
 	},
 }
 
