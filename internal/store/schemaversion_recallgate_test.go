@@ -486,11 +486,11 @@ type recallEmissionClassification struct {
 var recallTransmitters = []recallEmissionClassification{
 	{
 		enclosingFunc: "Store.Search",
-		justification: "Emits Query (store.go), its own transmission — as of plan 04-04, payload-free (D-09): the Query now asks for ids and scores only, and the payload arrives through Store.fetchPayloadsByID below. Serves Search directly and SearchReranked via delegation — SearchReranked builds no filter of its own; see the subset assertion below.",
+		justification: "Emits Query (store.go), its own transmission — as of plan 04-04, payload-free (D-09): the Query now asks for ids and scores only, and the payload arrives through Store.fetchPayloadBatch below. Serves Search directly and SearchReranked via delegation — SearchReranked builds no filter of its own; see the subset assertion below.",
 	},
 	{
-		enclosingFunc: "Store.fetchPayloadsByID",
-		justification: "Emits Scroll (searchfetch.go), its own transmission. Reachable from the Search seed (Store.Search calls it directly) and, via delegation, from SearchReranked; plan 04-04's second task wires SearchDiscovery onto it too. D-09's two-phase fetch: it re-applies the identical filter each caller's own vector Query carried, so a record that left visibility between the two phases is silently absent rather than returned stale.",
+		enclosingFunc: "Store.fetchPayloadBatch",
+		justification: "Emits Scroll (searchfetch.go), its own transmission. Reachable from the Search seed via Store.fetchPayloadsByID's per-batch delegation (a WR-01 code-review fix, 04-REVIEW.md, extracted the per-batch Scroll into this helper so it could retry a batch's ids individually on ErrResponseTooLarge — Store.fetchPayloadsByID itself no longer emits directly) and, via delegation, from SearchReranked; plan 04-04's second task wires SearchDiscovery onto it too. D-09's two-phase fetch: it re-applies the identical filter each caller's own vector Query carried, so a record that left visibility between the two phases is silently absent rather than returned stale.",
 	},
 	{
 		enclosingFunc: "Store.SearchDiscovery",
