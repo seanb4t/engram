@@ -503,7 +503,7 @@ Plans:
 3. The production Qdrant client raises `MaxCallRecvMsgSize` in exactly one place, documented as a backstop only, added after the sweep and per-site regression tests already pass without it.
 4. The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused`/`code = Unavailable` recurrence — closing #497 with that evidence.
 
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 Plans:
 **Wave 1**
@@ -516,7 +516,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 05-03-PLAN.md — `engram migrate`'s three walks and `migrate revert`'s apply pass on the shared iterator, each pass bounded by its own sentinel, with both emitter justifications corrected (D-01, D-02, D-03, D-04)
+- [x] 05-03-PLAN.md — `engram migrate`'s three walks and `migrate revert`'s apply pass on the shared iterator, each pass bounded by its own sentinel, with both emitter justifications corrected (D-01, D-02, D-03, D-04)
 
 **Wave 4**
 
