@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -1392,6 +1393,36 @@ func (s *Store) listFilter(ctx context.Context, scope string, subj Subject, opts
 // phase).
 const MaxRecallLimit = 1000
 
+// collectOrderedPages assembles the first `want` ordered records matching f
+// by looping scrollOrderedPage, following Next, until want are in hand or
+// the primitive reports Exhausted (D-05, plan 04-02 Task 2). pageByteBudget
+// bounds cursor-mode responses ONLY — this revises Phase 3 D-06: a page the
+// primitive cuts short by the page budget simply causes collectOrderedPages
+// to loop again immediately, so an internal budget cut is invisible to this
+// loop's callers. Any error from the primitive (including the named
+// response-too-large sentinel after its own batch-of-1 fallback is spent)
+// is returned unwrapped with no partial page, exactly as a single unbounded
+// Scroll's error path did before this change. Callers of this loop are
+// bounded by COUNT alone — at most MaxRecallLimit times the view's
+// per-record ceiling for any offset-mode List call — never by
+// pageByteBudget.
+func (s *Store) collectOrderedPages(ctx context.Context, f *qdrant.Filter, view readView, dir qdrant.Direction, from listCursor, want uint64) (items []Memory, next listCursor, exhausted bool, err error) {
+	next = from
+	for uint64(len(items)) < want {
+		page, pErr := s.scrollOrderedPage(ctx, f, view, dir, next, want-uint64(len(items)))
+		if pErr != nil {
+			return nil, listCursor{}, false, pErr
+		}
+		items = append(items, page.Items...)
+		next = page.Next
+		if page.Exhausted {
+			exhausted = true
+			break
+		}
+	}
+	return items, next, exhausted, nil
+}
+
 // List returns a CreatedAt-ordered page of the caller's readable records in scope
 // — descending by default, ascending when ListOptions.Ascending is set (offset/all
 // mode only) — the exact matched total (server-side Count), and a nextCursor (empty
@@ -1468,35 +1499,32 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return items, total, nextCursor, err
 	}
 
-	// Offset mode: Qdrant has no numeric OFFSET, so scroll offset+limit ordered
-	// records and return the trailing limit.
-	fetch := opts.Offset + opts.Limit
-	if opts.Limit == 0 {
-		fetch = total // limit 0 = "all" (preserves prior behavior)
+	// Offset mode: resolve the effective limit FIRST (D-01) — a zero limit
+	// becomes MaxRecallLimit, a number everywhere, never "all" — then
+	// assemble the full requested count from bounded ordered pages
+	// (D-05) instead of one unbounded Scroll.
+	effectiveLimit := opts.Limit
+	if effectiveLimit == 0 {
+		effectiveLimit = MaxRecallLimit
 	}
-	if fetch == 0 {
-		// Reached only when Limit==0 ("all") and the filtered set is empty
-		// (total==0): Qdrant's Scroll rejects Limit=0 ("must be 1 or larger")
-		// and there is nothing to fetch — short-circuit to an empty page.
+	if opts.Offset > math.MaxUint64-effectiveLimit {
+		return nil, 0, "", fmt.Errorf("list: offset+limit overflows: %w", ErrInvalidArgument)
+	}
+	want := opts.Offset + effectiveLimit
+	if want == 0 {
+		// Defensive, unreachable by construction now that a zero limit
+		// resolves to MaxRecallLimit above (engram-3jo0.4): kept so a
+		// caller can never reach scrollOrderedPage's own limit==0
+		// rejection.
 		return []Memory{}, total, "", nil
 	}
 	dir := qdrant.Direction_Desc
 	if opts.Ascending {
 		dir = qdrant.Direction_Asc
 	}
-	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: s.collection,
-		Filter:         f,
-		Limit:          qdrant.PtrOf(uint32(fetch)),
-		OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(dir)},
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	all, _, _, err := s.collectOrderedPages(ctx, f, s.fullView(), dir, listCursor{}, want)
 	if err != nil {
 		return nil, 0, "", err
-	}
-	all := make([]Memory, 0, len(pts))
-	for _, p := range pts {
-		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
 	if opts.Offset >= uint64(len(all)) {
 		return []Memory{}, total, "", nil
