@@ -19,7 +19,8 @@ affects: [05-02, 05-03, 05-04]
 actuals:
   tokens: 6597
   tasks: 3
-  commits: 4
+  commits: 7
+plan_head_before: b467409821f31dd68c06116644eeb39e1b80e1b4
 
 # Tech tracking
 tech-stack:
@@ -146,7 +147,7 @@ Each task was committed atomically:
 
 **Deviation fix commit:** `4f1b37bb` (fix) — see Deviations below.
 
-**Plan metadata:** commit pending (this SUMMARY + STATE.md + ROADMAP.md).
+**Plan metadata:** `32b7c3af` (docs: SUMMARY), `5415630c` (docs: STATE.md + ROADMAP.md), `6eb0e3a2` (docs: generated state.json index sync).
 
 ## Files Created/Modified
 
