@@ -59,10 +59,10 @@ func TestListScopesFullPayloadsOverGRPCLimit(t *testing.T) {
 }
 
 // TestManySmallShapeFitsOneListPage pins storetest.ManySmallRecords against
-// internal/store's own maxListLimit (exposed as store.MaxListLimit), so the
-// ManySmall shape always fits within one List page (D-05).
+// internal/store's own exported store.MaxRecallLimit, so the ManySmall shape
+// always fits within one List page (D-05).
 func TestManySmallShapeFitsOneListPage(t *testing.T) {
-	if storetest.ManySmallRecords != store.MaxListLimit {
-		t.Errorf("storetest.ManySmallRecords = %d, want store.MaxListLimit (%d)", storetest.ManySmallRecords, store.MaxListLimit)
+	if storetest.ManySmallRecords != store.MaxRecallLimit {
+		t.Errorf("storetest.ManySmallRecords = %d, want store.MaxRecallLimit (%d)", storetest.ManySmallRecords, store.MaxRecallLimit)
 	}
 }

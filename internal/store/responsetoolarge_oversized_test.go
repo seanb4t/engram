@@ -50,7 +50,7 @@ func TestStoreListOverflowIsResponseTooLarge(t *testing.T) {
 
 			fx := storetest.SeedOversized(t, st, storetest.Spec{Limit: storetest.RecvLimit, Shape: shape, Vector: []float32{0.1, 0.2, 0.3}})
 
-			items, _, _, err := st.List(ctx, fx.Scope, store.Authenticated(fx.Owner), store.ListOptions{Limit: store.MaxListLimit})
+			items, _, _, err := st.List(ctx, fx.Scope, store.Authenticated(fx.Owner), store.ListOptions{Limit: store.MaxRecallLimit})
 			if err == nil {
 				t.Fatalf("List: got nil error, want an overflow classified as store.ErrResponseTooLarge (%d records at %d bytes each, over the %d-byte named limit)", len(fx.IDs), fx.RecordBytes, storetest.RecvLimit)
 			}

@@ -20,7 +20,7 @@ type Shape int
 
 const (
 	// ManySmall sizes the fixture so ONE page within internal/store's
-	// unexported maxListLimit (1000) overflows the named limit — many
+	// exported store.MaxRecallLimit (1000) overflows the named limit — many
 	// small records.
 	ManySmall Shape = iota + 1
 	// FewLarge sizes the fixture as #583's original shape — a few large
@@ -42,8 +42,8 @@ func (s Shape) String() string {
 }
 
 // ManySmallRecords is the fixed record count for the ManySmall shape. It
-// mirrors internal/store's unexported maxListLimit so ONE List page of a
-// ManySmall fixture overflows the named limit (D-05); pinned against it by
+// mirrors internal/store's exported store.MaxRecallLimit so ONE List page of
+// a ManySmall fixture overflows the named limit (D-05); pinned against it by
 // plan 01-04's TestManySmallShapeFitsOneListPage.
 const ManySmallRecords = 1000
 

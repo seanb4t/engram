@@ -21,8 +21,8 @@
 // true on the same page.
 //
 // Tie-safety (several records sharing one created_at second) is proven only
-// for a STATIC fixture with at most maxListLimit ids sharing one boundary —
-// correctness under concurrent inserts, or a tie exceeding maxListLimit ids,
+// for a STATIC fixture with at most MaxRecallLimit ids sharing one boundary —
+// correctness under concurrent inserts, or a tie exceeding MaxRecallLimit ids,
 // is REQ-cursor-tie-safety (v2), unchanged by this file.
 //
 // D-05: the two-phase ids->payload design (a stored byte-count field on the
@@ -129,7 +129,7 @@ func (s *Store) scrollOrderedPage(ctx context.Context, f *qdrant.Filter, view re
 	if from.C == "" && len(from.Seen) > 0 {
 		return orderedPage{}, fmt.Errorf("ordered page: resume position carries Seen ids but no boundary: %w", ErrInvalidArgument)
 	}
-	if len(from.Seen) > maxListLimit {
+	if len(from.Seen) > MaxRecallLimit {
 		return orderedPage{}, fmt.Errorf("ordered page: resume Seen set too large: %w", ErrInvalidArgument)
 	}
 

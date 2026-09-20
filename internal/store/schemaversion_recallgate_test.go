@@ -494,11 +494,11 @@ var recallTransmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.List",
-		justification: "Emits Count (store.go:1339) then Scroll (store.go:1367), its own transmissions. Serves List's offset-mode path.",
+		justification: "Emits Count (store.go), its own transmission. No longer emits Scroll directly (plan 04-02): both its offset mode (via collectOrderedPages) and its cursor mode (via listByCursor) now compose the shared ordered-page primitive instead of issuing a Scroll of their own. Serves List's shared Count precondition for both paging modes.",
 	},
 	{
-		enclosingFunc: "Store.listByCursor",
-		justification: "Emits Scroll (store.go:1425). NOT a seed itself — reachable from Store.List, which dispatches into it for cursor-mode paging (store.go:1346-1348) — but a derived member of the recall-transmitted set all the same. Serves List's cursor-mode path.",
+		enclosingFunc: "Store.scrollOrderedPage",
+		justification: "Emits Scroll (orderedpage.go), its own transmission. Reachable from the List seeds as of plan 04-02: Store.List's offset mode (via collectOrderedPages) and its cursor mode (via listByCursor) both compose this shared primitive instead of issuing a Scroll of their own (03-INVENTORY closing check (d)). Serves List's offset-mode and cursor-mode paths.",
 	},
 	{
 		enclosingFunc: "Store.ListScheduled",
@@ -582,10 +582,6 @@ var otherNonRecallEmitters = []recallEmissionClassification{
 	{
 		enclosingFunc: "Store.MintShortID",
 		justification: "Emits Count (store.go:2705). A collision probe on a candidate short id during minting. It reads no caller-visible result set.",
-	},
-	{
-		enclosingFunc: "Store.scrollOrderedPage",
-		justification: "Emits Scroll (orderedpage.go). The shared ordered-page primitive (milestone 2026-09-18.01 Phase 3, D-03 item 1) is not yet wired into any recall entry point, so it is unreachable from recallEntryPointSeeds. Phase 4 moves it to recallTransmitters in the same change that wires Store.List/listByCursor/ListScheduled onto it; if anything reaches it from a seed before then, reachability pulls it in, it stops matching this entry, and the suite goes RED.",
 	},
 }
 

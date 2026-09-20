@@ -625,10 +625,10 @@ func TestScrollOrderedPageBatchOfOneFallback(t *testing.T) {
 	})
 }
 
-// tooManySeenIDs returns store.MaxListLimit+1 distinct ids, for the
+// tooManySeenIDs returns store.MaxRecallLimit+1 distinct ids, for the
 // seen-set-too-large invalid-input case.
 func tooManySeenIDs() []string {
-	out := make([]string, store.MaxListLimit+1)
+	out := make([]string, store.MaxRecallLimit+1)
 	for i := range out {
 		out[i] = uuid.NewString()
 	}

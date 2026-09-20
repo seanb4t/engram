@@ -33,11 +33,6 @@ func NewTestStore(t testing.TB, c *qdrant.Client, name string, opts ...Option) *
 // function whose name starts with "Test" but is not itself a test.
 func PrefixedTestCollection(name string) string { return testCollection(name) }
 
-// MaxListLimit exposes maxListLimit to package store_test, so an external
-// test can pin storetest.ManySmallRecords against it without duplicating the
-// value (D-05).
-const MaxListLimit = maxListLimit
-
 // ReadView exposes the internal readView type to package store_test — the
 // D-07 cycle-breaker (storetest imports store, so store_test's own oversized
 // tests cannot import a helper package for this).

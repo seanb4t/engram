@@ -1379,6 +1379,19 @@ func (s *Store) listFilter(ctx context.Context, scope string, subj Subject, opts
 	return &qdrant.Filter{Must: must}
 }
 
+// MaxRecallLimit is the ONE documented maximum for every recall count knob
+// this project exposes (D-02): List's limit in both offset and cursor mode,
+// and Search's k (wired by a later plan in this phase). It bounds a single
+// cursor page and a decoded cursor's Seen set (unchanged from the pre-phase
+// unexported constant of the same value it replaces), and — from this plan
+// onward — the value a zero List limit resolves to in offset mode (D-01): a
+// zero limit is a NUMBER everywhere, never an unbounded fetch. The number is
+// cited by name in the proto comments, the tool schemas, the CLI help, and
+// the docs-site; a request above it is rejected rather than silently
+// clamped at the server boundary (wired by plans 04-05/04-06 later in this
+// phase).
+const MaxRecallLimit = 1000
+
 // List returns a CreatedAt-ordered page of the caller's readable records in scope
 // — descending by default, ascending when ListOptions.Ascending is set (offset/all
 // mode only) — the exact matched total (server-side Count), and a nextCursor (empty
@@ -1491,97 +1504,47 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	return all[opts.Offset:], total, "", nil
 }
 
-// maxListLimit caps a single cursor page (and bounds a decoded cursor's seen
-// set), so neither a large Limit nor a crafted cursor can drive an unbounded
-// Scroll over-fetch.
-const maxListLimit = 1000
-
-// listByCursor implements boundary-id-set keyset paging over the already-built
-// filter f. opts.Cursor may be empty (first page); a non-empty cursor resumes at
-// its created_at boundary, dropping ids already emitted at that exact timestamp.
+// listByCursor is a thin scrollOrderedPage adapter (D-03/D-04, plan 04-02
+// Task 1): it decodes opts.Cursor into a listCursor, delegates ALL paging to
+// the shared ordered-page primitive over s.fullView() (this plan changes the
+// BOUND, never the payload projection), and maps the result back onto
+// List's (items, nextCursor, error) shape. The mapping is correct by
+// construction (orderedpage.go's page contract: Next is populated whenever
+// the page emitted anything): nextCursor is "" only when the primitive
+// reports Exhausted, and encodeCursor(page.Next) otherwise — REGARDLESS of
+// whether the page stopped by count or by the page byte budget, which is
+// D-06's requirement that a budget-cut page is never reported as the last
+// page. It no longer issues a Scroll of its own — see
+// schemaversion_recallgate_test.go's reclassification of scrollOrderedPage.
 func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOptions) ([]Memory, string, error) {
 	limit := opts.Limit
 	if limit == 0 {
 		limit = 20
 	}
-	if limit > maxListLimit {
-		limit = maxListLimit
+	if limit > MaxRecallLimit {
+		limit = MaxRecallLimit
 	}
-	var startFrom *qdrant.StartFrom
-	seen := map[string]bool{}
-	var boundary string
+
+	var from listCursor
 	if opts.Cursor != "" {
 		c, err := decodeCursor(opts.Cursor)
 		if err != nil {
 			return nil, "", fmt.Errorf("list cursor: %w: %w", err, ErrInvalidArgument)
 		}
-		if len(c.Seen) > maxListLimit {
+		if len(c.Seen) > MaxRecallLimit {
 			return nil, "", fmt.Errorf("list cursor: seen set too large: %w", ErrInvalidArgument)
 		}
-		boundary = c.C
-		startFrom = qdrant.NewStartFromDatetime(c.C)
-		for _, id := range c.Seen {
-			seen[id] = true
-		}
+		from = c
 	}
 
-	// Over-fetch limit + len(seen) + 1: len(seen) covers the boundary ids dropped
-	// at resume, and the +1 guarantees forward progress (a full page yields a
-	// usable next cursor rather than silently terminating).
-	fetch := limit + uint64(len(seen)) + 1
-	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: s.collection,
-		Filter:         f,
-		Limit:          qdrant.PtrOf(uint32(fetch)),
-		OrderBy: &qdrant.OrderBy{
-			Key:       "created_at",
-			Direction: qdrant.PtrOf(qdrant.Direction_Desc),
-			StartFrom: startFrom,
-		},
-		WithPayload: qdrant.NewWithPayload(true),
-	})
+	page, err := s.scrollOrderedPage(ctx, f, s.fullView(), qdrant.Direction_Desc, from, limit)
 	if err != nil {
 		return nil, "", err
 	}
-
-	out := make([]Memory, 0, limit)
-	for _, p := range pts {
-		m := fromPayload(p.Id.GetUuid(), p.Payload)
-		ts := m.CreatedAt.UTC().Format(time.RFC3339)
-		if ts == boundary && seen[m.ID] {
-			continue // already emitted at this exact timestamp
-		}
-		out = append(out, m)
-		if uint64(len(out)) == limit {
-			break
-		}
+	if page.Exhausted {
+		return page.Items, "", nil
 	}
-
-	if uint64(len(out)) < limit {
-		return out, "", nil // exhausted: no next page
-	}
-
-	// Build next cursor from the last emitted record: c = its created_at, seen =
-	// every emitted id sharing that timestamp (so the next page drops them).
-	last := out[len(out)-1]
-	nextC := last.CreatedAt.UTC().Format(time.RFC3339)
-	nextSeen := make([]string, 0, 4)
-	// Carry forward prior seen ids if the boundary did not advance. These are
-	// disjoint from the emitted ids appended below: any emitted record at the
-	// boundary timestamp passed the seen[m.ID] drop, so it was never in seen.
-	if nextC == boundary {
-		for id := range seen {
-			nextSeen = append(nextSeen, id)
-		}
-	}
-	// Emitted records are distinct point ids, so appending those at nextC adds no
-	// duplicate — the next seen set is duplicate-free by construction.
-	for _, m := range out {
-		if m.CreatedAt.UTC().Format(time.RFC3339) == nextC {
-			nextSeen = append(nextSeen, m.ID)
-		}
-	}
-	return out, encodeCursor(listCursor{C: nextC, Seen: nextSeen}), nil
+	return page.Items, encodeCursor(page.Next), nil
 }
 
 // ScheduledState selects which hidden-by-the-recall-gate records ListScheduled
