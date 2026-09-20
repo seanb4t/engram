@@ -454,7 +454,7 @@ Plans:
 4. `total`, `next_cursor` (empty = last page), result ordering, and recall gating are unchanged by the new batching, and a page cut short by the byte budget is never reported as the last page.
 5. Whether Connect `ListMemories` keeps `limit: 0` = all with numeric offset paging or moves to a hard cap plus cursor paging is decided and recorded in PROJECT.md Key Decisions; the chosen contract is implemented and documented, and any wire-visible change is additive or explicitly called out as breaking.
 
-**Plans:** 1/8 plans executed
+**Plans:** 2/8 plans executed
 
 Plans:
 **Wave 1**
@@ -463,7 +463,7 @@ Plans:
 
 **Wave 2**
 
-- [ ] 04-02-PLAN.md — one exported recall maximum, `Store.List`'s cursor and offset modes composed from the ordered-page primitive, and Phase 2's overflow regressions retargeted (D-01, D-02, D-05, D-06, D-12)
+- [x] 04-02-PLAN.md — one exported recall maximum, `Store.List`'s cursor and offset modes composed from the ordered-page primitive, and Phase 2's overflow regressions retargeted (D-01, D-02, D-05, D-06, D-12)
 
 **Wave 3**
 

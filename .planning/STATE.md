@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 4
 current_phase_name: List, ListScheduled & Search Bounded Reads
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-09-20T05:55:57.526Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-09-20T06:50:46.292Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 4 execution started
-state_head: df54df9bd059bd608b160e194d3faf1b7f1d15b8
+state_head: d0ff3a9242760654bcad311f72222831c5bcb168
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 23
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (List, ListScheduled & Search Bounded Reads) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 4 execution started
 
@@ -321,6 +321,8 @@ milestone needs in working memory.
 - [Phase 03]: 03-06: Thirteen Phase 3 red-evidence patches registered (D-01/D-02/D-03/D-07/D-09/D-10); TestRedEvidencePatchesAreLive confirms 25 REDs (Phase 1's four, Phase 2's eight, Phase 3's thirteen); the runtime contingency's per-package narrowing did not fire (111s default-timeout run, well under go test's 10-minute default). Phase 3 closes with task fully green.
 - [Phase 4]: D-11 executed: HintTooLarge renamed to HintResponseTooLarge (wire value too_large -> response_too_large); Connect resource_exhausted and CLI exit 10 unchanged.
 - [Phase 4]: D-10 executed: HintOutOfRange added and classified classMalformed (Connect invalid_argument, CLI exit 2) by explicit decision, not classOutOfRange.
+- [Phase 04]: Plan 04-02: MaxRecallLimit executed as the one exported recall-count maximum (D-02); Store.List's offset mode now composes collectOrderedPages/scrollOrderedPage instead of one unbounded Scroll (D-01/D-05); three Phase 2 overflow regressions retargeted onto a single legacy oversized record per D-12.
+- [Phase 04]: Plan 04-02: the offset-mode reject-above-maximum must-have was NOT implemented as a hard store-level rejection here -- TestListCrossSpine passes Limit:10000 in offset mode and asserts success; read as 04-05/04-06's own D-10 wiring, flagged for the verifier.
 
 ### Pending Todos
 
@@ -395,8 +397,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T05:55:57.497Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-09-20T06:50:46.155Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -545,6 +547,7 @@ Resume file: None
 | Phase 03 P05 | 20min | 3 tasks | 10 files |
 | Phase 03 P06 | 20min | 2 tasks | 14 files |
 | Phase 04 P01 | 22min | 2 tasks | 10 files |
+| Phase 04 P02 | 51min | 3 tasks | 13 files |
 
 ## Operator Next Steps
 
