@@ -13,10 +13,12 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/qdrant/go-client/qdrant"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/store/storetest"
 	"google.golang.org/grpc"
@@ -264,6 +266,200 @@ func TestStoreListOffsetBounded(t *testing.T) {
 			}
 			if calls := rec.snapshot(); len(calls) != 0 {
 				t.Errorf("recorded %d Scroll call(s), want 0: %+v", len(calls), calls)
+			}
+		})
+	}
+}
+
+// selectorRecordedCall is one intercepted Scroll RPC's request Limit and
+// whether it carried a keys-only (Include) payload selector, as
+// selectorRecorder.intercept observed it. This test's own recorder, mirroring
+// boundedread_oversized_test.go's scrollRecorder idiom but additionally
+// distinguishing which readView a call carried — the deep-offset walk mixes
+// keysView() prefix RPCs and a fullView() page RPC in one logical call to
+// Store.List, which scrollRecorder's own shape does not capture.
+type selectorRecordedCall struct {
+	limit    uint32
+	keysOnly bool
+}
+
+// selectorRecorder is a mutex-guarded recording grpc.UnaryClientInterceptor,
+// scoped to methods ending "/Scroll".
+type selectorRecorder struct {
+	mu    sync.Mutex
+	calls []selectorRecordedCall
+}
+
+func (r *selectorRecorder) intercept(
+	ctx context.Context, method string, req, reply any,
+	cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
+) error {
+	if len(method) < len("/Scroll") || method[len(method)-len("/Scroll"):] != "/Scroll" {
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+	var call selectorRecordedCall
+	if sp, ok := req.(*qdrant.ScrollPoints); ok {
+		call.limit = sp.GetLimit()
+		call.keysOnly = sp.GetWithPayload().GetInclude() != nil
+	}
+	err := invoker(ctx, method, req, reply, cc, opts...)
+	r.mu.Lock()
+	r.calls = append(r.calls, call)
+	r.mu.Unlock()
+	return err
+}
+
+func (r *selectorRecorder) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = nil
+}
+
+func (r *selectorRecorder) snapshot() []selectorRecordedCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]selectorRecordedCall, len(r.calls))
+	copy(out, r.calls)
+	return out
+}
+
+// TestStoreListDeepOffsetBounded proves Store.List's deep-offset prefix walk
+// (D-07) over both oversized fixture shapes storetest.SeedOversized
+// supports: a deep-offset call succeeds and returns exactly the ids a full
+// zero-offset cursor-mode walk yields at the same positions; total is the
+// exact seeded count; every recorded Scroll's limit is between one and
+// store.PerRPCLimit of the view it used; the prefix RPCs carry the keys-only
+// payload selector while the trailing page RPC carries the full one; and an
+// offset at or beyond the total returns an empty page with the real total.
+func TestStoreListDeepOffsetBounded(t *testing.T) {
+	shapes := []storetest.Shape{storetest.FewLarge, storetest.ManySmall}
+	for _, shape := range shapes {
+		t.Run(shape.String(), func(t *testing.T) {
+			rec := &selectorRecorder{}
+			c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(rec.intercept))
+			name := store.PrefixedTestCollection("oversized_listbounded_deepoffset_" + uuid.NewString())
+			st := store.NewTestStore(t, c, name)
+			ctx := context.Background()
+			if err := st.EnsureCollection(ctx, 3); err != nil {
+				t.Fatalf("%s: EnsureCollection: %v", shape, err)
+			}
+			t.Cleanup(func() {
+				if err := c.DeleteCollection(ctx, name); err != nil {
+					t.Errorf("%s: DeleteCollection(%q): %v", shape, name, err)
+				}
+			})
+
+			fx := storetest.SeedOversized(t, st, storetest.Spec{Limit: storetest.RecvLimit, Shape: shape, Vector: []float32{0.1, 0.2, 0.3}})
+			owner := store.Authenticated(fx.Owner)
+			seededTotal := uint64(len(fx.IDs))
+
+			// Baseline: a full zero-offset walk in cursor mode, so this test
+			// does not assume its own offset math — it compares against
+			// what the primitive itself returns from position zero.
+			var baseline []string
+			cursor := ""
+			for i := 0; i < 200; i++ {
+				bItems, _, next, bErr := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: store.MaxRecallLimit, Cursor: cursor, CursorMode: true})
+				if bErr != nil {
+					t.Fatalf("%s: baseline walk page %d: %v", shape, i, bErr)
+				}
+				for _, m := range bItems {
+					baseline = append(baseline, m.ID)
+				}
+				if next == "" {
+					break
+				}
+				cursor = next
+			}
+			if uint64(len(baseline)) != seededTotal {
+				t.Fatalf("%s: baseline walk visited %d ids, want %d", shape, len(baseline), seededTotal)
+			}
+
+			deepOffset := seededTotal / 2
+			if deepOffset == 0 {
+				deepOffset = 1
+			}
+
+			rec.reset()
+			items, total, _, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Offset: deepOffset, Limit: 5})
+			if err != nil {
+				t.Fatalf("%s: deep-offset List: %v", shape, err)
+			}
+			if total != seededTotal {
+				t.Errorf("%s: deep-offset total = %d, want %d", shape, total, seededTotal)
+			}
+			wantCount := uint64(5)
+			if deepOffset+wantCount > seededTotal {
+				wantCount = seededTotal - deepOffset
+			}
+			if uint64(len(items)) != wantCount {
+				t.Fatalf("%s: deep-offset got %d items, want %d", shape, len(items), wantCount)
+			}
+			for i, m := range items {
+				wantID := baseline[deepOffset+uint64(i)]
+				if m.ID != wantID {
+					t.Errorf("%s: deep-offset item %d id = %s, want %s (baseline position %d)", shape, i, m.ID, wantID, deepOffset+uint64(i))
+				}
+			}
+
+			// The prefix walk and the page fetch each size their own RPCs
+			// from their own view's PerRPCLimit (boundedread.go's
+			// perRPCLimit), so either phase may issue more than one Scroll
+			// RPC on its own — the prefix walk when offset exceeds
+			// keysView()'s per-RPC ceiling, the page fetch whenever the
+			// requested limit exceeds fullView()'s (as it does here for
+			// few-large's large-record ceiling). What must hold is the
+			// TRANSITION: every keys-only RPC precedes every full-view RPC,
+			// with at least one of each, and each RPC's limit stays within
+			// its own view's PerRPCLimit.
+			calls := rec.snapshot()
+			if len(calls) < 2 {
+				t.Fatalf("%s: recorded %d Scroll call(s), want at least 2 (a prefix walk plus a page fetch)", shape, len(calls))
+			}
+			keysPerRPC := uint32(store.PerRPCLimit(store.KeysView()))
+			fullPerRPC := uint32(store.PerRPCLimit(st.FullView()))
+			sawFullView := false
+			prefixCallCount := 0
+			pageCallCount := 0
+			for i, call := range calls {
+				if call.keysOnly {
+					if sawFullView {
+						t.Errorf("%s: call %d carried the keys-only selector AFTER a full-view call — prefix RPCs must all precede the page RPCs", shape, i)
+					}
+					if call.limit < 1 || call.limit > keysPerRPC {
+						t.Errorf("%s: prefix call %d limit = %d, want between 1 and %d", shape, i, call.limit, keysPerRPC)
+					}
+					prefixCallCount++
+					continue
+				}
+				sawFullView = true
+				if call.limit < 1 || call.limit > fullPerRPC {
+					t.Errorf("%s: page call %d limit = %d, want between 1 and %d", shape, i, call.limit, fullPerRPC)
+				}
+				pageCallCount++
+			}
+			if prefixCallCount == 0 {
+				t.Errorf("%s: no keys-only prefix RPC recorded", shape)
+			}
+			if pageCallCount == 0 {
+				t.Errorf("%s: no full-view page RPC recorded", shape)
+			}
+
+			// Offset at/beyond the total: empty page, real total, never a
+			// slice panic.
+			eItems, eTotal, eNext, eErr := st.List(ctx, fx.Scope, owner, store.ListOptions{Offset: seededTotal + 50, Limit: 5})
+			if eErr != nil {
+				t.Errorf("%s: offset-beyond-total List: %v", shape, eErr)
+			} else {
+				if eTotal != seededTotal {
+					t.Errorf("%s: offset-beyond-total total = %d, want %d", shape, eTotal, seededTotal)
+				}
+				if len(eItems) != 0 {
+					t.Errorf("%s: offset-beyond-total got %d items, want 0", shape, len(eItems))
+				}
+				if eNext != "" {
+					t.Errorf("%s: offset-beyond-total next = %q, want empty", shape, eNext)
+				}
 			}
 		})
 	}

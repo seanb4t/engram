@@ -1393,6 +1393,43 @@ func (s *Store) listFilter(ctx context.Context, scope string, subj Subject, opts
 // phase).
 const MaxRecallLimit = 1000
 
+// walkOffsetPrefix skips offset records of f's matches (ordered by dir) with
+// a keys-only budgeted view (D-07), returning the resume listCursor position
+// at the prefix boundary instead of ever materializing the skipped records'
+// full payloads. It returns the zero cursor and exhausted=false immediately
+// when offset is 0 — no RPC at all.
+//
+// The walk narrows nothing: it carries the SAME filter value f the
+// caller-view fetch will use, unmodified, and differs from that fetch solely
+// in the payload selector (keysView() vs the caller's view) — so a record
+// the caller may not read can never advance the boundary. Because both walks
+// share one listCursor shape, the returned cursor is consumed directly by
+// collectOrderedPages with no translation between the two views' resume
+// tokens. A created_at tie wider than MaxRecallLimit ids at the prefix
+// boundary is rejected by scrollOrderedPage's own Seen-set bound
+// (ErrInvalidArgument) — REQ-cursor-tie-safety (v2), not this function's
+// scope.
+func (s *Store) walkOffsetPrefix(ctx context.Context, f *qdrant.Filter, dir qdrant.Direction, offset uint64) (from listCursor, exhausted bool, err error) {
+	if offset == 0 {
+		return listCursor{}, false, nil
+	}
+	view := keysView()
+	var cur listCursor
+	var walked uint64
+	for walked < offset {
+		page, pErr := s.scrollOrderedPage(ctx, f, view, dir, cur, offset-walked)
+		if pErr != nil {
+			return listCursor{}, false, pErr
+		}
+		walked += uint64(len(page.Items))
+		cur = page.Next
+		if page.Exhausted {
+			return cur, true, nil
+		}
+	}
+	return cur, false, nil
+}
+
 // collectOrderedPages assembles the first `want` ordered records matching f
 // by looping scrollOrderedPage, following Next, until want are in hand or
 // the primitive reports Exhausted (D-05, plan 04-02 Task 2). pageByteBudget
@@ -1500,9 +1537,11 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	}
 
 	// Offset mode: resolve the effective limit FIRST (D-01) — a zero limit
-	// becomes MaxRecallLimit, a number everywhere, never "all" — then
-	// assemble the full requested count from bounded ordered pages
-	// (D-05) instead of one unbounded Scroll.
+	// becomes MaxRecallLimit, a number everywhere, never "all" — then walk
+	// the skipped prefix with a keys-only budgeted view (D-07) instead of
+	// ever fetching it in the caller's view, and assemble the requested page
+	// alone (never offset+limit) from bounded ordered pages (D-05) resumed
+	// at the prefix boundary.
 	effectiveLimit := opts.Limit
 	if effectiveLimit == 0 {
 		effectiveLimit = MaxRecallLimit
@@ -1510,26 +1549,26 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 	if opts.Offset > math.MaxUint64-effectiveLimit {
 		return nil, 0, "", fmt.Errorf("list: offset+limit overflows: %w", ErrInvalidArgument)
 	}
-	want := opts.Offset + effectiveLimit
-	if want == 0 {
-		// Defensive, unreachable by construction now that a zero limit
-		// resolves to MaxRecallLimit above (engram-3jo0.4): kept so a
-		// caller can never reach scrollOrderedPage's own limit==0
-		// rejection.
-		return []Memory{}, total, "", nil
-	}
 	dir := qdrant.Direction_Desc
 	if opts.Ascending {
 		dir = qdrant.Direction_Asc
 	}
-	all, _, _, err := s.collectOrderedPages(ctx, f, s.fullView(), dir, listCursor{}, want)
+	from, prefixExhausted, err := s.walkOffsetPrefix(ctx, f, dir, opts.Offset)
 	if err != nil {
 		return nil, 0, "", err
 	}
-	if opts.Offset >= uint64(len(all)) {
+	if prefixExhausted {
+		// The prefix walk consumed the entire matched set before reaching
+		// opts.Offset: the page is empty, total stays the real matched
+		// count (the clamp that replaces the former all[opts.Offset:]
+		// client-side slice).
 		return []Memory{}, total, "", nil
 	}
-	return all[opts.Offset:], total, "", nil
+	items, _, _, err = s.collectOrderedPages(ctx, f, s.fullView(), dir, from, effectiveLimit)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	return items, total, "", nil
 }
 
 // listByCursor is a thin scrollOrderedPage adapter (D-03/D-04, plan 04-02

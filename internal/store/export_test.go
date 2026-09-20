@@ -81,6 +81,9 @@ func PerRPCLimit(v ReadView) int { return perRPCLimit(v.maxRecordBytes) }
 // UnbudgetedView exposes unbudgetedView to package store_test.
 func UnbudgetedView(sel *qdrant.WithPayloadSelector) ReadView { return unbudgetedView(sel) }
 
+// KeysView exposes keysView to package store_test.
+func KeysView() ReadView { return keysView() }
+
 // SetByteBudgets overrides rpcByteBudget/pageByteBudget for t's duration,
 // restoring both via t.Cleanup.
 func SetByteBudgets(t testing.TB, rpc, page int) {

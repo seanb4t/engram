@@ -24,6 +24,13 @@
 // of one of these fields is caught by scrollAllPoints' batch-of-1 fallback
 // (D-07) and, at worst, fails the sweep with the already-named
 // store.ErrResponseTooLarge — it is never silently skipped or truncated.
+//
+// D-05 (04-CONTEXT.md, Phase 4) revises the scope of pageByteBudget below:
+// it bounds cursor-mode responses ONLY. Offset-mode Store.List and
+// Store.ListScheduled assemble the full requested count across several
+// ordered pages instead of stopping at one page's byte budget — they are
+// bounded by count alone (at most MaxRecallLimit records times the view's
+// per-record ceiling), never by pageByteBudget.
 
 package store
 
@@ -154,6 +161,19 @@ const citationEntryAllowance = 1 << 10
 // scrollAllPoints' batch-of-1 fallback (D-07), never silently skipped.
 const uncappedFieldsAllowance = 16 << 10
 
+// keysRecordCeiling is the per-record byte allowance for keysView (D-07): a
+// point carrying nothing but its id (a 36-byte UUID, returned unconditionally
+// as p.Id — never part of the payload selector) and one RFC3339 created_at
+// string, plus protobuf point/map framing. Deliberately NOT derived from
+// RecordCaps like fullRecordCeiling/summaryRecordCeiling — the selector
+// excludes every capped field, so there is nothing left to derive a ceiling
+// from. A small fixed allowance in the low hundreds of bytes comfortably
+// covers an RFC3339 timestamp plus framing; scrollOrderedPage's own
+// proto.Size measurement (the D-07 batch-of-1 fallback) corrects this at
+// runtime if a future encoding is ever tighter than assumed, exactly like
+// uncappedFieldsAllowance and citationEntryAllowance above.
+const keysRecordCeiling = 256
+
 // summaryTerm is the ceiling contribution of the summary field: SummaryBytes
 // when the write-side bound is enabled (> 0), else ContentBytes — with the
 // bound disabled, no proof otherwise bounds a summary, so the content cap is
@@ -225,6 +245,16 @@ func (s *Store) summaryView() readView {
 		selector:       qdrant.NewWithPayloadExclude("content", "citations"),
 		maxRecordBytes: summaryRecordCeiling(s.RecordCaps()),
 	}
+}
+
+// keysView is the keys-only readView (D-07) the deep-offset prefix walk
+// (walkOffsetPrefix, store.go) uses to skip a large Offset cheaply: only
+// created_at travels over the wire (id is never part of a payload selector —
+// Qdrant always returns it), at keysRecordCeiling's fixed per-record
+// ceiling. A package-level function, not a method, since it depends on no
+// Store state.
+func keysView() readView {
+	return readView{selector: qdrant.NewWithPayloadInclude("created_at"), maxRecordBytes: keysRecordCeiling}
 }
 
 // unbudgetedView wraps sel with no byte-derived ceiling — today's
