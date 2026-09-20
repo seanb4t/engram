@@ -1071,7 +1071,15 @@ func (s *Store) derivePurgeEligible(ctx context.Context, opts PurgeOptions) (can
 	archivedCutoff := now.Add(-archivedWindow)
 	filterAgeCutoff := now.Add(-opts.OlderThan)
 
-	scanErr := s.scrollAllPoints(ctx, s.collection, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
+	// The store's existing summary-shaped view is reused directly rather
+	// than minting a fourth constructor (D-04): this callback reads Tags,
+	// Category, SupersededBy, NotAfter, ArchivedAt, CreatedAt, ID, ShortID
+	// and Scope -- never content or citations -- so that view's selector
+	// (excluding exactly those two fields) is a superset of what it needs,
+	// and its ceiling already budgets the tags term this callback reads. A
+	// narrower view would not pay: the tags term dominates whatever the
+	// summary term it also carries adds on top.
+	scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.summaryView(), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 
 		if slices.Contains(m.Tags, purgeMilestoneSummaryTag) {

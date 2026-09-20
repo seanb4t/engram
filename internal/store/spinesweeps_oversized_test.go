@@ -12,6 +12,7 @@ package store_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/seanb4t/engram/internal/store"
@@ -166,6 +167,74 @@ func TestNearDuplicatesBoundedOverGRPCLimit(t *testing.T) {
 				if p.AScope == "" || p.BScope == "" {
 					t.Errorf("%s: pair (%s,%s): empty scope — nearDuplicateIdentityView dropped a key the id enumeration reads", shape, p.A, p.B)
 				}
+			}
+		})
+	}
+}
+
+// TestPreviewPurgeBoundedOverGRPCLimit proves derivePurgeEligible's reuse of
+// summaryView (D-04) completes over both oversized fixture shapes at
+// storetest.RecvLimit: the bulk fixture (none of it purge-eligible) leaves
+// an empty manifest, and one additional record seeded through the public
+// write path with Tags, Category, SupersededBy, NotAfter, ArchivedAt and
+// CreatedAt all set is the manifest's only entry — proving every one of
+// those keys survived the projection.
+func TestPreviewPurgeBoundedOverGRPCLimit(t *testing.T) {
+	shapes := []storetest.Shape{storetest.FewLarge, storetest.ManySmall}
+	for _, shape := range shapes {
+		t.Run(shape.String(), func(t *testing.T) {
+			c := storetest.Dial(t, storetest.RecvLimit)
+			name := store.PrefixedTestCollection("oversized_previewpurge_" + uuid.NewString())
+			st := store.NewTestStore(t, c, name)
+			ctx := context.Background()
+			if err := st.EnsureCollection(ctx, 3); err != nil {
+				t.Fatalf("%s: EnsureCollection: %v", shape, err)
+			}
+			t.Cleanup(func() {
+				if err := c.DeleteCollection(ctx, name); err != nil {
+					t.Errorf("%s: DeleteCollection(%q): %v", shape, name, err)
+				}
+			})
+
+			// The bulk fixture carries none of derivePurgeEligible's
+			// eligibility fields (no NotAfter/ArchivedAt/SupersededBy), so
+			// none of it is purge-eligible under any class.
+			fx := storetest.SeedOversized(t, st, storetest.Spec{Limit: storetest.RecvLimit, Shape: shape, Vector: []float32{0.1, 0.2, 0.3}})
+
+			purgeNow := time.Now().UTC()
+			pastNotAfter := purgeNow.Add(-2 * time.Hour)
+			pastArchivedAt := purgeNow.Add(-100 * 24 * time.Hour)
+			candidateID := uuid.NewString()
+			// Seeded through the public Store.Upsert path (never a raw
+			// *qdrant.Client), the way listscheduled_oversized_test.go
+			// seeds its own edge-case records, so it can carry a state the
+			// uniform Spec.Template cannot: SupersededBy names an already-
+			// existing record (fx.IDs[0]) whose CreatedAt is recent
+			// (satisfying checkExtractGate's per-record path, since it
+			// postdates this candidate's own CreatedAt), while NotAfter
+			// and ArchivedAt are both in the past relative to purgeNow,
+			// making the record independently Expired- and Archived-
+			// eligible.
+			successorID := fx.IDs[0]
+			if err := st.Upsert(ctx, store.Memory{
+				ID: candidateID, Content: "purge candidate", Scope: fx.Scope, Owner: fx.Owner,
+				Actor: fx.Owner, Category: "decision", Tags: []string{"important"},
+				CreatedAt: purgeNow.Add(-3 * time.Hour), NotAfter: &pastNotAfter, ArchivedAt: &pastArchivedAt,
+				SupersededBy: &successorID,
+			}, []float32{0.4, 0.5, 0.6}); err != nil {
+				t.Fatalf("%s: seed purge-eligible record: %v", shape, err)
+			}
+
+			manifest, err := st.PreviewPurge(ctx, store.PurgeOptions{
+				Classes: []store.PurgeClass{store.PurgeClassExpired, store.PurgeClassArchived},
+				Scope:   fx.Scope, OlderThan: time.Hour, Now: purgeNow,
+			})
+			if err != nil {
+				t.Fatalf("%s: PreviewPurge: %v (request shape exceeded the %d-byte named receive limit, or the extract gate rejected the candidate)", shape, err, storetest.RecvLimit)
+			}
+			ids := manifest.IDs()
+			if len(ids) != 1 || ids[0] != candidateID {
+				t.Errorf("%s: PreviewPurge manifest = %v, want exactly [%s]", shape, ids, candidateID)
 			}
 		})
 	}
