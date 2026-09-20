@@ -64,7 +64,28 @@ var spineScrollBatch uint32 = 256
 // reports only the first page as the whole spine — no error, no nonzero
 // exit code, and no grep for the token "Scroll" can tell the two apart.
 // Only ScrollAndOffset (:88-94) and ScrollAll (:419) actually paginate.
-func (s *Store) scrollAllPoints(ctx context.Context, filter *qdrant.Filter, view readView, fn func(*qdrant.RetrievedPoint) error) error {
+//
+// collection is an explicit parameter, not s.collection, so plan 05-04's
+// Store.Reindex can walk ReindexOptions.Source — a collection other than
+// the store's own configured one — through this SAME shared iterator
+// rather than a second, independently-written loop. This is deliberately
+// NOT split into a delegating wrapper that keeps a four-argument shape and
+// forwards to a differently-named helper: the recall-gate AST test
+// (schemaversion_recallgate_test.go) derives its emission set from the
+// enclosing function of each direct s.client.ScrollAndOffset( call and
+// separately requires an operatorMigrationEmitters entry whose
+// enclosingFunc is literally "Store.scrollAllPoints" carrying the
+// substring "reachable set" (foundScrollAllPointsRationale) — moving the
+// emission into a differently named function would break both the
+// set-equality subtest and that check. Every existing call site passes
+// s.collection explicitly; only Store.Reindex passes anything else.
+//
+// WithVectors is always set to false: no callback in this package reads a
+// point's vectors, and the pinned qdrant/go-client applies no client-side
+// default for an unset field (it forwards nil and lets the server decide),
+// so this guarantee is stated here rather than inherited from an unstated
+// server default — plan 05-04's Store.Reindex depends on it explicitly.
+func (s *Store) scrollAllPoints(ctx context.Context, collection string, filter *qdrant.Filter, view readView, fn func(*qdrant.RetrievedPoint) error) error {
 	var offset *qdrant.PointId
 	var fallbackLeft int
 	for {
@@ -73,11 +94,12 @@ func (s *Store) scrollAllPoints(ctx context.Context, filter *qdrant.Filter, view
 			limit = 1
 		}
 		pts, next, err := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: s.collection,
+			CollectionName: collection,
 			Filter:         filter,
 			Limit:          qdrant.PtrOf(limit),
 			Offset:         offset,
 			WithPayload:    view.selector,
+			WithVectors:    qdrant.NewWithVectors(false),
 		})
 		if err != nil {
 			if view.budgeted() && limit > 1 && errors.Is(err, ErrResponseTooLarge) {
@@ -275,7 +297,7 @@ func (s *Store) ScanSpine(ctx context.Context, opts SpineScanOptions) (res Spine
 	now := s.now()
 	res.ScannedAt = now
 
-	scanErr := s.scrollAllPoints(ctx, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
+	scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.scanView(), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 		res.Total++
 		counts[bucketKey{scope: m.Scope, category: m.Category}]++
@@ -382,7 +404,7 @@ func (s *Store) EnumerateCitations(ctx context.Context, opts SpineScanOptions) (
 	}
 
 	res = []CitationRecord{}
-	scanErr := s.scrollAllPoints(ctx, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
+	scanErr := s.scrollAllPoints(ctx, s.collection, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 		if len(m.Citations) == 0 {
 			return nil
@@ -588,7 +610,7 @@ func (s *Store) NearDuplicates(ctx context.Context, opts NearDuplicateOptions) (
 
 	var ids []string
 	identities := make(map[string]nearDuplicateIdentity)
-	enumErr := s.scrollAllPoints(ctx, enumFilter, unbudgetedView(qdrant.NewWithPayloadInclude("short_id", "scope")), func(p *qdrant.RetrievedPoint) error {
+	enumErr := s.scrollAllPoints(ctx, s.collection, enumFilter, unbudgetedView(qdrant.NewWithPayloadInclude("short_id", "scope")), func(p *qdrant.RetrievedPoint) error {
 		id := p.Id.GetUuid()
 		ids = append(ids, id)
 		identities[id] = nearDuplicateIdentity{
@@ -1049,7 +1071,7 @@ func (s *Store) derivePurgeEligible(ctx context.Context, opts PurgeOptions) (can
 	archivedCutoff := now.Add(-archivedWindow)
 	filterAgeCutoff := now.Add(-opts.OlderThan)
 
-	scanErr := s.scrollAllPoints(ctx, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
+	scanErr := s.scrollAllPoints(ctx, s.collection, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 
 		if slices.Contains(m.Tags, purgeMilestoneSummaryTag) {

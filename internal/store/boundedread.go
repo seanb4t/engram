@@ -211,6 +211,17 @@ func summaryRecordCeiling(c RecordCaps) int {
 	return summaryTerm(c) + tagsTerm(c) + uncappedFieldsAllowance
 }
 
+// scanRecordCeiling is the TRUE per-record payload ceiling for a scan-view
+// (D-04) read under c: the summary term + the tags term + every citation at
+// its excerpt cap plus its entry allowance + the uncapped fields allowance —
+// content and tags are the two terms scanView's callback never reads.
+// Citations still travel (and still cost bytes) even though ScanSpine only
+// ever reads their COUNT: Qdrant cannot return an array's length without
+// returning the array, so the field cannot be excluded from the selector.
+func scanRecordCeiling(c RecordCaps) int {
+	return summaryTerm(c) + c.Citations*(c.CitationExcerptBytes+citationEntryAllowance) + uncappedFieldsAllowance
+}
+
 // perRPCLimit is floor(rpcByteBudget / maxRecordBytes), floored at 1 so a
 // per-record ceiling exceeding the budget still requests exactly one record
 // per RPC rather than zero.
@@ -247,6 +258,21 @@ func (s *Store) summaryView() readView {
 	}
 }
 
+// scanView excludes content and tags (D-04) and is sized from
+// s.RecordCaps() via scanRecordCeiling. Safe for ScanSpine's callback,
+// which reads Scope, Category, Summary (presence only), SupersededBy,
+// NotAfter, NotBefore, ArchivedAt, Citations (count only, via len), and
+// Owner — never Content or Tags. Citations still travel even though the
+// callback only reads their count: Qdrant cannot return an array's length
+// server-side, so the field itself has to cross the wire. NOT safe for any
+// caller reading content or tags.
+func (s *Store) scanView() readView {
+	return readView{
+		selector:       qdrant.NewWithPayloadExclude("content", "tags"),
+		maxRecordBytes: scanRecordCeiling(s.RecordCaps()),
+	}
+}
+
 // keysView is the keys-only readView (D-07) the deep-offset prefix walk
 // (walkOffsetPrefix, store.go) uses to skip a large Offset cheaply: only
 // created_at travels over the wire (id is never part of a payload selector —
@@ -259,11 +285,11 @@ func keysView() readView {
 
 // unbudgetedView wraps sel with no byte-derived ceiling — today's
 // count-only scrollAllPoints loop, kept byte-for-byte for callers this
-// phase has not migrated (ScanSpine, EnumerateCitations, NearDuplicates' id
+// phase has not yet migrated (EnumerateCitations, NearDuplicates' id
 // enumeration, derivePurgeEligible, previewRevertWithSteps, and
-// spine_test.go's snapshotCollection). Phase 5 replaces every call and
-// deletes this constructor; its closing check is that no unbudgetedView(
-// call remains.
+// spine_test.go's snapshotCollection — ScanSpine moved onto scanView in
+// plan 05-01). Phase 5 replaces every remaining call and deletes this
+// constructor; its closing check is that no unbudgetedView( call remains.
 func unbudgetedView(sel *qdrant.WithPayloadSelector) readView {
 	return readView{selector: sel, maxRecordBytes: 0}
 }

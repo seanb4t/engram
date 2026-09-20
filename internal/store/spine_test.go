@@ -78,7 +78,7 @@ func snapshotCollection(t *testing.T, s *Store) (count uint64, digest string) {
 		t.Fatalf("snapshotCollection: Count: %v", err)
 	}
 	h := sha256.New()
-	scanErr := s.scrollAllPoints(ctx, nil, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
+	scanErr := s.scrollAllPoints(ctx, s.collection, nil, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
 		fmt.Fprintf(h, "id=%s|", p.Id.GetUuid())
 		keys := make([]string, 0, len(p.Payload))
 		for k := range p.Payload {

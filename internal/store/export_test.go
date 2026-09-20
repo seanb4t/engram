@@ -56,9 +56,14 @@ func RPCByteBudget() int { return rpcByteBudget }
 // PageByteBudget exposes pageByteBudget to package store_test.
 func PageByteBudget() int { return pageByteBudget }
 
-// ScrollAllPoints exposes (*Store).scrollAllPoints to package store_test.
+// ScrollAllPoints exposes (*Store).scrollAllPoints to package store_test,
+// always walking s's own configured collection — none of this package's
+// external oversized regressions need to name a different collection, so
+// the exported shim's four-argument shape stays unchanged even though the
+// internal method (Phase 5) gained a collection parameter for
+// Store.Reindex's benefit.
 func (s *Store) ScrollAllPoints(ctx context.Context, filter *qdrant.Filter, v ReadView, fn func(*qdrant.RetrievedPoint) error) error {
-	return s.scrollAllPoints(ctx, filter, v, fn)
+	return s.scrollAllPoints(ctx, s.collection, filter, v, fn)
 }
 
 // OrderedPage exposes the internal orderedPage type to package store_test.
