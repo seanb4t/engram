@@ -154,6 +154,9 @@ var redEvidenceDirs = map[string]map[string]string{
 		"04-06-full-not-threaded-to-rule-listing.patch":      "TestListRulesFullThreaded",                    // reverts: the rule listing's direct store-options literal threading a.Full through to the store (Pattern 6 step 4)
 		"04-07-cli-help-drops-the-maximum.patch":             "TestRecallMaximumIsStatedNumerically",         // reverts: the CLI list --limit flag's usage string stating the numeric maximum (D-01, D-04)
 	},
+	".planning/phases/05-operator-sweeps-ci-backstop/red-evidence": {
+		"05-05-backstop-appended-after-caller-options.patch": "TestQdrantRecvLimitBackstopPrecedesCallerOptions", // reverts: qdrantDialOptions appending the productionRecvLimit backstop BEFORE caller options, so a caller's own receive limit still wins (D-05, D-06)
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
