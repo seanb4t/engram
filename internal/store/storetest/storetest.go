@@ -271,9 +271,13 @@ func Dial(t testing.TB, recvLimit int, opts ...grpc.DialOption) *qdrant.Client {
 // dialOptions returns opts, in their original order, followed LAST by the
 // named receive limit as a grpc.WithDefaultCallOptions call wrapping
 // grpc.MaxCallRecvMsgSize — so no caller-supplied option can widen the
-// named limit. recvLimit must be a positive byte count; it is passed
-// through to that call unconverted — no unit conversion, rounding, or
-// narrowing (rule m45p2b4bp7).
+// named limit. As of Phase 5, that includes store.NewQdrantClient's own
+// 64 MiB productionRecvLimit backstop: this append-LAST ordering is what
+// keeps every test dialed through Dial running at the limit it names
+// instead of silently inheriting the wider production ceiling. recvLimit
+// must be a positive byte count; it is passed through to that call
+// unconverted — no unit conversion, rounding, or narrowing (rule
+// m45p2b4bp7).
 func dialOptions(recvLimit int, opts []grpc.DialOption) ([]grpc.DialOption, error) {
 	if recvLimit <= 0 {
 		return nil, fmt.Errorf("storetest: recvLimit must be a positive byte count naming the limit under test, got %d", recvLimit)

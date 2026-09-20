@@ -527,10 +527,12 @@ func WithTargetLocker(l TargetLocker) Option {
 // outermost of every interceptor, caller and base alike. A receive limit is
 // passed by the caller in upstream vocabulary
 // (grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(n))), never through a
-// wrapper option type. This adds no production read-bounding behavior on its
-// own — the MaxCallRecvMsgSize backstop is a later requirement
-// (REQ-recv-limit-backstop), set once the regression tests already pass
-// without it.
+// wrapper option type. As of Phase 5 (D-05), the constructor also applies
+// productionRecvLimit — a 64 MiB MaxCallRecvMsgSize backstop — as defense in
+// depth: it is not the bounding mechanism, and no test in this repository
+// depends on it (REQ-recv-limit-backstop). It is appended before opts,
+// exactly like the two base options above it, so a caller naming its own
+// receive limit in the upstream vocabulary above still wins.
 func NewQdrantClient(host string, port int, opts ...grpc.DialOption) (*qdrant.Client, error) {
 	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: qdrantDialOptions(opts)})
 }
