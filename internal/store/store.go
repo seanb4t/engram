@@ -532,11 +532,50 @@ func WithTargetLocker(l TargetLocker) Option {
 // (REQ-recv-limit-backstop), set once the regression tests already pass
 // without it.
 func NewQdrantClient(host string, port int, opts ...grpc.DialOption) (*qdrant.Client, error) {
-	dialOpts := make([]grpc.DialOption, 0, 2+len(opts))
+	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: qdrantDialOptions(opts)})
+}
+
+// productionRecvLimit raises the production gRPC client's default receive
+// message size to 64 MiB. It is defense in depth ONLY — never the fix for
+// an unbounded read. The fix is the byte-budget bounded-read mechanism
+// (Store.scrollAllPoints and the storetest.RecvLimit-pinned regressions
+// built on it) that Phases 3 and 4, and this phase's own plans 05-01
+// through 05-04, already built and proved WITHOUT this backstop in place.
+// A wider ceiling masks a genuinely unbounded read for LONGER than a
+// tighter one would; that trade-off was recorded and accepted deliberately
+// at decision time (D-05), not overlooked. Set in exactly ONE place: here.
+const productionRecvLimit = 64 << 20
+
+// productionCallOptions returns the default call options every production
+// *qdrant.Client carries. A slice, not a single value, so a future second
+// default call option has an obvious home without disturbing
+// TestQdrantRecvLimitBackstopPassThrough's "exactly one entry today"
+// assertion.
+func productionCallOptions() []grpc.CallOption {
+	return []grpc.CallOption{grpc.MaxCallRecvMsgSize(productionRecvLimit)}
+}
+
+// qdrantDialOptions assembles NewQdrantClient's dial options: the shared
+// base options — the otelgrpc stats handler, the classifyResponseTooLarge
+// interceptor, and the productionRecvLimit backstop — THEN the caller's own
+// opts, in that order.
+//
+// The backstop MUST be appended BEFORE opts, exactly like the two base
+// options ahead of it. grpc-go's default call options are last-wins, and
+// storetest.dialOptions relies on that: it appends its own
+// MaxCallRecvMsgSize(storetest.RecvLimit) LAST, specifically so no other
+// option can widen the limit a test names. Appending this backstop AFTER
+// opts would silently raise every existing oversized regression's
+// effective receive ceiling to 64 MiB without any of them turning red —
+// see TestQdrantRecvLimitBackstopPrecedesCallerOptions, the one test in
+// this repository that would catch that ordering mistake.
+func qdrantDialOptions(opts []grpc.DialOption) []grpc.DialOption {
+	dialOpts := make([]grpc.DialOption, 0, 3+len(opts))
 	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	dialOpts = append(dialOpts, grpc.WithChainUnaryInterceptor(classifyResponseTooLarge))
+	dialOpts = append(dialOpts, grpc.WithDefaultCallOptions(productionCallOptions()...))
 	dialOpts = append(dialOpts, opts...)
-	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: dialOpts})
+	return dialOpts
 }
 
 // New returns a Store backed by the given Qdrant client and collection.
