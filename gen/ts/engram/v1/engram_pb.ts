@@ -273,7 +273,7 @@ export type ListMemoriesRequest = Message<"engram.v1.ListMemoriesRequest"> & {
   scope: string;
 
   /**
-   * 0 resolves to the maximum, 1000; a larger value is rejected
+   * 0 resolves to the maximum, 1000, in offset mode (in cursor mode, to the page default 20); a larger value is rejected
    *
    * @generated from field: uint64 limit = 2;
    */

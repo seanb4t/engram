@@ -513,7 +513,7 @@ func (x *ListScopesResponse) GetApproximate() bool {
 type ListMemoriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Scope         string                 `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
-	Limit         uint64                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"` // 0 resolves to the maximum, 1000; a larger value is rejected
+	Limit         uint64                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"` // 0 resolves to the maximum, 1000, in offset mode (in cursor mode, to the page default 20); a larger value is rejected
 	Offset        uint64                 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	Categories    []string               `protobuf:"bytes,4,rep,name=categories,proto3" json:"categories,omitempty"`                            // empty = all categories
 	Visibility    string                 `protobuf:"bytes,5,opt,name=visibility,proto3" json:"visibility,omitempty"`                            // "" = all | "private" | "shared"

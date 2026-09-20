@@ -70,7 +70,7 @@ message ListScopesResponse {
 
 message ListMemoriesRequest {
   string scope = 1;
-  uint64 limit = 2; // 0 resolves to the maximum, 1000; a larger value is rejected
+  uint64 limit = 2; // 0 resolves to the maximum, 1000, in offset mode (in cursor mode, to the page default 20); a larger value is rejected
   uint64 offset = 3;
   repeated string categories = 4; // empty = all categories
   string visibility = 5;          // "" = all | "private" | "shared"

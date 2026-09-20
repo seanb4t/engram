@@ -421,6 +421,10 @@ relying on `limit: 0` to fetch an entire scope in one response and seeing
 more than 1000 matching records now sees a `total` larger than the number of
 memories actually returned; page the remainder with `--offset` (or, in
 cursor mode, `--page-token`) rather than assuming one call is exhaustive.
+This applies to offset mode. In **cursor mode** (`cursor_mode: true`, or a
+`page_token` set) an unset `limit` resolves to the cursor page default of
+`20`, unchanged from before this release — a cursor page has always been a
+page, and `next_page_token` tells you whether more remain.
 
 Separately, `limit`/`k` above 1000 (in cursor-mode paging, and on every
 other recall surface: `search_memory`/`search_discovery`'s `k`,
