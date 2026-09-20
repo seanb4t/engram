@@ -41,7 +41,8 @@ var spineScrollBatch uint32 = 256
 // byte ceiling (readView, boundedread.go, D-04): a budgeted view (fullView/
 // summaryView) sizes every RPC's Limit from the byte budget (D-02) via
 // sweepLimit, so no single RPC can overflow for a record that respects the
-// caps; an unbudgetedView keeps the pre-Phase-3 count-only loop unchanged —
+// caps; a readView whose maxRecordBytes is zero (unbudgeted — budgeted()
+// reports false) keeps the pre-Phase-3 count-only loop unchanged —
 // spineScrollBatch per RPC, no fallback. For a sweep, one RPC IS the page:
 // there is no separate page-level byte accumulation here (that belongs to
 // the ordered-page helper, plan 03-04, for List-shaped reads).

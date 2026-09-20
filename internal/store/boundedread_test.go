@@ -82,13 +82,14 @@ func TestWithRecordCapsNormalizesNonPositive(t *testing.T) {
 	}
 }
 
-// TestSweepLimit proves sweepLimit's own branching directly: an
-// unbudgetedView always returns spineScrollBatch; a budgeted view's limit
-// is capped by spineScrollBatch (forced to 1 here, restored via
-// t.Cleanup — never t.Parallel with a mutated package var).
+// TestSweepLimit proves sweepLimit's own branching directly: a zero-value
+// readView (no byte-derived ceiling — budgeted() reports false) always
+// returns spineScrollBatch; a budgeted view's limit is capped by
+// spineScrollBatch (forced to 1 here, restored via t.Cleanup — never
+// t.Parallel with a mutated package var).
 func TestSweepLimit(t *testing.T) {
-	if got, want := sweepLimit(unbudgetedView(nil)), spineScrollBatch; got != want {
-		t.Errorf("sweepLimit(unbudgetedView(nil)) = %d, want spineScrollBatch %d", got, want)
+	if got, want := sweepLimit(readView{}), spineScrollBatch; got != want {
+		t.Errorf("sweepLimit(readView{}) = %d, want spineScrollBatch %d", got, want)
 	}
 
 	orig := spineScrollBatch

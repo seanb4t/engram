@@ -83,9 +83,6 @@ func (s *Store) ScrollOrderedPage(ctx context.Context, scope string, subj Subjec
 // PerRPCLimit exposes perRPCLimit to package store_test.
 func PerRPCLimit(v ReadView) int { return perRPCLimit(v.maxRecordBytes) }
 
-// UnbudgetedView exposes unbudgetedView to package store_test.
-func UnbudgetedView(sel *qdrant.WithPayloadSelector) ReadView { return unbudgetedView(sel) }
-
 // KeysView exposes keysView to package store_test.
 func KeysView() ReadView { return keysView() }
 

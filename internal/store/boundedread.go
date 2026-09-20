@@ -353,18 +353,6 @@ func keysView() readView {
 	return readView{selector: qdrant.NewWithPayloadInclude("created_at"), maxRecordBytes: keysRecordCeiling}
 }
 
-// unbudgetedView wraps sel with no byte-derived ceiling — today's
-// count-only scrollAllPoints loop, kept byte-for-byte for callers this
-// phase has not yet migrated (previewRevertWithSteps and spine_test.go's
-// snapshotCollection — plan 05-01 moved every spine.go sweep, ScanSpine,
-// EnumerateCitations, NearDuplicates' id enumeration and
-// derivePurgeEligible, onto per-sweep or reused budgeted views). Phase 5
-// replaces every remaining call and deletes this constructor; its closing
-// check is that no unbudgetedView( call remains.
-func unbudgetedView(sel *qdrant.WithPayloadSelector) readView {
-	return readView{selector: sel, maxRecordBytes: 0}
-}
-
 // sweepLimit is the per-RPC record count scrollAllPoints requests for v:
 // spineScrollBatch when v is unbudgeted (today's behavior, unchanged), else
 // the smaller of spineScrollBatch and v's byte-derived perRPCLimit.

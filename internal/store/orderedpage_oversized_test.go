@@ -651,7 +651,13 @@ func TestScrollOrderedPageRejectsInvalidInput(t *testing.T) {
 		limit uint64
 	}{
 		{name: "zero limit", view: st.FullView(), from: store.ListCursor{}, limit: 0},
-		{name: "unbudgeted view", view: store.UnbudgetedView(qdrant.NewWithPayload(true)), from: store.ListCursor{}, limit: 5},
+		// store.ReadView{} is the zero value: no byte-derived ceiling
+		// (budgeted() reports false), constructed directly now that Phase
+		// 5's count-only view constructor no longer exists. The premise
+		// this row proves survives the deletion unchanged: scrollOrderedPage's
+		// own argument validation rejects ANY unbudgeted view outright,
+		// independent of how one is minted.
+		{name: "no byte ceiling", view: store.ReadView{}, from: store.ListCursor{}, limit: 5},
 		{name: "seen without boundary", view: st.FullView(), from: store.ListCursor{Seen: []string{"x"}}, limit: 5},
 		{name: "seen set too large", view: st.FullView(), from: store.ListCursor{C: time.Now().UTC().Format(time.RFC3339), Seen: tooManySeenIDs()}, limit: 5},
 	}
