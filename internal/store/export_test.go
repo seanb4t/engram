@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/migrate"
 )
 
 // SetNoQdrantHandler installs f as the package's no-Qdrant handler, called by
@@ -110,4 +111,19 @@ func (s *Store) RecallView(full bool) ReadView { return s.recallView(full) }
 // package store_test.
 func (s *Store) BackfillNoSummaryContent(ctx context.Context, f *qdrant.Filter, items []Memory) error {
 	return s.backfillNoSummaryContent(ctx, f, items)
+}
+
+// SchemaVersionKey exposes the schema_version payload key name to package
+// store_test, so an external regression can construct the identical
+// backlog/above-target filter shape production code uses (backlogFilter,
+// aboveTargetFilter) without repeating the string literal.
+func SchemaVersionKey() string { return schemaVersionKey }
+
+// RevertWithSteps exposes (*Store).revertWithSteps to package store_test —
+// an external real-Qdrant regression needs to drive a REVERSIBLE fixture
+// step chain through revertWithSteps directly, since the exported
+// Store.Revert always runs against the production migrate.Registry, whose
+// only step is declared Irreversible and can therefore never apply.
+func (s *Store) RevertWithSteps(ctx context.Context, to migrate.Version, steps []migrate.Step) (RevertResult, error) {
+	return s.revertWithSteps(ctx, to, steps)
 }

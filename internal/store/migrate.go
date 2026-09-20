@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"sort"
@@ -20,6 +21,20 @@ import (
 // migrateBatch is the default scroll page size when MigrateOptions.Batch is
 // 0, mirroring reindexBatch's role (store.go:3084).
 const migrateBatch = 256
+
+// errMigratePassBatchComplete is a control-flow marker returned from the
+// default sweep-mode pass's scrollAllPoints callback once the pass has
+// processed batch records — never a failure. It exists because
+// scrollAllPoints' only early-stop mechanism is a callback error
+// (spine.go:88-94, "a callback error propagates out of scrollAllPoints
+// unchanged"): the call site below unwraps it with errors.Is to mean "this
+// pass's batch is done, fall through to the next pass's fresh Count",
+// while any OTHER non-nil error is a genuine per-record failure and
+// returns exactly as the pre-migration serr branch did. Never reused by
+// any other sweep — internal/store/revert.go declares its own,
+// errRevertPassBatchComplete, so the two sweeps' early-stop reasons can
+// never be confused with each other.
+var errMigratePassBatchComplete = errors.New("migrate: sweep pass batch complete")
 
 // MigrateOptions parameterizes Store.Migrate. Target zero means
 // migrate.CurrentVersion — the production default, always at or below the
@@ -525,35 +540,35 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
 		prevBacklog = cnt
 		first = false
 
-		// Offset is nil on EVERY pass, by design (D-07): there is no
-		// cursor persisted across passes, which is exactly why a resume is
-		// nothing more than calling Migrate again.
-		pts, _, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: s.collection,
-			Filter:         filter,
-			Limit:          qdrant.PtrOf(batch),
-			Offset:         nil,
-			WithPayload:    qdrant.NewWithPayload(true),
-		})
-		if serr != nil {
-			err = serr
-			return res, err
-		}
-
-		for _, p := range pts {
+		// This pass reads and writes through the shared byte-budget
+		// iterator instead of one page-sized ScrollAndOffset call. Safety
+		// of interleaving writes with reads: scrollAllPoints advances a
+		// FORWARD id cursor derived from the previous response's
+		// next-page offset. Each write below stamps schemaVersionKey,
+		// which removes the written record from THIS pass's own filter —
+		// but removing an already-visited record cannot move the cursor
+		// backwards, so no record is skipped and none is visited twice
+		// within a pass. A record whose write fails stays in the filter
+		// and is picked up by the next pass's fresh Count + re-scroll,
+		// exactly as before this migration.
+		//
+		// D-04's projection carve-out does NOT apply here: the write path
+		// decodes the whole payload with payloadToMap and diffs it with
+		// migrate.AddedKeys, so nothing narrower than the full view
+		// (s.fullView()) is legitimate.
+		processed := uint32(0)
+		scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.fullView(), func(p *qdrant.RetrievedPoint) error {
 			id := p.Id.GetUuid()
 			fromV := versionOf(p.Payload)
 
 			original, derr := payloadToMap(p.Payload)
 			if derr != nil {
-				err = fmt.Errorf("migrate: point %s: %w", id, derr)
-				return res, err
+				return fmt.Errorf("migrate: point %s: %w", id, derr)
 			}
 
 			current, aerr := applyChain(id, fromV, original)
 			if aerr != nil {
-				err = aerr
-				return res, err
+				return aerr
 			}
 
 			// The write map is built from AddedKeys(original, current) —
@@ -586,9 +601,19 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
 				// pass's fresh count decides what is still outstanding.
 				lastWriteErr = werr
 				res.Failed++
-				continue
+			} else {
+				res.Migrated++
 			}
-			res.Migrated++
+
+			processed++
+			if processed >= batch {
+				return errMigratePassBatchComplete
+			}
+			return nil
+		})
+		if scanErr != nil && !errors.Is(scanErr, errMigratePassBatchComplete) {
+			err = scanErr
+			return res, err
 		}
 	}
 }
