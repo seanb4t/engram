@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 5
 current_phase_name: Operator Sweeps & CI Backstop
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-09-20T17:16:58.594Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-09-20T18:13:55.130Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 5 execution started
-state_head: c000378c1f51b4907c19ab7da8669488557a0b8d
+state_head: 97834b7e7345a33728d509f2e1c7532ed9051514
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 29
-  completed_plans: 26
+  completed_plans: 27
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 5 (Operator Sweeps & CI Backstop) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 5 execution started
 
@@ -340,6 +340,8 @@ milestone needs in working memory.
 - [Phase 5]: Phase 5 Plan 2: orderedpage_oversized_test.go's 'unbudgeted view' table row kept (retargeted to store.ReadView{}), not deleted -- scrollOrderedPage's own argument validation independently rejects any zero-ceiling view, a standing production invariant unrelated to the unbudgetedView constructor's existence.
 - [Phase 5]: Task 1's oversized migrate regression omits the DryRun arm (deferred to task 2's commit, once DryRun's own read loop is migrated) — testing it at oversized scale before that migration genuinely overflows the receive limit.
 - [Phase 5]: revertFixtureStep's inverse targets a key no seeded fixture record carries — intentional; the regression proves the bounded pass-loop mechanics, not a specific added/removed-key shape (already pinned by in-place revert_test.go, D-02).
+- [Phase 05]: Reindex uses a synchronous in-callback flush (not a cross-pass restart like Migrate/Revert) because its nil-filter walk over a read-only source has no shrinking-filter mechanism to make a restart safe, and its own action text requires exactly one scrollAllPoints call.
+- [Phase 05]: The oversized reindex regression sizes ReindexOptions.Batch per fixture shape's record size, since reindexTargetContents' out-of-scope Get() call is byte-unbounded and the production default (256) overflows the receive limit for FewLarge's 40 large records.
 
 ### Pending Todos
 
@@ -415,8 +417,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T17:16:58.554Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-09-20T18:13:54.862Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -575,6 +577,7 @@ Resume file: None
 | Phase 05 P01 | 56min | 3 tasks | 6 files |
 | Phase 05 P02 | 62min | 2 tasks | 8 files |
 | Phase 05 P03 | 37min | 3 tasks | 5 files |
+| Phase 05 P04 | 68min | 2 tasks | 5 files |
 
 ## Operator Next Steps
 

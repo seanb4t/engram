@@ -503,7 +503,7 @@ Plans:
 3. The production Qdrant client raises `MaxCallRecvMsgSize` in exactly one place, documented as a backstop only, added after the sweep and per-site regression tests already pass without it.
 4. The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused`/`code = Unavailable` recurrence — closing #497 with that evidence.
 
-**Plans:** 3/6 plans executed
+**Plans:** 4/6 plans executed
 
 Plans:
 **Wave 1**
@@ -520,7 +520,7 @@ Plans:
 
 **Wave 4**
 
-- [ ] 05-04-PLAN.md — `summarize-missing` and `reindex` migrated, the reindex walk reading its effective source with its per-page lookup preserved, and the two stale emitter rows deleted (D-01, D-02, D-03, D-04)
+- [x] 05-04-PLAN.md — `summarize-missing` and `reindex` migrated, the reindex walk reading its effective source with its per-page lookup preserved, and the two stale emitter rows deleted (D-01, D-02, D-03, D-04)
 
 **Wave 5**
 
