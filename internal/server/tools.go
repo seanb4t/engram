@@ -1564,6 +1564,14 @@ type coreListRequest struct {
 	IncludeArchived   bool
 	IncludeSuperseded bool
 	IncludeScheduled  bool
+	// Full is copied straight into store.ListOptions.Full (04-05): the
+	// caller's full=true/false wire flag now also selects the STORE's own
+	// fetch projection, not just each transport's response shaping
+	// (shapeRecall/shapeProtoMemories) — 04-05's summary-view default means
+	// a caller that asked for full content must also ask the store to fetch
+	// it, or shaping has nothing to render (citations/content were never
+	// fetched at all). Both lanes set this from their own full flag.
+	Full bool
 }
 
 // coreListResult is the typed list result: raw []store.Memory (no []any, no
@@ -1636,6 +1644,7 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 		IncludeArchived:   req.IncludeArchived,
 		IncludeSuperseded: req.IncludeSuperseded,
 		IncludeScheduled:  req.IncludeScheduled,
+		Full:              req.Full,
 	})
 	if err != nil {
 		return coreListResult{}, err
@@ -2635,6 +2644,11 @@ func registerTools(s *mcp.Server, d *deps) error {
 				// store.go:817).
 				CursorMode: true,
 				CrossSpine: a.CrossSpine,
+				// 04-05: the store must fetch what shapeRecall(a.Full, ...)
+				// below is about to render — a.Full alone no longer
+				// suffices once the store's own default fetch is
+				// summary-shaped.
+				Full: a.Full,
 			})
 			if err != nil {
 				return nil, nil, err

@@ -803,7 +803,12 @@ func TestSearchListMemoryCompactViewOmitsCitations(t *testing.T) {
 	fullSearch := shapeRecall(hits, true, d.summaryMaxChars)
 	assertHasCitations(t, findByID(t, fullSearch, idOf))
 
-	listRes, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 50})
+	// 04-05: coreListRequest.Full must be set to fetch the record this test
+	// then shapes as full — Store.List's own default fetch is summary-shaped
+	// now (content/citations excluded), so a caller-side shapeRecall(...,
+	// true, ...) has nothing to render unless the FETCH itself also asked
+	// for the full view.
+	listRes, err := d.listMemory(ctx, c, coreListRequest{Scope: scope, Limit: 50, Full: true})
 	if err != nil {
 		t.Fatalf("listMemory: %v", err)
 	}

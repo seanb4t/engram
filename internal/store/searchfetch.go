@@ -27,6 +27,15 @@
 // id-set fetch has no ordering or keyset-boundary concern — the caller
 // already holds the rank order from phase one — so scrollOrderedPage's
 // tie/boundary machinery would be dead weight here.
+//
+// backfillNoSummaryContent (04-05, Phase 3 D-04) is the shared no-summary
+// content backfill: every summary-view recall read that adopted a
+// content/citations-excluding projection must still feed
+// internal/server/summary.go's truncation fallback (summaryOrTruncation),
+// which renders content for any record whose stored summary is empty. It is
+// the ONE mechanism every summary-view read path calls — never a
+// per-call-site re-implementation — built on fetchPayloadsByID above, never
+// a second batched fetch of its own.
 
 package store
 
@@ -113,4 +122,44 @@ func (s *Store) fetchPayloadsByID(ctx context.Context, f *qdrant.Filter, view re
 		}
 	}
 	return out, nil
+}
+
+// backfillNoSummaryContent restores Content on every item in items whose
+// stored Summary is empty, by fetching the full view for exactly those ids
+// through fetchPayloadsByID using the SAME filter value f the caller's own
+// read used. It exists solely to keep internal/server/summary.go's
+// no-summary truncation fallback (summaryOrTruncation) rendering exactly
+// what it rendered before the caller's read adopted a summary-view
+// projection: the mechanics changed, the visible behavior did not.
+//
+// It returns immediately, before any RPC, when every item already carries a
+// stored summary — a fully-summarized page costs no extra RPC. items is
+// mutated IN PLACE (only Content is touched; nothing else); an id the fetch
+// does not return (dropped, superseded, archived, or made private between
+// the two reads) leaves its item untouched, never an error and never a
+// dropped item. It inherits fetchPayloadsByID's narrow-only filter
+// guarantee: a record f itself would exclude can never be backfilled, even
+// if its id were somehow supplied.
+func (s *Store) backfillNoSummaryContent(ctx context.Context, f *qdrant.Filter, items []Memory) error {
+	ids := make([]string, 0, len(items))
+	index := make(map[string]int, len(items))
+	for i, m := range items {
+		if m.Summary == "" {
+			ids = append(ids, m.ID)
+			index[m.ID] = i
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	fetched, err := s.fetchPayloadsByID(ctx, f, s.fullView(), ids)
+	if err != nil {
+		return err
+	}
+	for id, i := range index {
+		if m, ok := fetched[id]; ok {
+			items[i].Content = m.Content
+		}
+	}
+	return nil
 }

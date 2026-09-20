@@ -30,9 +30,13 @@ import (
 //   - A cursor walk driven to completion visits every seeded id exactly
 //     once and ends with an empty cursor; the LAST page is the only page
 //     with an empty cursor.
-//   - A cursor call over a shrunken page byte budget returns a short page
-//     AND a non-empty cursor, and resuming from that cursor still reaches
-//     every remaining id — a byte-cut page is never the last page.
+//   - A cursor call over a shrunken page byte budget (requested with
+//     ListOptions.Full: true, 04-05, so the budget shrunk against
+//     st.FullView()'s own ceiling actually forces a cut — this test's
+//     subject is the D-06 budget-cut contract, independent of 04-05's
+//     separate default-projection change) returns a short page AND a
+//     non-empty cursor, and resuming from that cursor still reaches every
+//     remaining id — a byte-cut page is never the last page.
 //   - The concatenated cursor walk and an equivalent offset call agree on
 //     the SET of ids, and both have a non-increasing created_at sequence
 //     (the relative order of two records sharing one created_at is
@@ -140,7 +144,7 @@ func TestStoreListContractInvariant(t *testing.T) {
 			// offset-equivalence check below runs at the default budget.
 			origPageBudget := store.PageByteBudget()
 			store.SetByteBudgets(t, store.RPCByteBudget(), store.ViewMaxRecordBytes(st.FullView())/2)
-			cutItems, cutTotal, cutNext, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: seededTotal, CursorMode: true})
+			cutItems, cutTotal, cutNext, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: seededTotal, CursorMode: true, Full: true})
 			if err != nil {
 				t.Fatalf("budget-cut List: %v", err)
 			}

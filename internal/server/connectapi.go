@@ -289,6 +289,10 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		IncludeArchived:   req.Msg.IncludeArchived,
 		IncludeSuperseded: req.Msg.IncludeSuperseded,
 		IncludeScheduled:  req.Msg.IncludeScheduled,
+		// 04-05: the store must fetch what shapeProtoMemories(req.Msg.Full,
+		// ...) below is about to render — req.Msg.Full alone no longer
+		// suffices once the store's own default fetch is summary-shaped.
+		Full: req.Msg.Full,
 	})
 	if err != nil {
 		return nil, connectError(ctx, err)

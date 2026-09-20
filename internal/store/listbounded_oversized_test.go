@@ -101,8 +101,12 @@ func TestStoreListCursorBounded(t *testing.T) {
 			// non-empty cursor and fewer items than requested — never the
 			// last page. Inlined (no nested t.Run) so this file's verify
 			// command's per-shape "--- PASS:" count stays exactly 2.
+			// ListOptions.Full: true (04-05) pins this call to fullView() so
+			// the budget shrunk against st.FullView()'s own ceiling actually
+			// forces a cut — this subtest's subject is the D-06 contract,
+			// independent of 04-05's separate default-projection change.
 			store.SetByteBudgets(t, store.RPCByteBudget(), store.ViewMaxRecordBytes(st.FullView())/2)
-			cutItems, cutTotal, cutNext, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: uint64(len(fx.IDs)), CursorMode: true})
+			cutItems, cutTotal, cutNext, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: uint64(len(fx.IDs)), CursorMode: true, Full: true})
 			if err != nil {
 				t.Fatalf("budget-cut List: %v", err)
 			}
@@ -331,6 +335,13 @@ func (r *selectorRecorder) snapshot() []selectorRecordedCall {
 // store.PerRPCLimit of the view it used; the prefix RPCs carry the keys-only
 // payload selector while the trailing page RPC carries the full one; and an
 // offset at or beyond the total returns an empty page with the real total.
+//
+// The deep-offset call under test passes ListOptions.Full: true (04-05):
+// this test's own subject is the prefix-walk/keyset-resume mechanics, which
+// D-07 documents against the caller's own view — Full: true keeps that view
+// pinned to fullView() exactly as it always was, independent of 04-05's
+// separate default-projection change (recallview_oversized_test.go proves
+// that change on its own).
 func TestStoreListDeepOffsetBounded(t *testing.T) {
 	shapes := []storetest.Shape{storetest.FewLarge, storetest.ManySmall}
 	for _, shape := range shapes {
@@ -381,7 +392,7 @@ func TestStoreListDeepOffsetBounded(t *testing.T) {
 			}
 
 			rec.reset()
-			items, total, _, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Offset: deepOffset, Limit: 5})
+			items, total, _, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Offset: deepOffset, Limit: 5, Full: true})
 			if err != nil {
 				t.Fatalf("%s: deep-offset List: %v", shape, err)
 			}

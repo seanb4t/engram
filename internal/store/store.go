@@ -1224,6 +1224,11 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 		m.Score = scores[id]
 		out = append(out, m)
 	}
+	if isSummaryView(view) {
+		if err := s.backfillNoSummaryContent(ctx, f, out); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
@@ -1404,6 +1409,38 @@ type ListOptions struct {
 	IncludeArchived   bool
 	IncludeSuperseded bool
 	IncludeScheduled  bool
+	// Full selects the payload projection List's FETCH requests (04-CONTEXT.md
+	// D-04/Phase 4 04-05): the summary view by default (false, content and
+	// citations excluded from the fetch — what makes a large page cheap), the
+	// full view when true. This governs only what List asks Qdrant for; each
+	// transport (Connect/MCP) still shapes its own response independently via
+	// shapeRecall/toRecallView/shapeProtoMemories, which are unchanged by this
+	// field.
+	Full bool
+}
+
+// recallView is the ONE place a recall read chooses its payload projection
+// (04-05, Phase 3 D-04): full when full is true, summary otherwise. A new
+// recall-path read composes this rather than calling s.fullView()/
+// s.summaryView() by hand, so no read path can pick a view ad hoc and drift
+// from the projection the shared no-summary backfill (searchfetch.go)
+// compensates for.
+func (s *Store) recallView(full bool) readView {
+	if full {
+		return s.fullView()
+	}
+	return s.summaryView()
+}
+
+// isSummaryView reports whether v carries the summary view's exclude-shaped
+// payload selector (content/citations excluded) by inspecting v's OWN
+// selector field, rather than re-deriving the caller's flag or re-calling
+// s.summaryView() — a call site gates backfillNoSummaryContent on the VIEW
+// IT ACTUALLY SELECTED, never on a separately-tracked bool that could drift
+// from it. A package-level function, not a method: it depends on no Store
+// state, mirroring keysView()'s own precedent (boundedread.go).
+func isSummaryView(v readView) bool {
+	return v.selector.GetExclude() != nil
 }
 
 // createdRangeCondition builds a half-open [after, before) DatetimeRange on the
@@ -1649,9 +1686,15 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		// client-side slice).
 		return []Memory{}, total, "", nil
 	}
-	items, err = s.collectOrderedPages(ctx, f, s.fullView(), dir, from, effectiveLimit)
+	view := s.recallView(opts.Full)
+	items, err = s.collectOrderedPages(ctx, f, view, dir, from, effectiveLimit)
 	if err != nil {
 		return nil, 0, "", err
+	}
+	if isSummaryView(view) {
+		if err := s.backfillNoSummaryContent(ctx, f, items); err != nil {
+			return nil, 0, "", err
+		}
 	}
 	return items, total, "", nil
 }
@@ -1689,9 +1732,15 @@ func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOpt
 		from = c
 	}
 
-	page, err := s.scrollOrderedPage(ctx, f, s.fullView(), qdrant.Direction_Desc, from, limit)
+	view := s.recallView(opts.Full)
+	page, err := s.scrollOrderedPage(ctx, f, view, qdrant.Direction_Desc, from, limit)
 	if err != nil {
 		return nil, "", err
+	}
+	if isSummaryView(view) {
+		if err := s.backfillNoSummaryContent(ctx, f, page.Items); err != nil {
+			return nil, "", err
+		}
 	}
 	if page.Exhausted {
 		return page.Items, "", nil

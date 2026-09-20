@@ -100,3 +100,12 @@ func IncludeIDs(f *qdrant.Filter, ids []string) *qdrant.Filter { return includeI
 func (s *Store) FetchPayloadsByID(ctx context.Context, f *qdrant.Filter, v ReadView, ids []string) (map[string]Memory, error) {
 	return s.fetchPayloadsByID(ctx, f, v, ids)
 }
+
+// RecallView exposes (*Store).recallView to package store_test.
+func (s *Store) RecallView(full bool) ReadView { return s.recallView(full) }
+
+// BackfillNoSummaryContent exposes (*Store).backfillNoSummaryContent to
+// package store_test.
+func (s *Store) BackfillNoSummaryContent(ctx context.Context, f *qdrant.Filter, items []Memory) error {
+	return s.backfillNoSummaryContent(ctx, f, items)
+}
