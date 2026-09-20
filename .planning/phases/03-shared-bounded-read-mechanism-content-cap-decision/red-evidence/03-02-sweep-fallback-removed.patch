@@ -1,9 +1,9 @@
 diff --git a/internal/store/spine.go b/internal/store/spine.go
-index 2799112d..649ed094 100644
+index 8cbffbb8..320ad0bf 100644
 --- a/internal/store/spine.go
 +++ b/internal/store/spine.go
-@@ -80,10 +80,6 @@ func (s *Store) scrollAllPoints(ctx context.Context, filter *qdrant.Filter, view
- 			WithPayload:    view.selector,
+@@ -102,10 +102,6 @@ func (s *Store) scrollAllPoints(ctx context.Context, collection string, filter *
+ 			WithVectors:    qdrant.NewWithVectors(false),
  		})
  		if err != nil {
 -			if view.budgeted() && limit > 1 && errors.Is(err, ErrResponseTooLarge) {
