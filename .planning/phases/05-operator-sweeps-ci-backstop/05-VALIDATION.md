@@ -83,10 +83,12 @@ All satisfied — this phase wrote 7 new test files against the existing harness
 ## Manual-Only Verifications
 
 *None.* Every behavior this phase changed is reachable from `internal/store`'s own suite. Note that
-`Store.reindexTargetContents` is now **Exempt** in the inventory: its batch is bounded by the page
-its caller accumulates, not a byte-budget view, so an operator sizing `--batch` for unusually large
-records is a real operational responsibility — documented rather than tested, because the bound is
-the operator's to set.
+`Store.reindexTargetContents` is **Exempt** in the inventory: its batch is bounded by the page its
+caller accumulates, not a byte-budget view. **Correction (phase-5 security audit):** an earlier
+wording attributed this to "an operator sizing `--batch`" — no such flag exists on `engram reindex`,
+which always runs at the fixed `reindexBatch = 256`. The real limitation is that a 256-record page of
+large-but-cap-compliant records can reach ~237 MiB, past the 64 MiB backstop, with no operator lever
+to reduce it. Not tested here and not fixed here — tracked as GitHub #596.
 
 ---
 
