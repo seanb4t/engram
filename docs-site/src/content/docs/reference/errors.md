@@ -125,12 +125,12 @@ off one by one against that file — this table cannot list a code the server do
 | `ordering` | A before/after or numeric ordering constraint is violated — usually between two fields, but sometimes between one field and a fixed reference such as the current time. | Adjust so the stated ordering holds. Read `field=`: it lists every field involved, which may be one or two. |
 | `mutually_exclusive` | Two or more fields cannot be combined at once. | Drop all but one — every field the constraint relates is listed under `field=`. |
 | `not_applicable` | The field does not apply given another field's value on this call. | Omit the field entirely rather than sending an empty or default value. |
-| `too_large` | The result the request would produce exceeds what one response can carry — not a rejected input; `field=` is always the fixed pseudo-field `response`. | Retry with a smaller `limit` or `k`, or omit `full`; retrying the identical request fails the same way. See [Response too large](#response-too-large-resource_exhausted-and-exit-10). |
+| `response_too_large` | The result the request would produce exceeds what one response can carry — not a rejected input; `field=` is always the fixed pseudo-field `response`. | Retry with a smaller `limit` or `k`, or omit `full`; retrying the identical request fails the same way. See [Response too large](#response-too-large-resource_exhausted-and-exit-10). |
 
-`too_long` and `too_large` are easy to conflate but name opposite directions: `too_long`
-means an INPUT field you sent exceeded a bound — shorten that field and resend. `too_large`
-means the RESPONSE your request would produce exceeds a bound — the request itself was
-fine; ask for less of it (a smaller `limit`/`k`, or without `full`).
+`too_long` and `response_too_large` are easy to conflate but name opposite directions:
+`too_long` means an INPUT field you sent exceeded a bound — shorten that field and resend.
+`response_too_large` means the RESPONSE your request would produce exceeds a bound — the
+request itself was fine; ask for less of it (a smaller `limit`/`k`, or without `full`).
 
 `required` and `conditional_required` are two different codes for a reason: `required`
 means the field is unconditionally missing; `conditional_required` means it is missing
@@ -224,12 +224,12 @@ range, or preconditioned argument — so it does not map to exit `2`.
 
 | Hint code | Connect code | CLI exit |
 |---|---|---|
-| `too_large` | `resource_exhausted` (`CodeResourceExhausted`, HTTP 429) | [`10`](/guides/cli/#exit-codes) |
+| `response_too_large` | `resource_exhausted` (`CodeResourceExhausted`, HTTP 429) | [`10`](/guides/cli/#exit-codes) |
 
 On the MCP lane the same envelope is the tool result's text content, with `IsError` true.
 
 ```
-field=response hint=too_large: the result is too large to return in one response; retry with a smaller limit or k, or omit full
+field=response hint=response_too_large: the result is too large to return in one response; retry with a smaller limit or k, or omit full
 ```
 
 The remedy is a smaller `limit` or `k`, or omitting `full` — retrying the identical
@@ -267,7 +267,7 @@ per-entry cap) so the echo itself can never carry an oversized or arbitrary blob
 other field in this grammar, including `supersede_memory`'s own set-shape (class 1)
 rejection, still names the field alone and never echoes its value.
 
-**The `too_large` envelope carries no number at all.** No byte ceiling, no observed size,
+**The `response_too_large` envelope carries no number at all.** No byte ceiling, no observed size,
 and no upstream transport text — those are logged server-side only; the wire text is the
 fixed, generic detail shown in [Response too large](#response-too-large-resource_exhausted-and-exit-10).
 

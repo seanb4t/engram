@@ -573,7 +573,7 @@ func substituteHungServerURL(t *testing.T, args []string) []string {
 // substituteHungServerURL's own discipline.
 func substituteTooLargeServerURL(t *testing.T, args []string) []string {
 	t.Helper()
-	envelopeErr := errors.New("field=response hint=too_large: the result is too large to return in one response; retry with a smaller limit or k, or omit full")
+	envelopeErr := errors.New("field=response hint=response_too_large: the result is too large to return in one response; retry with a smaller limit or k, or omit full")
 	svc := &stubEngramService{
 		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
 			return nil, connect.NewError(connect.CodeResourceExhausted, envelopeErr)

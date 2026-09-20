@@ -182,7 +182,7 @@ func TestConnectListMemoriesResponseTooLarge(t *testing.T) {
 	if want := responseTooLargeEnvelope(); msg != want {
 		t.Fatalf("ListMemories: message = %q, want %q", msg, want)
 	}
-	if !strings.HasPrefix(msg, "field=response hint=too_large: ") {
+	if !strings.HasPrefix(msg, "field=response hint=response_too_large: ") {
 		t.Fatalf("ListMemories: message %q does not start with the field/hint envelope prefix", msg)
 	}
 	for _, banned := range []string{"grpc", "larger than max", "qdrant", "Scroll"} {
@@ -570,7 +570,7 @@ func TestMapResponseTooLargePassesOtherResultsThrough(t *testing.T) {
 // requests), and names every remedy (limit, k, full).
 func TestResponseTooLargeEnvelopeShape(t *testing.T) {
 	env := responseTooLargeEnvelope()
-	if !strings.HasPrefix(env, "field=response hint=too_large: ") {
+	if !strings.HasPrefix(env, "field=response hint=response_too_large: ") {
 		t.Errorf("envelope %q does not start with the field/hint prefix", env)
 	}
 	if !noASCIIDigit(env) {

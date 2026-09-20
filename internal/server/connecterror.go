@@ -46,7 +46,7 @@ import (
 //     Connect RPC exposes it yet — kept so the sentinel switch stays
 //     exhaustive, exactly like the ErrIdempotencyConflict case below.
 //   - store.ErrResponseTooLarge -> CodeResourceExhausted, carrying the shared
-//     field=response hint=too_large envelope (responsetoolarge.go) — never
+//     field=response hint=response_too_large envelope (responsetoolarge.go) — never
 //     CodeInternal (02-CONTEXT.md D-06). The raw error (RPC method, byte
 //     counts, upstream grpc-go text) is logged server-side first, exactly
 //     like the default arm's own split below. This sentinel is never

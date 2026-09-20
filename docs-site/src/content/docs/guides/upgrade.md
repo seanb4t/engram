@@ -373,7 +373,7 @@ switch to `engram migrate`.
 Before this release, a server response that exceeded the client's receive
 limit surfaced as Connect `internal` and CLI exit `1`, and as the raw
 upstream transport error text on the MCP lane. It now surfaces as Connect
-`resource_exhausted` (HTTP 429) carrying `field=response hint=too_large`,
+`resource_exhausted` (HTTP 429) carrying `field=response hint=response_too_large`,
 CLI exit **`10`** for `engram list` / `engram search` (and for an operator
 command whose own Qdrant read overflows, previously exit `1` there too),
 and the identical scrubbed envelope as the MCP tool-result text. See the

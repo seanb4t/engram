@@ -27,8 +27,9 @@ import (
 	"github.com/seanb4t/engram/internal/store"
 )
 
-// responseTooLargeDetail is the published detail text for HintTooLarge. It
-// names the remedies generically (a smaller limit/k, or omitting full) and
+// responseTooLargeDetail is the published detail text for
+// HintResponseTooLarge. It names the remedies generically (a smaller
+// limit/k, or omitting full) and
 // contains no byte ceiling and no upstream grpc/Qdrant text (D-04) — a
 // caller can act on it with no additional context, and it never steers the
 // caller toward a retry that cannot work (no "later"/"again" wording, since
@@ -42,7 +43,7 @@ const responseTooLargeDetail = "the result is too large to return in one respons
 // tool's own argument shape (precedent: internal/store/revert.go's
 // field=steps).
 func responseTooLargeEnvelope() string {
-	return renderHintEnvelope([]string{"response"}, HintTooLarge, responseTooLargeDetail)
+	return renderHintEnvelope([]string{"response"}, HintResponseTooLarge, responseTooLargeDetail)
 }
 
 // mapResponseTooLarge returns an mcp.Middleware that rewrites a "tools/call"

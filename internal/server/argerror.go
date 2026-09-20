@@ -24,12 +24,12 @@ type HintCode string
 // (the MCP tool-result text content and the Connect error message). Its
 // origin record is the archived
 // .planning/milestones/v0.12.x-phases/04-diagnosability/04-01-SUMMARY.md
-// D-09/D-17 checkpoint. HintTooLarge was added by milestone 2026-09-18.01
-// Phase 2 D-05, for a RESPONSE that exceeded the client's receive limit —
-// not a rejected input, so its attributed field is the fixed pseudo-field
-// "response", never a caller argument. Adding a code here requires the
-// matching row in docs-site reference/errors.md, which plan 02-03's doc
-// gate enforces.
+// D-09/D-17 checkpoint. HintResponseTooLarge was added by milestone
+// 2026-09-18.01 Phase 2 D-05, for a RESPONSE that exceeded the client's
+// receive limit — not a rejected input, so its attributed field is the
+// fixed pseudo-field "response", never a caller argument. Adding a code
+// here requires the matching row in docs-site reference/errors.md, which
+// plan 02-03's doc gate enforces.
 const (
 	HintRequired            HintCode = "required"
 	HintConditionalRequired HintCode = "conditional_required"
@@ -41,7 +41,7 @@ const (
 	HintOrdering            HintCode = "ordering"
 	HintMutuallyExclusive   HintCode = "mutually_exclusive"
 	HintNotApplicable       HintCode = "not_applicable"
-	HintTooLarge            HintCode = "too_large"
+	HintResponseTooLarge    HintCode = "response_too_large"
 )
 
 // argClass is the failure CLASS that selects the Connect error code (D-11,

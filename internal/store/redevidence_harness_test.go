@@ -118,7 +118,7 @@ var redEvidenceDirs = map[string]map[string]string{
 		"02-02-mcp-mapper-unregistered.patch":                    "TestMCPListMemoryResponseTooLarge",                   // reverts: addToolMiddleware no longer registering mapResponseTooLarge (D-08)
 		"02-03-exit-mapping-reverted.patch":                      "TestExitCodeBaseline",                                // reverts: exitCodeForConnectErr's CodeResourceExhausted -> exitTooLarge case (D-07)
 		"02-03-operator-arm-removed.patch":                       "TestClassifyOperatorErrCodesAreDistinct",             // reverts: classifyOperatorErr's ErrResponseTooLarge arm, applying D-07's exit code to the operator tier (D-07/D-10)
-		"02-03-errors-doc-drops-too-large.patch":                 "TestErrorsDocHintCodesMatchArgErrorConstants",        // reverts: errors.md's too_large row of the eleven-code hint table (D-05)
+		"02-03-errors-doc-drops-response-too-large.patch":        "TestErrorsDocHintCodesMatchArgErrorConstants",        // reverts: errors.md's response_too_large row of the eleven-code hint table (D-05/D-11)
 	},
 	".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/red-evidence": {
 		"03-01-content-cap-removed.patch":                 "TestMemoryWriteCapsRejectOnEveryCreateLane",         // reverts: validateStoreArgs' content cap on store/schedule/supersede, MCP and Connect (D-01)
