@@ -189,3 +189,7 @@ None - no external service configuration required.
 ---
 *Phase: 04-list-listscheduled-search-bounded-reads*
 *Completed: 2026-09-20*
+
+## Self-Check: PASSED
+
+Both files verified present on disk: `internal/store/listscheduled_oversized_test.go` and this SUMMARY. All three commits (`c36cfd43`, `0f7940cb`, `4f2109f7`) verified present in `git log --oneline --all`. Every acceptance criterion for both tasks re-run and confirmed passing at final HEAD, including the two scoped literal-vs-intent checks documented under Issues Encountered. The plan-level `<verification>` block passes in full: `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/... -count=1` ok (0 `FAIL` lines across the whole package); `task` (lint + full test suite) exits 0; `task license:check` clean; `go test ./internal/keylinks/ -count=1` ok; `git diff --exit-code HEAD -- go.mod go.sum` exits 0 (no diff).
