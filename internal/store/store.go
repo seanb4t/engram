@@ -1116,6 +1116,12 @@ type SearchOptions struct {
 	IncludeArchived   bool
 	IncludeSuperseded bool
 	IncludeScheduled  bool
+	// Full selects the D-09 fetch phase's payload projection: the summary
+	// view by default (false), the full view when true. Governs ONLY
+	// Store.Search's own fetch phase — SearchReranked forces this on
+	// unconditionally for its own delegated call regardless of what the
+	// caller passed here; see SearchReranked's doc comment for why.
+	Full bool
 }
 
 // Search returns the k nearest readable memories to vec within scope.
@@ -1176,14 +1182,49 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
+	// D-09 two-phase search: the vector Query asks for ids and scores ONLY
+	// (qdrant.NewWithPayload(false)) — any k up to the recall maximum stays
+	// one small RPC — and the payloads are fetched separately, in bounded
+	// batches, by fetchPayloadsByID (searchfetch.go) using this SAME f
+	// value, so the fetch can never see a record the query's own filter
+	// would have excluded.
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(false),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return memoriesFromPoints(res), nil
+	ids := make([]string, len(res))
+	scores := make(map[string]float32, len(res))
+	for i, p := range res {
+		id := p.Id.GetUuid()
+		ids[i] = id
+		scores[id] = p.Score
+	}
+	view := s.summaryView()
+	if opts.Full {
+		view = s.fullView()
+	}
+	fetched, err := s.fetchPayloadsByID(ctx, f, view, ids)
+	if err != nil {
+		return nil, err
+	}
+	// Walk phase one's OWN returned order rather than re-sorting by score:
+	// this reproduces the vector query's own tie order exactly (stronger
+	// than a score sort, which cannot distinguish equal-scoring hits), and
+	// an id the fetch did not return (dropped between the two phases) is
+	// simply skipped — never an error, never returned stale.
+	out = make([]Memory, 0, len(ids))
+	for _, id := range ids {
+		m, ok := fetched[id]
+		if !ok {
+			continue
+		}
+		m.Score = scores[id]
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // memoriesFromPoints decodes Qdrant scored points into Memory records.
@@ -1219,6 +1260,13 @@ func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, 
 	if k == 0 {
 		return nil, fmt.Errorf("%w: SearchReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
 	}
+	// The lexical reranker (RerankHits/lexicalOverlap) scores against
+	// content for EVERY candidate, and candidateK clamps the candidate pool
+	// at 100 regardless of k — so this one surface's fetch view is fixed by
+	// an internal consumer rather than by the caller's own Full flag. The
+	// caller's flag still governs response shaping at the server boundary,
+	// unchanged.
+	opts.Full = true
 	hits, err := s.Search(ctx, scope, subj, vec, candidateK(k), opts)
 	if err != nil {
 		return nil, err

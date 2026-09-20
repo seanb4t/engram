@@ -92,3 +92,11 @@ func SetByteBudgets(t testing.TB, rpc, page int) {
 	rpcByteBudget, pageByteBudget = rpc, page
 	t.Cleanup(func() { rpcByteBudget, pageByteBudget = oldRPC, oldPage })
 }
+
+// IncludeIDs exposes includeIDs to package store_test.
+func IncludeIDs(f *qdrant.Filter, ids []string) *qdrant.Filter { return includeIDs(f, ids) }
+
+// FetchPayloadsByID exposes (*Store).fetchPayloadsByID to package store_test.
+func (s *Store) FetchPayloadsByID(ctx context.Context, f *qdrant.Filter, v ReadView, ids []string) (map[string]Memory, error) {
+	return s.fetchPayloadsByID(ctx, f, v, ids)
+}
