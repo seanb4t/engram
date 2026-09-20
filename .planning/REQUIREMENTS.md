@@ -25,7 +25,7 @@ HTTP 500.
 
 - [x] **REQ-oversized-fixture-helper**: A shared real-Qdrant test helper seeds a scope whose full payloads exceed a named receive limit, self-asserting the logical (post-decompression) byte count as `TestListScopesFullPayloadsOverGRPCLimit` (#583) does, in two shapes — many small records and a few large records. Every read-path regression test in this milestone uses it, and each is RED against the pre-fix code.
 - [x] **REQ-test-client-parity**: Test Qdrant clients are built through one shared constructor applying the same dial options as the production client, with each test naming its receive limit explicitly — so a regression test proves the mechanism keeps responses bounded regardless of any production backstop (`REQ-recv-limit-backstop`), and the independent `qdrant.NewClient` test call sites converge on it.
-- [ ] **REQ-ci-store-green**: The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused` / `code = Unavailable` recurrence — with fixtures sized to prove overflow without avoidable runner memory pressure. #497 is closed with that evidence.
+- [x] **REQ-ci-store-green**: The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused` / `code = Unavailable` recurrence — with fixtures sized to prove overflow without avoidable runner memory pressure. #497 is closed with that evidence.
 
 ### Error Surface
 
@@ -36,14 +36,14 @@ HTTP 500.
 
 ### Bounded Qdrant Reads
 
-- [ ] **REQ-bounded-read-mechanism**: Every full-payload Qdrant read in `internal/store` goes through one shared bounded-read mechanism — an ordered-page helper for `List`-shaped reads and a byte-budget extension of `scrollAllPoints` for sweeps. An inventory of every `WithPayload(true)` / unbounded `Scroll` / `ScrollAndOffset` / `Query` site is recorded, and each site is migrated or its exemption justified; the recall-gate AST test's classifications are updated in the same change.
+- [x] **REQ-bounded-read-mechanism**: Every full-payload Qdrant read in `internal/store` goes through one shared bounded-read mechanism — an ordered-page helper for `List`-shaped reads and a byte-budget extension of `scrollAllPoints` for sweeps. An inventory of every `WithPayload(true)` / unbounded `Scroll` / `ScrollAndOffset` / `Query` site is recorded, and each site is migrated or its exemption justified; the recall-gate AST test's classifications are updated in the same change.
 - [x] **REQ-byte-budget-pages**: Pages end on an accumulated-byte budget as well as a record count, so a page of a few very large records stays under the receive limit.
 - [x] **REQ-list-bounded**: `Store.List` succeeds — or fails with the named error — against a scope whose payloads exceed the receive limit, in every mode: offset `limit: 0`, deep offset, and cursor pages; reachable through MCP `list_memory`, Connect `ListMemories`, the console, and `engram list`. GitHub #585.
 - [x] **REQ-list-scheduled-bounded**: `list_scheduled` with a large explicit limit stays under the receive limit.
 - [x] **REQ-search-k-bounded**: `search_memory` and `search_discovery` coerce `k` down to a documented server-side maximum, and their full-payload results stay under the receive limit.
-- [ ] **REQ-sweeps-bounded**: `engram migrate`, `migrate revert`, `summarize-missing`, `spine-review` scan / verify / purge, and `reindex` complete over a scope whose 256-record pages would exceed the receive limit.
+- [x] **REQ-sweeps-bounded**: `engram migrate`, `migrate revert`, `summarize-missing`, `spine-review` scan / verify / purge, and `reindex` complete over a scope whose 256-record pages would exceed the receive limit.
 - [x] **REQ-list-contract-unchanged**: Internal batching leaves `total`, `next_cursor` (empty = last page), result ordering, and recall gating unchanged; a page cut short by the byte budget is never reported as the last page.
-- [ ] **REQ-recv-limit-backstop**: The production Qdrant client raises `MaxCallRecvMsgSize` as defense in depth, set in exactly one place and documented as a backstop — never the fix, and never relied on by a regression test.
+- [x] **REQ-recv-limit-backstop**: The production Qdrant client raises `MaxCallRecvMsgSize` as defense in depth, set in exactly one place and documented as a backstop — never the fix, and never relied on by a regression test.
 
 ### Decisions (resolved in discuss-phase)
 
@@ -85,19 +85,19 @@ Which phases cover which requirements. Filled during roadmap creation.
 |-------------|-------|--------|
 | REQ-oversized-fixture-helper | Phase 1 | Complete |
 | REQ-test-client-parity | Phase 1 | Complete |
-| REQ-ci-store-green | Phase 5 | Pending |
+| REQ-ci-store-green | Phase 5 | Complete |
 | REQ-exhausted-sentinel | Phase 2 | Complete |
 | REQ-exhausted-connect | Phase 2 | Complete |
 | REQ-exhausted-mcp | Phase 2 | Complete |
 | REQ-exhausted-cli-docs | Phase 2 | Complete |
-| REQ-bounded-read-mechanism | Phase 5 | Pending |
+| REQ-bounded-read-mechanism | Phase 5 | Complete |
 | REQ-byte-budget-pages | Phase 3 | Complete |
 | REQ-list-bounded | Phase 4 | Complete |
 | REQ-list-scheduled-bounded | Phase 4 | Complete |
 | REQ-search-k-bounded | Phase 4 | Complete |
-| REQ-sweeps-bounded | Phase 5 | Pending |
+| REQ-sweeps-bounded | Phase 5 | Complete |
 | REQ-list-contract-unchanged | Phase 4 | Complete |
-| REQ-recv-limit-backstop | Phase 5 | Pending |
+| REQ-recv-limit-backstop | Phase 5 | Complete |
 | REQ-content-cap-decided | Phase 3 | Complete |
 | REQ-list-limit-contract-decided | Phase 4 | Complete |
 | REQ-cross-spine-partial | Phase 6 | Pending |
