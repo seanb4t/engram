@@ -1227,7 +1227,13 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	return out, nil
 }
 
-// memoriesFromPoints decodes Qdrant scored points into Memory records.
+// memoriesFromPoints decodes Qdrant scored points into Memory records. No
+// production call site remains as of plan 04-04: both Store.Search and
+// Store.SearchDiscovery now decode their fetch-phase payloads through
+// fromPayload directly, re-attaching the phase-one score by id. Retained
+// for TestMemoriesFromPointsCarriesScore (embedtext_test.go), which unit
+// tests this decode-plus-score-carry behavior directly against a synthetic
+// *qdrant.ScoredPoint.
 func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 	out := make([]Memory, 0, len(res))
 	for _, p := range res {
@@ -1315,15 +1321,43 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	// never folded into the superseded_by gate above: archived and superseded
 	// are independently observable states. get_memory stays ungated.
 	must = append(must, qdrant.NewIsEmpty("archived_at"))
+	f := &qdrant.Filter{Must: must}
+	// D-09 two-phase search, exactly as Store.Search's own rewrite: the
+	// vector Query asks for ids and scores ONLY, and the payload is fetched
+	// separately via fetchPayloadsByID using this SAME f value. The fetch
+	// always uses the full view here: neither the Connect SearchDiscoveries
+	// request message nor the MCP search_discovery tool arguments carry a
+	// `full` flag, so there is no caller projection to honor — the caller's
+	// view IS the full view for discoveries, and no new knob is invented
+	// (the same reasoning that keeps scheduled listings knob-free).
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
-		WithPayload: qdrant.NewWithPayload(true),
+		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(false),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return memoriesFromPoints(res), nil
+	ids := make([]string, len(res))
+	scores := make(map[string]float32, len(res))
+	for i, p := range res {
+		id := p.Id.GetUuid()
+		ids[i] = id
+		scores[id] = p.Score
+	}
+	fetched, err := s.fetchPayloadsByID(ctx, f, s.fullView(), ids)
+	if err != nil {
+		return nil, err
+	}
+	out = make([]Memory, 0, len(ids))
+	for _, id := range ids {
+		m, ok := fetched[id]
+		if !ok {
+			continue
+		}
+		m.Score = scores[id]
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // ListOptions parameterizes List: page window (Limit/Offset) and the server-side
