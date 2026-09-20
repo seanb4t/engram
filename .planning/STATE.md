@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 4
 current_phase_name: List, ListScheduled & Search Bounded Reads
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-09-20T06:50:46.292Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-09-20T07:45:41.388Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 4 execution started
-state_head: d0ff3a9242760654bcad311f72222831c5bcb168
+state_head: 75d877b9a9139ceeb372ed9fa4597a9de627fe83
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 23
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (List, ListScheduled & Search Bounded Reads) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 4 execution started
 
@@ -323,6 +323,9 @@ milestone needs in working memory.
 - [Phase 4]: D-10 executed: HintOutOfRange added and classified classMalformed (Connect invalid_argument, CLI exit 2) by explicit decision, not classOutOfRange.
 - [Phase 04]: Plan 04-02: MaxRecallLimit executed as the one exported recall-count maximum (D-02); Store.List's offset mode now composes collectOrderedPages/scrollOrderedPage instead of one unbounded Scroll (D-01/D-05); three Phase 2 overflow regressions retargeted onto a single legacy oversized record per D-12.
 - [Phase 04]: Plan 04-02: the offset-mode reject-above-maximum must-have was NOT implemented as a hard store-level rejection here -- TestListCrossSpine passes Limit:10000 in offset mode and asserts success; read as 04-05/04-06's own D-10 wiring, flagged for the verifier.
+- [Phase 4]: Plan 04-03: D-07 executed - deep-offset walks its skipped prefix with a keys-only budgeted view (keysView, walkOffsetPrefix), resuming Store.List's page fetch from the same listCursor with no translation.
+- [Phase 4]: Plan 04-03: D-05 executed for ListScheduled - assembled from the same collectOrderedPages/scrollOrderedPage loop List's offset mode uses, always full-payload, filter built once and reused across every RPC.
+- [Phase 4]: Plan 04-03: collectOrderedPages narrowed to (items, err) after task lint's unparam flagged the dead next/exhausted returns once ListScheduled became a second real caller.
 
 ### Pending Todos
 
@@ -397,8 +400,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T06:50:46.155Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-09-20T07:45:41.360Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -548,6 +551,7 @@ Resume file: None
 | Phase 03 P06 | 20min | 2 tasks | 14 files |
 | Phase 04 P01 | 22min | 2 tasks | 10 files |
 | Phase 04 P02 | 51min | 3 tasks | 13 files |
+| Phase 04 P03 | 40min | 2 tasks | 6 files |
 
 ## Operator Next Steps
 
