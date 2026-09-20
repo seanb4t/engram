@@ -324,42 +324,34 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
 		res.Passes++
 
 		previewManifest := make(map[string]migrate.Version)
-		var pageOffset *qdrant.PointId
-		for {
-			pts, next, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-				CollectionName: s.collection,
-				Filter:         filter,
-				Limit:          qdrant.PtrOf(batch),
-				Offset:         pageOffset,
-				WithPayload:    qdrant.NewWithPayload(true),
-			})
-			if serr != nil {
-				err = serr
-				return res, err
-			}
-			for _, p := range pts {
-				id := p.Id.GetUuid()
-				fromV := versionOf(p.Payload)
+		// Exhaustive by design (REVIEWS.md H2: covers the WHOLE backlog,
+		// never one batch), so the callback returns nil for every point —
+		// no sentinel — and only a genuine per-point error stops it
+		// early. D-04's projection carve-out does NOT apply here: this
+		// walk decodes the whole payload via payloadToMap to run the
+		// exact chain a real apply would, so nothing narrower than the
+		// full view (s.fullView()) is legitimate.
+		scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.fullView(), func(p *qdrant.RetrievedPoint) error {
+			id := p.Id.GetUuid()
+			fromV := versionOf(p.Payload)
 
-				original, derr := payloadToMap(p.Payload)
-				if derr != nil {
-					err = fmt.Errorf("migrate: point %s: %w", id, derr)
-					return res, err
-				}
-				// Project eligibility: build the chain, run CheckAdditive,
-				// and (for a minter-aware step) mint into the seen set —
-				// exactly the re-derivation a real apply would perform,
-				// minus the write. Nothing returned here reaches Qdrant.
-				if _, aerr := applyChain(id, fromV, original); aerr != nil {
-					err = aerr
-					return res, err
-				}
-				previewManifest[id] = fromV
+			original, derr := payloadToMap(p.Payload)
+			if derr != nil {
+				return fmt.Errorf("migrate: point %s: %w", id, derr)
 			}
-			if next == nil {
-				break
+			// Project eligibility: build the chain, run CheckAdditive,
+			// and (for a minter-aware step) mint into the seen set —
+			// exactly the re-derivation a real apply would perform,
+			// minus the write. Nothing returned here reaches Qdrant.
+			if _, aerr := applyChain(id, fromV, original); aerr != nil {
+				return aerr
 			}
-			pageOffset = next
+			previewManifest[id] = fromV
+			return nil
+		})
+		if scanErr != nil {
+			err = scanErr
+			return res, err
 		}
 		res.PreviewManifest = previewManifest
 
@@ -387,76 +379,73 @@ func (s *Store) Migrate(ctx context.Context, opts MigrateOptions) (res MigrateRe
 		observed := make(map[string]struct{}, len(manifestIDs))
 		var appeared []string
 
-		var pageOffset *qdrant.PointId
-		for {
-			pts, next, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-				CollectionName: s.collection,
-				Filter:         filter,
-				Limit:          qdrant.PtrOf(batch),
-				Offset:         pageOffset,
-				WithPayload:    qdrant.NewWithPayload(true),
-			})
-			if serr != nil {
-				err = serr
-				return res, err
+		// A single full-backlog pass (REVIEWS.md H7 above), so no sentinel
+		// is needed — the callback returns nil for every point and only a
+		// genuine per-point error stops it early. D-04's projection
+		// carve-out does NOT apply here either: this walk decodes the
+		// whole payload via payloadToMap to diff it with
+		// migrate.AddedKeys, so nothing narrower than the full view
+		// (s.fullView()) is legitimate. Interleaved writes are safe
+		// against scrollAllPoints' forward id cursor for the identical
+		// reason the sweep-mode pass loop above documents: removing an
+		// already-visited record from filter cannot move the cursor
+		// backwards, so no already-passed record is skipped or revisited
+		// within this single exhaustive pass.
+		scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.fullView(), func(p *qdrant.RetrievedPoint) error {
+			id := p.Id.GetUuid()
+			observed[id] = struct{}{}
+
+			if _, inManifest := manifestIDs[id]; !inManifest {
+				// REVIEWS.md C4-H5: Appeared IS observable here — the
+				// record is present in this scroll. Accumulated
+				// inside the loop, unlike Spared below.
+				appeared = append(appeared, id)
+				return nil
 			}
-			for _, p := range pts {
-				id := p.Id.GetUuid()
-				observed[id] = struct{}{}
 
-				if _, inManifest := manifestIDs[id]; !inManifest {
-					// REVIEWS.md C4-H5: Appeared IS observable here — the
-					// record is present in this scroll. Accumulated
-					// inside the loop, unlike Spared below.
-					appeared = append(appeared, id)
-					continue
-				}
+			fromV := versionOf(p.Payload)
+			original, derr := payloadToMap(p.Payload)
+			if derr != nil {
+				return fmt.Errorf("migrate: point %s: %w", id, derr)
+			}
+			current, aerr := applyChain(id, fromV, original)
+			if aerr != nil {
+				return aerr
+			}
 
-				fromV := versionOf(p.Payload)
-				original, derr := payloadToMap(p.Payload)
-				if derr != nil {
-					err = fmt.Errorf("migrate: point %s: %w", id, derr)
-					return res, err
-				}
-				current, aerr := applyChain(id, fromV, original)
-				if aerr != nil {
-					err = aerr
-					return res, err
-				}
+			// The write map is built from AddedKeys(original, current)
+			// — the ORIGINAL decoded payload against the FINAL
+			// post-chain state — plus schemaVersionKey, NEVER from
+			// current wholesale. See the sweep-mode write below for
+			// the full rationale; identical here.
+			added := migrate.AddedKeys(original, current)
+			writeMap := make(map[string]any, len(added)+1)
+			for _, k := range added {
+				writeMap[k] = current[k]
+			}
+			writeMap[schemaVersionKey] = int(target)
 
-				// The write map is built from AddedKeys(original, current)
-				// — the ORIGINAL decoded payload against the FINAL
-				// post-chain state — plus schemaVersionKey, NEVER from
-				// current wholesale. See the sweep-mode write below for
-				// the full rationale; identical here.
-				added := migrate.AddedKeys(original, current)
-				writeMap := make(map[string]any, len(added)+1)
-				for _, k := range added {
-					writeMap[k] = current[k]
-				}
-				writeMap[schemaVersionKey] = int(target)
-
-				if _, werr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
-					CollectionName: s.collection, Wait: qdrant.PtrOf(true),
-					Payload:        qdrant.NewValueMap(writeMap),
-					PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{p.Id}),
-				}); werr != nil {
-					// D-09: write failures are counted, never fatal to
-					// the call. The point stays in `observed`, so it
-					// remains part of manifest ∩ observed — it is
-					// neither Spared nor silently dropped, and the
-					// general reconciliation
-					// uint64(len(manifest)-len(Spared)) == Migrated+Failed
-					// holds even when this branch executes.
-					res.Failed++
-					continue
-				}
+			if _, werr := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+				CollectionName: s.collection, Wait: qdrant.PtrOf(true),
+				Payload:        qdrant.NewValueMap(writeMap),
+				PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{p.Id}),
+			}); werr != nil {
+				// D-09: write failures are counted, never fatal to
+				// the call. The point stays in `observed`, so it
+				// remains part of manifest ∩ observed — it is
+				// neither Spared nor silently dropped, and the
+				// general reconciliation
+				// uint64(len(manifest)-len(Spared)) == Migrated+Failed
+				// holds even when this branch executes.
+				res.Failed++
+			} else {
 				res.Migrated++
 			}
-			if next == nil {
-				break
-			}
-			pageOffset = next
+			return nil
+		})
+		if scanErr != nil {
+			err = scanErr
+			return res, err
 		}
 
 		// REVIEWS.md C4-H5: Spared is a SET DIFFERENCE computed ONCE,

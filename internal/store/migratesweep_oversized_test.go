@@ -68,13 +68,14 @@ func independentIDScroll(ctx context.Context, t *testing.T, c *qdrant.Client, co
 
 // TestMigrateBoundedOverGRPCLimit proves engram migrate's default sweep
 // mode (Store.Migrate with neither DryRun nor Manifest set) drains an
-// oversized backlog through the shared byte-budget iterator, on both
-// fixture shapes. Its dry-run projection arm is added by task 2, once
+// oversized backlog through the shared byte-budget iterator, and that its
+// dry-run projection still covers the whole backlog while writing nothing
+// — on both fixture shapes. The dry-run arm is only meaningful once
 // Store.Migrate's DryRun walk is itself migrated onto the shared iterator
-// — before that, a dry-run call at the DEFAULT batch over the FewLarge
-// shape would genuinely overflow the receive limit (one 256-record page,
-// still requesting full payload, returns all 40 large records at once),
-// which is precisely the bug task 2 fixes, not task 1.
+// (task 2): before that, a dry-run call at the DEFAULT batch over the
+// FewLarge shape genuinely overflows the receive limit (one 256-record
+// page, still requesting full payload, returns all 40 large records at
+// once) — exactly the bug task 2 fixes.
 func TestMigrateBoundedOverGRPCLimit(t *testing.T) {
 	shapes := []storetest.Shape{storetest.FewLarge, storetest.ManySmall}
 	for _, shape := range shapes {
@@ -119,6 +120,27 @@ func TestMigrateBoundedOverGRPCLimit(t *testing.T) {
 			before := independentIDScroll(ctx, t, c, name, migrateSweepBacklogFilter(int(migrate.CurrentVersion)))
 			if len(before) != len(fx.IDs) {
 				t.Fatalf("%s: independent backlog re-derivation before Migrate = %d ids, want %d (schema_version key not fully stripped)", shape, len(before), len(fx.IDs))
+			}
+
+			// Dry-run arm FIRST: the apply arm below drains the whole
+			// backlog, which would make a subsequent dry-run vacuous. Safe
+			// to run at the default batch now that Store.Migrate's DryRun
+			// walk (task 2) also routes through the shared byte-budget
+			// iterator — scrollAllPoints self-limits per-RPC page size
+			// from s.fullView()'s own byte ceiling, independent of Batch.
+			dryRes, err := st.Migrate(ctx, store.MigrateOptions{DryRun: true})
+			if err != nil {
+				t.Fatalf("%s: Migrate(DryRun): %v (request shape may have exceeded the %d-byte named receive limit)", shape, err, storetest.RecvLimit)
+			}
+			if len(dryRes.PreviewManifest) != len(fx.IDs) {
+				t.Errorf("%s: len(PreviewManifest) = %d, want %d (the preview must cover the whole backlog on every page)", shape, len(dryRes.PreviewManifest), len(fx.IDs))
+			}
+			if dryRes.Migrated != 0 {
+				t.Errorf("%s: dry-run res.Migrated = %d, want 0 (DryRun writes nothing)", shape, dryRes.Migrated)
+			}
+			afterDry := independentIDScroll(ctx, t, c, name, migrateSweepBacklogFilter(int(migrate.CurrentVersion)))
+			if len(afterDry) != len(fx.IDs) {
+				t.Errorf("%s: independent backlog re-derivation after DryRun = %d ids, want %d unchanged (DryRun must write nothing)", shape, len(afterDry), len(fx.IDs))
 			}
 
 			// Apply arm: default sweep mode drains the whole backlog.

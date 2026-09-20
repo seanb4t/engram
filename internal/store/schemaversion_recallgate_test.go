@@ -539,11 +539,11 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.Migrate",
-		justification: "Emits Count (internal/store/migrate.go) and ScrollAndOffset (internal/store/migrate.go), both against backlogFilter. D-16 operator command — Phase 3's migration sweep must be able to filter/count by schema_version to find its own backlog, so a blanket ban across every Qdrant query in this package would make Phase 3 unimplementable. backlogFilter is never reachable from any recallEntryPointSeeds member.",
+		justification: "Emits Count (internal/store/migrate.go), against backlogFilter. As of Phase 5, its three former ScrollAndOffset loops (DryRun projection, Manifest-limited apply, default sweep-mode pass) all route through Store.scrollAllPoints instead (already classified below) — Migrate itself no longer emits ScrollAndOffset directly. D-16 operator command — Phase 3's migration sweep must be able to filter/count by schema_version to find its own backlog, so a blanket ban across every Qdrant query in this package would make Phase 3 unimplementable. backlogFilter is never reachable from any recallEntryPointSeeds member.",
 	},
 	{
 		enclosingFunc: "Store.scrollAllPoints",
-		justification: "Emits ScrollAndOffset (spine.go:49). The package's ONE shared paginated whole-spine iterator, behind ScanSpine/EnumerateCitations/NearDuplicates/derivePurgeEligible — all operator-tier today. This entry buys something specific: if a future recall path ever routes through it, reachability pulls it into the reachable set, it stops matching this entry, and the suite goes RED.",
+		justification: "Emits ScrollAndOffset (spine.go:49). The package's ONE shared paginated whole-spine iterator, behind ScanSpine/EnumerateCitations/NearDuplicates/derivePurgeEligible/previewRevertWithSteps and, as of Phase 5, Store.Migrate's three former loops (DryRun projection, Manifest-limited apply, default sweep-mode pass) — all operator-tier today. This entry buys something specific: if a future recall path ever routes through it, reachability pulls it into the reachable set, it stops matching this entry, and the suite goes RED.",
 	},
 	{
 		enclosingFunc: "Store.CountExpired",
