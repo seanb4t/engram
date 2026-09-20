@@ -545,7 +545,7 @@ Plans:
 1. When cross-spine `search_memory`/`list_memory`'s follow-up `ListScopes` call fails after hits have already been produced, those hits are returned rather than discarded.
 2. A documented, wire-visible signal distinguishes "coverage unknown" from `scopes_truncated`, surfaced consistently on MCP, Connect, and `engram search`/`engram list`.
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 **Wave 1**
@@ -554,7 +554,7 @@ Plans:
 
 **Wave 2**
 
-- [ ] 06-02-PLAN.md — `renderCoverageFooter`'s third form printed by both CLI verbs with no count, and the third state published in the tool reference, the CLI guide, the upgrade guide and CLAUDE.md (D-01, D-03, D-05)
+- [x] 06-02-PLAN.md — `renderCoverageFooter`'s third form printed by both CLI verbs with no count, and the third state published in the tool reference, the CLI guide, the upgrade guide and CLAUDE.md (D-01, D-03, D-05)
 
 **Wave 3**
 
