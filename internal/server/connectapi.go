@@ -223,9 +223,10 @@ func (a *engramAPI) MigrateStatus(ctx context.Context, _ *connect.Request[engram
 // ListMemories is rewired onto the 17-06 typed core deps.listMemory (D-07):
 // every Connect field (offset/categories/visibility/exact total/cursor/
 // cursor_mode/tags/created window) survives, and Limit is passed through
-// UNCHANGED — limit=0 means "all" (store.go:873-874), NOT silently capped to
-// 20 (round-4 finding-7; 17-06 removed the shared Limit==0->20 default from
-// the core, so no lane may re-introduce it here). created_after/before are
+// UNCHANGED — 0 resolves to the maximum, 1000 (04-CONTEXT.md D-01; see
+// store.MaxRecallLimit), NOT silently capped to 20 (round-4 finding-7; 17-06
+// removed the shared Limit==0->20 default from the core, so no lane may
+// re-introduce it here). created_after/before are
 // parsed to time.Time AT THIS BOUNDARY, building the classified *argError the
 // MCP lane builds, and handed to connectError (D-11) so the failure CLASS —
 // not a hand-wrapped code — selects the Connect code. Hand-wrapping
@@ -272,7 +273,7 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	}
 	res, err := a.d.listMemory(ctx, c, coreListRequest{
 		Scope:         req.Msg.Scope,
-		Limit:         req.Msg.Limit, // 0 = "all" — no default re-introduced here (round-4 finding-7)
+		Limit:         req.Msg.Limit, // 0 resolves to the maximum, 1000 (D-01) — no 20-default re-introduced here (round-4 finding-7)
 		Offset:        req.Msg.Offset,
 		Categories:    req.Msg.Categories,
 		Visibility:    req.Msg.Visibility,
