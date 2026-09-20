@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 5
 current_phase_name: Operator Sweeps & CI Backstop
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-09-20T18:13:55.130Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-09-20T19:08:58.315Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 5 execution started
-state_head: 97834b7e7345a33728d509f2e1c7532ed9051514
+state_head: 8159456f881aec97b03db93db7a720298ad3c04a
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 29
-  completed_plans: 27
+  completed_plans: 28
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 5 (Operator Sweeps & CI Backstop) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 5 execution started
 
@@ -342,6 +342,8 @@ milestone needs in working memory.
 - [Phase 5]: revertFixtureStep's inverse targets a key no seeded fixture record carries — intentional; the regression proves the bounded pass-loop mechanics, not a specific added/removed-key shape (already pinned by in-place revert_test.go, D-02).
 - [Phase 05]: Reindex uses a synchronous in-callback flush (not a cross-pass restart like Migrate/Revert) because its nil-filter walk over a read-only source has no shrinking-filter mechanism to make a restart safe, and its own action text requires exactly one scrollAllPoints call.
 - [Phase 05]: The oversized reindex regression sizes ReindexOptions.Batch per fixture shape's record size, since reindexTargetContents' out-of-scope Get() call is byte-unbounded and the production default (256) overflows the receive limit for FewLarge's 40 large records.
+- [Phase 05]: 64 MiB receive-limit backstop (productionRecvLimit) set in exactly one place inside NewQdrantClient via qdrantDialOptions, appended before caller options, tested only for pass-through and append order.
+- [Phase 05]: Regenerated a stale Phase 2 red-evidence patch (02-01-classifier-not-in-base-options.patch) after Task 1's own qdrantDialOptions refactor moved the target line out of NewQdrantClient's body, so TestRedEvidencePatchesAreLive keeps proving the same regression.
 
 ### Pending Todos
 
@@ -417,8 +419,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T18:13:54.862Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-09-20T19:08:15.917Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -578,6 +580,7 @@ Resume file: None
 | Phase 05 P02 | 62min | 2 tasks | 8 files |
 | Phase 05 P03 | 37min | 3 tasks | 5 files |
 | Phase 05 P04 | 68min | 2 tasks | 5 files |
+| Phase 05 P05 | 51min | 2 tasks | 5 files |
 
 ## Operator Next Steps
 

@@ -503,7 +503,7 @@ Plans:
 3. The production Qdrant client raises `MaxCallRecvMsgSize` in exactly one place, documented as a backstop only, added after the sweep and per-site regression tests already pass without it.
 4. The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused`/`code = Unavailable` recurrence — closing #497 with that evidence.
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -524,7 +524,7 @@ Plans:
 
 **Wave 5**
 
-- [ ] 05-05-PLAN.md — the 64 MiB receive-limit backstop set once, ahead of caller options, tested for pass-through and ordering only (D-05, D-06)
+- [x] 05-05-PLAN.md — the 64 MiB receive-limit backstop set once, ahead of caller options, tested for pass-through and ordering only (D-05, D-06)
 
 **Wave 6**
 
