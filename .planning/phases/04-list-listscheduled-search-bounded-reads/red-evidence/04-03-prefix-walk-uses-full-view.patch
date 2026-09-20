@@ -1,0 +1,13 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 62d820c4..28edd1d1 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1566,7 +1566,7 @@ func (s *Store) walkOffsetPrefix(ctx context.Context, f *qdrant.Filter, dir qdra
+ 	if offset == 0 {
+ 		return listCursor{}, false, nil
+ 	}
+-	view := keysView()
++	view := s.fullView()
+ 	var cur listCursor
+ 	var walked uint64
+ 	for walked < offset {

@@ -136,7 +136,23 @@ var redEvidenceDirs = map[string]map[string]string{
 		"03-04-ordered-page-tie-exclusion-removed.patch":  "TestScrollOrderedPageTiesAcrossRPCBoundaries",       // reverts: excludeSeen's must_not has_id exclusion of already-emitted ids at the tie boundary (D-03)
 	},
 	".planning/phases/04-list-listscheduled-search-bounded-reads/red-evidence": {
-		"04-04-search-fetch-drops-caller-filter.patch": "TestSearchTwoPhaseBounded", // reverts: includeIDs re-wrapping the caller's own filter as a nested condition alongside the id-set inclusion (D-09)
+		"04-04-search-fetch-drops-caller-filter.patch":       "TestSearchTwoPhaseBounded",                    // reverts: includeIDs re-wrapping the caller's own filter as a nested condition alongside the id-set inclusion (D-09)
+		"04-01-hint-code-value-drift.patch":                  "TestErrorsDocHintCodesMatchArgErrorConstants", // reverts: HintOutOfRange's wire value agreeing with the published errors.md table (D-10)
+		"04-01-overflow-envelope-hint-reverted.patch":        "TestResponseTooLargeEnvelopeShape",            // reverts: the shared overflow envelope rendering HintResponseTooLarge instead of a different hint (D-11)
+		"04-02-cursor-reports-last-page-on-budget-cut.patch": "TestStoreListContractInvariant",               // reverts: a budget-cut cursor page's non-empty next cursor, distinct from Exhausted (D-06)
+		"04-02-zero-limit-fetches-whole-scope.patch":         "TestStoreListOffsetBounded",                   // reverts: a zero List limit resolving to the numeric store.MaxRecallLimit instead of an unbounded single Scroll of the whole matched scope (D-01)
+		"04-02-offset-overflow-guard-removed.patch":          "TestStoreListOffsetBounded",                   // reverts: the guard rejecting an offset+limit pair that would wrap uint64, before any RPC (D-01)
+		"04-03-prefix-walk-uses-full-view.patch":             "TestStoreListDeepOffsetBounded",               // reverts: the deep-offset prefix walk's keys-only projection, back to the full view (D-07)
+		"04-03-assembly-loop-stops-after-one-page.patch":     "TestListScheduledBounded",                     // reverts: collectOrderedPages' assembly loop following Next across multiple primitive pages until the requested count is reached (D-05)
+		"04-04-search-fetch-always-issues-an-rpc.patch":      "TestSearchFetchSkipsEmptyBatch",               // reverts: fetchPayloadsByID's empty-batch short-circuit, so a zero-id fetch still issues a Scroll (D-09, RESEARCH Pitfall 1)
+		"04-04-search-returns-reversed-rank-order.patch":     "TestSearchPreservesRankOrder",                 // reverts: Store.Search re-attaching phase one's own rank order when rebuilding the result (D-09)
+		"04-05-no-summary-backfill-removed.patch":            "TestNoSummaryContentBackfill",                 // reverts: Store.List's call to the shared no-summary content backfill (Phase 3 D-04)
+		"04-05-list-always-full-view.patch":                  "TestRecallViewSelection",                      // reverts: recallView's full/summary projection selection, collapsed to always full (Phase 3 D-04)
+		"04-05-store-clamps-instead-of-refusing.patch":       "TestStoreRejectsOverMaximumCount",             // reverts: the store's over-maximum guard refusing rather than silently permitting an over-maximum count (D-10)
+		"04-06-surface-maximum-check-removed.patch":          "TestOutOfRangeRejectedOnEveryRecallSurface",   // reverts: the typed list core's shared over-maximum check, falling through to the store's differently-shaped backstop error (D-10)
+		"04-06-maximum-check-runs-after-embed.patch":         "TestOutOfRangeRejectedBeforeAnyBackend",       // reverts: the memory-search core method's over-maximum check running BEFORE the embed call, closing the denial-of-service ordering hazard (D-10)
+		"04-06-full-not-threaded-to-rule-listing.patch":      "TestListRulesFullThreaded",                    // reverts: the rule listing's direct store-options literal threading a.Full through to the store (Pattern 6 step 4)
+		"04-07-cli-help-drops-the-maximum.patch":             "TestRecallMaximumIsStatedNumerically",         // reverts: the CLI list --limit flag's usage string stating the numeric maximum (D-01, D-04)
 	},
 }
 

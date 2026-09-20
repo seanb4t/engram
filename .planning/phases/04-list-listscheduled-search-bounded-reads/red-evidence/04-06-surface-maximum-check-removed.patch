@@ -1,0 +1,14 @@
+diff --git a/internal/server/tools.go b/internal/server/tools.go
+index 9b62dade..e928907d 100644
+--- a/internal/server/tools.go
++++ b/internal/server/tools.go
+@@ -1660,9 +1660,6 @@ func rejectOverMaximumCount(field string, count uint64) error {
+ // means "all", CursorMode carried from the request) before calling here
+ // (round-3 HIGH-2, round-4 finding-7).
+ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (coreListResult, error) {
+-	if err := rejectOverMaximumCount("limit", req.Limit); err != nil {
+-		return coreListResult{}, err
+-	}
+ 	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
+ 	if err != nil {
+ 		return coreListResult{}, err

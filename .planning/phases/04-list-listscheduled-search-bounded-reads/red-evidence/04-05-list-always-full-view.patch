@@ -1,0 +1,16 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 62d820c4..2b4979c8 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1442,10 +1442,7 @@ type ListOptions struct {
+ // from the projection the shared no-summary backfill (searchfetch.go)
+ // compensates for.
+ func (s *Store) recallView(full bool) readView {
+-	if full {
+-		return s.fullView()
+-	}
+-	return s.summaryView()
++	return s.fullView()
+ }
+ 
+ // isSummaryView reports whether v carries the summary view's exclude-shaped

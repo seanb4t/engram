@@ -1,0 +1,16 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 62d820c4..3c67cd78 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1732,11 +1732,6 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
+ 	if err != nil {
+ 		return nil, 0, "", err
+ 	}
+-	if isSummaryView(view) {
+-		if err := s.backfillNoSummaryContent(ctx, f, items); err != nil {
+-			return nil, 0, "", err
+-		}
+-	}
+ 	return items, total, "", nil
+ }
+ 

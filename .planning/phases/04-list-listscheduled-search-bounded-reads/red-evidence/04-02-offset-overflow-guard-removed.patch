@@ -1,0 +1,22 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 62d820c4..62a9c055 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -9,7 +9,6 @@ import (
+ 	"errors"
+ 	"fmt"
+ 	"log/slog"
+-	"math"
+ 	"slices"
+ 	"sort"
+ 	"strings"
+@@ -1709,9 +1708,6 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
+ 	if effectiveLimit == 0 {
+ 		effectiveLimit = MaxRecallLimit
+ 	}
+-	if opts.Offset > math.MaxUint64-effectiveLimit {
+-		return nil, 0, "", fmt.Errorf("list: offset+limit overflows: %w", ErrInvalidArgument)
+-	}
+ 	dir := qdrant.Direction_Desc
+ 	if opts.Ascending {
+ 		dir = qdrant.Direction_Asc

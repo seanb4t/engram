@@ -1,0 +1,13 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 62d820c4..58ffe87a 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1785,7 +1785,7 @@ func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOpt
+ 			return nil, "", err
+ 		}
+ 	}
+-	if page.Exhausted {
++	if page.Exhausted || page.CutByBudget {
+ 		return page.Items, "", nil
+ 	}
+ 	return page.Items, encodeCursor(page.Next), nil

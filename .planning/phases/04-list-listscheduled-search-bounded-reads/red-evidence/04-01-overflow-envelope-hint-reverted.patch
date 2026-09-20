@@ -1,0 +1,13 @@
+diff --git a/internal/server/responsetoolarge.go b/internal/server/responsetoolarge.go
+index 4f6886de..e88c7b15 100644
+--- a/internal/server/responsetoolarge.go
++++ b/internal/server/responsetoolarge.go
+@@ -43,7 +43,7 @@ const responseTooLargeDetail = "the result is too large to return in one respons
+ // tool's own argument shape (precedent: internal/store/revert.go's
+ // field=steps).
+ func responseTooLargeEnvelope() string {
+-	return renderHintEnvelope([]string{"response"}, HintResponseTooLarge, responseTooLargeDetail)
++	return renderHintEnvelope([]string{"response"}, HintTooLong, responseTooLargeDetail)
+ }
+ 
+ // mapResponseTooLarge returns an mcp.Middleware that rewrites a "tools/call"

@@ -1,0 +1,14 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 62d820c4..90825e80 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1227,7 +1227,8 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
+ 	// an id the fetch did not return (dropped between the two phases) is
+ 	// simply skipped — never an error, never returned stale.
+ 	out = make([]Memory, 0, len(ids))
+-	for _, id := range ids {
++	for i := len(ids) - 1; i >= 0; i-- {
++		id := ids[i]
+ 		m, ok := fetched[id]
+ 		if !ok {
+ 			continue

@@ -1,0 +1,28 @@
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 62d820c4..f8925e97 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -1716,6 +1716,23 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
+ 	if opts.Ascending {
+ 		dir = qdrant.Direction_Asc
+ 	}
++	if opts.Limit == 0 {
++		pts, sErr := s.client.Scroll(ctx, &qdrant.ScrollPoints{
++			CollectionName: s.collection,
++			Filter:         f,
++			Limit:          qdrant.PtrOf(uint32(total)),
++			OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(dir)},
++			WithPayload:    qdrant.NewWithPayload(true),
++		})
++		if sErr != nil {
++			return nil, 0, "", sErr
++		}
++		all := make([]Memory, 0, len(pts))
++		for _, p := range pts {
++			all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
++		}
++		return all, total, "", nil
++	}
+ 	from, prefixExhausted, err := s.walkOffsetPrefix(ctx, f, dir, opts.Offset)
+ 	if err != nil {
+ 		return nil, 0, "", err
