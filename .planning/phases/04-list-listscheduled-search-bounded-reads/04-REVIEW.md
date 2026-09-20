@@ -68,6 +68,19 @@ search hit set fails the whole containing batch rather than being isolated
 
 ### CR-01: `cursor_mode=true, limit=0` silently truncates a list past 1000 records and reports it as the last page
 
+**Fix status:** Fixed — commit `45e8885a` (`fix(04): CR-01 route cursor_mode=true, limit=0 into listByCursor`).
+Dropped the redundant `opts.Limit > 0` clause from the mode-selection guard
+so `CursorMode` alone (with `Offset == 0`, already enforced above) selects
+`listByCursor`, which resolves its own zero limit to 20 (unchanged,
+pre-existing default) rather than falling through to offset mode's
+`MaxRecallLimit`-capped, cursor-less fetch. Added
+`TestListCursorModeZeroLimitPagesCorrectly` (`internal/store/list_cursormode_zerolimit_test.go`),
+seeding 23 records to isolate the mode-selection bug from the 1000-record
+ceiling (seeding past `MaxRecallLimit` was impractical): confirmed RED
+against the pre-fix code (first page returned all 23 items with an empty
+`next_cursor`) and GREEN after the fix (20 items, non-empty cursor, full
+traversal with no duplicates).
+
 **File:** `internal/store/store.go:1697` (mode-selection guard), interacting with the offset-mode fallback at `internal/store/store.go:1708-1740`
 
 **Issue:**
@@ -160,6 +173,18 @@ this).
 
 ### WR-01: `fetchPayloadsByID` lacks the legacy-oversized-record fallback its sibling primitives implement
 
+**Fix status:** Fixed — commit `533fefff` (`fix(04): WR-01 give fetchPayloadsByID a batch-of-1 fallback`).
+Extracted the per-batch `Scroll` into `fetchPayloadBatch`, which retries every
+id in a batch individually at `Limit: 1` on `ErrResponseTooLarge` when the
+batch held more than one id — mirroring `scrollOrderedPage`'s fallback
+shape. Added `TestFetchPayloadsByIDBatchOfOneFallback`
+(`internal/store/searchfetch_batchfallback_test.go`), mirroring
+`TestScrollOrderedPageBatchOfOneFallback`'s two subtests and exact
+content-size formulas: `legacy-window` confirmed RED against the pre-fix
+code (whole-batch failure) and GREEN after the fix (all ids fetched);
+`single-oversized` passed both before and after (a record still over the
+limit at `Limit: 1` correctly surfaces `ErrResponseTooLarge` either way).
+
 **File:** `internal/store/searchfetch.go:110-118`
 
 **Issue:** `scrollOrderedPage` (`internal/store/orderedpage.go:151-190`) and
@@ -203,6 +228,15 @@ Scroll still overflows at `Limit: 1`.
 
 ### WR-02: Stale doc comment claims Connect `limit=0` still means "all"
 
+**Fix status:** Fixed — commit `04a7c6a0` (`docs(04): WR-02 fix stale ListMemories limit=0 doc comment`).
+Updated the `ListMemories` doc comment to state "0 resolves to the maximum,
+1000" (matching the proto's own comment) and dropped the stale
+`store.go:873-874` citation; also updated the adjacent inline comment on the
+`Limit:` field assignment a few lines below (`// 0 = "all"`), the same class
+of staleness in the same function, for consistency. Comment-only change,
+verified via `go build` and `TestConnectListMemoriesLimitZeroReturnsAll`/
+`TestConnectListMemoriesResponseTooLarge` (unaffected, as expected).
+
 **File:** `internal/server/connectapi.go:224-230`
 
 **Issue:** The doc comment on `ListMemories` reads:
@@ -227,6 +261,12 @@ unsafe to make about this code path.
 ## Info
 
 ### IN-01: Store-layer `rejectOverMaximum` backstop errors bypass the field/hint envelope
+
+**Fix status:** Skipped — out of the fix pass's scope (critical + warning
+only; this review's own Fix section says "No action required for this
+phase"). The finding itself documents it as unreachable in current behavior
+(every server entry point calls the identical `rejectOverMaximumCount` guard
+before the store is ever invoked), so this is not a defect to remediate now.
 
 **File:** `internal/store/store.go:1542-1547`
 
