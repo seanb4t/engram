@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 6
 current_phase_name: Cross-Spine Partial Results
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-09-20T21:52:03.310Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-09-20T22:50:37.324Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 6 execution started
-state_head: ada976582a2b3dc442be95db31fd28f257aacabe
+state_head: d4d8419d2eeae0a5080cd0401707ab0974f4c769
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 32
-  completed_plans: 29
+  completed_plans: 30
 ---
 
 # Project State
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 6 (Cross-Spine Partial Results) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 6
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-09-20 — Phase 6 execution started
 
 ## Deferred Items
@@ -344,6 +344,7 @@ milestone needs in working memory.
 - [Phase 05]: The oversized reindex regression sizes ReindexOptions.Batch per fixture shape's record size, since reindexTargetContents' out-of-scope Get() call is byte-unbounded and the production default (256) overflows the receive limit for FewLarge's 40 large records.
 - [Phase 05]: 64 MiB receive-limit backstop (productionRecvLimit) set in exactly one place inside NewQdrantClient via qdrantDialOptions, appended before caller options, tested only for pass-through and append order.
 - [Phase 05]: Regenerated a stale Phase 2 red-evidence patch (02-01-classifier-not-in-base-options.patch) after Task 1's own qdrantDialOptions refactor moved the target line out of NewQdrantClient's body, so TestRedEvidencePatchesAreLive keeps proving the same regression.
+- [Phase 6]: 06-01: scopeCoverage{Scopes,Truncated,Unknown} value-returning helper (no error) replaces searchedScopes's error return; scopes_unknown lands at field 7 (ListMemoriesResponse) / field 4 (SearchMemoriesResponse)
 
 ### Pending Todos
 
@@ -361,7 +362,7 @@ Both prior entries were delivered and had simply never been closed out:
 **Open:**
 
 - **Released but NOT DEPLOYED:** `v0.13.0` was cut and shipped 2026-08-12 (tag + GitHub Release, binaries for linux/darwin × amd64/arm64, image `0.13.0`/`latest`, OCI Helm chart) — so v0.11.x, v0.12.x and v0.13.x capabilities are now *available*. They are **not yet rolled out** to the running instance, which still predates all three. Until it is, `supersede_memory`, memory `citations`, the `categories` filter, Connect bearer identity, the headless CLI, `cross_spine`, the field+hint error envelope, `spine-review`, and the archive tier remain uncallable in practice.
-- **Not deployed → not exercised:** every v0.11.x, v0.12.x and v0.13.x feature is verified against tests and a real Qdrant via testcontainers, but **none has ever run in the deployed instance**. Three milestones of unexercised code land at once on the first rollout — watch it closely for integration surprises.
+- **Not deployed → not exercised:** every v0.11.x, v0.12.x and v0.13.x feature is verified against tests and a real Qdrant via testcontainers, but **has ever run in the deployed instance**. Three milestones of unexercised code land at once on the first rollout — watch it closely for integration surprises.
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
@@ -389,7 +390,7 @@ Both prior entries were delivered and had simply never been closed out:
   plan-checker passes); `internal/store` `TestRedEvidencePatchesAreLive` keeps `task` red until the
   phase's red-evidence patches are registered in `redEvidenceDirs` (orchestrator step after the last
   plan, before verification); `dispatch-isolation --raw/--json` re-record the isolation sentinel, so
-  `--force-isolation none` must be the LAST call before each executor dispatch (gotcha `xjz60c9h6t`).
+  `--force-isolation ` must be the LAST call before each executor dispatch (gotcha `xjz60c9h6t`).
   `roadmap update-plan-progress` / `phase.complete` again wrote an archived-milestone "1." progress
   row (`yzmfesbsg0`, 8th occurrence) — hand-verify the table after every call.
 - **New this milestone: runtime CLI availability.** Phase 3's shell-out writers now depend on
@@ -397,6 +398,7 @@ Both prior entries were delivered and had simply never been closed out:
   flag/version drift in a third-party binary is a live failure mode, not a hypothetical; pinned
   versions verified live were codex-cli 0.148.0 and opencode 1.18.15.
 - Pre-existing (predates 04-07) TestActiveMilestoneKeyLinksSatisfiable failure against 04-06-PLAN.md:62's key_links pattern "Full: req[.]Full" (gofmt-aligned struct literal never matched exactly one space). Out of scope for 04-07; documented in deferred-items.md and WINDOWS.md entry 11. 04-06's PLAN.md pattern needs correcting.
+- internal/store's TestRedEvidencePatchesAreLive hit Go's default 601s per-package timeout twice during plan 06-01's task gate (environmental: 54-patch sequential subprocess harness + heavy concurrent unrelated machine load, confirmed via a 20m-timeout diagnostic run passing cleanly at 685s). Zero internal/store files touched by 06-01. See .planning/phases/06-cross-spine-partial-results/deferred-items.md and WINDOWS.md entry 13.
 
 ### Quick Tasks Completed
 
@@ -419,9 +421,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T21:27:27.437Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-cross-spine-partial-results/06-CONTEXT.md
+Last session: 2026-09-20T22:50:37.224Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -581,6 +583,7 @@ Resume file: .planning/phases/06-cross-spine-partial-results/06-CONTEXT.md
 | Phase 05 P03 | 37min | 3 tasks | 5 files |
 | Phase 05 P04 | 68min | 2 tasks | 5 files |
 | Phase 05 P05 | 51min | 2 tasks | 5 files |
+| Phase 06 P01 | 56min | 3 tasks | 9 files |
 
 ## Operator Next Steps
 

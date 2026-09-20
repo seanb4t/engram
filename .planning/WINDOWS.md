@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 6
 waived_count: 0
 fixed_count: 7
-total_count: 12
-last_updated: 2026-09-20T19:05:27.260Z
+total_count: 13
+last_updated: 2026-09-20T22:46:26.903Z
 ---
 
 # Broken Windows Ledger
@@ -27,6 +27,7 @@ last_updated: 2026-09-20T19:05:27.260Z
 | 10 | 04 | deviation | internal/store/searchfetch.go |  | Store.Search's no-summary content backfill has no dedicated test asserting .Content is restored (only Store.List's backfill, TestNoSummaryContentBackfill, has a direct content assertion); Search's wiring reuses the identical function and the existing all-no-summary Search suite stays green, but no test proves the restoration specifically for Search. | fixed |  | 2026-09-20T09:26:39.178Z | 2026-09-20T13:01:38.625Z |
 | 11 | 04 | deviation | .planning/phases/04-list-listscheduled-search-bounded-reads/04-06-PLAN.md | 62 | Pre-existing TestActiveMilestoneKeyLinksSatisfiable failure: key_link pattern 'Full: req[.]Full' unsatisfiable (gofmt-aligned struct literal); predates 04-07, out of scope per cross-plan note | fixed |  | 2026-09-20T10:32:38.041Z | 2026-09-20T11:20:50.104Z |
 | 12 | 05 | unmet-truth | internal/keylinks |  | TestActiveMilestoneKeyLinksSatisfiable fails on 03-02-PLAN.md's stale key_links pattern (unbudgetedView removed from revert.go by an earlier Phase 5 plan); pre-existing, out of scope for 05-05 | open |  | 2026-09-20T19:05:27.260Z |  |
+| 13 | 06 | deviation | internal/store/redevidence_harness_test.go |  | TestRedEvidencePatchesAreLive hit Go's default 601s per-package timeout twice during plan 06-01's task gate (environmental: 54-patch sequential subprocess harness + heavy concurrent unrelated machine load; zero internal/store files touched by 06-01) | open |  | 2026-09-20T22:46:26.903Z |  |
 
 ````json
 [
@@ -174,6 +175,19 @@ last_updated: 2026-09-20T19:05:27.260Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-20T19:05:27.260Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 13,
+    "kind": "deviation",
+    "phase": "06",
+    "file": "internal/store/redevidence_harness_test.go",
+    "line": null,
+    "description": "TestRedEvidencePatchesAreLive hit Go's default 601s per-package timeout twice during plan 06-01's task gate (environmental: 54-patch sequential subprocess harness + heavy concurrent unrelated machine load; zero internal/store files touched by 06-01)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-20T22:46:26.903Z",
     "resolved_at": null,
     "milestone": null
   }
