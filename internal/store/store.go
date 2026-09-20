@@ -1149,6 +1149,17 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 		}
 	}()
 
+	// D-10 backstop: refused before any filter construction or RPC.
+	// SearchReranked needs no call of its own — it delegates here with
+	// candidateK(k) (clamped to at most 100, always well under
+	// MaxRecallLimit), so this guard can never reject a SearchReranked call
+	// for being over the maximum; that is fine, since candidateK already
+	// bounds SearchReranked's actual RPC cost independent of the caller's k,
+	// so a duplicate guard there would add nothing.
+	if err := rejectOverMaximum("k", k); err != nil {
+		return nil, err
+	}
+
 	f := s.ownerScopeFilter(ctx, scope, subj)
 	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
 	// unit (both the not_before and not_after halves) — never split across two
@@ -1310,6 +1321,11 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 			span.SetAttributes(attribute.Int("engram.result_count", len(out)))
 		}
 	}()
+
+	// D-10 backstop: refused before any filter construction or RPC.
+	if err := rejectOverMaximum("k", k); err != nil {
+		return nil, err
+	}
 
 	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
 	if scope != "" {
@@ -1501,16 +1517,34 @@ func (s *Store) listFilter(ctx context.Context, scope string, subj Subject, opts
 
 // MaxRecallLimit is the ONE documented maximum for every recall count knob
 // this project exposes (D-02): List's limit in both offset and cursor mode,
-// and Search's k (wired by a later plan in this phase). It bounds a single
+// ListScheduled's limit, and Search/SearchDiscovery's k. It bounds a single
 // cursor page and a decoded cursor's Seen set (unchanged from the pre-phase
-// unexported constant of the same value it replaces), and — from this plan
+// unexported constant of the same value it replaces), and — from plan 04-02
 // onward — the value a zero List limit resolves to in offset mode (D-01): a
 // zero limit is a NUMBER everywhere, never an unbounded fetch. The number is
 // cited by name in the proto comments, the tool schemas, the CLI help, and
-// the docs-site; a request above it is rejected rather than silently
-// clamped at the server boundary (wired by plans 04-05/04-06 later in this
-// phase).
+// the docs-site.
+//
+// As of this plan (04-05, D-10), a count above this maximum is REFUSED — by
+// rejectOverMaximum, at every recall entry point, before any Qdrant call —
+// never silently clamped down to it anywhere in this package; the store's
+// rejection is the BACKSTOP under the named out_of_range rejection plan
+// 04-06 publishes at the server boundary.
 const MaxRecallLimit = 1000
+
+// rejectOverMaximum returns an ErrInvalidArgument-wrapped error naming field
+// and MaxRecallLimit by number — never the rejected count itself — when
+// count exceeds MaxRecallLimit, and nil otherwise (D-10). The one shared
+// backstop guard every recall entry point calls as its FIRST validation,
+// before any filter construction and before any RPC, so a caller learns the
+// documented bound by name rather than receiving a quietly smaller result
+// indistinguishable from a genuinely small one.
+func rejectOverMaximum(field string, count uint64) error {
+	if count <= MaxRecallLimit {
+		return nil
+	}
+	return fmt.Errorf("%s exceeds the maximum of %d: %w", field, MaxRecallLimit, ErrInvalidArgument)
+}
 
 // walkOffsetPrefix skips offset records of f's matches (ordered by dir) with
 // a keys-only budgeted view (D-07), returning the resume listCursor position
@@ -1609,6 +1643,13 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		}
 	}()
 
+	// D-10 backstop: refused before any other validation, any filter
+	// construction, or any RPC — covers BOTH paging modes with one call,
+	// since listByCursor no longer clamps its own limit (see its doc
+	// comment below).
+	if err := rejectOverMaximum("limit", opts.Limit); err != nil {
+		return nil, 0, "", err
+	}
 	if (opts.Cursor != "" || opts.CursorMode) && opts.Offset > 0 {
 		return nil, 0, "", fmt.Errorf("list: cursor mode and offset are mutually exclusive: %w", ErrInvalidArgument)
 	}
@@ -1701,23 +1742,25 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 
 // listByCursor is a thin scrollOrderedPage adapter (D-03/D-04, plan 04-02
 // Task 1): it decodes opts.Cursor into a listCursor, delegates ALL paging to
-// the shared ordered-page primitive over s.fullView() (this plan changes the
-// BOUND, never the payload projection), and maps the result back onto
-// List's (items, nextCursor, error) shape. The mapping is correct by
-// construction (orderedpage.go's page contract: Next is populated whenever
-// the page emitted anything): nextCursor is "" only when the primitive
-// reports Exhausted, and encodeCursor(page.Next) otherwise — REGARDLESS of
-// whether the page stopped by count or by the page byte budget, which is
-// D-06's requirement that a budget-cut page is never reported as the last
-// page. It no longer issues a Scroll of its own — see
+// the shared ordered-page primitive over the caller's recallView (this plan
+// changes the BOUND, never the payload projection), and maps the result
+// back onto List's (items, nextCursor, error) shape. The mapping is correct
+// by construction (orderedpage.go's page contract: Next is populated
+// whenever the page emitted anything): nextCursor is "" only when the
+// primitive reports Exhausted, and encodeCursor(page.Next) otherwise —
+// REGARDLESS of whether the page stopped by count or by the page byte
+// budget, which is D-06's requirement that a budget-cut page is never
+// reported as the last page. It no longer issues a Scroll of its own — see
 // schemaversion_recallgate_test.go's reclassification of scrollOrderedPage.
+//
+// It no longer clamps a limit above MaxRecallLimit down to it either (D-10,
+// this plan): Store.List now REFUSES such a request via rejectOverMaximum
+// before ever calling this method, so a caller cannot mistake a quietly
+// smaller page for an exhausted scope.
 func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOptions) ([]Memory, string, error) {
 	limit := opts.Limit
 	if limit == 0 {
 		limit = 20
-	}
-	if limit > MaxRecallLimit {
-		limit = MaxRecallLimit
 	}
 
 	var from listCursor
@@ -1827,6 +1870,12 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 		}
 	}()
 
+	// D-10 backstop: refused before the zero-limit default is applied (so a
+	// zero limit still means twenty) and before any filter construction or
+	// RPC.
+	if err := rejectOverMaximum("limit", opts.Limit); err != nil {
+		return nil, err
+	}
 	limit := opts.Limit
 	if limit == 0 {
 		limit = 20

@@ -257,14 +257,27 @@ func TestNoSummaryContentBackfill(t *testing.T) {
 			}
 
 			totalWithExtras := seededTotal + 2
+			// requestLimit stays at or below store.MaxRecallLimit (D-10,
+			// plan 04-05 Task 2): the ManySmall shape seeds exactly
+			// store.MaxRecallLimit records, so totalWithExtras alone would
+			// be refused as an over-maximum count. The two extras were
+			// upserted with a later CreatedAt than every fixture record, so
+			// a desc-ordered page capped at requestLimit still contains
+			// both — only the oldest fixture records (never inspected by
+			// this test) would ever be dropped.
+			requestLimit := totalWithExtras
+			if requestLimit > store.MaxRecallLimit {
+				requestLimit = store.MaxRecallLimit
+			}
+			wantCount := requestLimit
 
 			rec.reset()
-			defItems, defTotal, _, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: totalWithExtras})
+			defItems, defTotal, _, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: requestLimit})
 			if err != nil {
 				t.Fatalf("%s: default list with extras: %v", shape, err)
 			}
-			if defTotal != totalWithExtras || uint64(len(defItems)) != totalWithExtras {
-				t.Fatalf("%s: default list with extras returned %d items (total %d), want %d", shape, len(defItems), defTotal, totalWithExtras)
+			if defTotal != totalWithExtras || uint64(len(defItems)) != wantCount {
+				t.Fatalf("%s: default list with extras returned %d items (total %d), want %d items (total %d)", shape, len(defItems), defTotal, wantCount, totalWithExtras)
 			}
 			var sawBackfill bool
 			for _, call := range rec.snapshot() {
@@ -288,12 +301,12 @@ func TestNoSummaryContentBackfill(t *testing.T) {
 			}
 
 			rec.reset()
-			fullItems, fullTotal, _, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: totalWithExtras, Full: true})
+			fullItems, fullTotal, _, err := st.List(ctx, fx.Scope, owner, store.ListOptions{Limit: requestLimit, Full: true})
 			if err != nil {
 				t.Fatalf("%s: full list with extras: %v", shape, err)
 			}
-			if fullTotal != totalWithExtras || uint64(len(fullItems)) != totalWithExtras {
-				t.Fatalf("%s: full list with extras returned %d items (total %d), want %d", shape, len(fullItems), fullTotal, totalWithExtras)
+			if fullTotal != totalWithExtras || uint64(len(fullItems)) != wantCount {
+				t.Fatalf("%s: full list with extras returned %d items (total %d), want %d items (total %d)", shape, len(fullItems), fullTotal, wantCount, totalWithExtras)
 			}
 			fullByID := make(map[string]store.Memory, len(fullItems))
 			for _, m := range fullItems {

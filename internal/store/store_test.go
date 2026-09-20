@@ -6238,7 +6238,11 @@ func TestListCrossSpine(t *testing.T) {
 	mk(b1, scopeB)
 	mk(b2, scopeB)
 
-	opts := ListOptions{Limit: 10000, Tags: []string{fixtureTag}}
+	// Limit stays at MaxRecallLimit (D-10, plan 04-05 Task 2 backstop): a
+	// limit above it is now refused rather than clamped, and this test's own
+	// intent is just "a limit generous enough to return all 4 seeded
+	// records", not the boundary itself.
+	opts := ListOptions{Limit: MaxRecallLimit, Tags: []string{fixtureTag}}
 	subj := Authenticated(owner)
 
 	// Empty scope spans both scopes.
