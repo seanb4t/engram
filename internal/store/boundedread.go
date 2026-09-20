@@ -161,6 +161,16 @@ const citationEntryAllowance = 1 << 10
 // scrollAllPoints' batch-of-1 fallback (D-07), never silently skipped.
 const uncappedFieldsAllowance = 16 << 10
 
+// nearDuplicateIdentityRecordCeiling is the per-record byte allowance for
+// nearDuplicateIdentityView (D-04): two short uncapped strings (short_id,
+// scope) plus point and map framing. Deliberately NOT derived from
+// RecordCaps, exactly like keysRecordCeiling's own doc comment explains for
+// its case — the selector excludes every capped field, so there is nothing
+// left to derive a ceiling from. scrollAllPoints' own proto.Size-driven
+// batch-of-1 fallback (D-07) corrects this at runtime if a future encoding
+// ever needs more than this small fixed allowance.
+const nearDuplicateIdentityRecordCeiling = 256
+
 // keysRecordCeiling is the per-record byte allowance for keysView (D-07): a
 // point carrying nothing but its id (a 36-byte UUID, returned unconditionally
 // as p.Id — never part of the payload selector) and one RFC3339 created_at
@@ -222,6 +232,15 @@ func scanRecordCeiling(c RecordCaps) int {
 	return summaryTerm(c) + c.Citations*(c.CitationExcerptBytes+citationEntryAllowance) + uncappedFieldsAllowance
 }
 
+// citationsRecordCeiling is the TRUE per-record payload ceiling for a
+// citations-view (D-04) read under c: the citations term plus the uncapped
+// fields allowance. scope, category and short_id are uncapped strings and
+// already live inside uncappedFieldsAllowance, so no separate term is added
+// for them.
+func citationsRecordCeiling(c RecordCaps) int {
+	return c.Citations*(c.CitationExcerptBytes+citationEntryAllowance) + uncappedFieldsAllowance
+}
+
 // perRPCLimit is floor(rpcByteBudget / maxRecordBytes), floored at 1 so a
 // per-record ceiling exceeding the budget still requests exactly one record
 // per RPC rather than zero.
@@ -273,6 +292,30 @@ func (s *Store) scanView() readView {
 	}
 }
 
+// citationsView includes only scope, category, citations and short_id
+// (D-04) and is sized from s.RecordCaps() via citationsRecordCeiling. The
+// point id itself is never part of a payload selector — Qdrant always
+// returns it — so it is not named here. Safe for EnumerateCitations'
+// callback, which reads exactly these four keys off the decoded Memory.
+// NOT safe for any caller reading content, tags or summary.
+func (s *Store) citationsView() readView {
+	return readView{
+		selector:       qdrant.NewWithPayloadInclude("scope", "category", "citations", "short_id"),
+		maxRecordBytes: citationsRecordCeiling(s.RecordCaps()),
+	}
+}
+
+// nearDuplicateIdentityView is the two-field (short_id, scope) readView
+// NearDuplicates' id enumeration uses (D-04) — sized like keysView but for
+// two small strings instead of one timestamp. A package-level function, not
+// a method, because it depends on no Store state.
+func nearDuplicateIdentityView() readView {
+	return readView{
+		selector:       qdrant.NewWithPayloadInclude("short_id", "scope"),
+		maxRecordBytes: nearDuplicateIdentityRecordCeiling,
+	}
+}
+
 // keysView is the keys-only readView (D-07) the deep-offset prefix walk
 // (walkOffsetPrefix, store.go) uses to skip a large Offset cheaply: only
 // created_at travels over the wire (id is never part of a payload selector —
@@ -285,10 +328,10 @@ func keysView() readView {
 
 // unbudgetedView wraps sel with no byte-derived ceiling — today's
 // count-only scrollAllPoints loop, kept byte-for-byte for callers this
-// phase has not yet migrated (EnumerateCitations, NearDuplicates' id
-// enumeration, derivePurgeEligible, previewRevertWithSteps, and
-// spine_test.go's snapshotCollection — ScanSpine moved onto scanView in
-// plan 05-01). Phase 5 replaces every remaining call and deletes this
+// phase has not yet migrated (derivePurgeEligible, previewRevertWithSteps,
+// and spine_test.go's snapshotCollection — ScanSpine, EnumerateCitations
+// and NearDuplicates' id enumeration all moved onto per-sweep projections
+// in plan 05-01). Phase 5 replaces every remaining call and deletes this
 // constructor; its closing check is that no unbudgetedView( call remains.
 func unbudgetedView(sel *qdrant.WithPayloadSelector) readView {
 	return readView{selector: sel, maxRecordBytes: 0}

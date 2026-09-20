@@ -404,7 +404,7 @@ func (s *Store) EnumerateCitations(ctx context.Context, opts SpineScanOptions) (
 	}
 
 	res = []CitationRecord{}
-	scanErr := s.scrollAllPoints(ctx, s.collection, filter, unbudgetedView(qdrant.NewWithPayload(true)), func(p *qdrant.RetrievedPoint) error {
+	scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.citationsView(), func(p *qdrant.RetrievedPoint) error {
 		m := fromPayload(p.Id.GetUuid(), p.Payload)
 		if len(m.Citations) == 0 {
 			return nil
@@ -610,7 +610,7 @@ func (s *Store) NearDuplicates(ctx context.Context, opts NearDuplicateOptions) (
 
 	var ids []string
 	identities := make(map[string]nearDuplicateIdentity)
-	enumErr := s.scrollAllPoints(ctx, s.collection, enumFilter, unbudgetedView(qdrant.NewWithPayloadInclude("short_id", "scope")), func(p *qdrant.RetrievedPoint) error {
+	enumErr := s.scrollAllPoints(ctx, s.collection, enumFilter, nearDuplicateIdentityView(), func(p *qdrant.RetrievedPoint) error {
 		id := p.Id.GetUuid()
 		ids = append(ids, id)
 		identities[id] = nearDuplicateIdentity{
