@@ -1,10 +1,10 @@
 diff --git a/internal/store/searchfetch.go b/internal/store/searchfetch.go
-index 3aff279b..3ea8621e 100644
+index c15592f4..9f1aedbf 100644
 --- a/internal/store/searchfetch.go
 +++ b/internal/store/searchfetch.go
-@@ -92,16 +92,13 @@ func includeIDs(f *qdrant.Filter, ids []string) *qdrant.Filter {
- // An id absent from every batch's response is simply absent from the
- // returned map — the drop-on-disappear semantics, not an error.
+@@ -102,16 +102,13 @@ func includeIDs(f *qdrant.Filter, ids []string) *qdrant.Filter {
+ // batch — still succeeds. Only a single id's own Scroll still overflowing
+ // at Limit: 1 propagates the error.
  func (s *Store) fetchPayloadsByID(ctx context.Context, f *qdrant.Filter, view readView, ids []string) (map[string]Memory, error) {
 -	if len(ids) == 0 {
 -		return map[string]Memory{}, nil
@@ -20,9 +20,9 @@ index 3aff279b..3ea8621e 100644
  		end := start + batchSize
  		if end > len(ids) {
  			end = len(ids)
-@@ -120,6 +117,9 @@ func (s *Store) fetchPayloadsByID(ctx context.Context, f *qdrant.Filter, view re
- 			id := p.Id.GetUuid()
- 			out[id] = fromPayload(id, p.Payload)
+@@ -119,6 +116,9 @@ func (s *Store) fetchPayloadsByID(ctx context.Context, f *qdrant.Filter, view re
+ 		if err := s.fetchPayloadBatch(ctx, f, view, ids[start:end], out); err != nil {
+ 			return nil, err
  		}
 +		if end >= len(ids) {
 +			break
