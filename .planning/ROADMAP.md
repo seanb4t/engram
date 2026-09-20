@@ -454,7 +454,7 @@ Plans:
 4. `total`, `next_cursor` (empty = last page), result ordering, and recall gating are unchanged by the new batching, and a page cut short by the byte budget is never reported as the last page.
 5. Whether Connect `ListMemories` keeps `limit: 0` = all with numeric offset paging or moves to a hard cap plus cursor paging is decided and recorded in PROJECT.md Key Decisions; the chosen contract is implemented and documented, and any wire-visible change is additive or explicitly called out as breaking.
 
-**Plans:** 6/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -480,7 +480,7 @@ Plans:
 **Wave 6**
 
 - [x] 04-06-PLAN.md — the projection threaded through both transports and the rule listing, and `out_of_range` rejected on all seven recall count knobs (D-02, D-03, D-08, D-10)
-- [ ] 04-07-PLAN.md — the maximum stated numerically on proto, CLI, docs-site, CLAUDE.md and the PROJECT decision record, with the breaking-change entry and a durable docs gate (D-01, D-03, D-04, D-08)
+- [x] 04-07-PLAN.md — the maximum stated numerically on proto, CLI, docs-site, CLAUDE.md and the PROJECT decision record, with the breaking-change entry and a durable docs gate (D-01, D-03, D-04, D-08)
 
 **Wave 7**
 

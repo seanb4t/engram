@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 6
 waived_count: 0
 fixed_count: 5
-total_count: 10
-last_updated: 2026-09-20T09:26:39.178Z
+total_count: 11
+last_updated: 2026-09-20T10:32:38.041Z
 ---
 
 # Broken Windows Ledger
@@ -25,6 +25,7 @@ last_updated: 2026-09-20T09:26:39.178Z
 | 8 | 01 | deviation | internal/store/redevidence_harness_test.go |  | task gate fails pre-existing (verified at plan start HEAD 9918f3af, before 01-01's changes): redEvidenceDirs is empty while phase 01 (active milestone) exists; 01-01 shipped real RED evidence (osRun deadline/cancel tests, apply_test seam subtests) but registering red-evidence/*.patch + redEvidenceDirs entries is out of 01-01's files_modified scope (internal/setup only) | fixed |  | 2026-09-13T17:59:04.222Z | 2026-09-13T19:16:21.746Z |
 | 9 | 01 | deviation | .planning/phases/01-executor-correctness-man-pages/01-01-PLAN.md |  | task gate fails pre-existing (verified at plan start HEAD 9918f3af, before 01-01/01-02 changes): internal/keylinks TestNoEscapedPatternsRepoWide flags over-escaped regex illustrations in 01-01-PLAN.md/01-02-PLAN.md key_links.pattern fields, and TestActiveMilestoneKeyLinksSatisfiable scans 0 plan files; both are planning-artifact/tooling gates outside any plan's files_modified scope and must not be hand-edited per planning-artifacts rule | fixed |  | 2026-09-13T17:59:12.777Z | 2026-09-13T19:16:21.833Z |
 | 10 | 04 | deviation | internal/store/searchfetch.go |  | Store.Search's no-summary content backfill has no dedicated test asserting .Content is restored (only Store.List's backfill, TestNoSummaryContentBackfill, has a direct content assertion); Search's wiring reuses the identical function and the existing all-no-summary Search suite stays green, but no test proves the restoration specifically for Search. | open |  | 2026-09-20T09:26:39.178Z |  |
+| 11 | 04 | deviation | .planning/phases/04-list-listscheduled-search-bounded-reads/04-06-PLAN.md | 62 | Pre-existing TestActiveMilestoneKeyLinksSatisfiable failure: key_link pattern 'Full: req[.]Full' unsatisfiable (gofmt-aligned struct literal); predates 04-07, out of scope per cross-plan note | open |  | 2026-09-20T10:32:38.041Z |  |
 
 ````json
 [
@@ -146,6 +147,19 @@ last_updated: 2026-09-20T09:26:39.178Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-20T09:26:39.178Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 11,
+    "kind": "deviation",
+    "phase": "04",
+    "file": ".planning/phases/04-list-listscheduled-search-bounded-reads/04-06-PLAN.md",
+    "line": 62,
+    "description": "Pre-existing TestActiveMilestoneKeyLinksSatisfiable failure: key_link pattern 'Full: req[.]Full' unsatisfiable (gofmt-aligned struct literal); predates 04-07, out of scope per cross-plan note",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-20T10:32:38.041Z",
     "resolved_at": null,
     "milestone": null
   }

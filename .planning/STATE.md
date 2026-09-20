@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 4
 current_phase_name: List, ListScheduled & Search Bounded Reads
 status: executing
-stopped_at: Completed 04-06-PLAN.md
-last_updated: "2026-09-20T10:15:01.428Z"
+stopped_at: Completed 04-07-PLAN.md
+last_updated: "2026-09-20T10:43:13.355Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 4 execution started
-state_head: 96362ddf8a516b7ac18fb60edecc65e740861733
+state_head: 76428575df6be337543ba4680dbd343f27c93fda
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 23
-  completed_plans: 21
+  completed_plans: 22
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (List, ListScheduled & Search Bounded Reads) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 4 execution started
 
@@ -333,6 +333,7 @@ milestone needs in working memory.
 - [Phase 04]: Plan 04-05: rejectOverMaximum (D-10) wired as the FIRST validation in List/ListScheduled/Search/SearchDiscovery; listByCursor's silent clamp to MaxRecallLimit deleted, replaced by refusal. SearchReranked needs no call of its own (candidateK(k) bounds it already).
 - [Phase 04]: list_rules threads a.Full into its direct Store.List call (the one caller outside the typed core), closing 04-RESEARCH Pattern 6's last unwired gap — 04-05 already wired coreListRequest.Full through Connect ListMemories and MCP list_memory; the rule listing bypasses the typed core entirely and would silently regress to summary-shaped full=true reads without its own thread
 - [Phase 04]: rejectOverMaximumCount added as the published D-10 wire-boundary rejection, called first in all four shared core methods, ahead of scope resolution and the embed call — Store's own rejectOverMaximum (04-05) is a backstop; the server boundary is what actually stops a caller before it costs anything and is what carries the field=<f> hint=out_of_range envelope
+- [Phase 04]: Decision B recorded in PROJECT.md: one documented maximum (1000) for every recall count knob; Connect ListMemories' limit:0 now resolves to that maximum (was unbounded "all"); an over-maximum count is rejected, never clamped, via a new out_of_range hint (2026-09-18.01 Phase 4, D-01/D-02/D-03/D-10)
 
 ### Pending Todos
 
@@ -385,6 +386,7 @@ Both prior entries were delivered and had simply never been closed out:
   each target runtime's own CLI being present and flag-stable (`claude`, `codex`, `opencode`) —
   flag/version drift in a third-party binary is a live failure mode, not a hypothetical; pinned
   versions verified live were codex-cli 0.148.0 and opencode 1.18.15.
+- Pre-existing (predates 04-07) TestActiveMilestoneKeyLinksSatisfiable failure against 04-06-PLAN.md:62's key_links pattern "Full: req[.]Full" (gofmt-aligned struct literal never matched exactly one space). Out of scope for 04-07; documented in deferred-items.md and WINDOWS.md entry 11. 04-06's PLAN.md pattern needs correcting.
 
 ### Quick Tasks Completed
 
@@ -407,8 +409,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T10:15:01.398Z
-Stopped at: Completed 04-06-PLAN.md
+Last session: 2026-09-20T10:43:13.324Z
+Stopped at: Completed 04-07-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -562,6 +564,7 @@ Resume file: None
 | Phase 04 P04 | 35min | 2 tasks | 5 files |
 | Phase 04 P05 | 40min | 2 tasks | 11 files |
 | Phase 04 P06 | ~35min | 3 tasks | 6 files |
+| Phase 04 P07 | ~25min | 3 tasks | 14 files |
 
 ## Operator Next Steps
 
