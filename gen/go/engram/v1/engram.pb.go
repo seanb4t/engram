@@ -513,7 +513,7 @@ func (x *ListScopesResponse) GetApproximate() bool {
 type ListMemoriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Scope         string                 `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
-	Limit         uint64                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Limit         uint64                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"` // 0 resolves to the maximum, 1000; a larger value is rejected
 	Offset        uint64                 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	Categories    []string               `protobuf:"bytes,4,rep,name=categories,proto3" json:"categories,omitempty"`                            // empty = all categories
 	Visibility    string                 `protobuf:"bytes,5,opt,name=visibility,proto3" json:"visibility,omitempty"`                            // "" = all | "private" | "shared"
@@ -785,7 +785,7 @@ type SearchMemoriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
-	K             uint64                 `protobuf:"varint,3,opt,name=k,proto3" json:"k,omitempty"`
+	K             uint64                 `protobuf:"varint,3,opt,name=k,proto3" json:"k,omitempty"`                                             // 0 resolves to this RPC's default, 20; a value above the maximum, 1000, is rejected
 	Tags          []string               `protobuf:"bytes,4,rep,name=tags,proto3" json:"tags,omitempty"`                                        // empty = all; non-empty = records carrying ALL listed tags (AND)
 	Full          bool                   `protobuf:"varint,5,opt,name=full,proto3" json:"full,omitempty"`                                       // false (default) returns summary-shaped memories (content cleared); true returns full content
 	CreatedAfter  string                 `protobuf:"bytes,6,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`    // RFC3339; inclusive lower bound on created_at
@@ -1091,7 +1091,7 @@ type SearchDiscoveriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
-	K             uint64                 `protobuf:"varint,3,opt,name=k,proto3" json:"k,omitempty"`
+	K             uint64                 `protobuf:"varint,3,opt,name=k,proto3" json:"k,omitempty"` // 0 resolves to this RPC's default, 20; a value above the maximum, 1000, is rejected
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

@@ -273,6 +273,8 @@ export type ListMemoriesRequest = Message<"engram.v1.ListMemoriesRequest"> & {
   scope: string;
 
   /**
+   * 0 resolves to the maximum, 1000; a larger value is rejected
+   *
    * @generated from field: uint64 limit = 2;
    */
   limit: bigint;
@@ -464,6 +466,8 @@ export type SearchMemoriesRequest = Message<"engram.v1.SearchMemoriesRequest"> &
   scope: string;
 
   /**
+   * 0 resolves to this RPC's default, 20; a value above the maximum, 1000, is rejected
+   *
    * @generated from field: uint64 k = 3;
    */
   k: bigint;
@@ -639,6 +643,8 @@ export type SearchDiscoveriesRequest = Message<"engram.v1.SearchDiscoveriesReque
   scope: string;
 
   /**
+   * 0 resolves to this RPC's default, 20; a value above the maximum, 1000, is rejected
+   *
    * @generated from field: uint64 k = 3;
    */
   k: bigint;

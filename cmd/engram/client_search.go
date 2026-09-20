@@ -107,7 +107,7 @@ func init() {
 		scopeRule.Sentence+"; mutually exclusive with --cross-spine")
 	searchCmd.Flags().BoolVar(&searchCrossSpine, "cross-spine", false,
 		"span every scope you can read; mutually exclusive with --scope")
-	searchCmd.Flags().Uint64Var(&searchK, "k", 0, "max results (0 = server default)")
+	searchCmd.Flags().Uint64Var(&searchK, "k", 0, "max results; 0 resolves to this command's default, 20; a value above the maximum, 1000, is rejected")
 	searchCmd.Flags().StringSliceVar(&searchTags, "tags", nil, "tag filter (records must carry ALL listed tags)")
 	searchCmd.Flags().BoolVar(&searchFull, "full", false, "return full content instead of summaries")
 	searchCmd.Flags().StringVar(&searchCreatedAfter, "created-after", "", "RFC3339 inclusive lower bound on created_at")

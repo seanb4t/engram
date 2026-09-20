@@ -142,7 +142,7 @@
           "name": "limit",
           "type": "uint64",
           "default": "0",
-          "usage": "max results (0 = server default)"
+          "usage": "max results per page; 0 resolves to the maximum, 1000; a larger value is rejected"
         },
         {
           "name": "offset",
@@ -568,7 +568,7 @@
           "name": "k",
           "type": "uint64",
           "default": "0",
-          "usage": "max results (0 = server default)"
+          "usage": "max results; 0 resolves to this command's default, 20; a value above the maximum, 1000, is rejected"
         },
         {
           "name": "output",
