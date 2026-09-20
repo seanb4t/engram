@@ -1694,7 +1694,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return nil, 0, "", err
 	}
 
-	if opts.Cursor != "" || (opts.Offset == 0 && opts.Limit > 0 && opts.CursorMode) {
+	if opts.Cursor != "" || (opts.Offset == 0 && opts.CursorMode) {
 		items, nextCursor, err = s.listByCursor(ctx, f, opts)
 		return items, total, nextCursor, err
 	}
