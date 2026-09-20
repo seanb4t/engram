@@ -28,9 +28,13 @@ import (
 )
 
 // failingListScopesStore embeds *spyStore and overrides ListScopes to return
-// a scripted error, in the lostRaceStore shape (tools_test.go:4202-4216) —
-// the precondition D-01's tests need is hits existing BEFORE the coverage
-// query fails.
+// a scripted error when listErr is non-nil, in the lostRaceStore shape
+// (tools_test.go:4202-4216) — the precondition D-01's tests need is hits
+// existing BEFORE the coverage query fails. When listErr is nil, ListScopes
+// delegates to the embedded spy unchanged — this is what lets
+// TestCrossSpineCoverageThreeStates exercise the "coverage known" state (b)
+// through the SAME double as the "coverage unknown" state (c), rather than a
+// second type that could silently diverge in scope-translation behavior.
 //
 // It also overrides List and SearchReranked to translate a cross-spine
 // call's resolved empty scope to the seeded fixture scope before delegating
@@ -45,8 +49,11 @@ type failingListScopesStore struct {
 	listErr error
 }
 
-func (f *failingListScopesStore) ListScopes(context.Context, store.Subject) ([]store.ScopeCount, bool, error) {
-	return nil, false, f.listErr
+func (f *failingListScopesStore) ListScopes(ctx context.Context, subj store.Subject) ([]store.ScopeCount, bool, error) {
+	if f.listErr != nil {
+		return nil, false, f.listErr
+	}
+	return f.spyStore.ListScopes(ctx, subj)
 }
 
 func (f *failingListScopesStore) List(ctx context.Context, scope string, subj store.Subject, opts store.ListOptions) ([]store.Memory, uint64, string, error) {
@@ -363,5 +370,158 @@ func TestCrossSpineCoverageUnknownMCPList(t *testing.T) {
 	wire := fmt.Sprintf("%+v", res)
 	if strings.Contains(wire, injectedErr.Error()) {
 		t.Errorf("response leaks the injected ListScopes error text: %s", wire)
+	}
+}
+
+// TestCrossSpineCoverageThreeStates is the table test D-03 requires: a
+// consumer must be able to tell "not cross-spine" (a), "cross-spine,
+// coverage known" (b), and "cross-spine, coverage failed" (c) apart on BOTH
+// transports, and state (c) must never be representable as an
+// empty-but-present searched_scopes — the single property this phase exists
+// to protect (a zero-value/length check alone would pass while that
+// property was violated, which is why every absence assertion below uses a
+// two-value map lookup on the MCP side and a length check on the generated
+// getter on the Connect side).
+//
+// Each row uses the SAME failingListScopesStore double (with listErr nil for
+// state (b)) over its own fresh spyStore/owner/scope, so a within-package
+// cross-spine ListScopes enumeration from an unrelated test can never leak
+// into this table's counts.
+func TestCrossSpineCoverageThreeStates(t *testing.T) {
+	const fixtureTag = "coverage-three-states-fixture-7c2d"
+
+	type wantMCP struct {
+		hasSearchedScopes  bool
+		hasScopesTruncated bool
+		hasScopesUnknown   bool
+		unknownValue       bool
+	}
+	type wantConnect struct {
+		searchedScopesLen int
+		scopesTruncated   bool
+		scopesUnknown     bool
+	}
+
+	cases := []struct {
+		name       string
+		crossSpine bool
+		listErr    error
+		wantMCP    wantMCP
+		wantConn   wantConnect
+	}{
+		{
+			// State (a): the MCP result map carries none of the three
+			// coverage keys at all; both Connect responses carry all three
+			// coverage fields at their proto3 zero values (D-14
+			// byte-identical guarantee, unchanged by this phase).
+			name:       "not cross-spine",
+			crossSpine: false,
+		},
+		{
+			// State (b): searched_scopes present and populated,
+			// scopes_truncated present, scopes_unknown false/absent.
+			name:       "cross-spine, coverage known",
+			crossSpine: true,
+			wantMCP:    wantMCP{hasSearchedScopes: true, hasScopesTruncated: true},
+			wantConn:   wantConnect{searchedScopesLen: 1},
+		},
+		{
+			// State (c): scopes_unknown true, searched_scopes ABSENT (never
+			// an empty list), scopes_truncated absent/false.
+			name:       "cross-spine, coverage query failed",
+			crossSpine: true,
+			listErr:    errors.New("crossspinecoverage: sentinel three-states failure 3e7a"),
+			wantMCP:    wantMCP{hasScopesUnknown: true, unknownValue: true},
+			wantConn:   wantConnect{scopesUnknown: true},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			owner := "sub-coverage-three-states-" + uuid.NewString()
+			scope := "coverage-three-states:project:" + uuid.NewString()
+			sp := newSpyStore()
+			seedCoverageFixture(t, sp, owner, scope, fixtureTag, 1)
+			wrapper := &failingListScopesStore{spyStore: sp, scope: scope, listErr: tc.listErr}
+			d := &deps{st: wrapper, em: fakeEmbedder{}, summaryMaxChars: 500}
+
+			t.Run("MCP", func(t *testing.T) {
+				ctx, cs := newMCPSession(t, d, owner)
+				res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+					Name:      "list_memory",
+					Arguments: map[string]any{"scope": scope, "cross_spine": tc.crossSpine, "tags": []string{fixtureTag}},
+				})
+				if err != nil {
+					t.Fatalf("CallTool: %v", err)
+				}
+				if res.IsError {
+					t.Fatalf("CallTool: IsError = true, want false (content: %+v)", res.Content)
+				}
+				m, ok := res.StructuredContent.(map[string]any)
+				if !ok {
+					t.Fatalf("StructuredContent is %T, want map[string]any", res.StructuredContent)
+				}
+
+				_, hasSearched := m["searched_scopes"]
+				if hasSearched != tc.wantMCP.hasSearchedScopes {
+					t.Errorf("searched_scopes present = %v, want %v", hasSearched, tc.wantMCP.hasSearchedScopes)
+				}
+
+				truncatedVal, hasTruncated := m["scopes_truncated"]
+				if hasTruncated != tc.wantMCP.hasScopesTruncated {
+					t.Errorf("scopes_truncated present = %v, want %v", hasTruncated, tc.wantMCP.hasScopesTruncated)
+				}
+				if hasTruncated {
+					if b, _ := truncatedVal.(bool); b {
+						t.Errorf("scopes_truncated = %v, want false", truncatedVal)
+					}
+				}
+
+				unknownVal, hasUnknown := m["scopes_unknown"]
+				if hasUnknown != tc.wantMCP.hasScopesUnknown {
+					t.Errorf("scopes_unknown present = %v, want %v", hasUnknown, tc.wantMCP.hasScopesUnknown)
+				}
+				if hasUnknown {
+					if b, _ := unknownVal.(bool); b != tc.wantMCP.unknownValue {
+						t.Errorf("scopes_unknown = %v, want %v", unknownVal, tc.wantMCP.unknownValue)
+					}
+				}
+
+				// The single property this phase exists to protect: state
+				// (c) must never carry searched_scopes at all, not even an
+				// empty list — a zero-value/length check alone would pass on
+				// an emitted-but-empty key while this property was violated.
+				if tc.wantMCP.hasScopesUnknown {
+					if _, present := m["searched_scopes"]; present {
+						t.Errorf("coverage-unknown state carries searched_scopes at all (even empty): %v", m["searched_scopes"])
+					}
+				}
+			})
+
+			t.Run("Connect", func(t *testing.T) {
+				api := &engramAPI{d: d}
+				resp, err := api.ListMemories(connectCtxFor(owner), connect.NewRequest(&engramv1.ListMemoriesRequest{
+					Scope: scope, CrossSpine: tc.crossSpine, Limit: 10, Tags: []string{fixtureTag},
+				}))
+				if err != nil {
+					t.Fatalf("ListMemories: %v", err)
+				}
+				if got := len(resp.Msg.GetSearchedScopes()); got != tc.wantConn.searchedScopesLen {
+					t.Errorf("len(SearchedScopes) = %d, want %d", got, tc.wantConn.searchedScopesLen)
+				}
+				if resp.Msg.GetScopesTruncated() != tc.wantConn.scopesTruncated {
+					t.Errorf("ScopesTruncated = %v, want %v", resp.Msg.GetScopesTruncated(), tc.wantConn.scopesTruncated)
+				}
+				if resp.Msg.GetScopesUnknown() != tc.wantConn.scopesUnknown {
+					t.Errorf("ScopesUnknown = %v, want %v", resp.Msg.GetScopesUnknown(), tc.wantConn.scopesUnknown)
+				}
+				// Same single property, restated on the Connect wire: state
+				// (c) must never carry a non-empty SearchedScopes alongside
+				// ScopesUnknown true.
+				if tc.wantConn.scopesUnknown && len(resp.Msg.GetSearchedScopes()) != 0 {
+					t.Errorf("coverage-unknown state carries a non-empty SearchedScopes: %v", resp.Msg.GetSearchedScopes())
+				}
+			})
+		})
 	}
 }
