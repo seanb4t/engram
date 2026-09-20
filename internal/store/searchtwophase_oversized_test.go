@@ -551,3 +551,132 @@ func TestSearchPreservesRankOrder(t *testing.T) {
 		}
 	}
 }
+
+// TestSearchNoSummaryContentBackfill proves Store.Search's shared no-summary
+// content backfill (backfillNoSummaryContent, searchfetch.go, called from
+// Store.Search at store.go:1239) restores .Content exactly as
+// TestNoSummaryContentBackfill (recallview_oversized_test.go) already proves
+// for Store.List — the two call sites share the IDENTICAL function, but
+// until now only List's half of that guarantee carried a direct .Content
+// assertion (WINDOWS.md entry #10). Lives here rather than beside its List
+// sibling because this file, not recallview_oversized_test.go (scoped to
+// List's own projection selection per its file doc comment), already hosts
+// REQ-search-k-bounded's two-phase-fetch machinery this test reuses
+// (searchFetchRecorder, filterCarriesIDSetAndNested).
+//
+// Over both oversized fixture shapes: a base fixture whose every record
+// carries a stored summary establishes a genuine oversized collection, then
+// two edge-case records (one with a stored summary, one without) are seeded
+// with a query-matching vector ORTHOGONAL to the fixture's own vector — so a
+// small top-k search deterministically returns exactly these two records
+// regardless of the fixture's size or shape, never tying with or being
+// outranked by it. A default (summary-view) Store.Search restores .Content
+// for the no-summary record (the backfill) while leaving the stored-summary
+// record's .Content empty (never fetched, never backfilled) — and the
+// backfill is observed as its own, separate Scroll RPC (limit 1, the lone
+// no-summary id) following the main two-id fetch (limit 2).
+func TestSearchNoSummaryContentBackfill(t *testing.T) {
+	shapes := []storetest.Shape{storetest.FewLarge, storetest.ManySmall}
+	for _, shape := range shapes {
+		t.Run(shape.String(), func(t *testing.T) {
+			rec := &searchFetchRecorder{}
+			c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(rec.intercept))
+			name := store.PrefixedTestCollection("oversized_searchbackfill_" + uuid.NewString())
+			st := store.NewTestStore(t, c, name)
+			ctx := context.Background()
+			fixtureVec := []float32{1, 0, 0}
+			if err := st.EnsureCollection(ctx, uint64(len(fixtureVec))); err != nil {
+				t.Fatalf("%s: EnsureCollection: %v", shape, err)
+			}
+			t.Cleanup(func() {
+				if err := c.DeleteCollection(ctx, name); err != nil {
+					t.Errorf("%s: DeleteCollection(%q): %v", shape, name, err)
+				}
+			})
+
+			// Every fixture record carries a stored summary, mirroring
+			// TestNoSummaryContentBackfill's own base fixture: it can never
+			// itself trigger the backfill, and (being orthogonal to queryVec
+			// below) can never outrank or tie with the two extras.
+			fx := storetest.SeedOversized(t, st, storetest.Spec{
+				Limit: storetest.RecvLimit, Shape: shape, Vector: fixtureVec,
+				Template: store.Memory{Summary: "search backfill fixture summary"},
+			})
+			owner := store.Authenticated(fx.Owner)
+
+			// Two edge-case records seeded directly through the public
+			// Upsert path (never a raw *qdrant.Client), mirroring
+			// TestNoSummaryContentBackfill's/listscheduled_oversized_test.go's
+			// idiom: neither belongs to fx.IDs.
+			queryVec := []float32{0, 1, 0}
+			withSummaryID := uuid.NewString()
+			withSummaryContent := "extra record content, has a stored summary"
+			if err := st.Upsert(ctx, store.Memory{
+				ID: withSummaryID, Content: withSummaryContent, Summary: "extra stored summary",
+				Scope: fx.Scope, Owner: fx.Owner, Actor: fx.Owner, CreatedAt: time.Now(),
+			}, queryVec); err != nil {
+				t.Fatalf("%s: seed with-summary record: %v", shape, err)
+			}
+			noSummaryID := uuid.NewString()
+			noSummaryContent := "extra record content, has NO stored summary"
+			if err := st.Upsert(ctx, store.Memory{
+				ID: noSummaryID, Content: noSummaryContent,
+				Scope: fx.Scope, Owner: fx.Owner, Actor: fx.Owner, CreatedAt: time.Now(),
+			}, queryVec); err != nil {
+				t.Fatalf("%s: seed no-summary record: %v", shape, err)
+			}
+
+			rec.reset()
+			hits, err := st.Search(ctx, fx.Scope, owner, queryVec, 2, store.SearchOptions{})
+			if err != nil {
+				t.Fatalf("%s: Search: %v", shape, err)
+			}
+			if len(hits) != 2 {
+				t.Fatalf("%s: Search returned %d hits, want exactly 2 (the two extras; the orthogonal fixture must never outrank them)", shape, len(hits))
+			}
+			byID := make(map[string]store.Memory, len(hits))
+			for _, m := range hits {
+				byID[m.ID] = m
+			}
+			if _, ok := byID[withSummaryID]; !ok {
+				t.Fatalf("%s: Search did not return the with-summary extra %s", shape, withSummaryID)
+			}
+			if _, ok := byID[noSummaryID]; !ok {
+				t.Fatalf("%s: Search did not return the no-summary extra %s", shape, noSummaryID)
+			}
+			if got := byID[noSummaryID].Content; got != noSummaryContent {
+				t.Errorf("%s: no-summary record content = %q, want %q (backfillNoSummaryContent must restore it)", shape, got, noSummaryContent)
+			}
+			if got := byID[withSummaryID].Content; got != "" {
+				t.Errorf("%s: with-summary record content = %q, want empty (content was never fetched, never backfilled — summary view excludes it)", shape, got)
+			}
+
+			// The backfill runs as its OWN Scroll RPC, separate from the
+			// main two-id fetch: main fetch batches both extras in one
+			// Scroll (limit 2), then the backfill re-fetches only the lone
+			// no-summary id in a second Scroll (limit 1) — both id-set
+			// fetches (fetchPayloadsByID's shared shape), in that order.
+			calls := rec.snapshot()
+			var scrollLimits []uint32
+			for _, call := range calls {
+				if call.method != "Scroll" {
+					continue
+				}
+				hasID, _ := filterCarriesIDSetAndNested(call.filter)
+				if !hasID {
+					t.Errorf("%s: Scroll call filter = %+v, want a has_id condition (every Search-path Scroll is an id-set fetch)", shape, call.filter)
+				}
+				scrollLimits = append(scrollLimits, call.limit)
+			}
+			if len(scrollLimits) != 2 {
+				t.Fatalf("%s: recorded %d Scroll call(s), want exactly 2 (main fetch + backfill): %v", shape, len(scrollLimits), scrollLimits)
+			}
+			if scrollLimits[0] != 2 {
+				t.Errorf("%s: main fetch Scroll limit = %d, want 2 (both extras in one batch)", shape, scrollLimits[0])
+			}
+			if scrollLimits[1] != 1 {
+				t.Errorf("%s: backfill Scroll limit = %d, want 1 (the lone no-summary id)", shape, scrollLimits[1])
+			}
+		})
+	}
+}
