@@ -122,6 +122,13 @@ message ListMemoriesResponse {
   // bounded-sample ceiling, so the list may be incomplete. Present only
   // alongside searched_scopes on a cross_spine response.
   bool scopes_truncated = 6;
+  // scopes_unknown is true when a cross-spine query's coverage-enumeration
+  // (ListScopes) itself failed after hits were already produced: the RPC
+  // still succeeds and memories are still returned, but searched_scopes is
+  // ABSENT (not an empty list, which would read as "searched nothing") and
+  // scopes_truncated is absent/false. Present only on a cross-spine
+  // response; never true alongside a populated searched_scopes.
+  bool scopes_unknown = 7;
 }
 
 message SearchMemoriesRequest {
@@ -168,6 +175,10 @@ message SearchMemoriesResponse {
   // bounded-sample ceiling, so the list may be incomplete. Present only
   // alongside searched_scopes on a cross_spine response.
   bool scopes_truncated = 3;
+  // scopes_unknown — see ListMemoriesResponse.scopes_unknown; identical
+  // semantics, sibling field number scheme (next free number in THIS
+  // message, not shared with ListMemoriesResponse's field 7).
+  bool scopes_unknown = 4;
 }
 
 message GetMemoryRequest { string id = 1; }

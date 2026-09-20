@@ -300,13 +300,12 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	}
 	// (*deps).searchedScopes is the same helper both MCP closures call, so the
 	// two lanes cannot report different spans for the same query. On a
-	// scope-confined call it returns (nil, false, nil), which proto3
-	// serializes as absent — no explicit omission branch needed for the
-	// D-14 byte-identical guarantee.
-	scopes, truncated, err := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
-	if err != nil {
-		return nil, connectError(ctx, err)
-	}
+	// scope-confined call it returns the zero-value scopeCoverage, which
+	// proto3 serializes as absent — no explicit omission branch needed for
+	// the D-14 byte-identical guarantee. It carries no error (D-06): the
+	// coverage-unknown case (D-01) is a value, not a failure, so res.Memories
+	// (already computed above) is never discarded here.
+	cov := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
 	// approximate (field 3) is deprecated and always false since totals became
 	// exact (Count). It is deliberately NOT assigned here: false is the proto3
 	// zero value for a non-optional bool, so omitting the assignment is
@@ -316,8 +315,9 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 		Memories:        shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
 		Total:           res.Total,
 		NextPageToken:   res.NextToken,
-		SearchedScopes:  scopes,
-		ScopesTruncated: truncated,
+		SearchedScopes:  cov.Scopes,
+		ScopesTruncated: cov.Truncated,
+		ScopesUnknown:   cov.Unknown,
 	}), nil
 }
 
@@ -364,16 +364,16 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 		return nil, connectError(ctx, err)
 	}
 	// Same helper the MCP closures use — see the identical note on
-	// ListMemories; (nil, false, nil) on a scope-confined call serializes as
-	// absent with no explicit omission branch needed (D-14).
-	scopes, truncated, err := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
-	if err != nil {
-		return nil, connectError(ctx, err)
-	}
+	// ListMemories; the zero-value scopeCoverage on a scope-confined call
+	// serializes as absent with no explicit omission branch needed (D-14),
+	// and carries no error (D-06) so ms (already computed above) is never
+	// discarded here.
+	cov := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
 	return connect.NewResponse(&engramv1.SearchMemoriesResponse{
 		Memories:        shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
-		SearchedScopes:  scopes,
-		ScopesTruncated: truncated,
+		SearchedScopes:  cov.Scopes,
+		ScopesTruncated: cov.Truncated,
+		ScopesUnknown:   cov.Unknown,
 	}), nil
 }
 

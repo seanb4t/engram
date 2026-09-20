@@ -2406,23 +2406,22 @@ func TestSearchedScopesReporting(t *testing.T) {
 
 	// Cross-spine: a real ListScopes query runs, and the returned set
 	// CONTAINS both seeded scopes.
-	scopes, _, err := d.searchedScopes(ctxO, c, true)
-	if err != nil {
-		t.Fatalf("searchedScopes cross-spine: %v", err)
+	cov := d.searchedScopes(ctxO, c, true)
+	if cov.Unknown {
+		t.Fatalf("searchedScopes cross-spine: Unknown = true, want false")
 	}
 	got := map[string]bool{}
-	for _, s := range scopes {
+	for _, s := range cov.Scopes {
 		got[s] = true
 	}
 	if !got[scopeA] || !got[scopeB] {
-		t.Errorf("searchedScopes cross-spine = %v, want to contain %q and %q", scopes, scopeA, scopeB)
+		t.Errorf("searchedScopes cross-spine = %v, want to contain %q and %q", cov.Scopes, scopeA, scopeB)
 	}
 
-	// Non-cross-spine: no query issued — nil scopes, false truncated, nil
-	// error (D-13).
-	scopes, truncated, err := d.searchedScopes(ctxO, c, false)
-	if err != nil || scopes != nil || truncated {
-		t.Errorf("searchedScopes non-cross-spine = (%v, %v, %v), want (nil, false, nil)", scopes, truncated, err)
+	// Non-cross-spine: no query issued — the zero-value scopeCoverage (D-13).
+	cov = d.searchedScopes(ctxO, c, false)
+	if cov.Scopes != nil || cov.Truncated || cov.Unknown {
+		t.Errorf("searchedScopes non-cross-spine = %+v, want the zero value", cov)
 	}
 
 	// recallResultMap: cross-spine adds both new keys; non-cross-spine adds
@@ -2437,7 +2436,7 @@ func TestSearchedScopesReporting(t *testing.T) {
 		{"memories": []any{}},
 		{"memories": []any{}, "next_cursor": ""},
 	} {
-		crossMap := recallResultMap(cloneMap(base), true, []string{scopeA, scopeB}, false)
+		crossMap := recallResultMap(cloneMap(base), true, scopeCoverage{Scopes: []string{scopeA, scopeB}})
 		if _, ok := crossMap["searched_scopes"]; !ok {
 			t.Errorf("cross-spine result map %v missing searched_scopes", base)
 		}
@@ -2445,7 +2444,7 @@ func TestSearchedScopesReporting(t *testing.T) {
 			t.Errorf("cross-spine result map %v missing scopes_truncated", base)
 		}
 
-		plainMap := recallResultMap(cloneMap(base), false, nil, false)
+		plainMap := recallResultMap(cloneMap(base), false, scopeCoverage{})
 		if _, ok := plainMap["searched_scopes"]; ok {
 			t.Errorf("non-cross-spine result map %v should not carry searched_scopes at all", base)
 		}

@@ -179,22 +179,31 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// include_scheduled (fields 13-15) are further additive opt-in
 	// recall-gate relaxations on ListMemoriesRequest.
 	assertFields(t, fd, "ListMemoriesRequest", 15, nil)
-	assertFields(t, fd, "ListMemoriesResponse", 6, map[protoreflect.FieldNumber]fieldSpec{
+	// phase 06 (D-01/D-04): scopes_unknown (field 7) is a further additive
+	// field — true only when a cross-spine call's coverage enumeration
+	// (ListScopes) itself failed after hits were already produced; field
+	// count bumped from 6 to 7 accordingly.
+	assertFields(t, fd, "ListMemoriesResponse", 7, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "total", kind: protoreflect.Uint64Kind},
 		3: {name: "approximate", kind: protoreflect.BoolKind},
 		4: {name: "next_page_token", kind: protoreflect.StringKind},
 		5: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},
 		6: {name: "scopes_truncated", kind: protoreflect.BoolKind},
+		7: {name: "scopes_unknown", kind: protoreflect.BoolKind},
 	})
 	// phase 07 plan 03 (D-01/D-02): include_archived/include_superseded/
 	// include_scheduled (fields 10-12) mirror ListMemoriesRequest's opt-in
 	// recall-gate relaxations onto the Search lane.
 	assertFields(t, fd, "SearchMemoriesRequest", 12, nil)
-	assertFields(t, fd, "SearchMemoriesResponse", 3, map[protoreflect.FieldNumber]fieldSpec{
+	// phase 06 (D-01/D-04): scopes_unknown (field 4) mirrors
+	// ListMemoriesResponse.scopes_unknown above; field count bumped from 3
+	// to 4 accordingly.
+	assertFields(t, fd, "SearchMemoriesResponse", 4, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},
 		3: {name: "scopes_truncated", kind: protoreflect.BoolKind},
+		4: {name: "scopes_unknown", kind: protoreflect.BoolKind},
 	})
 	assertFields(t, fd, "GetMemoryRequest", 1, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "id", kind: protoreflect.StringKind},

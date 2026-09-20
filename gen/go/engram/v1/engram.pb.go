@@ -704,8 +704,15 @@ type ListMemoriesResponse struct {
 	// bounded-sample ceiling, so the list may be incomplete. Present only
 	// alongside searched_scopes on a cross_spine response.
 	ScopesTruncated bool `protobuf:"varint,6,opt,name=scopes_truncated,json=scopesTruncated,proto3" json:"scopes_truncated,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// scopes_unknown is true when a cross-spine query's coverage-enumeration
+	// (ListScopes) itself failed after hits were already produced: the RPC
+	// still succeeds and memories are still returned, but searched_scopes is
+	// ABSENT (not an empty list, which would read as "searched nothing") and
+	// scopes_truncated is absent/false. Present only on a cross-spine
+	// response; never true alongside a populated searched_scopes.
+	ScopesUnknown bool `protobuf:"varint,7,opt,name=scopes_unknown,json=scopesUnknown,proto3" json:"scopes_unknown,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListMemoriesResponse) Reset() {
@@ -777,6 +784,13 @@ func (x *ListMemoriesResponse) GetSearchedScopes() []string {
 func (x *ListMemoriesResponse) GetScopesTruncated() bool {
 	if x != nil {
 		return x.ScopesTruncated
+	}
+	return false
+}
+
+func (x *ListMemoriesResponse) GetScopesUnknown() bool {
+	if x != nil {
+		return x.ScopesUnknown
 	}
 	return false
 }
@@ -944,8 +958,12 @@ type SearchMemoriesResponse struct {
 	// bounded-sample ceiling, so the list may be incomplete. Present only
 	// alongside searched_scopes on a cross_spine response.
 	ScopesTruncated bool `protobuf:"varint,3,opt,name=scopes_truncated,json=scopesTruncated,proto3" json:"scopes_truncated,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// scopes_unknown — see ListMemoriesResponse.scopes_unknown; identical
+	// semantics, sibling field number scheme (next free number in THIS
+	// message, not shared with ListMemoriesResponse's field 7).
+	ScopesUnknown bool `protobuf:"varint,4,opt,name=scopes_unknown,json=scopesUnknown,proto3" json:"scopes_unknown,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchMemoriesResponse) Reset() {
@@ -995,6 +1013,13 @@ func (x *SearchMemoriesResponse) GetSearchedScopes() []string {
 func (x *SearchMemoriesResponse) GetScopesTruncated() bool {
 	if x != nil {
 		return x.ScopesTruncated
+	}
+	return false
+}
+
+func (x *SearchMemoriesResponse) GetScopesUnknown() bool {
+	if x != nil {
+		return x.ScopesUnknown
 	}
 	return false
 }
@@ -2380,14 +2405,15 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"crossSpine\x12)\n" +
 	"\x10include_archived\x18\r \x01(\bR\x0fincludeArchived\x12-\n" +
 	"\x12include_superseded\x18\x0e \x01(\bR\x11includeSuperseded\x12+\n" +
-	"\x11include_scheduled\x18\x0f \x01(\bR\x10includeScheduled\"\xfd\x01\n" +
+	"\x11include_scheduled\x18\x0f \x01(\bR\x10includeScheduled\"\xa4\x02\n" +
 	"\x14ListMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x04R\x05total\x12$\n" +
 	"\vapproximate\x18\x03 \x01(\bB\x02\x18\x01R\vapproximate\x12&\n" +
 	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\x12'\n" +
 	"\x0fsearched_scopes\x18\x05 \x03(\tR\x0esearchedScopes\x12)\n" +
-	"\x10scopes_truncated\x18\x06 \x01(\bR\x0fscopesTruncated\"\x8d\x03\n" +
+	"\x10scopes_truncated\x18\x06 \x01(\bR\x0fscopesTruncated\x12%\n" +
+	"\x0escopes_unknown\x18\a \x01(\bR\rscopesUnknown\"\x8d\x03\n" +
 	"\x15SearchMemoriesRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +
@@ -2404,11 +2430,12 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x10include_archived\x18\n" +
 	" \x01(\bR\x0fincludeArchived\x12-\n" +
 	"\x12include_superseded\x18\v \x01(\bR\x11includeSuperseded\x12+\n" +
-	"\x11include_scheduled\x18\f \x01(\bR\x10includeScheduled\"\x9b\x01\n" +
+	"\x11include_scheduled\x18\f \x01(\bR\x10includeScheduled\"\xc2\x01\n" +
 	"\x16SearchMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12'\n" +
 	"\x0fsearched_scopes\x18\x02 \x03(\tR\x0esearchedScopes\x12)\n" +
-	"\x10scopes_truncated\x18\x03 \x01(\bR\x0fscopesTruncated\"\"\n" +
+	"\x10scopes_truncated\x18\x03 \x01(\bR\x0fscopesTruncated\x12%\n" +
+	"\x0escopes_unknown\x18\x04 \x01(\bR\rscopesUnknown\"\"\n" +
 	"\x10GetMemoryRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\">\n" +
 	"\x11GetMemoryResponse\x12)\n" +

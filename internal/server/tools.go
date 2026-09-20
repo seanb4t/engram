@@ -1834,38 +1834,68 @@ func EffectiveSearchScope(scope string, crossSpine bool) (string, error) {
 // REQ-cross-spine-coverage-receipt, and D-14 keeps the response flat
 // precisely so nobody pre-builds the sub-message that requirement will want.
 //
-// An error from ListScopes fails the call rather than degrading to an empty
-// list: an empty searched_scopes would read as "searched nothing", which is
-// the exact ambiguity the field exists to remove.
-func (d *deps) searchedScopes(ctx context.Context, c caller, crossSpine bool) ([]string, bool, error) {
+// An error from ListScopes fails the COVERAGE CLAIM, exactly as before: an
+// empty searched_scopes would still read as "searched nothing", which is the
+// exact ambiguity the field exists to remove — that reasoning is unchanged
+// by this phase (#456). What changes is that the failure no longer takes the
+// already-computed hits down with it: searchedScopes now reports the failure
+// as a VALUE (scopeCoverage.Unknown), carries no error at all, and the
+// underlying cause is logged here, once, server-side (D-02) rather than
+// handed to a caller that would otherwise have no choice but to abort.
+func (d *deps) searchedScopes(ctx context.Context, c caller, crossSpine bool) scopeCoverage {
 	if !crossSpine {
-		return nil, false, nil
+		return scopeCoverage{}
 	}
 	counts, more, err := d.st.ListScopes(ctx, c.Subj)
 	if err != nil {
-		return nil, false, err
+		slog.ErrorContext(ctx, "searchedScopes: ListScopes failed", "error", err)
+		return scopeCoverage{Unknown: true}
 	}
 	scopes := make([]string, len(counts))
 	for i, sc := range counts {
 		scopes[i] = sc.Scope
 	}
-	return scopes, more, nil
+	return scopeCoverage{Scopes: scopes, Truncated: more}
+}
+
+// scopeCoverage is the value searchedScopes returns in place of an error
+// (D-06, 06-01-PLAN.md resolved_discretion): removing the error return makes
+// "abort and discard the hits" unrepresentable at all four call sites rather
+// than merely discouraged. Unknown is true exactly when the ListScopes
+// coverage query itself failed after hits were already produced (D-01); on
+// that path Scopes stays nil (never an empty, allocated slice) and Truncated
+// stays false, so recallResultMap/the Connect handlers can read Unknown
+// alone to pick the wire shape.
+type scopeCoverage struct {
+	Scopes    []string
+	Truncated bool
+	Unknown   bool
 }
 
 // recallResultMap assembles a search_memory/list_memory MCP result map: base
 // (the transport-specific entries, e.g. "memories" and, for list_memory,
-// "next_cursor") plus, ONLY when crossSpine is true, "searched_scopes" and
-// "scopes_truncated". On a non-cross-spine call neither key is added at all
-// (D-14), so an existing consumer sees a response byte-identical to today's —
-// scopes_truncated is emitted even when false on a cross-spine call
-// (resolving the Claude's-discretion item in 03-CONTEXT.md) so a consumer
-// reading searched_scopes can read the truncation signal directly rather
-// than inferring completeness from an absent key. Mutates and returns base.
-func recallResultMap(base map[string]any, crossSpine bool, scopes []string, truncated bool) map[string]any {
-	if crossSpine {
-		base["searched_scopes"] = scopes
-		base["scopes_truncated"] = truncated
+// "next_cursor") plus, ONLY when crossSpine is true, the coverage keys the
+// three D-03 states require. On a non-cross-spine call NO coverage key is
+// added at all (D-14), so an existing consumer sees a response byte-identical
+// to today's. On a cross-spine call with cov.Unknown true, ONLY
+// "scopes_unknown" (true) is added — never "searched_scopes" (which would
+// read as "searched nothing") and never "scopes_truncated". On a cross-spine
+// call with cov.Unknown false, today's two keys ("searched_scopes",
+// "scopes_truncated") are added and "scopes_unknown" is not — scopes_truncated
+// is emitted even when false (resolving the Claude's-discretion item in
+// 03-CONTEXT.md) so a consumer reading searched_scopes can read the
+// truncation signal directly rather than inferring completeness from an
+// absent key. Mutates and returns base.
+func recallResultMap(base map[string]any, crossSpine bool, cov scopeCoverage) map[string]any {
+	if !crossSpine {
+		return base
 	}
+	if cov.Unknown {
+		base["scopes_unknown"] = true
+		return base
+	}
+	base["searched_scopes"] = cov.Scopes
+	base["scopes_truncated"] = cov.Truncated
 	return base
 }
 
@@ -2638,14 +2668,11 @@ func registerTools(s *mcp.Server, d *deps) error {
 			if err != nil {
 				return nil, nil, err
 			}
-			scopes, truncated, err := d.searchedScopes(ctx, c, a.CrossSpine)
-			if err != nil {
-				return nil, nil, err
-			}
+			cov := d.searchedScopes(ctx, c, a.CrossSpine)
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			hits := shapeRecall(ms, a.Full, d.summaryMaxChars)
-			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, scopes, truncated)
+			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, cov)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), result, nil
 		})
 
@@ -2698,14 +2725,11 @@ func registerTools(s *mcp.Server, d *deps) error {
 			if err != nil {
 				return nil, nil, err
 			}
-			scopes, truncated, err := d.searchedScopes(ctx, c, a.CrossSpine)
-			if err != nil {
-				return nil, nil, err
-			}
+			cov := d.searchedScopes(ctx, c, a.CrossSpine)
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			mems := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
-			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, scopes, truncated)
+			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, cov)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), result, nil
 		})
 
