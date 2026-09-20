@@ -545,7 +545,20 @@ Plans:
 1. When cross-spine `search_memory`/`list_memory`'s follow-up `ListScopes` call fails after hits have already been produced, those hits are returned rather than discarded.
 2. A documented, wire-visible signal distinguishes "coverage unknown" from `scopes_truncated`, surfaced consistently on MCP, Connect, and `engram search`/`engram list`.
 
-**Plans:** 0 plans
+**Plans:** 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — the additive `scopes_unknown` proto field on both recall responses, the coverage helper reporting its failure as a value instead of an error, all four discard sites keeping their hits, and the three states proven on both transports (D-01, D-02, D-03, D-04, D-06)
+
+**Wave 2**
+
+- [ ] 06-02-PLAN.md — `renderCoverageFooter`'s third form printed by both CLI verbs with no count, and the third state published in the tool reference, the CLI guide, the upgrade guide and CLAUDE.md (D-01, D-03, D-05)
+
+**Wave 3**
+
+- [ ] 06-03-PLAN.md — this phase's five red-evidence patches registered and confirmed at fifty-eight, the earlier phases' patches re-proven over the edited files, and REQ-cross-spine-partial marked complete (D-01, D-02, D-03, D-05)
 
 ---
 
