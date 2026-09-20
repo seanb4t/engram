@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -17,6 +18,19 @@ import (
 
 	"github.com/seanb4t/engram/internal/telemetry"
 )
+
+// errSummarizeLimitReached is a control-flow marker returned from
+// SummarizeMissing's scrollAllPoints callback once opts.Limit records have
+// been scanned — never a failure. It exists because scrollAllPoints' only
+// early-stop mechanism is a callback error (spine.go:88-94, "a callback
+// error propagates out of scrollAllPoints unchanged"), following the same
+// per-sweep sentinel-batch shape as migrate.go's own sweep-pass sentinel:
+// the call site below unwraps it with errors.Is to mean "the caller's
+// limit was reached, fall through to a normal completion," while any OTHER
+// non-nil error is a genuine failure and returns exactly as the
+// pre-migration serr branch did. Never shared with any other sweep's
+// sentinel — each sweep's early-stop reason is declared separately.
+var errSummarizeLimitReached = errors.New("summarize-missing: caller limit reached")
 
 // SummarizeFunc compresses content into a one-line summary. Injected so the
 // store never imports the summarizer package (matches Reindex's EmbedFunc).
@@ -140,52 +154,46 @@ func (s *Store) SummarizeMissing(ctx context.Context, opts SummarizeOptions, sum
 		filter = &qdrant.Filter{Must: must}
 	}
 
-	var offset *qdrant.PointId
-	for {
-		pts, next, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: s.collection,
-			Filter:         filter,
-			Limit:          qdrant.PtrOf(uint32(256)),
-			Offset:         offset,
-			WithPayload:    qdrant.NewWithPayload(true),
-		})
-		if serr != nil {
-			return res, serr
+	// This sweep reads through the shared byte-budget iterator instead of a
+	// hand-rolled 256-record ScrollAndOffset loop. s.fullView() is required
+	// here (not a narrower projection, D-04's carve-out does not apply):
+	// FillSummary summarizes m.Content and shouldSummarize reads both
+	// content and summary, so the full payload is genuinely needed.
+	scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.fullView(), func(p *qdrant.RetrievedPoint) error {
+		if opts.Limit > 0 && res.Scanned >= opts.Limit {
+			return errSummarizeLimitReached
 		}
-		for _, p := range pts {
-			if opts.Limit > 0 && res.Scanned >= opts.Limit {
-				return res, nil
-			}
-			res.Scanned++
-			m := fromPayload(p.Id.GetUuid(), p.Payload)
-			if !opts.OlderThan.IsZero() && !m.CreatedAt.Before(opts.OlderThan) {
-				res.Skipped++
-				continue
-			}
-			if !shouldSummarize(m, opts.MaxChars) {
-				res.Skipped++
-				continue
-			}
-			if opts.DryRun {
-				res.Filled++ // "would fill"
-				continue
-			}
-			filled, ferr := s.FillSummary(ctx, m, summarize, opts.Model, opts.MaxChars)
-			// k1oe.2: per-record egress audit (content_len only, never
-			// content) via the shared helper (Codex finding #3).
-			if ferr != nil {
-				LogSummaryEgress(ctx, m, opts.Model, "failed", ferr)
-				res.Failed++
-				continue
-			}
-			if filled {
-				LogSummaryEgress(ctx, m, opts.Model, "filled", nil)
-			}
-			res.Filled++
+		res.Scanned++
+		m := fromPayload(p.Id.GetUuid(), p.Payload)
+		if !opts.OlderThan.IsZero() && !m.CreatedAt.Before(opts.OlderThan) {
+			res.Skipped++
+			return nil
 		}
-		if next == nil {
-			return res, nil
+		if !shouldSummarize(m, opts.MaxChars) {
+			res.Skipped++
+			return nil
 		}
-		offset = next
+		if opts.DryRun {
+			res.Filled++ // "would fill"
+			return nil
+		}
+		filled, ferr := s.FillSummary(ctx, m, summarize, opts.Model, opts.MaxChars)
+		// k1oe.2: per-record egress audit (content_len only, never
+		// content) via the shared helper (Codex finding #3).
+		if ferr != nil {
+			LogSummaryEgress(ctx, m, opts.Model, "failed", ferr)
+			res.Failed++
+			return nil
+		}
+		if filled {
+			LogSummaryEgress(ctx, m, opts.Model, "filled", nil)
+		}
+		res.Filled++
+		return nil
+	})
+	if scanErr != nil && !errors.Is(scanErr, errSummarizeLimitReached) {
+		err = scanErr
+		return res, err
 	}
+	return res, nil
 }
