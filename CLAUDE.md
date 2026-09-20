@@ -127,7 +127,8 @@ listed tags (AND); on `search_memory` it is a hard pre-filter applied before
 vector ranking. `search_memory` / `list_memory` / `list_scheduled` also accept
 optional `created_after` / `created_before` (RFC3339, half-open `[after, before)`)
 to window recall by creation time; `list_memory` paginates via an opaque `cursor`
-arg and returns `{memories, next_cursor}` (empty `next_cursor` = last page).
+arg and returns `{memories, next_cursor}` (empty `next_cursor` = last page);
+its `limit` defaults to 20 and rejects any value above the shared maximum, 1000.
 `search_memory` and `list_memory` also accept `cross_spine` (bool) to span every
 scope the caller can read, with the response reporting `searched_scopes` and
 `scopes_truncated`; the `engram search`/`engram list` CLI verbs reach the same
@@ -194,8 +195,9 @@ Rule tools: `store_rule` / `list_rules`. A rule is a 6th `category`: normative,
 user-blessed, always-shared ground truth in a dedicated `rule:repo:*` /
 `rule:project:*` scope. An agent proposes a rule candidate when it notices
 one; `store_rule` is invoked only after the user blesses it (never promoted
-unilaterally); its `summary` must be a single line (the index entry). `list_rules` returns the complete set for one or more
-`rule:*` scopes, oldest-first, compact index shape by default (`full` for
+unilaterally); its `summary` must be a single line (the index entry). `list_rules` returns the complete set — up to 1000
+rules per scope, the same shared recall maximum — for one or more `rule:*`
+scopes, oldest-first, compact index shape by default (`full` for
 content). Rules surface at session start as a progressive-disclosure index (one
 line per rule; full text fetched on demand via `get_memory`). `set_visibility`
 is rejected for rules — delete the rule instead. Design intent unchanged:

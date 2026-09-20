@@ -139,7 +139,7 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 |----------|------|----------|-------------|
 | `query` | string | yes | Natural-language search query |
 | `scope` | string | conditional | Scope to search within; <!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine --> |
-| `k` | uint64 | no | Number of results to return (default 8) |
+| `k` | uint64 | no | Number of results to return; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. Applied as a hard pre-filter, before vector ranking. The same filter is available over the Connect read API on `SearchMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
@@ -172,7 +172,7 @@ pass `full=true` for complete content.
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `scope` | string | conditional | The scope to list memories from; required unless `cross_spine` is true |
-| `limit` | uint64 | no | Maximum memories to return (default 20) |
+| `limit` | uint64 | no | Maximum memories to return; 0 resolves to this tool's default, 20; values above 1000 (the maximum) are rejected (`field=limit hint=out_of_range`) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. The same filter is available over the Connect read API on `ListMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
@@ -192,9 +192,9 @@ are omitted entirely on a scope-confined call.
 
 Pass an explicit `limit` on a cross-spine list. The underlying total becomes
 an exact count across every readable scope rather than one scope (visible as
-the Connect API's `total` field), and on the Connect lane an unset limit means
-"all" — a caller flipping `cross_spine` on an existing workflow will see the
-result count jump and, on Connect, may pull far more than intended.
+the Connect API's `total` field), and on the Connect lane an unset limit
+resolves to the maximum, 1000 — pass an explicit limit and page the remainder
+by `offset` or `page_token` rather than relying on the default.
 
 ---
 
@@ -207,7 +207,7 @@ surface via `list_memory`/`search_memory`, not here.
 |----------|------|----------|-------------|
 | `scope` | string | yes | The scope to list scheduled/expired memories from |
 | `state` | string | no | `scheduled` (default, not yet active), `expired`, or `all` |
-| `limit` | uint64 | no | Maximum memories to return (default 20) |
+| `limit` | uint64 | no | Maximum memories to return; 0 resolves to this tool's default, 20; values above 1000 (the maximum) are rejected (`field=limit hint=out_of_range`) |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 
@@ -442,7 +442,7 @@ Semantic search over the discovery pool. Scope is required unless
 | `query` | string | yes | Natural-language search query |
 | `scope` | string | conditional | Discovery scope; required unless `cross_spine` is true |
 | `kind` | string | no | `map` or `fact` filter |
-| `k` | uint64 | no | Number of results to return (default 8) |
+| `k` | uint64 | no | Number of results to return; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
 | `cross_spine` | bool | no | Span all discovery scopes; ignores `scope` when true |
 
 Results carry `citations` and `created_at` (useful as aging signals).
@@ -496,8 +496,10 @@ Returns the stored rule's `id` and `short_id`.
 
 ## list_rules
 
-List the **complete** rule set for one or more `rule:*` scopes, oldest-first.
-Rules are the repository/project's normative ground truth.
+List the **complete** rule set for one or more `rule:*` scopes, up to 1000
+rules per scope (the same documented recall maximum every other listing/search
+tool shares), oldest-first. Rules are the repository/project's normative
+ground truth.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|

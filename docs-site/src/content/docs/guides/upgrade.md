@@ -35,6 +35,7 @@ one predictable, migration-safe contract.
 | set client configuration through environment variables | §7 |
 | pattern-match the exact `field=` value of an argument rejection (not just check a field name's presence) | §8 |
 | branch on exit status, a Connect error code, or MCP error text for `list`/`search` (or an operator command reading Qdrant directly) | §14 |
+| call `ListMemories`/`engram list` with `limit: 0` (or `--limit` omitted) expecting every matching record back in one response, or rely on an over-1000 `limit`/`k` being clamped rather than rejected | §16 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -408,6 +409,36 @@ trim the tag set. Raising the cap is possible via
 `ENGRAM_MEMORY_MAX_TAG_BYTES`, but never to `0` — unlike
 `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, these three are always enforced and
 reject `0` at startup.
+
+### 16. `ListMemories`' `limit: 0` now returns up to 1000 records, and an over-maximum count is rejected, never clamped
+
+Before this release, an unset (`0`) `limit` on the Connect `ListMemories` RPC
+— and therefore `engram list --limit 0` / `engram list` with `--limit`
+omitted, and the console — meant "all": every matching record in the scope
+came back in one call, with no bound. **It now means 1000** — the same
+documented maximum every recall count knob on the wire shares. A caller
+relying on `limit: 0` to fetch an entire scope in one response and seeing
+more than 1000 matching records now sees a `total` larger than the number of
+memories actually returned; page the remainder with `--offset` (or, in
+cursor mode, `--page-token`) rather than assuming one call is exhaustive.
+
+Separately, `limit`/`k` above 1000 (in cursor-mode paging, and on every
+other recall surface: `search_memory`/`search_discovery`'s `k`,
+`SearchMemories`/`SearchDiscoveries`, `list_memory`/`list_scheduled`) is now
+**rejected**, not silently clamped down to 1000 as it previously was for a
+cursor-mode `ListMemories` page — the rejection carries
+`field=limit hint=out_of_range` or `field=k hint=out_of_range` (CLI exit
+`2`, Connect `invalid_argument`). See the
+[error envelope reference](/reference/errors/#the-envelope-grammar) and the
+[CLI guide's paging section](/guides/cli/#paging-engram-list).
+
+**Who should act:** a script or agent calling `ListMemories`/`engram list`
+with `limit: 0` (or `--limit` omitted) and expecting every matching record
+back in one response — pass an explicit `--limit`/`limit` and page the
+remainder by `--offset`/`offset` or `--page-token`/`page_token`; and any
+caller that relied on an over-1000 cursor-mode page silently shrinking to
+1000 rather than being rejected — pass a `limit`/`k` at or below 1000
+instead.
 
 ---
 
