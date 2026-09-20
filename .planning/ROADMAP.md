@@ -322,7 +322,7 @@ Codex; and ships man pages from the cask.
 - [x] **Phase 1: Test Harness & Fixture Helper** - A shared real-Qdrant oversized-fixture helper and test-client constructor every later regression test in this milestone reuses (completed 2026-09-18)
 - [x] **Phase 2: Error Classification & ResourceExhausted Mapping** - A response exceeding the receive limit classifies into one typed sentinel, surfaced as a clear, named error on Connect, MCP, and the CLI (completed 2026-09-19)
 - [x] **Phase 3: Shared Bounded-Read Mechanism & Content Cap Decision** - Two shared bounded-read primitives are built and proven, every full-payload read site is inventoried and assigned to its migrating phase, and whether memory `content` gets a size cap is decided (completed 2026-09-19)
-- [ ] **Phase 4: List, ListScheduled & Search Bounded Reads** - `Store.List` (every mode), `list_scheduled`, and `search_memory`/`search_discovery` stay under the receive limit, and the `ListMemories` paging contract is decided
+- [x] **Phase 4: List, ListScheduled & Search Bounded Reads** - `Store.List` (every mode), `list_scheduled`, and `search_memory`/`search_discovery` stay under the receive limit, and the `ListMemories` paging contract is decided (completed 2026-09-20)
 - [ ] **Phase 5: Operator Sweeps & CI Backstop** - The five 256-batch operator sweeps stay bounded, `MaxCallRecvMsgSize` lands as defense-in-depth, and `internal/store` CI stays green with this milestone's oversized fixtures
 - [ ] **Phase 6: Cross-Spine Partial Results** - A cross-spine recall keeps its successful hits when the follow-up `ListScopes` call fails
 - [ ] **Phase 7: Bounded Provider Responses** - The embed/summarize clients bound their post-response drain by bytes and time, independent of `http.Client.Timeout`
@@ -454,7 +454,7 @@ Plans:
 4. `total`, `next_cursor` (empty = last page), result ordering, and recall gating are unchanged by the new batching, and a page cut short by the byte budget is never reported as the last page.
 5. Whether Connect `ListMemories` keeps `limit: 0` = all with numeric offset paging or moves to a hard cap plus cursor paging is decided and recorded in PROJECT.md Key Decisions; the chosen contract is implemented and documented, and any wire-visible change is additive or explicitly called out as breaking.
 
-**Plans:** 8/8 plans executed
+**Plans:** 8/8 plans complete
 
 Plans:
 **Wave 1**
@@ -631,7 +631,7 @@ Plans:
 | 1. Test Harness & Fixture Helper | 2026-09-18.01 | 2/2 | Complete | 2026-09-18 |
 | 2. Error Classification & ResourceExhausted Mapping | 2026-09-18.01 | 4/4 | Complete | 2026-09-19 |
 | 3. Shared Bounded-Read Mechanism & Content Cap Decision | 2026-09-18.01 | 2/2 | Complete | 2026-09-19 |
-| 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 0/5 | Not started | - |
+| 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 5/5 | Complete | 2026-09-20 |
 | 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 0/4 | Not started | - |
 | 6. Cross-Spine Partial Results | 2026-09-18.01 | 0/1 | Not started | - |
 | 7. Bounded Provider Responses | 2026-09-18.01 | 0/2 | Not started | - |
