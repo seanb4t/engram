@@ -1642,12 +1642,13 @@ type coreSearchRequest struct {
 // usage exit. Do not repoint this at classOutOfRange.
 func rejectOverMaximumCount(field string, count uint64) error {
 	// Named once so the number is never re-literalled at either use site
-	// below (the comparison and the message).
-	const max = store.MaxRecallLimit
-	if count <= max {
+	// below (the comparison and the message). Not "max": that shadows the
+	// Go 1.21+ builtin (revive: redefines-builtin-id).
+	const maxCount = store.MaxRecallLimit
+	if count <= maxCount {
 		return nil
 	}
-	return argErrf(classMalformed, HintOutOfRange, field, "%s exceeds the maximum of %d", field, max)
+	return argErrf(classMalformed, HintOutOfRange, field, "%s exceeds the maximum of %d", field, maxCount)
 }
 
 // listMemory returns a page of the caller's readable records in scope on the
@@ -2822,7 +2823,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("stored rule %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: "List the COMPLETE rule set for one or more rule:* scopes, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", Annotations: annotationsFor("list_rules")},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: fmt.Sprintf("List the COMPLETE rule set for one or more rule:* scopes, up to %d per scope, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", store.MaxRecallLimit), Annotations: annotationsFor("list_rules")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listRulesArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
