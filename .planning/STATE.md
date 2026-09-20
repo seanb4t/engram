@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 4
 current_phase_name: List, ListScheduled & Search Bounded Reads
 status: executing
-stopped_at: Completed 04-05-PLAN.md
-last_updated: "2026-09-20T09:25:24.297Z"
+stopped_at: Completed 04-06-PLAN.md
+last_updated: "2026-09-20T10:15:01.428Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 4 execution started
-state_head: bb3fc7700e4046d8c1e34d4a0b9cb78dc2d8af31
+state_head: 96362ddf8a516b7ac18fb60edecc65e740861733
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 23
-  completed_plans: 20
+  completed_plans: 21
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (List, ListScheduled & Search Bounded Reads) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 4 execution started
 
@@ -331,6 +331,8 @@ milestone needs in working memory.
 - [Phase 04]: Plan 04-05: recallView/isSummaryView route only Store.List's projection selection; Store.Search's own pre-existing (04-04) inline summaryView/fullView selection was left untouched per the plan's own action text.
 - [Phase 04]: Plan 04-05: Rule 2 fix - wired ListOptions.Full/coreListRequest.Full through Connect ListMemories and MCP list_memory; without it full=true silently returned empty citations once List's default fetch became summary-shaped.
 - [Phase 04]: Plan 04-05: rejectOverMaximum (D-10) wired as the FIRST validation in List/ListScheduled/Search/SearchDiscovery; listByCursor's silent clamp to MaxRecallLimit deleted, replaced by refusal. SearchReranked needs no call of its own (candidateK(k) bounds it already).
+- [Phase 04]: list_rules threads a.Full into its direct Store.List call (the one caller outside the typed core), closing 04-RESEARCH Pattern 6's last unwired gap — 04-05 already wired coreListRequest.Full through Connect ListMemories and MCP list_memory; the rule listing bypasses the typed core entirely and would silently regress to summary-shaped full=true reads without its own thread
+- [Phase 04]: rejectOverMaximumCount added as the published D-10 wire-boundary rejection, called first in all four shared core methods, ahead of scope resolution and the embed call — Store's own rejectOverMaximum (04-05) is a backstop; the server boundary is what actually stops a caller before it costs anything and is what carries the field=<f> hint=out_of_range envelope
 
 ### Pending Todos
 
@@ -405,8 +407,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T09:25:01.344Z
-Stopped at: Completed 04-05-PLAN.md
+Last session: 2026-09-20T10:15:01.398Z
+Stopped at: Completed 04-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -559,6 +561,7 @@ Resume file: None
 | Phase 04 P03 | 40min | 2 tasks | 6 files |
 | Phase 04 P04 | 35min | 2 tasks | 5 files |
 | Phase 04 P05 | 40min | 2 tasks | 11 files |
+| Phase 04 P06 | ~35min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 
