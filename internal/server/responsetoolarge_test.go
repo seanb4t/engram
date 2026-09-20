@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	grpccodes "google.golang.org/grpc/codes"
@@ -141,12 +142,37 @@ func noASCIIDigit(s string) bool {
 // REQ-recv-limit-backstop, so a binary-level overflow would rest on
 // grpc-go's own default, which this project's own tests must never assert
 // against (rule m45p2b4bp7).
+//
+// D-12 retarget (plan 04-02, Task 3): plan 04-02 bounded Store.List's offset
+// mode (it now composes scrollOrderedPage's byte-budgeted RPCs instead of one
+// unbounded full-payload Scroll), so the prior many-record oversized fixture
+// no longer overflows through this path — it assembles correctly across
+// several small RPCs. The trigger is retargeted onto a single LEGACY record
+// (upserted directly, bypassing the write-time content cap) whose content
+// alone exceeds storetest.RecvLimit, reaching the D-07 batch-of-1 fallback
+// scrollOrderedPage already proves at the primitive level
+// (internal/store/orderedpage_oversized_test.go's
+// TestScrollOrderedPageBatchOfOneFallback/single-oversized).
 func TestConnectListMemoriesResponseTooLarge(t *testing.T) {
 	d, st := testDepsWithStore(t)
-	fx := storetest.SeedOversized(t, st, storetest.Spec{Limit: storetest.RecvLimit, Shape: storetest.FewLarge, Vector: []float32{0.1, 0.2, 0.3}})
+	scope := "server-list-singlefail:" + uuid.NewString()
+	owner := "server-owner-" + uuid.NewString()
+	hugeContentBytes := storetest.RecvLimit + storetest.RecvLimit/4
+	m := store.Memory{
+		ID:        uuid.NewString(),
+		Content:   strings.Repeat("x", hugeContentBytes),
+		Scope:     scope,
+		Owner:     owner,
+		Actor:     owner,
+		Category:  "decision",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := st.Upsert(context.Background(), m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("Upsert legacy oversized record: %v", err)
+	}
 
 	resolve := func(_ context.Context, _ connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
-		return &mcpauth.TokenInfo{Extra: map[string]any{auth.OwnerClaimExtraKey: fx.Owner}}, auth.LaneBearer, nil
+		return &mcpauth.TokenInfo{Extra: map[string]any{auth.OwnerClaimExtraKey: owner}}, auth.LaneBearer, nil
 	}
 	csrfVerify := func(_, _ string) bool { return true }
 
@@ -162,8 +188,8 @@ func TestConnectListMemoriesResponseTooLarge(t *testing.T) {
 	rec := captureSlog(t)
 
 	resp, err := client.ListMemories(context.Background(), connect.NewRequest(&engramv1.ListMemoriesRequest{
-		Scope: fx.Scope,
-		Limit: 0, // all — one full-payload Scroll, exactly the shape that overflows
+		Scope: scope,
+		Limit: 0, // resolves to store.MaxRecallLimit (D-01) — still reaches the single oversized record via the batch-of-1 fallback
 	}))
 	if resp != nil {
 		t.Fatalf("ListMemories: got a non-nil response, want nil (the overflow must never look like a success)")
@@ -251,9 +277,30 @@ func (r *toolCallRecorder) has(tool, outcome string) bool {
 // IsError result carrying the ONE shared envelope, with instrumentTools
 // still recording outcome=error and the raw error logged exactly once
 // server-side (D-08).
+//
+// D-12 retarget (plan 04-02, Task 3): same rationale as
+// TestConnectListMemoriesResponseTooLarge above — the many-record oversized
+// fixture no longer overflows through the now-bounded Store.List (both its
+// offset AND cursor modes, which list_memory's CursorMode:true default uses,
+// compose scrollOrderedPage). Retargeted onto a single legacy oversized
+// record reaching the same D-07 batch-of-1 fallback.
 func TestMCPListMemoryResponseTooLarge(t *testing.T) {
 	d, st := testDepsWithStore(t)
-	fx := storetest.SeedOversized(t, st, storetest.Spec{Limit: storetest.RecvLimit, Shape: storetest.FewLarge, Vector: []float32{0.1, 0.2, 0.3}})
+	scope := "server-list-singlefail-mcp:" + uuid.NewString()
+	owner := "server-owner-" + uuid.NewString()
+	hugeContentBytes := storetest.RecvLimit + storetest.RecvLimit/4
+	m := store.Memory{
+		ID:        uuid.NewString(),
+		Content:   strings.Repeat("x", hugeContentBytes),
+		Scope:     scope,
+		Owner:     owner,
+		Actor:     owner,
+		Category:  "decision",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := st.Upsert(context.Background(), m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("Upsert legacy oversized record: %v", err)
+	}
 
 	rec := captureSlog(t)
 	tcRec := &toolCallRecorder{}
@@ -269,7 +316,7 @@ func TestMCPListMemoryResponseTooLarge(t *testing.T) {
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 
-	ss, err := s.Connect(authedContext(t, fx.Owner), serverTransport, nil)
+	ss, err := s.Connect(authedContext(t, owner), serverTransport, nil)
 	if err != nil {
 		t.Fatalf("server Connect: %v", err)
 	}
@@ -284,7 +331,7 @@ func TestMCPListMemoryResponseTooLarge(t *testing.T) {
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "list_memory",
-		Arguments: map[string]any{"scope": fx.Scope, "limit": len(fx.IDs)},
+		Arguments: map[string]any{"scope": scope, "limit": 1},
 	})
 	if err != nil {
 		t.Fatalf("CallTool: got Go error %v, want nil (the mapped result must still be a normal, non-erroring CallTool round trip)", err)
