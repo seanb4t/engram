@@ -503,7 +503,32 @@ Plans:
 3. The production Qdrant client raises `MaxCallRecvMsgSize` in exactly one place, documented as a backstop only, added after the sweep and per-site regression tests already pass without it.
 4. The `internal/store` CI job stays green with this milestone's oversized fixtures added — no Qdrant `connection refused`/`code = Unavailable` recurrence — closing #497 with that evidence.
 
-**Plans:** 0 plans
+**Plans:** 6 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — the sweep iterator parameterised by collection, the per-sweep projected views, and `spine-review`'s four read-only sweeps migrated with their oversized regressions (D-01, D-03, D-04)
+
+**Wave 2**
+
+- [ ] 05-02-PLAN.md — the revert preflight on a one-field projection, and the count-only view constructor deleted with all four of its test-file callers (D-01, D-03, D-04)
+
+**Wave 3**
+
+- [ ] 05-03-PLAN.md — `engram migrate`'s three walks and `migrate revert`'s apply pass on the shared iterator, each pass bounded by its own sentinel, with both emitter justifications corrected (D-01, D-02, D-03, D-04)
+
+**Wave 4**
+
+- [ ] 05-04-PLAN.md — `summarize-missing` and `reindex` migrated, the reindex walk reading its effective source with its per-page lookup preserved, and the two stale emitter rows deleted (D-01, D-02, D-03, D-04)
+
+**Wave 5**
+
+- [ ] 05-05-PLAN.md — the 64 MiB receive-limit backstop set once, ahead of caller options, tested for pass-through and ordering only (D-05, D-06)
+
+**Wave 6**
+
+- [ ] 05-06-PLAN.md — this phase's eleven red-evidence patches registered, the call-site inventory reconciled, #497 closed on #498's evidence, the four requirements marked complete (D-07, all four REQs)
 
 ---
 
@@ -632,7 +657,7 @@ Plans:
 | 2. Error Classification & ResourceExhausted Mapping | 2026-09-18.01 | 4/4 | Complete | 2026-09-19 |
 | 3. Shared Bounded-Read Mechanism & Content Cap Decision | 2026-09-18.01 | 2/2 | Complete | 2026-09-19 |
 | 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 5/5 | Complete | 2026-09-20 |
-| 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 0/4 | Not started | - |
+| 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 0/6 | Not started | - |
 | 6. Cross-Spine Partial Results | 2026-09-18.01 | 0/1 | Not started | - |
 | 7. Bounded Provider Responses | 2026-09-18.01 | 0/2 | Not started | - |
 
