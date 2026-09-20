@@ -42,6 +42,13 @@ const (
 	HintMutuallyExclusive   HintCode = "mutually_exclusive"
 	HintNotApplicable       HintCode = "not_applicable"
 	HintResponseTooLarge    HintCode = "response_too_large"
+	// Raised when a numeric field exceeds its documented maximum (D-10,
+	// milestone 2026-09-18.01 Phase 4). Classified classMalformed (Connect
+	// invalid_argument, CLI exit 2) BY DECISION — not classOutOfRange, even
+	// though that class exists and reads closer: both classes already
+	// group under the CLI's usage exit, and D-10 locks this
+	// classification. Do not repoint this at classOutOfRange.
+	HintOutOfRange HintCode = "out_of_range"
 )
 
 // argClass is the failure CLASS that selects the Connect error code (D-11,

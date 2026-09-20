@@ -1,6 +1,6 @@
 ---
 title: Error Envelope & Hint Codes
-description: The field-and-hint grammar every engram argument rejection (plus the one response-too-large rejection) carries, the eleven hint codes, and the Connect error-code mapping — what a caller (agent or integrator) needs to parse and act on a rejection.
+description: The field-and-hint grammar every engram argument rejection (plus the one response-too-large rejection) carries, the twelve hint codes, and the Connect error-code mapping — what a caller (agent or integrator) needs to parse and act on a rejection.
 ---
 
 Every argument-validation rejection engram produces, plus the one rejection that is not
@@ -103,12 +103,12 @@ target is already superseded: a1b2c3d4e5, m1n2p3q4r5
 ```
 
 These four rejections are **sentinel-shaped**, not field-and-hint shaped — they name
-offending targets, not a field, and the eleven-code hint vocabulary above is unchanged;
+offending targets, not a field, and the twelve-code hint vocabulary above is unchanged;
 no new hint code was added for this verb. Set-shape rejections (empty array, blank
 entry) DO use the field-and-hint grammar above, naming the `supersedes` argument
 itself rather than any target value.
 
-## The eleven hint codes
+## The twelve hint codes
 
 Transcribed directly from `internal/server/argerror.go`'s `HintCode` constants and checked
 off one by one against that file — this table cannot list a code the server does not emit.
@@ -125,7 +125,21 @@ off one by one against that file — this table cannot list a code the server do
 | `ordering` | A before/after or numeric ordering constraint is violated — usually between two fields, but sometimes between one field and a fixed reference such as the current time. | Adjust so the stated ordering holds. Read `field=`: it lists every field involved, which may be one or two. |
 | `mutually_exclusive` | Two or more fields cannot be combined at once. | Drop all but one — every field the constraint relates is listed under `field=`. |
 | `not_applicable` | The field does not apply given another field's value on this call. | Omit the field entirely rather than sending an empty or default value. |
+| `out_of_range` | A numeric field exceeds its documented maximum. | Resend at or below the maximum named in the detail text — the value is rejected, never clamped. |
 | `response_too_large` | The result the request would produce exceeds what one response can carry — not a rejected input; `field=` is always the fixed pseudo-field `response`. | Retry with a smaller `limit` or `k`, or omit `full`; retrying the identical request fails the same way. See [Response too large](#response-too-large-resource_exhausted-and-exit-10). |
+
+`out_of_range` names a NUMERIC argument above its documented ceiling — distinct from
+`too_long` (a length/byte bound on a string or blob) and `too_many` (a collection count
+bound). `limit`/`k` above the documented maximum (1000) is the first caller of this code.
+
+`out_of_range` reads like it should map to `CodeOutOfRange` below, but it is classified
+Malformed by decision — a rejected numeric argument is still a malformed request, and
+Malformed and Out of range already collapse to the same CLI exit, so nothing observable
+changes for a CLI-driven caller:
+
+| Hint code | Connect code | CLI exit |
+|---|---|---|
+| `out_of_range` | `invalid_argument` (`CodeInvalidArgument`) | [`2`](/guides/cli/#exit-codes) |
 
 `too_long` and `response_too_large` are easy to conflate but name opposite directions:
 `too_long` means an INPUT field you sent exceeded a bound — shorten that field and resend.
@@ -150,9 +164,9 @@ to a second field can fix.
 
 ## Operator-tier hint codes (`engram migrate revert`)
 
-These two codes use the same `field=<name> hint=<code>: <text>` grammar as the eleven-code
+These two codes use the same `field=<name> hint=<code>: <text>` grammar as the twelve-code
 table above, but they are produced by `internal/store/revert.go`'s `RevertRefusalError` —
-not by `internal/server/argerror.go` — so they are not `HintCode` constants and the eleven-code
+not by `internal/server/argerror.go` — so they are not `HintCode` constants and the twelve-code
 table above remains exactly what it claims to be: a transcription of `argerror.go`. They
 surface only from an `engram migrate revert` refusal (see below for the two places that can
 happen), never from any memory-tool call.

@@ -219,7 +219,7 @@ specific field's presence in the list — the documented, correct way to read
 
 **The `mutually_exclusive` hint's documented shape widened from "always two
 fields" to "two or more fields"** to match the paging-trio case above — see
-the [error envelope reference](/reference/errors/#the-eleven-hint-codes) for the
+the [error envelope reference](/reference/errors/#the-twelve-hint-codes) for the
 updated wording. No code that already reads `field=` as a list is affected.
 
 ### 9. `prune-expired` now previews by default; `--apply` performs the deletion
