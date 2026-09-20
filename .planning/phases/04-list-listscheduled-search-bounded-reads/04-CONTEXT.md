@@ -27,7 +27,7 @@ Phase 5; cross-spine partial results are Phase 6.
 
 ### Carried forward
 
-- **D-00 (user preference `1w3h5sy56m`):** choose by idiom and long-term maintenance, never by effort.
+- **D-00 [informational] (user preference `1w3h5sy56m`):** choose by idiom and long-term maintenance, never by effort.
 - Phase 1: `store.NewQdrantClient` is the one constructor; tests pin `storetest.RecvLimit` (4 MiB);
   `storetest.SeedOversized` provides the many-small and few-large fixtures.
 - Phase 2: an over-limit response surfaces as `store.ErrResponseTooLarge` → `resource_exhausted` /
