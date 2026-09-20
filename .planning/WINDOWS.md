@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 4
+open_count: 5
 waived_count: 0
 fixed_count: 5
-total_count: 9
-last_updated: 2026-09-18T17:52:07.375Z
+total_count: 10
+last_updated: 2026-09-20T09:26:39.178Z
 ---
 
 # Broken Windows Ledger
@@ -24,6 +24,7 @@ last_updated: 2026-09-18T17:52:07.375Z
 | 7 | 04 | stub | internal/skills/install.go |  | Install's FormatAgentsMD case returns 'not wired yet' (explicit, plan-specified — resolved by 04-02-PLAN.md) | open |  | 2026-09-10T04:59:52.722Z |  |
 | 8 | 01 | deviation | internal/store/redevidence_harness_test.go |  | task gate fails pre-existing (verified at plan start HEAD 9918f3af, before 01-01's changes): redEvidenceDirs is empty while phase 01 (active milestone) exists; 01-01 shipped real RED evidence (osRun deadline/cancel tests, apply_test seam subtests) but registering red-evidence/*.patch + redEvidenceDirs entries is out of 01-01's files_modified scope (internal/setup only) | fixed |  | 2026-09-13T17:59:04.222Z | 2026-09-13T19:16:21.746Z |
 | 9 | 01 | deviation | .planning/phases/01-executor-correctness-man-pages/01-01-PLAN.md |  | task gate fails pre-existing (verified at plan start HEAD 9918f3af, before 01-01/01-02 changes): internal/keylinks TestNoEscapedPatternsRepoWide flags over-escaped regex illustrations in 01-01-PLAN.md/01-02-PLAN.md key_links.pattern fields, and TestActiveMilestoneKeyLinksSatisfiable scans 0 plan files; both are planning-artifact/tooling gates outside any plan's files_modified scope and must not be hand-edited per planning-artifacts rule | fixed |  | 2026-09-13T17:59:12.777Z | 2026-09-13T19:16:21.833Z |
+| 10 | 04 | deviation | internal/store/searchfetch.go |  | Store.Search's no-summary content backfill has no dedicated test asserting .Content is restored (only Store.List's backfill, TestNoSummaryContentBackfill, has a direct content assertion); Search's wiring reuses the identical function and the existing all-no-summary Search suite stays green, but no test proves the restoration specifically for Search. | open |  | 2026-09-20T09:26:39.178Z |  |
 
 ````json
 [
@@ -134,6 +135,19 @@ last_updated: 2026-09-18T17:52:07.375Z
     "reason": "",
     "recorded_at": "2026-09-13T17:59:12.777Z",
     "resolved_at": "2026-09-13T19:16:21.833Z"
+  },
+  {
+    "id": 10,
+    "kind": "deviation",
+    "phase": "04",
+    "file": "internal/store/searchfetch.go",
+    "line": null,
+    "description": "Store.Search's no-summary content backfill has no dedicated test asserting .Content is restored (only Store.List's backfill, TestNoSummaryContentBackfill, has a direct content assertion); Search's wiring reuses the identical function and the existing all-no-summary Search suite stays green, but no test proves the restoration specifically for Search.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-20T09:26:39.178Z",
+    "resolved_at": null,
+    "milestone": null
   }
 ]
 ````
