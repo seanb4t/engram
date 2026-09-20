@@ -13,6 +13,7 @@ package store_test
 
 import (
 	"context"
+	"maps"
 	"testing"
 
 	"github.com/google/uuid"
@@ -162,6 +163,92 @@ func TestMigrateBoundedOverGRPCLimit(t *testing.T) {
 			after := independentIDScroll(ctx, t, c, name, migrateSweepBacklogFilter(int(migrate.CurrentVersion)))
 			if len(after) != 0 {
 				t.Errorf("%s: independent backlog re-derivation after apply = %d ids, want 0 (empty)", shape, len(after))
+			}
+		})
+	}
+}
+
+// migrateSweepAboveTargetFilter reconstructs aboveTargetFilter(to)'s exact
+// shape (internal/store/revert.go) from outside the package: a record
+// whose schema_version is strictly greater than to.
+func migrateSweepAboveTargetFilter(to int) *qdrant.Filter {
+	key := store.SchemaVersionKey()
+	return &qdrant.Filter{
+		Must: []*qdrant.Condition{
+			qdrant.NewRange(key, &qdrant.Range{Gt: qdrant.PtrOf(float64(to))}),
+		},
+	}
+}
+
+// revertFixtureStep builds a test-only conforming migrate.Step declaring
+// exactly [key], mirroring internal/store/migrate_test.go's own markerStep
+// (unexported, package store — reimplemented here since this file must be
+// package store_test per memory y02a9ft3gy). Its inverse is what makes this
+// chain REVERSIBLE: the production migrate.Registry's only step is
+// Irreversible, so a real-registry revert can never apply — this fixture
+// chain is what lets the apply path actually run.
+func revertFixtureStep(from, to migrate.Version, key string) migrate.Step {
+	return migrate.NewStep(from, to, []string{key},
+		migrate.Reversible(func(payload map[string]any) (map[string]any, error) {
+			out := maps.Clone(payload)
+			delete(out, key)
+			return out, nil
+		}),
+		func(payload map[string]any) (map[string]any, error) {
+			out := maps.Clone(payload)
+			out[key] = "fixture:" + key
+			return out, nil
+		},
+	)
+}
+
+// TestRevertApplyBoundedOverGRPCLimit proves engram migrate revert's apply
+// path (Store.revertWithSteps, reached here through the RevertWithSteps
+// shim with a locally built REVERSIBLE fixture chain) drains an oversized
+// above-target range through the shared byte-budget iterator, on both
+// fixture shapes.
+func TestRevertApplyBoundedOverGRPCLimit(t *testing.T) {
+	shapes := []storetest.Shape{storetest.FewLarge, storetest.ManySmall}
+	for _, shape := range shapes {
+		t.Run(shape.String(), func(t *testing.T) {
+			c := storetest.Dial(t, storetest.RecvLimit)
+			name := store.PrefixedTestCollection("oversized_revertapply_" + uuid.NewString())
+			st := store.NewTestStore(t, c, name)
+			ctx := context.Background()
+			if err := st.EnsureCollection(ctx, 3); err != nil {
+				t.Fatalf("%s: EnsureCollection: %v", shape, err)
+			}
+			t.Cleanup(func() {
+				if err := c.DeleteCollection(ctx, name); err != nil {
+					t.Errorf("%s: DeleteCollection(%q): %v", shape, name, err)
+				}
+			})
+
+			// Every seeded record already carries migrate.CurrentVersion
+			// (1) via the ordinary Store.Upsert path — no manipulation
+			// needed: every seeded record is already above target 0.
+			fx := storetest.SeedOversized(t, st, storetest.Spec{Limit: storetest.RecvLimit, Shape: shape, Vector: []float32{0.1, 0.2, 0.3}})
+
+			fixtureSteps := []migrate.Step{revertFixtureStep(0, migrate.CurrentVersion, "revertFixtureKey")}
+
+			res, err := st.RevertWithSteps(ctx, 0, fixtureSteps)
+			if err != nil {
+				t.Fatalf("%s: RevertWithSteps: %v (request shape may have exceeded the %d-byte named receive limit, or the fixture chain is unexpectedly irreversible/unsupported)", shape, err, storetest.RecvLimit)
+			}
+			if res.Reverted != uint64(len(fx.IDs)) {
+				t.Errorf("%s: res.Reverted = %d, want %d", shape, res.Reverted, len(fx.IDs))
+			}
+			if res.Failed != 0 {
+				t.Errorf("%s: res.Failed = %d, want 0", shape, res.Failed)
+			}
+			if shape == storetest.ManySmall && res.Passes <= 1 {
+				t.Errorf("%s: res.Passes = %d, want > 1 (1000 records at a 256 batch cannot drain in a single pass)", shape, res.Passes)
+			}
+			t.Logf("%s: res.Passes=%d res.Reverted=%d res.Failed=%d", shape, res.Passes, res.Reverted, res.Failed)
+
+			after := independentIDScroll(ctx, t, c, name, migrateSweepAboveTargetFilter(0))
+			if len(after) != 0 {
+				t.Errorf("%s: independent above-target re-derivation after apply = %d ids, want 0 (empty)", shape, len(after))
 			}
 		})
 	}

@@ -543,7 +543,7 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.scrollAllPoints",
-		justification: "Emits ScrollAndOffset (spine.go:49). The package's ONE shared paginated whole-spine iterator, behind ScanSpine/EnumerateCitations/NearDuplicates/derivePurgeEligible/previewRevertWithSteps and, as of Phase 5, Store.Migrate's three former loops (DryRun projection, Manifest-limited apply, default sweep-mode pass) — all operator-tier today. This entry buys something specific: if a future recall path ever routes through it, reachability pulls it into the reachable set, it stops matching this entry, and the suite goes RED.",
+		justification: "Emits ScrollAndOffset (spine.go:49). The package's ONE shared paginated whole-spine iterator, behind ScanSpine/EnumerateCitations/NearDuplicates/derivePurgeEligible/previewRevertWithSteps and, as of Phase 5, Store.Migrate's three former loops (DryRun projection, Manifest-limited apply, default sweep-mode pass) and Store.revertWithSteps' own former pass-mode loop — all operator-tier today. This entry buys something specific: if a future recall path ever routes through it, reachability pulls it into the reachable set, it stops matching this entry, and the suite goes RED.",
 	},
 	{
 		enclosingFunc: "Store.CountExpired",
@@ -563,7 +563,7 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.revertWithSteps",
-		justification: "Emits Count (internal/store/revert.go) and ScrollAndOffset (internal/store/revert.go), both against aboveTargetFilter — the write loop's own re-derivation, mirroring Store.Migrate's row above. D-16 operator command (`engram migrate revert`); same Phase 3 rationale — the revert sweep must be able to filter/count by schema_version to find its own above-target backlog. Store.previewRevertWithSteps enumerates the SAME range but through Store.scrollAllPoints (already classified below), so it needs no row of its own. Never reachable from any recallEntryPointSeeds member.",
+		justification: "Emits Count (internal/store/revert.go), against aboveTargetFilter — the write loop's own re-derivation, mirroring Store.Migrate's row above. As of Phase 5, its own pass-mode ScrollAndOffset call routes through Store.scrollAllPoints instead (already classified below) — revertWithSteps itself no longer emits ScrollAndOffset directly. D-16 operator command (`engram migrate revert`); same Phase 3 rationale — the revert sweep must be able to filter/count by schema_version to find its own above-target backlog. Store.previewRevertWithSteps enumerates the SAME range but through Store.scrollAllPoints (already classified below), so it needs no row of its own. Never reachable from any recallEntryPointSeeds member.",
 	},
 }
 
