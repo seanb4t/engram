@@ -454,7 +454,37 @@ Plans:
 4. `total`, `next_cursor` (empty = last page), result ordering, and recall gating are unchanged by the new batching, and a page cut short by the byte budget is never reported as the last page.
 5. Whether Connect `ListMemories` keeps `limit: 0` = all with numeric offset paging or moves to a hard cap plus cursor paging is decided and recorded in PROJECT.md Key Decisions; the chosen contract is implemented and documented, and any wire-visible change is additive or explicitly called out as breaking.
 
-**Plans:** 0 plans
+**Plans:** 8 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — the `out_of_range` hint added and the overflow hint renamed to `response_too_large` across source, docs and Phase 2's red evidence (D-10, D-11)
+
+**Wave 2**
+
+- [ ] 04-02-PLAN.md — one exported recall maximum, `Store.List`'s cursor and offset modes composed from the ordered-page primitive, and Phase 2's overflow regressions retargeted (D-01, D-02, D-05, D-06, D-12)
+
+**Wave 3**
+
+- [ ] 04-03-PLAN.md — the deep-offset keys-only prefix walk and `ListScheduled` on the same assembly loop (D-05, D-07)
+
+**Wave 4**
+
+- [ ] 04-04-PLAN.md — two-phase search: a payload-free query plus a batched id-set payload fetch that re-applies the caller's filter (D-09)
+
+**Wave 5**
+
+- [ ] 04-05-PLAN.md — per-caller payload projection with a no-summary content backfill, and the store's refuse-never-clamp backstop (Phase 3 D-04, D-10)
+
+**Wave 6**
+
+- [ ] 04-06-PLAN.md — the projection threaded through both transports and the rule listing, and `out_of_range` rejected on all seven recall count knobs (D-02, D-03, D-08, D-10)
+- [ ] 04-07-PLAN.md — the maximum stated numerically on proto, CLI, docs-site, CLAUDE.md and the PROJECT decision record, with the breaking-change entry and a durable docs gate (D-01, D-03, D-04, D-08)
+
+**Wave 7**
+
+- [ ] 04-08-PLAN.md — this phase's seventeen red-evidence patches registered, the five requirements marked complete, full `task` gate green (all five REQs)
 
 ---
 
