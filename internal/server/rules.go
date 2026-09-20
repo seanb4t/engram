@@ -203,12 +203,20 @@ func (d *deps) listRules(ctx context.Context, c caller, a listRulesArgs) (out []
 	}
 	var over []string
 	for _, sc := range a.Scopes {
-		// Limit:0 = all; Ascending = oldest-first; Categories pins the rule kind.
+		// Limit:0 = all; Ascending = oldest-first; Categories pins the rule
+		// kind. Full is copied straight from a.Full (04-06): this is the ONE
+		// list caller outside the typed core (coreListRequest is never built
+		// here — 04-RESEARCH.md Pattern 6, step 4), so it is invisible to
+		// deps.listMemory's own Full wiring and must thread it itself, or a
+		// full=true rule read would silently regress to summary-shaped
+		// (no-content) records once the store's default fetch became
+		// summary-shaped (04-05).
 		ms, _, _, lerr := d.st.List(ctx, sc, c.Subj, store.ListOptions{
 			Limit:      0,
 			Ascending:  true,
 			Categories: []string{"rule"},
 			Tags:       a.Tags,
+			Full:       a.Full,
 		})
 		if lerr != nil {
 			return nil, "", lerr
