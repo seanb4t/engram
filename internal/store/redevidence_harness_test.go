@@ -135,6 +135,9 @@ var redEvidenceDirs = map[string]map[string]string{
 		"03-04-budget-cut-reported-exhausted.patch":       "TestScrollOrderedPageByteBudget",                    // reverts: a budget-cut page's Exhausted staying false, distinct from CutByBudget (REQ-list-contract-unchanged precondition)
 		"03-04-ordered-page-tie-exclusion-removed.patch":  "TestScrollOrderedPageTiesAcrossRPCBoundaries",       // reverts: excludeSeen's must_not has_id exclusion of already-emitted ids at the tie boundary (D-03)
 	},
+	".planning/phases/04-list-listscheduled-search-bounded-reads/red-evidence": {
+		"04-04-search-fetch-drops-caller-filter.patch": "TestSearchTwoPhaseBounded", // reverts: includeIDs re-wrapping the caller's own filter as a nested condition alongside the id-set inclusion (D-09)
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than

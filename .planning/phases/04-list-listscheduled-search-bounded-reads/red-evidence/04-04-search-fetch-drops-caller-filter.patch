@@ -1,0 +1,14 @@
+diff --git a/internal/store/searchfetch.go b/internal/store/searchfetch.go
+index 3aff279b..2d86f03b 100644
+--- a/internal/store/searchfetch.go
++++ b/internal/store/searchfetch.go
+@@ -62,9 +62,6 @@ func includeIDs(f *qdrant.Filter, ids []string) *qdrant.Filter {
+ 		pointIDs[i] = qdrant.NewID(id)
+ 	}
+ 	must := make([]*qdrant.Condition, 0, 2)
+-	if f != nil {
+-		must = append(must, qdrant.NewFilterAsCondition(f))
+-	}
+ 	must = append(must, qdrant.NewHasID(pointIDs...))
+ 	return &qdrant.Filter{Must: must}
+ }
