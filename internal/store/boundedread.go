@@ -171,6 +171,19 @@ const uncappedFieldsAllowance = 16 << 10
 // ever needs more than this small fixed allowance.
 const nearDuplicateIdentityRecordCeiling = 256
 
+// schemaVersionOnlyRecordCeiling is the per-record byte allowance for
+// schemaVersionOnlyView (D-04): a point carrying nothing but its id (never
+// part of the payload selector — Qdrant always returns it) and one small
+// integer schema_version field, plus point and protobuf map framing.
+// Deliberately NOT derived from RecordCaps, exactly like
+// keysRecordCeiling's own doc comment explains for its case — the selector
+// excludes every capped field, so there is nothing left to derive a ceiling
+// from. Smaller than or equal to keysRecordCeiling: a small integer is
+// cheaper to encode than an RFC3339 string. scrollAllPoints' own proto.Size-
+// driven batch-of-1 fallback (D-07) corrects this at runtime if a future
+// encoding ever needs more than this small fixed allowance.
+const schemaVersionOnlyRecordCeiling = 64
+
 // keysRecordCeiling is the per-record byte allowance for keysView (D-07): a
 // point carrying nothing but its id (a 36-byte UUID, returned unconditionally
 // as p.Id — never part of the payload selector) and one RFC3339 created_at
@@ -313,6 +326,20 @@ func nearDuplicateIdentityView() readView {
 	return readView{
 		selector:       qdrant.NewWithPayloadInclude("short_id", "scope"),
 		maxRecordBytes: nearDuplicateIdentityRecordCeiling,
+	}
+}
+
+// schemaVersionOnlyView is the one-field readView previewRevertWithSteps
+// (revert.go) uses (D-04): the revert preflight only ever reads
+// schema_version off each point, via versionOf — never any other payload
+// key. Unsafe for any caller decoding a whole record. Uses the shared
+// schemaVersionKey constant (store.go) rather than a string literal, so the
+// selector can never drift from the key versionOf reads. A package-level
+// function, not a method, since it depends on no Store state.
+func schemaVersionOnlyView() readView {
+	return readView{
+		selector:       qdrant.NewWithPayloadInclude(schemaVersionKey),
+		maxRecordBytes: schemaVersionOnlyRecordCeiling,
 	}
 }
 
