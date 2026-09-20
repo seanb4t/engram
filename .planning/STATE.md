@@ -5,16 +5,16 @@ milestone_name: Bounded Reads
 current_phase: 4
 current_phase_name: List, ListScheduled & Search Bounded Reads
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-09-20T07:45:41.388Z"
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-09-20T08:36:12.390Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 4 execution started
-state_head: 75d877b9a9139ceeb372ed9fa4597a9de627fe83
+state_head: 425cd9fc0a9c156b0074c8e79c33e4b503920d78
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 23
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (List, ListScheduled & Search Bounded Reads) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
 Last activity: 2026-09-20 — Phase 4 execution started
 
@@ -326,6 +326,8 @@ milestone needs in working memory.
 - [Phase 4]: Plan 04-03: D-07 executed - deep-offset walks its skipped prefix with a keys-only budgeted view (keysView, walkOffsetPrefix), resuming Store.List's page fetch from the same listCursor with no translation.
 - [Phase 4]: Plan 04-03: D-05 executed for ListScheduled - assembled from the same collectOrderedPages/scrollOrderedPage loop List's offset mode uses, always full-payload, filter built once and reused across every RPC.
 - [Phase 4]: Plan 04-03: collectOrderedPages narrowed to (items, err) after task lint's unparam flagged the dead next/exhausted returns once ListScheduled became a second real caller.
+- [Phase 04]: Plan 04-04: D-09 executed - two-phase search adopted for Store.Search/SearchReranked/SearchDiscovery only, never List; the caller holds ranking and the identical filter is re-applied on fetch. — List's TOCTOU/GetPoints-order concerns do not apply to search, since the fetch phase never reorders and always re-applies the same filter the query used.
+- [Phase 04]: Plan 04-04: SearchReranked forces Full=true unconditionally on its delegated Search call; SearchDiscovery's fetch always uses the full view (no discovery surface exposes a full flag). — The lexical reranker scores against content for every candidate and candidateK clamps the pool at 100, so the fetch view is fixed by an internal consumer, not the caller; no discovery wire contract has a projection knob to honor.
 
 ### Pending Todos
 
@@ -400,8 +402,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T07:45:41.360Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-09-20T08:36:12.360Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -552,6 +554,7 @@ Resume file: None
 | Phase 04 P01 | 22min | 2 tasks | 10 files |
 | Phase 04 P02 | 51min | 3 tasks | 13 files |
 | Phase 04 P03 | 40min | 2 tasks | 6 files |
+| Phase 04 P04 | 35min | 2 tasks | 5 files |
 
 ## Operator Next Steps
 
