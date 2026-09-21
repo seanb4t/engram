@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-18.01
 milestone_name: Bounded Reads
-current_phase: 7
+current_phase: 07
 current_phase_name: Bounded Provider Responses
 status: executing
-stopped_at: Phase 6 complete (verified, secured, Nyquist-validated)
-last_updated: "2026-09-21T01:58:46.897Z"
-last_activity: 2026-09-20
-last_activity_desc: Phase 6 complete — cross-spine partial results
-state_head: ba2211d82d8a159da6e5abbfee640b458007a85a
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-09-21T15:51:16.251Z"
+last_activity: 2026-09-21
+last_activity_desc: Phase 07 execution started
+state_head: 423b34b7eeed2b6837d313cfe8ef47b10480c937
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 37
-  completed_plans: 32
+  completed_plans: 33
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09-18.01 — Bounded Reads)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 7 — Bounded Provider Responses
+**Current focus:** Phase 07 — Bounded Provider Responses
 
 ## Current Position
 
-Phase: 7 — Bounded Provider Responses
-Plan: 0 of 2
-Status: Ready to plan
-Last activity: 2026-09-20 — Phase 6 complete — cross-spine partial results
+Phase: 07 (Bounded Provider Responses) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-09-21 — Phase 07 execution started
 
 ## Deferred Items
 
@@ -347,6 +347,9 @@ milestone needs in working memory.
 - [Phase 6]: 06-01: scopeCoverage{Scopes,Truncated,Unknown} value-returning helper (no error) replaces searchedScopes's error return; scopes_unknown lands at field 7 (ListMemoriesResponse) / field 4 (SearchMemoriesResponse)
 - [Phase 6]: 06-03: this phase's five red-evidence patches registered (53->58); highest-value direction first (the forbidden swallow-the-error fix), then the remaining four discard/absence/footer directions, each hand-verified apply->RED->revert before registration
 - [Phase 6]: 06-03: roadmap update-plan-progress "06" again matched a same-numbered row in a shipped milestone (v0.12.x "6. Rule Capture"), leaving the active milestone's own Phase 6 row untouched — reverted the wrong hunk and hand-filled the active milestone's three Phase 6 locations, following the exact cc18a31b/3d9a78ad precedent from Phase 5's close
+- [Phase 07]: Timer-closes-the-body mechanism (D-01) for a shared internal/httpdrain.Drain helper — a time.AfterFunc closing the response body unblocks an in-flight Read, verified against Go 1.27.1 net/http source, so no goroutine is needed to bound the time axis.
+- [Phase 07]: Drain defaults for embed's WithDrainBytes/WithDrainTimeout are set in New's struct literal BEFORE the options loop (deliberate divergence from WithMaxResponseBytes), so an explicit 0 is honored rather than swallowed (D-05, D-06).
+- [Phase 07]: WithTimeout(d<=0) on embed no longer means unbounded — it resolves to a configurable ceiling (WithMaxTimeout, default 10m), applied in New after all options run so option order is preserved (D-07, D-09, breaking documented behavior change).
 
 ### Pending Todos
 
@@ -402,6 +405,7 @@ Both prior entries were delivered and had simply never been closed out:
 - Pre-existing (predates 04-07) TestActiveMilestoneKeyLinksSatisfiable failure against 04-06-PLAN.md:62's key_links pattern "Full: req[.]Full" (gofmt-aligned struct literal never matched exactly one space). Out of scope for 04-07; documented in deferred-items.md and WINDOWS.md entry 11. 04-06's PLAN.md pattern needs correcting.
 - internal/store's TestRedEvidencePatchesAreLive hit Go's default 601s per-package timeout twice during plan 06-01's task gate (environmental: 54-patch sequential subprocess harness + heavy concurrent unrelated machine load, confirmed via a 20m-timeout diagnostic run passing cleanly at 685s). Zero internal/store files touched by 06-01. See .planning/phases/06-cross-spine-partial-results/deferred-items.md and WINDOWS.md entry 13.
 - internal/store's TestRedEvidencePatchesAreLive/full package now needs materially more than Go's default 601s per-package timeout at 58 registered patches; bare `task` timed out at 630s during 06-03's close, and a follow-up 20m diagnostic also timed out (1210s) before a 60m diagnostic hit a transient Docker/testcontainer "connection refused" (environmental, not a code defect). This plan's own <verify> steps (explicit -timeout 180m) confirmed 58/58 REDs clean and ok twice. See WINDOWS.md entry 13 and deferred-items.md (opened by 06-01).
+- task (full repo gate) fails on internal/keylinks.TestNoEscapedPatternsRepoWide against .planning/phases/07-bounded-provider-responses/07-02-PLAN.md:53 (pre-existing since 2a15f189, before this plan began; outside this plan's file scope). Logged to deferred-items.md.
 
 ### Quick Tasks Completed
 
@@ -424,8 +428,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-21T01:58:46.791Z
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-09-21T15:51:03.733Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -588,6 +592,7 @@ Resume file: None
 | Phase 05 P05 | 51min | 2 tasks | 5 files |
 | Phase 06 P01 | 56min | 3 tasks | 9 files |
 | Phase 06 P03 | 140min | 3 tasks | 7 files |
+| Phase 07 P01 | 29min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 

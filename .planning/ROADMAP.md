@@ -575,11 +575,11 @@ Plans:
 1. The embed and summarize clients bound the post-response body drain by bytes and by time, independent of `http.Client.Timeout`, proven under `WithTimeout(0)` with both a large-but-fast body and a slow-trickle body.
 2. The already-shipped bounded error-body read is confirmed pinned by `embed_test.go`/`summarize_test.go` regression tests (adding the provider-snippet assertion if missing), and GitHub #347 is closed citing them.
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 
-- [ ] 07-01-PLAN.md — Shared bounded drain (`internal/httpdrain`), both embed drain sites, both regression shapes, and the embed timeout ceiling
+- [x] 07-01-PLAN.md — Shared bounded drain (`internal/httpdrain`), both embed drain sites, both regression shapes, and the embed timeout ceiling
 - [ ] 07-02-PLAN.md — Six registry keys, struct fields and validation that refuses an unbounded drain bound or timeout ceiling
 - [ ] 07-03-PLAN.md — Summarize lane: named error-body bound, both drain sites, both regression shapes, and the summarize timeout ceiling
 - [ ] 07-04-PLAN.md — Config-to-client wiring with a source gate, plus the eight documented variables and the upgrade note
@@ -622,7 +622,7 @@ Plans:
 | v0.8.x Phase 4: Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |
 | v0.8.x Phase 5: Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | v0.8.x Phase 6: Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
-| 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete   | 2026-08-20 |
+| 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | In Progress|  |
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete    | 2026-08-21 |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete | 2026-07-10 (PR #336) |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
