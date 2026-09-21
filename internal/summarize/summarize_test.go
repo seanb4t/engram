@@ -411,3 +411,142 @@ func TestSummarizeDrainOptionsHonorZero(t *testing.T) {
 		}
 	})
 }
+
+// TestSummarizeTimeoutCeiling proves D-07/D-09: a non-positive request
+// timeout resolves to a configurable ceiling rather than to "no timeout",
+// an explicit positive timeout is honored uncapped up to that ceiling, and
+// the clamp is applied in New AFTER every option has run so option
+// ordering between WithTimeout and WithMaxTimeout is preserved either way.
+// Direct twin of embed.TestEmbedTimeoutCeiling.
+func TestSummarizeTimeoutCeiling(t *testing.T) {
+	cases := []struct {
+		name string
+		opts []Option
+		want time.Duration
+	}{
+		{
+			name: "no option supplied resolves to defaultTimeout",
+			opts: nil,
+			want: defaultTimeout,
+		},
+		{
+			name: "WithTimeout(0) resolves to the default ceiling",
+			opts: []Option{WithTimeout(0)},
+			want: defaultMaxTimeout,
+		},
+		{
+			name: "negative duration resolves to the default ceiling",
+			opts: []Option{WithTimeout(-5 * time.Second)},
+			want: defaultMaxTimeout,
+		},
+		{
+			name: "positive duration below the ceiling is honored exactly",
+			opts: []Option{WithTimeout(5 * time.Minute)},
+			want: 5 * time.Minute,
+		},
+		{
+			name: "positive duration above the default ceiling is clamped",
+			opts: []Option{WithTimeout(20 * time.Minute)},
+			want: defaultMaxTimeout,
+		},
+		{
+			name: "WithMaxTimeout changes where the clamp lands",
+			opts: []Option{WithMaxTimeout(1 * time.Minute), WithTimeout(0)},
+			want: 1 * time.Minute,
+		},
+		{
+			// Ordering: WithMaxTimeout supplied AFTER WithTimeout must still
+			// govern the clamp — the clamp runs once, in New, after every
+			// option has already executed, never inside WithTimeout itself.
+			name: "WithMaxTimeout after WithTimeout still governs (ordering)",
+			opts: []Option{WithTimeout(0), WithMaxTimeout(2 * time.Minute)},
+			want: 2 * time.Minute,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := New("http://x", "k", "m", 280, tc.opts...)
+			if c.http.Timeout != tc.want {
+				t.Fatalf("c.http.Timeout = %v, want %v", c.http.Timeout, tc.want)
+			}
+		})
+	}
+}
+
+// TestSummarizeDrainBoundedByTimeUnderZeroRequestTimeout proves the time
+// axis of the shared httpdrain.Drain call on the SUCCESS site, under the
+// exact scenario this phase exists to close: WithTimeout(0), no
+// per-request deadline at all. This exercises the success path rather than
+// the error path deliberately — the bounded error read is itself a
+// blocking read that is not time-bounded, so a trickled error body would be
+// dominated by that read and would prove nothing about the drain.
+//
+// The handler returns 200 with a complete, valid chat-completions JSON body
+// in its prelude — the decoder returns as soon as it has a whole value —
+// then trickles a BOUNDED ~3 seconds of trailing padding
+// (testhttp.TrickleHandler always finishes on its own). With a small
+// WithDrainTimeout and a generous WithDrainBytes (so the byte axis cannot
+// be what stops it), the call must return in a small fraction of that 3s
+// cost. Direct twin of embed.TestEmbedDrainBoundedByTimeUnderZeroRequestTimeout.
+func TestSummarizeDrainBoundedByTimeUnderZeroRequestTimeout(t *testing.T) {
+	prelude := []byte(`{"choices":[{"message":{"content":"a one-line summary"}}]}`)
+	// Bounded by construction: 30 chunks * 100ms pause = ~3s total.
+	handler := testhttp.TrickleHandler(prelude, 1024, 30, 100*time.Millisecond)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	c := New(srv.URL, "k", "m", 280,
+		WithTimeout(0), // no request deadline at all — the exact scenario this phase closes
+		WithDrainBytes(1<<20),
+		WithDrainTimeout(50*time.Millisecond),
+	)
+
+	start := time.Now()
+	out, err := c.Summarize(context.Background(), "x")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("Summarize: %v", err)
+	}
+	if out != "a one-line summary" {
+		t.Fatalf("unexpected summary: %q", out)
+	}
+	// A threshold well under the ~3s trickle budget, so this is about the
+	// bound, not about machine speed.
+	if elapsed > time.Second {
+		t.Fatalf("Summarize took %v; want far below the ~3s trickle cost — the drain's time bound should have abandoned the trailing padding", elapsed)
+	}
+}
+
+// TestSummarizeNon200ErrorBodyTruncated closes D-10's gap: the existing
+// TestSummarizeNon200IncludesStatusAndBody only asserts the provider's
+// snippet APPEARS, never that it is TRUNCATED. Serves a 503 far larger than
+// maxErrorBodyBytes with a distinctive marker at the front, and asserts the
+// marker survives (the provider's own diagnostic text is not lost) AND
+// that the surfaced error is bounded near maxErrorBodyBytes, not near the
+// served body length. Direct twin of embed.TestEmbedNon2xxErrorBodyTruncated.
+func TestSummarizeNon200ErrorBodyTruncated(t *testing.T) {
+	const marker = "chat-gateway-overloaded-marker"
+	body := marker + strings.Repeat("x", maxErrorBodyBytes*3)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "k", "m", 280).Summarize(context.Background(), "x")
+	if err == nil {
+		t.Fatal("want error on 503, got nil")
+	}
+	if !strings.Contains(err.Error(), marker) {
+		t.Fatalf("error missing the provider's own marker text: %v", err)
+	}
+	// Bounded near maxErrorBodyBytes (plus the short "chat completions:
+	// status 503: " prefix), far short of the served body length
+	// (maxErrorBodyBytes*3 + len(marker)).
+	if len(err.Error()) > maxErrorBodyBytes*2 {
+		t.Fatalf("error length = %d, want bounded near maxErrorBodyBytes (%d), not near the served body length", len(err.Error()), maxErrorBodyBytes)
+	}
+}
