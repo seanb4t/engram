@@ -38,7 +38,7 @@ covered_files:
   - "internal/summarize/summarize_test.go"
   - "internal/testhttp/reuse.go"
   - "internal/testhttp/trickle.go"
-covered_digest: "v1:sha256:a474ee8e6b3f5a0d394198f30d52f2b7358ab324da8aaa5aace0688d5f13ee3a"
+covered_digest: "v1:sha256:406b5bacaf2b6903bbe97e901c142d23c170311f94d301b0010e720b4b8bf5f4"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -187,5 +187,14 @@ returns exactly `.planning/ROADMAP.md`, `.planning/STATE.md` and
 Every one of the 13 must-haves is therefore untouched.
 
 - Previous digest: `v1:sha256:63a4959d…`
-- Current digest: `v1:sha256:a474ee8e…`
+- Current digest: `v1:sha256:406b5bac…`
 - Covered files: 34, all present and readable
+
+Note for the next person hitting this: `gsd-tools query verification.fingerprint
+<files...>` returned a digest that did NOT satisfy the status check
+(`a474ee8e…` vs the required `406b5bac…`) — the CLI verb and the staleness
+comparison canonicalize the file list differently. The authoritative value is
+whatever `computeCoveredDigest(findProjectRoot(phaseDir), <the frontmatter's own
+covered_files array>)` returns, from `gsd-core/bin/lib/verification.cjs`. Compute
+it that way and confirm with `verification.status --pick status` before
+committing; do not trust the CLI verb's output for this repair.
