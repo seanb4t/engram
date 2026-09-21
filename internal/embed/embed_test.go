@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -482,6 +483,85 @@ func TestEmbedNon2xxDrainsForReuse(t *testing.T) {
 	if tracker.Reused() < 1 {
 		t.Fatalf("want at least one reused connection, got Reused()=%d Total()=%d", tracker.Reused(), tracker.Total())
 	}
+}
+
+// TestEmbedDrainBoundedByBytes proves the byte axis of the shared
+// httpdrain.Drain call changes observable behavior at the non-2xx site: a
+// body left larger than the configured drain bound after the bounded error
+// read leaves the connection unreusable, while a body whose remainder fits
+// inside the bound is drained fully and the connection IS reused.
+//
+// The "inside the bound" case is the control: without it, a client that
+// drained nothing at all (or skipped the drain entirely) would still
+// satisfy the "over the bound" assertion, and this test would prove nothing
+// about the drain actually running.
+func TestEmbedDrainBoundedByBytes(t *testing.T) {
+	const drainBound = 100
+
+	t.Run("over the bound: connection not reused", func(t *testing.T) {
+		// The remainder after the bounded error read (maxErrorBodyBytes,
+		// 4096) is far larger than drainBound, so the drain stops mid-body
+		// and the connection cannot go back to the pool.
+		//
+		// The body must also exceed net/http's OWN post-close safety-net
+		// drain (maxPostCloseReadBytes, 256 KiB — transport.go): on Close,
+		// the Transport itself tries to finish draining up to that many
+		// bytes within 50ms whenever the declared Content-Length is <= that
+		// bound, which would silently make the connection reusable
+		// regardless of what THIS package's drain did. An explicit
+		// Content-Length above 256 KiB disables that safety net so this
+		// assertion is actually exercising httpdrain's bound, not net/http's.
+		bigBody := strings.Repeat("x", 300000)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Length", strconv.Itoa(len(bigBody)))
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, bigBody)
+		}))
+		defer srv.Close()
+
+		tracker := &testhttp.ReuseTracker{}
+		c := New(srv.URL, "k", "m", WithDrainBytes(drainBound), WithDrainTimeout(5*time.Second))
+		ctx := tracker.Context(context.Background())
+
+		if _, err := c.Embed(ctx, "x"); err == nil {
+			t.Fatal("want error on 503, got nil")
+		}
+		if _, err := c.Embed(ctx, "y"); err == nil {
+			t.Fatal("want error on 503, got nil")
+		}
+
+		if tracker.Reused() != 0 {
+			t.Fatalf("want zero reused connections (the byte bound should have stopped the drain mid-body), got Reused()=%d Total()=%d", tracker.Reused(), tracker.Total())
+		}
+	})
+
+	t.Run("inside the bound: connection reused (control)", func(t *testing.T) {
+		// The remainder after the bounded error read still exists (the body
+		// exceeds maxErrorBodyBytes, so the bounded read alone doesn't
+		// consume it) but it fits inside drainBound, so the drain finishes
+		// it and the connection is reused.
+		smallBody := strings.Repeat("x", maxErrorBodyBytes+50)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, smallBody)
+		}))
+		defer srv.Close()
+
+		tracker := &testhttp.ReuseTracker{}
+		c := New(srv.URL, "k", "m", WithDrainBytes(drainBound), WithDrainTimeout(5*time.Second))
+		ctx := tracker.Context(context.Background())
+
+		if _, err := c.Embed(ctx, "x"); err == nil {
+			t.Fatal("want error on 503, got nil")
+		}
+		if _, err := c.Embed(ctx, "y"); err == nil {
+			t.Fatal("want error on 503, got nil")
+		}
+
+		if tracker.Reused() < 1 {
+			t.Fatalf("want at least one reused connection, got Reused()=%d Total()=%d", tracker.Reused(), tracker.Total())
+		}
+	})
 }
 
 // TestEmbedSuccessDecodeBounded proves the success-path decode is bounded:

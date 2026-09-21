@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/seanb4t/engram/internal/config"
+	"github.com/seanb4t/engram/internal/httpdrain"
 	"github.com/seanb4t/engram/internal/openaiurl"
 	"github.com/seanb4t/engram/internal/telemetry"
 	"go.opentelemetry.io/otel"
@@ -43,6 +44,17 @@ const maxErrorBodyBytes = 4096
 // built without that wiring.
 const defaultMaxResponseBytes = 1 << 20
 
+// defaultDrainBytes and defaultDrainTimeout bound the shared httpdrain.Drain
+// call at both post-response sites (D-01, D-02, D-04) when WithDrainBytes /
+// WithDrainTimeout are not supplied. Plan 07-04 wires the operator-facing
+// ENGRAM_EMBED_DRAIN_BYTES / ENGRAM_EMBED_DRAIN_TIMEOUT equivalents; these
+// are the in-package fallbacks for a Client built without that wiring,
+// exactly as defaultMaxResponseBytes is above.
+const (
+	defaultDrainBytes   = 256 << 10 // 256 KiB
+	defaultDrainTimeout = 2 * time.Second
+)
+
 // Client embeds text via an OpenAI-compatible embeddings API.
 type Client struct {
 	baseURL string
@@ -68,6 +80,14 @@ type Client struct {
 	// WithMaxResponseBytes; falls back to defaultMaxResponseBytes in New when
 	// left at zero.
 	maxResponseBytes int64
+	// drainBytes and drainTimeout bound the shared httpdrain.Drain call at
+	// both post-response sites (D-01, D-02). UNLIKE maxResponseBytes above,
+	// their defaults are set in New's struct literal BEFORE options run, so
+	// an explicit WithDrainBytes(0)/WithDrainTimeout(0) is honored as 0
+	// rather than swallowed — see WithDrainBytes's doc comment for why (D-05,
+	// D-06).
+	drainBytes   int64
+	drainTimeout time.Duration
 }
 
 // Option customizes a Client.
@@ -130,9 +150,42 @@ func WithMaxResponseBytes(n int64) Option {
 	}
 }
 
+// WithDrainBytes bounds the byte axis of the shared post-response drain
+// (httpdrain.Drain) at both call sites. UNLIKE WithMaxResponseBytes above, 0
+// is honored, not swallowed: New sets defaultDrainBytes in the struct
+// literal BEFORE options run, so there is no post-loop fallback to
+// re-silence an explicit 0. 0 is a deliberate, safe setting — close the body
+// at once and burn a TCP handshake next time rather than ever risk a stall —
+// and there is no way to ask for an unbounded drain (D-05, D-06).
+func WithDrainBytes(n int64) Option {
+	return func(c *Client) { c.drainBytes = n }
+}
+
+// WithDrainTimeout bounds the time axis of the shared post-response drain
+// (httpdrain.Drain) at both call sites. UNLIKE WithMaxResponseBytes above, 0
+// is honored, not swallowed: New sets defaultDrainTimeout in the struct
+// literal BEFORE options run, so there is no post-loop fallback to
+// re-silence an explicit 0. 0 is a deliberate, safe setting — abandon the
+// body immediately rather than ever risk a stall — and there is no way to
+// ask for an unbounded drain (D-05, D-06).
+func WithDrainTimeout(d time.Duration) Option {
+	return func(c *Client) { c.drainTimeout = d }
+}
+
 // New returns an embedding Client for the given base URL, API key, and model.
 func New(baseURL, apiKey, model string, opts ...Option) *Client {
-	c := &Client{baseURL: baseURL, apiKey: apiKey, model: model, http: &http.Client{Timeout: defaultEmbedTimeout}}
+	c := &Client{
+		baseURL: baseURL, apiKey: apiKey, model: model,
+		http: &http.Client{Timeout: defaultEmbedTimeout},
+		// Drain defaults are set HERE, in the struct literal, before the
+		// options loop runs below — the deliberate divergence from
+		// maxResponseBytes's post-loop fallback a few lines down. This is
+		// what lets WithDrainBytes(0)/WithDrainTimeout(0) be honored as 0
+		// instead of silently overwritten by a default applied afterward
+		// (D-05, D-06).
+		drainBytes:   defaultDrainBytes,
+		drainTimeout: defaultDrainTimeout,
+	}
 	for _, o := range opts {
 		o(c)
 	}
@@ -145,6 +198,9 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 	if c.maxResponseBytes <= 0 {
 		c.maxResponseBytes = defaultMaxResponseBytes
 	}
+	// No post-loop fallback for drainBytes/drainTimeout here — see the
+	// struct-literal comment above and WithDrainBytes/WithDrainTimeout's own
+	// doc comments (D-05, D-06).
 	return c
 }
 
@@ -292,7 +348,7 @@ func (c *Client) embed(ctx context.Context, text string, params map[string]any, 
 		// so a reflecting provider could put one caller's content into an
 		// operator log, bounded here at maxErrorBodyBytes (T-04-05, accepted).
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
-		_, _ = io.Copy(io.Discard, resp.Body) // drain remainder so the connection is reusable (D-14)
+		httpdrain.Drain(resp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time (D-01, D-02)
 		return nil, fmt.Errorf("embeddings: status %d: %s", resp.StatusCode, strings.TrimSpace(string(errBody)))
 	}
 	var out embedResp
@@ -306,7 +362,7 @@ func (c *Client) embed(ctx context.Context, text string, params map[string]any, 
 	if err := json.NewDecoder(io.LimitReader(resp.Body, c.maxResponseBytes)).Decode(&out); err != nil {
 		return nil, err
 	}
-	_, _ = io.Copy(io.Discard, resp.Body) // drain remainder so the connection is reusable (D-14)
+	httpdrain.Drain(resp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time (D-01, D-02)
 	if len(out.Data) == 0 {
 		return nil, fmt.Errorf("embeddings: empty data")
 	}
