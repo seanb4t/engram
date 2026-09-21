@@ -575,12 +575,12 @@ Plans:
 1. The embed and summarize clients bound the post-response body drain by bytes and by time, independent of `http.Client.Timeout`, proven under `WithTimeout(0)` with both a large-but-fast body and a slow-trickle body.
 2. The already-shipped bounded error-body read is confirmed pinned by `embed_test.go`/`summarize_test.go` regression tests (adding the provider-snippet assertion if missing), and GitHub #347 is closed citing them.
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 
 - [x] 07-01-PLAN.md — Shared bounded drain (`internal/httpdrain`), both embed drain sites, both regression shapes, and the embed timeout ceiling
-- [ ] 07-02-PLAN.md — Six registry keys, struct fields and validation that refuses an unbounded drain bound or timeout ceiling
+- [x] 07-02-PLAN.md — Six registry keys, struct fields and validation that refuses an unbounded drain bound or timeout ceiling
 - [ ] 07-03-PLAN.md — Summarize lane: named error-body bound, both drain sites, both regression shapes, and the summarize timeout ceiling
 - [ ] 07-04-PLAN.md — Config-to-client wiring with a source gate, plus the eight documented variables and the upgrade note
 - [ ] 07-05-PLAN.md — Five red-evidence patches registered, both requirements ticked, GitHub #347 closed on cited evidence
@@ -680,7 +680,7 @@ Plans:
 | 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 8/8 | Complete | 2026-09-20 |
 | 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 6/6 | Complete | 2026-09-20 |
 | 6. Cross-Spine Partial Results | 2026-09-18.01 | 3/3 | Complete | 2026-09-20 |
-| 7. Bounded Provider Responses | 2026-09-18.01 | 1/5 | In Progress | - |
+| 7. Bounded Provider Responses | 2026-09-18.01 | 2/5 | In Progress | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
