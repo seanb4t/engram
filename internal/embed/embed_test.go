@@ -564,6 +564,72 @@ func TestEmbedDrainBoundedByBytes(t *testing.T) {
 	})
 }
 
+// TestEmbedDrainBoundedByTimeUnderZeroRequestTimeout proves the time axis of
+// the shared httpdrain.Drain call on the SUCCESS site, under the exact
+// scenario this phase exists to close: WithTimeout(0), no per-request
+// deadline at all. This exercises the success path rather than the error
+// path deliberately — the bounded error read is itself a blocking read that
+// is not time-bounded, so a trickled error body would be dominated by that
+// read and would prove nothing about the drain.
+//
+// The handler returns 200 with a complete, valid embeddings JSON body in
+// its prelude — the decoder returns as soon as it has a whole JSON value —
+// then trickles a BOUNDED ~3 seconds of trailing padding
+// (testhttp.TrickleHandler always finishes on its own). With a small
+// WithDrainTimeout and a generous WithDrainBytes (so the byte axis cannot be
+// what stops it), the call must return in a small fraction of that 3s cost.
+func TestEmbedDrainBoundedByTimeUnderZeroRequestTimeout(t *testing.T) {
+	prelude := []byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`)
+	// Bounded by construction: 30 chunks * 100ms pause = ~3s total.
+	handler := testhttp.TrickleHandler(prelude, 1024, 30, 100*time.Millisecond)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	c := New(srv.URL, "k", "m",
+		WithTimeout(0), // no request deadline at all — the exact scenario this phase closes
+		WithDrainBytes(1<<20),
+		WithDrainTimeout(50*time.Millisecond),
+	)
+
+	start := time.Now()
+	vec, err := c.Embed(context.Background(), "x")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("Embed: %v", err)
+	}
+	if len(vec) != 3 || vec[0] != 0.1 {
+		t.Fatalf("unexpected vector: %v", vec)
+	}
+	// A threshold well under the ~3s trickle budget, so this is about the
+	// bound, not about machine speed.
+	if elapsed > time.Second {
+		t.Fatalf("Embed took %v; want far below the ~3s trickle cost — the drain's time bound should have abandoned the trailing padding", elapsed)
+	}
+}
+
+// TestEmbedDrainOptionsHonorZero pins D-06: WithDrainBytes(0) and
+// WithDrainTimeout(0) must be honored as 0 rather than replaced by the
+// package default, because New sets the defaults in its struct literal
+// BEFORE the options loop runs. This fails immediately if a future
+// contributor "fixes" the deliberate divergence from WithMaxResponseBytes by
+// copying that option's post-loop fallback.
+func TestEmbedDrainOptionsHonorZero(t *testing.T) {
+	t.Run("WithDrainBytes(0)", func(t *testing.T) {
+		c := New("http://x", "k", "m", WithDrainBytes(0))
+		if c.drainBytes != 0 {
+			t.Fatalf("c.drainBytes = %d, want 0 — WithDrainBytes(0) must be honored, not swallowed (D-06)", c.drainBytes)
+		}
+	})
+
+	t.Run("WithDrainTimeout(0)", func(t *testing.T) {
+		c := New("http://x", "k", "m", WithDrainTimeout(0))
+		if c.drainTimeout != 0 {
+			t.Fatalf("c.drainTimeout = %v, want 0 — WithDrainTimeout(0) must be honored, not swallowed (D-06)", c.drainTimeout)
+		}
+	})
+}
+
 // TestEmbedSuccessDecodeBounded proves the success-path decode is bounded:
 // a response padded past a deliberately tiny WithMaxResponseBytes is
 // rejected rather than read unbounded. Paired with a generous-bound control
