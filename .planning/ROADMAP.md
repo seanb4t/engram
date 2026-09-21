@@ -666,11 +666,11 @@ Plans:
 | 3. Plugin-First Delivery | 2026-09-13.01 | 7/7 | Complete | 2026-09-15 |
 | 4. Drift Detection (Read-Only) | 2026-09-13.01 | 5/5 | Complete | 2026-09-15 |
 | 5. Apply-Time Preserve Gate & Documentation | 2026-09-13.01 | 4/4 | Complete | 2026-09-16 |
-| 1. Test Harness & Fixture Helper | 2026-09-18.01 | 2/2 | Complete | 2026-09-18 |
+| 1. Test Harness & Fixture Helper | 2026-09-18.01 | 5/5 | Complete | 2026-09-18 |
 | 2. Error Classification & ResourceExhausted Mapping | 2026-09-18.01 | 4/4 | Complete | 2026-09-19 |
-| 3. Shared Bounded-Read Mechanism & Content Cap Decision | 2026-09-18.01 | 2/2 | Complete | 2026-09-19 |
-| 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 5/5 | Complete | 2026-09-20 |
-| 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 4/4 | Complete | 2026-09-20 |
+| 3. Shared Bounded-Read Mechanism & Content Cap Decision | 2026-09-18.01 | 6/6 | Complete | 2026-09-19 |
+| 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 8/8 | Complete | 2026-09-20 |
+| 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 6/6 | Complete | 2026-09-20 |
 | 6. Cross-Spine Partial Results | 2026-09-18.01 | 3/3 | Complete | 2026-09-20 |
 | 7. Bounded Provider Responses | 2026-09-18.01 | 0/2 | Not started | - |
 
