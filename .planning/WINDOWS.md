@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 6
+open_count: 7
 waived_count: 0
 fixed_count: 7
-total_count: 13
-last_updated: 2026-09-20T22:46:26.903Z
+total_count: 14
+last_updated: 2026-09-21T02:31:58.567Z
 ---
 
 # Broken Windows Ledger
@@ -28,6 +28,7 @@ last_updated: 2026-09-20T22:46:26.903Z
 | 11 | 04 | deviation | .planning/phases/04-list-listscheduled-search-bounded-reads/04-06-PLAN.md | 62 | Pre-existing TestActiveMilestoneKeyLinksSatisfiable failure: key_link pattern 'Full: req[.]Full' unsatisfiable (gofmt-aligned struct literal); predates 04-07, out of scope per cross-plan note | fixed |  | 2026-09-20T10:32:38.041Z | 2026-09-20T11:20:50.104Z |
 | 12 | 05 | unmet-truth | internal/keylinks |  | TestActiveMilestoneKeyLinksSatisfiable fails on 03-02-PLAN.md's stale key_links pattern (unbudgetedView removed from revert.go by an earlier Phase 5 plan); pre-existing, out of scope for 05-05 | open |  | 2026-09-20T19:05:27.260Z |  |
 | 13 | 06 | deviation | internal/store/redevidence_harness_test.go |  | TestRedEvidencePatchesAreLive hit Go's default 601s per-package timeout twice during plan 06-01's task gate (environmental: 54-patch sequential subprocess harness + heavy concurrent unrelated machine load; zero internal/store files touched by 06-01) | open |  | 2026-09-20T22:46:26.903Z |  |
+| 14 | 06 | deviation | internal/store |  | Local full-package internal/store run is not reliably green on a loaded dev machine: at load ~290 the Qdrant TESTCONTAINER died mid-run with 'connection refused / code = Unavailable' (TestSummarizeMissingBoundedOverGRPCLimit), the exact symptom of #497 — yet it passes in 6.35s in isolation, so it is environmental, not a code defect. Distinct from #497/#498, which fixed the CI path (one shared services: container replacing four testcontainers on a 2-vCPU runner); the local testcontainer path was never covered by that fix, and this milestone's fixtures made the run long enough (669s) to expose it. Also exceeds Go's 600s default package timeout locally; needs -timeout 180m. | open |  | 2026-09-21T02:31:58.567Z |  |
 
 ````json
 [
@@ -188,6 +189,19 @@ last_updated: 2026-09-20T22:46:26.903Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-20T22:46:26.903Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 14,
+    "kind": "deviation",
+    "phase": "06",
+    "file": "internal/store",
+    "line": null,
+    "description": "Local full-package internal/store run is not reliably green on a loaded dev machine: at load ~290 the Qdrant TESTCONTAINER died mid-run with 'connection refused / code = Unavailable' (TestSummarizeMissingBoundedOverGRPCLimit), the exact symptom of #497 — yet it passes in 6.35s in isolation, so it is environmental, not a code defect. Distinct from #497/#498, which fixed the CI path (one shared services: container replacing four testcontainers on a 2-vCPU runner); the local testcontainer path was never covered by that fix, and this milestone's fixtures made the run long enough (669s) to expose it. Also exceeds Go's 600s default package timeout locally; needs -timeout 180m.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-21T02:31:58.567Z",
     "resolved_at": null,
     "milestone": null
   }
