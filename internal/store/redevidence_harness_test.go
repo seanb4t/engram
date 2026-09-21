@@ -167,6 +167,9 @@ var redEvidenceDirs = map[string]map[string]string{
 		"05-04-reindex-final-partial-page-dropped.patch":        "TestReindexBoundedOverGRPCLimit",                  // reverts: the trailing flush of the accumulator's final partial page, silently skipping a scope's last records (D-01)
 		"05-05-backstop-appended-after-caller-options.patch":    "TestQdrantRecvLimitBackstopPrecedesCallerOptions", // reverts: qdrantDialOptions appending the productionRecvLimit backstop BEFORE caller options, so a caller's own receive limit still wins (D-05, D-06)
 	},
+	".planning/phases/06-cross-spine-partial-results/red-evidence": {
+		"06-01-helper-swallows-listscopes-error.patch": "TestCrossSpineCoverageThreeStates", // reverts: searchedScopes' failure path degrading into the scopeCoverage zero value instead of {Unknown: true} — the exact fix the roadmap and 06-CONTEXT forbid by name (D-01, D-02, D-03)
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than

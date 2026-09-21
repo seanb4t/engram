@@ -1,0 +1,13 @@
+diff --git a/internal/server/tools.go b/internal/server/tools.go
+index 6255d2f6..ab3f0c9a 100644
+--- a/internal/server/tools.go
++++ b/internal/server/tools.go
+@@ -1849,7 +1849,7 @@ func (d *deps) searchedScopes(ctx context.Context, c caller, crossSpine bool) sc
+ 	counts, more, err := d.st.ListScopes(ctx, c.Subj)
+ 	if err != nil {
+ 		slog.ErrorContext(ctx, "searchedScopes: ListScopes failed", "error", err)
+-		return scopeCoverage{Unknown: true}
++		return scopeCoverage{}
+ 	}
+ 	scopes := make([]string, len(counts))
+ 	for i, sc := range counts {
