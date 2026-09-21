@@ -37,6 +37,7 @@ one predictable, migration-safe contract.
 | branch on exit status, a Connect error code, or MCP error text for `list`/`search` (or an operator command reading Qdrant directly) | §14 |
 | call `ListMemories`/`engram list` with `limit: 0` (or `--limit` omitted) expecting every matching record back in one response, or rely on an over-1000 `limit`/`k` being clamped rather than rejected | §16 |
 | treat a cross-spine `search`/`list` failure as "no results", or branch on its error to detect a coverage-enumeration problem | §17 |
+| rely on `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` meaning no request deadline at all | §18 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -466,6 +467,29 @@ three-state shape.
 branch on `scopes_unknown`/`GetScopesUnknown()` instead, which is the only
 place this state is now signaled; the call's exit status/error path no
 longer distinguishes it.
+
+### 18. `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` no longer mean unbounded
+
+Before this release, setting either provider request-timeout variable to `0`
+meant no request deadline at all — the embed or summarize HTTP call could
+run indefinitely. **That is no longer possible.** A non-positive value on
+either variable now resolves to a configurable ceiling instead:
+`ENGRAM_EMBED_MAX_TIMEOUT` and `ENGRAM_SUMMARY_MAX_TIMEOUT`, both defaulting
+to `10m`. An explicit positive duration on `ENGRAM_EMBED_TIMEOUT` /
+`ENGRAM_SUMMARY_TIMEOUT` is still honored **uncapped**, however large —
+this change only closes the specific escape hatch that meant "forever."
+See the newly documented rows in the [configuration guide](/guides/configure/#embedder)
+(`ENGRAM_EMBED_MAX_TIMEOUT`) and [Auto-summary](/guides/configure/#auto-summary)
+(`ENGRAM_SUMMARY_MAX_TIMEOUT`) section for the full knob reference, including
+the four new post-response drain-bound variables shipped alongside this
+change.
+
+**Who should act:** anyone who set `ENGRAM_EMBED_TIMEOUT=0` or
+`ENGRAM_SUMMARY_TIMEOUT=0` expecting no deadline at all — for example, to
+accommodate a very slow local/self-hosted model. Set an explicit positive
+duration instead (e.g. `ENGRAM_EMBED_TIMEOUT=30m`), raising
+`ENGRAM_EMBED_MAX_TIMEOUT`/`ENGRAM_SUMMARY_MAX_TIMEOUT` above the default
+`10m` first if the request genuinely needs longer than that to resolve to.
 
 ---
 
