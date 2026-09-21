@@ -575,7 +575,15 @@ Plans:
 1. The embed and summarize clients bound the post-response body drain by bytes and by time, independent of `http.Client.Timeout`, proven under `WithTimeout(0)` with both a large-but-fast body and a slow-trickle body.
 2. The already-shipped bounded error-body read is confirmed pinned by `embed_test.go`/`summarize_test.go` regression tests (adding the provider-snippet assertion if missing), and GitHub #347 is closed citing them.
 
-**Plans:** 0 plans
+**Plans:** 5 plans
+
+Plans:
+
+- [ ] 07-01-PLAN.md — Shared bounded drain (`internal/httpdrain`), both embed drain sites, both regression shapes, and the embed timeout ceiling
+- [ ] 07-02-PLAN.md — Six registry keys, struct fields and validation that refuses an unbounded drain bound or timeout ceiling
+- [ ] 07-03-PLAN.md — Summarize lane: named error-body bound, both drain sites, both regression shapes, and the summarize timeout ceiling
+- [ ] 07-04-PLAN.md — Config-to-client wiring with a source gate, plus the eight documented variables and the upgrade note
+- [ ] 07-05-PLAN.md — Five red-evidence patches registered, both requirements ticked, GitHub #347 closed on cited evidence
 
 ## Progress
 
