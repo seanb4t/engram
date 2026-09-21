@@ -1,0 +1,13 @@
+diff --git a/internal/summarize/summarize.go b/internal/summarize/summarize.go
+index 1e1721cd..17dcbae3 100644
+--- a/internal/summarize/summarize.go
++++ b/internal/summarize/summarize.go
+@@ -296,7 +296,7 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
+ 	}
+ 	defer func() { _ = resp.Body.Close() }()
+ 	if resp.StatusCode != http.StatusOK {
+-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
++		body, _ := io.ReadAll(resp.Body)
+ 		httpdrain.Drain(resp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time (D-01, D-02)
+ 		return "", fmt.Errorf("chat completions: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+ 	}

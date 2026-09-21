@@ -175,7 +175,11 @@ var redEvidenceDirs = map[string]map[string]string{
 		"06-02-footer-drops-unknown-form.patch":            "TestClientListCoverageUnknownFooter",        // reverts: renderCoverageFooter's unknown branch, falling through to the count-bearing form and printing a count of zero (D-05)
 	},
 	".planning/phases/07-bounded-provider-responses/red-evidence": {
-		"07-01-drain-unbounded-by-time.patch": "TestEmbedDrainBoundedByTimeUnderZeroRequestTimeout", // reverts: httpdrain.Drain's timer arming with the caller's maxTime, hard-coding a long duration instead so it never fires within a test (D-01)
+		"07-01-drain-unbounded-by-time.patch":      "TestEmbedDrainBoundedByTimeUnderZeroRequestTimeout", // reverts: httpdrain.Drain's timer arming with the caller's maxTime, hard-coding a long duration instead so it never fires within a test (D-01)
+		"07-01-drain-unbounded-by-bytes.patch":     "TestEmbedDrainBoundedByBytes",                       // reverts: httpdrain.Drain's copy reading the body directly instead of through the byte-limited reader (D-01, D-05)
+		"07-01-drain-default-swallows-zero.patch":  "TestEmbedDrainOptionsHonorZero",                     // reverts: embed.New's drainBytes default moving out of the struct literal into a post-options fallback, swallowing an explicit WithDrainBytes(0) (D-05, D-06)
+		"07-03-timeout-zero-means-unbounded.patch": "TestSummarizeTimeoutCeiling",                        // reverts: summarize.New's post-options ceiling clamp, so a non-positive request timeout is unbounded again (D-07, D-09)
+		"07-03-error-body-read-unbounded.patch":    "TestSummarizeNon200ErrorBodyTruncated",              // reverts: summarize.Client's error read dropping its maxErrorBodyBytes limit, surfacing an oversized provider body in full (D-10)
 	},
 }
 

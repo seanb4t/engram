@@ -1,0 +1,25 @@
+diff --git a/internal/embed/embed.go b/internal/embed/embed.go
+index 5586bcb5..400d5585 100644
+--- a/internal/embed/embed.go
++++ b/internal/embed/embed.go
+@@ -222,7 +222,6 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
+ 		// what lets WithDrainBytes(0)/WithDrainTimeout(0) be honored as 0
+ 		// instead of silently overwritten by a default applied afterward
+ 		// (D-05, D-06).
+-		drainBytes:   defaultDrainBytes,
+ 		drainTimeout: defaultDrainTimeout,
+ 	}
+ 	for _, o := range opts {
+@@ -237,9 +236,9 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
+ 	if c.maxResponseBytes <= 0 {
+ 		c.maxResponseBytes = defaultMaxResponseBytes
+ 	}
+-	// No post-loop fallback for drainBytes/drainTimeout here — see the
+-	// struct-literal comment above and WithDrainBytes/WithDrainTimeout's own
+-	// doc comments (D-05, D-06).
++	if c.drainBytes <= 0 {
++		c.drainBytes = defaultDrainBytes
++	}
+ 	if c.maxTimeout <= 0 {
+ 		c.maxTimeout = defaultMaxTimeout
+ 	}

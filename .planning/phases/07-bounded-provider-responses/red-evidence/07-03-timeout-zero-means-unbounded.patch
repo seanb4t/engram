@@ -1,0 +1,20 @@
+diff --git a/internal/summarize/summarize.go b/internal/summarize/summarize.go
+index 1e1721cd..f58a46df 100644
+--- a/internal/summarize/summarize.go
++++ b/internal/summarize/summarize.go
+@@ -197,15 +197,6 @@ func New(baseURL, apiKey, model string, maxChars int, opts ...Option) *Client {
+ 	if c.maxTimeout <= 0 {
+ 		c.maxTimeout = defaultMaxTimeout
+ 	}
+-	// D-07/D-09: applied here, after the options loop and never inside
+-	// WithTimeout itself, so last-writer-wins option ordering between
+-	// WithTimeout and WithMaxTimeout is preserved regardless of which was
+-	// supplied first. A non-positive or over-ceiling timeout resolves to the
+-	// ceiling; an explicit positive timeout at or below it is honored
+-	// exactly as given. Mirrors internal/embed/embed.go's identical clamp.
+-	if c.http.Timeout <= 0 || c.http.Timeout > c.maxTimeout {
+-		c.http.Timeout = c.maxTimeout
+-	}
+ 	return c
+ }
+ 
