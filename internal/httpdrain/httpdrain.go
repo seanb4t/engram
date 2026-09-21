@@ -26,10 +26,20 @@ import (
 // expiry (D-01). Closing a response body unblocks any in-flight Read on
 // it — verified against Go 1.27.1's net/http source
 // (bodyEOFSignal.Read/Close in transport.go), not assumed — so a slow or
-// stalled provider cannot hold the calling goroutine past maxTime. The timer
-// is always stopped before Drain returns, so no timer and no goroutine
-// outlives this call: there is no background goroutine here at all, only a
-// stdlib timer bound to the call's own lifetime.
+// stalled provider cannot hold the calling goroutine past maxTime. Drain
+// never starts a goroutine of its own, and the timer is always stopped
+// before it returns, so nothing is left armed afterwards. (time.AfterFunc
+// runs its callback on its own goroutine, and Stop does not wait for a
+// callback that has already begun — so in the narrow race where the timer
+// fires just as the copy finishes, that one stdlib callback may still be
+// closing body as Drain returns. It is bounded, idempotent with the
+// caller's own Close, and touches nothing else.)
+//
+// CALLER PRECONDITION: on its ordinary completion path — the copy finishing
+// within both bounds — Drain does NOT close body. It closes body only when
+// skipping the drain entirely (see below) or when the timer fires. The
+// caller therefore remains responsible for closing body, as both provider
+// clients do with a deferred Close on the response. Closing twice is safe.
 //
 // A non-positive maxBytes or a non-positive maxTime skips the drain
 // entirely: body is closed immediately and nothing is read. This is a
