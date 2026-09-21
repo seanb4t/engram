@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -157,11 +158,11 @@ func TestSummarizeNon200IncludesStatusAndBody(t *testing.T) {
 // RED transcript (drain temporarily commented out) that confirms this
 // assertion can fail.
 func TestSummarizeNon200DrainsForReuse(t *testing.T) {
-	// The fake error body is deliberately larger than the 4096-byte bound:
-	// if it fit inside the bound, the bounded read alone would consume it
-	// entirely and the connection would be reusable with or without the
-	// drain, proving nothing.
-	bigBody := strings.Repeat("x", 4096*2)
+	// The fake error body is deliberately larger than maxErrorBodyBytes
+	// (4096): if it fit inside the bound, the bounded read alone would
+	// consume it entirely and the connection would be reusable with or
+	// without the drain, proving nothing.
+	bigBody := strings.Repeat("x", maxErrorBodyBytes*2)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, bigBody)
@@ -305,4 +306,108 @@ func TestSummarizeTruncatesToMaxChars(t *testing.T) {
 	if len([]rune(out)) > 8 {
 		t.Fatalf("summary not truncated to 8: %q (len %d)", out, len([]rune(out)))
 	}
+}
+
+// TestSummarizeDrainBoundedByBytes proves the byte axis of the shared
+// httpdrain.Drain call changes observable behavior at the non-200 site: a
+// body left larger than the configured drain bound after the bounded error
+// read leaves the connection unreusable, while a body whose remainder fits
+// inside the bound is drained fully and the connection IS reused. Direct
+// twin of embed.TestEmbedDrainBoundedByBytes.
+//
+// The "inside the bound" case is the control: without it, a client that
+// drained nothing at all (or skipped the drain entirely) would still
+// satisfy the "over the bound" assertion, and this test would prove nothing
+// about the drain actually running.
+func TestSummarizeDrainBoundedByBytes(t *testing.T) {
+	const drainBound = 100
+
+	t.Run("over the bound: connection not reused", func(t *testing.T) {
+		// The remainder after the bounded error read (maxErrorBodyBytes,
+		// 4096) is far larger than drainBound, so the drain stops mid-body
+		// and the connection cannot go back to the pool.
+		//
+		// The body must also exceed net/http's OWN post-close safety-net
+		// drain (maxPostCloseReadBytes, 256 KiB — transport.go): on Close,
+		// the Transport itself tries to finish draining up to that many
+		// bytes within 50ms whenever the declared Content-Length is <= that
+		// bound, which would silently make the connection reusable
+		// regardless of what THIS package's drain did (discovered by 07-01
+		// while writing the embed twin of this test). An explicit
+		// Content-Length above 256 KiB disables that safety net so this
+		// assertion is actually exercising httpdrain's bound, not net/http's.
+		bigBody := strings.Repeat("x", 300000)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Length", strconv.Itoa(len(bigBody)))
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, bigBody)
+		}))
+		defer srv.Close()
+
+		tracker := &testhttp.ReuseTracker{}
+		c := New(srv.URL, "k", "m", 280, WithDrainBytes(drainBound), WithDrainTimeout(5*time.Second))
+		ctx := tracker.Context(context.Background())
+
+		if _, err := c.Summarize(ctx, "x"); err == nil {
+			t.Fatal("want error on 503, got nil")
+		}
+		if _, err := c.Summarize(ctx, "y"); err == nil {
+			t.Fatal("want error on 503, got nil")
+		}
+
+		if tracker.Reused() != 0 {
+			t.Fatalf("want zero reused connections (the byte bound should have stopped the drain mid-body), got Reused()=%d Total()=%d", tracker.Reused(), tracker.Total())
+		}
+	})
+
+	t.Run("inside the bound: connection reused (control)", func(t *testing.T) {
+		// The remainder after the bounded error read still exists (the body
+		// exceeds maxErrorBodyBytes, so the bounded read alone doesn't
+		// consume it) but it fits inside drainBound, so the drain finishes
+		// it and the connection is reused.
+		smallBody := strings.Repeat("x", maxErrorBodyBytes+50)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, smallBody)
+		}))
+		defer srv.Close()
+
+		tracker := &testhttp.ReuseTracker{}
+		c := New(srv.URL, "k", "m", 280, WithDrainBytes(drainBound), WithDrainTimeout(5*time.Second))
+		ctx := tracker.Context(context.Background())
+
+		if _, err := c.Summarize(ctx, "x"); err == nil {
+			t.Fatal("want error on 503, got nil")
+		}
+		if _, err := c.Summarize(ctx, "y"); err == nil {
+			t.Fatal("want error on 503, got nil")
+		}
+
+		if tracker.Reused() < 1 {
+			t.Fatalf("want at least one reused connection, got Reused()=%d Total()=%d", tracker.Reused(), tracker.Total())
+		}
+	})
+}
+
+// TestSummarizeDrainOptionsHonorZero pins D-06: WithDrainBytes(0) and
+// WithDrainTimeout(0) must be honored as 0 rather than replaced by the
+// package default, because New sets the defaults in its struct literal
+// BEFORE the options loop runs. This fails immediately if a future
+// contributor "fixes" the deliberate divergence from WithMaxTokens by
+// copying that option's post-normalization convention. Direct twin of
+// embed.TestEmbedDrainOptionsHonorZero.
+func TestSummarizeDrainOptionsHonorZero(t *testing.T) {
+	t.Run("WithDrainBytes(0)", func(t *testing.T) {
+		c := New("http://x", "k", "m", 280, WithDrainBytes(0))
+		if c.drainBytes != 0 {
+			t.Fatalf("c.drainBytes = %d, want 0 — WithDrainBytes(0) must be honored, not swallowed (D-06)", c.drainBytes)
+		}
+	})
+
+	t.Run("WithDrainTimeout(0)", func(t *testing.T) {
+		c := New("http://x", "k", "m", 280, WithDrainTimeout(0))
+		if c.drainTimeout != 0 {
+			t.Fatalf("c.drainTimeout = %v, want 0 — WithDrainTimeout(0) must be honored, not swallowed (D-06)", c.drainTimeout)
+		}
+	})
 }
