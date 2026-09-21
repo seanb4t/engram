@@ -61,6 +61,14 @@ Out of scope: the Qdrant read path; retry/backoff for a connection abandoned mid
   forgets the defer, and `time.After` leaks its timer); `context.AfterFunc` (same Close-unblocks-Read
   mechanism reached through two more moving parts, and it forces a `ctx` parameter onto a helper
   that needs none).
+  **Mechanism verified in Go 1.27.1 source, not assumed** (`net/http/transport.go`):
+  `bodyEOFSignal.Read` (:3227) reads `closed`/`rerr` under `es.mu` and **releases it at :3230
+  before** the blocking `es.body.Read(p)` at :3238, so `Close` (:3250) can take that same mutex
+  mid-Read and call `earlyCloseFn()`, which tears the connection down and unblocks it. Had `Read`
+  held the mutex across the network read — as the inner `*body.Read` in `transfer.go` does — `Close`
+  would deadlock behind it and this decision would be unimplementable. The unblocked `Read` returns
+  `errReadOnClosedResBody`; the drain discards errors, so no special-casing is needed. A plan MUST
+  NOT restate this as an assumption to be re-derived; it is settled.
   — **Reversibility:** two-way.
 - **D-02 — one shared helper in a new `internal/httpdrain` package**, imported by both clients.
   Same move the repo already made with `internal/testhttp` when embed and summarize needed shared
