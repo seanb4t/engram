@@ -1,0 +1,14 @@
+diff --git a/internal/server/connectapi.go b/internal/server/connectapi.go
+index e9cf55fa..6e2ef4d5 100644
+--- a/internal/server/connectapi.go
++++ b/internal/server/connectapi.go
+@@ -369,6 +369,9 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
+ 	// and carries no error (D-06) so ms (already computed above) is never
+ 	// discarded here.
+ 	cov := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
++	if cov.Unknown {
++		return nil, connectError(ctx, fmt.Errorf("coverage query failed"))
++	}
+ 	return connect.NewResponse(&engramv1.SearchMemoriesResponse{
+ 		Memories:        shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
+ 		SearchedScopes:  cov.Scopes,

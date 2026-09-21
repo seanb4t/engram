@@ -168,7 +168,11 @@ var redEvidenceDirs = map[string]map[string]string{
 		"05-05-backstop-appended-after-caller-options.patch":    "TestQdrantRecvLimitBackstopPrecedesCallerOptions", // reverts: qdrantDialOptions appending the productionRecvLimit backstop BEFORE caller options, so a caller's own receive limit still wins (D-05, D-06)
 	},
 	".planning/phases/06-cross-spine-partial-results/red-evidence": {
-		"06-01-helper-swallows-listscopes-error.patch": "TestCrossSpineCoverageThreeStates", // reverts: searchedScopes' failure path degrading into the scopeCoverage zero value instead of {Unknown: true} — the exact fix the roadmap and 06-CONTEXT forbid by name (D-01, D-02, D-03)
+		"06-01-helper-swallows-listscopes-error.patch":     "TestCrossSpineCoverageThreeStates",          // reverts: searchedScopes' failure path degrading into the scopeCoverage zero value instead of {Unknown: true} — the exact fix the roadmap and 06-CONTEXT forbid by name (D-01, D-02, D-03)
+		"06-01-connect-search-discards-hits.patch":         "TestCrossSpineCoverageUnknownConnectSearch", // reverts: Connect SearchMemories aborting with a mapped error on coverage-unknown, discarding already-computed hits again (D-01)
+		"06-01-mcp-list-discards-hits.patch":               "TestCrossSpineCoverageUnknownMCPList",       // reverts: the MCP list_memory closure aborting with an error on coverage-unknown, returning an error result instead of the memories it already has (D-01)
+		"06-01-empty-scopes-substituted-for-absence.patch": "TestCrossSpineCoverageUnknownMCPSearch",     // reverts: recallResultMap adding searched_scopes (an empty slice) on the coverage-unknown path, the "searched nothing" reading D-03 exists to prevent
+		"06-02-footer-drops-unknown-form.patch":            "TestClientListCoverageUnknownFooter",        // reverts: renderCoverageFooter's unknown branch, falling through to the count-bearing form and printing a count of zero (D-05)
 	},
 }
 
