@@ -691,9 +691,15 @@ func TestEmbedTimeoutCeiling(t *testing.T) {
 			want: 5 * time.Minute,
 		},
 		{
-			name: "positive duration above the default ceiling is clamped",
+			// D-07 explicitly REJECTED clamping every value: "an explicit
+			// positive d is honored uncapped, however large — the operator
+			// named a number, so respect it". The ceiling governs only the
+			// non-positive case above. Regression guard for CR-01, where the
+			// clamp read `Timeout <= 0 || Timeout > maxTimeout` and silently
+			// downgraded a deliberately-chosen longer deadline.
+			name: "positive duration above the default ceiling is honored uncapped",
 			opts: []Option{WithTimeout(20 * time.Minute)},
-			want: defaultMaxTimeout,
+			want: 20 * time.Minute,
 		},
 		{
 			name: "WithMaxTimeout changes where the clamp lands",

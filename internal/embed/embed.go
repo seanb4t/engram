@@ -246,10 +246,11 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 	// D-07/D-09: applied here, after the options loop and never inside
 	// WithTimeout itself, so last-writer-wins option ordering between
 	// WithTimeout and WithMaxTimeout is preserved regardless of which was
-	// supplied first. A non-positive or over-ceiling timeout resolves to the
-	// ceiling; an explicit positive timeout at or below it is honored
-	// exactly as given.
-	if c.http.Timeout <= 0 || c.http.Timeout > c.maxTimeout {
+	// supplied first. ONLY a non-positive timeout resolves to the ceiling —
+	// an explicit positive d is honored UNCAPPED, however large, because the
+	// operator named a number (D-07 explicitly rejected clamping every
+	// value, which would override a deliberately-chosen longer duration).
+	if c.http.Timeout <= 0 {
 		c.http.Timeout = c.maxTimeout
 	}
 	return c
