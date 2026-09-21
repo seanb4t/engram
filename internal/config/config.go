@@ -80,10 +80,31 @@ type EmbedConfig struct {
 	// prefix/template applied to documents at store + reindex (empty = raw).
 	DocumentInstruction string `koanf:"document_instruction"`
 	// Timeout is the per-request embed HTTP client timeout (ENGRAM_EMBED_TIMEOUT,
-	// default "30s"); "0" disables it (no timeout). Validated unconditionally in
+	// default "30s"); a non-positive value resolves to the MaxTimeout ceiling
+	// below (ENGRAM_EMBED_MAX_TIMEOUT, default "10m") rather than to unbounded
+	// (07-bounded-provider-responses D-07). Validated unconditionally in
 	// Config.Validate — the embedder is always active, unlike Summarize.Timeout
 	// which is gated on Summarize.Model.
 	Timeout string `koanf:"timeout"`
+	// DrainBytes bounds the post-response body drain by bytes
+	// (ENGRAM_EMBED_DRAIN_BYTES, default "262144" — 256 KiB). Zero is a
+	// deliberately supported operator setting: it skips the drain entirely,
+	// closing the connection immediately rather than reusing it. A negative
+	// value fails Config.Validate (07-bounded-provider-responses D-04, D-05).
+	DrainBytes string `koanf:"drain_bytes"`
+	// DrainTimeout bounds the same post-response body drain by time
+	// (ENGRAM_EMBED_DRAIN_TIMEOUT, default "2s"). Zero skips the drain
+	// entirely, the same as DrainBytes above; a negative value fails
+	// Config.Validate (07-bounded-provider-responses D-04, D-05).
+	DrainTimeout string `koanf:"drain_timeout"`
+	// MaxTimeout is the ceiling a non-positive Timeout above resolves to
+	// (ENGRAM_EMBED_MAX_TIMEOUT, default "10m"). A non-positive value always
+	// fails Config.Validate — there is deliberately no way to express an
+	// unbounded request (07-bounded-provider-responses D-07, D-08). Known
+	// limitation, recorded rather than hidden: a large enough ceiling is
+	// effectively unbounded, so this knob is a speed bump that forces an
+	// operator to write a number they can see, not a hard guarantee.
+	MaxTimeout string `koanf:"max_timeout"`
 }
 
 // MemoryConfig bounds the ordinary store_memory/update_memory `summary`,
@@ -129,8 +150,11 @@ type MemoryConfig struct {
 // answer, so a tight ceiling starves them into an empty response; a generous
 // one is free for non-reasoning models (they stop at EOS well below it). "0"
 // omits the cap entirely (gateway default). Timeout is the per-request HTTP
-// client timeout (default "30s"); "0" disables it. Neither is the same as the
-// summarize-missing command's --timeout, which bounds the whole sweep.
+// client timeout (default "30s"); a non-positive value resolves to the
+// MaxTimeout ceiling (ENGRAM_SUMMARY_MAX_TIMEOUT, default "10m") rather than
+// to unbounded (07-bounded-provider-responses D-07). Neither Timeout nor
+// MaxTimeout is the same as the summarize-missing command's --timeout, which
+// bounds the whole sweep.
 type SummarizeConfig struct {
 	Model     string `koanf:"model"`
 	MaxChars  string `koanf:"max_chars"`
@@ -144,6 +168,26 @@ type SummarizeConfig struct {
 	Workers string `koanf:"workers"`
 	// QueueSize is the async summary enqueue channel bound (default "256").
 	QueueSize string `koanf:"queue_size"`
+	// DrainBytes bounds the post-response body drain by bytes
+	// (ENGRAM_SUMMARY_DRAIN_BYTES, default "262144" — 256 KiB), gated on
+	// Model being non-empty like Timeout above. Zero is a deliberately
+	// supported operator setting: it skips the drain entirely, closing the
+	// connection immediately rather than reusing it. A negative value fails
+	// Config.Validate (07-bounded-provider-responses D-04, D-05).
+	DrainBytes string `koanf:"drain_bytes"`
+	// DrainTimeout bounds the same post-response body drain by time
+	// (ENGRAM_SUMMARY_DRAIN_TIMEOUT, default "2s"). Zero skips the drain
+	// entirely, the same as DrainBytes above; a negative value fails
+	// Config.Validate (07-bounded-provider-responses D-04, D-05).
+	DrainTimeout string `koanf:"drain_timeout"`
+	// MaxTimeout is the ceiling a non-positive Timeout above resolves to
+	// (ENGRAM_SUMMARY_MAX_TIMEOUT, default "10m"). A non-positive value
+	// always fails Config.Validate when Model is set — there is deliberately
+	// no way to express an unbounded request (07-bounded-provider-responses
+	// D-07, D-08). Same known limitation as EmbedConfig.MaxTimeout: a large
+	// enough ceiling is effectively unbounded, so this knob is a speed bump,
+	// not a hard guarantee.
+	MaxTimeout string `koanf:"max_timeout"`
 }
 
 // OpenAIConfig is the OpenAI-compatible /v1/embeddings endpoint engram calls to
