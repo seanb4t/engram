@@ -622,7 +622,7 @@ Plans:
 | v0.8.x Phase 4: Embedder | v0.8.x | 1/1 | Complete | shipped (v0.8.x) |
 | v0.8.x Phase 5: Config & Transport | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
 | v0.8.x Phase 6: Telemetry & Observability | v0.8.x | 2/2 | Complete | shipped (v0.8.x) |
-| 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | In Progress|  |
+| 7. Web UI, Docs Site & Distribution | v0.8.x | 9/9 | Complete   | 2026-08-20 |
 | 8. Connect Auth Hardening | v0.8.x | 1/1 | Complete    | 2026-08-21 |
 | 9. Retrieval Eval & Ranking Precision | v0.9.x | 3/3 | Complete | 2026-07-10 (PR #336) |
 | 10. Asymmetric Query/Document Embeddings | v0.9.x | 1/1 | Complete (already shipped) | 2026-07-10 (#305) |
@@ -680,7 +680,7 @@ Plans:
 | 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 8/8 | Complete | 2026-09-20 |
 | 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 6/6 | Complete | 2026-09-20 |
 | 6. Cross-Spine Partial Results | 2026-09-18.01 | 3/3 | Complete | 2026-09-20 |
-| 7. Bounded Provider Responses | 2026-09-18.01 | 0/5 | Not started | - |
+| 7. Bounded Provider Responses | 2026-09-18.01 | 1/5 | In Progress | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.

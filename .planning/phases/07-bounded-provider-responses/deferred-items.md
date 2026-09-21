@@ -10,4 +10,8 @@
   own executor notes ("If `task` shows a failure this plan did not cause, STOP and report it
   rather than editing unrelated code"), left unfixed here. Whoever executes or revises
   07-02-PLAN.md next should un-escape that `koanf:` example inline so `task` is green again.
-  status: open
+  RESOLVED 2026-09-21 by the orchestrator between plans 07-01 and 07-02: re-quoted as a YAML
+  single-quoted scalar `pattern: 'koanf:"drain_bytes"'`, matching the repo-wide precedent
+  (02-04-PLAN.md:58, 03-01-PLAN.md:67, and every other pattern carrying a double quote).
+  `go test ./internal/keylinks/ -count=1` is green.
+  status: resolved
