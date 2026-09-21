@@ -658,3 +658,96 @@ func TestEmbedSuccessDecodeBounded(t *testing.T) {
 		t.Fatal("want non-empty vector with generous bound")
 	}
 }
+
+// TestEmbedTimeoutCeiling proves D-07/D-09: a non-positive request timeout
+// resolves to a configurable ceiling rather than to "no timeout", an
+// explicit positive timeout is honored uncapped up to that ceiling, and the
+// clamp is applied in New AFTER every option has run so option ordering
+// between WithTimeout and WithMaxTimeout is preserved either way.
+func TestEmbedTimeoutCeiling(t *testing.T) {
+	cases := []struct {
+		name string
+		opts []Option
+		want time.Duration
+	}{
+		{
+			name: "no option supplied resolves to defaultEmbedTimeout",
+			opts: nil,
+			want: defaultEmbedTimeout,
+		},
+		{
+			name: "WithTimeout(0) resolves to the default ceiling",
+			opts: []Option{WithTimeout(0)},
+			want: defaultMaxTimeout,
+		},
+		{
+			name: "negative duration resolves to the default ceiling",
+			opts: []Option{WithTimeout(-5 * time.Second)},
+			want: defaultMaxTimeout,
+		},
+		{
+			name: "positive duration below the ceiling is honored exactly",
+			opts: []Option{WithTimeout(5 * time.Minute)},
+			want: 5 * time.Minute,
+		},
+		{
+			name: "positive duration above the default ceiling is clamped",
+			opts: []Option{WithTimeout(20 * time.Minute)},
+			want: defaultMaxTimeout,
+		},
+		{
+			name: "WithMaxTimeout changes where the clamp lands",
+			opts: []Option{WithMaxTimeout(1 * time.Minute), WithTimeout(0)},
+			want: 1 * time.Minute,
+		},
+		{
+			// Ordering: WithMaxTimeout supplied AFTER WithTimeout must still
+			// govern the clamp — the clamp runs once, in New, after every
+			// option has already executed, never inside WithTimeout itself.
+			name: "WithMaxTimeout after WithTimeout still governs (ordering)",
+			opts: []Option{WithTimeout(0), WithMaxTimeout(2 * time.Minute)},
+			want: 2 * time.Minute,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := New("http://x", "k", "m", tc.opts...)
+			if c.http.Timeout != tc.want {
+				t.Fatalf("c.http.Timeout = %v, want %v", c.http.Timeout, tc.want)
+			}
+		})
+	}
+}
+
+// TestEmbedNon2xxErrorBodyTruncated closes D-10's gap: the existing
+// TestEmbedNon2xxIncludesStatusAndBody only asserts the provider's snippet
+// APPEARS, never that it is TRUNCATED. Serves a 503 far larger than
+// maxErrorBodyBytes with a distinctive marker at the front, and asserts the
+// marker survives (the provider's own diagnostic text is not lost) AND that
+// the surfaced error is bounded near maxErrorBodyBytes, not near the served
+// body length.
+func TestEmbedNon2xxErrorBodyTruncated(t *testing.T) {
+	const marker = "embedder-overloaded-marker"
+	body := marker + strings.Repeat("x", maxErrorBodyBytes*3)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "k", "m").Embed(context.Background(), "x")
+	if err == nil {
+		t.Fatal("want error on 503, got nil")
+	}
+	if !strings.Contains(err.Error(), marker) {
+		t.Fatalf("error missing the provider's own marker text: %v", err)
+	}
+	// Bounded near maxErrorBodyBytes (plus the short "embeddings: status
+	// 503: " prefix), far short of the served body length
+	// (maxErrorBodyBytes*3 + len(marker)).
+	if len(err.Error()) > maxErrorBodyBytes*2 {
+		t.Fatalf("error length = %d, want bounded near maxErrorBodyBytes (%d), not near the served body length", len(err.Error()), maxErrorBodyBytes)
+	}
+}

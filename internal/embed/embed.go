@@ -55,6 +55,13 @@ const (
 	defaultDrainTimeout = 2 * time.Second
 )
 
+// defaultMaxTimeout bounds the ceiling a non-positive http.Client.Timeout
+// resolves to (D-07, D-08) when WithMaxTimeout is not supplied. Plan 07-04
+// wires the operator-facing ENGRAM_EMBED_MAX_TIMEOUT equivalent; this is the
+// in-package fallback for a Client built without that wiring, exactly as
+// defaultMaxResponseBytes is above.
+const defaultMaxTimeout = 10 * time.Minute
+
 // Client embeds text via an OpenAI-compatible embeddings API.
 type Client struct {
 	baseURL string
@@ -88,6 +95,14 @@ type Client struct {
 	// D-06).
 	drainBytes   int64
 	drainTimeout time.Duration
+	// maxTimeout is the ceiling a non-positive http.Client.Timeout resolves
+	// to, applied in New after all options have run (D-07, D-09). Set via
+	// WithMaxTimeout; falls back to defaultMaxTimeout when left at zero —
+	// this option DOES follow the sibling post-loop-fallback convention
+	// (unlike drainBytes/drainTimeout above): a zero ceiling would be
+	// exactly the unbounded value this phase exists to remove, so there is
+	// no honored-zero escape hatch here.
+	maxTimeout time.Duration
 }
 
 // Option customizes a Client.
@@ -120,13 +135,37 @@ func WithHTTPTransport(rt http.RoundTripper) Option {
 	return func(c *Client) { c.http.Transport = rt }
 }
 
-// WithTimeout sets the per-request HTTP client timeout. d <= 0 disables it
-// (Go's http.Client treats a zero Timeout as no bound), the explicit D-08
-// operator escape hatch for very slow local models. Composes with
-// WithHTTPTransport regardless of option order — both mutate the shared
-// c.http, and this is the last field either touches.
+// WithTimeout sets the per-request HTTP client timeout. An explicit
+// positive d is honored UNCAPPED, however large — the operator named a
+// number, so it is respected. A non-positive d no longer disables the
+// timeout (that promise changed in this release, D-07): it now resolves to
+// a configurable ceiling (see WithMaxTimeout, default 10m,
+// ENGRAM_EMBED_MAX_TIMEOUT), applied in New after every option has run so
+// option order is preserved. Composes with WithHTTPTransport regardless of
+// option order — both mutate the shared c.http, and this is the last field
+// either touches.
+//
+// Known limitation, stated rather than oversold: the ceiling is itself
+// configurable, so a large enough value is effectively unbounded. This is a
+// speed bump that forces an operator to write a number they can see, not a
+// hard guarantee (D-08).
 func WithTimeout(d time.Duration) Option {
 	return func(c *Client) { c.http.Timeout = d }
+}
+
+// WithMaxTimeout sets the ceiling a non-positive WithTimeout resolves to
+// (D-07, D-08). UNLIKE WithDrainBytes/WithDrainTimeout above, a non-positive
+// ceiling is ignored and defaultMaxTimeout survives — this DOES follow the
+// sibling WithMaxResponseBytes convention, because a zero drain bound is a
+// meaningful, safe setting (give up the connection at once) whereas a zero
+// ceiling would be exactly the unbounded request timeout this phase exists
+// to remove. There is deliberately no way to ask for an unbounded ceiling.
+func WithMaxTimeout(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.maxTimeout = d
+		}
+	}
 }
 
 // WithEmbeddingsURL sets the fully-resolved /embeddings endpoint verbatim,
@@ -201,6 +240,18 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 	// No post-loop fallback for drainBytes/drainTimeout here — see the
 	// struct-literal comment above and WithDrainBytes/WithDrainTimeout's own
 	// doc comments (D-05, D-06).
+	if c.maxTimeout <= 0 {
+		c.maxTimeout = defaultMaxTimeout
+	}
+	// D-07/D-09: applied here, after the options loop and never inside
+	// WithTimeout itself, so last-writer-wins option ordering between
+	// WithTimeout and WithMaxTimeout is preserved regardless of which was
+	// supplied first. A non-positive or over-ceiling timeout resolves to the
+	// ceiling; an explicit positive timeout at or below it is honored
+	// exactly as given.
+	if c.http.Timeout <= 0 || c.http.Timeout > c.maxTimeout {
+		c.http.Timeout = c.maxTimeout
+	}
 	return c
 }
 
