@@ -84,6 +84,27 @@
       name: "{{ .Values.memory.oidc.clientSecret.name }}"
       key: "{{ .Values.memory.oidc.clientSecret.key }}"
 {{- end }}
+{{- if .Values.memory.serviceAuth.staticTokensSecret.name }}
+# ENGRAM_SERVICE_AUTH_STATIC_TOKENS: comma-separated `owner=token` pairs, one
+# owner bucket per token. Secret-backed only — these are credentials, and the
+# reference docs say to treat them exactly like ENGRAM_OIDC_CLIENT_SECRET
+# above. There is no plain-value alternative here on purpose: a plain-value
+# path would put live tokens in values.yaml and in `helm get values`.
+- name: ENGRAM_SERVICE_AUTH_STATIC_TOKENS
+  valueFrom:
+    secretKeyRef:
+      name: "{{ .Values.memory.serviceAuth.staticTokensSecret.name }}"
+      key: "{{ .Values.memory.serviceAuth.staticTokensSecret.key }}"
+{{- end }}
+{{- with .Values.memory.serviceAuth.oidc.issuer }}
+- { name: ENGRAM_SERVICE_AUTH_OIDC_ISSUER, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.serviceAuth.oidc.audience }}
+- { name: ENGRAM_SERVICE_AUTH_OIDC_AUDIENCE, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.serviceAuth.ownerClaims }}
+- { name: ENGRAM_SERVICE_AUTH_OWNER_CLAIMS, value: "{{ . }}" }
+{{- end }}
 {{- if ne (.Values.memory.ui.enabled | toString) "" }}
 # Tri-state: "" omits (headless-if-creds), "false" is a hard
 # off-switch — both "true" and "false" must reach the binary, so
