@@ -52,7 +52,7 @@ HTTP 500.
 
 ### Cross-Spine Recall
 
-- [ ] **REQ-cross-spine-partial**: When the follow-up `ListScopes` fails after a cross-spine `search_memory` / `list_memory` already produced hits, the hits are returned with a documented, wire-visible "coverage unknown" signal distinct from `scopes_truncated` — on MCP, Connect, and `engram search` / `engram list`. GitHub #456.
+- [x] **REQ-cross-spine-partial**: When the follow-up `ListScopes` fails after a cross-spine `search_memory` / `list_memory` already produced hits, the hits are returned with a documented, wire-visible "coverage unknown" signal distinct from `scopes_truncated` — on MCP, Connect, and `engram search` / `engram list`. GitHub #456.
 
 ### Provider Bounds
 
@@ -100,7 +100,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-recv-limit-backstop | Phase 5 | Complete |
 | REQ-content-cap-decided | Phase 3 | Complete |
 | REQ-list-limit-contract-decided | Phase 4 | Complete |
-| REQ-cross-spine-partial | Phase 6 | Pending |
+| REQ-cross-spine-partial | Phase 6 | Complete |
 | REQ-provider-drain-bounded | Phase 7 | Pending |
 | REQ-provider-error-body-closed | Phase 7 | Pending |
 
