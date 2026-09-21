@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-18.01
 milestone_name: Bounded Reads
-current_phase: 6
-current_phase_name: Cross-Spine Partial Results
+current_phase: 7
+current_phase_name: Bounded Provider Responses
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-09-20T22:50:37.324Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-09-21T01:58:46.897Z"
 last_activity: 2026-09-20
 last_activity_desc: Phase 6 execution started
-state_head: d4d8419d2eeae0a5080cd0401707ab0974f4c769
+state_head: ba2211d82d8a159da6e5abbfee640b458007a85a
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 32
-  completed_plans: 30
+  completed_plans: 31
 ---
 
 # Project State
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 
 ## Current Position
 
-Phase: 6 (Cross-Spine Partial Results) — EXECUTING
-Plan: 2 of 3
-Status: Ready to execute
+Phase: 7 — Bounded Provider Responses
+Plan: 3 of 3
+Status: Ready to plan
 Last activity: 2026-09-20 — Phase 6 execution started
 
 ## Deferred Items
@@ -345,6 +345,8 @@ milestone needs in working memory.
 - [Phase 05]: 64 MiB receive-limit backstop (productionRecvLimit) set in exactly one place inside NewQdrantClient via qdrantDialOptions, appended before caller options, tested only for pass-through and append order.
 - [Phase 05]: Regenerated a stale Phase 2 red-evidence patch (02-01-classifier-not-in-base-options.patch) after Task 1's own qdrantDialOptions refactor moved the target line out of NewQdrantClient's body, so TestRedEvidencePatchesAreLive keeps proving the same regression.
 - [Phase 6]: 06-01: scopeCoverage{Scopes,Truncated,Unknown} value-returning helper (no error) replaces searchedScopes's error return; scopes_unknown lands at field 7 (ListMemoriesResponse) / field 4 (SearchMemoriesResponse)
+- [Phase 6]: 06-03: this phase's five red-evidence patches registered (53->58); highest-value direction first (the forbidden swallow-the-error fix), then the remaining four discard/absence/footer directions, each hand-verified apply->RED->revert before registration
+- [Phase 6]: 06-03: roadmap update-plan-progress "06" again matched a same-numbered row in a shipped milestone (v0.12.x "6. Rule Capture"), leaving the active milestone's own Phase 6 row untouched — reverted the wrong hunk and hand-filled the active milestone's three Phase 6 locations, following the exact cc18a31b/3d9a78ad precedent from Phase 5's close
 
 ### Pending Todos
 
@@ -399,6 +401,7 @@ Both prior entries were delivered and had simply never been closed out:
   versions verified live were codex-cli 0.148.0 and opencode 1.18.15.
 - Pre-existing (predates 04-07) TestActiveMilestoneKeyLinksSatisfiable failure against 04-06-PLAN.md:62's key_links pattern "Full: req[.]Full" (gofmt-aligned struct literal never matched exactly one space). Out of scope for 04-07; documented in deferred-items.md and WINDOWS.md entry 11. 04-06's PLAN.md pattern needs correcting.
 - internal/store's TestRedEvidencePatchesAreLive hit Go's default 601s per-package timeout twice during plan 06-01's task gate (environmental: 54-patch sequential subprocess harness + heavy concurrent unrelated machine load, confirmed via a 20m-timeout diagnostic run passing cleanly at 685s). Zero internal/store files touched by 06-01. See .planning/phases/06-cross-spine-partial-results/deferred-items.md and WINDOWS.md entry 13.
+- internal/store's TestRedEvidencePatchesAreLive/full package now needs materially more than Go's default 601s per-package timeout at 58 registered patches; bare `task` timed out at 630s during 06-03's close, and a follow-up 20m diagnostic also timed out (1210s) before a 60m diagnostic hit a transient Docker/testcontainer "connection refused" (environmental, not a code defect). This plan's own <verify> steps (explicit -timeout 180m) confirmed 58/58 REDs clean and ok twice. See WINDOWS.md entry 13 and deferred-items.md (opened by 06-01).
 
 ### Quick Tasks Completed
 
@@ -421,8 +424,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-20T22:50:37.224Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-09-21T01:58:46.791Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -584,6 +587,7 @@ Resume file: None
 | Phase 05 P04 | 68min | 2 tasks | 5 files |
 | Phase 05 P05 | 51min | 2 tasks | 5 files |
 | Phase 06 P01 | 56min | 3 tasks | 9 files |
+| Phase 06 P03 | 140min | 3 tasks | 7 files |
 
 ## Operator Next Steps
 

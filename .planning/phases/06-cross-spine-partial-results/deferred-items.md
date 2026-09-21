@@ -45,3 +45,24 @@
   reused across `-run` invocations instead of `go build`+`go test` per patch). Out of scope for
   plan 06-01 — no `internal/store` file is in this plan's files_modified, and the fix belongs to
   whichever phase or maintenance pass owns `internal/store`'s test-harness performance.
+
+- Same characteristic recurred during plan 06-03's phase close, now at 58 registered patches.
+  status: open
+  **What:** Bare `task` (no `-timeout` override) hit the 601s per-package default and killed
+  `internal/store`'s test binary mid-patch at 630.559s — again leaving one already-applied
+  red-evidence patch un-reverted on disk (`03-03-update-content-cap-removed.patch` over
+  `internal/server/tools.go`, a `checkContentBytes` call removed). Hand-verified against `git diff`
+  and restored with `git checkout -- internal/server/tools.go` before any commit; no red-evidence
+  patch registration, target test, or unrelated source file was modified. A follow-up diagnostic at
+  `-timeout 20m` also timed out (1209.860s, closer to the limit than 06-01's 685s run — the harness
+  is getting slower as patches accumulate); a second diagnostic at `-timeout 60m` avoided the
+  timeout but hit a transient Docker/testcontainer `connection refused` across nearly every test in
+  the package — every test failed identically at container-connect, not at an assertion, which is
+  the signature of environment flakiness rather than a code defect (no leftover patch this time).
+  This plan's own `<verify>` steps for Tasks 1 and 2 (explicit `-timeout 180m`, the plan-specified
+  generous timeout) already provide clean, valid, authoritative proof: 54/54 and then 58/58
+  confirmed RED, `ok`, clean tree. No timeout was raised in `Taskfile.yaml` or CI.
+  **Recommendation unchanged from 06-01**, now with more urgency: the harness's total wall-clock
+  keeps growing with each phase's patches and is now within ~1.5x of Go's own default timeout even
+  under a dedicated, otherwise-idle invocation. Whichever phase or maintenance pass owns
+  `internal/store`'s test-harness performance should treat this as escalating, not merely open.

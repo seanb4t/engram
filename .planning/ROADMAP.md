@@ -324,7 +324,7 @@ Codex; and ships man pages from the cask.
 - [x] **Phase 3: Shared Bounded-Read Mechanism & Content Cap Decision** - Two shared bounded-read primitives are built and proven, every full-payload read site is inventoried and assigned to its migrating phase, and whether memory `content` gets a size cap is decided (completed 2026-09-19)
 - [x] **Phase 4: List, ListScheduled & Search Bounded Reads** - `Store.List` (every mode), `list_scheduled`, and `search_memory`/`search_discovery` stay under the receive limit, and the `ListMemories` paging contract is decided (completed 2026-09-20)
 - [x] **Phase 5: Operator Sweeps & CI Backstop** - The five 256-batch operator sweeps stay bounded, `MaxCallRecvMsgSize` lands as defense-in-depth, and `internal/store` CI stays green with this milestone's oversized fixtures (completed 2026-09-20)
-- [ ] **Phase 6: Cross-Spine Partial Results** - A cross-spine recall keeps its successful hits when the follow-up `ListScopes` call fails
+- [x] **Phase 6: Cross-Spine Partial Results** - A cross-spine recall keeps its successful hits when the follow-up `ListScopes` call fails (completed 2026-09-20)
 - [ ] **Phase 7: Bounded Provider Responses** - The embed/summarize clients bound their post-response drain by bytes and time, independent of `http.Client.Timeout`
 
 ## Phase Details
@@ -545,7 +545,7 @@ Plans:
 1. When cross-spine `search_memory`/`list_memory`'s follow-up `ListScopes` call fails after hits have already been produced, those hits are returned rather than discarded.
 2. A documented, wire-visible signal distinguishes "coverage unknown" from `scopes_truncated`, surfaced consistently on MCP, Connect, and `engram search`/`engram list`.
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -558,7 +558,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 06-03-PLAN.md — this phase's five red-evidence patches registered and confirmed at fifty-eight, the earlier phases' patches re-proven over the edited files, and REQ-cross-spine-partial marked complete (D-01, D-02, D-03, D-05)
+- [x] 06-03-PLAN.md — this phase's five red-evidence patches registered and confirmed at fifty-eight, the earlier phases' patches re-proven over the edited files, and REQ-cross-spine-partial marked complete (D-01, D-02, D-03, D-05)
 
 ---
 
@@ -671,7 +671,7 @@ Plans:
 | 3. Shared Bounded-Read Mechanism & Content Cap Decision | 2026-09-18.01 | 2/2 | Complete | 2026-09-19 |
 | 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 5/5 | Complete | 2026-09-20 |
 | 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 4/4 | Complete | 2026-09-20 |
-| 6. Cross-Spine Partial Results | 2026-09-18.01 | 0/1 | Not started | - |
+| 6. Cross-Spine Partial Results | 2026-09-18.01 | 3/3 | Complete | 2026-09-20 |
 | 7. Bounded Provider Responses | 2026-09-18.01 | 0/2 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
