@@ -56,8 +56,8 @@ HTTP 500.
 
 ### Provider Bounds
 
-- [ ] **REQ-provider-drain-bounded**: The embed and summarize clients bound the post-response body drain by bytes and by time, independent of `http.Client.Timeout`, proven under `WithTimeout(0)` with both a large-but-fast body and a slow-trickle body. GitHub #457.
-- [ ] **REQ-provider-error-body-closed**: The already-shipped bounded error-body read is confirmed pinned by the `embed_test.go` / `summarize_test.go` regression tests (the provider-snippet assertion added if missing), and GitHub #347 is closed citing them.
+- [x] **REQ-provider-drain-bounded**: The embed and summarize clients bound the post-response body drain by bytes and by time, independent of `http.Client.Timeout`, proven under `WithTimeout(0)` with both a large-but-fast body and a slow-trickle body. GitHub #457.
+- [x] **REQ-provider-error-body-closed**: The already-shipped bounded error-body read is confirmed pinned by the `embed_test.go` / `summarize_test.go` regression tests (the provider-snippet assertion added if missing), and GitHub #347 is closed citing them.
 
 ## v2 Requirements
 
@@ -101,8 +101,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REQ-content-cap-decided | Phase 3 | Complete |
 | REQ-list-limit-contract-decided | Phase 4 | Complete |
 | REQ-cross-spine-partial | Phase 6 | Complete |
-| REQ-provider-drain-bounded | Phase 7 | Pending |
-| REQ-provider-error-body-closed | Phase 7 | Pending |
+| REQ-provider-drain-bounded | Phase 7 | Complete |
+| REQ-provider-error-body-closed | Phase 7 | Complete |
 
 **Coverage:**
 
