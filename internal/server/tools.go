@@ -449,8 +449,11 @@ func summaryMaxTokens(cfg *config.Config) int {
 }
 
 // summaryTimeout parses the per-request HTTP timeout, defaulting to 30s on
-// empty/invalid. 0 is honored (disables the timeout); negatives fall back to
-// the default.
+// empty/invalid. 0 is honored by this helper (passed through unchanged);
+// negatives fall back to the default. Note: 0 no longer disables the
+// timeout downstream — summarize.Client.New resolves a non-positive
+// http.Client.Timeout to its configured ceiling (summaryMaxTimeout below),
+// not to unbounded (D-07).
 func summaryTimeout(cfg *config.Config) time.Duration {
 	d, err := time.ParseDuration(cfg.Summarize.Timeout)
 	if err != nil || d < 0 {
@@ -464,8 +467,11 @@ func summaryTimeout(cfg *config.Config) time.Duration {
 }
 
 // embedTimeout parses the per-request embed HTTP client timeout, defaulting to
-// 30s on empty/invalid. 0 is honored (disables the timeout); negatives fall
-// back to the default. Mirrors summaryTimeout.
+// 30s on empty/invalid. 0 is honored by this helper (passed through
+// unchanged); negatives fall back to the default. Note: 0 no longer disables
+// the timeout downstream — embed.Client.New resolves a non-positive
+// http.Client.Timeout to its configured ceiling (embedMaxTimeout below), not
+// to unbounded (D-07). Mirrors summaryTimeout.
 func embedTimeout(cfg *config.Config) time.Duration {
 	d, err := time.ParseDuration(cfg.Embed.Timeout)
 	if err != nil || d < 0 {
@@ -474,6 +480,118 @@ func embedTimeout(cfg *config.Config) time.Duration {
 				"value", cfg.Embed.Timeout)
 		}
 		return 30 * time.Second
+	}
+	return d
+}
+
+// embedDrainBytes parses the byte bound on embed's shared post-response
+// drain, defaulting to 262144 (256 KiB) on empty/invalid. Uses
+// config.ParseNonNegativeIntCap — the SAME exported parser Config.Validate
+// calls for ENGRAM_EMBED_DRAIN_BYTES — so the validated range and the
+// enforced range cannot diverge. 0 is a legitimate value (skips the drain
+// entirely, D-05) and is honored by this helper; only a negative or
+// unparseable value falls back to the default.
+func embedDrainBytes(cfg *config.Config) int64 {
+	n, err := config.ParseNonNegativeIntCap(cfg.Embed.DrainBytes)
+	if err != nil {
+		if cfg.Embed.DrainBytes != "" {
+			slog.Warn("ENGRAM_EMBED_DRAIN_BYTES is set but unparseable or negative; using default 262144",
+				"value", cfg.Embed.DrainBytes)
+		}
+		return 262144
+	}
+	return int64(n)
+}
+
+// embedDrainTimeout parses the time bound on embed's shared post-response
+// drain, defaulting to 2s on empty/invalid. 0 is a legitimate value (skips
+// the drain entirely, D-05) and is honored by this helper; only a negative
+// or unparseable value falls back to the default. Mirrors embedTimeout's
+// parse-warn-fall-back shape.
+func embedDrainTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Embed.DrainTimeout)
+	if err != nil || d < 0 {
+		if cfg.Embed.DrainTimeout != "" {
+			slog.Warn("ENGRAM_EMBED_DRAIN_TIMEOUT is set but unparseable or negative; using default 2s",
+				"value", cfg.Embed.DrainTimeout)
+		}
+		return 2 * time.Second
+	}
+	return d
+}
+
+// embedMaxTimeout parses the ceiling a non-positive embed request timeout
+// resolves to (D-07, D-08), defaulting to 10m on empty/invalid. UNLIKE
+// embedDrainBytes/embedDrainTimeout above, 0 is NOT a legitimate value here
+// — Config.Validate rejects a non-positive ENGRAM_EMBED_MAX_TIMEOUT outright,
+// so any non-positive value reaching this helper (a caller that bypassed
+// Validate) falls back to the default rather than being passed on, keeping
+// this defensive path from handing the client a value meaning "unbounded".
+func embedMaxTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Embed.MaxTimeout)
+	if err != nil || d <= 0 {
+		if cfg.Embed.MaxTimeout != "" {
+			slog.Warn("ENGRAM_EMBED_MAX_TIMEOUT is set but unparseable or non-positive; using default 10m",
+				"value", cfg.Embed.MaxTimeout)
+		}
+		return 10 * time.Minute
+	}
+	return d
+}
+
+// summaryDrainBytes parses the byte bound on summarize's shared
+// post-response drain, defaulting to 262144 (256 KiB) on empty/invalid.
+// Uses config.ParseNonNegativeIntCap — the SAME exported parser
+// Config.Validate calls for ENGRAM_SUMMARY_DRAIN_BYTES — so the validated
+// range and the enforced range cannot diverge. 0 is a legitimate value
+// (skips the drain entirely, D-05) and is honored by this helper; only a
+// negative or unparseable value falls back to the default. Mirrors
+// embedDrainBytes.
+func summaryDrainBytes(cfg *config.Config) int64 {
+	n, err := config.ParseNonNegativeIntCap(cfg.Summarize.DrainBytes)
+	if err != nil {
+		if cfg.Summarize.DrainBytes != "" {
+			slog.Warn("ENGRAM_SUMMARY_DRAIN_BYTES is set but unparseable or negative; using default 262144",
+				"value", cfg.Summarize.DrainBytes)
+		}
+		return 262144
+	}
+	return int64(n)
+}
+
+// summaryDrainTimeout parses the time bound on summarize's shared
+// post-response drain, defaulting to 2s on empty/invalid. 0 is a legitimate
+// value (skips the drain entirely, D-05) and is honored by this helper;
+// only a negative or unparseable value falls back to the default. Mirrors
+// embedDrainTimeout.
+func summaryDrainTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Summarize.DrainTimeout)
+	if err != nil || d < 0 {
+		if cfg.Summarize.DrainTimeout != "" {
+			slog.Warn("ENGRAM_SUMMARY_DRAIN_TIMEOUT is set but unparseable or negative; using default 2s",
+				"value", cfg.Summarize.DrainTimeout)
+		}
+		return 2 * time.Second
+	}
+	return d
+}
+
+// summaryMaxTimeout parses the ceiling a non-positive summarize request
+// timeout resolves to (D-07, D-08), defaulting to 10m on empty/invalid.
+// UNLIKE summaryDrainBytes/summaryDrainTimeout above, 0 is NOT a legitimate
+// value here — Config.Validate rejects a non-positive
+// ENGRAM_SUMMARY_MAX_TIMEOUT outright, so any non-positive value reaching
+// this helper (a caller that bypassed Validate) falls back to the default
+// rather than being passed on, keeping this defensive path from handing the
+// client a value meaning "unbounded". Mirrors embedMaxTimeout.
+func summaryMaxTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Summarize.MaxTimeout)
+	if err != nil || d <= 0 {
+		if cfg.Summarize.MaxTimeout != "" {
+			slog.Warn("ENGRAM_SUMMARY_MAX_TIMEOUT is set but unparseable or non-positive; using default 10m",
+				"value", cfg.Summarize.MaxTimeout)
+		}
+		return 10 * time.Minute
 	}
 	return d
 }
@@ -500,6 +618,9 @@ func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
 		embed.WithDocumentParams(documentParams),
 		embed.WithTimeout(embedTimeout(cfg)),
 		embed.WithEmbeddingsURL(cfg.OpenAI.EmbeddingsURL),
+		embed.WithDrainBytes(embedDrainBytes(cfg)),
+		embed.WithDrainTimeout(embedDrainTimeout(cfg)),
+		embed.WithMaxTimeout(embedMaxTimeout(cfg)),
 	}
 	// D-16 (plan 04-03's option, wired here): size the success-path decode
 	// bound to the configured dimension rather than copying the chat lane's
@@ -532,10 +653,19 @@ func summarizerFromConfig(cfg *config.Config) *summarize.Client {
 	// ChatBaseURL/ChatAPIKey.
 	chatBaseURL := cmp.Or(cfg.OpenAI.ChatBaseURL, cfg.OpenAI.BaseURL)
 	chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey)
+	// The ceiling (WithMaxTimeout) is applied inside summarize.Client.New
+	// itself, not only here (D-09): any caller that builds a *summarize.Client
+	// without going through this wiring — tests, the summarize-missing
+	// command's own builder, any future embedder of the package — still gets
+	// it, because New's own defaultMaxTimeout applies when WithMaxTimeout is
+	// never supplied.
 	return summarize.New(chatBaseURL, chatAPIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
 		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 		summarize.WithMaxTokens(summaryMaxTokens(cfg)),
-		summarize.WithTimeout(summaryTimeout(cfg)))
+		summarize.WithTimeout(summaryTimeout(cfg)),
+		summarize.WithDrainBytes(summaryDrainBytes(cfg)),
+		summarize.WithDrainTimeout(summaryDrainTimeout(cfg)),
+		summarize.WithMaxTimeout(summaryMaxTimeout(cfg)))
 }
 
 // StoreAndSummarizerFromEnv builds the store + summarizer + resolved model name
