@@ -1,0 +1,13 @@
+diff --git a/internal/httpdrain/httpdrain.go b/internal/httpdrain/httpdrain.go
+index fe630d74..145bdc25 100644
+--- a/internal/httpdrain/httpdrain.go
++++ b/internal/httpdrain/httpdrain.go
+@@ -47,7 +47,7 @@ func Drain(body io.ReadCloser, maxBytes int64, maxTime time.Duration) {
+ 		_ = body.Close()
+ 		return
+ 	}
+-	t := time.AfterFunc(maxTime, func() { _ = body.Close() })
++	t := time.AfterFunc(1*time.Hour, func() { _ = body.Close() })
+ 	defer t.Stop()
+ 	_, _ = io.Copy(io.Discard, io.LimitReader(body, maxBytes))
+ }

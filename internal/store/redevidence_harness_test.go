@@ -174,6 +174,9 @@ var redEvidenceDirs = map[string]map[string]string{
 		"06-01-empty-scopes-substituted-for-absence.patch": "TestCrossSpineCoverageUnknownMCPSearch",     // reverts: recallResultMap adding searched_scopes (an empty slice) on the coverage-unknown path, the "searched nothing" reading D-03 exists to prevent
 		"06-02-footer-drops-unknown-form.patch":            "TestClientListCoverageUnknownFooter",        // reverts: renderCoverageFooter's unknown branch, falling through to the count-bearing form and printing a count of zero (D-05)
 	},
+	".planning/phases/07-bounded-provider-responses/red-evidence": {
+		"07-01-drain-unbounded-by-time.patch": "TestEmbedDrainBoundedByTimeUnderZeroRequestTimeout", // reverts: httpdrain.Drain's timer arming with the caller's maxTime, hard-coding a long duration instead so it never fires within a test (D-01)
+	},
 }
 
 // gitModuleRoot shells out to `git rev-parse --show-toplevel` rather than
