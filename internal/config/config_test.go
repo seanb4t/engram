@@ -228,10 +228,13 @@ func TestParseOwnerClaims(t *testing.T) {
 
 func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 	c := &Config{
-		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
-		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s"},
-		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
-		Summarize: SummarizeConfig{Model: "summary-cheap", MaxChars: "0"},
+		Qdrant: QdrantConfig{Addr: "localhost:6334", Collection: "c"},
+		Embed:  EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
+		OpenAI: OpenAIConfig{BaseURL: "http://localhost:4000"},
+		Summarize: SummarizeConfig{
+			Model: "summary-cheap", MaxChars: "0",
+			DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m",
+		},
 	}
 	if err := c.Validate(); err == nil {
 		t.Fatal("want error for ENGRAM_SUMMARY_MAX_CHARS=0 with model set, got nil")
@@ -241,7 +244,7 @@ func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 func TestValidateIgnoresSummaryWhenDisabled(t *testing.T) {
 	c := &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
-		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s"},
+		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
 		Memory:    MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{Model: "", MaxChars: "garbage", OnWrite: "false", Workers: "2", QueueSize: "256"},

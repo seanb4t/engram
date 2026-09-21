@@ -3,7 +3,10 @@
 
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // providerBound is one of the six 07-bounded-provider-responses knobs (D-04,
 // D-05, D-08): the four per-client drain bounds and the two per-client
@@ -89,4 +92,79 @@ func TestProviderBoundRegistryEntries(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestValidateProviderBounds pins D-04/D-05/D-08 (07-bounded-provider-responses):
+// zero is accepted on all four drain bounds and rejected (alongside negative
+// and unparseable) on both ceilings; negative is rejected on all four drain
+// bounds; unparseable is rejected on both drain timeouts and both ceilings;
+// and the three summarize bounds are ignored entirely when Summarize.Model is
+// empty, enforced the moment it is set — the same gating summarize.timeout
+// itself already has. Each case mutates exactly one field on a shared valid
+// fixture (validConfig for the embed cases, summarizeEnabled for the
+// summarize cases) and asserts on the resulting error.
+func TestValidateProviderBounds(t *testing.T) {
+	cases := []struct {
+		name    string
+		base    func() *Config
+		mutate  func(*Config)
+		wantErr bool
+		want    string // substring expected in the error, when wantErr
+	}{
+		// --- embed.drain_bytes ---
+		{"embed drain_bytes zero accepted", validConfig, func(c *Config) { c.Embed.DrainBytes = "0" }, false, ""},
+		{"embed drain_bytes negative rejected", validConfig, func(c *Config) { c.Embed.DrainBytes = "-1" }, true, "ENGRAM_EMBED_DRAIN_BYTES"},
+
+		// --- embed.drain_timeout ---
+		{"embed drain_timeout zero accepted", validConfig, func(c *Config) { c.Embed.DrainTimeout = "0" }, false, ""},
+		{"embed drain_timeout negative rejected", validConfig, func(c *Config) { c.Embed.DrainTimeout = "-1s" }, true, "ENGRAM_EMBED_DRAIN_TIMEOUT"},
+		{"embed drain_timeout unparseable rejected", validConfig, func(c *Config) { c.Embed.DrainTimeout = "not-a-duration" }, true, "ENGRAM_EMBED_DRAIN_TIMEOUT"},
+
+		// --- embed.max_timeout (always rejects non-positive) ---
+		{"embed max_timeout zero rejected", validConfig, func(c *Config) { c.Embed.MaxTimeout = "0" }, true, "ENGRAM_EMBED_MAX_TIMEOUT"},
+		{"embed max_timeout negative rejected", validConfig, func(c *Config) { c.Embed.MaxTimeout = "-1s" }, true, "ENGRAM_EMBED_MAX_TIMEOUT"},
+		{"embed max_timeout unparseable rejected", validConfig, func(c *Config) { c.Embed.MaxTimeout = "not-a-duration" }, true, "ENGRAM_EMBED_MAX_TIMEOUT"},
+
+		// --- summarize.drain_bytes (Model set: gated block active) ---
+		{"summarize drain_bytes zero accepted", summarizeEnabled, func(c *Config) { c.Summarize.DrainBytes = "0" }, false, ""},
+		{"summarize drain_bytes negative rejected", summarizeEnabled, func(c *Config) { c.Summarize.DrainBytes = "-1" }, true, "ENGRAM_SUMMARY_DRAIN_BYTES"},
+
+		// --- summarize.drain_timeout ---
+		{"summarize drain_timeout zero accepted", summarizeEnabled, func(c *Config) { c.Summarize.DrainTimeout = "0" }, false, ""},
+		{"summarize drain_timeout negative rejected", summarizeEnabled, func(c *Config) { c.Summarize.DrainTimeout = "-1s" }, true, "ENGRAM_SUMMARY_DRAIN_TIMEOUT"},
+		{"summarize drain_timeout unparseable rejected", summarizeEnabled, func(c *Config) { c.Summarize.DrainTimeout = "not-a-duration" }, true, "ENGRAM_SUMMARY_DRAIN_TIMEOUT"},
+
+		// --- summarize.max_timeout (always rejects non-positive, when Model set) ---
+		{"summarize max_timeout zero rejected", summarizeEnabled, func(c *Config) { c.Summarize.MaxTimeout = "0" }, true, "ENGRAM_SUMMARY_MAX_TIMEOUT"},
+		{"summarize max_timeout negative rejected", summarizeEnabled, func(c *Config) { c.Summarize.MaxTimeout = "-1s" }, true, "ENGRAM_SUMMARY_MAX_TIMEOUT"},
+		{"summarize max_timeout unparseable rejected", summarizeEnabled, func(c *Config) { c.Summarize.MaxTimeout = "not-a-duration" }, true, "ENGRAM_SUMMARY_MAX_TIMEOUT"},
+
+		// --- gating: summarize.timeout's own Summarize.Model gate applies identically here ---
+		{"summarize bounds ignored when model empty", validConfig, func(c *Config) {
+			c.Summarize.Model = "" // validConfig already leaves this empty; explicit for clarity
+			c.Summarize.DrainBytes = "-1"
+			c.Summarize.DrainTimeout = "not-a-duration"
+			c.Summarize.MaxTimeout = "0"
+		}, false, ""},
+		{"summarize bounds enforced when model set (control)", summarizeEnabled, func(*Config) {}, false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := tc.base()
+			tc.mutate(c)
+			err := c.Validate()
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tc.want)
+			}
+		})
+	}
 }

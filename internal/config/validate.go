@@ -64,12 +64,49 @@ func (c *Config) Validate() error {
 
 	// embed.timeout runs UNCONDITIONALLY (unlike summarize.timeout, which is
 	// gated on Summarize.Model) — the embedder is always active, there is no
-	// disabled state. 0 = no timeout (infinite), the explicit D-08 escape hatch.
+	// disabled state. Zero is accepted here and resolves to a configurable
+	// ceiling in the client, per 07-bounded-provider-responses's D-07 — it no
+	// longer means "no timeout (infinite)" as v0.10.x Phase 13's D-08 once
+	// named it. THIS phase's own D-08 (07-bounded-provider-responses) is the
+	// ceiling knob, embed.max_timeout, validated immediately below.
 	switch d, err := time.ParseDuration(c.Embed.Timeout); {
 	case err != nil:
 		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Embed.Timeout, err))
 	case d < 0:
 		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_TIMEOUT %q: must not be negative", c.Embed.Timeout))
+	}
+
+	// embed.drain_bytes (07-bounded-provider-responses D-04, D-05): zero is a
+	// deliberately supported operator setting — it skips the post-response
+	// drain entirely rather than being honored as "disabled". A negative
+	// value is rejected. Reuses ParseNonNegativeIntCap verbatim, the exact
+	// "zero valid, negative rejected" shape ENGRAM_MEMORY_MAX_SUMMARY_BYTES
+	// already uses below.
+	if _, err := ParseNonNegativeIntCap(c.Embed.DrainBytes); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_DRAIN_BYTES %q: %w", c.Embed.DrainBytes, err))
+	}
+
+	// embed.drain_timeout (07-bounded-provider-responses D-04, D-05): the
+	// same "zero valid, negative rejected" semantics as embed.drain_bytes
+	// above, applied to a duration instead of a byte count — the exact shape
+	// embed.timeout itself uses.
+	switch d, err := time.ParseDuration(c.Embed.DrainTimeout); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_DRAIN_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Embed.DrainTimeout, err))
+	case d < 0:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_DRAIN_TIMEOUT %q: must not be negative", c.Embed.DrainTimeout))
+	}
+
+	// embed.max_timeout (07-bounded-provider-responses D-07, D-08): UNLIKE
+	// the two drain bounds above, zero is always rejected here — this is the
+	// ceiling a non-positive embed.timeout resolves to, and a zero ceiling
+	// would silently reintroduce the unbounded request this phase exists to
+	// remove. There is deliberately no way to express "unbounded".
+	switch d, err := time.ParseDuration(c.Embed.MaxTimeout); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_MAX_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Embed.MaxTimeout, err))
+	case d <= 0:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_MAX_TIMEOUT %q: must be a positive duration", c.Embed.MaxTimeout))
 	}
 
 	// memory.max_summary_bytes (D-06a/D-18): a non-negative integer; "0"
@@ -217,6 +254,29 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Summarize.Timeout, err))
 		case d < 0:
 			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_TIMEOUT %q: must not be negative", c.Summarize.Timeout))
+		}
+
+		// summarize.drain_bytes / summarize.drain_timeout / summarize.max_timeout
+		// (07-bounded-provider-responses D-04, D-05, D-08): the summarize-lane
+		// mirror of the embed.* trio above, gated the same way summarize.timeout
+		// itself is — an empty summary model means no summarizer is ever built,
+		// so these values are inert and unchecked until a model is configured.
+		if _, err := ParseNonNegativeIntCap(c.Summarize.DrainBytes); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_DRAIN_BYTES %q: %w", c.Summarize.DrainBytes, err))
+		}
+
+		switch d, err := time.ParseDuration(c.Summarize.DrainTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_DRAIN_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Summarize.DrainTimeout, err))
+		case d < 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_DRAIN_TIMEOUT %q: must not be negative", c.Summarize.DrainTimeout))
+		}
+
+		switch d, err := time.ParseDuration(c.Summarize.MaxTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_MAX_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Summarize.MaxTimeout, err))
+		case d <= 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_MAX_TIMEOUT %q: must be a positive duration", c.Summarize.MaxTimeout))
 		}
 	}
 
