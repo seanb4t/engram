@@ -38,7 +38,7 @@ covered_files:
   - "internal/summarize/summarize_test.go"
   - "internal/testhttp/reuse.go"
   - "internal/testhttp/trickle.go"
-covered_digest: "v1:sha256:63a4959da13096739b9861b5243ca64041bfd5b1c8d1ea40c83522bff10236e7"
+covered_digest: "v1:sha256:a474ee8e6b3f5a0d394198f30d52f2b7358ab324da8aaa5aace0688d5f13ee3a"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -167,3 +167,25 @@ All 13 must-haves now verify. No other part of the tree regressed since the init
 
 _Verified: 2026-09-21T20:35:00Z (re-verification; initial run 2026-09-21T20:10:00Z)_
 _Verifier: Claude (gsd-verifier)_
+
+## Re-fingerprint
+
+**2026-09-21 — `covered_digest` recomputed at HEAD `6a504ca2`. Verdict unchanged: `passed`, 13/13.**
+
+Not a re-verification. `covered_files` includes the shared planning ledgers
+`.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`, so the ordinary
+post-verification step `phase.complete` — which ticks the Phases checklist and
+advances the Progress table — mutated a covered file and flipped the status to
+`stale` without any verified claim changing. This is the recurring false-stale
+documented in engram memory `rgcp7yb5fh`; the repair is a re-fingerprint by the
+orchestrator, never `/gsd-verify-work` (`6mhdtdkyn4`).
+
+Re-proved before recomputing: the only commit between the verification artifact
+(`dfc7a7c4`) and HEAD is `6a504ca2`, and `git diff --name-only dfc7a7c4..HEAD`
+returns exactly `.planning/ROADMAP.md`, `.planning/STATE.md` and
+`.planning/state.json` — no source file, plan, summary, requirement or review.
+Every one of the 13 must-haves is therefore untouched.
+
+- Previous digest: `v1:sha256:63a4959d…`
+- Current digest: `v1:sha256:a474ee8e…`
+- Covered files: 34, all present and readable
