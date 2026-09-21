@@ -325,7 +325,7 @@ Codex; and ships man pages from the cask.
 - [x] **Phase 4: List, ListScheduled & Search Bounded Reads** - `Store.List` (every mode), `list_scheduled`, and `search_memory`/`search_discovery` stay under the receive limit, and the `ListMemories` paging contract is decided (completed 2026-09-20)
 - [x] **Phase 5: Operator Sweeps & CI Backstop** - The five 256-batch operator sweeps stay bounded, `MaxCallRecvMsgSize` lands as defense-in-depth, and `internal/store` CI stays green with this milestone's oversized fixtures (completed 2026-09-20)
 - [x] **Phase 6: Cross-Spine Partial Results** - A cross-spine recall keeps its successful hits when the follow-up `ListScopes` call fails (completed 2026-09-20)
-- [ ] **Phase 7: Bounded Provider Responses** - The embed/summarize clients bound their post-response drain by bytes and time, independent of `http.Client.Timeout`
+- [x] **Phase 7: Bounded Provider Responses** - The embed/summarize clients bound their post-response drain by bytes and time, independent of `http.Client.Timeout` (completed 2026-09-21)
 
 ## Phase Details
 
@@ -575,7 +575,7 @@ Plans:
 1. The embed and summarize clients bound the post-response body drain by bytes and by time, independent of `http.Client.Timeout`, proven under `WithTimeout(0)` with both a large-but-fast body and a slow-trickle body.
 2. The already-shipped bounded error-body read is confirmed pinned by `embed_test.go`/`summarize_test.go` regression tests (adding the provider-snippet assertion if missing), and GitHub #347 is closed citing them.
 
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 
@@ -680,7 +680,7 @@ Plans:
 | 4. List, ListScheduled & Search Bounded Reads | 2026-09-18.01 | 8/8 | Complete | 2026-09-20 |
 | 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 6/6 | Complete | 2026-09-20 |
 | 6. Cross-Spine Partial Results | 2026-09-18.01 | 3/3 | Complete | 2026-09-20 |
-| 7. Bounded Provider Responses | 2026-09-18.01 | 5/5 | In Progress | - |
+| 7. Bounded Provider Responses | 2026-09-18.01 | 5/5 | Complete | 2026-09-21 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
