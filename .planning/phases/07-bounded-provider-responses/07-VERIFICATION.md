@@ -198,3 +198,34 @@ whatever `computeCoveredDigest(findProjectRoot(phaseDir), <the frontmatter's own
 covered_files array>)` returns, from `gsd-core/bin/lib/verification.cjs`. Compute
 it that way and confirm with `verification.status --pick status` before
 committing; do not trust the CLI verb's output for this repair.
+
+---
+
+## SUPERSEDED 2026-09-21 — red-evidence coverage removed by decision
+
+Every claim in this document about red-evidence patches, `redEvidenceDirs`,
+`TestRedEvidencePatchesAreLive`, or "confirmed RED directions" **no longer
+describes the repository**. On 2026-09-21 Sean established a repo rule
+(engram `3p0zsqrhmb`):
+
+> NEVER write tests for tests, tests for integration tests, gates of gates, or
+> similar. Tests verify behaviour.
+
+The red-evidence harness was a mutation-testing rig whose subject was the test
+suite rather than the product, so it violated that rule. `internal/store/
+redevidence_harness_test.go` (437 lines) and all 122 `.patch` files across every
+phase and archived milestone were deleted.
+
+**What this does and does not change:**
+
+- The behavioural tests those patches pointed at are UNTOUCHED and still pass —
+  `TestEmbedDrainBoundedByBytes`, `TestEmbedDrainBoundedByTimeUnderZeroRequestTimeout`,
+  `TestEmbedDrainOptionsHonorZero`, `TestEmbedTimeoutCeiling`,
+  `TestEmbedNon2xxErrorBodyTruncated`, `TestSummarizeTimeoutCeiling`,
+  `TestSummarizeNon200ErrorBodyTruncated`, and the `internal/httpdrain` unit tests.
+  The phase's actual behaviour is still verified.
+- What is gone is the second-order proof that each of those tests fails when its
+  bug is reintroduced. That proof is not being replaced.
+
+Left in place rather than rewritten: this document records what was true when it
+was written. Read it with this note.

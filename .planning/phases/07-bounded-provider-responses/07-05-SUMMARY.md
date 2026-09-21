@@ -258,3 +258,34 @@ None - no external service configuration required.
 - FOUND commit `32bea489` in `git log --oneline --all`
 - FOUND commit `9506a043` in `git log --oneline --all`
 - FOUND: GitHub #347 state CLOSED (`gh issue view 347 --json state,closed`)
+
+---
+
+## SUPERSEDED 2026-09-21 — red-evidence coverage removed by decision
+
+Every claim in this document about red-evidence patches, `redEvidenceDirs`,
+`TestRedEvidencePatchesAreLive`, or "confirmed RED directions" **no longer
+describes the repository**. On 2026-09-21 Sean established a repo rule
+(engram `3p0zsqrhmb`):
+
+> NEVER write tests for tests, tests for integration tests, gates of gates, or
+> similar. Tests verify behaviour.
+
+The red-evidence harness was a mutation-testing rig whose subject was the test
+suite rather than the product, so it violated that rule. `internal/store/
+redevidence_harness_test.go` (437 lines) and all 122 `.patch` files across every
+phase and archived milestone were deleted.
+
+**What this does and does not change:**
+
+- The behavioural tests those patches pointed at are UNTOUCHED and still pass —
+  `TestEmbedDrainBoundedByBytes`, `TestEmbedDrainBoundedByTimeUnderZeroRequestTimeout`,
+  `TestEmbedDrainOptionsHonorZero`, `TestEmbedTimeoutCeiling`,
+  `TestEmbedNon2xxErrorBodyTruncated`, `TestSummarizeTimeoutCeiling`,
+  `TestSummarizeNon200ErrorBodyTruncated`, and the `internal/httpdrain` unit tests.
+  The phase's actual behaviour is still verified.
+- What is gone is the second-order proof that each of those tests fails when its
+  bug is reintroduced. That proof is not being replaced.
+
+Left in place rather than rewritten: this document records what was true when it
+was written. Read it with this note.
