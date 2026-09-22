@@ -15,9 +15,12 @@ and write-time hints. Context: `.planning/notes/jev-system-one-decisions.md`,
   probabilities); Jev is one backend, a chat-LLM emulator another.
 - Off by default; advisory only — verdicts are surfaced, never acted on (reranking allowed).
 - Transport goes through `/api/alpha/decisions`; engram's chat client cannot reach Jev.
+- The decision client gets its own base-URL setting; it must not assume the chat/embeddings
+  gateway serves Decisions (LiteLLM does not, without a pass-through entry).
 
 ## Spikes
 
 | # | Idea | Name | Type | Validates | Verdict | Tags |
 |---|------|------|------|-----------|---------|------|
 | 001 | jev-typed-decisions | jev-openrouter-transport | standard | Given the OpenRouter key, when a Decisions request is POSTed, then typed probabilities return with usable latency and known limits | VALIDATED | jev, openrouter, decisions-api, latency |
+| 002 | jev-typed-decisions | jev-gateway-passthrough | standard | Given the LiteLLM gateway, when a Decisions request is sent through it, then it reaches Jev intact | PARTIAL | jev, litellm, gateway, pass-through |
