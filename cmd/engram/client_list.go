@@ -91,7 +91,7 @@ var listCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			if err := renderCoverageFooter(cmd.OutOrStdout(), listCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated()); err != nil {
+			if err := renderCoverageFooter(cmd.OutOrStdout(), listCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated(), resp.Msg.GetScopesUnknown()); err != nil {
 				return err
 			}
 			// The migration advisory is the least-related fact on screen,
@@ -119,7 +119,7 @@ func init() {
 		scopeRule.Sentence+"; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine")
 	listCmd.Flags().BoolVar(&listCrossSpine, "cross-spine", false,
 		"span every scope you can read; mutually exclusive with --scope")
-	listCmd.Flags().Uint64Var(&listLimit, "limit", 0, "max results (0 = server default)")
+	listCmd.Flags().Uint64Var(&listLimit, "limit", 0, "max results per page; 0 resolves to the maximum, 1000; a larger value is rejected")
 	// The --offset/--cursor-mode/--page-token Usage strings compose
 	// surfaces.RuleByID's declared paging-trio Sentence verbatim (D-03),
 	// mirroring the --scope composition above, rather than each restating

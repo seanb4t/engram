@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package badaliasedexample is a synthetic KNOWN-BAD fixture for
+// qdrant_client_convergence_test.go's
+// TestQdrantClientConstructedOnlyByNewQdrantClient. Scanned under the
+// display path "internal/example/aliased_test.go", it covers two bypass
+// shapes a plain-name-only matcher would miss: an import ALIAS (qc), and a
+// separate DOT-IMPORT spec of the same path — a dot-import makes unqualified
+// calls invisible to this scanner, so it is itself recorded as a violation
+// rather than silently ignored. Must scan dirty with exactly two findings.
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package badaliasedexample
+
+import (
+	qc "github.com/qdrant/go-client/qdrant"
+	. "github.com/qdrant/go-client/qdrant"
+)
+
+func dialAliased(host string, port int) (*qc.Client, error) {
+	return qc.NewClient(&qc.Config{Host: host, Port: port})
+}

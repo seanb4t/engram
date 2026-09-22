@@ -1,12 +1,14 @@
 ---
 title: Error Envelope & Hint Codes
-description: The field-and-hint grammar every engram argument rejection carries, the ten hint codes, and the Connect error-code mapping — what a caller (agent or integrator) needs to parse and act on a rejection.
+description: The field-and-hint grammar every engram argument rejection (plus the one response-too-large rejection) carries, the twelve hint codes, and the Connect error-code mapping — what a caller (agent or integrator) needs to parse and act on a rejection.
 ---
 
-Every argument-validation rejection engram produces — on both the MCP tool-call lane and
-the Connect RPC lane — carries the same structured envelope: the field(s) that failed, a
-machine-stable hint code naming *why*, and a human-readable detail. This page is the
-complete, checked-off reference for that vocabulary.
+Every argument-validation rejection engram produces, plus the one rejection that is not
+about an input at all ([a response too large to return](#response-too-large-resource_exhausted-and-exit-10))
+— on both the MCP tool-call lane and the Connect RPC lane — carries the same structured
+envelope: the field(s) that failed (or the fixed pseudo-field `response`), a machine-stable
+hint code naming *why*, and a human-readable detail. This page is the complete,
+checked-off reference for that vocabulary.
 
 ## The envelope grammar
 
@@ -23,6 +25,21 @@ this release and will again.
 ```
 field=summary hint=too_long: summary must be at most 512 bytes (got 700)
 ```
+
+The same shape covers every capped field, carrying only sizes — never the submitted value.
+An oversized `content` on `store_memory`/`schedule_memory`/`update_memory`:
+
+```
+field=content hint=too_long: content too large: 70000 bytes (max 65536)
+```
+
+Too many `tags` on the same write paths:
+
+```
+field=tags hint=too_many: too many tags: 129 (max 128)
+```
+
+No new hint code was added for either of these — both reuse `too_long`/`too_many`.
 
 **Relational example** — fields that cannot be combined, on `list_memory`:
 
@@ -86,12 +103,12 @@ target is already superseded: a1b2c3d4e5, m1n2p3q4r5
 ```
 
 These four rejections are **sentinel-shaped**, not field-and-hint shaped — they name
-offending targets, not a field, and the ten-code hint vocabulary above is unchanged;
+offending targets, not a field, and the twelve-code hint vocabulary above is unchanged;
 no new hint code was added for this verb. Set-shape rejections (empty array, blank
 entry) DO use the field-and-hint grammar above, naming the `supersedes` argument
 itself rather than any target value.
 
-## The ten hint codes
+## The twelve hint codes
 
 Transcribed directly from `internal/server/argerror.go`'s `HintCode` constants and checked
 off one by one against that file — this table cannot list a code the server does not emit.
@@ -101,13 +118,33 @@ off one by one against that file — this table cannot list a code the server do
 | `required` | The field was absent entirely. | Supply it — it was missing, not malformed. |
 | `conditional_required` | The field is required only given another field's value or the call's shape (e.g. a caller-authored summary being addressed on `update_memory`). | Supply the field, given the condition named in the detail text. |
 | `too_long` | The field exceeds a maximum length/byte bound. | Shorten the field's value — do not resend the whole record; only this field failed. |
-| `too_many` | A collection field (e.g. `citations`) exceeds a maximum count. | Trim the collection to the stated bound. |
+| `too_many` | A collection field (e.g. `citations`, `tags`) exceeds a maximum count. | Trim the collection to the stated bound. |
 | `enum` | The value is not one of the accepted set. | Resend with one of the accepted values named in the detail text. |
 | `format` | The value fails a structural check (e.g. an RFC3339 timestamp). | Correct the value's shape; the constraint is named in the detail text. |
 | `prefix` | The value must start with a required prefix (e.g. a discovery scope must start with `discovery:`). | Prepend the required prefix. |
 | `ordering` | A before/after or numeric ordering constraint is violated — usually between two fields, but sometimes between one field and a fixed reference such as the current time. | Adjust so the stated ordering holds. Read `field=`: it lists every field involved, which may be one or two. |
 | `mutually_exclusive` | Two or more fields cannot be combined at once. | Drop all but one — every field the constraint relates is listed under `field=`. |
 | `not_applicable` | The field does not apply given another field's value on this call. | Omit the field entirely rather than sending an empty or default value. |
+| `out_of_range` | A numeric field exceeds its documented maximum. | Resend at or below the maximum named in the detail text — the value is rejected, never clamped. |
+| `response_too_large` | The result the request would produce exceeds what one response can carry — not a rejected input; `field=` is always the fixed pseudo-field `response`. | Retry with a smaller `limit` or `k`, or omit `full`; retrying the identical request fails the same way. See [Response too large](#response-too-large-resource_exhausted-and-exit-10). |
+
+`out_of_range` names a NUMERIC argument above its documented ceiling — distinct from
+`too_long` (a length/byte bound on a string or blob) and `too_many` (a collection count
+bound). `limit`/`k` above the documented maximum (1000) is the first caller of this code.
+
+`out_of_range` reads like it should map to `CodeOutOfRange` below, but it is classified
+Malformed by decision — a rejected numeric argument is still a malformed request, and
+Malformed and Out of range already collapse to the same CLI exit, so nothing observable
+changes for a CLI-driven caller:
+
+| Hint code | Connect code | CLI exit |
+|---|---|---|
+| `out_of_range` | `invalid_argument` (`CodeInvalidArgument`) | [`2`](/guides/cli/#exit-codes) |
+
+`too_long` and `response_too_large` are easy to conflate but name opposite directions:
+`too_long` means an INPUT field you sent exceeded a bound — shorten that field and resend.
+`response_too_large` means the RESPONSE your request would produce exceeds a bound — the
+request itself was fine; ask for less of it (a smaller `limit`/`k`, or without `full`).
 
 `required` and `conditional_required` are two different codes for a reason: `required`
 means the field is unconditionally missing; `conditional_required` means it is missing
@@ -127,9 +164,9 @@ to a second field can fix.
 
 ## Operator-tier hint codes (`engram migrate revert`)
 
-These two codes use the same `field=<name> hint=<code>: <text>` grammar as the ten-code
+These two codes use the same `field=<name> hint=<code>: <text>` grammar as the twelve-code
 table above, but they are produced by `internal/store/revert.go`'s `RevertRefusalError` —
-not by `internal/server/argerror.go` — so they are not `HintCode` constants and the ten-code
+not by `internal/server/argerror.go` — so they are not `HintCode` constants and the twelve-code
 table above remains exactly what it claims to be: a transcription of `argerror.go`. They
 surface only from an `engram migrate revert` refusal (see below for the two places that can
 happen), never from any memory-tool call.
@@ -187,6 +224,32 @@ message text — selects the Connect error code:
 `engram` CLI needs no change. A Connect client branching on the error code directly (not
 through the CLI) does need to widen from `CodeInvalidArgument` alone to all three.
 
+## Response too large: resource_exhausted and exit 10
+
+Every other rejection on this page is about an input: something you sent was wrong. This
+one is not. The request was fine — the RESULT it would produce exceeds what one response
+can carry. It uses the same `field=<name> hint=<code>: <detail>` grammar as every other
+rejection above, but with the fixed pseudo-field `response`: the response overflowed, not
+an argument you supplied, so there is no caller-supplied field to name.
+
+It is **not** one of the three argument classes in the mapping above — a Qdrant read that
+overflows the client's receive limit is a transport-layer event, not a malformed, out of
+range, or preconditioned argument — so it does not map to exit `2`.
+
+| Hint code | Connect code | CLI exit |
+|---|---|---|
+| `response_too_large` | `resource_exhausted` (`CodeResourceExhausted`, HTTP 429) | [`10`](/guides/cli/#exit-codes) |
+
+On the MCP lane the same envelope is the tool result's text content, with `IsError` true.
+
+```
+field=response hint=response_too_large: the result is too large to return in one response; retry with a smaller limit or k, or omit full
+```
+
+The remedy is a smaller `limit` or `k`, or omitting `full` — retrying the identical
+request fails the same way, since the ceiling that tripped it does not change between
+requests.
+
 ## The one exit code with no hint-code or Connect-code counterpart
 
 Every exit code the CLI's taxonomy publishes elsewhere is reachable through this page's
@@ -217,6 +280,10 @@ individually length-bounded (see the [MCP Tools reference](/reference/tools/) fo
 per-entry cap) so the echo itself can never carry an oversized or arbitrary blob. Every
 other field in this grammar, including `supersede_memory`'s own set-shape (class 1)
 rejection, still names the field alone and never echoes its value.
+
+**The `response_too_large` envelope carries no number at all.** No byte ceiling, no observed size,
+and no upstream transport text — those are logged server-side only; the wire text is the
+fixed, generic detail shown in [Response too large](#response-too-large-resource_exhausted-and-exit-10).
 
 **The MCP 401 auth body is a separate, unchanged contract.** A bearer-token rejection
 (missing or invalid credential) is produced by the MCP SDK's own auth middleware, before

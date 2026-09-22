@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
-// Package testhttp provides connection-reuse test instrumentation shared by
-// internal/embed and internal/summarize. It is a normal (non-_test.go) file
-// in an internal package rather than a _test.go helper because Go cannot
-// share a _test.go across package boundaries, and both provider clients'
-// test packages need the same tracker.
+// Package testhttp provides connection-reuse test instrumentation AND a
+// bounded slow-response handler, both shared by internal/embed and
+// internal/summarize's tests. It is a normal (non-_test.go) file in an
+// internal package rather than a _test.go helper because Go cannot share a
+// _test.go across package boundaries, and both provider clients' test
+// packages need the same tracker and the same trickle handler.
 //
-// It imports no test framework and exposes only counters and accessors, so
-// nothing test-only is pulled into a production import graph even though the
-// package is importable from non-test code.
+// It imports no test framework and exposes only counters, accessors, and an
+// http.Handler factory, so nothing test-only is pulled into a production
+// import graph even though the package is importable from non-test code.
 package testhttp
 
 import (

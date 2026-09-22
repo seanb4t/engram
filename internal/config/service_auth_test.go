@@ -263,13 +263,14 @@ func validConfigForServiceAuthTests() *Config {
 			Collection: "mem_eval",
 		},
 		Embed: EmbedConfig{
-			Model:   "ollama/bge-m3",
-			Dim:     "1024",
-			Timeout: "30s",
+			Model:        "ollama/bge-m3",
+			Dim:          "1024",
+			Timeout:      "30s",
+			DrainBytes:   "262144",
+			DrainTimeout: "2s",
+			MaxTimeout:   "10m",
 		},
-		Memory: MemoryConfig{
-			MaxSummaryBytes: "512",
-		},
+		Memory: MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI: OpenAIConfig{
 			BaseURL: "http://localhost:4000",
 		},

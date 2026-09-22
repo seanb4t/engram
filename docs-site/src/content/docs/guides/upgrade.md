@@ -34,6 +34,10 @@ one predictable, migration-safe contract.
 | rely on a CLI call blocking until the server answers | §5 |
 | set client configuration through environment variables | §7 |
 | pattern-match the exact `field=` value of an argument rejection (not just check a field name's presence) | §8 |
+| branch on exit status, a Connect error code, or MCP error text for `list`/`search` (or an operator command reading Qdrant directly) | §14 |
+| call `ListMemories`/`engram list` with `limit: 0` (or `--limit` omitted) expecting every matching record back in one response, or rely on an over-1000 `limit`/`k` being clamped rather than rejected | §16 |
+| treat a cross-spine `search`/`list` failure as "no results", or branch on its error to detect a coverage-enumeration problem | §17 |
+| rely on `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` meaning no request deadline at all | §18 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -218,7 +222,7 @@ specific field's presence in the list — the documented, correct way to read
 
 **The `mutually_exclusive` hint's documented shape widened from "always two
 fields" to "two or more fields"** to match the paging-trio case above — see
-the [error envelope reference](/reference/errors/#the-ten-hint-codes) for the
+the [error envelope reference](/reference/errors/#the-twelve-hint-codes) for the
 updated wording. No code that already reads `field=` as a list is affected.
 
 ### 9. `prune-expired` now previews by default; `--apply` performs the deletion
@@ -366,6 +370,126 @@ delegates to — it is never hard-removed.
 **Who should act:** any operator who scripts bare `backfill-short-ids`
 expecting it to apply. Add `--apply` to restore the previous behavior, or
 switch to `engram migrate`.
+
+### 14. New exit code 10 and resource_exhausted for a response too large to return
+
+Before this release, a server response that exceeded the client's receive
+limit surfaced as Connect `internal` and CLI exit `1`, and as the raw
+upstream transport error text on the MCP lane. It now surfaces as Connect
+`resource_exhausted` (HTTP 429) carrying `field=response hint=response_too_large`,
+CLI exit **`10`** for `engram list` / `engram search` (and for an operator
+command whose own Qdrant read overflows, previously exit `1` there too),
+and the identical scrubbed envelope as the MCP tool-result text. See the
+[error envelope reference](/reference/errors/#response-too-large-resource_exhausted-and-exit-10)
+and the [CLI guide's exit-code table](/guides/cli/#exit-codes).
+
+**Who should act:** a script currently treating exit `1` as "retry later"
+for `list`/`search`, a Connect client branching on `internal` for this
+case, or an agent parsing raw MCP error text for it — retry with a smaller
+`--limit`/`--k` or without `--full` instead of retrying the identical
+request unchanged.
+
+### 15. Memory content and tags are now capped: an oversized write is rejected
+
+Before this release, a memory write with any content size or tag count was
+stored. It now rejects content over 64 KiB, more than 128 tags, or a tag
+over 128 bytes with the existing `too_long`/`too_many` hints — see the
+[error envelope reference](/reference/errors/#the-envelope-grammar) and the
+[configure guide](/guides/configure/#memory). This applies on
+`store_memory`/`schedule_memory`/`supersede_memory`, on `update_memory` when
+it changes `content` or `tags`, on the Connect `StoreMemory`/
+`ScheduleMemory`/`UpdateMemory` RPCs, and on `engram store` (CLI exit `2`).
+An idempotent retry (`idempotency_key`) of such a write is rejected the same
+way — retrying the identical request unchanged fails again for the same
+reason. Stored records are never rewritten: an existing over-cap record
+stays readable.
+
+**Who should act:** an agent or script storing large documents or
+tag-heavy records — shorten the content, split it into multiple records, or
+trim the tag set. Raising the cap is possible via
+`ENGRAM_MEMORY_MAX_CONTENT_BYTES`/`ENGRAM_MEMORY_MAX_TAGS`/
+`ENGRAM_MEMORY_MAX_TAG_BYTES`, but never to `0` — unlike
+`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, these three are always enforced and
+reject `0` at startup.
+
+### 16. `ListMemories`' `limit: 0` now returns up to 1000 records, and an over-maximum count is rejected, never clamped
+
+Before this release, an unset (`0`) `limit` on the Connect `ListMemories` RPC
+— and therefore `engram list --limit 0` / `engram list` with `--limit`
+omitted, and the console — meant "all": every matching record in the scope
+came back in one call, with no bound. **It now means 1000** — the same
+documented maximum every recall count knob on the wire shares. A caller
+relying on `limit: 0` to fetch an entire scope in one response and seeing
+more than 1000 matching records now sees a `total` larger than the number of
+memories actually returned; page the remainder with `--offset` (or, in
+cursor mode, `--page-token`) rather than assuming one call is exhaustive.
+This applies to offset mode. In **cursor mode** (`cursor_mode: true`, or a
+`page_token` set) an unset `limit` resolves to the cursor page default of
+`20`, unchanged from before this release — a cursor page has always been a
+page, and `next_page_token` tells you whether more remain.
+
+Separately, `limit`/`k` above 1000 (in cursor-mode paging, and on every
+other recall surface: `search_memory`/`search_discovery`'s `k`,
+`SearchMemories`/`SearchDiscoveries`, `list_memory`/`list_scheduled`) is now
+**rejected**, not silently clamped down to 1000 as it previously was for a
+cursor-mode `ListMemories` page — the rejection carries
+`field=limit hint=out_of_range` or `field=k hint=out_of_range` (CLI exit
+`2`, Connect `invalid_argument`). See the
+[error envelope reference](/reference/errors/#the-envelope-grammar) and the
+[CLI guide's paging section](/guides/cli/#paging-engram-list).
+
+**Who should act:** a script or agent calling `ListMemories`/`engram list`
+with `limit: 0` (or `--limit` omitted) and expecting every matching record
+back in one response — pass an explicit `--limit`/`limit` and page the
+remainder by `--offset`/`offset` or `--page-token`/`page_token`; and any
+caller that relied on an over-1000 cursor-mode page silently shrinking to
+1000 rather than being rejected — pass a `limit`/`k` at or below 1000
+instead.
+
+### 17. A cross-spine `search`/`list` whose coverage enumeration failed now succeeds instead of erroring
+
+Before this release, a cross-spine `search_memory`/`list_memory` MCP call,
+Connect `SearchMemories`/`ListMemories` RPC, or `engram search --cross-spine`
+/`engram list --cross-spine` invocation whose follow-up scope-coverage
+enumeration failed — after already-authorized hits had been found — returned
+an error and no results, discarding real, already-computed data over an
+unrelated coverage-accounting failure. **It now succeeds**: the hits are
+returned, the new `scopes_unknown` field/key is `true`, and `searched_scopes`
+is absent (never an empty list, which would read as "searched nothing") with
+`scopes_truncated` absent/false. No new exit code and no stderr warning are
+introduced for this state — the call genuinely succeeded. See the
+[tools reference](/reference/tools/#search_memory) and the
+[CLI guide's output contract](/guides/cli/#output-contract) for the full
+three-state shape.
+
+**Who should act:** any caller that treated a cross-spine recall failure as
+"no results" or branched on the error itself to detect a coverage problem —
+branch on `scopes_unknown`/`GetScopesUnknown()` instead, which is the only
+place this state is now signaled; the call's exit status/error path no
+longer distinguishes it.
+
+### 18. `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` no longer mean unbounded
+
+Before this release, setting either provider request-timeout variable to `0`
+meant no request deadline at all — the embed or summarize HTTP call could
+run indefinitely. **That is no longer possible.** A non-positive value on
+either variable now resolves to a configurable ceiling instead:
+`ENGRAM_EMBED_MAX_TIMEOUT` and `ENGRAM_SUMMARY_MAX_TIMEOUT`, both defaulting
+to `10m`. An explicit positive duration on `ENGRAM_EMBED_TIMEOUT` /
+`ENGRAM_SUMMARY_TIMEOUT` is still honored **uncapped**, however large —
+this change only closes the specific escape hatch that meant "forever."
+See the newly documented rows in the [configuration guide](/guides/configure/#embedder)
+(`ENGRAM_EMBED_MAX_TIMEOUT`) and [Auto-summary](/guides/configure/#auto-summary)
+(`ENGRAM_SUMMARY_MAX_TIMEOUT`) section for the full knob reference, including
+the four new post-response drain-bound variables shipped alongside this
+change.
+
+**Who should act:** anyone who set `ENGRAM_EMBED_TIMEOUT=0` or
+`ENGRAM_SUMMARY_TIMEOUT=0` expecting no deadline at all — for example, to
+accommodate a very slow local/self-hosted model. Set an explicit positive
+duration instead (e.g. `ENGRAM_EMBED_TIMEOUT=30m`), raising
+`ENGRAM_EMBED_MAX_TIMEOUT`/`ENGRAM_SUMMARY_MAX_TIMEOUT` above the default
+`10m` first if the request genuinely needs longer than that to resolve to.
 
 ---
 

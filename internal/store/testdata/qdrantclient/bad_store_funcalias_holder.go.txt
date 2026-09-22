@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package badstorefuncaliasholder is a synthetic KNOWN-BAD fixture for
+// schemaversion_stamp_gate_test.go's fileRefsQdrantClient and
+// qdrantClientLocalNames (exercised by
+// TestFileRefsQdrantClientDetectsFunctionValueAlias and
+// TestQdrantClientLocalNamesFollowsFunctionValueAlias). It binds the shared
+// constructor store.NewQdrantClient to a package-level var, then calls it
+// through that var — the function-value-alias bypass named in
+// 01-REVIEW.md WR-01, gap 1. Without following the alias, the resulting
+// client-bound identifier ("c" below) would never be registered by
+// qdrantClientLocalNames, so a write on it would be completely unguarded by
+// TestQdrantClientIsHeldOnlyByStorePackage's write-boundary check.
+//
+// Deliberately does NOT name the *qdrant.Client type anywhere (no qdrant
+// import at all) — the return value is left untyped (`any`) so this
+// fixture isolates the bare-value-reference bypass from the pre-existing
+// qdrant.Client type-reference check, which would otherwise make
+// TestFileRefsQdrantClientDetectsFunctionValueAlias pass for the wrong
+// reason.
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package badstorefuncaliasholder
+
+import (
+	"github.com/seanb4t/engram/internal/store"
+)
+
+// dial aliases the shared constructor as a value.
+var dial = store.NewQdrantClient
+
+func newHolder(host string, port int) (any, error) {
+	c, err := dial(host, port)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}

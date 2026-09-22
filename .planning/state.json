@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "2026-09-13.01 — Setup v2",
+  "milestone": "2026-09-18.01 — Bounded Reads",
   "phases": [
     {
       "number": "9",
@@ -257,6 +257,41 @@
       "number": "5",
       "name": "Apply-Time Preserve Gate & Documentation",
       "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Test Harness & Fixture Helper",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Error Classification & ResourceExhausted Mapping",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Shared Bounded-Read Mechanism & Content Cap Decision",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "List, ListScheduled & Search Bounded Reads",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Operator Sweeps & CI Backstop",
+      "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "Cross-Spine Partial Results",
+      "status": "complete"
+    },
+    {
+      "number": "7",
+      "name": "Bounded Provider Responses",
+      "status": "complete"
     }
   ],
   "next": {
@@ -264,5 +299,5 @@
     "label": "Show progress",
     "reason": "Unsure of state — showing progress"
   },
-  "updated_at": "2026-09-18T00:56:22.151Z"
+  "updated_at": "2026-09-22T21:48:19.888Z"
 }

@@ -63,6 +63,19 @@ func instrumentTools(record recordFunc) mcp.Middleware {
 	}
 }
 
+// addToolMiddleware is the single registration of the tool-call middleware
+// stack for production (Register) and tests alike (D-08) — so a test never
+// drifts from what production actually wires. go-sdk v1.8.0's
+// AddReceivingMiddleware applies its variadic list backwards (slices.Backward),
+// so the FIRST-listed argument ends up OUTERMOST: instrumentTools is
+// outermost (its span/metric/log cover the mapped result exactly as they
+// would any other result) and mapResponseTooLarge is innermost — the first
+// to see the raw, unmodified result, closest to the tool dispatch, which is
+// the more defensive position if a third middleware is ever added later.
+func addToolMiddleware(s *mcp.Server, record recordFunc) {
+	s.AddReceivingMiddleware(instrumentTools(record), mapResponseTooLarge())
+}
+
 func classifyOutcome(res mcp.Result, err error) string {
 	if err != nil {
 		return "error"

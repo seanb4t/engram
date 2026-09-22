@@ -142,7 +142,7 @@
           "name": "limit",
           "type": "uint64",
           "default": "0",
-          "usage": "max results (0 = server default)"
+          "usage": "max results per page; 0 resolves to the maximum, 1000; a larger value is rejected"
         },
         {
           "name": "offset",
@@ -568,7 +568,7 @@
           "name": "k",
           "type": "uint64",
           "default": "0",
-          "usage": "max results (0 = server default)"
+          "usage": "max results; 0 resolves to this command's default, 20; a value above the maximum, 1000, is rejected"
         },
         {
           "name": "output",
@@ -1248,6 +1248,10 @@
     {
       "code": 9,
       "meaning": "every runtime engram setup attempted failed; a runtime that is not installed does not count as an attempt"
+    },
+    {
+      "code": 10,
+      "meaning": "a server response exceeded what one response can carry (Connect resource_exhausted); retry with a smaller --limit or --k, or without --full"
     }
   ],
   "notes": [

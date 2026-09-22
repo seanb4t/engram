@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -533,35 +531,13 @@ func countSideEffectInterceptor(inj *countSideEffectInjector) grpc.UnaryClientIn
 
 // dialCountSideEffectTestClient is dialFaultInjectingTestClient's sibling
 // for countSideEffectInjector (migrate_faultinject_test.go documents the
-// identical skip/fail-closed contract this mirrors).
+// identical skip/fail-closed contract this mirrors). It wires its
+// interceptor as a caller option into dialTestClient, which owns the
+// address, the skip/fail-closed behavior, and the shared-constructor dial
+// (so this client also carries production's dial options).
 func dialCountSideEffectTestClient(t *testing.T, inj *countSideEffectInjector) *qdrant.Client {
 	t.Helper()
-	if testQdrantAddr == "" {
-		required, err := requireQdrant()
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
-		if required {
-			t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
-		}
-		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
-	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{
-		Host: host, Port: port,
-		GrpcOptions: []grpc.DialOption{grpc.WithUnaryInterceptor(countSideEffectInterceptor(inj))},
-	})
-	if err != nil {
-		t.Fatalf("count side-effect client: %v", err)
-	}
-	return c
+	return dialTestClient(t, grpc.WithUnaryInterceptor(countSideEffectInterceptor(inj)))
 }
 
 // TestMigrateRevertMidLoopRefusalIsTypedAndCatchable proves REVIEWS.md

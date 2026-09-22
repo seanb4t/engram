@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -20,10 +21,12 @@ import (
 	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/telemetry"
+	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -471,6 +474,12 @@ type Store struct {
 	// sync.Mutex-backed implementation in New(); WithTargetLocker overrides it
 	// (e.g. with a future distributed lock). See TargetLocker's doc comment.
 	locker TargetLocker
+
+	// caps holds the write caps (boundedread.go's RecordCaps) this Store's
+	// read-side record ceilings are derived from. nil means
+	// DefaultRecordCaps() (RecordCaps() resolves the default); WithRecordCaps
+	// sets a normalized value here.
+	caps *RecordCaps
 }
 
 // Option configures a Store at construction.
@@ -497,6 +506,78 @@ func WithAuthz(pdp *authz.PDP) Option {
 // probe.
 func WithTargetLocker(l TargetLocker) Option {
 	return func(s *Store) { s.locker = l }
+}
+
+// NewQdrantClient is the single constructor for every *qdrant.Client this
+// module builds — the production composition root (internal/server/tools.go's
+// storeFromConfig) and every test (via internal/store/storetest, or directly
+// inside this package's own in-package tests, which cannot import storetest
+// without an import cycle). It applies the shared base dial options — the
+// otelgrpc stats handler (the option production has always used) and, as of
+// Phase 2 (D-01), the receive-limit classifier interceptor installed via
+// grpc.WithChainUnaryInterceptor with classifyResponseTooLarge — FIRST, then
+// appends the caller's own opts, mirroring qdrant-go-client's own
+// base-then-Config.GrpcOptions order so caller options take precedence. The
+// classifier sits INSIDE qdrant-go-client's own rate-limit interceptor
+// (getRateLimitInterceptor, installed before Config.GrpcOptions in the dial
+// chain), so a genuine server-side ResourceExhausted still reaches that
+// interceptor's own retry-after handling untouched (D-02). A caller option
+// added via grpc.WithChainUnaryInterceptor therefore runs INSIDE the
+// classifier (sees its output); one added via grpc.WithUnaryInterceptor is
+// outermost of every interceptor, caller and base alike. A receive limit is
+// passed by the caller in upstream vocabulary
+// (grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(n))), never through a
+// wrapper option type. As of Phase 5 (D-05), the constructor also applies
+// productionRecvLimit — a 64 MiB MaxCallRecvMsgSize backstop — as defense in
+// depth: it is not the bounding mechanism, and no test in this repository
+// depends on it (REQ-recv-limit-backstop). It is appended before opts,
+// exactly like the two base options above it, so a caller naming its own
+// receive limit in the upstream vocabulary above still wins.
+func NewQdrantClient(host string, port int, opts ...grpc.DialOption) (*qdrant.Client, error) {
+	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: qdrantDialOptions(opts)})
+}
+
+// productionRecvLimit raises the production gRPC client's default receive
+// message size to 64 MiB. It is defense in depth ONLY — never the fix for
+// an unbounded read. The fix is the byte-budget bounded-read mechanism
+// (Store.scrollAllPoints and the storetest.RecvLimit-pinned regressions
+// built on it) that Phases 3 and 4, and this phase's own plans 05-01
+// through 05-04, already built and proved WITHOUT this backstop in place.
+// A wider ceiling masks a genuinely unbounded read for LONGER than a
+// tighter one would; that trade-off was recorded and accepted deliberately
+// at decision time (D-05), not overlooked. Set in exactly ONE place: here.
+const productionRecvLimit = 64 << 20
+
+// productionCallOptions returns the default call options every production
+// *qdrant.Client carries. A slice, not a single value, so a future second
+// default call option has an obvious home without disturbing
+// TestQdrantRecvLimitBackstopPassThrough's "exactly one entry today"
+// assertion.
+func productionCallOptions() []grpc.CallOption {
+	return []grpc.CallOption{grpc.MaxCallRecvMsgSize(productionRecvLimit)}
+}
+
+// qdrantDialOptions assembles NewQdrantClient's dial options: the shared
+// base options — the otelgrpc stats handler, the classifyResponseTooLarge
+// interceptor, and the productionRecvLimit backstop — THEN the caller's own
+// opts, in that order.
+//
+// The backstop MUST be appended BEFORE opts, exactly like the two base
+// options ahead of it. grpc-go's default call options are last-wins, and
+// storetest.dialOptions relies on that: it appends its own
+// MaxCallRecvMsgSize(storetest.RecvLimit) LAST, specifically so no other
+// option can widen the limit a test names. Appending this backstop AFTER
+// opts would silently raise every existing oversized regression's
+// effective receive ceiling to 64 MiB without any of them turning red —
+// see TestQdrantRecvLimitBackstopPrecedesCallerOptions, the one test in
+// this repository that would catch that ordering mistake.
+func qdrantDialOptions(opts []grpc.DialOption) []grpc.DialOption {
+	dialOpts := make([]grpc.DialOption, 0, 3+len(opts))
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	dialOpts = append(dialOpts, grpc.WithChainUnaryInterceptor(classifyResponseTooLarge))
+	dialOpts = append(dialOpts, grpc.WithDefaultCallOptions(productionCallOptions()...))
+	dialOpts = append(dialOpts, opts...)
+	return dialOpts
 }
 
 // New returns a Store backed by the given Qdrant client and collection.
@@ -1076,6 +1157,12 @@ type SearchOptions struct {
 	IncludeArchived   bool
 	IncludeSuperseded bool
 	IncludeScheduled  bool
+	// Full selects the D-09 fetch phase's payload projection: the summary
+	// view by default (false), the full view when true. Governs ONLY
+	// Store.Search's own fetch phase — SearchReranked forces this on
+	// unconditionally for its own delegated call regardless of what the
+	// caller passed here; see SearchReranked's doc comment for why.
+	Full bool
 }
 
 // Search returns the k nearest readable memories to vec within scope.
@@ -1102,6 +1189,17 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 			)
 		}
 	}()
+
+	// D-10 backstop: refused before any filter construction or RPC.
+	// SearchReranked needs no call of its own — it delegates here with
+	// candidateK(k) (clamped to at most 100, always well under
+	// MaxRecallLimit), so this guard can never reject a SearchReranked call
+	// for being over the maximum; that is fine, since candidateK already
+	// bounds SearchReranked's actual RPC cost independent of the caller's k,
+	// so a duplicate guard there would add nothing.
+	if err := rejectOverMaximum("k", k); err != nil {
+		return nil, err
+	}
 
 	f := s.ownerScopeFilter(ctx, scope, subj)
 	// IncludeScheduled relaxes the ENTIRE activeWindowConditions append as one
@@ -1136,17 +1234,63 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
+	// D-09 two-phase search: the vector Query asks for ids and scores ONLY
+	// (qdrant.NewWithPayload(false)) — any k up to the recall maximum stays
+	// one small RPC — and the payloads are fetched separately, in bounded
+	// batches, by fetchPayloadsByID (searchfetch.go) using this SAME f
+	// value, so the fetch can never see a record the query's own filter
+	// would have excluded.
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(true),
+		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(false),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return memoriesFromPoints(res), nil
+	ids := make([]string, len(res))
+	scores := make(map[string]float32, len(res))
+	for i, p := range res {
+		id := p.Id.GetUuid()
+		ids[i] = id
+		scores[id] = p.Score
+	}
+	view := s.summaryView()
+	if opts.Full {
+		view = s.fullView()
+	}
+	fetched, err := s.fetchPayloadsByID(ctx, f, view, ids)
+	if err != nil {
+		return nil, err
+	}
+	// Walk phase one's OWN returned order rather than re-sorting by score:
+	// this reproduces the vector query's own tie order exactly (stronger
+	// than a score sort, which cannot distinguish equal-scoring hits), and
+	// an id the fetch did not return (dropped between the two phases) is
+	// simply skipped — never an error, never returned stale.
+	out = make([]Memory, 0, len(ids))
+	for _, id := range ids {
+		m, ok := fetched[id]
+		if !ok {
+			continue
+		}
+		m.Score = scores[id]
+		out = append(out, m)
+	}
+	if isSummaryView(view) {
+		if err := s.backfillNoSummaryContent(ctx, f, out); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
-// memoriesFromPoints decodes Qdrant scored points into Memory records.
+// memoriesFromPoints decodes Qdrant scored points into Memory records. No
+// production call site remains as of plan 04-04: both Store.Search and
+// Store.SearchDiscovery now decode their fetch-phase payloads through
+// fromPayload directly, re-attaching the phase-one score by id. Retained
+// for TestMemoriesFromPointsCarriesScore (embedtext_test.go), which unit
+// tests this decode-plus-score-carry behavior directly against a synthetic
+// *qdrant.ScoredPoint.
 func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 	out := make([]Memory, 0, len(res))
 	for _, p := range res {
@@ -1179,6 +1323,13 @@ func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, 
 	if k == 0 {
 		return nil, fmt.Errorf("%w: SearchReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
 	}
+	// The lexical reranker (RerankHits/lexicalOverlap) scores against
+	// content for EVERY candidate, and candidateK clamps the candidate pool
+	// at 100 regardless of k — so this one surface's fetch view is fixed by
+	// an internal consumer rather than by the caller's own Full flag. The
+	// caller's flag still governs response shaping at the server boundary,
+	// unchanged.
+	opts.Full = true
 	hits, err := s.Search(ctx, scope, subj, vec, candidateK(k), opts)
 	if err != nil {
 		return nil, err
@@ -1212,6 +1363,11 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 		}
 	}()
 
+	// D-10 backstop: refused before any filter construction or RPC.
+	if err := rejectOverMaximum("k", k); err != nil {
+		return nil, err
+	}
+
 	must := []*qdrant.Condition{qdrant.NewMatch("category", "discovery")}
 	if scope != "" {
 		must = append(must, qdrant.NewMatch("scope", scope))
@@ -1227,15 +1383,43 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	// never folded into the superseded_by gate above: archived and superseded
 	// are independently observable states. get_memory stays ungated.
 	must = append(must, qdrant.NewIsEmpty("archived_at"))
+	f := &qdrant.Filter{Must: must}
+	// D-09 two-phase search, exactly as Store.Search's own rewrite: the
+	// vector Query asks for ids and scores ONLY, and the payload is fetched
+	// separately via fetchPayloadsByID using this SAME f value. The fetch
+	// always uses the full view here: neither the Connect SearchDiscoveries
+	// request message nor the MCP search_discovery tool arguments carry a
+	// `full` flag, so there is no caller projection to honor — the caller's
+	// view IS the full view for discoveries, and no new knob is invented
+	// (the same reasoning that keeps scheduled listings knob-free).
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collection, Query: qdrant.NewQuery(vec...),
-		Filter: &qdrant.Filter{Must: must}, Limit: qdrant.PtrOf(k),
-		WithPayload: qdrant.NewWithPayload(true),
+		Filter: f, Limit: qdrant.PtrOf(k), WithPayload: qdrant.NewWithPayload(false),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return memoriesFromPoints(res), nil
+	ids := make([]string, len(res))
+	scores := make(map[string]float32, len(res))
+	for i, p := range res {
+		id := p.Id.GetUuid()
+		ids[i] = id
+		scores[id] = p.Score
+	}
+	fetched, err := s.fetchPayloadsByID(ctx, f, s.fullView(), ids)
+	if err != nil {
+		return nil, err
+	}
+	out = make([]Memory, 0, len(ids))
+	for _, id := range ids {
+		m, ok := fetched[id]
+		if !ok {
+			continue
+		}
+		m.Score = scores[id]
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // ListOptions parameterizes List: page window (Limit/Offset) and the server-side
@@ -1282,6 +1466,38 @@ type ListOptions struct {
 	IncludeArchived   bool
 	IncludeSuperseded bool
 	IncludeScheduled  bool
+	// Full selects the payload projection List's FETCH requests (04-CONTEXT.md
+	// D-04/Phase 4 04-05): the summary view by default (false, content and
+	// citations excluded from the fetch — what makes a large page cheap), the
+	// full view when true. This governs only what List asks Qdrant for; each
+	// transport (Connect/MCP) still shapes its own response independently via
+	// shapeRecall/toRecallView/shapeProtoMemories, which are unchanged by this
+	// field.
+	Full bool
+}
+
+// recallView is the ONE place a recall read chooses its payload projection
+// (04-05, Phase 3 D-04): full when full is true, summary otherwise. A new
+// recall-path read composes this rather than calling s.fullView()/
+// s.summaryView() by hand, so no read path can pick a view ad hoc and drift
+// from the projection the shared no-summary backfill (searchfetch.go)
+// compensates for.
+func (s *Store) recallView(full bool) readView {
+	if full {
+		return s.fullView()
+	}
+	return s.summaryView()
+}
+
+// isSummaryView reports whether v carries the summary view's exclude-shaped
+// payload selector (content/citations excluded) by inspecting v's OWN
+// selector field, rather than re-deriving the caller's flag or re-calling
+// s.summaryView() — a call site gates backfillNoSummaryContent on the VIEW
+// IT ACTUALLY SELECTED, never on a separately-tracked bool that could drift
+// from it. A package-level function, not a method: it depends on no Store
+// state, mirroring keysView()'s own precedent (boundedread.go).
+func isSummaryView(v readView) bool {
+	return v.selector.GetExclude() != nil
 }
 
 // createdRangeCondition builds a half-open [after, before) DatetimeRange on the
@@ -1340,6 +1556,107 @@ func (s *Store) listFilter(ctx context.Context, scope string, subj Subject, opts
 	return &qdrant.Filter{Must: must}
 }
 
+// MaxRecallLimit is the ONE documented maximum for every recall count knob
+// this project exposes (D-02): List's limit in both offset and cursor mode,
+// ListScheduled's limit, and Search/SearchDiscovery's k. It bounds a single
+// cursor page and a decoded cursor's Seen set (unchanged from the pre-phase
+// unexported constant of the same value it replaces), and — from plan 04-02
+// onward — the value a zero List limit resolves to in offset mode (D-01): a
+// zero limit is a NUMBER everywhere, never an unbounded fetch. The number is
+// cited by name in the proto comments, the tool schemas, the CLI help, and
+// the docs-site.
+//
+// As of this plan (04-05, D-10), a count above this maximum is REFUSED — by
+// rejectOverMaximum, at every recall entry point, before any Qdrant call —
+// never silently clamped down to it anywhere in this package; the store's
+// rejection is the BACKSTOP under the named out_of_range rejection plan
+// 04-06 publishes at the server boundary.
+const MaxRecallLimit = 1000
+
+// rejectOverMaximum returns an ErrInvalidArgument-wrapped error naming field
+// and MaxRecallLimit by number — never the rejected count itself — when
+// count exceeds MaxRecallLimit, and nil otherwise (D-10). The one shared
+// backstop guard every recall entry point calls as its FIRST validation,
+// before any filter construction and before any RPC, so a caller learns the
+// documented bound by name rather than receiving a quietly smaller result
+// indistinguishable from a genuinely small one.
+func rejectOverMaximum(field string, count uint64) error {
+	if count <= MaxRecallLimit {
+		return nil
+	}
+	return fmt.Errorf("%s exceeds the maximum of %d: %w", field, MaxRecallLimit, ErrInvalidArgument)
+}
+
+// walkOffsetPrefix skips offset records of f's matches (ordered by dir) with
+// a keys-only budgeted view (D-07), returning the resume listCursor position
+// at the prefix boundary instead of ever materializing the skipped records'
+// full payloads. It returns the zero cursor and exhausted=false immediately
+// when offset is 0 — no RPC at all.
+//
+// The walk narrows nothing: it carries the SAME filter value f the
+// caller-view fetch will use, unmodified, and differs from that fetch solely
+// in the payload selector (keysView() vs the caller's view) — so a record
+// the caller may not read can never advance the boundary. Because both walks
+// share one listCursor shape, the returned cursor is consumed directly by
+// collectOrderedPages with no translation between the two views' resume
+// tokens. A created_at tie wider than MaxRecallLimit ids at the prefix
+// boundary is rejected by scrollOrderedPage's own Seen-set bound
+// (ErrInvalidArgument) — REQ-cursor-tie-safety (v2), not this function's
+// scope.
+func (s *Store) walkOffsetPrefix(ctx context.Context, f *qdrant.Filter, dir qdrant.Direction, offset uint64) (from listCursor, exhausted bool, err error) {
+	if offset == 0 {
+		return listCursor{}, false, nil
+	}
+	view := keysView()
+	var cur listCursor
+	var walked uint64
+	for walked < offset {
+		page, pErr := s.scrollOrderedPage(ctx, f, view, dir, cur, offset-walked)
+		if pErr != nil {
+			return listCursor{}, false, pErr
+		}
+		walked += uint64(len(page.Items))
+		cur = page.Next
+		if page.Exhausted {
+			return cur, true, nil
+		}
+	}
+	return cur, false, nil
+}
+
+// collectOrderedPages assembles the first `want` ordered records matching f
+// by looping scrollOrderedPage, following Next, until want are in hand or
+// the primitive reports Exhausted (D-05, plan 04-02 Task 2). pageByteBudget
+// bounds cursor-mode responses ONLY — this revises Phase 3 D-06: a page the
+// primitive cuts short by the page budget simply causes collectOrderedPages
+// to loop again immediately, so an internal budget cut is invisible to this
+// loop's callers. Any error from the primitive (including the named
+// response-too-large sentinel after its own batch-of-1 fallback is spent)
+// is returned unwrapped with no partial page, exactly as a single unbounded
+// Scroll's error path did before this change. Callers of this loop are
+// bounded by COUNT alone — at most MaxRecallLimit times the view's
+// per-record ceiling for any offset-mode List call — never by
+// pageByteBudget. Only items and err are returned: neither of this plan's
+// two callers (Store.List's offset mode, Store.ListScheduled) needs the
+// resume cursor or the exhaustion flag scrollOrderedPage's own page
+// contract already tracks internally — a genuine exhaustion before `want`
+// is reached simply yields fewer than `want` items, never an error.
+func (s *Store) collectOrderedPages(ctx context.Context, f *qdrant.Filter, view readView, dir qdrant.Direction, from listCursor, want uint64) (items []Memory, err error) {
+	next := from
+	for uint64(len(items)) < want {
+		page, pErr := s.scrollOrderedPage(ctx, f, view, dir, next, want-uint64(len(items)))
+		if pErr != nil {
+			return nil, pErr
+		}
+		items = append(items, page.Items...)
+		next = page.Next
+		if page.Exhausted {
+			break
+		}
+	}
+	return items, nil
+}
+
 // List returns a CreatedAt-ordered page of the caller's readable records in scope
 // — descending by default, ascending when ListOptions.Ascending is set (offset/all
 // mode only) — the exact matched total (server-side Count), and a nextCursor (empty
@@ -1367,6 +1684,13 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		}
 	}()
 
+	// D-10 backstop: refused before any other validation, any filter
+	// construction, or any RPC — covers BOTH paging modes with one call,
+	// since listByCursor no longer clamps its own limit (see its doc
+	// comment below).
+	if err := rejectOverMaximum("limit", opts.Limit); err != nil {
+		return nil, 0, "", err
+	}
 	if (opts.Cursor != "" || opts.CursorMode) && opts.Offset > 0 {
 		return nil, 0, "", fmt.Errorf("list: cursor mode and offset are mutually exclusive: %w", ErrInvalidArgument)
 	}
@@ -1411,138 +1735,101 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return nil, 0, "", err
 	}
 
-	if opts.Cursor != "" || (opts.Offset == 0 && opts.Limit > 0 && opts.CursorMode) {
+	if opts.Cursor != "" || (opts.Offset == 0 && opts.CursorMode) {
 		items, nextCursor, err = s.listByCursor(ctx, f, opts)
 		return items, total, nextCursor, err
 	}
 
-	// Offset mode: Qdrant has no numeric OFFSET, so scroll offset+limit ordered
-	// records and return the trailing limit.
-	fetch := opts.Offset + opts.Limit
-	if opts.Limit == 0 {
-		fetch = total // limit 0 = "all" (preserves prior behavior)
+	// Offset mode: resolve the effective limit FIRST (D-01) — a zero limit
+	// becomes MaxRecallLimit, a number everywhere, never "all" — then walk
+	// the skipped prefix with a keys-only budgeted view (D-07) instead of
+	// ever fetching it in the caller's view, and assemble the requested page
+	// alone (never offset+limit) from bounded ordered pages (D-05) resumed
+	// at the prefix boundary.
+	effectiveLimit := opts.Limit
+	if effectiveLimit == 0 {
+		effectiveLimit = MaxRecallLimit
 	}
-	if fetch == 0 {
-		// Reached only when Limit==0 ("all") and the filtered set is empty
-		// (total==0): Qdrant's Scroll rejects Limit=0 ("must be 1 or larger")
-		// and there is nothing to fetch — short-circuit to an empty page.
-		return []Memory{}, total, "", nil
+	if opts.Offset > math.MaxUint64-effectiveLimit {
+		return nil, 0, "", fmt.Errorf("list: offset+limit overflows: %w", ErrInvalidArgument)
 	}
 	dir := qdrant.Direction_Desc
 	if opts.Ascending {
 		dir = qdrant.Direction_Asc
 	}
-	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: s.collection,
-		Filter:         f,
-		Limit:          qdrant.PtrOf(uint32(fetch)),
-		OrderBy:        &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(dir)},
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	from, prefixExhausted, err := s.walkOffsetPrefix(ctx, f, dir, opts.Offset)
 	if err != nil {
 		return nil, 0, "", err
 	}
-	all := make([]Memory, 0, len(pts))
-	for _, p := range pts {
-		all = append(all, fromPayload(p.Id.GetUuid(), p.Payload))
-	}
-	if opts.Offset >= uint64(len(all)) {
+	if prefixExhausted {
+		// The prefix walk consumed the entire matched set before reaching
+		// opts.Offset: the page is empty, total stays the real matched
+		// count (the clamp that replaces the former all[opts.Offset:]
+		// client-side slice).
 		return []Memory{}, total, "", nil
 	}
-	return all[opts.Offset:], total, "", nil
+	view := s.recallView(opts.Full)
+	items, err = s.collectOrderedPages(ctx, f, view, dir, from, effectiveLimit)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	if isSummaryView(view) {
+		if err := s.backfillNoSummaryContent(ctx, f, items); err != nil {
+			return nil, 0, "", err
+		}
+	}
+	return items, total, "", nil
 }
 
-// maxListLimit caps a single cursor page (and bounds a decoded cursor's seen
-// set), so neither a large Limit nor a crafted cursor can drive an unbounded
-// Scroll over-fetch.
-const maxListLimit = 1000
-
-// listByCursor implements boundary-id-set keyset paging over the already-built
-// filter f. opts.Cursor may be empty (first page); a non-empty cursor resumes at
-// its created_at boundary, dropping ids already emitted at that exact timestamp.
+// listByCursor is a thin scrollOrderedPage adapter (D-03/D-04, plan 04-02
+// Task 1): it decodes opts.Cursor into a listCursor, delegates ALL paging to
+// the shared ordered-page primitive over the caller's recallView (this plan
+// changes the BOUND, never the payload projection), and maps the result
+// back onto List's (items, nextCursor, error) shape. The mapping is correct
+// by construction (orderedpage.go's page contract: Next is populated
+// whenever the page emitted anything): nextCursor is "" only when the
+// primitive reports Exhausted, and encodeCursor(page.Next) otherwise —
+// REGARDLESS of whether the page stopped by count or by the page byte
+// budget, which is D-06's requirement that a budget-cut page is never
+// reported as the last page. It no longer issues a Scroll of its own — see
+// schemaversion_recallgate_test.go's reclassification of scrollOrderedPage.
+//
+// It no longer clamps a limit above MaxRecallLimit down to it either (D-10,
+// this plan): Store.List now REFUSES such a request via rejectOverMaximum
+// before ever calling this method, so a caller cannot mistake a quietly
+// smaller page for an exhausted scope.
 func (s *Store) listByCursor(ctx context.Context, f *qdrant.Filter, opts ListOptions) ([]Memory, string, error) {
 	limit := opts.Limit
 	if limit == 0 {
 		limit = 20
 	}
-	if limit > maxListLimit {
-		limit = maxListLimit
-	}
-	var startFrom *qdrant.StartFrom
-	seen := map[string]bool{}
-	var boundary string
+
+	var from listCursor
 	if opts.Cursor != "" {
 		c, err := decodeCursor(opts.Cursor)
 		if err != nil {
 			return nil, "", fmt.Errorf("list cursor: %w: %w", err, ErrInvalidArgument)
 		}
-		if len(c.Seen) > maxListLimit {
+		if len(c.Seen) > MaxRecallLimit {
 			return nil, "", fmt.Errorf("list cursor: seen set too large: %w", ErrInvalidArgument)
 		}
-		boundary = c.C
-		startFrom = qdrant.NewStartFromDatetime(c.C)
-		for _, id := range c.Seen {
-			seen[id] = true
-		}
+		from = c
 	}
 
-	// Over-fetch limit + len(seen) + 1: len(seen) covers the boundary ids dropped
-	// at resume, and the +1 guarantees forward progress (a full page yields a
-	// usable next cursor rather than silently terminating).
-	fetch := limit + uint64(len(seen)) + 1
-	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: s.collection,
-		Filter:         f,
-		Limit:          qdrant.PtrOf(uint32(fetch)),
-		OrderBy: &qdrant.OrderBy{
-			Key:       "created_at",
-			Direction: qdrant.PtrOf(qdrant.Direction_Desc),
-			StartFrom: startFrom,
-		},
-		WithPayload: qdrant.NewWithPayload(true),
-	})
+	view := s.recallView(opts.Full)
+	page, err := s.scrollOrderedPage(ctx, f, view, qdrant.Direction_Desc, from, limit)
 	if err != nil {
 		return nil, "", err
 	}
-
-	out := make([]Memory, 0, limit)
-	for _, p := range pts {
-		m := fromPayload(p.Id.GetUuid(), p.Payload)
-		ts := m.CreatedAt.UTC().Format(time.RFC3339)
-		if ts == boundary && seen[m.ID] {
-			continue // already emitted at this exact timestamp
-		}
-		out = append(out, m)
-		if uint64(len(out)) == limit {
-			break
+	if isSummaryView(view) {
+		if err := s.backfillNoSummaryContent(ctx, f, page.Items); err != nil {
+			return nil, "", err
 		}
 	}
-
-	if uint64(len(out)) < limit {
-		return out, "", nil // exhausted: no next page
+	if page.Exhausted {
+		return page.Items, "", nil
 	}
-
-	// Build next cursor from the last emitted record: c = its created_at, seen =
-	// every emitted id sharing that timestamp (so the next page drops them).
-	last := out[len(out)-1]
-	nextC := last.CreatedAt.UTC().Format(time.RFC3339)
-	nextSeen := make([]string, 0, 4)
-	// Carry forward prior seen ids if the boundary did not advance. These are
-	// disjoint from the emitted ids appended below: any emitted record at the
-	// boundary timestamp passed the seen[m.ID] drop, so it was never in seen.
-	if nextC == boundary {
-		for id := range seen {
-			nextSeen = append(nextSeen, id)
-		}
-	}
-	// Emitted records are distinct point ids, so appending those at nextC adds no
-	// duplicate — the next seen set is duplicate-free by construction.
-	for _, m := range out {
-		if m.CreatedAt.UTC().Format(time.RFC3339) == nextC {
-			nextSeen = append(nextSeen, m.ID)
-		}
-	}
-	return out, encodeCursor(listCursor{C: nextC, Seen: nextSeen}), nil
+	return page.Items, encodeCursor(page.Next), nil
 }
 
 // ScheduledState selects which hidden-by-the-recall-gate records ListScheduled
@@ -1593,9 +1880,16 @@ func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condit
 // shared-read grant): a `shared` scheduled/expired record belonging to another
 // actor stays invisible here until it becomes active, preserving the deferred-
 // reveal guarantee. It does not reuse List (whose gate would exclude exactly
-// these records). Server-side order_by created_at desc bounded directly by
-// opts.Limit (default 20); the created_at window (opts.CreatedAfter/Before) is
-// applied as a DatetimeRange. opts.Offset is ignored — paginates by Limit alone.
+// these records). The page is assembled from the SAME D-05 bounded-page-
+// assembly loop Store.List's offset mode uses (collectOrderedPages,
+// scrollOrderedPage): the filter is built ONCE, above, and passed unchanged
+// to every one of the (potentially several) budgeted RPCs the loop issues —
+// so the owner-only, state-gated, created_at-windowed envelope holds on
+// every RPC, not just the first. Ordering stays created_at desc, bounded
+// directly by opts.Limit (default 20). ListScheduled deliberately carries no
+// full/summary knob — it always reads s.fullView(), exactly as before this
+// change — because no surface exposes one for this method (04-RESEARCH.md
+// Pitfall 6). opts.Offset is ignored — paginates by Limit alone.
 func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
 	if !state.valid() {
 		return nil, fmt.Errorf("invalid scheduled state %q (want scheduled|expired|all)", state)
@@ -1617,6 +1911,12 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 		}
 	}()
 
+	// D-10 backstop: refused before the zero-limit default is applied (so a
+	// zero limit still means twenty) and before any filter construction or
+	// RPC.
+	if err := rejectOverMaximum("limit", opts.Limit); err != nil {
+		return nil, err
+	}
 	limit := opts.Limit
 	if limit == 0 {
 		limit = 20
@@ -1638,18 +1938,9 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
-	pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: s.collection, Filter: f,
-		Limit:       qdrant.PtrOf(uint32(limit)),
-		OrderBy:     &qdrant.OrderBy{Key: "created_at", Direction: qdrant.PtrOf(qdrant.Direction_Desc)},
-		WithPayload: qdrant.NewWithPayload(true),
-	})
+	items, err = s.collectOrderedPages(ctx, f, s.fullView(), qdrant.Direction_Desc, listCursor{}, limit)
 	if err != nil {
 		return nil, err
-	}
-	items = make([]Memory, 0, len(pts))
-	for _, p := range pts {
-		items = append(items, fromPayload(p.Id.GetUuid(), p.Payload))
 	}
 	return items, nil
 }
@@ -3083,6 +3374,20 @@ type ReindexResult struct {
 // reindexBatch is the default scroll page size when ReindexOptions.Batch is 0.
 const reindexBatch = 256
 
+// errReindexPageFull is a control-flow marker Reindex's page-accumulator
+// flush closure (flushReindexPage) returns when it just flushed a FULL page
+// (the closure-scoped accumulator reached batch) — distinguishing that call
+// site from the trailing, possibly-partial flush after the shared iterator
+// exhausts the source — never a failure. It is produced and unwrapped with
+// errors.Is right where it is returned, inside the scrollAllPoints callback,
+// and never crosses scrollAllPoints itself: a callback error always halts
+// the walk outright (spine.go:88-94), so a page-full condition must never
+// escape the callback the way it does — the callback swallows this marker
+// and always returns nil so the walk continues over the remaining source
+// points. Never shared with any other sweep's sentinel — each sweep's
+// early-stop or batch-boundary reason is declared separately.
+var errReindexPageFull = errors.New("reindex: page accumulator full")
+
 // Reindex re-embeds every point in the source collection (opts.Source, or
 // s.collection when unset) into a
 // new Target collection, enabling a migration to an embedder with a different
@@ -3192,21 +3497,25 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 		}
 	}
 
-	var offset *qdrant.PointId
-	for {
-		var pts []*qdrant.RetrievedPoint
-		var next *qdrant.PointId
-		pts, next, err = s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: source,
-			Limit:          qdrant.PtrOf(batch),
-			Offset:         offset,
-			WithPayload:    qdrant.NewWithPayload(true),
-			WithVectors:    qdrant.NewWithVectors(false),
-		})
-		if err != nil {
-			return res, fmt.Errorf("reindex: scroll source: %w", err)
+	// flushReindexPage runs the resume lookup (page-batched: one
+	// reindexTargetContents call per accumulated page, never per record —
+	// T-05-04-03) with its dry-run CollectionExists guard, followed by the
+	// per-point embed/skip/upsert body, over the currently accumulated
+	// page held in the closure-scoped `page` slice below, then clears it.
+	// Called from both the mid-scan threshold branch inside the
+	// scrollAllPoints callback (full=true) and the trailing,
+	// possibly-partial flush after the iterator exhausts (full=false) — so
+	// there is exactly ONE copy of this body; a second copy is the drift
+	// this file's own dry-run predicate comment already warns about. The
+	// trailing flush matters: a walk that returned with records still in
+	// the accumulator would silently drop them (T-05-04-04).
+	var page []*qdrant.RetrievedPoint
+	var reindexFlushes int
+	flushReindexPage := func(full bool) error {
+		if len(page) == 0 {
+			return nil
 		}
-		// Resume: fetch this batch's ids from the target once so a point already
+		// Resume: fetch this page's ids from the target once so a point already
 		// embedded with identical content and tags (AND a matching stamped
 		// identity) can be skipped (engram-irhg; identity-awareness per Phase 13
 		// SC3 review; tag-awareness per #345, D-07..D-12). One Get per page keeps
@@ -3225,19 +3534,21 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 			// dry run promises not to cross.
 			lookup := true
 			if opts.DryRun {
-				lookup, err = s.client.CollectionExists(ctx, opts.Target)
-				if err != nil {
-					return res, fmt.Errorf("reindex: check target %q: %w", opts.Target, err)
+				var lerr error
+				lookup, lerr = s.client.CollectionExists(ctx, opts.Target)
+				if lerr != nil {
+					return fmt.Errorf("reindex: check target %q: %w", opts.Target, lerr)
 				}
 			}
 			if lookup {
-				targetInfo, err = s.reindexTargetContents(ctx, opts.Target, pts)
-				if err != nil {
-					return res, fmt.Errorf("reindex: resume lookup in %q: %w", opts.Target, err)
+				var terr error
+				targetInfo, terr = s.reindexTargetContents(ctx, opts.Target, page)
+				if terr != nil {
+					return fmt.Errorf("reindex: resume lookup in %q: %w", opts.Target, terr)
 				}
 			}
 		}
-		for _, p := range pts {
+		for _, p := range page {
 			res.Scanned++
 			m := fromPayload(p.Id.GetUuid(), p.Payload)
 			content := m.Content
@@ -3278,12 +3589,11 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				res.WouldUpsert++
 				continue
 			}
-			var vec []float32
 			// Embed content + tags (EmbedText) so a re-embed folds curated tags
 			// into the vector exactly as the store path does.
-			vec, err = embed(ctx, EmbedText(m.Content, m.Tags))
-			if err != nil {
-				return res, fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), err)
+			vec, eerr := embed(ctx, EmbedText(m.Content, m.Tags))
+			if eerr != nil {
+				return fmt.Errorf("reindex: embed point %s: %w", p.Id.GetUuid(), eerr)
 			}
 			if opts.Identity != "" {
 				// The one intentional additive exception to the verbatim-payload
@@ -3291,7 +3601,7 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 				// Memory/payload() round-trip (see the Reindex doc comment).
 				p.Payload[embedderIdentityKey] = qdrant.NewValueString(opts.Identity)
 			}
-			if _, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
+			if _, uerr := s.client.Upsert(ctx, &qdrant.UpsertPoints{
 				CollectionName: opts.Target,
 				Wait:           qdrant.PtrOf(true),
 				Points: []*qdrant.PointStruct{{
@@ -3299,19 +3609,55 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 					Vectors: qdrant.NewVectors(vec...),
 					Payload: p.Payload,
 				}},
-			}); err != nil {
-				return res, fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, err)
+			}); uerr != nil {
+				return fmt.Errorf("reindex: upsert point %s into %q: %w", p.Id.GetUuid(), opts.Target, uerr)
 			}
 			res.Upserted++
 		}
-		// Surface running totals after each scanned page (engram-xddn).
+		page = page[:0]
+		// Surface running totals after each flushed page (engram-xddn).
 		if opts.Progress != nil {
 			opts.Progress(res)
 		}
-		if next == nil {
-			break
+		if full {
+			reindexFlushes++
+			return errReindexPageFull
 		}
-		offset = next
+		return nil
+	}
+
+	// This walk reads through the shared byte-budget iterator over the
+	// EFFECTIVE source collection (source, never s.collection
+	// unconditionally — T-05-04-01) instead of a hand-rolled
+	// batch-sized ScrollAndOffset loop. reindexTargetContents needs the
+	// FULL page's points at once (one Get per PAGE, not per record), which
+	// is incompatible with scrollAllPoints' per-record callback shape
+	// unless the callback accumulates a page-sized batch itself — exactly
+	// what `page` and flushReindexPage do above. A callback error always
+	// halts scrollAllPoints outright (spine.go:88-94, "a callback error
+	// propagates out of scrollAllPoints unchanged"), so a page-full
+	// condition must never escape this callback: errReindexPageFull is
+	// produced and consumed right here, purely to count full-page flushes,
+	// and the callback always returns nil afterward so the scan continues
+	// over the remaining source points.
+	scanErr := s.scrollAllPoints(ctx, source, nil, s.fullView(), func(p *qdrant.RetrievedPoint) error {
+		page = append(page, p)
+		if uint32(len(page)) < batch {
+			return nil
+		}
+		if ferr := flushReindexPage(true); ferr != nil && !errors.Is(ferr, errReindexPageFull) {
+			return ferr
+		}
+		return nil
+	})
+	if scanErr != nil {
+		err = scanErr
+		return res, err
+	}
+	// Flush the trailing, possibly-partial final page.
+	if ferr := flushReindexPage(false); ferr != nil {
+		err = ferr
+		return res, err
 	}
 	return res, nil
 }

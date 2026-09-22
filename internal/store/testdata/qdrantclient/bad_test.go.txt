@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package badexample is a synthetic KNOWN-BAD fixture for
+// qdrant_client_convergence_test.go's
+// TestQdrantClientConstructedOnlyByNewQdrantClient. Scanned under the
+// display path "internal/example/example_test.go", it stands in for a
+// regression test that dials Qdrant directly through the plain (unaliased)
+// qdrant import instead of store.NewQdrantClient — the exact bypass D-11
+// exists to catch. Must scan dirty with exactly two findings, one per dial
+// helper.
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package badexample
+
+import (
+	"github.com/qdrant/go-client/qdrant"
+)
+
+func dialDirect(host string, port int) (*qdrant.Client, error) {
+	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
+}
+
+func dialGrpc(host string, port int) (*qdrant.GrpcClient, error) {
+	return qdrant.NewGrpcClient(&qdrant.Config{Host: host, Port: port})
+}

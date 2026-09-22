@@ -236,13 +236,22 @@ func TestListRulesHandler(t *testing.T) {
 		t.Errorf("tags=[y] should match nothing, got %d", len(none))
 	}
 
-	// Full shape returns store.Memory (carries content).
+	// Full shape returns store.Memory (carries content). This full-shape
+	// assertion depends on 04-06's own fix (deps.listRules threading a.Full
+	// into its direct Store.List call, the one list caller outside the typed
+	// core) reaching the store — a mis-threaded flag would silently regress
+	// this to a summary-shaped (empty-content) fetch instead of failing here
+	// on a type mismatch alone.
 	full, _, err := d.listRules(ctx, callerFor(ctx, t), listRulesArgs{Scopes: []string{scope}, Full: true})
 	if err != nil {
 		t.Fatalf("listRules full: %v", err)
 	}
-	if _, ok := full[0].(store.Memory); !ok {
-		t.Errorf("full shape is not store.Memory: %T", full[0])
+	fullMem, ok := full[0].(store.Memory)
+	if !ok {
+		t.Fatalf("full shape is not store.Memory: %T", full[0])
+	}
+	if fullMem.Content != "rule A" {
+		t.Errorf("full rule shape lost its content: Content = %q, want %q (the projection flag must have reached the store)", fullMem.Content, "rule A")
 	}
 
 	// Invalid scope rejected.

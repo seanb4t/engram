@@ -1,36 +1,36 @@
 ---
 gsd_state_version: "1.0"
-milestone: 2026-09-13.01
-status: Awaiting next milestone
-stopped_at: Phase 05 complete — all phases complete
-last_updated: "2026-09-18T17:51:36.193Z"
-last_activity: 2026-09-17
-last_activity_desc: Milestone 2026-09-13.01 completed and archived
-state_head: 339ab181765660ba4caf7a43d10775419611ff7b
+milestone: 2026-09-18.01
+status: "Milestone 2026-09-18.01 shipped — PR #603"
+stopped_at: Phase 07 complete — all phases complete
+last_updated: "2026-09-22T22:08:05.783Z"
+last_activity_desc: Milestone 2026-09-18.01 shipped as PR #603
+last_activity: 2026-09-22
+state_head: 1b734573c7e335746ce99eb67ddcf0ab5de84915
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
-milestone_name: Setup v2
-current_phase: 05
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 37
+  completed_plans: 37
+milestone_name: Bounded Reads
+current_phase: 07
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-18 after milestone 2026-09-13.01 — Setup v2 shipped as v0.17.0)
+See: .planning/PROJECT.md (updated 2026-09-22 after milestone 2026-09-18.01 — Bounded Reads)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone (`/gsd-new-milestone`); no milestone open
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: Milestone 2026-09-13.01 complete
+Phase: Milestone 2026-09-18.01 complete
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-18 - Completed quick task 260918-idl: fix console root route: ListScopes gRPC 4MiB overflow and recent-memories missing cross_spine (#500)
+Status: Milestone 2026-09-18.01 shipped — PR #603
+Last activity: 2026-09-22 — Milestone 2026-09-18.01 shipped as PR #603
 
 ## Deferred Items
 
@@ -69,6 +69,13 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Resolved by the orchestrator (phase-level) | acknowledged — `TestNoEscapedPatternsRepoWide` fixed in `7cfb3017`; the SA1019 half it left open is now resolved too |
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
+
+Items acknowledged and deferred at milestone close on 2026-09-22 (milestone 2026-09-18.01, `override_closeout` — 2 newly acknowledged, 2 carried forward from a prior close):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_items | Phase 06 / 06-01: `internal/store` `TestRedEvidencePatchesAreLive` hit Go's 601s per-package default timeout under host load | acknowledged — moot: the red-evidence harness was removed in `c1afd6c1` (rule `3p0zsqrhmb`) |
+| deferred_items | Phase 06 / 06-03: same harness timeout recurred at 58 registered patches | acknowledged — moot for the same reason |
 
 Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own acknowledged status line.
 
@@ -299,6 +306,60 @@ milestone needs in working memory.
 - [Phase 5]: Every new agent-setup.md sentence a docs-gate leg checks is written as a single unwrapped physical source line at the checked substring.
 - [Phase 5]: Opened GitHub issue #567 before writing 05-POST-RELEASE.md so the frontmatter tracker URL is real, not a placeholder
 - [Phase 5]: 05-POST-RELEASE.md deliberately omits the '## Current disposition' section the 06-POST-RELEASE.md precedent grew after its own observation — this handoff is still open
+- [Phase 01]: D-13: generalized TestQdrantClientIsHeldOnlyByStorePackage's never-writes check to every qdrantClientHolderAllowlist entry except store.go, gate-enforcing storetest's D-08 write restriction instead of leaving it asserted by review only.
+- [Phase 01]: 01-03: internal/retrievaleval delegates via storetest.Run(m, storetest.IgnoreRequireQdrant()) after its ENGRAM_RETRIEVAL_EVAL gate, preserving its pre-phase never-consults-ENGRAM_REQUIRE_QDRANT behavior; internal/e2e keeps its early storetest.RequireQdrant() parse and local binary build before delegating to storetest.Run(m), newly inheriting storetest's post-boot empty-address fail-closed check
+- [Phase 01]: D-11's convergence gate is a new, narrower AST walker rather than a reuse of the existing type-reference gate, because that gate conflates type references with calls and excludes _test.go files -- the opposite of what D-11 needs on both axes.
+- [Phase 01]: Each of Task 3's four red-evidence patches was independently hand-verified (git apply --check/apply/go test -run '^Target$'/apply -R) to fail its named target test before registration in redEvidenceDirs, closing TestRedEvidencePatchesAreLive.
+- [Phase 02]: 02-01: Classifier lives inside NewQdrantClient's base dial options, appended after the otelgrpc stats handler and before caller opts — every production and test client gets it automatically.
+- [Phase 02]: 02-01: isRecvLimitMessage matches grpc-go's four receive shapes on prefix+substring, never code alone, so a genuine server-side ResourceExhausted stays untouched for qdrant-go-client's own rate-limit interceptor.
+- [Phase 02]: argError.Error() extracted into renderHintEnvelope(fields, hint, detail); Connect arm and MCP mapper both call it — never construct an *argError for store.ErrResponseTooLarge
+- [Phase 02]: addToolMiddleware(s, record) is the ONE registration site for the tool-call middleware stack (instrumentTools outermost, mapResponseTooLarge innermost); pinned by a go/parser source gate, TestRegisterInstallsToolMiddleware
+- [Phase 02]: 02-03: exitTooLarge=10 applied to both the Connect client tier and the operator tier (classifyOperatorErr's store.ErrResponseTooLarge arm), per D-10
+- [Phase 02]: 02-03: internal/server/hintcodedocs_test.go derives the hint-code vocabulary via go/parser over argerror.go's const block, never a second hand-typed list -- closes the D-05 surfaces-verification finding (surfaces declares conditional-rule sentences only, not the hint vocabulary)
+- [Phase 02]: 02-04: Task 1 (tracer) proved one full lane end to end (Connect-arm patch, hand-verified RED, registered, harness re-run alone) before Task 2 authored the remaining seven; the tracer feedback gate re-ran Task 1's automated-only verify and passed, so execution proceeded to Task 2 without a checkpoint.
+- [Phase 02]: 02-04: Each of the eight red-evidence patches is the smallest single-statement or single-line mutation that trips exactly its target test while the tree still compiles, matching Phase 1's own mutation-size discipline.
+- [Phase 03]: 03-01: D-01/D-09/D-10 implemented — ENGRAM_MEMORY_MAX_CONTENT_BYTES (65536), ENGRAM_MEMORY_MAX_TAGS (128), ENGRAM_MEMORY_MAX_TAG_BYTES (128) are registry-declared and ALWAYS enforced (0/negative rejected, diverging from MaxSummaryBytes' 0-disables), enforced once in validateStoreArgs shared by store_memory/schedule_memory/supersede_memory on MCP and Connect, reusing the existing too_long/too_many hints.
+- [Phase 03]: D-02/D-06 implemented with rpcByteBudget = pageByteBudget = 2 MiB, yielding perRPCLimit 2 (full view) and 61 (summary view) at DefaultRecordCaps() — scrollAllPoints extended in place with a D-07 batch-of-1 fallback.
+- [Phase 03]: D-09: content-cap check on update lives inside deps.updateMemory itself (not validateUpdateArgs), because Connect's UpdateMemory RPC calls deps.updateMemory directly.
+- [Phase 03]: D-10 gating: tags check on update runs only when the supplied set differs from the stored set (slices.Equal), mirroring D-09's contentChanged precedent.
+- [Phase 03]: D-02/D-09 read-side link: recordCapsFromConfig reuses memoryWriteCapsFromConfig + maxMemorySummaryBytes verbatim rather than a second config parse.
+- [Phase 03]: 03-05: CLI proof closes REQ-content-cap-decided's last unexercised lane; decision A recorded in PROJECT.md Key Decisions; CLAUDE.md and the curating-memory skill state the content/tags bounds beside the summary bound.
+- [Phase 03]: 03-06: Thirteen Phase 3 red-evidence patches registered (D-01/D-02/D-03/D-07/D-09/D-10); TestRedEvidencePatchesAreLive confirms 25 REDs (Phase 1's four, Phase 2's eight, Phase 3's thirteen); the runtime contingency's per-package narrowing did not fire (111s default-timeout run, well under go test's 10-minute default). Phase 3 closes with task fully green.
+- [Phase 4]: D-11 executed: HintTooLarge renamed to HintResponseTooLarge (wire value too_large -> response_too_large); Connect resource_exhausted and CLI exit 10 unchanged.
+- [Phase 4]: D-10 executed: HintOutOfRange added and classified classMalformed (Connect invalid_argument, CLI exit 2) by explicit decision, not classOutOfRange.
+- [Phase 04]: Plan 04-02: MaxRecallLimit executed as the one exported recall-count maximum (D-02); Store.List's offset mode now composes collectOrderedPages/scrollOrderedPage instead of one unbounded Scroll (D-01/D-05); three Phase 2 overflow regressions retargeted onto a single legacy oversized record per D-12.
+- [Phase 04]: Plan 04-02: the offset-mode reject-above-maximum must-have was NOT implemented as a hard store-level rejection here -- TestListCrossSpine passes Limit:10000 in offset mode and asserts success; read as 04-05/04-06's own D-10 wiring, flagged for the verifier.
+- [Phase 4]: Plan 04-03: D-07 executed - deep-offset walks its skipped prefix with a keys-only budgeted view (keysView, walkOffsetPrefix), resuming Store.List's page fetch from the same listCursor with no translation.
+- [Phase 4]: Plan 04-03: D-05 executed for ListScheduled - assembled from the same collectOrderedPages/scrollOrderedPage loop List's offset mode uses, always full-payload, filter built once and reused across every RPC.
+- [Phase 4]: Plan 04-03: collectOrderedPages narrowed to (items, err) after task lint's unparam flagged the dead next/exhausted returns once ListScheduled became a second real caller.
+- [Phase 04]: Plan 04-04: D-09 executed - two-phase search adopted for Store.Search/SearchReranked/SearchDiscovery only, never List; the caller holds ranking and the identical filter is re-applied on fetch. — List's TOCTOU/GetPoints-order concerns do not apply to search, since the fetch phase never reorders and always re-applies the same filter the query used.
+- [Phase 04]: Plan 04-04: SearchReranked forces Full=true unconditionally on its delegated Search call; SearchDiscovery's fetch always uses the full view (no discovery surface exposes a full flag). — The lexical reranker scores against content for every candidate and candidateK clamps the pool at 100, so the fetch view is fixed by an internal consumer, not the caller; no discovery wire contract has a projection knob to honor.
+- [Phase 04]: Plan 04-05: recallView/isSummaryView route only Store.List's projection selection; Store.Search's own pre-existing (04-04) inline summaryView/fullView selection was left untouched per the plan's own action text.
+- [Phase 04]: Plan 04-05: Rule 2 fix - wired ListOptions.Full/coreListRequest.Full through Connect ListMemories and MCP list_memory; without it full=true silently returned empty citations once List's default fetch became summary-shaped.
+- [Phase 04]: Plan 04-05: rejectOverMaximum (D-10) wired as the FIRST validation in List/ListScheduled/Search/SearchDiscovery; listByCursor's silent clamp to MaxRecallLimit deleted, replaced by refusal. SearchReranked needs no call of its own (candidateK(k) bounds it already).
+- [Phase 04]: list_rules threads a.Full into its direct Store.List call (the one caller outside the typed core), closing 04-RESEARCH Pattern 6's last unwired gap — 04-05 already wired coreListRequest.Full through Connect ListMemories and MCP list_memory; the rule listing bypasses the typed core entirely and would silently regress to summary-shaped full=true reads without its own thread
+- [Phase 04]: rejectOverMaximumCount added as the published D-10 wire-boundary rejection, called first in all four shared core methods, ahead of scope resolution and the embed call — Store's own rejectOverMaximum (04-05) is a backstop; the server boundary is what actually stops a caller before it costs anything and is what carries the field=<f> hint=out_of_range envelope
+- [Phase 04]: Decision B recorded in PROJECT.md: one documented maximum (1000) for every recall count knob; Connect ListMemories' limit:0 now resolves to that maximum (was unbounded "all"); an over-maximum count is rejected, never clamped, via a new out_of_range hint (2026-09-18.01 Phase 4, D-01/D-02/D-03/D-10)
+- [Phase 4]: Phase 4 closed: seventeen registered red-evidence patches confirm 42 REDs; the plan's own no-op zero-limit mutation was replaced with the historically-accurate unbounded-Scroll revert recovered from git history; five requirements ticked against verified intent (13 total, not the plan's miscounted 12).
+- [Phase 05]: Plan 05-01: derivePurgeEligible reuses s.summaryView() rather than a fourth constructor; NearDuplicates QueryBatch confirmed exempt (no payload requested); scrollAllPoints gained an explicit collection parameter for plan 05-04's Store.Reindex — Its callback reads exactly what summaryView already includes, and summaryRecordCeiling already budgets the tags term it reads -- a narrower view would not pay.
+- [Phase 5]: Phase 5 Plan 2: previewRevertWithSteps' refusal against production migrate.Registry is an Irreversible-chain refusal, never Unsupported -- the reverse chain IS reachable (StepsFrom finds it), it simply declines to run backward; test asserts Irreversible[0].To equals seeded schema version, Unsupported stays empty.
+- [Phase 5]: Phase 5 Plan 2: orderedpage_oversized_test.go's 'unbudgeted view' table row kept (retargeted to store.ReadView{}), not deleted -- scrollOrderedPage's own argument validation independently rejects any zero-ceiling view, a standing production invariant unrelated to the unbudgetedView constructor's existence.
+- [Phase 5]: Task 1's oversized migrate regression omits the DryRun arm (deferred to task 2's commit, once DryRun's own read loop is migrated) — testing it at oversized scale before that migration genuinely overflows the receive limit.
+- [Phase 5]: revertFixtureStep's inverse targets a key no seeded fixture record carries — intentional; the regression proves the bounded pass-loop mechanics, not a specific added/removed-key shape (already pinned by in-place revert_test.go, D-02).
+- [Phase 05]: Reindex uses a synchronous in-callback flush (not a cross-pass restart like Migrate/Revert) because its nil-filter walk over a read-only source has no shrinking-filter mechanism to make a restart safe, and its own action text requires exactly one scrollAllPoints call.
+- [Phase 05]: The oversized reindex regression sizes ReindexOptions.Batch per fixture shape's record size, since reindexTargetContents' out-of-scope Get() call is byte-unbounded and the production default (256) overflows the receive limit for FewLarge's 40 large records.
+- [Phase 05]: 64 MiB receive-limit backstop (productionRecvLimit) set in exactly one place inside NewQdrantClient via qdrantDialOptions, appended before caller options, tested only for pass-through and append order.
+- [Phase 05]: Regenerated a stale Phase 2 red-evidence patch (02-01-classifier-not-in-base-options.patch) after Task 1's own qdrantDialOptions refactor moved the target line out of NewQdrantClient's body, so TestRedEvidencePatchesAreLive keeps proving the same regression.
+- [Phase 6]: 06-01: scopeCoverage{Scopes,Truncated,Unknown} value-returning helper (no error) replaces searchedScopes's error return; scopes_unknown lands at field 7 (ListMemoriesResponse) / field 4 (SearchMemoriesResponse)
+- [Phase 6]: 06-03: this phase's five red-evidence patches registered (53->58); highest-value direction first (the forbidden swallow-the-error fix), then the remaining four discard/absence/footer directions, each hand-verified apply->RED->revert before registration
+- [Phase 6]: 06-03: roadmap update-plan-progress "06" again matched a same-numbered row in a shipped milestone (v0.12.x "6. Rule Capture"), leaving the active milestone's own Phase 6 row untouched — reverted the wrong hunk and hand-filled the active milestone's three Phase 6 locations, following the exact cc18a31b/3d9a78ad precedent from Phase 5's close
+- [Phase 07]: Timer-closes-the-body mechanism (D-01) for a shared internal/httpdrain.Drain helper — a time.AfterFunc closing the response body unblocks an in-flight Read, verified against Go 1.27.1 net/http source, so no goroutine is needed to bound the time axis.
+- [Phase 07]: Drain defaults for embed's WithDrainBytes/WithDrainTimeout are set in New's struct literal BEFORE the options loop (deliberate divergence from WithMaxResponseBytes), so an explicit 0 is honored rather than swallowed (D-05, D-06).
+- [Phase 07]: WithTimeout(d<=0) on embed no longer means unbounded — it resolves to a configurable ceiling (WithMaxTimeout, default 10m), applied in New after all options run so option order is preserved (D-07, D-09, breaking documented behavior change).
+- [Phase 07]: summarize lane mirrors embed exactly: named maxErrorBodyBytes, both drain sites on httpdrain.Drain, WithMaxTimeout ceiling clamp applied post-options in New
+- [Phase 07]: Both byte helpers call config.ParseNonNegativeIntCap (same parser Config.Validate uses), so validated and enforced ranges cannot diverge — T-07-04-02 mitigation
+- [Phase 07]: Ceiling helpers (embedMaxTimeout/summaryMaxTimeout) fall back to the 10m default on any non-positive value; drain helpers pass a configured zero through unchanged — D-05/D-08 asymmetry, commented at each helper
+- [Phase 07]: Bare 'task' cannot prove internal/store's 63-patch red-evidence harness alone (Go's 10-min default per-package timeout, not this plan's own explicit -timeout 180m); proven instead via 3 independent explicit-timeout harness runs plus package-scoped task lint/license/fmt checks.
 
 ### Pending Todos
 
@@ -316,7 +377,7 @@ Both prior entries were delivered and had simply never been closed out:
 **Open:**
 
 - **Released but NOT DEPLOYED:** `v0.13.0` was cut and shipped 2026-08-12 (tag + GitHub Release, binaries for linux/darwin × amd64/arm64, image `0.13.0`/`latest`, OCI Helm chart) — so v0.11.x, v0.12.x and v0.13.x capabilities are now *available*. They are **not yet rolled out** to the running instance, which still predates all three. Until it is, `supersede_memory`, memory `citations`, the `categories` filter, Connect bearer identity, the headless CLI, `cross_spine`, the field+hint error envelope, `spine-review`, and the archive tier remain uncallable in practice.
-- **Not deployed → not exercised:** every v0.11.x, v0.12.x and v0.13.x feature is verified against tests and a real Qdrant via testcontainers, but **none has ever run in the deployed instance**. Three milestones of unexercised code land at once on the first rollout — watch it closely for integration surprises.
+- **Not deployed → not exercised:** every v0.11.x, v0.12.x and v0.13.x feature is verified against tests and a real Qdrant via testcontainers, but **has ever run in the deployed instance**. Three milestones of unexercised code land at once on the first rollout — watch it closely for integration surprises.
 - **Validation commands can false-green:** `go test -run X ./pkg/...` matching nothing exits 0 with `ok … [no tests to run]`. This bit v0.12.x too: VALIDATION.md `-run` commands are written at PLAN time and routinely never match what shipped (wrong package in Phase 4, wrong test name in Phase 7), so the row reports a false green forever. Re-resolve every `-run` against `go test -list` when auditing, and prove execution with `-v` RUN/PASS pairs, not a package-level `ok`. Durable record: `bsbsvn4hbc`. **Closed as a deliverable by v0.13.x Phase 5** (all six phases reconciled to `status: validated`), but the trap itself is permanent — it applies to every VALIDATION.md this milestone writes. Related and now CLOSED as this milestone's own Phase 1: #479, where a key-link `pattern:` carrying `\\` escaping is silently unmatchable, so v0.13.x Phases 1–2's gates were no-ops; 2026-08-12.01 Phase 1 fixes that before authoring its own key-links.
 - Tracked tech debt: #369 (Renovate self-heal live observation, post-merge only), #366 (console e2e harness), #370 (Taskfile yamlfmt/CI reconciliation), plus 2 high Dependabot alerts open on `main`.
 - **CI gates outside the phase lifecycle:** `task chart:validate` (containerEnv checksum pin) and `task ui:build` (vendored SPA) are required checks that no phase gate runs. Run both locally before shipping any phase touching `charts/` or generated TS.
@@ -344,19 +405,22 @@ Both prior entries were delivered and had simply never been closed out:
   plan-checker passes); `internal/store` `TestRedEvidencePatchesAreLive` keeps `task` red until the
   phase's red-evidence patches are registered in `redEvidenceDirs` (orchestrator step after the last
   plan, before verification); `dispatch-isolation --raw/--json` re-record the isolation sentinel, so
-  `--force-isolation none` must be the LAST call before each executor dispatch (gotcha `xjz60c9h6t`).
+  `--force-isolation ` must be the LAST call before each executor dispatch (gotcha `xjz60c9h6t`).
   `roadmap update-plan-progress` / `phase.complete` again wrote an archived-milestone "1." progress
   row (`yzmfesbsg0`, 8th occurrence) — hand-verify the table after every call.
 - **New this milestone: runtime CLI availability.** Phase 3's shell-out writers now depend on
   each target runtime's own CLI being present and flag-stable (`claude`, `codex`, `opencode`) —
   flag/version drift in a third-party binary is a live failure mode, not a hypothetical; pinned
   versions verified live were codex-cli 0.148.0 and opencode 1.18.15.
+- Pre-existing (predates 04-07) TestActiveMilestoneKeyLinksSatisfiable failure against 04-06-PLAN.md:62's key_links pattern "Full: req[.]Full" (gofmt-aligned struct literal never matched exactly one space). Out of scope for 04-07; documented in deferred-items.md and WINDOWS.md entry 11. 04-06's PLAN.md pattern needs correcting.
+- OBSOLETE 2026-09-21 — the red-evidence harness was removed repo-wide under rule 3p0zsqrhmb ("NEVER write tests for tests"), so TestRedEvidencePatchesAreLive no longer exists and this timeout class cannot recur. Recorded for history: it hit Go's default 601s per-package timeout twice during 06-01's task gate under concurrent machine load.
+- OBSOLETE 2026-09-21 — harness removed (rule 3p0zsqrhmb); internal/store now runs in 352s. This entry's claim that the package "needs materially more than Go's default 601s timeout" was ALSO WRONG on its own terms and seeded a bogus `-timeout 180m` into later plan text: per-patch cost was a stable ~4.5s (phase 3: 25 patches/111s; phase 7: 63/295.7s), so 63 patches cost ~300s intrinsically — half the default. The observed 602-782s spread was machine contention (load avg 18.9 on 16 cores from unrelated work), never harness cost. Divide wall time by unit count before declaring a workload too slow.
+- RESOLVED by the orchestrator between 07-01 and 07-02: task (full repo gate) failed on internal/keylinks.TestNoEscapedPatternsRepoWide against .planning/phases/07-bounded-provider-responses/07-02-PLAN.md:53 (pre-existing since 2a15f189). Fixed by re-quoting the key_links pattern as a YAML single-quoted scalar ('koanf:"drain_bytes"'), matching the repo-wide precedent; internal/keylinks is green.
 
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260918-idl | fix console root route: ListScopes gRPC 4MiB overflow and recent-memories missing cross_spine (#500) | 2026-09-18 | 339ab181 | [260918-idl-fix-console-root-route-listscopes-grpc-4](./quick/260918-idl-fix-console-root-route-listscopes-grpc-4/) |
 
 ### Roadmap Evolution
 
@@ -369,10 +433,12 @@ Both prior entries were delivered and had simply never been closed out:
 - Phase 9 added: Report pending in migrate status — closes milestone-audit items W2 (`engram migrate status` omits the canonical `pending` value) and W3 (`guides/migrate.md:279` documents a CLI derivation that does not exist). One code fix closes both. Debt closure against already-satisfied REQ-migrate-status-histogram / REQ-docs-record-state, not new milestone scope.
 - 2026-08-23.01 ROADMAP.md created: 6 phases (1–6), 25/25 requirements mapped, 0 orphans. Phase numbering restarted at 1. The research-suggested 9-phase breakdown collapsed: Codex/Cursor/opencode's separate high-risk Phase 7 merged into one Runtime Registration phase (Phase 3) after live verification retired the TOML/JSONC and opencode-schema risks; `engram version --json` folded into the cask phase (Phase 1) rather than standing alone.
 
+- 2026-09-18.01 ROADMAP.md created: 7 phases (1–7), 20/20 requirements mapped, 0 orphans. Phase numbering restarted at 1. Research's 6-phase build order was refined by splitting its single per-site-migration phase into Phase 4 (List/ListScheduled/Search) and Phase 5 (the five operator sweeps, plus REQ-recv-limit-backstop and REQ-ci-store-green) so the backstop lands only after every regression test in this milestone already passes without it, and so REQ-ci-store-green sits in the LAST phase that adds oversized Qdrant fixtures. Both discuss-phase decision requirements were placed with the phase implementing their outcome: REQ-content-cap-decided in Phase 3 (Shared Bounded-Read Mechanism, the natural complement to byte-budget pages) and REQ-list-limit-contract-decided in Phase 4 (List migration, whose paging shape the decision determines). Phase 6 (Cross-Spine Partial Results, #456) and Phase 7 (Bounded Provider Responses, #457/#347) are independent single-purpose tails per research, kept as standalone phases since each is a real user-observable behavior change, not internal-quality-only work.
+
 ## Session Continuity
 
-Last session: 2026-09-18T01:00:00.000Z
-Stopped at: Milestone 2026-09-13.01 archived — awaiting /gsd-new-milestone
+Last session: 2026-09-21T19:00:29.435Z
+Stopped at: Phase 07 complete — all phases complete
 Resume file: None
 
 ## Performance Metrics
@@ -505,6 +571,40 @@ Resume file: None
 | Phase 05 P03 | ~25min | 2 tasks | 4 files |
 | Phase 05 P02 | 26min | 2 tasks | 5 files |
 | Phase 05 P04 | 15min | 2 tasks | 1 files |
+| Phase 01 P01 | 45min | 3 tasks | 8 files |
+| Phase 01 P02 | 10min | 2 tasks | 6 files |
+| Phase 01 P03 | 40min | 2 tasks | 6 files |
+| Phase 01 P04 | 25min | 2 tasks | 5 files |
+| Phase 01 P05 | 55min | 3 tasks | 12 files |
+| Phase 02 P01 | 45min | 2 tasks | 4 files |
+| Phase 02 P02 | 45min | 3 tasks | 7 files |
+| Phase 02 P03 | 55min | 3 tasks | 12 files |
+| Phase 02 P04 | 25min | 2 tasks | 9 files |
+| Phase 03 P01 | 35min | 3 tasks | 10 files |
+| Phase 03 P02 | 25min | 2 tasks | 8 files |
+| Phase 03 P03 | 10min | 3 tasks | 3 files |
+| Phase 03 P04 | 38min | 3 tasks | 5 files |
+| Phase 03 P05 | 20min | 3 tasks | 10 files |
+| Phase 03 P06 | 20min | 2 tasks | 14 files |
+| Phase 04 P01 | 22min | 2 tasks | 10 files |
+| Phase 04 P02 | 51min | 3 tasks | 13 files |
+| Phase 04 P03 | 40min | 2 tasks | 6 files |
+| Phase 04 P04 | 35min | 2 tasks | 5 files |
+| Phase 04 P05 | 40min | 2 tasks | 11 files |
+| Phase 04 P06 | ~35min | 3 tasks | 6 files |
+| Phase 04 P07 | ~25min | 3 tasks | 14 files |
+| Phase 04 P08 | 65min | 3 tasks | 21 files |
+| Phase 05 P01 | 56min | 3 tasks | 6 files |
+| Phase 05 P02 | 62min | 2 tasks | 8 files |
+| Phase 05 P03 | 37min | 3 tasks | 5 files |
+| Phase 05 P04 | 68min | 2 tasks | 5 files |
+| Phase 05 P05 | 51min | 2 tasks | 5 files |
+| Phase 06 P01 | 56min | 3 tasks | 9 files |
+| Phase 06 P03 | 140min | 3 tasks | 7 files |
+| Phase 07 P01 | 29min | 3 tasks | 6 files |
+| Phase 07 P03 | 35min | 2 tasks | 2 files |
+| Phase 07 P04 | 23 min | 3 tasks | 4 files |
+| Phase 07 P05 | 104min | 3 tasks | 7 files |
 
 ## Operator Next Steps
 

@@ -6,11 +6,14 @@ package server
 import (
 	"context"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+
+	"github.com/seanb4t/engram/internal/store"
 )
 
 // TestValidationErrorAttributionMatrix is criterion 2's central verification
@@ -62,6 +65,33 @@ func TestValidationErrorAttributionMatrix(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateStoreDiscovery(tc.a)
+			assertEnvelope(t, err, tc.want.fields, tc.want.hint)
+		})
+	}
+
+	// --- validateStoreArgs' D-01/D-10 content/tags caps (03-shared-bounded-
+	// read-mechanism plan 03-01) ---
+	validStore := storeArgs{Content: "c", Scope: "s", Source: "src", Category: "decision"}
+	contentTooLarge := validStore
+	contentTooLarge.Content = strings.Repeat("a", defaultMaxContentBytes+1)
+	tooManyTags := validStore
+	tooManyTags.Tags = make([]string, defaultMaxTags+1)
+	tagTooLong := validStore
+	tagTooLong.Tags = []string{strings.Repeat("a", defaultMaxTagBytes+1)}
+
+	writeCapCases := []struct {
+		name string
+		a    storeArgs
+		want wantEnvelope
+	}{
+		{"store_content_too_large", contentTooLarge, wantEnvelope{[]string{"content"}, HintTooLong}},
+		{"store_too_many_tags", tooManyTags, wantEnvelope{[]string{"tags"}, HintTooMany}},
+		{"store_tag_too_long", tagTooLong, wantEnvelope{[]string{"tags"}, HintTooLong}},
+	}
+	for _, tc := range writeCapCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateStoreArgs(tc.a, 512, memoryWriteCaps{})
 			assertEnvelope(t, err, tc.want.fields, tc.want.hint)
 		})
 	}
@@ -197,6 +227,37 @@ func TestValidationErrorAttributionMatrix(t *testing.T) {
 			assertEnvelope(t, err, tc.want.fields, tc.want.hint)
 		})
 	}
+
+	// --- rejectOverMaximumCount (D-10, plan 04-06): one list row, one search
+	// row. Both run against a REAL Qdrant-backed *deps (testDeps), not a
+	// zero-value one: the whole point of these rows is to prove the
+	// rejection fires BEFORE the store/embed call is reached, so the row
+	// must be able to reach that call (and fail loudly with a nil-pointer
+	// panic, not a clean assertion failure) if the rejection is ever
+	// missing — a zero-value *deps here would confuse "the check is doing
+	// its job" with "there is nothing behind it to call."
+	overMaxCases := []struct {
+		name string
+		run  func(t *testing.T) error
+		want wantEnvelope
+	}{
+		{"list_memory_limit_over_maximum", func(t *testing.T) error {
+			d := testDeps(t)
+			_, err := d.listMemory(context.Background(), caller{}, coreListRequest{Scope: "tool:project:x", Limit: store.MaxRecallLimit + 1})
+			return err
+		}, wantEnvelope{[]string{"limit"}, HintOutOfRange}},
+		{"search_memory_k_over_maximum", func(t *testing.T) error {
+			d := testDeps(t)
+			_, err := d.searchMemory(context.Background(), caller{}, coreSearchRequest{Scope: "tool:project:x", Query: "q", K: store.MaxRecallLimit + 1})
+			return err
+		}, wantEnvelope{[]string{"k"}, HintOutOfRange}},
+	}
+	for _, tc := range overMaxCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			assertEnvelope(t, tc.run(t), tc.want.fields, tc.want.hint)
+		})
+	}
 }
 
 // assertEnvelope asserts err is non-nil FIRST (guarding the vacuous-row
@@ -301,6 +362,31 @@ func TestHintNeverEchoesValue(t *testing.T) {
 			Citations: []citationArg{{Kind: "file", Ref: "f"}},
 		})
 		assertNoEcho(t, err)
+	})
+
+	// tag_value_no_echo (D-10, T-03-01-02): a 200-byte tag starting with the
+	// marker is rejected for its byte length, and the marker itself must not
+	// appear in the rejection text.
+	t.Run("tag_value_no_echo", func(t *testing.T) {
+		tag := marker + strings.Repeat("a", 200-len(marker))
+		a := storeArgs{Content: "c", Scope: "s", Source: "src", Category: "decision", Tags: []string{tag}}
+		err := validateStoreArgs(a, 512, memoryWriteCaps{})
+		assertNoEcho(t, err)
+	})
+
+	// recall_count_over_maximum_no_echo (D-10, plan 04-06, T-04-06-02): the
+	// rejection message states the field and the documented maximum, but
+	// must never echo the caller's own rejected count.
+	t.Run("recall_count_over_maximum_no_echo", func(t *testing.T) {
+		overVal := uint64(store.MaxRecallLimit + 424242)
+		d := testDeps(t)
+		_, err := d.listMemory(context.Background(), caller{}, coreListRequest{Scope: "tool:project:x", Limit: overVal})
+		if err == nil {
+			t.Fatalf("expected a non-nil error, got nil")
+		}
+		if strings.Contains(err.Error(), strconv.FormatUint(overVal, 10)) {
+			t.Errorf("err.Error() = %q contains the rejected value %d", err.Error(), overVal)
+		}
 	})
 }
 

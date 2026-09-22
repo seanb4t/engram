@@ -6,9 +6,7 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"net"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +15,7 @@ import (
 
 	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/store/storetest"
 )
 
 // TestSchemaVersionOnRecallWire is the deliberate mirror of
@@ -172,31 +171,15 @@ func TestSchemaVersionOnRecallWire(t *testing.T) {
 	})
 }
 
-// dialRawQdrantClient dials a raw *qdrant.Client against the same
-// testQdrantAddr this package's TestMain resolved, for the handful of
-// call sites (like TestSchemaVersionOnGetMemoryWire's legacy-seed subtest)
-// that must bypass store.Store's payload() codec entirely to construct the
-// absent-schema_version-key shape a pre-adoption record actually has.
-// Mirrors testDepsWithStore's own dial exactly (this package has no
-// exported seam onto *store.Store's unexported client field).
+// dialRawQdrantClient dials a raw *qdrant.Client through storetest, for the
+// handful of call sites (like TestSchemaVersionOnGetMemoryWire's legacy-seed
+// subtest) that must bypass store.Store's payload() codec entirely to
+// construct the absent-schema_version-key shape a pre-adoption record
+// actually has. Mirrors testDepsWithStore's own dial exactly (this package
+// has no exported seam onto *store.Store's unexported client field).
 func dialRawQdrantClient(t *testing.T) *qdrant.Client {
 	t.Helper()
-	if testQdrantAddr == "" {
-		failOrSkipNoQdrant(t)
-	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
-	if err != nil {
-		t.Fatalf("raw qdrant client: %v", err)
-	}
-	return c
+	return storetest.Dial(t, storetest.RecvLimit)
 }
 
 // assertNoPayloadOnlyNeighboursOnWire re-asserts, alongside the pre-existing

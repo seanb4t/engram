@@ -13,8 +13,8 @@ import (
 func validConfig() *Config {
 	return &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval"},
-		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024", Timeout: "30s"},
-		Memory:    MemoryConfig{MaxSummaryBytes: "512"},
+		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
+		Memory:    MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{OnWrite: "false", Workers: "2", QueueSize: "256"},
 		Usage:     UsageConfig{Signals: "true"},
@@ -76,6 +76,96 @@ func TestValidateFieldRules(t *testing.T) {
 	}
 }
 
+// TestMemoryCapsRejectZeroAndNonPositive proves D-09: ENGRAM_MEMORY_MAX_CONTENT_BYTES,
+// ENGRAM_MEMORY_MAX_TAGS and ENGRAM_MEMORY_MAX_TAG_BYTES are ALWAYS enforced —
+// "0", a negative value, and a non-integer all fail Validate() naming the
+// variable; "1" and the registry default are accepted. A sibling case proves
+// the deliberate divergence: ENGRAM_MEMORY_MAX_SUMMARY_BYTES="0" still passes
+// (it disables that bound, D-18) — these three caps do NOT.
+func TestMemoryCapsRejectZeroAndNonPositive(t *testing.T) {
+	fields := []struct {
+		envName string
+		mutate  func(*Config, string)
+		def     string
+	}{
+		{"ENGRAM_MEMORY_MAX_CONTENT_BYTES", func(c *Config, v string) { c.Memory.MaxContentBytes = v }, "65536"},
+		{"ENGRAM_MEMORY_MAX_TAGS", func(c *Config, v string) { c.Memory.MaxTags = v }, "128"},
+		{"ENGRAM_MEMORY_MAX_TAG_BYTES", func(c *Config, v string) { c.Memory.MaxTagBytes = v }, "128"},
+	}
+	badValues := []string{"0", "-1", "abc", ""}
+	for _, f := range fields {
+		for _, bad := range badValues {
+			t.Run(f.envName+"/"+bad, func(t *testing.T) {
+				c := validConfig()
+				f.mutate(c, bad)
+				err := c.Validate()
+				if err == nil {
+					t.Fatalf("Validate() = nil, want error naming %s for value %q", f.envName, bad)
+				}
+				if !strings.Contains(err.Error(), f.envName) {
+					t.Errorf("Validate() error = %q, want it to name %s", err, f.envName)
+				}
+			})
+		}
+		for _, good := range []string{"1", f.def} {
+			t.Run(f.envName+"/"+good, func(t *testing.T) {
+				c := validConfig()
+				f.mutate(c, good)
+				if err := c.Validate(); err != nil {
+					t.Errorf("Validate() with %s=%q = %v, want nil", f.envName, good, err)
+				}
+			})
+		}
+	}
+
+	t.Run("ENGRAM_MEMORY_MAX_SUMMARY_BYTES/0 still disables (D-18, unchanged)", func(t *testing.T) {
+		c := validConfig()
+		c.Memory.MaxSummaryBytes = "0"
+		if err := c.Validate(); err != nil {
+			t.Errorf("Validate() with MaxSummaryBytes=0 = %v, want nil (D-18: 0 disables this bound)", err)
+		}
+	})
+}
+
+// TestOverflowValueRejectedByValidate proves WR-01's fix: a value that
+// parses via strconv.ParseUint (up to math.MaxUint64) but does NOT
+// round-trip through strconv.Atoi's platform-int range — the exact parser
+// internal/server's positiveIntOrDefault/maxMemorySummaryBytes use to build
+// the LIVE enforced cap — must fail Config.Validate(). Before the WR-01 fix,
+// validatePositiveCap (and the MaxSummaryBytes check) parsed with
+// strconv.ParseUint alone, so this value passed Validate() cleanly while the
+// runtime side silently fell back to its documented default with only a
+// slog.Warn — a validated-vs-enforced divergence D-09 exists specifically to
+// prevent. The validated range must equal the enforced range for all four
+// fields, including ENGRAM_MEMORY_MAX_SUMMARY_BYTES (whose "0 disables"
+// semantics are unrelated to and unaffected by this overflow-range fix).
+func TestOverflowValueRejectedByValidate(t *testing.T) {
+	const overflow = "9223372036854775808" // math.MaxInt64 + 1: valid uint64, invalid int
+
+	fields := []struct {
+		envName string
+		mutate  func(*Config, string)
+	}{
+		{"ENGRAM_MEMORY_MAX_CONTENT_BYTES", func(c *Config, v string) { c.Memory.MaxContentBytes = v }},
+		{"ENGRAM_MEMORY_MAX_TAGS", func(c *Config, v string) { c.Memory.MaxTags = v }},
+		{"ENGRAM_MEMORY_MAX_TAG_BYTES", func(c *Config, v string) { c.Memory.MaxTagBytes = v }},
+		{"ENGRAM_MEMORY_MAX_SUMMARY_BYTES", func(c *Config, v string) { c.Memory.MaxSummaryBytes = v }},
+	}
+	for _, f := range fields {
+		t.Run(f.envName, func(t *testing.T) {
+			c := validConfig()
+			f.mutate(c, overflow)
+			err := c.Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil for %s=%s, want error: this value parses via strconv.ParseUint but overflows the strconv.Atoi range the runtime enforcement side actually uses — the validated range must equal the enforced range (D-09/WR-01)", f.envName, overflow)
+			}
+			if !strings.Contains(err.Error(), f.envName) {
+				t.Errorf("Validate() error = %q, want it to name %s", err, f.envName)
+			}
+		})
+	}
+}
+
 // summarizeEnabled returns a valid Config with auto-summary turned on, so a test
 // can mutate a single summarize field to exercise one rule.
 func summarizeEnabled() *Config {
@@ -83,6 +173,7 @@ func summarizeEnabled() *Config {
 	c.Summarize = SummarizeConfig{
 		Model: "summary-cheap", MaxChars: "280", MaxTokens: "1024", Timeout: "30s",
 		OnWrite: "false", Workers: "2", QueueSize: "256",
+		DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m",
 	}
 	return c
 }

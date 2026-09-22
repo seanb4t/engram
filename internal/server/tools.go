@@ -21,11 +21,8 @@ import (
 	"github.com/google/uuid"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/qdrant/go-client/qdrant"
-	otelgrpc "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"google.golang.org/grpc"
 
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/embed"
@@ -83,6 +80,108 @@ type deps struct {
 	// EmbedderIdentity is json:"-"), so an empty value there just persists
 	// as an empty stamp, never surfacing on any wire path.
 	embedderIdentity string
+	// writeCaps holds the always-enforced memory content/tags write bounds
+	// (D-01/D-09/D-10). A zero-value memoryWriteCaps (a bare &deps{} test
+	// literal that never called buildDepsFromEnv) is NEVER uncapped: every
+	// consumer calls writeCaps.resolved() first, which fills any zero field
+	// with its documented default.
+	writeCaps memoryWriteCaps
+}
+
+// memoryWriteCaps holds the always-enforced memory content/tags write
+// bounds (D-01/D-09/D-10): contentBytes caps storeArgs.Content,
+// tags caps the NUMBER of storeArgs.Tags entries, and tagBytes caps the
+// byte length of a single entry. UNLIKE deps.maxSummaryBytes, none of these
+// three fields is an operator escape hatch — Config.Validate rejects "0"
+// and negative values for all three (D-09), so a fully-loaded
+// memoryWriteCaps never carries a zero field. A zero field DOES appear in a
+// bare &deps{} test literal that never called memoryWriteCapsFromConfig;
+// resolved() is what keeps that literal capped at the documented defaults
+// instead of silently becoming unbounded.
+type memoryWriteCaps struct {
+	contentBytes, tags, tagBytes int
+}
+
+// The always-enforced memory write defaults (D-01/D-09/D-10), mirroring the
+// registry defaults for ENGRAM_MEMORY_MAX_CONTENT_BYTES/_MAX_TAGS/
+// _MAX_TAG_BYTES — TestMemoryWriteCapDefaultsMatchRegistry pins the
+// equality by test, not by reading.
+const (
+	defaultMaxContentBytes = 64 * 1024
+	defaultMaxTags         = 128
+	defaultMaxTagBytes     = 128
+)
+
+// resolved returns c with every field that is <= 0 replaced by its
+// documented default, so a zero-value memoryWriteCaps (a bare &deps{} test
+// literal) is never uncapped.
+func (c memoryWriteCaps) resolved() memoryWriteCaps {
+	if c.contentBytes <= 0 {
+		c.contentBytes = defaultMaxContentBytes
+	}
+	if c.tags <= 0 {
+		c.tags = defaultMaxTags
+	}
+	if c.tagBytes <= 0 {
+		c.tagBytes = defaultMaxTagBytes
+	}
+	return c
+}
+
+// positiveIntOrDefault parses value as a positive int, returning def on any
+// parse error or a non-positive result. Config.Validate already rejects
+// these three env vars' "0"/negative/non-integer values at startup (D-09),
+// so this is defense in depth, never the enforcement point — the slog.Warn
+// only fires for a value that somehow reached here unparseable (e.g. a
+// hand-built config.Config in a test that skipped Validate).
+//
+// Parses via config.ParsePositiveIntCap — the SAME function
+// validatePositiveCap calls on the Config.Validate side (WR-01 fix) — so
+// the range this function accepts can never diverge from the range
+// Validate() already guaranteed at startup. Previously this parsed with a
+// second, independent strconv.Atoi call while Validate used the wider
+// strconv.ParseUint(value, 10, 64); a value between math.MaxInt64 and
+// math.MaxUint64 passed Validate() but silently fell back to def here.
+func positiveIntOrDefault(value, envName string, def int) int {
+	n, err := config.ParsePositiveIntCap(value)
+	if err != nil {
+		if value != "" {
+			slog.Warn(envName+" is set but unparseable or non-positive; using default",
+				"value", value, "default", def)
+		}
+		return def
+	}
+	return n
+}
+
+// memoryWriteCapsFromConfig builds the always-enforced memory write caps
+// from the loaded config (D-01/D-09/D-10).
+func memoryWriteCapsFromConfig(cfg *config.Config) memoryWriteCaps {
+	return memoryWriteCaps{
+		contentBytes: positiveIntOrDefault(cfg.Memory.MaxContentBytes, "ENGRAM_MEMORY_MAX_CONTENT_BYTES", defaultMaxContentBytes),
+		tags:         positiveIntOrDefault(cfg.Memory.MaxTags, "ENGRAM_MEMORY_MAX_TAGS", defaultMaxTags),
+		tagBytes:     positiveIntOrDefault(cfg.Memory.MaxTagBytes, "ENGRAM_MEMORY_MAX_TAG_BYTES", defaultMaxTagBytes),
+	}
+}
+
+// recordCapsFromConfig builds the store's read-side record ceiling
+// (store.RecordCaps, D-02) from EXACTLY the parsers memoryWriteCapsFromConfig
+// and maxMemorySummaryBytes already use for the write caps, plus the
+// server's own citation constants (maxDiscoveryCitations,
+// maxCitationExcerptBytes) — never a second, independent read of the
+// config. The read side must size its ceilings from exactly the caps the
+// write side enforces, so this reuses the same parsers rather than parsing
+// twice (D-09).
+func recordCapsFromConfig(cfg *config.Config) store.RecordCaps {
+	wc := memoryWriteCapsFromConfig(cfg)
+	return store.RecordCaps{
+		ContentBytes:         wc.contentBytes,
+		SummaryBytes:         maxMemorySummaryBytes(cfg),
+		Tags:                 wc.tags,
+		TagBytes:             wc.tagBytes,
+		Citations:            maxDiscoveryCitations,
+		CitationExcerptBytes: maxCitationExcerptBytes,
+	}
 }
 
 // configLoad is the indirection seam for loading koanf config from the process
@@ -107,6 +206,10 @@ func loadAndValidate() (*config.Config, error) {
 
 // storeFromConfig builds the Qdrant-backed Store (without ensuring the collection)
 // from an already-loaded config and returns the configured embed dimension.
+// The returned Store carries the record caps derived from this same cfg via
+// the WithRecordCaps option below (D-02/D-09) — plan 03-02's read-side
+// per-record ceiling is derived from exactly the caps this same config
+// enforces on write, not a second, independent read.
 func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
 	embedDim, err := strconv.ParseUint(cfg.Embed.Dim, 10, 64)
 	if err != nil {
@@ -120,17 +223,11 @@ func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid port in ENGRAM_QDRANT_ADDR %q: %w", cfg.Qdrant.Addr, err)
 	}
-	qc, err := qdrant.NewClient(&qdrant.Config{
-		Host: host,
-		Port: port,
-		GrpcOptions: []grpc.DialOption{
-			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-		},
-	})
+	qc, err := store.NewQdrantClient(host, port)
 	if err != nil {
 		return nil, 0, fmt.Errorf("qdrant client: %w", err)
 	}
-	return store.New(qc, cfg.Qdrant.Collection), embedDim, nil
+	return store.New(qc, cfg.Qdrant.Collection, store.WithRecordCaps(recordCapsFromConfig(cfg))), embedDim, nil
 }
 
 // ensureStoreFromConfig builds the Store from an already-loaded config and ensures
@@ -225,6 +322,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		summaryQueue:     buildSummaryQueue(cfg, st, sqm),
 		usageQueue:       buildUsageQueue(cfg, st, uqm),
 		embedderIdentity: identity,
+		writeCaps:        memoryWriteCapsFromConfig(cfg),
 	}, nil
 }
 
@@ -304,9 +402,15 @@ func buildUsageQueue(cfg *config.Config, st *store.Store, uqm *telemetry.UsageQu
 // non-negative integer) and is honored as "bound disabled" — it is NOT
 // coerced to the default, mirroring embedTimeout's/summaryTimeout's own
 // "0 = escape hatch" convention. Only an unparseable value falls back.
+//
+// Parses via config.ParseNonNegativeIntCap — the SAME function Config.Validate
+// calls for this field (WR-01 fix) — so this function's accepted range can
+// never diverge from what Validate() already guaranteed at startup. The "0
+// disables" semantics are unaffected: this function still decides that for
+// itself, ParseNonNegativeIntCap only bounds the parse.
 func maxMemorySummaryBytes(cfg *config.Config) int {
-	n, err := strconv.Atoi(cfg.Memory.MaxSummaryBytes)
-	if err != nil || n < 0 {
+	n, err := config.ParseNonNegativeIntCap(cfg.Memory.MaxSummaryBytes)
+	if err != nil {
 		if cfg.Memory.MaxSummaryBytes != "" {
 			slog.Warn("ENGRAM_MEMORY_MAX_SUMMARY_BYTES is set but unparseable or negative; using default 512",
 				"value", cfg.Memory.MaxSummaryBytes)
@@ -345,8 +449,11 @@ func summaryMaxTokens(cfg *config.Config) int {
 }
 
 // summaryTimeout parses the per-request HTTP timeout, defaulting to 30s on
-// empty/invalid. 0 is honored (disables the timeout); negatives fall back to
-// the default.
+// empty/invalid. 0 is honored by this helper (passed through unchanged);
+// negatives fall back to the default. Note: 0 no longer disables the
+// timeout downstream — summarize.Client.New resolves a non-positive
+// http.Client.Timeout to its configured ceiling (summaryMaxTimeout below),
+// not to unbounded (D-07).
 func summaryTimeout(cfg *config.Config) time.Duration {
 	d, err := time.ParseDuration(cfg.Summarize.Timeout)
 	if err != nil || d < 0 {
@@ -360,8 +467,11 @@ func summaryTimeout(cfg *config.Config) time.Duration {
 }
 
 // embedTimeout parses the per-request embed HTTP client timeout, defaulting to
-// 30s on empty/invalid. 0 is honored (disables the timeout); negatives fall
-// back to the default. Mirrors summaryTimeout.
+// 30s on empty/invalid. 0 is honored by this helper (passed through
+// unchanged); negatives fall back to the default. Note: 0 no longer disables
+// the timeout downstream — embed.Client.New resolves a non-positive
+// http.Client.Timeout to its configured ceiling (embedMaxTimeout below), not
+// to unbounded (D-07). Mirrors summaryTimeout.
 func embedTimeout(cfg *config.Config) time.Duration {
 	d, err := time.ParseDuration(cfg.Embed.Timeout)
 	if err != nil || d < 0 {
@@ -370,6 +480,118 @@ func embedTimeout(cfg *config.Config) time.Duration {
 				"value", cfg.Embed.Timeout)
 		}
 		return 30 * time.Second
+	}
+	return d
+}
+
+// embedDrainBytes parses the byte bound on embed's shared post-response
+// drain, defaulting to 262144 (256 KiB) on empty/invalid. Uses
+// config.ParseNonNegativeIntCap — the SAME exported parser Config.Validate
+// calls for ENGRAM_EMBED_DRAIN_BYTES — so the validated range and the
+// enforced range cannot diverge. 0 is a legitimate value (skips the drain
+// entirely, D-05) and is honored by this helper; only a negative or
+// unparseable value falls back to the default.
+func embedDrainBytes(cfg *config.Config) int64 {
+	n, err := config.ParseNonNegativeIntCap(cfg.Embed.DrainBytes)
+	if err != nil {
+		if cfg.Embed.DrainBytes != "" {
+			slog.Warn("ENGRAM_EMBED_DRAIN_BYTES is set but unparseable or negative; using default 262144",
+				"value", cfg.Embed.DrainBytes)
+		}
+		return 262144
+	}
+	return int64(n)
+}
+
+// embedDrainTimeout parses the time bound on embed's shared post-response
+// drain, defaulting to 2s on empty/invalid. 0 is a legitimate value (skips
+// the drain entirely, D-05) and is honored by this helper; only a negative
+// or unparseable value falls back to the default. Mirrors embedTimeout's
+// parse-warn-fall-back shape.
+func embedDrainTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Embed.DrainTimeout)
+	if err != nil || d < 0 {
+		if cfg.Embed.DrainTimeout != "" {
+			slog.Warn("ENGRAM_EMBED_DRAIN_TIMEOUT is set but unparseable or negative; using default 2s",
+				"value", cfg.Embed.DrainTimeout)
+		}
+		return 2 * time.Second
+	}
+	return d
+}
+
+// embedMaxTimeout parses the ceiling a non-positive embed request timeout
+// resolves to (D-07, D-08), defaulting to 10m on empty/invalid. UNLIKE
+// embedDrainBytes/embedDrainTimeout above, 0 is NOT a legitimate value here
+// — Config.Validate rejects a non-positive ENGRAM_EMBED_MAX_TIMEOUT outright,
+// so any non-positive value reaching this helper (a caller that bypassed
+// Validate) falls back to the default rather than being passed on, keeping
+// this defensive path from handing the client a value meaning "unbounded".
+func embedMaxTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Embed.MaxTimeout)
+	if err != nil || d <= 0 {
+		if cfg.Embed.MaxTimeout != "" {
+			slog.Warn("ENGRAM_EMBED_MAX_TIMEOUT is set but unparseable or non-positive; using default 10m",
+				"value", cfg.Embed.MaxTimeout)
+		}
+		return 10 * time.Minute
+	}
+	return d
+}
+
+// summaryDrainBytes parses the byte bound on summarize's shared
+// post-response drain, defaulting to 262144 (256 KiB) on empty/invalid.
+// Uses config.ParseNonNegativeIntCap — the SAME exported parser
+// Config.Validate calls for ENGRAM_SUMMARY_DRAIN_BYTES — so the validated
+// range and the enforced range cannot diverge. 0 is a legitimate value
+// (skips the drain entirely, D-05) and is honored by this helper; only a
+// negative or unparseable value falls back to the default. Mirrors
+// embedDrainBytes.
+func summaryDrainBytes(cfg *config.Config) int64 {
+	n, err := config.ParseNonNegativeIntCap(cfg.Summarize.DrainBytes)
+	if err != nil {
+		if cfg.Summarize.DrainBytes != "" {
+			slog.Warn("ENGRAM_SUMMARY_DRAIN_BYTES is set but unparseable or negative; using default 262144",
+				"value", cfg.Summarize.DrainBytes)
+		}
+		return 262144
+	}
+	return int64(n)
+}
+
+// summaryDrainTimeout parses the time bound on summarize's shared
+// post-response drain, defaulting to 2s on empty/invalid. 0 is a legitimate
+// value (skips the drain entirely, D-05) and is honored by this helper;
+// only a negative or unparseable value falls back to the default. Mirrors
+// embedDrainTimeout.
+func summaryDrainTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Summarize.DrainTimeout)
+	if err != nil || d < 0 {
+		if cfg.Summarize.DrainTimeout != "" {
+			slog.Warn("ENGRAM_SUMMARY_DRAIN_TIMEOUT is set but unparseable or negative; using default 2s",
+				"value", cfg.Summarize.DrainTimeout)
+		}
+		return 2 * time.Second
+	}
+	return d
+}
+
+// summaryMaxTimeout parses the ceiling a non-positive summarize request
+// timeout resolves to (D-07, D-08), defaulting to 10m on empty/invalid.
+// UNLIKE summaryDrainBytes/summaryDrainTimeout above, 0 is NOT a legitimate
+// value here — Config.Validate rejects a non-positive
+// ENGRAM_SUMMARY_MAX_TIMEOUT outright, so any non-positive value reaching
+// this helper (a caller that bypassed Validate) falls back to the default
+// rather than being passed on, keeping this defensive path from handing the
+// client a value meaning "unbounded". Mirrors embedMaxTimeout.
+func summaryMaxTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Summarize.MaxTimeout)
+	if err != nil || d <= 0 {
+		if cfg.Summarize.MaxTimeout != "" {
+			slog.Warn("ENGRAM_SUMMARY_MAX_TIMEOUT is set but unparseable or non-positive; using default 10m",
+				"value", cfg.Summarize.MaxTimeout)
+		}
+		return 10 * time.Minute
 	}
 	return d
 }
@@ -396,6 +618,9 @@ func embedderFromConfig(cfg *config.Config) (*embed.Client, error) {
 		embed.WithDocumentParams(documentParams),
 		embed.WithTimeout(embedTimeout(cfg)),
 		embed.WithEmbeddingsURL(cfg.OpenAI.EmbeddingsURL),
+		embed.WithDrainBytes(embedDrainBytes(cfg)),
+		embed.WithDrainTimeout(embedDrainTimeout(cfg)),
+		embed.WithMaxTimeout(embedMaxTimeout(cfg)),
 	}
 	// D-16 (plan 04-03's option, wired here): size the success-path decode
 	// bound to the configured dimension rather than copying the chat lane's
@@ -428,10 +653,19 @@ func summarizerFromConfig(cfg *config.Config) *summarize.Client {
 	// ChatBaseURL/ChatAPIKey.
 	chatBaseURL := cmp.Or(cfg.OpenAI.ChatBaseURL, cfg.OpenAI.BaseURL)
 	chatAPIKey := cmp.Or(cfg.OpenAI.ChatAPIKey, cfg.OpenAI.APIKey)
+	// The ceiling (WithMaxTimeout) is applied inside summarize.Client.New
+	// itself, not only here (D-09): any caller that builds a *summarize.Client
+	// without going through this wiring — tests, the summarize-missing
+	// command's own builder, any future embedder of the package — still gets
+	// it, because New's own defaultMaxTimeout applies when WithMaxTimeout is
+	// never supplied.
 	return summarize.New(chatBaseURL, chatAPIKey, cfg.Summarize.Model, summaryMaxChars(cfg),
 		summarize.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 		summarize.WithMaxTokens(summaryMaxTokens(cfg)),
-		summarize.WithTimeout(summaryTimeout(cfg)))
+		summarize.WithTimeout(summaryTimeout(cfg)),
+		summarize.WithDrainBytes(summaryDrainBytes(cfg)),
+		summarize.WithDrainTimeout(summaryDrainTimeout(cfg)),
+		summarize.WithMaxTimeout(summaryMaxTimeout(cfg)))
 }
 
 // StoreAndSummarizerFromEnv builds the store + summarizer + resolved model name
@@ -838,6 +1072,16 @@ func requireID(id string) error {
 	return nil
 }
 
+// checkContentBytes rejects content whose length in BYTES (deliberately not
+// runes — the bound is a wire/storage size, not a character count) exceeds
+// maxBytes. Reused by every content-bearing rejection (D-01).
+func checkContentBytes(content string, maxBytes int) error {
+	if len(content) > maxBytes {
+		return argErrf(classOutOfRange, HintTooLong, "content", "content too large: %d bytes (max %d)", len(content), maxBytes)
+	}
+	return nil
+}
+
 // validateStoreArgs enforces storeArgs' presence requirements in Go (D-06a):
 // content/scope/source/category, which carry no schema-level "required"
 // after this plan's omitempty relaxation — this validator IS engram's
@@ -846,6 +1090,13 @@ func requireID(id string) error {
 // embed storeArgs) on both the MCP and Connect lanes: Connect's create-style
 // write RPCs (StoreMemory/ScheduleMemory) have no field-mask semantics, so
 // there is no asymmetric-nil case here the way there is for updateArgs.Content.
+// This is the ONE enforcement point for D-01's content-byte cap and D-10's
+// tags caps on all three create paths, on both lanes (connectapi.go routes
+// StoreMemory/ScheduleMemory through the same deps.storeMemory/
+// scheduleMemory methods that call this).
+//
+// Order: summary bound (#360) -> content presence -> content bytes -> scope
+// -> source -> category -> tag count -> tag bytes.
 //
 // The summary-length bound (maxSummaryBytes, ENGRAM_MEMORY_MAX_SUMMARY_BYTES,
 // D-18) is checked FIRST, before content presence — this order is what makes
@@ -855,12 +1106,21 @@ func requireID(id string) error {
 // in the case where the underlying decode anomaly also drops `content`.
 // maxSummaryBytes<=0 means the bound is disabled (D-18's "0 is honored as
 // disabled" convention).
-func validateStoreArgs(a storeArgs, maxSummaryBytes int) error {
+//
+// UNLIKE maxSummaryBytes, caps.contentBytes/caps.tags/caps.tagBytes are
+// ALWAYS enforced — no ">0" guard is needed or wanted: caps.resolved()
+// guarantees a positive value, and Config.Validate already rejects
+// "0"/negative at startup (D-09), so a guard here would be dead code.
+func validateStoreArgs(a storeArgs, maxSummaryBytes int, caps memoryWriteCaps) error {
+	caps = caps.resolved()
 	if maxSummaryBytes > 0 && len(a.Summary) > maxSummaryBytes {
 		return argErrf(classOutOfRange, HintTooLong, "summary", "summary too large: %d bytes (max %d)", len(a.Summary), maxSummaryBytes)
 	}
 	if a.Content == "" {
 		return argErrf(classMalformed, HintRequired, "content", "content is required")
+	}
+	if err := checkContentBytes(a.Content, caps.contentBytes); err != nil {
+		return err
 	}
 	if a.Scope == "" {
 		return argErrf(classMalformed, HintRequired, "scope", "scope is required")
@@ -870,6 +1130,26 @@ func validateStoreArgs(a storeArgs, maxSummaryBytes int) error {
 	}
 	if a.Category == "" {
 		return argErrf(classMalformed, HintRequired, "category", "category is required")
+	}
+	if err := checkTags(a.Tags, caps.tags, caps.tagBytes); err != nil {
+		return err
+	}
+	return nil
+}
+
+// checkTags enforces D-10's tags caps: count first (a caller with too many
+// tags learns that before any per-tag detail), then per tag a byte-length
+// bound. The shape mirrors validateCitations above; the detail carries the
+// index and byte counts, never the tag text itself (value-echo discipline,
+// T-03-01-02).
+func checkTags(tags []string, maxTags, maxTagBytes int) error {
+	if len(tags) > maxTags {
+		return argErrf(classOutOfRange, HintTooMany, "tags", "too many tags: %d (max %d)", len(tags), maxTags)
+	}
+	for i, tag := range tags {
+		if len(tag) > maxTagBytes {
+			return argErrf(classOutOfRange, HintTooLong, "tags", "tag %d too large: %d bytes (max %d)", i, len(tag), maxTagBytes)
+		}
 	}
 	return nil
 }
@@ -1157,7 +1437,7 @@ func (d *deps) resolveLostMergeRace(ctx context.Context, a supersedeArgs, target
 }
 
 func (d *deps) storeMemory(ctx context.Context, c caller, a storeArgs) (string, string, error) {
-	if err := validateStoreArgs(a, d.maxSummaryBytes); err != nil {
+	if err := validateStoreArgs(a, d.maxSummaryBytes, d.writeCaps); err != nil {
 		return "", "", err
 	}
 	if err := validateCitations(a.Citations, 0); err != nil {
@@ -1238,7 +1518,7 @@ func (d *deps) clock() time.Time {
 }
 
 func (d *deps) scheduleMemory(ctx context.Context, c caller, a scheduleArgs) (string, string, error) {
-	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
+	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes, d.writeCaps); err != nil {
 		return "", "", err
 	}
 	// checkIdempotentReplay runs BEFORE parseWindow's future-only validation
@@ -1414,6 +1694,14 @@ type coreListRequest struct {
 	IncludeArchived   bool
 	IncludeSuperseded bool
 	IncludeScheduled  bool
+	// Full is copied straight into store.ListOptions.Full (04-05): the
+	// caller's full=true/false wire flag now also selects the STORE's own
+	// fetch projection, not just each transport's response shaping
+	// (shapeRecall/shapeProtoMemories) — 04-05's summary-view default means
+	// a caller that asked for full content must also ask the store to fetch
+	// it, or shaping has nothing to render (citations/content were never
+	// fetched at all). Both lanes set this from their own full flag.
+	Full bool
 }
 
 // coreListResult is the typed list result: raw []store.Memory (no []any, no
@@ -1460,6 +1748,39 @@ type coreSearchRequest struct {
 	IncludeScheduled  bool
 }
 
+// rejectOverMaximumCount is the published wire-boundary rejection for D-10: a
+// recall count (a list `limit` or a search `k`) above store.MaxRecallLimit is
+// refused by NAME, before any downstream work — scope resolution, the embed
+// call, or the store call — never silently clamped. It is called as the
+// FIRST count validation in each of the four shared core methods below
+// (deps.listMemory, deps.listScheduled, deps.searchMemory,
+// deps.searchDiscovery), which is every surface named in D-02's own
+// enumeration; no per-handler duplicate check is needed anywhere else. A
+// count of zero is never rejected here — it is each surface's own signal to
+// apply its documented default (D-08), resolved by the caller after this
+// check runs.
+//
+// store.MaxRecallLimit's own rejectOverMaximum stays wired as a backstop
+// (internal/store/store.go) — this is the boundary that actually stops a
+// caller before it costs anything, and the store's copy exists only to
+// guard any future recall entry point that bypasses this one.
+//
+// Classified classMalformed (Connect invalid_argument, CLI exit 2) BY
+// DECISION, per HintOutOfRange's own doc comment (argerror.go) — not
+// classOutOfRange, even though that class exists and reads closer: D-10
+// locks this classification and both classes already group under the CLI's
+// usage exit. Do not repoint this at classOutOfRange.
+func rejectOverMaximumCount(field string, count uint64) error {
+	// Named once so the number is never re-literalled at either use site
+	// below (the comparison and the message). Not "max": that shadows the
+	// Go 1.21+ builtin (revive: redefines-builtin-id).
+	const maxCount = store.MaxRecallLimit
+	if count <= maxCount {
+		return nil
+	}
+	return argErrf(classMalformed, HintOutOfRange, field, "%s exceeds the maximum of %d", field, maxCount)
+}
+
 // listMemory returns a page of the caller's readable records in scope on the
 // transport-neutral typed core contract (D-07): every Connect list field
 // (offset/categories/visibility/exact total/cursor/cursor_mode) survives the
@@ -1469,6 +1790,9 @@ type coreSearchRequest struct {
 // means "all", CursorMode carried from the request) before calling here
 // (round-3 HIGH-2, round-4 finding-7).
 func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (coreListResult, error) {
+	if err := rejectOverMaximumCount("limit", req.Limit); err != nil {
+		return coreListResult{}, err
+	}
 	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
 	if err != nil {
 		return coreListResult{}, err
@@ -1486,6 +1810,7 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 		IncludeArchived:   req.IncludeArchived,
 		IncludeSuperseded: req.IncludeSuperseded,
 		IncludeScheduled:  req.IncludeScheduled,
+		Full:              req.Full,
 	})
 	if err != nil {
 		return coreListResult{}, err
@@ -1498,6 +1823,9 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 	// (list_scheduled has no Connect RPC — MCP-only).
 	if a.Scope == "" {
 		return nil, argErrf(classMalformed, HintRequired, "scope", "scope is required")
+	}
+	if err := rejectOverMaximumCount("limit", a.Limit); err != nil {
+		return nil, err
 	}
 	if a.Limit == 0 {
 		a.Limit = 20
@@ -1546,6 +1874,9 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 	// SearchMemories both build coreSearchRequest before calling here).
 	if req.Query == "" {
 		return nil, argErrf(classMalformed, HintRequired, "query", "query is required")
+	}
+	if err := rejectOverMaximumCount("k", req.K); err != nil {
+		return nil, err
 	}
 	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
 	if err != nil {
@@ -1633,38 +1964,68 @@ func EffectiveSearchScope(scope string, crossSpine bool) (string, error) {
 // REQ-cross-spine-coverage-receipt, and D-14 keeps the response flat
 // precisely so nobody pre-builds the sub-message that requirement will want.
 //
-// An error from ListScopes fails the call rather than degrading to an empty
-// list: an empty searched_scopes would read as "searched nothing", which is
-// the exact ambiguity the field exists to remove.
-func (d *deps) searchedScopes(ctx context.Context, c caller, crossSpine bool) ([]string, bool, error) {
+// An error from ListScopes fails the COVERAGE CLAIM, exactly as before: an
+// empty searched_scopes would still read as "searched nothing", which is the
+// exact ambiguity the field exists to remove — that reasoning is unchanged
+// by this phase (#456). What changes is that the failure no longer takes the
+// already-computed hits down with it: searchedScopes now reports the failure
+// as a VALUE (scopeCoverage.Unknown), carries no error at all, and the
+// underlying cause is logged here, once, server-side (D-02) rather than
+// handed to a caller that would otherwise have no choice but to abort.
+func (d *deps) searchedScopes(ctx context.Context, c caller, crossSpine bool) scopeCoverage {
 	if !crossSpine {
-		return nil, false, nil
+		return scopeCoverage{}
 	}
 	counts, more, err := d.st.ListScopes(ctx, c.Subj)
 	if err != nil {
-		return nil, false, err
+		slog.ErrorContext(ctx, "searchedScopes: ListScopes failed", "error", err)
+		return scopeCoverage{Unknown: true}
 	}
 	scopes := make([]string, len(counts))
 	for i, sc := range counts {
 		scopes[i] = sc.Scope
 	}
-	return scopes, more, nil
+	return scopeCoverage{Scopes: scopes, Truncated: more}
+}
+
+// scopeCoverage is the value searchedScopes returns in place of an error
+// (D-06, 06-01-PLAN.md resolved_discretion): removing the error return makes
+// "abort and discard the hits" unrepresentable at all four call sites rather
+// than merely discouraged. Unknown is true exactly when the ListScopes
+// coverage query itself failed after hits were already produced (D-01); on
+// that path Scopes stays nil (never an empty, allocated slice) and Truncated
+// stays false, so recallResultMap/the Connect handlers can read Unknown
+// alone to pick the wire shape.
+type scopeCoverage struct {
+	Scopes    []string
+	Truncated bool
+	Unknown   bool
 }
 
 // recallResultMap assembles a search_memory/list_memory MCP result map: base
 // (the transport-specific entries, e.g. "memories" and, for list_memory,
-// "next_cursor") plus, ONLY when crossSpine is true, "searched_scopes" and
-// "scopes_truncated". On a non-cross-spine call neither key is added at all
-// (D-14), so an existing consumer sees a response byte-identical to today's —
-// scopes_truncated is emitted even when false on a cross-spine call
-// (resolving the Claude's-discretion item in 03-CONTEXT.md) so a consumer
-// reading searched_scopes can read the truncation signal directly rather
-// than inferring completeness from an absent key. Mutates and returns base.
-func recallResultMap(base map[string]any, crossSpine bool, scopes []string, truncated bool) map[string]any {
-	if crossSpine {
-		base["searched_scopes"] = scopes
-		base["scopes_truncated"] = truncated
+// "next_cursor") plus, ONLY when crossSpine is true, the coverage keys the
+// three D-03 states require. On a non-cross-spine call NO coverage key is
+// added at all (D-14), so an existing consumer sees a response byte-identical
+// to today's. On a cross-spine call with cov.Unknown true, ONLY
+// "scopes_unknown" (true) is added — never "searched_scopes" (which would
+// read as "searched nothing") and never "scopes_truncated". On a cross-spine
+// call with cov.Unknown false, today's two keys ("searched_scopes",
+// "scopes_truncated") are added and "scopes_unknown" is not — scopes_truncated
+// is emitted even when false (resolving the Claude's-discretion item in
+// 03-CONTEXT.md) so a consumer reading searched_scopes can read the
+// truncation signal directly rather than inferring completeness from an
+// absent key. Mutates and returns base.
+func recallResultMap(base map[string]any, crossSpine bool, cov scopeCoverage) map[string]any {
+	if !crossSpine {
+		return base
 	}
+	if cov.Unknown {
+		base["scopes_unknown"] = true
+		return base
+	}
+	base["searched_scopes"] = cov.Scopes
+	base["scopes_truncated"] = cov.Truncated
 	return base
 }
 
@@ -1675,6 +2036,9 @@ func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryA
 	// calling here).
 	if a.Query == "" {
 		return nil, argErrf(classMalformed, HintRequired, "query", "query is required")
+	}
+	if err := rejectOverMaximumCount("k", a.K); err != nil {
+		return nil, err
 	}
 	scope, err := effectiveDiscoveryScope(a)
 	if err != nil {
@@ -1745,6 +2109,29 @@ func (d *deps) updateMemory(ctx context.Context, c caller, a updateArgs) (mutati
 		}
 	}
 	contentChanged := a.Content != nil && *a.Content != cur.Content
+	// The content/tags caps must live HERE, not in validateUpdateArgs,
+	// because Connect's UpdateMemory RPC calls deps.updateMemory directly
+	// (connectapi.go:471-481), bypassing validateUpdateArgs entirely — the
+	// #360-shaped trap D-09 names. Gated on contentChanged / a changed tag
+	// set (below) so an unchanged legacy over-cap record can still be
+	// re-shared, re-summarized, or have its OTHER field changed (D-07); this
+	// runs AFTER FetchForUpdate's owner gate above, so a non-owner learns
+	// nothing beyond the existing uniform not-found (T-03-03-03).
+	caps := d.writeCaps.resolved()
+	if contentChanged {
+		if err := checkContentBytes(*a.Content, caps.contentBytes); err != nil {
+			return mutationResult{}, err
+		}
+	}
+	// Gated on a CHANGED tag set (slices.Equal), mirroring contentChanged
+	// above, so resending a legacy record's own tags never locks its owner
+	// out; an empty set (clear) is always within bounds since checkTags'
+	// count check compares against 0.
+	if a.Tags != nil && !slices.Equal(*a.Tags, cur.Tags) {
+		if err := checkTags(*a.Tags, caps.tags, caps.tagBytes); err != nil {
+			return mutationResult{}, err
+		}
+	}
 	// Resolve the summary BEFORE embedding so a stale-summary rejection costs no
 	// embed call. The owner gate has already run, so a rejected caller never
 	// reaches here and never learns whether a summary exists.
@@ -2119,7 +2506,7 @@ func (d *deps) validateSupersedeTargetState(_ context.Context, _ caller, targets
 // async summary-on-write like any other store_memory write, exactly once
 // regardless of target-set size.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
-	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes); err != nil {
+	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes, d.writeCaps); err != nil {
 		return "", "", err
 	}
 	if err := validateCitations(a.Citations, 0); err != nil {
@@ -2268,7 +2655,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 		return nil, fmt.Errorf("mount connect: %w", err)
 	}
 
-	s.AddReceivingMiddleware(instrumentTools(tm.Record))
+	addToolMiddleware(s, tm.Record)
 
 	if err := registerTools(s, d); err != nil {
 		return nil, fmt.Errorf("register tools: %w", err)
@@ -2411,14 +2798,11 @@ func registerTools(s *mcp.Server, d *deps) error {
 			if err != nil {
 				return nil, nil, err
 			}
-			scopes, truncated, err := d.searchedScopes(ctx, c, a.CrossSpine)
-			if err != nil {
-				return nil, nil, err
-			}
+			cov := d.searchedScopes(ctx, c, a.CrossSpine)
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			hits := shapeRecall(ms, a.Full, d.summaryMaxChars)
-			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, scopes, truncated)
+			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, cov)
 			return textResult(fmt.Sprintf("%d hits", len(hits))), result, nil
 		})
 
@@ -2462,18 +2846,20 @@ func registerTools(s *mcp.Server, d *deps) error {
 				// store.go:817).
 				CursorMode: true,
 				CrossSpine: a.CrossSpine,
+				// 04-05: the store must fetch what shapeRecall(a.Full, ...)
+				// below is about to render — a.Full alone no longer
+				// suffices once the store's own default fetch is
+				// summary-shaped.
+				Full: a.Full,
 			})
 			if err != nil {
 				return nil, nil, err
 			}
-			scopes, truncated, err := d.searchedScopes(ctx, c, a.CrossSpine)
-			if err != nil {
-				return nil, nil, err
-			}
+			cov := d.searchedScopes(ctx, c, a.CrossSpine)
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			mems := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
-			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, scopes, truncated)
+			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, cov)
 			return textResult(fmt.Sprintf("%d memories", len(mems))), result, nil
 		})
 
@@ -2591,7 +2977,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("stored rule %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: "List the COMPLETE rule set for one or more rule:* scopes, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", Annotations: annotationsFor("list_rules")},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: fmt.Sprintf("List the COMPLETE rule set for one or more rule:* scopes, up to %d per scope, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", store.MaxRecallLimit), Annotations: annotationsFor("list_rules")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listRulesArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {

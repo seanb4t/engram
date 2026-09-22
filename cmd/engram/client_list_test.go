@@ -433,6 +433,57 @@ func TestClientListCrossSpineEndToEnd(t *testing.T) {
 	}
 }
 
+// coverageUnknownFooterLine is the exact D-05 third-footer-form literal,
+// shared by TestClientListCoverageUnknownFooter and its search-lane sibling
+// TestClientSearchCoverageUnknownFooter (client_search_test.go) so both
+// tests prove the shared-renderer claim against the same expected value
+// rather than asserting it twice independently.
+const coverageUnknownFooterLine = "scopes_unknown: true"
+
+// TestClientListCoverageUnknownFooter pins D-05's third footer form: when
+// the server reports scopes_unknown=true (the coverage-enumeration query
+// itself failed after hits were already produced), the text-mode footer
+// prints "scopes_unknown: true" with no count, and prints no
+// "searched_scopes" text at all — an emitted-but-empty count would read as
+// a legitimate "searched nothing" answer, which is exactly what D-03
+// forbids.
+func TestClientListCoverageUnknownFooter(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return &engramv1.ListMemoriesResponse{
+				Memories:        []*engramv1.Memory{{ShortId: "AAAA111111"}},
+				Total:           1,
+				SearchedScopes:  nil,
+				ScopesTruncated: false,
+				ScopesUnknown:   true,
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "list",
+		"--server", url, "--cross-spine", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	totalIdx := strings.Index(stdout, "total: 1")
+	footerIdx := strings.Index(stdout, coverageUnknownFooterLine)
+	if totalIdx < 0 {
+		t.Errorf("stdout = %q, want the existing total line", stdout)
+	}
+	if footerIdx < 0 {
+		t.Errorf("stdout = %q, want the coverage-unknown footer line", stdout)
+	}
+	if totalIdx >= 0 && footerIdx >= 0 && footerIdx < totalIdx {
+		t.Errorf("stdout = %q, want the coverage footer to appear after the total line", stdout)
+	}
+	if strings.Contains(stdout, "searched_scopes") {
+		t.Errorf("stdout = %q, must not contain searched_scopes on a coverage-unknown response", stdout)
+	}
+}
+
 // TestClientListMissingScopeIsUsageErrorBeforeDialing pins D-01: with
 // neither --scope nor --cross-spine, the guard fires before any network
 // call.

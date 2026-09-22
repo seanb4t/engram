@@ -134,6 +134,46 @@ func TestSummarizeMaxTokensAndTimeoutEnvOverride(t *testing.T) {
 	}
 }
 
+// TestMemoryCapDefaultsAndEnv proves the three always-enforced memory write
+// caps (D-01/D-09/D-10) load their registry defaults when unset, and honor
+// an env override when set — mirroring TestSummarizeConfigDefaultsAndEnv's
+// shape for the summarize.* caps above.
+func TestMemoryCapDefaultsAndEnv(t *testing.T) {
+	t.Setenv("ENGRAM_MEMORY_MAX_CONTENT_BYTES", "")
+	t.Setenv("ENGRAM_MEMORY_MAX_TAGS", "")
+	t.Setenv("ENGRAM_MEMORY_MAX_TAG_BYTES", "")
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.Memory.MaxContentBytes != "65536" {
+		t.Errorf("Memory.MaxContentBytes default = %q, want 65536", c.Memory.MaxContentBytes)
+	}
+	if c.Memory.MaxTags != "128" {
+		t.Errorf("Memory.MaxTags default = %q, want 128", c.Memory.MaxTags)
+	}
+	if c.Memory.MaxTagBytes != "128" {
+		t.Errorf("Memory.MaxTagBytes default = %q, want 128", c.Memory.MaxTagBytes)
+	}
+
+	t.Setenv("ENGRAM_MEMORY_MAX_CONTENT_BYTES", "4096")
+	t.Setenv("ENGRAM_MEMORY_MAX_TAGS", "16")
+	t.Setenv("ENGRAM_MEMORY_MAX_TAG_BYTES", "64")
+	c, err = Load(nil)
+	if err != nil {
+		t.Fatalf("Load with env: %v", err)
+	}
+	if c.Memory.MaxContentBytes != "4096" {
+		t.Errorf("Memory.MaxContentBytes = %q, want 4096", c.Memory.MaxContentBytes)
+	}
+	if c.Memory.MaxTags != "16" {
+		t.Errorf("Memory.MaxTags = %q, want 16", c.Memory.MaxTags)
+	}
+	if c.Memory.MaxTagBytes != "64" {
+		t.Errorf("Memory.MaxTagBytes = %q, want 64", c.Memory.MaxTagBytes)
+	}
+}
+
 func TestOwnerClaimDefaultAndOverride(t *testing.T) {
 	c, err := Load(nil)
 	if err != nil {
@@ -188,10 +228,13 @@ func TestParseOwnerClaims(t *testing.T) {
 
 func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 	c := &Config{
-		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
-		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s"},
-		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
-		Summarize: SummarizeConfig{Model: "summary-cheap", MaxChars: "0"},
+		Qdrant: QdrantConfig{Addr: "localhost:6334", Collection: "c"},
+		Embed:  EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
+		OpenAI: OpenAIConfig{BaseURL: "http://localhost:4000"},
+		Summarize: SummarizeConfig{
+			Model: "summary-cheap", MaxChars: "0",
+			DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m",
+		},
 	}
 	if err := c.Validate(); err == nil {
 		t.Fatal("want error for ENGRAM_SUMMARY_MAX_CHARS=0 with model set, got nil")
@@ -201,8 +244,8 @@ func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 func TestValidateIgnoresSummaryWhenDisabled(t *testing.T) {
 	c := &Config{
 		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
-		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s"},
-		Memory:    MemoryConfig{MaxSummaryBytes: "512"},
+		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
+		Memory:    MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
 		Summarize: SummarizeConfig{Model: "", MaxChars: "garbage", OnWrite: "false", Workers: "2", QueueSize: "256"},
 		Usage:     UsageConfig{Signals: "true"},

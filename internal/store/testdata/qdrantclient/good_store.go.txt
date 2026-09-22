@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sean Brandt
+
+// Package goodstorefixture is a synthetic KNOWN-GOOD fixture for
+// qdrant_client_convergence_test.go's
+// TestQdrantClientConstructedOnlyByNewQdrantClient. Scanned under the
+// display path "internal/store/store.go", it stands in for the one
+// legitimate call site D-11 permits: NewQdrantClient's own receiver-less
+// body. It must scan clean: exactly one construction, sanctioned.
+//
+// This file carries a .go.txt extension deliberately: it is parsed from
+// source bytes by go/parser, never built by `go build`/gofmt/go vet/the
+// linter, so it is not swept by any of them.
+package goodstorefixture
+
+import (
+	"github.com/qdrant/go-client/qdrant"
+	"google.golang.org/grpc"
+)
+
+// NewQdrantClient is the one sanctioned construction site — matched by its
+// enclosing function name together with this fixture's display path, never
+// by file identity alone.
+func NewQdrantClient(host string, port int, opts ...grpc.DialOption) (*qdrant.Client, error) {
+	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: opts})
+}

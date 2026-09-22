@@ -119,10 +119,11 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 	}
 
 	// Built from the exitOK/exitGeneric/exitUsage/exitAuth/exitNotFound/
-	// exitUnavailable constants declared in client_common.go — never from a
-	// second literal list of integers. D-11's whole value is that the
-	// advertised taxonomy and the mapper's real output are the same thing;
-	// TestCatalogExitCodesMatchMapper gates that they stay so.
+	// exitUnavailable/exitTimeout/exitTooLarge constants declared in
+	// client_common.go — never from a second literal list of integers.
+	// D-11's whole value is that the advertised taxonomy and the mapper's
+	// real output are the same thing; TestCatalogExitCodesMatchMapper gates
+	// that they stay so.
 	doc.ExitCodes = []catalogExitCode{
 		{Code: exitOK, Meaning: "success"},
 		// D-02: exitGeneric is redefined as an unreachable-by-design
@@ -154,6 +155,10 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 		// real gate in both directions.
 		{Code: exitPartial, Meaning: "at least one runtime was registered successfully and at least one failed in the same engram setup invocation"},
 		{Code: exitSetupFailed, Meaning: "every runtime engram setup attempted failed; a runtime that is not installed does not count as an attempt"},
+		// D-07: the connect mapper produces exitTooLarge directly (a
+		// dedicated case in exitCodeForConnectErr), so it needs no
+		// nonConnectProducedCodes entry.
+		{Code: exitTooLarge, Meaning: "a server response exceeded what one response can carry (Connect resource_exhausted); retry with a smaller --limit or --k, or without --full"},
 	}
 
 	doc.Notes = []string{

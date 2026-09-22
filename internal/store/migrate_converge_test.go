@@ -6,10 +6,8 @@ package store
 import (
 	"context"
 	"fmt"
-	"net"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -421,36 +419,13 @@ func midSweepInterceptor(h *midSweepHook) grpc.UnaryClientInterceptor {
 }
 
 // dialMidSweepTestClient is dialCapturingTestClient's sibling
-// (schemaversion_recallgate_test.go:912): identical dial/skip/parse
-// boilerplate, with midSweepInterceptor wired in as the sole interceptor.
+// (schemaversion_recallgate_test.go:912): it wires midSweepInterceptor as a
+// caller option into dialTestClient, which owns the address, the
+// skip/fail-closed behavior, and the shared-constructor dial (so this
+// client also carries production's dial options).
 func dialMidSweepTestClient(t *testing.T, h *midSweepHook) *qdrant.Client {
 	t.Helper()
-	if testQdrantAddr == "" {
-		required, err := requireQdrant()
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
-		if required {
-			t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
-		}
-		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
-	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{
-		Host: host, Port: port,
-		GrpcOptions: []grpc.DialOption{grpc.WithUnaryInterceptor(midSweepInterceptor(h))},
-	})
-	if err != nil {
-		t.Fatalf("mid-sweep client: %v", err)
-	}
-	return c
+	return dialTestClient(t, grpc.WithUnaryInterceptor(midSweepInterceptor(h)))
 }
 
 // rawPayloadNoFatal is rawPayload's (schemaversion_compat_test.go:528)

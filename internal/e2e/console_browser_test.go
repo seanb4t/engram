@@ -58,11 +58,10 @@ const fixtureScope = "repo:e2e-console-roundtrip"
 // below — never reassembled from fragments at any of those three sites.
 const consoleAssetPathPrefix = "/ui/_app/immutable/"
 
-// requireBrowser mirrors requireQdrant/requireBrowser's harness_test.go
-// sibling byte-for-byte in shape: ENGRAM_REQUIRE_BROWSER makes a missing
-// browser fatal rather than a skip, so CI cannot go green with this tier
-// silently sitting out. An unparseable value is an error, never coerced to
-// false.
+// requireBrowser mirrors storetest.RequireQdrant byte-for-byte in shape:
+// ENGRAM_REQUIRE_BROWSER makes a missing browser fatal rather than a skip,
+// so CI cannot go green with this tier silently sitting out. An unparseable
+// value is an error, never coerced to false.
 func requireBrowser() (bool, error) {
 	v := os.Getenv("ENGRAM_REQUIRE_BROWSER")
 	if v == "" {
@@ -106,11 +105,11 @@ func findChrome() string {
 	return ""
 }
 
-// skipOrFailNoBrowser mirrors skipOrFailNoQdrant: a missing browser skips the
-// test by default, but fails it when ENGRAM_REQUIRE_BROWSER is set — so CI
-// cannot go green with this tier silently sitting out. Returns the resolved
-// browser path; Skip/Fatal both exit the test via runtime.Goexit, so a caller
-// reaching the return always holds a non-empty, usable path.
+// skipOrFailNoBrowser mirrors storetest.SkipOrFailNoQdrant: a missing browser
+// skips the test by default, but fails it when ENGRAM_REQUIRE_BROWSER is set
+// — so CI cannot go green with this tier silently sitting out. Returns the
+// resolved browser path; Skip/Fatal both exit the test via runtime.Goexit, so
+// a caller reaching the return always holds a non-empty, usable path.
 func skipOrFailNoBrowser(t *testing.T) string {
 	t.Helper()
 	required, err := requireBrowser()

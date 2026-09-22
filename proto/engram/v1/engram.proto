@@ -70,7 +70,7 @@ message ListScopesResponse {
 
 message ListMemoriesRequest {
   string scope = 1;
-  uint64 limit = 2;
+  uint64 limit = 2; // 0 resolves to the maximum, 1000, in offset mode (in cursor mode, to the page default 20); a larger value is rejected
   uint64 offset = 3;
   repeated string categories = 4; // empty = all categories
   string visibility = 5;          // "" = all | "private" | "shared"
@@ -122,12 +122,19 @@ message ListMemoriesResponse {
   // bounded-sample ceiling, so the list may be incomplete. Present only
   // alongside searched_scopes on a cross_spine response.
   bool scopes_truncated = 6;
+  // scopes_unknown is true when a cross-spine query's coverage-enumeration
+  // (ListScopes) itself failed after hits were already produced: the RPC
+  // still succeeds and memories are still returned, but searched_scopes is
+  // ABSENT (not an empty list, which would read as "searched nothing") and
+  // scopes_truncated is absent/false. Present only on a cross-spine
+  // response; never true alongside a populated searched_scopes.
+  bool scopes_unknown = 7;
 }
 
 message SearchMemoriesRequest {
   string query = 1;
   string scope = 2;
-  uint64 k = 3;
+  uint64 k = 3; // 0 resolves to this RPC's default, 20; a value above the maximum, 1000, is rejected
   repeated string tags = 4; // empty = all; non-empty = records carrying ALL listed tags (AND)
   bool full = 5;            // false (default) returns summary-shaped memories (content cleared); true returns full content
   string created_after = 6;  // RFC3339; inclusive lower bound on created_at
@@ -168,6 +175,10 @@ message SearchMemoriesResponse {
   // bounded-sample ceiling, so the list may be incomplete. Present only
   // alongside searched_scopes on a cross_spine response.
   bool scopes_truncated = 3;
+  // scopes_unknown — see ListMemoriesResponse.scopes_unknown; identical
+  // semantics, sibling field number scheme (next free number in THIS
+  // message, not shared with ListMemoriesResponse's field 7).
+  bool scopes_unknown = 4;
 }
 
 message GetMemoryRequest { string id = 1; }
@@ -176,7 +187,7 @@ message GetMemoryResponse { Memory memory = 1; }
 message SearchDiscoveriesRequest {
   string query = 1;
   string scope = 2;
-  uint64 k = 3;
+  uint64 k = 3; // 0 resolves to this RPC's default, 20; a value above the maximum, 1000, is rejected
 }
 message SearchDiscoveriesResponse { repeated Memory discoveries = 1; }
 

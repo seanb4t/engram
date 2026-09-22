@@ -9,10 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os/exec"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +18,7 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/store/storetest"
 )
 
 // runCLIWithEnv runs the built engram binary with args and extraEnv merged
@@ -55,26 +54,15 @@ func runCLIWithEnv(t *testing.T, env map[string]string, args ...string) (stdout,
 }
 
 // spineReviewQdrantClient dials the SAME ephemeral Qdrant the built-binary
-// subprocess targets, over a bare client — used to seed a fixture record and
-// to re-read the collection Subject-less (store.Store.Get), proving the
-// preview path really left the record untouched rather than merely inferring
-// it from the subprocess's exit code (memory dnanmnkqmg: green tests on the
-// apply path alone are not evidence the preview path is safe).
+// subprocess targets, through storetest, over a bare client — used to seed a
+// fixture record and to re-read the collection Subject-less
+// (store.Store.Get), proving the preview path really left the record
+// untouched rather than merely inferring it from the subprocess's exit code
+// (memory dnanmnkqmg: green tests on the apply path alone are not evidence
+// the preview path is safe).
 func spineReviewQdrantClient(t *testing.T) *qdrant.Client {
 	t.Helper()
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{Host: host, Port: port})
-	if err != nil {
-		t.Fatalf("qdrant client: %v", err)
-	}
-	return c
+	return storetest.Dial(t, storetest.RecvLimit)
 }
 
 // newSpineReviewStore returns a Store over a fresh, per-test collection on
@@ -89,8 +77,8 @@ func spineReviewQdrantClient(t *testing.T) *qdrant.Client {
 // must agree on one literal collection name.
 func newSpineReviewStore(t *testing.T, collection string) *store.Store {
 	t.Helper()
-	if testQdrantAddr == "" {
-		skipOrFailNoQdrant(t)
+	if storetest.Addr() == "" {
+		storetest.SkipOrFailNoQdrant(t)
 	}
 	c := spineReviewQdrantClient(t)
 	_ = c.DeleteCollection(context.Background(), collection)
@@ -109,7 +97,7 @@ func newSpineReviewStore(t *testing.T, collection string) *store.Store {
 // endpoint is needed.
 func pruneEnv(collection string) map[string]string {
 	return map[string]string{
-		"ENGRAM_QDRANT_ADDR":       testQdrantAddr,
+		"ENGRAM_QDRANT_ADDR":       storetest.Addr(),
 		"ENGRAM_QDRANT_COLLECTION": collection,
 		"ENGRAM_EMBED_DIM":         "3",
 	}
@@ -166,8 +154,8 @@ func assertSamePreview(t *testing.T, bare, applyFalse string) {
 // --apply=false and asserts the same plus an equivalent preview verdict (see
 // assertSamePreview), then execs with --apply and asserts the record is gone.
 func TestE2EPruneExpiredPreviewsBeforeApply(t *testing.T) {
-	if testQdrantAddr == "" {
-		skipOrFailNoQdrant(t)
+	if storetest.Addr() == "" {
+		storetest.SkipOrFailNoQdrant(t)
 	}
 	collection := testCollection("prune_expired")
 	s := newSpineReviewStore(t, collection)
@@ -218,8 +206,8 @@ func TestE2EPruneExpiredPreviewsBeforeApply(t *testing.T) {
 // preview run against a collection with no eligible records reports a zero
 // count and exits 0.
 func TestE2EPruneExpiredPreviewZeroEligible(t *testing.T) {
-	if testQdrantAddr == "" {
-		skipOrFailNoQdrant(t)
+	if storetest.Addr() == "" {
+		storetest.SkipOrFailNoQdrant(t)
 	}
 	collection := testCollection("prune_expired_empty")
 	newSpineReviewStore(t, collection)
@@ -312,8 +300,8 @@ func verifyRepoScope(t *testing.T) string {
 //     (the superseded class self-satisfies its own gate, 03-07-PLAN.md's
 //     named property)
 func TestE2EPhaseAcceptance(t *testing.T) {
-	if testQdrantAddr == "" {
-		skipOrFailNoQdrant(t)
+	if storetest.Addr() == "" {
+		storetest.SkipOrFailNoQdrant(t)
 	}
 	collection := testCollection("phase_acceptance")
 	s := newSpineReviewStore(t, collection)

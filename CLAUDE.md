@@ -103,7 +103,9 @@ full content via `get_memory`. `search_memory` results carry an always-on per-re
 add auto-extraction. A rejected call names the failing field and a machine-stable hint
 code in one envelope (`field=<name> hint=<code>: <text>`; see docs-site
 `reference/errors.md`), with a memory `summary` bounded at `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`
-(default 512 bytes).
+(default 512 bytes), `content` bounded at `ENGRAM_MEMORY_MAX_CONTENT_BYTES` (default 65536
+bytes), and `tags` at `ENGRAM_MEMORY_MAX_TAGS` entries of `ENGRAM_MEMORY_MAX_TAG_BYTES` bytes
+each (default 128 / 128), always enforced.
 
 With `ENGRAM_SUMMARY_ON_WRITE=true` (and `ENGRAM_SUMMARY_MODEL` set), auto-generated
 summaries are filled **asynchronously** shortly after `store_memory`/`schedule_memory`
@@ -125,11 +127,14 @@ listed tags (AND); on `search_memory` it is a hard pre-filter applied before
 vector ranking. `search_memory` / `list_memory` / `list_scheduled` also accept
 optional `created_after` / `created_before` (RFC3339, half-open `[after, before)`)
 to window recall by creation time; `list_memory` paginates via an opaque `cursor`
-arg and returns `{memories, next_cursor}` (empty `next_cursor` = last page).
+arg and returns `{memories, next_cursor}` (empty `next_cursor` = last page);
+its `limit` defaults to 20 and rejects any value above the shared maximum, 1000.
 `search_memory` and `list_memory` also accept `cross_spine` (bool) to span every
 scope the caller can read, with the response reporting `searched_scopes` and
-`scopes_truncated`; the `engram search`/`engram list` CLI verbs reach the same
-capability and report the same two fields.
+`scopes_truncated`, or, if the coverage enumeration itself failed after hits
+were already found, `scopes_unknown` (the call still succeeds; `searched_scopes`
+is then absent rather than an empty list); the `engram search`/`engram list`
+CLI verbs reach the same capability and report the same three fields.
 Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
 migrate-remap-owner --from-missing --to <owner>` (the `migrate-set-owner` command
@@ -192,8 +197,9 @@ Rule tools: `store_rule` / `list_rules`. A rule is a 6th `category`: normative,
 user-blessed, always-shared ground truth in a dedicated `rule:repo:*` /
 `rule:project:*` scope. An agent proposes a rule candidate when it notices
 one; `store_rule` is invoked only after the user blesses it (never promoted
-unilaterally); its `summary` must be a single line (the index entry). `list_rules` returns the complete set for one or more
-`rule:*` scopes, oldest-first, compact index shape by default (`full` for
+unilaterally); its `summary` must be a single line (the index entry). `list_rules` returns the complete set — up to 1000
+rules per scope, the same shared recall maximum — for one or more `rule:*`
+scopes, oldest-first, compact index shape by default (`full` for
 content). Rules surface at session start as a progressive-disclosure index (one
 line per rule; full text fetched on demand via `get_memory`). `set_visibility`
 is rejected for rules — delete the rule instead. Design intent unchanged:

@@ -75,11 +75,11 @@ or timestamps.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `content` | string | yes | The memory text to persist |
+| `content` | string | yes | The memory text to persist. Max `ENGRAM_MEMORY_MAX_CONTENT_BYTES` bytes (default 65536; see [Configuration](/guides/configure/)). |
 | `scope` | string | yes | `run:tier:repo` identifier, e.g. `eval-2026-05:project:selfhosted-cluster` |
 | `source` | string | yes | `user-said` or `agent-inferred` |
 | `category` | string | yes | `decision`, `preference`, `convention`, or `gotcha` |
-| `tags` | string[] | no | Free-form labels |
+| `tags` | string[] | no | Free-form labels. At most `ENGRAM_MEMORY_MAX_TAGS` tags (default 128) of at most `ENGRAM_MEMORY_MAX_TAG_BYTES` bytes each (default 128). |
 | `repo` | string | no | Repository name or URL |
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
@@ -103,11 +103,11 @@ normally via `search_memory`/`list_memory`.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `content` | string | yes | The memory text to persist |
+| `content` | string | yes | The memory text to persist. Max `ENGRAM_MEMORY_MAX_CONTENT_BYTES` bytes (default 65536; see [Configuration](/guides/configure/)). |
 | `scope` | string | yes | `run:tier:repo` identifier |
 | `source` | string | yes | `user-said` or `agent-inferred` |
 | `category` | string | yes | `decision`, `preference`, `convention`, or `gotcha` |
-| `tags` | string[] | no | Free-form labels |
+| `tags` | string[] | no | Free-form labels. At most `ENGRAM_MEMORY_MAX_TAGS` tags (default 128) of at most `ENGRAM_MEMORY_MAX_TAG_BYTES` bytes each (default 128). |
 | `repo` | string | no | Repository name or URL |
 | `workspace` | string | no | Workspace identifier |
 | `worktree_path` | string | no | Path to the git worktree |
@@ -139,7 +139,7 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 |----------|------|----------|-------------|
 | `query` | string | yes | Natural-language search query |
 | `scope` | string | conditional | Scope to search within; <!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine --> |
-| `k` | uint64 | no | Number of results to return (default 8) |
+| `k` | uint64 | no | Number of results to return; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. Applied as a hard pre-filter, before vector ranking. The same filter is available over the Connect read API on `SearchMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
@@ -161,6 +161,11 @@ enumeration hit its bounded ceiling and the list may be incomplete. Both keys
 are omitted entirely on a scope-confined call, so an existing consumer's
 response shape is unchanged.
 
+If the coverage enumeration itself fails after hits were already found, the
+call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is absent
+(never an empty list, which would read as "searched nothing"), and
+`scopes_truncated` is absent/false.
+
 ---
 
 ## list_memory
@@ -172,7 +177,7 @@ pass `full=true` for complete content.
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `scope` | string | conditional | The scope to list memories from; required unless `cross_spine` is true |
-| `limit` | uint64 | no | Maximum memories to return (default 20) |
+| `limit` | uint64 | no | Maximum memories to return; 0 resolves to this tool's default, 20; values above 1000 (the maximum) are rejected (`field=limit hint=out_of_range`) |
 | `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. The same filter is available over the Connect read API on `ListMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
@@ -190,11 +195,16 @@ scopes that produced results — and `scopes_truncated`, true when that scope
 enumeration hit its bounded ceiling and the list may be incomplete. Both keys
 are omitted entirely on a scope-confined call.
 
+If the coverage enumeration itself fails after results were already found,
+the call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is
+absent (never an empty list, which would read as "searched nothing"), and
+`scopes_truncated` is absent/false.
+
 Pass an explicit `limit` on a cross-spine list. The underlying total becomes
 an exact count across every readable scope rather than one scope (visible as
-the Connect API's `total` field), and on the Connect lane an unset limit means
-"all" — a caller flipping `cross_spine` on an existing workflow will see the
-result count jump and, on Connect, may pull far more than intended.
+the Connect API's `total` field), and on the Connect lane an unset limit
+resolves to the maximum, 1000 — pass an explicit limit and page the remainder
+by `offset` or `page_token` rather than relying on the default.
 
 ---
 
@@ -207,7 +217,7 @@ surface via `list_memory`/`search_memory`, not here.
 |----------|------|----------|-------------|
 | `scope` | string | yes | The scope to list scheduled/expired memories from |
 | `state` | string | no | `scheduled` (default, not yet active), `expired`, or `all` |
-| `limit` | uint64 | no | Maximum memories to return (default 20) |
+| `limit` | uint64 | no | Maximum memories to return; 0 resolves to this tool's default, 20; values above 1000 (the maximum) are rejected (`field=limit hint=out_of_range`) |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 
@@ -358,9 +368,9 @@ summary), or clear it (empty `summary`) — or the update is rejected.
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `id` | string | yes | The UUID **or `short_id`** of the memory to update |
-| `content` | string | yes | The replacement text (re-embedded) |
+| `content` | string | yes | The replacement text (re-embedded). Max `ENGRAM_MEMORY_MAX_CONTENT_BYTES` bytes (default 65536; see [Configuration](/guides/configure/)); enforced when the content changes. |
 | `shared` | bool | no | `true` = shared, `false` = private; omit to keep current visibility |
-| `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags |
+| `tags` | string[] | no | Replaces the full tag set; an empty array clears all tags. Omit to keep the current tags. At most `ENGRAM_MEMORY_MAX_TAGS` tags (default 128) of at most `ENGRAM_MEMORY_MAX_TAG_BYTES` bytes each (default 128); enforced when the tag set changes. |
 | `summary` | string | no | Replace the summary; empty string clears it. Omit to keep the current summary. When changing `content`, must be addressed if `summary_source=client`. Max `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` bytes (default 512). |
 
 Only the record owner can update. Returns `"updated"` on success.
@@ -442,7 +452,7 @@ Semantic search over the discovery pool. Scope is required unless
 | `query` | string | yes | Natural-language search query |
 | `scope` | string | conditional | Discovery scope; required unless `cross_spine` is true |
 | `kind` | string | no | `map` or `fact` filter |
-| `k` | uint64 | no | Number of results to return (default 8) |
+| `k` | uint64 | no | Number of results to return; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
 | `cross_spine` | bool | no | Span all discovery scopes; ignores `scope` when true |
 
 Results carry `citations` and `created_at` (useful as aging signals).
@@ -496,8 +506,10 @@ Returns the stored rule's `id` and `short_id`.
 
 ## list_rules
 
-List the **complete** rule set for one or more `rule:*` scopes, oldest-first.
-Rules are the repository/project's normative ground truth.
+List the **complete** rule set for one or more `rule:*` scopes, up to 1000
+rules per scope (the same documented recall maximum every other listing/search
+tool shares), oldest-first. Rules are the repository/project's normative
+ground truth.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|

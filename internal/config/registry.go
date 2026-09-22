@@ -38,14 +38,56 @@ var registry = []field{
 	{Key: "embed.document_params", Env: "ENGRAM_EMBED_DOCUMENT_PARAMS"},
 	{Key: "embed.document_instruction", Env: "ENGRAM_EMBED_DOCUMENT_INSTRUCTION"},
 	{Key: "embed.timeout", Env: "ENGRAM_EMBED_TIMEOUT", Default: "30s"},
+	// embed.drain_bytes / embed.drain_timeout (07-bounded-provider-responses
+	// D-04, D-05): brand-new keys, no Legacy value (nothing retired to guard
+	// against) and no Flag (a provider-tuning value, never typed at a
+	// prompt). Zero is a deliberately supported operator setting on either —
+	// it closes the connection immediately after draining nothing rather
+	// than let it be reused — while a negative value is rejected outright
+	// (the same "zero valid, negative rejected" framing memory.max_summary_bytes
+	// and embed.timeout's own validation already use). There is no value
+	// meaning "no bound".
+	{Key: "embed.drain_bytes", Env: "ENGRAM_EMBED_DRAIN_BYTES", Default: "262144"},
+	{Key: "embed.drain_timeout", Env: "ENGRAM_EMBED_DRAIN_TIMEOUT", Default: "2s"},
+	// embed.max_timeout (07-bounded-provider-responses D-07, D-08): a
+	// brand-new key, no Legacy value, no Flag. UNLIKE the two drain bounds
+	// immediately above, zero (and any non-positive value) is ALWAYS
+	// rejected — this is the ceiling a non-positive embed.timeout now
+	// resolves to, and a zero ceiling would silently reintroduce the
+	// unbounded request this phase exists to remove.
+	{Key: "embed.max_timeout", Env: "ENGRAM_EMBED_MAX_TIMEOUT", Default: "10m"},
 	// memory.max_summary_bytes (D-06a/D-18): a brand-new key, no Legacy value —
 	// the bound did not exist before this phase, so there is nothing retired to
 	// guard against.
 	{Key: "memory.max_summary_bytes", Env: "ENGRAM_MEMORY_MAX_SUMMARY_BYTES", Default: "512"},
+	// memory.max_content_bytes (D-01/D-09): a brand-new key, no Legacy value —
+	// this bound did not exist before this phase. UNLIKE memory.max_summary_bytes,
+	// it is ALWAYS enforced: Config.Validate rejects "0" and non-positive values
+	// rather than honoring them as "disabled", because plan 03-02 derives the
+	// read-side per-record ceiling from this cap and a disabled cap would
+	// silently remove that provable bound.
+	{Key: "memory.max_content_bytes", Env: "ENGRAM_MEMORY_MAX_CONTENT_BYTES", Default: "65536"},
+	// memory.max_tags / memory.max_tag_bytes (D-10): the tag-COUNT cap and the
+	// per-tag byte cap, both brand-new, both always enforced — same D-09
+	// divergence as memory.max_content_bytes above ("0" is rejected, never
+	// honored as disabled).
+	{Key: "memory.max_tags", Env: "ENGRAM_MEMORY_MAX_TAGS", Default: "128"},
+	{Key: "memory.max_tag_bytes", Env: "ENGRAM_MEMORY_MAX_TAG_BYTES", Default: "128"},
 	{Key: "summarize.model", Env: "ENGRAM_SUMMARY_MODEL"},
 	{Key: "summarize.max_chars", Env: "ENGRAM_SUMMARY_MAX_CHARS", Default: "280"},
 	{Key: "summarize.max_tokens", Env: "ENGRAM_SUMMARY_MAX_TOKENS", Default: "1024"},
 	{Key: "summarize.timeout", Env: "ENGRAM_SUMMARY_TIMEOUT", Default: "30s"},
+	// summarize.drain_bytes / summarize.drain_timeout / summarize.max_timeout
+	// (07-bounded-provider-responses D-04, D-05, D-08): the summarize-lane
+	// mirror of the embed.* trio above — same brand-new/no-Legacy/no-Flag
+	// shape, same "zero is a supported skip-the-drain setting, negative is
+	// rejected" framing for the drain pair, and the same "always rejects a
+	// non-positive value" ceiling framing for max_timeout. Note the env-var
+	// prefix: ENGRAM_SUMMARY_*, not ENGRAM_SUMMARIZE_*, matching the existing
+	// summarize.timeout / ENGRAM_SUMMARY_TIMEOUT convention.
+	{Key: "summarize.drain_bytes", Env: "ENGRAM_SUMMARY_DRAIN_BYTES", Default: "262144"},
+	{Key: "summarize.drain_timeout", Env: "ENGRAM_SUMMARY_DRAIN_TIMEOUT", Default: "2s"},
+	{Key: "summarize.max_timeout", Env: "ENGRAM_SUMMARY_MAX_TIMEOUT", Default: "10m"},
 	{Key: "summarize.on_write", Env: "ENGRAM_SUMMARY_ON_WRITE", Default: "false"},
 	{Key: "summarize.workers", Env: "ENGRAM_SUMMARY_WORKERS", Default: "2"},
 	{Key: "summarize.queue_size", Env: "ENGRAM_SUMMARY_QUEUE_SIZE", Default: "256"},

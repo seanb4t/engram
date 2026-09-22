@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	grpccodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/seanb4t/engram/internal/store"
 )
@@ -51,6 +53,7 @@ func TestConnectError(t *testing.T) {
 		// wrapped error, not just the bare sentinel (round-8 MED).
 		{"canceled_wrapped", fmt.Errorf("embed: %w", context.Canceled), connect.CodeCanceled},
 		{"deadline_exceeded_wrapped", fmt.Errorf("store upsert: %w", context.DeadlineExceeded), connect.CodeDeadlineExceeded},
+		{"response_too_large_wrapped", fmt.Errorf("list: %w", &store.ResponseTooLargeError{Method: "/qdrant.Points/Scroll", Limit: 4194304}), connect.CodeResourceExhausted},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -81,6 +84,78 @@ func TestConnectError(t *testing.T) {
 		got := connectError(ctx, errors.New("some arbitrary failure"))
 		if connect.CodeOf(got) == connect.CodeAborted {
 			t.Fatalf("connectError must never emit CodeAborted (round-5 LOW): got %v", got)
+		}
+	})
+
+	// response_too_large_scrubbed: the mapped *connect.Error carries ONLY the
+	// shared envelope — never the wrapped error's RPC method, byte counts, or
+	// upstream grpc-go text (D-04, D-06).
+	t.Run("response_too_large_scrubbed", func(t *testing.T) {
+		err := fmt.Errorf("list: %w", &store.ResponseTooLargeError{Method: "/qdrant.Points/Scroll", Limit: 4194304})
+		got := connectError(ctx, err)
+		var cerr *connect.Error
+		if !errors.As(got, &cerr) {
+			t.Fatalf("connectError(%v) = %v, does not unwrap to *connect.Error", err, got)
+		}
+		if want := responseTooLargeEnvelope(); cerr.Message() != want {
+			t.Errorf("Message() = %q, want %q", cerr.Message(), want)
+		}
+		if strings.ContainsAny(cerr.Message(), "0123456789") {
+			t.Errorf("Message() %q leaked an ASCII digit (a byte ceiling must never reach the wire)", cerr.Message())
+		}
+	})
+
+	// response_too_large_empty_payload: connectError(ctx, nil) stays nil
+	// (asserted by nil_is_nil above), and a *store.ResponseTooLargeError with
+	// an empty method and zero counts maps to the IDENTICAL envelope — the
+	// wire text never depends on the payload.
+	t.Run("response_too_large_empty_payload", func(t *testing.T) {
+		got := connectError(ctx, &store.ResponseTooLargeError{})
+		var cerr *connect.Error
+		if !errors.As(got, &cerr) {
+			t.Fatalf("connectError(&store.ResponseTooLargeError{}) = %v, does not unwrap to *connect.Error", got)
+		}
+		if want := responseTooLargeEnvelope(); cerr.Message() != want {
+			t.Errorf("Message() = %q, want %q (the wire text must never depend on the payload)", cerr.Message(), want)
+		}
+	})
+
+	// server_resource_exhausted_not_relabeled: a server-sent ResourceExhausted
+	// that the store-layer classifier did NOT relabel (never wrapped as
+	// store.ErrResponseTooLarge) is not an *argError either, so it falls
+	// through to the generic default arm — CodeInternal, never
+	// CodeResourceExhausted.
+	t.Run("server_resource_exhausted_not_relabeled", func(t *testing.T) {
+		err := status.Error(grpccodes.ResourceExhausted, "Too many requests")
+		got := connectError(ctx, err)
+		var cerr *connect.Error
+		if !errors.As(got, &cerr) {
+			t.Fatalf("connectError(%v) = %v, does not unwrap to *connect.Error", err, got)
+		}
+		if cerr.Code() != connect.CodeInternal {
+			t.Errorf("code = %v, want CodeInternal", cerr.Code())
+		}
+		if cerr.Message() != "internal error" {
+			t.Errorf("Message() = %q, want %q", cerr.Message(), "internal error")
+		}
+	})
+
+	// response_too_large_distinct_from_arg_classes: durable record 667p88n2be
+	// — assert by explicit inequality, not merely "not CodeInternal", so a
+	// switch-ordering regression that collapsed this arm into another class
+	// cannot pass silently.
+	t.Run("response_too_large_distinct_from_arg_classes", func(t *testing.T) {
+		got := connect.CodeOf(connectError(ctx, &store.ResponseTooLargeError{}))
+		for _, other := range []connect.Code{
+			connect.CodeInvalidArgument, connect.CodeOutOfRange,
+			connect.CodeFailedPrecondition, connect.CodeInternal,
+		} {
+			if got == other {
+				t.Errorf("response-too-large code (%v) must be DISTINCT from %v, got the same value", got, other)
+			}
+		}
+		if got != connect.CodeResourceExhausted {
+			t.Errorf("response-too-large code = %v, want CodeResourceExhausted", got)
 		}
 	})
 }

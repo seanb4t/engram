@@ -64,7 +64,11 @@ func (c *Config) Validate() error {
 
 	// embed.timeout runs UNCONDITIONALLY (unlike summarize.timeout, which is
 	// gated on Summarize.Model) — the embedder is always active, there is no
-	// disabled state. 0 = no timeout (infinite), the explicit D-08 escape hatch.
+	// disabled state. Zero is accepted here and resolves to a configurable
+	// ceiling in the client, per 07-bounded-provider-responses's D-07 — it no
+	// longer means "no timeout (infinite)" as v0.10.x Phase 13's D-08 once
+	// named it. THIS phase's own D-08 (07-bounded-provider-responses) is the
+	// ceiling knob, embed.max_timeout, validated immediately below.
 	switch d, err := time.ParseDuration(c.Embed.Timeout); {
 	case err != nil:
 		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Embed.Timeout, err))
@@ -72,12 +76,63 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_TIMEOUT %q: must not be negative", c.Embed.Timeout))
 	}
 
+	// embed.drain_bytes (07-bounded-provider-responses D-04, D-05): zero is a
+	// deliberately supported operator setting — it skips the post-response
+	// drain entirely rather than being honored as "disabled". A negative
+	// value is rejected. Reuses ParseNonNegativeIntCap verbatim, the exact
+	// "zero valid, negative rejected" shape ENGRAM_MEMORY_MAX_SUMMARY_BYTES
+	// already uses below.
+	if _, err := ParseNonNegativeIntCap(c.Embed.DrainBytes); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_DRAIN_BYTES %q: %w", c.Embed.DrainBytes, err))
+	}
+
+	// embed.drain_timeout (07-bounded-provider-responses D-04, D-05): the
+	// same "zero valid, negative rejected" semantics as embed.drain_bytes
+	// above, applied to a duration instead of a byte count — the exact shape
+	// embed.timeout itself uses.
+	switch d, err := time.ParseDuration(c.Embed.DrainTimeout); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_DRAIN_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Embed.DrainTimeout, err))
+	case d < 0:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_DRAIN_TIMEOUT %q: must not be negative", c.Embed.DrainTimeout))
+	}
+
+	// embed.max_timeout (07-bounded-provider-responses D-07, D-08): UNLIKE
+	// the two drain bounds above, zero is always rejected here — this is the
+	// ceiling a non-positive embed.timeout resolves to, and a zero ceiling
+	// would silently reintroduce the unbounded request this phase exists to
+	// remove. There is deliberately no way to express "unbounded".
+	switch d, err := time.ParseDuration(c.Embed.MaxTimeout); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_MAX_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Embed.MaxTimeout, err))
+	case d <= 0:
+		errs = append(errs, fmt.Errorf("ENGRAM_EMBED_MAX_TIMEOUT %q: must be a positive duration", c.Embed.MaxTimeout))
+	}
+
 	// memory.max_summary_bytes (D-06a/D-18): a non-negative integer; "0"
 	// disables the bound (validated unconditionally, mirroring
 	// ENGRAM_CONNECT_HEADLESS below — a typo must fail startup, not silently
-	// read as the compiled-in default).
-	if _, err := strconv.ParseUint(c.Memory.MaxSummaryBytes, 10, 64); err != nil {
-		errs = append(errs, fmt.Errorf("ENGRAM_MEMORY_MAX_SUMMARY_BYTES %q: must be a non-negative integer: %w", c.Memory.MaxSummaryBytes, err))
+	// read as the compiled-in default). Parsed with ParseNonNegativeIntCap —
+	// the same strconv.Atoi-width parser maxMemorySummaryBytes uses to build
+	// the live bound (WR-01) — so a value that passes here can never
+	// overflow that parser and fall back to the default silently.
+	if _, err := ParseNonNegativeIntCap(c.Memory.MaxSummaryBytes); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_MEMORY_MAX_SUMMARY_BYTES %q: %w", c.Memory.MaxSummaryBytes, err))
+	}
+
+	// memory.max_content_bytes / max_tags / max_tag_bytes (D-09/D-10): UNLIKE
+	// ENGRAM_MEMORY_MAX_SUMMARY_BYTES above, these three are ALWAYS enforced —
+	// "0" fails validation rather than disabling the bound, because the
+	// read-side per-record ceiling (plan 03-02) is derived from these caps and
+	// a disabled cap would silently remove that provable bound.
+	if err := validatePositiveCap(c.Memory.MaxContentBytes, "ENGRAM_MEMORY_MAX_CONTENT_BYTES"); err != nil {
+		errs = append(errs, err)
+	}
+	if err := validatePositiveCap(c.Memory.MaxTags, "ENGRAM_MEMORY_MAX_TAGS"); err != nil {
+		errs = append(errs, err)
+	}
+	if err := validatePositiveCap(c.Memory.MaxTagBytes, "ENGRAM_MEMORY_MAX_TAG_BYTES"); err != nil {
+		errs = append(errs, err)
 	}
 
 	switch u, err := url.Parse(c.OpenAI.BaseURL); {
@@ -200,6 +255,29 @@ func (c *Config) Validate() error {
 		case d < 0:
 			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_TIMEOUT %q: must not be negative", c.Summarize.Timeout))
 		}
+
+		// summarize.drain_bytes / summarize.drain_timeout / summarize.max_timeout
+		// (07-bounded-provider-responses D-04, D-05, D-08): the summarize-lane
+		// mirror of the embed.* trio above, gated the same way summarize.timeout
+		// itself is — an empty summary model means no summarizer is ever built,
+		// so these values are inert and unchecked until a model is configured.
+		if _, err := ParseNonNegativeIntCap(c.Summarize.DrainBytes); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_DRAIN_BYTES %q: %w", c.Summarize.DrainBytes, err))
+		}
+
+		switch d, err := time.ParseDuration(c.Summarize.DrainTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_DRAIN_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Summarize.DrainTimeout, err))
+		case d < 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_DRAIN_TIMEOUT %q: must not be negative", c.Summarize.DrainTimeout))
+		}
+
+		switch d, err := time.ParseDuration(c.Summarize.MaxTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_MAX_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Summarize.MaxTimeout, err))
+		case d <= 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_SUMMARY_MAX_TIMEOUT %q: must be a positive duration", c.Summarize.MaxTimeout))
+		}
 	}
 
 	// These three run unconditionally (not gated by Summarize.Model), since the
@@ -237,4 +315,62 @@ func (c *Config) Validate() error {
 		return nil
 	}
 	return fmt.Errorf("invalid configuration: %w", errors.Join(errs...))
+}
+
+// validatePositiveCap validates an always-enforced memory write cap (D-09):
+// value must parse as a positive integer. Unlike ENGRAM_MEMORY_MAX_SUMMARY_BYTES,
+// "0" is rejected outright rather than honored as "disabled" — these caps
+// feed the read-side per-record ceiling (plan 03-02), and a disabled cap
+// would silently remove that provable bound.
+//
+// Parses via ParsePositiveIntCap — the SAME strconv.Atoi-width parser
+// internal/server's positiveIntOrDefault uses to build the live enforced
+// cap (WR-01 fix) — rather than the wider strconv.ParseUint(value, 10, 64)
+// this used before. ParseUint's uint64 range let a value like
+// 9223372036854775808 (one more than math.MaxInt64) pass this check while
+// positiveIntOrDefault's strconv.Atoi silently fell back to the documented
+// default at runtime (only a slog.Warn, no error) — a validated-vs-enforced
+// divergence D-09 exists specifically to prevent. Both sides now call the
+// one exported parser so the validated range can never diverge from the
+// enforced range again.
+func validatePositiveCap(value, envName string) error {
+	if _, err := ParsePositiveIntCap(value); err != nil {
+		return fmt.Errorf("%s %q: %w: this cap is always enforced (unlike ENGRAM_MEMORY_MAX_SUMMARY_BYTES, 0 does not disable it)", envName, value, err)
+	}
+	return nil
+}
+
+// ParsePositiveIntCap parses value as a positive integer, using exactly the
+// parser (strconv.Atoi, platform int width) that runtime enforcement builds
+// the live cap with. Exported so internal/server's positiveIntOrDefault can
+// call this SAME function rather than keeping a second parser in sync by
+// convention (D-00: one shared helper over two parsers kept in sync by
+// convention) — see validatePositiveCap's doc for the divergence this
+// closes (WR-01).
+func ParsePositiveIntCap(value string) (int, error) {
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("must be a positive integer: %w", err)
+	}
+	if n <= 0 {
+		return 0, errors.New("must be greater than 0")
+	}
+	return n, nil
+}
+
+// ParseNonNegativeIntCap parses value as a non-negative integer, using
+// exactly the parser (strconv.Atoi, platform int width) that runtime
+// enforcement builds the live bound with (internal/server's
+// maxMemorySummaryBytes). Zero is a valid result — callers that treat zero
+// as an escape hatch (ENGRAM_MEMORY_MAX_SUMMARY_BYTES's "0 disables", D-18)
+// decide that themselves; this function only bounds the parse.
+func ParseNonNegativeIntCap(value string) (int, error) {
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("must be a non-negative integer: %w", err)
+	}
+	if n < 0 {
+		return 0, errors.New("must be a non-negative integer")
+	}
+	return n, nil
 }

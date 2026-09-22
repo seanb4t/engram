@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/seanb4t/engram/internal/httpdrain"
 	"github.com/seanb4t/engram/internal/openaiurl"
 )
 
@@ -39,6 +40,32 @@ const (
 	defaultTimeout   = 30 * time.Second
 )
 
+// maxErrorBodyBytes bounds how much of a non-200 chat-completions response
+// body is read before it is surfaced in an error. internal/embed/embed.go's
+// own copy of this constant records having been copied verbatim FROM this
+// file (D-13); naming it here too closes the loop, so both provider lanes
+// reference the identical bound the identical way instead of one of them
+// carrying a bare literal.
+const maxErrorBodyBytes = 4096
+
+// defaultDrainBytes and defaultDrainTimeout bound the shared httpdrain.Drain
+// call at both post-response sites (D-01, D-02, D-04) when WithDrainBytes /
+// WithDrainTimeout are not supplied, mirroring internal/embed/embed.go's
+// identical pair. Plan 07-04 wires the operator-facing
+// ENGRAM_SUMMARY_DRAIN_BYTES / ENGRAM_SUMMARY_DRAIN_TIMEOUT equivalents;
+// these are the in-package fallbacks for a Client built without that wiring.
+const (
+	defaultDrainBytes   = 256 << 10 // 256 KiB
+	defaultDrainTimeout = 2 * time.Second
+)
+
+// defaultMaxTimeout bounds the ceiling a non-positive http.Client.Timeout
+// resolves to (D-07, D-08) when WithMaxTimeout is not supplied, mirroring
+// internal/embed/embed.go's identical constant. Plan 07-04 wires the
+// operator-facing ENGRAM_SUMMARY_MAX_TIMEOUT equivalent; this is the
+// in-package fallback for a Client built without that wiring.
+const defaultMaxTimeout = 10 * time.Minute
+
 // Client produces summaries via an OpenAI-compatible chat-completions API.
 type Client struct {
 	baseURL   string
@@ -51,6 +78,24 @@ type Client struct {
 	// in New via openaiurl.Join(baseURL, "chat/completions"). Summarize always
 	// uses this field, never re-joins baseURL per call.
 	chatURL string
+	// drainBytes and drainTimeout bound the shared httpdrain.Drain call at
+	// both post-response sites (D-01, D-02). UNLIKE the out-of-range-override
+	// convention WithMaxTokens uses above, their defaults are set in New's
+	// struct literal BEFORE options run, so an explicit
+	// WithDrainBytes(0)/WithDrainTimeout(0) is honored as 0 rather than
+	// swallowed — see WithDrainBytes's doc comment for why (D-05, D-06).
+	// Mirrors internal/embed/embed.go's identical fields.
+	drainBytes   int64
+	drainTimeout time.Duration
+	// maxTimeout is the ceiling a non-positive http.Client.Timeout resolves
+	// to, applied in New after all options have run (D-07, D-09). Set via
+	// WithMaxTimeout; falls back to defaultMaxTimeout when left at zero —
+	// this option DOES follow the WithMaxTokens out-of-range-override
+	// convention above (unlike drainBytes/drainTimeout): a zero ceiling
+	// would be exactly the unbounded value this phase exists to remove, so
+	// there is no honored-zero escape hatch here. Mirrors
+	// internal/embed/embed.go's identical field.
+	maxTimeout time.Duration
 }
 
 // Option customizes a Client.
@@ -72,15 +117,73 @@ func WithMaxTokens(n int) Option {
 	}
 }
 
-// WithTimeout sets the per-request HTTP client timeout. d <= 0 disables it.
+// WithTimeout sets the per-request HTTP client timeout. An explicit
+// positive d is honored UNCAPPED, however large — the operator named a
+// number, so it is respected. A non-positive d no longer disables the
+// timeout (that promise changed in this release, D-07): it now resolves to
+// a configurable ceiling (see WithMaxTimeout, default 10m,
+// ENGRAM_SUMMARY_MAX_TIMEOUT), applied in New after every option has run so
+// option order is preserved. Mirrors internal/embed/embed.go's WithTimeout.
+//
+// Known limitation, stated rather than oversold: the ceiling is itself
+// configurable, so a large enough value is effectively unbounded. This is a
+// speed bump that forces an operator to write a number they can see, not a
+// hard guarantee (D-08).
 func WithTimeout(d time.Duration) Option {
 	return func(c *Client) { c.http.Timeout = d }
+}
+
+// WithMaxTimeout sets the ceiling a non-positive WithTimeout resolves to
+// (D-07, D-08). UNLIKE WithDrainBytes/WithDrainTimeout above, a non-positive
+// ceiling is ignored and defaultMaxTimeout survives — this DOES follow the
+// WithMaxTokens out-of-range-override convention, because a zero drain
+// bound is a meaningful, safe setting (give up the connection at once)
+// whereas a zero ceiling would be exactly the unbounded request timeout
+// this phase exists to remove. There is deliberately no way to ask for an
+// unbounded ceiling. Mirrors internal/embed/embed.go's WithMaxTimeout.
+func WithMaxTimeout(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.maxTimeout = d
+		}
+	}
+}
+
+// WithDrainBytes bounds the byte axis of the shared post-response drain
+// (httpdrain.Drain) at both call sites. UNLIKE WithMaxTokens above, 0 is
+// honored, not swallowed: New sets defaultDrainBytes in the struct literal
+// BEFORE options run, so there is no post-loop fallback to re-silence an
+// explicit 0. 0 is a deliberate, safe setting — close the body at once and
+// burn a TCP handshake next time rather than ever risk a stall — and there
+// is no way to ask for an unbounded drain (D-05, D-06). Mirrors
+// internal/embed/embed.go's WithDrainBytes.
+func WithDrainBytes(n int64) Option {
+	return func(c *Client) { c.drainBytes = n }
+}
+
+// WithDrainTimeout bounds the time axis of the shared post-response drain
+// (httpdrain.Drain) at both call sites. UNLIKE WithMaxTokens above, 0 is
+// honored, not swallowed: New sets defaultDrainTimeout in the struct
+// literal BEFORE options run, so there is no post-loop fallback to
+// re-silence an explicit 0. 0 is a deliberate, safe setting — abandon the
+// body immediately rather than ever risk a stall — and there is no way to
+// ask for an unbounded drain (D-05, D-06). Mirrors
+// internal/embed/embed.go's WithDrainTimeout.
+func WithDrainTimeout(d time.Duration) Option {
+	return func(c *Client) { c.drainTimeout = d }
 }
 
 // New returns a summarizer for the given gateway, key, model, and character cap.
 func New(baseURL, apiKey, model string, maxChars int, opts ...Option) *Client {
 	c := &Client{baseURL: baseURL, apiKey: apiKey, model: model, maxChars: maxChars,
-		maxTokens: defaultMaxTokens, http: &http.Client{Timeout: defaultTimeout}}
+		maxTokens: defaultMaxTokens, http: &http.Client{Timeout: defaultTimeout},
+		// Drain defaults are set HERE, in the struct literal, before the
+		// options loop runs below — mirrors internal/embed.New. This is what
+		// lets WithDrainBytes(0)/WithDrainTimeout(0) be honored as 0 instead
+		// of silently overwritten by a default applied afterward (D-05, D-06).
+		drainBytes:   defaultDrainBytes,
+		drainTimeout: defaultDrainTimeout,
+	}
 	for _, o := range opts {
 		o(c)
 	}
@@ -88,6 +191,23 @@ func New(baseURL, apiKey, model string, maxChars int, opts ...Option) *Client {
 	// internal/embed.Client's embeddingsURL caching (D-14 unified the join
 	// primitive; this mirrors the caching pattern too).
 	c.chatURL = openaiurl.Join(c.baseURL, "chat/completions")
+	// No post-loop fallback for drainBytes/drainTimeout here — see the
+	// struct-literal comment above and WithDrainBytes/WithDrainTimeout's own
+	// doc comments (D-05, D-06).
+	if c.maxTimeout <= 0 {
+		c.maxTimeout = defaultMaxTimeout
+	}
+	// D-07/D-09: applied here, after the options loop and never inside
+	// WithTimeout itself, so last-writer-wins option ordering between
+	// WithTimeout and WithMaxTimeout is preserved regardless of which was
+	// supplied first. ONLY a non-positive timeout resolves to the ceiling —
+	// an explicit positive d is honored UNCAPPED, however large, because the
+	// operator named a number (D-07 explicitly rejected clamping every
+	// value, which would override a deliberately-chosen longer duration).
+	// Mirrors internal/embed/embed.go's identical clamp.
+	if c.http.Timeout <= 0 {
+		c.http.Timeout = c.maxTimeout
+	}
 	return c
 }
 
@@ -178,8 +298,8 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		_, _ = io.Copy(io.Discard, resp.Body) // drain remainder so the connection is reusable (D-14)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		httpdrain.Drain(resp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time (D-01, D-02)
 		return "", fmt.Errorf("chat completions: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var out chatResp
@@ -188,7 +308,7 @@ func (c *Client) Summarize(ctx context.Context, content string) (sum string, err
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
 		return "", err
 	}
-	_, _ = io.Copy(io.Discard, resp.Body) // drain remainder so the connection is reusable (D-14)
+	httpdrain.Drain(resp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time (D-01, D-02)
 	if len(out.Choices) == 0 {
 		return "", fmt.Errorf("chat completions: empty choices")
 	}

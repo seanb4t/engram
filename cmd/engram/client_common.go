@@ -250,6 +250,12 @@ const (
 	// as an attempt and contributes to neither this code nor exitPartial
 	// (D-07).
 	exitSetupFailed = 9
+	// exitTooLarge is produced when a Qdrant response exceeded what one
+	// response can carry -- Connect resource_exhausted, the server's
+	// store.ErrResponseTooLarge (02-CONTEXT.md D-07). The remedy is a
+	// smaller --limit/--k or omitting --full. Before this change,
+	// CodeResourceExhausted fell to exitGeneric.
+	exitTooLarge = 10
 )
 
 // cliError carries an explicit process exit code alongside a wrapped
@@ -324,9 +330,21 @@ func requireScopeUnlessCrossSpine(scope string, crossSpine bool) error {
 // field names verbatim (searched_scopes / scopes_truncated), so the text
 // lane and the JSON lane agree about what the coverage information is
 // called (Phase 2 D-08).
-func renderCoverageFooter(w io.Writer, crossSpine bool, searchedScopes []string, scopesTruncated bool) error {
+//
+// A third form (Phase 6 D-05) prints scopes_unknown: true with NO count:
+// when the server's own coverage-enumeration query fails after hits were
+// already found, the RPC still succeeds and the hits are still returned,
+// but there is no scope count to report at all. Printing a count of zero
+// here would read as "searched nothing", which is a different, false
+// claim — so this branch is checked BEFORE the truncated/count branches,
+// and it never falls through to them.
+func renderCoverageFooter(w io.Writer, crossSpine bool, searchedScopes []string, scopesTruncated, scopesUnknown bool) error {
 	if !crossSpine {
 		return nil
+	}
+	if scopesUnknown {
+		_, err := fmt.Fprintf(w, "scopes_unknown: true\n")
+		return err
 	}
 	if scopesTruncated {
 		_, err := fmt.Fprintf(w, "searched_scopes: %d  scopes_truncated: true\n", len(searchedScopes))
@@ -429,6 +447,11 @@ func wrapRPCError(err error) error {
 // explicit inequality, not by set membership alone (memory 667p88n2be: a
 // test that only checks "not the default" still passes on a silent
 // collapse).
+//
+// D-07 splits CodeResourceExhausted out of the default arm into its own
+// exitTooLarge: a response that overflowed the receive limit is a
+// different failure than a genuinely unclassified error, and folding it
+// into exitGeneric made the two indistinguishable to a script.
 func exitCodeForConnectErr(err error) int {
 	switch connect.CodeOf(err) {
 	case connect.CodeUnauthenticated, connect.CodePermissionDenied:
@@ -441,6 +464,11 @@ func exitCodeForConnectErr(err error) int {
 		return exitTimeout
 	case connect.CodeUnavailable, connect.CodeCanceled:
 		return exitUnavailable
+	// exitTooLarge (D-07): a dedicated case, not folded into the default --
+	// a script can tell "shrink the request" (10) from a genuinely
+	// unclassified failure (1).
+	case connect.CodeResourceExhausted:
+		return exitTooLarge
 	default:
 		return exitGeneric
 	}

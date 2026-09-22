@@ -18,11 +18,20 @@ import (
 // the process exit code.
 func runCLI(t *testing.T, args ...string) (stdout, stderr string, exitCode int) {
 	t.Helper()
+	return runCLIEnv(t, nil, args...)
+}
+
+// runCLIEnv is runCLI with caller-supplied environment variables layered
+// over childEnv's hermetic baseline (PATH/HOME only) — the seam
+// contentcap_cli_test.go needs to point the CLI at a real server with a
+// bearer token, without inheriting the developer shell's ENGRAM_* vars.
+func runCLIEnv(t *testing.T, env map[string]string, args ...string) (stdout, stderr string, exitCode int) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, engramBin, args...)
-	cmd.Env = childEnv(nil)
+	cmd.Env = childEnv(env)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf

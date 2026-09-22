@@ -76,13 +76,18 @@ cursor paging — never combined:
 
 | Flag | Purpose |
 |------|---------|
+| `--limit` | Max results per page; `0` resolves to the maximum, `1000`; a value above `1000` is rejected. |
 | `--offset` | Offset-for-UI paging; <!-- engram:rule:start paging-trio-mutually-exclusive -->cursor_mode, offset, and page_token are mutually exclusive<!-- engram:rule:end paging-trio-mutually-exclusive -->. |
 | `--cursor-mode` | Opt into cursor paging on the first (tokenless) page; mutually exclusive with `--offset` and `--page-token`. |
 | `--page-token` | Opaque cursor from a previous response's `next_page_token`; mutually exclusive with `--offset` and `--cursor-mode`. |
 
-Passing more than one of the three is rejected by the CLI itself — before any
-network call — with exit `2`, via a declared cobra flag group (the same
-mutual-exclusion enforcement mechanism as `--scope`/`--cross-spine` above).
+Passing more than one of the three paging-mode flags is rejected by the CLI
+itself — before any network call — with exit `2`, via a declared cobra flag
+group (the same mutual-exclusion enforcement mechanism as
+`--scope`/`--cross-spine` above). `engram search --k` carries the same
+contract as `--limit` above except for its own zero-value default: `0`
+resolves to `20`, and a value above `1000` (the shared maximum) is rejected.
+Either rejection surfaces as exit `2` (see [Exit codes](#exit-codes)).
 
 ## Output contract
 
@@ -106,11 +111,20 @@ or, when the server reports the authorized span was truncated:
 searched_scopes: 3  scopes_truncated: true
 ```
 
+or, when the server's own coverage-enumeration query failed after hits were
+already found — the call still succeeds, but there is no count to report:
+
+```text
+scopes_unknown: true
+```
+
 The footer reports a **count** of the scopes searched, never the scope names
-themselves. It prints only on a `--cross-spine` call — output for every other
-invocation is unchanged, byte-for-byte, from before this capability existed.
-The JSON lane already carried `searched_scopes` and `scopes_truncated` on
-every response before this release and is unaffected by this change.
+themselves — except the `scopes_unknown` form, which carries no count
+because there is none. It prints only on a `--cross-spine` call — output for
+every other invocation is unchanged, byte-for-byte, from before this
+capability existed. The JSON lane already carried `searched_scopes` and
+`scopes_truncated` on every response before this release, now joined by
+`scopes_unknown`, and is unaffected by this change beyond that addition.
 
 ### Operator commands
 
@@ -355,6 +369,10 @@ signature; it is not shipped here.
 The CLI uses the following exit-code meanings. Codes `8` and `9` belong to
 setup, available from v0.16.0. See
 [Agent Setup](/guides/agent-setup/) for availability and result handling.
+Code `10` comes from a client verb whose server response overflowed what one
+response can carry — in practice `list` and `search` — or from an operator
+command whose own Qdrant read overflows (Phase 5 of this milestone bounds
+those sweeps).
 
 | Code | Meaning |
 |------|---------|
@@ -368,6 +386,7 @@ setup, available from v0.16.0. See
 | 7 | Findings reported under an explicit opt-in flag (e.g. `spine-review verify --fail-on`) — the command itself succeeded; the data just didn't pass the check |
 | 8 | Setup partially failed: some attempted runtimes succeeded and some failed |
 | 9 | All attempted setup runtimes failed |
+| 10 | Response too large — the server's result exceeded what one response can carry (Connect `resource_exhausted`, hint `response_too_large`); retry with a smaller `--limit` or `--k`, or without `--full`; retrying the same request fails the same way. |
 
 Absent runtimes are skipped and do not count as failed setup attempts.
 

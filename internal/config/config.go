@@ -80,14 +80,36 @@ type EmbedConfig struct {
 	// prefix/template applied to documents at store + reindex (empty = raw).
 	DocumentInstruction string `koanf:"document_instruction"`
 	// Timeout is the per-request embed HTTP client timeout (ENGRAM_EMBED_TIMEOUT,
-	// default "30s"); "0" disables it (no timeout). Validated unconditionally in
+	// default "30s"); a non-positive value resolves to the MaxTimeout ceiling
+	// below (ENGRAM_EMBED_MAX_TIMEOUT, default "10m") rather than to unbounded
+	// (07-bounded-provider-responses D-07). Validated unconditionally in
 	// Config.Validate — the embedder is always active, unlike Summarize.Timeout
 	// which is gated on Summarize.Model.
 	Timeout string `koanf:"timeout"`
+	// DrainBytes bounds the post-response body drain by bytes
+	// (ENGRAM_EMBED_DRAIN_BYTES, default "262144" — 256 KiB). Zero is a
+	// deliberately supported operator setting: it skips the drain entirely,
+	// closing the connection immediately rather than reusing it. A negative
+	// value fails Config.Validate (07-bounded-provider-responses D-04, D-05).
+	DrainBytes string `koanf:"drain_bytes"`
+	// DrainTimeout bounds the same post-response body drain by time
+	// (ENGRAM_EMBED_DRAIN_TIMEOUT, default "2s"). Zero skips the drain
+	// entirely, the same as DrainBytes above; a negative value fails
+	// Config.Validate (07-bounded-provider-responses D-04, D-05).
+	DrainTimeout string `koanf:"drain_timeout"`
+	// MaxTimeout is the ceiling a non-positive Timeout above resolves to
+	// (ENGRAM_EMBED_MAX_TIMEOUT, default "10m"). A non-positive value always
+	// fails Config.Validate — there is deliberately no way to express an
+	// unbounded request (07-bounded-provider-responses D-07, D-08). Known
+	// limitation, recorded rather than hidden: a large enough ceiling is
+	// effectively unbounded, so this knob is a speed bump that forces an
+	// operator to write a number they can see, not a hard guarantee.
+	MaxTimeout string `koanf:"max_timeout"`
 }
 
-// MemoryConfig bounds the ordinary store_memory/update_memory `summary`
-// field (04-diagnosability D-06a/D-18): issue #360's misattributed
+// MemoryConfig bounds the ordinary store_memory/update_memory `summary`,
+// `content` and `tags` fields (04-diagnosability D-06a/D-18; 03-shared-
+// bounded-read-mechanism D-01/D-09/D-10): issue #360's misattributed
 // "missing properties: [\"content\"]" traces to an oversized `summary`
 // decoding in a way that made `content` read as absent, and there was no
 // bound on a memory summary to reject it deterministically — only
@@ -100,6 +122,21 @@ type MemoryConfig struct {
 	// embed.timeout/summarize.max_tokens already use for their own escape
 	// hatches (validate.go).
 	MaxSummaryBytes string `koanf:"max_summary_bytes"`
+	// MaxContentBytes caps storeArgs.Content on every memory create path
+	// (default "65536" — 64 KiB, D-01). UNLIKE MaxSummaryBytes above, this
+	// bound is ALWAYS enforced: "0" and negative values fail
+	// Config.Validate rather than being honored as "disabled" (D-09),
+	// because the read-side per-record ceiling (plan 03-02) is derived from
+	// this cap.
+	MaxContentBytes string `koanf:"max_content_bytes"`
+	// MaxTags caps the NUMBER of storeArgs.Tags entries on every memory
+	// create path (default "128", D-10). Same D-09 always-enforced
+	// divergence as MaxContentBytes.
+	MaxTags string `koanf:"max_tags"`
+	// MaxTagBytes caps the byte length of a SINGLE storeArgs.Tags entry
+	// (default "128", D-10). Same D-09 always-enforced divergence as
+	// MaxContentBytes.
+	MaxTagBytes string `koanf:"max_tag_bytes"`
 }
 
 // SummarizeConfig selects the recall-summary model and the character cap shared
@@ -113,8 +150,11 @@ type MemoryConfig struct {
 // answer, so a tight ceiling starves them into an empty response; a generous
 // one is free for non-reasoning models (they stop at EOS well below it). "0"
 // omits the cap entirely (gateway default). Timeout is the per-request HTTP
-// client timeout (default "30s"); "0" disables it. Neither is the same as the
-// summarize-missing command's --timeout, which bounds the whole sweep.
+// client timeout (default "30s"); a non-positive value resolves to the
+// MaxTimeout ceiling (ENGRAM_SUMMARY_MAX_TIMEOUT, default "10m") rather than
+// to unbounded (07-bounded-provider-responses D-07). Neither Timeout nor
+// MaxTimeout is the same as the summarize-missing command's --timeout, which
+// bounds the whole sweep.
 type SummarizeConfig struct {
 	Model     string `koanf:"model"`
 	MaxChars  string `koanf:"max_chars"`
@@ -128,6 +168,26 @@ type SummarizeConfig struct {
 	Workers string `koanf:"workers"`
 	// QueueSize is the async summary enqueue channel bound (default "256").
 	QueueSize string `koanf:"queue_size"`
+	// DrainBytes bounds the post-response body drain by bytes
+	// (ENGRAM_SUMMARY_DRAIN_BYTES, default "262144" — 256 KiB), gated on
+	// Model being non-empty like Timeout above. Zero is a deliberately
+	// supported operator setting: it skips the drain entirely, closing the
+	// connection immediately rather than reusing it. A negative value fails
+	// Config.Validate (07-bounded-provider-responses D-04, D-05).
+	DrainBytes string `koanf:"drain_bytes"`
+	// DrainTimeout bounds the same post-response body drain by time
+	// (ENGRAM_SUMMARY_DRAIN_TIMEOUT, default "2s"). Zero skips the drain
+	// entirely, the same as DrainBytes above; a negative value fails
+	// Config.Validate (07-bounded-provider-responses D-04, D-05).
+	DrainTimeout string `koanf:"drain_timeout"`
+	// MaxTimeout is the ceiling a non-positive Timeout above resolves to
+	// (ENGRAM_SUMMARY_MAX_TIMEOUT, default "10m"). A non-positive value
+	// always fails Config.Validate when Model is set — there is deliberately
+	// no way to express an unbounded request (07-bounded-provider-responses
+	// D-07, D-08). Same known limitation as EmbedConfig.MaxTimeout: a large
+	// enough ceiling is effectively unbounded, so this knob is a speed bump,
+	// not a hard guarantee.
+	MaxTimeout string `koanf:"max_timeout"`
 }
 
 // OpenAIConfig is the OpenAI-compatible /v1/embeddings endpoint engram calls to

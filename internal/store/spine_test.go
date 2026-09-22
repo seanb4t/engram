@@ -78,7 +78,11 @@ func snapshotCollection(t *testing.T, s *Store) (count uint64, digest string) {
 		t.Fatalf("snapshotCollection: Count: %v", err)
 	}
 	h := sha256.New()
-	scanErr := s.scrollAllPoints(ctx, nil, qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
+	// s.fullView() digests the whole payload, exactly what the removed
+	// count-only view constructor's NewWithPayload(true) selector also
+	// carried — only the ceiling is now budgeted; the digest is unchanged
+	// because the selector is the same.
+	scanErr := s.scrollAllPoints(ctx, s.collection, nil, s.fullView(), func(p *qdrant.RetrievedPoint) error {
 		fmt.Fprintf(h, "id=%s|", p.Id.GetUuid())
 		keys := make([]string, 0, len(p.Payload))
 		for k := range p.Payload {

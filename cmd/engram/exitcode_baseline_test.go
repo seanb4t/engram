@@ -4,9 +4,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
+
+	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 )
 
 // exitCodeBaselineCase is one row of the D-09 before-table: a single
@@ -49,12 +54,26 @@ type exitCodeBaselineCase struct {
 	// httptest.Server per run -- so this is the row-level opt-in that lets
 	// TestExitCodeBaseline provide one without a second, parallel test loop.
 	hungServer bool
+	// tooLargeServer, when true, replaces the literal placeholder argument
+	// tooLargeServerPlaceholder in args with the URL of a freshly started
+	// stub Connect server whose listFn/searchFn both return
+	// connect.CodeResourceExhausted carrying the shared response-too-large
+	// envelope (02-03-PLAN.md D-07). Modeled on hungServer's own per-row
+	// opt-in for the identical reason: the static table cannot hard-code a
+	// dynamically-addressed httptest.Server.
+	tooLargeServer bool
 }
 
 // hungServerPlaceholder is the args token exitCodeBaseline rows use in
 // place of a --server value when hungServer is true; TestExitCodeBaseline
 // substitutes it with a real, freshly started hung-server URL.
 const hungServerPlaceholder = "HUNG_SERVER"
+
+// tooLargeServerPlaceholder is the args token exitCodeBaseline rows use in
+// place of a --server value when tooLargeServer is true; TestExitCodeBaseline
+// substitutes it with a real, freshly started too-large-response stub server
+// URL (see substituteTooLargeServerURL).
+const tooLargeServerPlaceholder = "TOO_LARGE_SERVER"
 
 // deadServer and deadQdrant are addresses nothing listens on, used by rows
 // that need a dial to fail (connection refused) rather than hang or
@@ -206,6 +225,29 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		after:      exitTimeout,
 		introduced: true,
 		hungServer: true,
+	},
+	{
+		// D-07: a Qdrant response that exceeded the client's receive limit
+		// surfaces on the Connect wire as resource_exhausted; before this
+		// plan's mapper case, exitCodeForConnectErr's default arm reported
+		// exitGeneric for it, indistinguishable from any other unclassified
+		// failure.
+		name:           "list/response-too-large",
+		args:           []string{"list", "--server", tooLargeServerPlaceholder, "--scope", "s"},
+		before:         exitGeneric,
+		after:          exitTooLarge,
+		changes:        true,
+		landed:         true,
+		tooLargeServer: true,
+	},
+	{
+		name:           "search/response-too-large",
+		args:           []string{"search", "--server", tooLargeServerPlaceholder, "--scope", "s", "--query", "q"},
+		before:         exitGeneric,
+		after:          exitTooLarge,
+		changes:        true,
+		landed:         true,
+		tooLargeServer: true,
 	},
 	{
 		name:    "store/missing-required",
@@ -460,7 +502,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 39
+	const wantRows = 41
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}
@@ -520,6 +562,37 @@ func substituteHungServerURL(t *testing.T, args []string) []string {
 	return out
 }
 
+// substituteTooLargeServerURL returns a copy of args with
+// tooLargeServerPlaceholder replaced by the URL of a freshly started stub
+// Connect server (clienttest_test.go's startStubServer) whose listFn and
+// searchFn both return connect.CodeResourceExhausted carrying the shared
+// response-too-large envelope (internal/server's responseTooLargeEnvelope
+// text, reproduced literally here per rule m45p2b4bp7 -- this package
+// cannot import internal/server's unexported renderer). A fresh server per
+// row keeps each row's observation independent, mirroring
+// substituteHungServerURL's own discipline.
+func substituteTooLargeServerURL(t *testing.T, args []string) []string {
+	t.Helper()
+	envelopeErr := errors.New("field=response hint=response_too_large: the result is too large to return in one response; retry with a smaller limit or k, or omit full")
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return nil, connect.NewError(connect.CodeResourceExhausted, envelopeErr)
+		},
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return nil, connect.NewError(connect.CodeResourceExhausted, envelopeErr)
+		},
+	}
+	url := startStubServer(t, svc)
+	out := make([]string, len(args))
+	for i, a := range args {
+		if a == tooLargeServerPlaceholder {
+			a = url
+		}
+		out[i] = a
+	}
+	return out
+}
+
 // TestExitCodeBaseline is the observation test: for each row, it drives
 // rootCmd through the runClient harness exactly as Execute() would, and
 // compares exitCodeFromError(err) against the row's declared expectation.
@@ -545,6 +618,9 @@ func TestExitCodeBaseline(t *testing.T) {
 			args := c.args
 			if c.hungServer {
 				args = substituteHungServerURL(t, args)
+			}
+			if c.tooLargeServer {
+				args = substituteTooLargeServerURL(t, args)
 			}
 			_, _, err := runClient(t, args...)
 			got := exitCodeFromError(err)

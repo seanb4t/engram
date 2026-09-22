@@ -32,9 +32,7 @@ package store
 import (
 	"context"
 	"fmt"
-	"net"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -221,39 +219,13 @@ func setPayloadFaultInterceptor(inj *setPayloadFaultInjector) grpc.UnaryClientIn
 }
 
 // dialFaultInjectingTestClient is dialTestClient's fault-injecting sibling:
-// it wires a grpc.WithUnaryInterceptor into the client's dial options so
-// setPayloadFaultInterceptor observes (and, when armed, fails) every
-// outgoing *qdrant.SetPayloadPoints request. Skips exactly like
-// dialTestClient/dialCapturingTestClient when no Qdrant is available, and
-// fails closed under ENGRAM_REQUIRE_QDRANT rather than skipping.
+// it wires setPayloadFaultInterceptor as a caller option into
+// dialTestClient, which owns the address, the skip/fail-closed behavior,
+// and the shared-constructor dial (so this client also carries
+// production's dial options).
 func dialFaultInjectingTestClient(t *testing.T, inj *setPayloadFaultInjector) *qdrant.Client {
 	t.Helper()
-	if testQdrantAddr == "" {
-		required, err := requireQdrant()
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
-		if required {
-			t.Fatal("no Qdrant available and ENGRAM_REQUIRE_QDRANT is set: failing instead of skipping")
-		}
-		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
-	}
-	host, portStr, err := net.SplitHostPort(testQdrantAddr)
-	if err != nil {
-		t.Fatalf("invalid Qdrant address %q: %v", testQdrantAddr, err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, testQdrantAddr, err)
-	}
-	c, err := qdrant.NewClient(&qdrant.Config{
-		Host: host, Port: port,
-		GrpcOptions: []grpc.DialOption{grpc.WithUnaryInterceptor(setPayloadFaultInterceptor(inj))},
-	})
-	if err != nil {
-		t.Fatalf("fault-injecting client: %v", err)
-	}
-	return c
+	return dialTestClient(t, grpc.WithUnaryInterceptor(setPayloadFaultInterceptor(inj)))
 }
 
 // assertSortedIDSetEqual asserts got and want denote the same set of ids,

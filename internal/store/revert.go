@@ -18,6 +18,18 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
+// errRevertPassBatchComplete is revertWithSteps' own pass-boundary marker —
+// Store.Migrate's sweep-mode pass loop's exact structural twin (migrate.go),
+// but declared SEPARATELY, with its own distinct sentinel value: each
+// sweep's early-stop reason is its own, and a shared marker is a step
+// towards one that can be confused with a real failure. Never a failure;
+// exists because scrollAllPoints' only early-stop mechanism is a callback
+// error (spine.go:88-94). The call site unwraps it with errors.Is to mean
+// "this pass's batch is done, fall through to the next pass's fresh
+// Count"; every other non-nil error — including both synthetic
+// *RevertRefusedError constructions below — propagates unchanged.
+var errRevertPassBatchComplete = errors.New("revert: pass batch complete")
+
 // IrreversibleStepRef names one irreversible step some observed record's own
 // reverse chain must actually traverse: the transition it declines to undo,
 // and the reason it declined (Phase 3 D-03 guarantees Reason is non-empty).
@@ -275,7 +287,7 @@ func (s *Store) previewRevertWithSteps(ctx context.Context, to migrate.Version, 
 	unsupportedCounts := map[migrate.Version]uint64{}
 	var observedChains [][]migrate.Step
 
-	err := s.scrollAllPoints(ctx, aboveTargetFilter(to), qdrant.NewWithPayload(true), func(p *qdrant.RetrievedPoint) error {
+	err := s.scrollAllPoints(ctx, s.collection, aboveTargetFilter(to), schemaVersionOnlyView(), func(p *qdrant.RetrievedPoint) error {
 		plan.Candidates++
 		v := versionOf(p.Payload)
 
@@ -421,33 +433,34 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 		prevBacklog = cnt
 		first = false
 
-		// Offset is nil on EVERY pass, by design, exactly mirroring
-		// Store.Migrate's write loop: each pass drains its own batch out of
-		// the filter, so there is no cursor to persist across passes and a
-		// resume is nothing more than calling Revert again. This is
-		// DIFFERENT from previewRevertWithSteps's use of scrollAllPoints
-		// above, which is a read-only exhaustive pass and therefore
-		// advances a real cursor instead.
-		pts, _, serr := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
-			CollectionName: s.collection,
-			Filter:         filter,
-			Limit:          qdrant.PtrOf(uint32(migrateBatch)),
-			Offset:         nil,
-			WithPayload:    qdrant.NewWithPayload(true),
-		})
-		if serr != nil {
-			err = serr
-			return res, err
-		}
-
-		for _, p := range pts {
+		// This pass reads and writes through the shared byte-budget
+		// iterator instead of one page-sized ScrollAndOffset call —
+		// Store.Migrate's sweep-mode pass loop's exact structural twin.
+		// Safety of interleaving writes with reads: scrollAllPoints
+		// advances a FORWARD id cursor derived from the previous
+		// response's next-page offset. Each successful write below stamps
+		// schemaVersionKey down to (or below) to, which removes the
+		// written record from THIS pass's own aboveTargetFilter — but
+		// removing an already-visited record cannot move the cursor
+		// backwards, so no record is skipped and none is visited twice
+		// within a pass. A record whose write fails stays in the filter
+		// and is picked up by the next pass's fresh Count + re-scroll,
+		// exactly as before this migration. This is DIFFERENT from
+		// previewRevertWithSteps's own use of scrollAllPoints above, which
+		// is a read-only exhaustive pass and advances a real cursor with
+		// no per-pass batch cap.
+		//
+		// Full payload is genuinely required here (s.fullView()):
+		// payloadToMap decodes the WHOLE record to compute the reverse
+		// chain's before/after diff, so nothing narrower is legitimate.
+		processed := 0
+		scanErr := s.scrollAllPoints(ctx, s.collection, filter, s.fullView(), func(p *qdrant.RetrievedPoint) error {
 			id := p.Id.GetUuid()
 			fromV := versionOf(p.Payload)
 
 			original, derr := payloadToMap(p.Payload)
 			if derr != nil {
-				err = fmt.Errorf("revert: point %s: %w", id, derr)
-				return res, err
+				return fmt.Errorf("revert: point %s: %w", id, derr)
 			}
 
 			chain, cherr := revertStepsFrom(steps, fromV, to)
@@ -460,8 +473,8 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 				// makes this reachable is a record the preflight never SAW:
 				// a concurrent engram migrate --apply can land a new
 				// above-target record in the window between the preflight
-				// finishing and this pass's own Count/ScrollAndOffset above
-				// (a window that reopens on every pass, since the loop
+				// finishing and this pass's own Count/scroll above (a
+				// window that reopens on every pass, since the loop
 				// re-scrolls each time) — REVIEWS.md iteration-2 WR-05.
 				// Typed identically to the top-level preflight refusal
 				// (RevertRefusedError, not a bare error) so revertApplyRun's
@@ -469,13 +482,14 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 				// too, from a synthetic SINGLE-record plan (Candidates: 1)
 				// rather than the whole-range plan the loop started with —
 				// that plan is now stale for exactly the record that
-				// triggered this branch.
-				err = &RevertRefusedError{Plan: RevertPlan{
+				// triggered this branch. A REAL error, propagated
+				// unchanged through scrollAllPoints — never confused with
+				// errRevertPassBatchComplete.
+				return &RevertRefusedError{Plan: RevertPlan{
 					To:          int(to),
 					Candidates:  1,
 					Unsupported: []UnsupportedVersionRef{{Version: int(fromV), Count: 1}},
 				}}
-				return res, err
 			}
 
 			current := maps.Clone(original)
@@ -494,17 +508,15 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 					// trigger via a concurrent migrate --apply racing this
 					// revert. Typed the same way, for the same reason.
 					reason, _ := migrate.IrreversibleReason(step.Reversibility())
-					err = &RevertRefusedError{Plan: RevertPlan{
+					return &RevertRefusedError{Plan: RevertPlan{
 						To:           int(to),
 						Candidates:   1,
 						Irreversible: []IrreversibleStepRef{{From: int(step.From()), To: int(step.To()), Reason: reason}},
 					}}
-					return res, err
 				}
 				after, aerr := inverse(maps.Clone(current))
 				if aerr != nil {
-					err = fmt.Errorf("revert: point %s: step (From=%d To=%d) inverse: %w", id, step.From(), step.To(), aerr)
-					return res, err
+					return fmt.Errorf("revert: point %s: step (From=%d To=%d) inverse: %w", id, step.From(), step.To(), aerr)
 				}
 				current = after
 			}
@@ -524,7 +536,11 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 				}); werr != nil {
 					lastWriteErr = werr
 					res.Failed++
-					continue
+					processed++
+					if processed >= migrateBatch {
+						return errRevertPassBatchComplete
+					}
+					return nil
 				}
 			}
 
@@ -549,9 +565,19 @@ func (s *Store) revertWithSteps(ctx context.Context, to migrate.Version, steps [
 				// call. Nothing auto-unwinds.
 				lastWriteErr = werr
 				res.Failed++
-				continue
+			} else {
+				res.Reverted++
 			}
-			res.Reverted++
+
+			processed++
+			if processed >= migrateBatch {
+				return errRevertPassBatchComplete
+			}
+			return nil
+		})
+		if scanErr != nil && !errors.Is(scanErr, errRevertPassBatchComplete) {
+			err = scanErr
+			return res, err
 		}
 	}
 }

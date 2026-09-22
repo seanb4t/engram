@@ -34,20 +34,34 @@ Source: `internal/server/tools.go` (`StoreAndEmbedderFromEnvNoEnsure`).
 | `ENGRAM_EMBED_MODEL` | — | `ollama/bge-m3` | Model name forwarded to the endpoint |
 | `ENGRAM_OPENAI_CHAT_BASE_URL` | — | _(empty)_ | Base URL for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_BASE_URL` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_BASE_URL`. Validated only when set: a malformed or non-HTTP(S) value fails startup; empty is always valid. See [Auto-summary](#auto-summary) below for the URL-shape rule and the per-lane credential behavior. |
 | `ENGRAM_OPENAI_CHAT_API_KEY` | — | _(empty)_ | API key for the chat/summarize lane only — the embedder always uses `ENGRAM_OPENAI_API_KEY` regardless of this setting. Empty means the summarizer **inherits** `ENGRAM_OPENAI_API_KEY`. Never validated at startup: unlike a base URL, an API key has no verifiable shape and empty is meaningful (inherit), so a wrong key fails at the provider rather than at boot. See [Auto-summary](#auto-summary) below for the per-lane credential behavior. |
+| `ENGRAM_EMBED_TIMEOUT` | — | `30s` | Per-request HTTP client timeout for the embeddings call. A non-positive value (including `0`) no longer means "no timeout" — it resolves to the `ENGRAM_EMBED_MAX_TIMEOUT` ceiling below. See [guides/upgrade.md](/guides/upgrade/) if you rely on `0` today. |
+| `ENGRAM_EMBED_DRAIN_BYTES` | — | `262144` | Byte bound on draining the rest of the response body after a decode, so the underlying connection can be reused. Its only job is connection reuse: abandoning an over-bound body costs one new TCP handshake next time, nothing more. `0` skips the drain entirely — the body is closed immediately and the connection is not reused — for an operator who would rather burn a handshake than ever stall on a drain. |
+| `ENGRAM_EMBED_DRAIN_TIMEOUT` | — | `2s` | Time bound on the same post-response drain, paired with the byte bound above — whichever limit is hit first ends the drain. `0` skips the drain entirely, same as `ENGRAM_EMBED_DRAIN_BYTES=0`. |
+| `ENGRAM_EMBED_MAX_TIMEOUT` | — | `10m` | Ceiling a non-positive `ENGRAM_EMBED_TIMEOUT` resolves to. There is deliberately no value meaning "unbounded" — an explicit positive `ENGRAM_EMBED_TIMEOUT` is still honored uncapped, however large; only a non-positive one is clamped to this ceiling. |
 
-Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFromConfig`).
+Source: `internal/config` (registry) + `internal/server/tools.go` (`embedderFromConfig`, `embedTimeout`, `embedDrainBytes`, `embedDrainTimeout`, `embedMaxTimeout`).
 
 ## Memory
 
 | Environment variable | Default | Description |
 |----------------------|---------|-------------|
 | `ENGRAM_MEMORY_MAX_SUMMARY_BYTES` | `512` | Max byte length of a memory `summary` on `store_memory`/`schedule_memory`/`supersede_memory`/`update_memory`. A caller-supplied summary over this bound is rejected (`field=summary hint=too_long`) rather than silently truncated. `0` disables the bound. |
+| `ENGRAM_MEMORY_MAX_CONTENT_BYTES` | `65536` | Max byte length of a memory `content` on `store_memory`/`schedule_memory`/`supersede_memory`/`update_memory` (when the content changes), on MCP, Connect and `engram store`. An over-cap write is rejected (`field=content hint=too_long`), never truncated. |
+| `ENGRAM_MEMORY_MAX_TAGS` | `128` | Max number of `tags` on those same write paths. An over-cap write is rejected (`field=tags hint=too_many`). |
+| `ENGRAM_MEMORY_MAX_TAG_BYTES` | `128` | Max byte length of one tag on those same write paths. An over-cap tag is rejected (`field=tags hint=too_long`). |
 
 This is separate from `ENGRAM_SUMMARY_MAX_CHARS` below: this bound is enforced at write
 time against a **caller-authored** summary; `ENGRAM_SUMMARY_MAX_CHARS` caps the length of a
 **server-generated** one.
 
-Source: `internal/config` (registry) + `internal/server/tools.go` (`maxMemorySummaryBytes`, `validateStoreArgs`/`validateUpdateArgs`).
+Unlike `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, the three caps above are **always enforced** — `0`
+or a negative value fails startup, because the server sizes its bounded reads from them and a
+disabled cap would silently remove that provable ceiling. Existing records larger than a cap
+are never rewritten — they stay stored and readable (`get_memory`), and their owner can trim
+one with `update_memory`. `store_discovery` and `store_rule` keep their own, separate content
+bounds.
+
+Source: `internal/config` (registry) + `internal/server/tools.go` (`maxMemorySummaryBytes`, `memoryWriteCapsFromConfig`, `checkContentBytes`, `checkTags`, `validateStoreArgs`/`validateUpdateArgs`).
 
 ## Auto-summary
 
@@ -95,6 +109,10 @@ gateways), and engram appends the chat-completions path directly — e.g.
 |---------------------|------|---------|-------------|
 | `ENGRAM_SUMMARY_MODEL` | — | _(empty)_ | Chat model for auto-summary; empty disables auto-summary |
 | `ENGRAM_SUMMARY_MAX_CHARS` | — | `280` | Max generated-summary length (also the recall-truncation cap) |
+| `ENGRAM_SUMMARY_TIMEOUT` | — | `30s` | Per-request HTTP client timeout for the summarize (chat-completions) call. A non-positive value (including `0`) no longer means "no timeout" — it resolves to the `ENGRAM_SUMMARY_MAX_TIMEOUT` ceiling below. See [guides/upgrade.md](/guides/upgrade/) if you rely on `0` today. |
+| `ENGRAM_SUMMARY_DRAIN_BYTES` | — | `262144` | Byte bound on draining the rest of the response body after a decode, so the underlying connection can be reused. Its only job is connection reuse: abandoning an over-bound body costs one new TCP handshake next time, nothing more. `0` skips the drain entirely — the body is closed immediately and the connection is not reused — for an operator who would rather burn a handshake than ever stall on a drain. |
+| `ENGRAM_SUMMARY_DRAIN_TIMEOUT` | — | `2s` | Time bound on the same post-response drain, paired with the byte bound above — whichever limit is hit first ends the drain. `0` skips the drain entirely, same as `ENGRAM_SUMMARY_DRAIN_BYTES=0`. |
+| `ENGRAM_SUMMARY_MAX_TIMEOUT` | — | `10m` | Ceiling a non-positive `ENGRAM_SUMMARY_TIMEOUT` resolves to. There is deliberately no value meaning "unbounded" — an explicit positive `ENGRAM_SUMMARY_TIMEOUT` is still honored uncapped, however large; only a non-positive one is clamped to this ceiling. |
 
 (`ENGRAM_OPENAI_CHAT_BASE_URL` and `ENGRAM_OPENAI_CHAT_API_KEY` are documented
 in [Embedder](#embedder) above, alongside `ENGRAM_OPENAI_BASE_URL` and
@@ -106,7 +124,7 @@ In a Helm deployment, set `memory.summarize.chatBaseURL` to render this
 variable into the pod spec (unset omits it, matching the inherit-by-default
 behavior above).
 
-Source: `internal/config` (registry) + `internal/server/tools.go` (`summarizerFromConfig`) + `internal/openaiurl` (the shape-aware endpoint join).
+Source: `internal/config` (registry) + `internal/server/tools.go` (`summarizerFromConfig`, `summaryTimeout`, `summaryDrainBytes`, `summaryDrainTimeout`, `summaryMaxTimeout`) + `internal/openaiurl` (the shape-aware endpoint join).
 
 ### Async-on-write summaries
 

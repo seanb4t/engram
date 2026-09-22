@@ -406,6 +406,41 @@ func TestClientSearchCrossSpineEndToEnd(t *testing.T) {
 	}
 }
 
+// TestClientSearchCoverageUnknownFooter mirrors
+// TestClientListCoverageUnknownFooter (client_list_test.go): pins D-05's
+// third footer form on the search lane, and additionally asserts the
+// footer text is byte-identical to the list lane's for the same state
+// (both assert against the shared coverageUnknownFooterLine literal),
+// proving the one-shared-renderer claim rather than asserting it twice
+// independently.
+func TestClientSearchCoverageUnknownFooter(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{
+				Memories:        []*engramv1.Memory{{ShortId: "AAAA111111"}},
+				SearchedScopes:  nil,
+				ScopesTruncated: false,
+				ScopesUnknown:   true,
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "search",
+		"--server", url, "--query", "q", "--cross-spine", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, coverageUnknownFooterLine) {
+		t.Errorf("stdout = %q, want the coverage-unknown footer line %q", stdout, coverageUnknownFooterLine)
+	}
+	if strings.Contains(stdout, "searched_scopes") {
+		t.Errorf("stdout = %q, must not contain searched_scopes on a coverage-unknown response", stdout)
+	}
+}
+
 // TestClientSearchMissingScopeIsUsageErrorBeforeDialing pins D-01: with
 // neither --scope nor --cross-spine, the guard fires before any network
 // call.
