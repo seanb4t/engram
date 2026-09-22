@@ -16,16 +16,58 @@ shipped. Every locked decision and every routed requirement below is **implement
 to main**. This document records the as-built state so future milestones build on an accurate
 foundation.
 
-**Latest milestone — 2026-08-23.01 — Distribution & Agent Bootstrap — ✅ SHIPPED 2026-09-12 as
-v0.16.0:** engram became installable in one command and self-configuring across every agent
-runtime it targets. Six phases (1–6); 21 plans, 49 tasks, 25/25 requirements verified, audit
-`tech_debt` (0 blockers, Nyquist 6/6). Full detail in `.planning/milestones/2026-08-23.01-ROADMAP.md`.
+**Latest milestone — 2026-09-18.01 — Bounded Reads — ✅ COMPLETE 2026-09-22** (on branch
+`feat/2026-09-18.01`, not yet merged or released): no Qdrant read or provider response can fail
+because of unbounded size. Seven phases (1–7); 37 plans, 87 tasks, 20/20 requirements verified,
+audit `tech_debt` (0 blockers, Nyquist 7/7, security 7/7). Full detail in
+`.planning/milestones/2026-09-18.01-ROADMAP.md`.
 
-**Active milestone — 2026-09-18.01 — Bounded Reads** (opened 2026-09-18): no Qdrant read or
-provider response can fail because of unbounded size (#585 and its read-path siblings, #456,
-#347, #457, #497). See **Current Milestone** below.
+**No active milestone** — start the next with `/gsd-new-milestone`.
 
-## Current State: 2026-09-13.01 — Setup v2 ✅ SHIPPED (2026-09-17, v0.17.0; observed 2026-09-18)
+## Current State: 2026-09-18.01 — Bounded Reads ✅ COMPLETE (2026-09-22; ship PR pending)
+
+**Delivered:** no Qdrant read or provider response can fail because of unbounded size — a request
+either succeeds or fails with a clear, named error, never an opaque Connect `internal` / HTTP 500.
+A unary client interceptor installed once in `store.NewQdrantClient` classifies a receive-limit
+overflow (gRPC code AND message shape) into `store.ErrResponseTooLarge`, rendered as
+`field=response hint=response_too_large` — Connect `resource_exhausted`, an MCP receiving
+middleware, CLI exit `10` on both tiers. Every full-payload `internal/store` read now pages on a
+byte budget through two shared primitives (`scrollOrderedPage` for `List`-shaped reads,
+byte-budgeted `scrollAllPoints` for sweeps) sized from a per-view record ceiling derived from the
+new always-enforced write caps (`ENGRAM_MEMORY_MAX_CONTENT_BYTES` 65536, `_MAX_TAGS` 128,
+`_MAX_TAG_BYTES` 128 — decision A); searches are a payload-free vector Query plus a byte-budgeted
+id-set fetch. Every recall count knob shares one documented maximum, 1000, and rejects above it
+with `out_of_range` (decision B; Connect `limit: 0` redefined, announced BREAKING). The production
+client carries a 64 MiB `MaxCallRecvMsgSize` backstop set in exactly one place. A cross-spine
+recall keeps its hits when `ListScopes` fails, reporting `scopes_unknown` (#456). The embed and
+summarize clients drain responses through a shared `internal/httpdrain` bounded by bytes and time,
+and a zero request timeout now resolves to a configurable ceiling instead of unbounded (#457);
+the provider error-body truncation is pinned (#347 closed). 7 phases, 37 plans, 87 tasks, 20/20
+requirements. Audit `tech_debt` — 6/6 seams, 7/7 E2E flows, 0 blockers, Nyquist 7/7, security
+7/7. Full detail archived at `milestones/2026-09-18.01-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md`.
+
+**What shipped:**
+- **Test harness** — `internal/store/storetest` (lifecycle, `Dial`, two-shape `SeedOversized`) and one dial path for production and every test, AST-gated.
+- **Error surface** — `ErrResponseTooLarge` sentinel, one renderer, Connect/MCP/CLI mapping, `errors.md` hint table bound to `argerror.go` by a doc gate.
+- **Bounded reads** — `scrollOrderedPage`, byte-budget `scrollAllPoints`, two-phase search fetch, per-sweep projections for every operator sweep; a 27-site inventory with every site migrated or exempted in writing.
+- **Contracts** — decision A (write caps) and decision B (recall maximum 1000, reject-over-clamp) recorded below; `scopes_unknown` additive on proto (MCP/Connect/CLI footer).
+- **Provider bounds** — `internal/httpdrain`, six new `ENGRAM_{EMBED,SUMMARY}_{DRAIN_BYTES,DRAIN_TIMEOUT,MAX_TIMEOUT}` keys, upgrade-guide §18.
+
+**Standing constraints held:** zero new Go dependencies; no test asserts grpc-go's own 4 MiB
+default (rule `m45p2b4bp7`); the red-evidence mutation harness that phases 1–7 grew to 63 patches
+was removed before close (`c1afd6c1`, rule `3p0zsqrhmb`: no tests for tests) — the behavioural
+regression tests it pointed at remain.
+
+**Carried tech debt:** GitHub #585/#456/#457 stay open until the ship PR closes them; phase 07's
+`VALIDATION.md`/`SECURITY.md` were written retroactively at close — the `verify:post` hooks did not
+dispatch for a second consecutive milestone, root cause undiagnosed; 07 WR-02
+(`Config.Validate` does not cross-check a provider `Timeout` against its `MaxTimeout`, harmless).
+
+**Closeout:** `override_closeout` — 2 newly acknowledged (the removed harness's timeout entries),
+2 carried forward (see STATE.md Deferred Items).
+
+<details>
+<summary>Previous: 2026-09-13.01 — Setup v2 ✅ SHIPPED (2026-09-17, v0.17.0; observed 2026-09-18)</summary>
 
 **Delivered:** `engram setup` is safe to re-run against a real machine. Preview reads the
 runtime's actual registration back through the runtime's own read verb (`claude mcp get`,
@@ -70,6 +112,8 @@ never dispatched during this milestone — SECURITY.md and VALIDATION.md were re
 retroactively at close, root cause undiagnosed; five cross-milestone `WINDOWS.md` entries.
 
 **Closeout:** `verified_closeout` — open-artifact audit clear, 0 acknowledged, 0 carried forward.
+
+</details>
 
 <details>
 <summary>Previous: 2026-08-23.01 — Distribution & Agent Bootstrap ✅ SHIPPED (2026-09-12, v0.16.0)</summary>
@@ -293,36 +337,6 @@ Full detail archived at `milestones/v0.10.x-{ROADMAP,REQUIREMENTS,MILESTONE-AUDI
 
 </details>
 
-## Current Milestone: 2026-09-18.01 Bounded Reads
-
-**Goal:** No Qdrant read or provider response can fail because of unbounded size — a request
-either succeeds or fails with a clear, named error, never an opaque Connect `internal` / HTTP 500.
-
-**Target features:**
-- **Every Qdrant read path stays under the gRPC 4 MiB receive cap** (#585) — `Store.List`
-  (offset `Limit: 0`, deep offset, 1000-record cursor pages), `ListScheduled`, full-payload
-  `Search` k, and the 256-batch operator sweeps (`migrate`, `revert`, `summarize-missing`,
-  `spine-review`, `reindex`). The qdrant go-client sets no `MaxCallRecvMsgSize` and `content`
-  is unbounded, so any page whose records average past the cap overflows today.
-- **Qdrant `ResourceExhausted` surfaces as a clear error**, not Connect `internal`.
-- **Cross-spine recall keeps successful hits** when the follow-up `ListScopes` fails (#456).
-- **Bounded provider responses** — embed/summarize clients surface a bounded error-body prefix
-  on non-2xx (#347) and bound the drain independently of `http.Client.Timeout` (#457).
-- **A stable Qdrant testcontainer** (#497), since this milestone's regression tests load exactly
-  that CI job.
-
-**Done means:** every exposed path carries a real-Qdrant regression test holding more than
-4 MiB of payload, RED before its fix — the `TestListScopesFullPayloadsOverGRPCLimit` (#583)
-pattern. Raising `MaxCallRecvMsgSize` alone only moves the ceiling (#583 rejected it as a fix);
-it is defense in depth at most.
-
-**Open for discuss-phase:** whether to cap memory `content` size (an
-`ENGRAM_MEMORY_MAX_CONTENT_BYTES` analogue of the summary cap), and whether Connect
-`ListMemories` keeps `limit: 0` = all with numeric offset paging (paged internally) or moves
-to a hard cap plus cursor paging in the console and `engram list`.
-
-**Not in scope:** the planted embedder provider-routing / failover seed stays planted.
-
 ## Core Value
 
 **Correctable recall precision** — a coding agent gets back the RIGHT memory for its context,
@@ -528,17 +542,31 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **REQ-apply-preserve-gate** — `--apply` consults the same classification and performs zero registration writes on `preserved` (never Claude Code's `mcp remove`) while still delivering the plugin facet; observed byte-identical on v0.17.0 — 2026-09-13.01 Phase 5
 - ✓ **REQ-apply-rewrite-consequence** — a reproducible Claude Code remove-then-add on an OAuth-shaped entry states the re-login consequence in preview and apply `notes` — 2026-09-13.01 Phase 5
 - ✓ **REQ-docs-setup-v2** — `install.md`, `agent-setup.md`, `plugin.md` describe the shipped behavior, gated per guide, with the post-release live observation recorded in `05-RELEASE-0.17.0.md` before check-off — 2026-09-13.01 Phase 5 (observed 2026-09-18)
+- ✓ **REQ-oversized-fixture-helper** — a shared real-Qdrant helper seeds over-limit scopes in two shapes (many small / few large), self-asserting logical bytes — 2026-09-18.01 Phase 1
+- ✓ **REQ-test-client-parity** — every test Qdrant client is built through `store.NewQdrantClient` with an explicitly named receive limit — 2026-09-18.01 Phase 1
+- ✓ **REQ-exhausted-sentinel** — one typed sentinel, matching code AND receive-limit message shape, so a server-side `ResourceExhausted` is never relabeled — 2026-09-18.01 Phase 2
+- ✓ **REQ-exhausted-connect** — Connect returns `resource_exhausted` with the named hint envelope, no raw upstream text or byte ceiling — 2026-09-18.01 Phase 2
+- ✓ **REQ-exhausted-mcp** — MCP tools return the same envelope through a single receiving middleware — 2026-09-18.01 Phase 2
+- ✓ **REQ-exhausted-cli-docs** — CLI exit `10` documented; the hint code published in `reference/errors.md` — 2026-09-18.01 Phase 2
+- ✓ **REQ-byte-budget-pages** — pages end on an accumulated-byte budget as well as a record count — 2026-09-18.01 Phase 3
+- ✓ **REQ-content-cap-decided** — decision A — content and tag write caps, enforced on every write path, legacy records stay readable — 2026-09-18.01 Phase 3
+- ✓ **REQ-list-bounded** — `Store.List` stays bounded in offset, deep-offset and cursor modes on every surface (#585) — 2026-09-18.01 Phase 4
+- ✓ **REQ-list-scheduled-bounded** — `list_scheduled` stays under the receive limit at a large explicit limit — 2026-09-18.01 Phase 4
+- ✓ **REQ-search-k-bounded** — `search_memory`/`search_discovery` bound `k` at a documented maximum with bounded full-payload results — 2026-09-18.01 Phase 4
+- ✓ **REQ-list-contract-unchanged** — `total`, `next_cursor`, ordering and recall gating unchanged; a budget-cut page is never the last page — 2026-09-18.01 Phase 4
+- ✓ **REQ-list-limit-contract-decided** — decision B — one maximum of 1000, `limit: 0` resolves to it, over-maximum rejected with `out_of_range` — 2026-09-18.01 Phase 4
+- ✓ **REQ-ci-store-green** — `internal/store` CI stays green with the oversized fixtures; #497 closed — 2026-09-18.01 Phase 5
+- ✓ **REQ-bounded-read-mechanism** — every full-payload read goes through the shared mechanism, inventoried with written exemptions — 2026-09-18.01 Phase 5
+- ✓ **REQ-sweeps-bounded** — `migrate`, `migrate revert`, `summarize-missing`, `spine-review` and `reindex` complete over over-limit scopes — 2026-09-18.01 Phase 5
+- ✓ **REQ-recv-limit-backstop** — 64 MiB production `MaxCallRecvMsgSize` in exactly one place, never relied on by a regression test — 2026-09-18.01 Phase 5
+- ✓ **REQ-cross-spine-partial** — hits survive a failed `ListScopes` with a wire-visible `scopes_unknown` on MCP, Connect and the CLI (#456) — 2026-09-18.01 Phase 6
+- ✓ **REQ-provider-drain-bounded** — embed and summarize drains bounded by bytes and time under `WithTimeout(0)` (#457) — 2026-09-18.01 Phase 7
+- ✓ **REQ-provider-error-body-closed** — bounded, truncated provider error body pinned by tests; #347 closed — 2026-09-18.01 Phase 7
 
 ### Active
 
-Milestone `2026-09-18.01` (Bounded Reads) — scoped requirements with REQ-IDs live in
-`.planning/REQUIREMENTS.md`. Summary:
-
-- [ ] Every Qdrant read path stays under the gRPC 4 MiB receive cap (#585)
-- [ ] Qdrant `ResourceExhausted` surfaces as a clear, named error — never Connect `internal`
-- [ ] Cross-spine recall keeps already-successful hits when `ListScopes` fails (#456)
-- [ ] Embed/summarize clients bound the provider error body and drain (#347, #457)
-- [ ] The Qdrant testcontainer survives a full `internal/store` run in CI (#497)
+No active milestone. The next milestone's scoped requirements will live in a fresh
+`.planning/REQUIREMENTS.md` created by `/gsd-new-milestone`.
 
 ### Deferred (carry-forward for next milestone)
 
@@ -591,6 +619,7 @@ Milestone `2026-09-18.01` (Bounded Reads) — scoped requirements with REQ-IDs l
 
 - **Ecosystem:** Go 1.26 static binary (`CGO_ENABLED=0`, distroless), Qdrant gRPC vector store, OpenAI-compatible embeddings/chat gateway. UI/docs built with pnpm + Node (not in the server image).
 - **Surfaces:** MCP tool server (primary, StreamableHTTP at `/mcp`), ConnectRPC `EngramService` v1 (5 read + 6 write RPCs), the `engram search|store|list` headless CLI over the generated Connect stubs, SvelteKit adapter-static operator console vendored via `go:embed`, Astro Starlight docs site on Cloudflare Workers.
+- **Bounded reads (2026-09-18.01, complete 2026-09-22, ship PR pending):** every full-payload Qdrant read in `internal/store` goes through `scrollOrderedPage` (`orderedpage.go`) or a byte-budgeted `scrollAllPoints` view (`boundedread.go`/`spine.go`), sized from `DefaultRecordCaps()`; searches fetch payloads by id through `fetchPayloadBatch` (`searchfetch.go`), all with a batch-of-1 legacy fallback that fails loudly with `ErrResponseTooLarge`. A new read site must compose one of these primitives — `unbudgetedView` no longer exists. `store.MaxRecallLimit` (1000) is the one recall maximum. `storetest` is usable only from `package store_test` files (import cycle). Provider HTTP clients drain through `internal/httpdrain`.
 - **Setup v2 (2026-09-13.01, shipped 2026-09-17 as v0.17.0):** `internal/setup/drift.go` owns the single `Observe` → `Compare` classification (`already-correct` / `would-write` + facets / `preserved`) that both preview and `--apply` consult; `apply.go` returns before the write loop on `preserved`/`already-correct` and re-observes after a real write; observed header values never leave a local (`Observation`/`ObservedHeader` carry no value field). `HeaderSpec` renders per runtime with no shared formatter; `ErrHeaderUnsupported` is Codex's decline. `plugin.go`'s `PluginRuntime` probes `plugin list --json` once per run and authors `marketplace add`/`install`/`update` (Codex: remove-then-add) against engram's own marketplace only; `skills.DetectPresence` is read-only. `cmd/engram/man.go` generates byte-stable pages the cask's `post_install` writes to `share/man/man1`. Verification records that stand in for live-CLI tests: `04-OBSERVATIONS.md` (literal-echo shapes) and `05-RELEASE-0.17.0.md` (v0.17.0 observed end-to-end under an isolated `HOME`/`CODEX_HOME`).
 - **Distribution & agent bootstrap (2026-08-23.01, shipped 2026-09-12 as v0.16.0):** the binary ships as a Homebrew cask (`seanb4t/homebrew-tap`, `Casks/engram.rb`) published by GoReleaser's `homebrew_casks:` through a dedicated tap-publisher App — the token field MUST stay the bare `{{ .Env.HOMEBREW_TAP_TOKEN }}` form, since GoReleaser regex-matches it on the raw string and only a real tag exercises it. `internal/setup` is a stdlib-only leaf: a `Runtime` interface authoring `Plan`s of argv `Action`s executed through an injectable `Environment.Run` seam, with Claude Code / Codex / opencode as shell-out writers and `generic` as an opt-in zero-action portable-config emitter; secrets are env-var references, never argv. `internal/skills` embeds the five curation skills (`//go:embed all:data`, drift-gated byte-for-byte against `skill/engram/skills`) and installs them natively per runtime, with Codex additionally getting a delimited AGENTS.md index spliced in place (only `fs.ErrNotExist` is the create case). `internal/setupgen` renders `/engram-setup`'s mechanical prose from real Plans; `surfacesgen --check-setup` and CI's regenerate-and-diff keep it equal. `cmd/engram/releaseconfig_test.go` pins the cask hook ordering, the `SKIP_HOMEBREW_UPLOAD` guard, and the credential shape as own-config text assertions.
 - **Identity:** OIDC bearer tokens on the MCP lane become the memory `actor`; the authz `owner` key is a configurable claim (default `email`). No issuer → single anonymous empty-owner bucket.
@@ -919,6 +948,12 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | Memory `content` gets an always-enforced write cap, `ENGRAM_MEMORY_MAX_CONTENT_BYTES` (default 65536), plus the tags caps `ENGRAM_MEMORY_MAX_TAGS` (128) and `ENGRAM_MEMORY_MAX_TAG_BYTES` (128); `0` is rejected (2026-09-18.01 Phase 3, decision A: D-01, D-09, D-10) | Byte-budget paging needs a provable per-record ceiling and the per-RPC count is derived from these caps, so a disabled cap would silently remove the bound; citations (50 × 16 KiB) already dominated once content was capped and tags were the other unbounded field; rejection reuses `too_long`/`too_many` so no new wire vocabulary; existing over-cap records are never rewritten and stay readable and trimmable | ✓ Good — enforced on every memory write path (MCP, Connect incl. UpdateMemory's field-mask lane, engram store); residual: payload fields with no write cap are budgeted by documented allowances, covered by the batch-of-1 fallback and the named error |
 | Two shared bounded-read primitives, not per-site patches: an ordered-page keyset helper (`scrollOrderedPage`) and a byte-budget `scrollAllPoints`, both sized from a per-view record ceiling derived from the enforced write caps, with a batch-of-1 fallback and a named error instead of a silent skip (2026-09-18.01 Phase 3, D-02..D-07) | #583→#585 showed per-site fixes recur; a ceiling derived from caps makes the per-RPC count arithmetic rather than discovered at runtime, and measured-byte page budgets bound the caller's response too. Pages report `CutByBudget` so a budget-cut page is never mistaken for the last page | ✓ Good — 27-site inventory recorded and assigned; Phase 4/5 migrate onto these; 13 red-evidence patches |
 | Decision B — one documented maximum, 1000, for every recall count knob (`limit` on Connect `ListMemories`/`list_memory`/`list_scheduled`, `k` on `SearchMemories`/`SearchDiscoveries`/`search_memory`/`search_discovery`, and `list_rules`' own ceiling); Connect `ListMemories`' `limit: 0` now resolves to that maximum (was: unbounded "all"); an over-maximum count is rejected, never clamped, via a new `out_of_range` hint (2026-09-18.01 Phase 4, D-01/D-02/D-03/D-10, REQ-list-limit-contract-decided) | The word "all" was never a documented number, and a silent cursor-mode clamp hid an under-fetched page from a caller who never wrote a bound; stating the same numeric constant on the wire schema, the CLI help, and the tool reference means a caller learns the ceiling by reading, never by triggering a rejection | ✓ Good — proto comments, both CLI flag help strings, the tool reference, the CLI guide, CLAUDE.md's memory contract, and a durable source-derived docs gate (`TestRecallMaximumIsStatedNumerically`) all state the same `store.MaxRecallLimit` constant; announced BREAKING in the upgrade guide |
+| The four own-loop operator sweeps migrate onto `scrollAllPoints`, each with a per-sweep projection of the fields it actually reads, and no new characterization tests — the in-place suites are the regression net (2026-09-18.01 Phase 5, D-01/D-02/D-04) | One mechanism keeps the #583→#585 recurrence from repeating per site; a projection makes the per-RPC count arithmetic for each sweep instead of assuming full payloads | ✓ Good — all ten sweep rows route through a budgeted view; `unbudgetedView` deleted outright |
+| `MaxCallRecvMsgSize` = 64 MiB, set in exactly one place as a backstop; its test asserts only that the option is passed through, never grpc-go's behavior (2026-09-18.01 Phase 5, D-05/D-06) | Raising the ceiling alone only moves it (#583); as defense in depth it must never be what a regression test relies on (rule `m45p2b4bp7`) | ✓ Good — `productionRecvLimit` in `qdrantDialOptions`, the sole body of `NewQdrantClient` |
+| A failed `ListScopes` after a cross-spine recall keeps the hits and reports an additive `scopes_unknown` boolean, with `searched_scopes` ABSENT rather than an empty list; the cause is logged server-side (2026-09-18.01 Phase 6, D-01..D-06) | Discarding already-authorized hits turned a coverage-reporting failure into a recall failure (#456); absence-vs-empty keeps the three states (not cross-spine / known / unknown) distinguishable on both transports | ✓ Good — one fix inside `searchedScopes`, one shared CLI footer, proto change additive |
+| Provider response drains are bounded by a timer that closes the body (no goroutine) in a shared `internal/httpdrain`, on all four embed/summarize sites; `0` skips the drain; defaults set before options so an explicit zero survives (2026-09-18.01 Phase 7, D-01..D-06) | A byte limit alone cannot stop a slow trickle, and a drain relying on `http.Client.Timeout` is unbounded under `WithTimeout(0)` (#457); one helper keeps the twin clients from drifting | ✓ Good — both axes proven per client, wiring gated by a go/parser test |
+| `WithTimeout(d <= 0)` now resolves to a configurable ceiling (`ENGRAM_{EMBED,SUMMARY}_MAX_TIMEOUT`, default 10m), clamped in `New` after all options run (2026-09-18.01 Phase 7, D-07..D-09) | "Zero means no timeout" was the last escape hatch around every bound; the ceiling is a visible number an operator must write, and the doc comments state that an absurd ceiling is effectively unbounded (accepted, AR-1) | ✓ Good — upgrade guide §18 announces the changed meaning; WR-02 (no Timeout-vs-MaxTimeout cross-check) accepted as harmless |
+| The red-evidence mutation harness (`TestRedEvidencePatchesAreLive`, 63 patches across phases 1–7) is removed; behavioural regression tests are the proof (2026-09-18.01 close-out, rule `3p0zsqrhmb`) | A harness proving that tests fail is a test for tests; it cost ~4.5 s per patch, repeatedly timed out under host load, and stranded applied mutations when killed | ✓ Good — removed in `c1afd6c1`; the bounds stay pinned by the behaviour tests the patches targeted |
 
 ## Evolution
 
@@ -939,4 +974,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-20 after Phase 4 Plan 7 (List, ListScheduled & Search Bounded Reads — decision B recorded) of milestone 2026-09-18.01*
+*Last updated: 2026-09-22 after milestone 2026-09-18.01 (Bounded Reads) completion*
