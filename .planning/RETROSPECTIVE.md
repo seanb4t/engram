@@ -678,22 +678,93 @@ hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
   gate with a single cited green run; the renovate triage merged 7 PRs and closed 3 in one evening
   once the three config causes were named.
 
+## Milestone: 2026-09-18.01 — Bounded Reads
+
+**Completed:** 2026-09-22 (on `feat/2026-09-18.01`; ship PR and release pending)
+**Phases:** 7 (1–7) | **Plans:** 37 | **Tasks:** 87 | **Requirements:** 20/20
+**Git range:** `ec79d4bd..ffdf7dd5` (base `50a6a75f`) — 270+ commits; 127 non-planning files, +16,514 / −1,949
+**Timeline:** 2026-09-18 → 2026-09-22 (5 days) · fourth CalVer-labeled milestone
+
+### What Was Built
+
+- **One dial path + a shared oversized-fixture harness** — `store.NewQdrantClient` for production
+  and every test (AST-gated), `internal/store/storetest` with a two-shape `SeedOversized`.
+- **One overflow error** — a unary interceptor classifies the receive-limit overflow into
+  `ErrResponseTooLarge`; Connect `resource_exhausted`, MCP middleware, CLI exit 10.
+- **Byte-budget bounded reads everywhere** — `scrollOrderedPage`, budgeted `scrollAllPoints`,
+  two-phase search fetch, per-sweep projections; a 27-site inventory closed in writing.
+- **Two contract decisions** — A: content/tag write caps on every write path; B: one recall
+  maximum (1000), reject-over-clamp, Connect `limit: 0` redefined (BREAKING, announced).
+- **Cross-spine partial results** (`scopes_unknown`, #456) and **bounded provider drains**
+  (`internal/httpdrain`, zero timeout → configurable ceiling, #457/#347).
+
+### What Worked
+
+- **One shared mechanism instead of per-site patches.** #583→#585 was a recurrence; phase 3's
+  inventory plus two primitives let phases 4–5 migrate sites mechanically, and the integration
+  checker confirmed `unbudgetedView` no longer exists at all.
+- **Deciding the contracts (A and B) in discuss-phase** before any read site moved — the per-RPC
+  count became arithmetic derived from enforced caps, not something discovered at runtime.
+- **A single dial path made the regression tests honest**: each names its own 4 MiB limit, so
+  none of them leans on the 64 MiB production backstop.
+
+### What Was Inefficient
+
+- **The red-evidence mutation harness.** It grew to 63 patches at ~4.5 s each, timed out
+  repeatedly under host load, and stranded applied mutations when the package timeout killed the
+  binary. It was a test for tests; it was removed before close (`c1afd6c1`) and the practice is
+  now rule `3p0zsqrhmb`.
+- **GSD progress-state corruption, again.** `phase.complete` / `roadmap update-plan-progress` /
+  `state.advance-plan` rewrote archived ROADMAP rows, flipped `state.json` status and left
+  `completed_phases` one short (fixed by hand at close, `2tb2ew756h`/`g4xcvewrz7`).
+- **The `verify:post` hooks did not fire for phase 07** — the second milestone running;
+  VALIDATION.md and SECURITY.md were reconstructed at close.
+- **Interrupted executors cannot recover outward-facing steps** — an issue close leaves no git
+  diff (`9f0qav7xja`); #497's close had to be reconciled by hand.
+
+### Patterns Established
+
+- A new `internal/store` read site composes an existing bounded primitive; there is no
+  unbudgeted view to reach for.
+- A regression test names its own receive limit and never asserts grpc-go's default (rule
+  `m45p2b4bp7`).
+- Absence-vs-empty as a wire signal (`searched_scopes` absent when `scopes_unknown`).
+- A bound with an escape hatch (`0` = unbounded) is not a bound: resolve it to a visible,
+  configurable ceiling.
+
+### Key Lessons
+
+- Prove a bound with a behaviour test that fails when the bound is removed — not with a harness
+  that re-proves the test fails.
+- `ls .planning/phases/*/*-{SECURITY,VALIDATION}.md` after each phase's verify — the hook lapse
+  is now recurring.
+- After any GSD state verb, read the whole `git diff` of ROADMAP/STATE, not the verb's
+  `updated:` list.
+
+### Cost / Process Observations
+
+- Model mix: opus orchestrator + executors; sonnet for the integration checker (~14 min, 71 tool
+  uses, live `internal/store` suite against real Qdrant) and code review.
+- Notable: phase 07 validation and security were reconstructed at close from plan
+  `<automated>` blocks and threat registers in one pass (22 tests, 39 threats) without spawning
+  auditors — ASVS L1 and zero gaps allowed the short-circuit.
+
 ## Cross-Milestone Trends
 
 Populated as milestones accumulate.
 
-| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | 2026-08-23.01 | 2026-09-13.01 | Notes |
-|-------|--------|---------|---------|---------|---------------|---------------|---------------|-------|
-| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | 0 (but 2 research risks retired live before roadmapping) | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
-| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | ok; reopened-phase branch trap instead (`q51bxfmwvp`) | ok (sentinel re-armed before every dispatch) | Stacked unmerged branch each time; cleared post-merge |
-| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | fake-HOME-only verification, own-config-is-in-scope, known-survivor control for comment strippers, forward-the-collision-set | total-parse scanner, redaction-by-construction, observation records (`NN-OBSERVATIONS`/`NN-RELEASE`), renovate `gitIgnoredAuthors` | Applied within-milestone and captured for reuse |
-| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 25/25 | 23/23 (1 release-gated, observed on v0.17.0) | 3-source cross-referenced |
-| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | gaps_found → tech_debt (B01 closed by 04-05; 12/12 seams, 8/8 flows) | tech_debt → tech_debt → **passed** (Nyquist + release observation reconciled) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
-| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | 1 squashed PR (#557) + docs PR (#558) + closeout branch | 1 squashed PR (#569) + 3 planning PRs + closeout | v0.13.x did not split per-phase |
-| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | 1 by the milestone audit's integration checker (B01), 0 by review | 2 warnings fixed (04 WR-01/WR-02), 3 info accepted | Both v0.13.x cases were prose contradicting the code it described |
-| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | 2/6 at first audit → 6/6 COMPLIANT (3 Phase 1 gaps → Go tests) | 0/5 at first audit (hooks never fired) → 5/5 COMPLIANT retroactively | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
-| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | 3 stale Phase 2 checkboxes + 7 progress-table misfires during execution | 5 draft VALIDATION.md + 5 missing SECURITY.md (hook lapse); 1 cross-ref rot (T-03-10) | New trend — all four would have frozen into the immutable archive a day later |
-| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
+| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | 2026-08-23.01 | 2026-09-13.01 |2026-09-18.01 | Notes |
+|-------|--------|---------|---------|---------|---------------|---------------|---------------|-------------- |-------|
+| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | 0 (but 2 research risks retired live before roadmapping) | 0 |0 (#347 bound already shipped in v0.12.x — scoped as close-only at research) | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
+| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | ok; reopened-phase branch trap instead (`q51bxfmwvp`) | ok (sentinel re-armed before every dispatch) |ok | Stacked unmerged branch each time; cleared post-merge |
+| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | fake-HOME-only verification, own-config-is-in-scope, known-survivor control for comment strippers, forward-the-collision-set | total-parse scanner, redaction-by-construction, observation records (`NN-OBSERVATIONS`/`NN-RELEASE`), renovate `gitIgnoredAuthors` |derive-page-size-from-enforced-caps, name-your-own-limit, absence-vs-empty wire signal, zero-means-ceiling | Applied within-milestone and captured for reuse |
+| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 25/25 | 23/23 (1 release-gated, observed on v0.17.0) |20/20 | 3-source cross-referenced |
+| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | gaps_found → tech_debt (B01 closed by 04-05; 12/12 seams, 8/8 flows) | tech_debt → tech_debt → **passed** (Nyquist + release observation reconciled) |tech_debt (0 blockers; 6/6 seams, 7/7 flows) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
+| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | 1 squashed PR (#557) + docs PR (#558) + closeout branch | 1 squashed PR (#569) + 3 planning PRs + closeout |pending (single branch `feat/2026-09-18.01`) | v0.13.x did not split per-phase |
+| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | 1 by the milestone audit's integration checker (B01), 0 by review | 2 warnings fixed (04 WR-01/WR-02), 3 info accepted |04 CR-01 (silent pagination truncation) + WR-01/WR-02; 07 CR-01 + WR-01 | Both v0.13.x cases were prose contradicting the code it described |
+| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | 2/6 at first audit → 6/6 COMPLIANT (3 Phase 1 gaps → Go tests) | 0/5 at first audit (hooks never fired) → 5/5 COMPLIANT retroactively |6/7 at audit (07 hook lapse) → 7/7 COMPLIANT retroactively | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
+| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | 3 stale Phase 2 checkboxes + 7 progress-table misfires during execution | 5 draft VALIDATION.md + 5 missing SECURITY.md (hook lapse); 1 cross-ref rot (T-03-10) |completed_phases one short; 07 VALIDATION/SECURITY missing | New trend — all four would have frozen into the immutable archive a day later |
+| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |✓ | **v0.12.x skipped** — the only gap in the series |
 
 ---
 
