@@ -144,4 +144,3 @@ func TestReindexBoundedOverGRPCLimit(t *testing.T) {
 		})
 	}
 }
-

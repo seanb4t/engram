@@ -70,9 +70,9 @@ func TestLayout(t *testing.T) {
 
 func TestCheckOversized(t *testing.T) {
 	cases := []struct {
-		name                         string
+		name                        string
 		limit, records, recordBytes int
-		wantErr                      bool
+		wantErr                     bool
 	}{
 		{name: "valid", limit: 100, records: 101, recordBytes: 1, wantErr: false},
 		{name: "equal is not oversized", limit: 100, records: 100, recordBytes: 1, wantErr: true},

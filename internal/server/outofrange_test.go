@@ -220,7 +220,7 @@ func (c *grpcCallCounter) intercept(
 	return invoker(ctx, method, req, reply, cc, opts...)
 }
 
-func (c *grpcCallCounter) reset() { atomic.StoreInt32(&c.n, 0) }
+func (c *grpcCallCounter) reset()       { atomic.StoreInt32(&c.n, 0) }
 func (c *grpcCallCounter) count() int32 { return atomic.LoadInt32(&c.n) }
 
 // failEmbedder is an embedder stub whose methods fail the test if ever
