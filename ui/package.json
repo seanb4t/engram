@@ -12,7 +12,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
-    "@lucide/svelte": "1.46.0",
+    "@lucide/svelte": "1.47.0",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/kit": "2.70.3",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
@@ -22,7 +22,7 @@
     "@vitest/browser-playwright": "5.0.1",
     "paneforge": "1.0.2",
     "playwright": "1.63.0",
-    "shadcn-svelte": "1.6.1",
+    "shadcn-svelte": "1.7.0",
     "svelte": "5.57.0",
     "svelte-check": "4.7.6",
     "svelte-sonner": "1.2.1",

@@ -5,7 +5,7 @@
 
 image:
   repository: ghcr.io/seanb4t/engram
-  tag: "" # defaults to .Chart.AppVersion
+  tag: "@sha256:c2b9bee472929aca8df75aa479f9c151a387ec9b7e45f552c1993524c1322544" # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 
 # e.g. [{ name: ghcr-pull-secret }] — the cluster sets this for a private image.
@@ -145,6 +145,28 @@ memory:
     clientSecret:
       name: "" # Secret holding the OIDC client secret (ENGRAM_OIDC_CLIENT_SECRET)
       key: ""
+  # Machine-to-machine auth lanes, each activated independently by its own
+  # config being present. Every field empty (the default) leaves all of them
+  # off and the deployment behaves exactly as before. See the reference docs,
+  # "Service principals (machine-to-machine auth)".
+  serviceAuth:
+    # ENGRAM_SERVICE_AUTH_STATIC_TOKENS, for headless callers that cannot run a
+    # browser OAuth flow. Comma-separated `owner=token`; each token gets its own
+    # owner bucket, never a shared "service" one. A token must NOT be
+    # JWT-shaped (three dot-separated segments) or it is routed to the OIDC
+    # lanes instead and rejected -- `openssl rand -hex 32` is a safe generator.
+    # There is no revocation list: rotating means rewriting this Secret and
+    # restarting, so pair it with a reloader annotation.
+    staticTokensSecret:
+      name: "" # Secret holding the owner=token pairs
+      key: ""
+    oidc:
+      issuer: "" # ENGRAM_SERVICE_AUTH_OIDC_ISSUER (client-credentials lane)
+      audience: "" # ENGRAM_SERVICE_AUTH_OIDC_AUDIENCE (empty = aud not checked)
+    # ENGRAM_SERVICE_AUTH_OWNER_CLAIMS: ordered, comma-separated claim list the
+    # service lane resolves an owner from. Empty omits it; the server then
+    # defaults to "client_id,azp". Never defaults to email.
+    ownerClaims: ""
   # Web-UI / operator-console lane (cookie/OIDC observe auth). enabled: "" =
   # headless unless full creds are present; "true" forces it on (fails fast on
   # missing creds); "false" is a hard off-switch. The cookie-seal key is a

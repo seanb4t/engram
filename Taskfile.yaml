@@ -200,6 +200,36 @@ tasks:
           echo "chart:validate: ENGRAM_OPENAI_CHAT_API_KEY secretKeyRef must carry the configured secret key"
           exit 1
         fi
+        # Static service tokens (v0.17.x, service-principal lane). Same
+        # both-directions shape as the chat credential above, and for the same
+        # reason: the checksum pins the template text but cannot assert the SET
+        # path renders. A break in this branch would leave the checksum
+        # untouched while a headless caller's token silently never reached the
+        # container -- and engram's static lane fails CLOSED, so the symptom is
+        # a 401 with nothing in the chart to have warned us.
+        if helm template charts/engram | grep -q 'ENGRAM_SERVICE_AUTH_STATIC_TOKENS'; then
+          echo "chart:validate: default render must NOT emit ENGRAM_SERVICE_AUTH_STATIC_TOKENS (staticTokensSecret unset)"
+          exit 1
+        fi
+        SVCTOK_RENDER=$(helm template charts/engram \
+          --set memory.serviceAuth.staticTokensSecret.name=cv-svc-secret \
+          --set memory.serviceAuth.staticTokensSecret.key=cv-svc-key)
+        if ! echo "$SVCTOK_RENDER" | grep -q 'name: ENGRAM_SERVICE_AUTH_STATIC_TOKENS'; then
+          echo "chart:validate: --set memory.serviceAuth.staticTokensSecret.{name,key} must emit ENGRAM_SERVICE_AUTH_STATIC_TOKENS"
+          exit 1
+        fi
+        if ! echo "$SVCTOK_RENDER" | grep -A3 'name: ENGRAM_SERVICE_AUTH_STATIC_TOKENS' | grep -q 'secretKeyRef'; then
+          echo "chart:validate: ENGRAM_SERVICE_AUTH_STATIC_TOKENS must render as a secretKeyRef, never a literal value"
+          exit 1
+        fi
+        if ! echo "$SVCTOK_RENDER" | grep -A5 'name: ENGRAM_SERVICE_AUTH_STATIC_TOKENS' | grep -q 'name: "cv-svc-secret"'; then
+          echo "chart:validate: ENGRAM_SERVICE_AUTH_STATIC_TOKENS secretKeyRef must carry the configured secret name"
+          exit 1
+        fi
+        if ! echo "$SVCTOK_RENDER" | grep -A5 'name: ENGRAM_SERVICE_AUTH_STATIC_TOKENS' | grep -q 'key: "cv-svc-key"'; then
+          echo "chart:validate: ENGRAM_SERVICE_AUTH_STATIC_TOKENS secretKeyRef must carry the configured secret key"
+          exit 1
+        fi
         helm lint charts/engram
         # Drift pin: engram.containerEnv is the single source of the
         # Deployment+CronJob container env (D-09). Any edit to this block
@@ -214,8 +244,12 @@ tasks:
         # 2026-09-09 at quick task 260909-ofg for the with-guarded
         # ENGRAM_MCP_RESOURCE_URL row (GH-526). Re-verified: the default
         # render omits the var entirely and its ENGRAM_ env
-        # block is byte-identical to the pre-phase render.
-        EXPECTED_CHECKSUM="1965be68ceab2052ed44876c7a8e896917a65b24f591f93bc5eecfbe3796a0b0"
+        # block is byte-identical to the pre-phase render. Re-pinned
+        # 2026-09-21 for the four service-principal rows
+        # (ENGRAM_SERVICE_AUTH_STATIC_TOKENS secretKeyRef plus the three
+        # with-guarded OIDC/owner-claim rows); the default render still omits
+        # all four and the rest of the block is byte-identical.
+        EXPECTED_CHECKSUM="98bda8a99638d33b2a31c11266fd4512e2403a89be369782338fcf27291c9260"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

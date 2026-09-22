@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.18.0](https://github.com/seanb4t/engram/compare/v0.17.1...v0.18.0) (2026-09-21)
+
+
+### Features
+
+* **chart:** expose the service-principal auth lanes as chart values ([#598](https://github.com/seanb4t/engram/issues/598)) ([ad8b40a](https://github.com/seanb4t/engram/commit/ad8b40ab3cf2a82e9695a605ba3a6dd88978215a))
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.84.0 ([#594](https://github.com/seanb4t/engram/issues/594)) ([26f9116](https://github.com/seanb4t/engram/commit/26f9116df46e5ff74cd13aa264e3b1cec106a712))
+
+## [0.17.1](https://github.com/seanb4t/engram/compare/v0.17.0...v0.17.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* **console:** repair root route ListScopes 4 MiB overflow and missing cross_spine ([#583](https://github.com/seanb4t/engram/issues/583)) ([50a6a75](https://github.com/seanb4t/engram/commit/50a6a75f95442ffaa3c92aa279bee373c8d4a36e))
+
 ## [0.17.0](https://github.com/seanb4t/engram/compare/v0.16.1...v0.17.0) (2026-09-18)
 
 
