@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-18.01
 milestone_name: Bounded Reads
-current_phase: 07
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 07 complete — all phases complete
-last_updated: "2026-09-21T20:10:23.789Z"
-last_activity: 2026-09-21
-last_activity_desc: Phase 07 complete
-state_head: dfc7a7c4d19f1392986003e3c118fca4f3c60071
+last_updated: "2026-09-22T21:48:19.862Z"
+last_activity: 2026-09-22
+last_activity_desc: Milestone 2026-09-18.01 completed and archived
+state_head: 6e22bbdbd42f1fbd21769c1c77046e6cfa9024a8
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 37
   completed_plans: 37
+current_phase: 07
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 3 of milestone 2026-09
 
 ## Current Position
 
-Phase: 07
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-09-21 — Phase 07 complete
+Phase: Milestone 2026-09-18.01 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-22 — Milestone 2026-09-18.01 completed and archived
 
 ## Deferred Items
 
@@ -69,6 +69,13 @@ Items acknowledged and deferred at milestone close on 2026-08-22 (milestone 2026
 | deferred_items | Phase 07 / Resolved by the orchestrator (phase-level) | acknowledged — `TestNoEscapedPatternsRepoWide` fixed in `7cfb3017`; the SA1019 half it left open is now resolved too |
 | deferred_items | Phase 07 / Environment gaps (`ui/`): svelte-check crash, no `lint` script | acknowledged — genuine pre-existing debt. `svelte-check@4.7.3` / `typescript@7.0.2` incompatibility pinned in `ui/package.json`; executors substituted vitest + `npx tsc --noEmit` |
 | deferred_items | Phase 07 / Deferred to phase UAT (07-04 `/observe?inc=archived` round-trip, 07-07 migration-banner visual check) | acknowledged — genuine, needs a live server + Qdrant; unrunnable in a worktree |
+
+Items acknowledged and deferred at milestone close on 2026-09-22 (milestone 2026-09-18.01, `override_closeout` — 2 newly acknowledged, 2 carried forward from a prior close):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_items | Phase 06 / 06-01: `internal/store` `TestRedEvidencePatchesAreLive` hit Go's 601s per-package default timeout under host load | acknowledged — moot: the red-evidence harness was removed in `c1afd6c1` (rule `3p0zsqrhmb`) |
+| deferred_items | Phase 06 / 06-03: same harness timeout recurred at 58 registered patches | acknowledged — moot for the same reason |
 
 Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own acknowledged status line.
 
@@ -414,7 +421,6 @@ Both prior entries were delivered and had simply never been closed out:
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260918-idl | fix console root route: ListScopes gRPC 4MiB overflow and recent-memories missing cross_spine (#500) | 2026-09-18 | 339ab181 | [260918-idl-fix-console-root-route-listscopes-grpc-4](./quick/260918-idl-fix-console-root-route-listscopes-grpc-4/) |
 
 ### Roadmap Evolution
 

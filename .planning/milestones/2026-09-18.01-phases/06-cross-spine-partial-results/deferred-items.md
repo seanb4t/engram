@@ -3,7 +3,7 @@
 - `internal/store`'s `TestRedEvidencePatchesAreLive` hit Go's default 601s per-package test
   timeout twice during plan 06-01's `task` gate runs, on a tree containing zero changes to
   `internal/store`.
-  status: open
+  status: acknowledged
   **What:** `TestRedEvidencePatchesAreLive` (`internal/store/redevidence_harness_test.go`)
   sequentially applies all 54 currently-registered red-evidence patches, shelling out a real
   `go test -run <target>` subprocess per patch to prove RED, then reverting via `git apply -R`.
@@ -47,7 +47,7 @@
   whichever phase or maintenance pass owns `internal/store`'s test-harness performance.
 
 - Same characteristic recurred during plan 06-03's phase close, now at 58 registered patches.
-  status: open
+  status: acknowledged
   **What:** Bare `task` (no `-timeout` override) hit the 601s per-package default and killed
   `internal/store`'s test binary mid-patch at 630.559s — again leaving one already-applied
   red-evidence patch un-reverted on disk (`03-03-update-content-cap-removed.patch` over
