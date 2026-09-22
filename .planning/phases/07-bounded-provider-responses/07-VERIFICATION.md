@@ -3,42 +3,8 @@ phase: 07-bounded-provider-responses
 verified: 2026-09-21T20:35:00Z
 status: passed
 score: 13/13 must-haves verified
-covered_files:
-  - ".planning/REQUIREMENTS.md"
-  - ".planning/ROADMAP.md"
-  - ".planning/phases/07-bounded-provider-responses/07-01-PLAN.md"
-  - ".planning/phases/07-bounded-provider-responses/07-01-SUMMARY.md"
-  - ".planning/phases/07-bounded-provider-responses/07-02-PLAN.md"
-  - ".planning/phases/07-bounded-provider-responses/07-02-SUMMARY.md"
-  - ".planning/phases/07-bounded-provider-responses/07-03-PLAN.md"
-  - ".planning/phases/07-bounded-provider-responses/07-03-SUMMARY.md"
-  - ".planning/phases/07-bounded-provider-responses/07-04-PLAN.md"
-  - ".planning/phases/07-bounded-provider-responses/07-04-SUMMARY.md"
-  - ".planning/phases/07-bounded-provider-responses/07-05-PLAN.md"
-  - ".planning/phases/07-bounded-provider-responses/07-05-SUMMARY.md"
-  - ".planning/phases/07-bounded-provider-responses/07-CONTEXT.md"
-  - ".planning/phases/07-bounded-provider-responses/07-REVIEW.md"
-  - "docs-site/src/content/docs/guides/configure.md"
-  - "docs-site/src/content/docs/guides/upgrade.md"
-  - "internal/config/config.go"
-  - "internal/config/config_test.go"
-  - "internal/config/providerbounds_test.go"
-  - "internal/config/registry.go"
-  - "internal/config/service_auth_test.go"
-  - "internal/config/validate.go"
-  - "internal/config/validate_test.go"
-  - "internal/embed/embed.go"
-  - "internal/embed/embed_test.go"
-  - "internal/httpdrain/httpdrain.go"
-  - "internal/httpdrain/httpdrain_test.go"
-  - "internal/server/providerbounds_test.go"
-  - "internal/server/tools.go"
-  - "internal/store/redevidence_harness_test.go"
-  - "internal/summarize/summarize.go"
-  - "internal/summarize/summarize_test.go"
-  - "internal/testhttp/reuse.go"
-  - "internal/testhttp/trickle.go"
-covered_digest: "v1:sha256:406b5bacaf2b6903bbe97e901c142d23c170311f94d301b0010e720b4b8bf5f4"
+covered_files: [".planning/REQUIREMENTS.md",".planning/ROADMAP.md",".planning/phases/07-bounded-provider-responses/07-01-PLAN.md",".planning/phases/07-bounded-provider-responses/07-01-SUMMARY.md",".planning/phases/07-bounded-provider-responses/07-02-PLAN.md",".planning/phases/07-bounded-provider-responses/07-02-SUMMARY.md",".planning/phases/07-bounded-provider-responses/07-03-PLAN.md",".planning/phases/07-bounded-provider-responses/07-03-SUMMARY.md",".planning/phases/07-bounded-provider-responses/07-04-PLAN.md",".planning/phases/07-bounded-provider-responses/07-04-SUMMARY.md",".planning/phases/07-bounded-provider-responses/07-05-PLAN.md",".planning/phases/07-bounded-provider-responses/07-05-SUMMARY.md",".planning/phases/07-bounded-provider-responses/07-CONTEXT.md",".planning/phases/07-bounded-provider-responses/07-REVIEW.md","docs-site/src/content/docs/guides/configure.md","docs-site/src/content/docs/guides/upgrade.md","internal/config/config.go","internal/config/config_test.go","internal/config/providerbounds_test.go","internal/config/registry.go","internal/config/service_auth_test.go","internal/config/validate.go","internal/config/validate_test.go","internal/embed/embed.go","internal/embed/embed_test.go","internal/httpdrain/httpdrain.go","internal/httpdrain/httpdrain_test.go","internal/server/providerbounds_test.go","internal/server/tools.go","internal/summarize/summarize.go","internal/summarize/summarize_test.go","internal/testhttp/reuse.go","internal/testhttp/trickle.go"]
+covered_digest: "v1:sha256:6e5842226135b7cd4ff72f60502b334b48536b034af920f7590a6feecebd9895"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -190,14 +156,14 @@ Every one of the 13 must-haves is therefore untouched.
 - Current digest: `v1:sha256:406b5bac…`
 - Covered files: 34, all present and readable
 
-Note for the next person hitting this: `gsd-tools query verification.fingerprint
-<files...>` returned a digest that did NOT satisfy the status check
-(`a474ee8e…` vs the required `406b5bac…`) — the CLI verb and the staleness
-comparison canonicalize the file list differently. The authoritative value is
-whatever `computeCoveredDigest(findProjectRoot(phaseDir), <the frontmatter's own
-covered_files array>)` returns, from `gsd-core/bin/lib/verification.cjs`. Compute
-it that way and confirm with `verification.status --pick status` before
-committing; do not trust the CLI verb's output for this repair.
+**CORRECTION (2026-09-21, later the same day):** an earlier revision of this
+section claimed `gsd-tools query verification.fingerprint` returns a digest the
+staleness check rejects. That was wrong — the verb takes the PHASE DIRECTORY as
+its first positional argument and the covered files after it
+(`verification.fingerprint <phaseDir> <files...>`). Invoked with the files alone,
+the first file is consumed as the phase dir and the digest is computed over a
+list short by one entry. Called correctly it matches `computeCoveredDigest`
+exactly. Use the native verb.
 
 ---
 
@@ -229,3 +195,26 @@ phase and archived milestone were deleted.
 
 Left in place rather than rewritten: this document records what was true when it
 was written. Read it with this note.
+
+---
+
+## Re-fingerprint 2026-09-21 — red-evidence paths pruned from `covered_files`
+
+**Verdict unchanged.** No claim in this report was re-evaluated.
+
+The red-evidence mutation harness was removed repo-wide under rule `3p0zsqrhmb`
+("NEVER write tests for tests..."), deleting `internal/store/redevidence_harness_test.go`
+and every `red-evidence/*.patch`. Those paths were listed in this report's
+`covered_files`, and `computeCoveredDigest` returns null when any covered file is
+missing — so every phase in this milestone read `stale` for a purely mechanical
+reason, with nothing about the verified behaviour having changed.
+
+Repair: dropped only the now-deleted red-evidence paths from `covered_files` and
+recomputed `covered_digest` with the native verb —
+`gsd-tools query verification.fingerprint <phaseDir> <files...>` — then confirmed
+`verification.status --pick status` reads `passed`.
+
+Every dropped entry was a `red-evidence/*.patch` or the harness file itself; no
+source file, plan, summary, requirement or review left the covered set. This
+follows the precedent this milestone already set when phase 4 pruned
+`.planning/WINDOWS.md` from its own covered set for the same class of reason.

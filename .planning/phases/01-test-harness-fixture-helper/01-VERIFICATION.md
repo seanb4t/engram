@@ -3,8 +3,8 @@ phase: 01-test-harness-fixture-helper
 verified: 2026-09-18T22:20:00Z
 status: passed
 score: 3/3 roadmap success criteria verified; 5/5 plans' must_haves verified
-covered_files: [".github/workflows/ci.yaml", ".planning/phases/01-test-harness-fixture-helper/01-01-PLAN.md", ".planning/phases/01-test-harness-fixture-helper/01-01-SUMMARY.md", ".planning/phases/01-test-harness-fixture-helper/01-02-PLAN.md", ".planning/phases/01-test-harness-fixture-helper/01-02-SUMMARY.md", ".planning/phases/01-test-harness-fixture-helper/01-03-PLAN.md", ".planning/phases/01-test-harness-fixture-helper/01-03-SUMMARY.md", ".planning/phases/01-test-harness-fixture-helper/01-04-PLAN.md", ".planning/phases/01-test-harness-fixture-helper/01-04-SUMMARY.md", ".planning/phases/01-test-harness-fixture-helper/01-05-PLAN.md", ".planning/phases/01-test-harness-fixture-helper/01-05-SUMMARY.md", ".planning/phases/01-test-harness-fixture-helper/01-CONTEXT.md", ".planning/phases/01-test-harness-fixture-helper/01-REVIEW-FIX.md", ".planning/phases/01-test-harness-fixture-helper/01-REVIEW.md", ".planning/phases/01-test-harness-fixture-helper/red-evidence/01-01-storetest-raw-client-write.patch", ".planning/phases/01-test-harness-fixture-helper/red-evidence/01-04-listscopes-full-payload-selector.patch", ".planning/phases/01-test-harness-fixture-helper/red-evidence/01-05-bare-qdrant-newclient-in-test.patch", ".planning/phases/01-test-harness-fixture-helper/red-evidence/01-05-ci-qdrant-image-drift.patch", "internal/e2e/console_browser_test.go", "internal/e2e/harness_test.go", "internal/e2e/spine_review_test.go", "internal/retrievaleval/retrieval_eval_test.go", "internal/server/schemaversion_wire_test.go", "internal/server/tools.go", "internal/server/tools_test.go", "internal/store/collectionprefix_conformance_test.go", "internal/store/export_test.go", "internal/store/instrument_test.go", "internal/store/listscopes_oversized_test.go", "internal/store/main_test.go", "internal/store/migrate_converge_test.go", "internal/store/migrate_faultinject_test.go", "internal/store/migrate_status_test.go", "internal/store/qdrant_client_convergence_test.go", "internal/store/qdrantclient_test.go", "internal/store/redevidence_harness_test.go", "internal/store/revert_test.go", "internal/store/schemaversion_recallgate_test.go", "internal/store/schemaversion_stamp_gate_test.go", "internal/store/store.go", "internal/store/store_test.go", "internal/store/storetest/cipin_test.go", "internal/store/storetest/seed.go", "internal/store/storetest/seed_test.go", "internal/store/storetest/storetest.go", "internal/store/storetest/storetest_test.go", "internal/store/testdata/qdrantclient/bad_aliased_test.go.txt", "internal/store/testdata/qdrantclient/bad_store.go.txt", "internal/store/testdata/qdrantclient/bad_store_aliased_import.go.txt", "internal/store/testdata/qdrantclient/bad_store_funcalias_holder.go.txt", "internal/store/testdata/qdrantclient/bad_test.go.txt", "internal/store/testdata/qdrantclient/bad_valueref_test.go.txt", "internal/store/testdata/qdrantclient/good_store.go.txt"]
-covered_digest: "v1:sha256:1059de0afac7c3ffe18c8b4007419b883e03fdb4a5494698fef914f6590573ff"
+covered_files: [".github/workflows/ci.yaml",".planning/phases/01-test-harness-fixture-helper/01-01-PLAN.md",".planning/phases/01-test-harness-fixture-helper/01-01-SUMMARY.md",".planning/phases/01-test-harness-fixture-helper/01-02-PLAN.md",".planning/phases/01-test-harness-fixture-helper/01-02-SUMMARY.md",".planning/phases/01-test-harness-fixture-helper/01-03-PLAN.md",".planning/phases/01-test-harness-fixture-helper/01-03-SUMMARY.md",".planning/phases/01-test-harness-fixture-helper/01-04-PLAN.md",".planning/phases/01-test-harness-fixture-helper/01-04-SUMMARY.md",".planning/phases/01-test-harness-fixture-helper/01-05-PLAN.md",".planning/phases/01-test-harness-fixture-helper/01-05-SUMMARY.md",".planning/phases/01-test-harness-fixture-helper/01-CONTEXT.md",".planning/phases/01-test-harness-fixture-helper/01-REVIEW-FIX.md",".planning/phases/01-test-harness-fixture-helper/01-REVIEW.md","internal/e2e/console_browser_test.go","internal/e2e/harness_test.go","internal/e2e/spine_review_test.go","internal/retrievaleval/retrieval_eval_test.go","internal/server/schemaversion_wire_test.go","internal/server/tools.go","internal/server/tools_test.go","internal/store/collectionprefix_conformance_test.go","internal/store/export_test.go","internal/store/instrument_test.go","internal/store/listscopes_oversized_test.go","internal/store/main_test.go","internal/store/migrate_converge_test.go","internal/store/migrate_faultinject_test.go","internal/store/migrate_status_test.go","internal/store/qdrant_client_convergence_test.go","internal/store/qdrantclient_test.go","internal/store/revert_test.go","internal/store/schemaversion_recallgate_test.go","internal/store/schemaversion_stamp_gate_test.go","internal/store/store.go","internal/store/store_test.go","internal/store/storetest/cipin_test.go","internal/store/storetest/seed.go","internal/store/storetest/seed_test.go","internal/store/storetest/storetest.go","internal/store/storetest/storetest_test.go","internal/store/testdata/qdrantclient/bad_aliased_test.go.txt","internal/store/testdata/qdrantclient/bad_store.go.txt","internal/store/testdata/qdrantclient/bad_store_aliased_import.go.txt","internal/store/testdata/qdrantclient/bad_store_funcalias_holder.go.txt","internal/store/testdata/qdrantclient/bad_test.go.txt","internal/store/testdata/qdrantclient/bad_valueref_test.go.txt","internal/store/testdata/qdrantclient/good_store.go.txt"]
+covered_digest: "v1:sha256:bda6f82246ea61e8fc0be4b30aad32d73ba4206d31483b2c6d1a2b2a5b62a7ee"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -132,3 +132,26 @@ None. All 3 ROADMAP success criteria and all plan-level must-haves are verified 
 
 _Verified: 2026-09-18T22:20:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## Re-fingerprint 2026-09-21 — red-evidence paths pruned from `covered_files`
+
+**Verdict unchanged.** No claim in this report was re-evaluated.
+
+The red-evidence mutation harness was removed repo-wide under rule `3p0zsqrhmb`
+("NEVER write tests for tests..."), deleting `internal/store/redevidence_harness_test.go`
+and every `red-evidence/*.patch`. Those paths were listed in this report's
+`covered_files`, and `computeCoveredDigest` returns null when any covered file is
+missing — so every phase in this milestone read `stale` for a purely mechanical
+reason, with nothing about the verified behaviour having changed.
+
+Repair: dropped only the now-deleted red-evidence paths from `covered_files` and
+recomputed `covered_digest` with the native verb —
+`gsd-tools query verification.fingerprint <phaseDir> <files...>` — then confirmed
+`verification.status --pick status` reads `passed`.
+
+Every dropped entry was a `red-evidence/*.patch` or the harness file itself; no
+source file, plan, summary, requirement or review left the covered set. This
+follows the precedent this milestone already set when phase 4 pruned
+`.planning/WINDOWS.md` from its own covered set for the same class of reason.

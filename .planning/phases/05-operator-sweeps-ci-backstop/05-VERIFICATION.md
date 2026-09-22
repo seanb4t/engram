@@ -5,8 +5,8 @@ status: passed
 score: 9/9 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-covered_files: [".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-INVENTORY.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-01-PLAN.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-01-SUMMARY.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-02-PLAN.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-02-SUMMARY.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-03-PLAN.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-03-SUMMARY.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-04-PLAN.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-04-SUMMARY.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-05-PLAN.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-05-SUMMARY.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-06-PLAN.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-06-SUMMARY.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-CONTEXT.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-DISCUSSION-LOG.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-PATTERNS.md", ".planning/phases/05-operator-sweeps-ci-backstop/05-VALIDATION.md", ".planning/phases/05-operator-sweeps-ci-backstop/deferred-items.md", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-01-citations-view-unbudgeted.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-01-purge-view-unbudgeted.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-01-scanspine-view-unbudgeted.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-02-revert-preview-view-unbudgeted.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-03-migrate-pass-sentinel-escapes-as-failure.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-03-migrate-sweep-view-unbudgeted.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-03-revert-pass-sentinel-escapes-as-failure.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-04-reindex-final-partial-page-dropped.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-04-reindex-walks-store-collection-not-source.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-04-summarize-limit-sentinel-escapes.patch", ".planning/phases/05-operator-sweeps-ci-backstop/red-evidence/05-05-backstop-appended-after-caller-options.patch", "internal/store/boundedread.go", "internal/store/boundedread_test.go", "internal/store/export_test.go", "internal/store/migrate.go", "internal/store/migratesweep_oversized_test.go", "internal/store/orderedpage_oversized_test.go", "internal/store/qdrantbackstop_test.go", "internal/store/redevidence_harness_test.go", "internal/store/reindexsweep_oversized_test.go", "internal/store/revert.go", "internal/store/revertpreview_oversized_test.go", "internal/store/schemaversion_recallgate_test.go", "internal/store/spine.go", "internal/store/spine_test.go", "internal/store/spinesweeps_oversized_test.go", "internal/store/store.go", "internal/store/storetest/storetest.go", "internal/store/summarize.go", "internal/store/summarizesweep_oversized_test.go"]
-covered_digest: "v1:sha256:3ab6a31d1f17d7d30146b05c9a620e590678d38c7df2fcec5f2e82d6fa1fadf2"
+covered_files: [".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-INVENTORY.md",".planning/phases/05-operator-sweeps-ci-backstop/05-01-PLAN.md",".planning/phases/05-operator-sweeps-ci-backstop/05-01-SUMMARY.md",".planning/phases/05-operator-sweeps-ci-backstop/05-02-PLAN.md",".planning/phases/05-operator-sweeps-ci-backstop/05-02-SUMMARY.md",".planning/phases/05-operator-sweeps-ci-backstop/05-03-PLAN.md",".planning/phases/05-operator-sweeps-ci-backstop/05-03-SUMMARY.md",".planning/phases/05-operator-sweeps-ci-backstop/05-04-PLAN.md",".planning/phases/05-operator-sweeps-ci-backstop/05-04-SUMMARY.md",".planning/phases/05-operator-sweeps-ci-backstop/05-05-PLAN.md",".planning/phases/05-operator-sweeps-ci-backstop/05-05-SUMMARY.md",".planning/phases/05-operator-sweeps-ci-backstop/05-06-PLAN.md",".planning/phases/05-operator-sweeps-ci-backstop/05-06-SUMMARY.md",".planning/phases/05-operator-sweeps-ci-backstop/05-CONTEXT.md",".planning/phases/05-operator-sweeps-ci-backstop/05-DISCUSSION-LOG.md",".planning/phases/05-operator-sweeps-ci-backstop/05-PATTERNS.md",".planning/phases/05-operator-sweeps-ci-backstop/05-VALIDATION.md",".planning/phases/05-operator-sweeps-ci-backstop/deferred-items.md","internal/store/boundedread.go","internal/store/boundedread_test.go","internal/store/export_test.go","internal/store/migrate.go","internal/store/migratesweep_oversized_test.go","internal/store/orderedpage_oversized_test.go","internal/store/qdrantbackstop_test.go","internal/store/reindexsweep_oversized_test.go","internal/store/revert.go","internal/store/revertpreview_oversized_test.go","internal/store/schemaversion_recallgate_test.go","internal/store/spine.go","internal/store/spine_test.go","internal/store/spinesweeps_oversized_test.go","internal/store/store.go","internal/store/storetest/storetest.go","internal/store/summarize.go","internal/store/summarizesweep_oversized_test.go"]
+covered_digest: "v1:sha256:89c9c789abcc6513d2175db1e7ef72151e306181c02dccffea39893226e09528"
 gaps: []
 deferred: []
 ---
@@ -149,3 +149,25 @@ changed — only the GitHub issue state, which is what truth 9 asserts.
 Status flipped `gaps_found` → `passed`, score 8/9 → 9/9. `covered_files` and `covered_digest` are
 unchanged and remain valid: nothing in the covered set was touched by the closure.
 
+---
+
+## Re-fingerprint 2026-09-21 — red-evidence paths pruned from `covered_files`
+
+**Verdict unchanged.** No claim in this report was re-evaluated.
+
+The red-evidence mutation harness was removed repo-wide under rule `3p0zsqrhmb`
+("NEVER write tests for tests..."), deleting `internal/store/redevidence_harness_test.go`
+and every `red-evidence/*.patch`. Those paths were listed in this report's
+`covered_files`, and `computeCoveredDigest` returns null when any covered file is
+missing — so every phase in this milestone read `stale` for a purely mechanical
+reason, with nothing about the verified behaviour having changed.
+
+Repair: dropped only the now-deleted red-evidence paths from `covered_files` and
+recomputed `covered_digest` with the native verb —
+`gsd-tools query verification.fingerprint <phaseDir> <files...>` — then confirmed
+`verification.status --pick status` reads `passed`.
+
+Every dropped entry was a `red-evidence/*.patch` or the harness file itself; no
+source file, plan, summary, requirement or review left the covered set. This
+follows the precedent this milestone already set when phase 4 pruned
+`.planning/WINDOWS.md` from its own covered set for the same class of reason.

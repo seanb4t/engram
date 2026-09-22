@@ -3,43 +3,8 @@ phase: 03-shared-bounded-read-mechanism-content-cap-decision
 verified: 2026-09-19T19:32:00Z
 status: passed
 score: 3/3 must-haves verified
-covered_files:
-  - ".planning/PROJECT.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-01-PLAN.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-01-SUMMARY.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-02-PLAN.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-02-SUMMARY.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-03-PLAN.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-03-SUMMARY.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-04-PLAN.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-04-SUMMARY.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-05-PLAN.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-05-SUMMARY.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-06-PLAN.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-06-SUMMARY.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-CONTEXT.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-INVENTORY.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-REVIEW-FIX.md"
-  - ".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-REVIEW.md"
-  - "CLAUDE.md"
-  - "docs-site/src/content/docs/guides/configure.md"
-  - "docs-site/src/content/docs/guides/upgrade.md"
-  - "docs-site/src/content/docs/reference/errors.md"
-  - "docs-site/src/content/docs/reference/tools.md"
-  - "internal/config/config.go"
-  - "internal/config/registry.go"
-  - "internal/config/validate.go"
-  - "internal/e2e/contentcap_cli_test.go"
-  - "internal/server/tools.go"
-  - "internal/skills/data/curating-memory/SKILL.md"
-  - "internal/store/boundedread.go"
-  - "internal/store/orderedpage.go"
-  - "internal/store/redevidence_harness_test.go"
-  - "internal/store/revert.go"
-  - "internal/store/spine.go"
-  - "internal/store/store.go"
-  - "skill/engram/skills/curating-memory/SKILL.md"
-covered_digest: "v1:sha256:7a9cf6dbf5d6f754703e1bbaabb6f4ceb3a81b390b53fbed58959df512ec7796"
+covered_files: [".planning/PROJECT.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-01-PLAN.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-01-SUMMARY.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-02-PLAN.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-02-SUMMARY.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-03-PLAN.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-03-SUMMARY.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-04-PLAN.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-04-SUMMARY.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-05-PLAN.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-05-SUMMARY.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-06-PLAN.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-06-SUMMARY.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-CONTEXT.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-INVENTORY.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-REVIEW-FIX.md",".planning/phases/03-shared-bounded-read-mechanism-content-cap-decision/03-REVIEW.md","CLAUDE.md","docs-site/src/content/docs/guides/configure.md","docs-site/src/content/docs/guides/upgrade.md","docs-site/src/content/docs/reference/errors.md","docs-site/src/content/docs/reference/tools.md","internal/config/config.go","internal/config/registry.go","internal/config/validate.go","internal/e2e/contentcap_cli_test.go","internal/server/tools.go","internal/skills/data/curating-memory/SKILL.md","internal/store/boundedread.go","internal/store/orderedpage.go","internal/store/revert.go","internal/store/spine.go","internal/store/store.go","skill/engram/skills/curating-memory/SKILL.md"]
+covered_digest: "v1:sha256:ab02f8c6311da7d9697736898c50e30eaa1bcaba16641942a0dbe2182cc28c61"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -152,3 +117,26 @@ None. All three ROADMAP Success Criteria are independently re-verified against t
 
 _Verified: 2026-09-19T19:32:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## Re-fingerprint 2026-09-21 — red-evidence paths pruned from `covered_files`
+
+**Verdict unchanged.** No claim in this report was re-evaluated.
+
+The red-evidence mutation harness was removed repo-wide under rule `3p0zsqrhmb`
+("NEVER write tests for tests..."), deleting `internal/store/redevidence_harness_test.go`
+and every `red-evidence/*.patch`. Those paths were listed in this report's
+`covered_files`, and `computeCoveredDigest` returns null when any covered file is
+missing — so every phase in this milestone read `stale` for a purely mechanical
+reason, with nothing about the verified behaviour having changed.
+
+Repair: dropped only the now-deleted red-evidence paths from `covered_files` and
+recomputed `covered_digest` with the native verb —
+`gsd-tools query verification.fingerprint <phaseDir> <files...>` — then confirmed
+`verification.status --pick status` reads `passed`.
+
+Every dropped entry was a `red-evidence/*.patch` or the harness file itself; no
+source file, plan, summary, requirement or review left the covered set. This
+follows the precedent this milestone already set when phase 4 pruned
+`.planning/WINDOWS.md` from its own covered set for the same class of reason.

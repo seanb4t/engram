@@ -3,8 +3,8 @@ phase: 06-cross-spine-partial-results
 verified: 2026-09-20T22:45:00Z
 status: passed
 score: 8/8 must-haves verified
-covered_files: [".planning/phases/06-cross-spine-partial-results/06-01-PLAN.md", ".planning/phases/06-cross-spine-partial-results/06-01-SUMMARY.md", ".planning/phases/06-cross-spine-partial-results/06-02-PLAN.md", ".planning/phases/06-cross-spine-partial-results/06-02-SUMMARY.md", ".planning/phases/06-cross-spine-partial-results/06-03-PLAN.md", ".planning/phases/06-cross-spine-partial-results/06-03-SUMMARY.md", ".planning/phases/06-cross-spine-partial-results/06-CONTEXT.md", ".planning/phases/06-cross-spine-partial-results/06-DISCUSSION-LOG.md", ".planning/phases/06-cross-spine-partial-results/06-PATTERNS.md", ".planning/phases/06-cross-spine-partial-results/06-REVIEW.md", ".planning/phases/06-cross-spine-partial-results/06-VALIDATION.md", ".planning/phases/06-cross-spine-partial-results/deferred-items.md", ".planning/phases/06-cross-spine-partial-results/red-evidence/06-01-connect-search-discards-hits.patch", ".planning/phases/06-cross-spine-partial-results/red-evidence/06-01-empty-scopes-substituted-for-absence.patch", ".planning/phases/06-cross-spine-partial-results/red-evidence/06-01-helper-swallows-listscopes-error.patch", ".planning/phases/06-cross-spine-partial-results/red-evidence/06-01-mcp-list-discards-hits.patch", ".planning/phases/06-cross-spine-partial-results/red-evidence/06-02-footer-drops-unknown-form.patch", "CLAUDE.md", "cmd/engram/client_common.go", "cmd/engram/client_list.go", "cmd/engram/client_list_test.go", "cmd/engram/client_search.go", "cmd/engram/client_search_test.go", "docs-site/src/content/docs/guides/cli.md", "docs-site/src/content/docs/guides/upgrade.md", "docs-site/src/content/docs/reference/tools.md", "gen/go/engram/v1/engram.pb.go", "gen/ts/engram/v1/engram_pb.ts", "internal/server/connectapi.go", "internal/server/connectdescriptor_test.go", "internal/server/crossspinecoverage_test.go", "internal/server/tools.go", "internal/server/tools_test.go", "internal/store/redevidence_harness_test.go", "proto/engram/v1/engram.proto", "ui/src/lib/gen/engram/v1/engram_pb.ts"]
-covered_digest: "v1:sha256:699d2cec684eca22f9a3e6a539a2ea8535f3f8bd96aca863013b3280de580994"
+covered_files: [".planning/phases/06-cross-spine-partial-results/06-01-PLAN.md",".planning/phases/06-cross-spine-partial-results/06-01-SUMMARY.md",".planning/phases/06-cross-spine-partial-results/06-02-PLAN.md",".planning/phases/06-cross-spine-partial-results/06-02-SUMMARY.md",".planning/phases/06-cross-spine-partial-results/06-03-PLAN.md",".planning/phases/06-cross-spine-partial-results/06-03-SUMMARY.md",".planning/phases/06-cross-spine-partial-results/06-CONTEXT.md",".planning/phases/06-cross-spine-partial-results/06-DISCUSSION-LOG.md",".planning/phases/06-cross-spine-partial-results/06-PATTERNS.md",".planning/phases/06-cross-spine-partial-results/06-REVIEW.md",".planning/phases/06-cross-spine-partial-results/06-VALIDATION.md",".planning/phases/06-cross-spine-partial-results/deferred-items.md","CLAUDE.md","cmd/engram/client_common.go","cmd/engram/client_list.go","cmd/engram/client_list_test.go","cmd/engram/client_search.go","cmd/engram/client_search_test.go","docs-site/src/content/docs/guides/cli.md","docs-site/src/content/docs/guides/upgrade.md","docs-site/src/content/docs/reference/tools.md","gen/go/engram/v1/engram.pb.go","gen/ts/engram/v1/engram_pb.ts","internal/server/connectapi.go","internal/server/connectdescriptor_test.go","internal/server/crossspinecoverage_test.go","internal/server/tools.go","internal/server/tools_test.go","proto/engram/v1/engram.proto","ui/src/lib/gen/engram/v1/engram_pb.ts"]
+covered_digest: "v1:sha256:6ba2b40d980db98cd36dd1de8ce2da926d3f18e6a3cadb5578ee630f2bd8f960"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -91,3 +91,26 @@ One item is worth carrying forward as context, not as a phase gap: the `internal
 
 _Verified: 2026-09-20T22:45:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## Re-fingerprint 2026-09-21 — red-evidence paths pruned from `covered_files`
+
+**Verdict unchanged.** No claim in this report was re-evaluated.
+
+The red-evidence mutation harness was removed repo-wide under rule `3p0zsqrhmb`
+("NEVER write tests for tests..."), deleting `internal/store/redevidence_harness_test.go`
+and every `red-evidence/*.patch`. Those paths were listed in this report's
+`covered_files`, and `computeCoveredDigest` returns null when any covered file is
+missing — so every phase in this milestone read `stale` for a purely mechanical
+reason, with nothing about the verified behaviour having changed.
+
+Repair: dropped only the now-deleted red-evidence paths from `covered_files` and
+recomputed `covered_digest` with the native verb —
+`gsd-tools query verification.fingerprint <phaseDir> <files...>` — then confirmed
+`verification.status --pick status` reads `passed`.
+
+Every dropped entry was a `red-evidence/*.patch` or the harness file itself; no
+source file, plan, summary, requirement or review left the covered set. This
+follows the precedent this milestone already set when phase 4 pruned
+`.planning/WINDOWS.md` from its own covered set for the same class of reason.
