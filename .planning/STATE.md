@@ -2,17 +2,18 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
-current_phase: 2026
+current_phase: 1
+current_phase_name: Eval Foundation & Lexical Reranker Fix
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-09-23T01:03:30.475Z"
+last_updated: "2026-09-23T02:13:01.656Z"
 last_activity: 2026-09-22
 last_activity_desc: "Roadmap created for milestone 2026-09-22.01 (5 phases: Eval Foundation & Lexical Reranker Fix, Decision Interface & Jev Backend, Curation Verdicts, Jev Reranker & Per-Hit Relevance Signal, Operator Correctness)"
-state_head: 373625fc7977d01a5e991adb5fe4a98b349b8f94
+state_head: da9a548477937b241bd158dbdad3a676277eb081
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 6
   completed_plans: 0
   percent: 0
 ---
@@ -28,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-22 after milestone 2026-09-18.01 — 
 
 ## Current Position
 
-Phase: 2026-09-22.01 Phase 1: Eval Foundation & Lexical Reranker Fix (not started)
+Phase: 1 (Eval Foundation & Lexical Reranker Fix) — READY TO EXECUTE
 Plan: —
 Status: Roadmap created — 5 phases, 22/22 requirements mapped, awaiting approval
 Last activity: 2026-09-22 — Roadmap created for milestone 2026-09-22.01 (5 phases: Eval Foundation & Lexical Reranker Fix, Decision Interface & Jev Backend, Curation Verdicts, Jev Reranker & Per-Hit Relevance Signal, Operator Correctness)
