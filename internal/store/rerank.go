@@ -8,12 +8,13 @@ import (
 	"strings"
 )
 
-// candidateK computes the bounded over-fetch limit SearchReranked passes to the
+// CandidateK computes the bounded over-fetch limit SearchReranked passes to the
 // underlying vector Search: never collapsing to no over-fetch (Limit == k,
 // leaving the reranker nothing extra to promote from) and never growing
 // unbounded (review finding 7). Scales with k*4 between a floor of 32 and a
-// cap of 100.
-func candidateK(k uint64) uint64 {
+// cap of 100. Exported so the retrieval eval can fetch the exact candidate
+// pool SearchReranked ranks (2026-09-22.01 Phase 1, RANK-01).
+func CandidateK(k uint64) uint64 {
 	c := k * 4
 	if c < 32 {
 		c = 32
@@ -97,4 +98,26 @@ func RerankHits(query string, hits []Memory, k int) []Memory {
 		out[i] = ranked[i].m
 	}
 	return out
+}
+
+// VectorOrder is the first-stage vector order with a deterministic tie-break:
+// hits sorted stably by Score descending, then ID ascending, then truncated
+// to k (k <= 0 or k >= len(hits) keeps every hit). It is a PURE function of
+// (hits, k) and reads no lexical, usage or query signal. The retrieval eval
+// measures it as the vector-only baseline (D-06), and it is the rank step
+// SearchReranked ships if D-05 selects vector-only (D-08). It never mutates
+// its input.
+func VectorOrder(hits []Memory, k int) []Memory {
+	ranked := make([]Memory, len(hits))
+	copy(ranked, hits)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].Score != ranked[j].Score {
+			return ranked[i].Score > ranked[j].Score
+		}
+		return ranked[i].ID < ranked[j].ID
+	})
+	if k <= 0 || k >= len(ranked) {
+		k = len(ranked)
+	}
+	return ranked[:k]
 }

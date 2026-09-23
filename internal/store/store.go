@@ -1192,9 +1192,9 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 
 	// D-10 backstop: refused before any filter construction or RPC.
 	// SearchReranked needs no call of its own — it delegates here with
-	// candidateK(k) (clamped to at most 100, always well under
+	// CandidateK(k) (clamped to at most 100, always well under
 	// MaxRecallLimit), so this guard can never reject a SearchReranked call
-	// for being over the maximum; that is fine, since candidateK already
+	// for being over the maximum; that is fine, since CandidateK already
 	// bounds SearchReranked's actual RPC cost independent of the caller's k,
 	// so a duplicate guard there would add nothing.
 	if err := rejectOverMaximum("k", k); err != nil {
@@ -1302,7 +1302,7 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 }
 
 // SearchReranked is the shared search-with-rerank helper: it over-fetches
-// candidateK(k) raw hits via the existing owner/scope-filtered Search, applies
+// CandidateK(k) raw hits via the existing owner/scope-filtered Search, applies
 // the pure RerankHits lexical-overlap reorder, and truncates to the caller's
 // already-defaulted k. deps.searchMemory (MCP), engramAPI.SearchMemories
 // (Connect), and the retrieval eval all call this — the ONE ranking path for
@@ -1313,7 +1313,7 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 // k == 0 is rejected with ErrInvalidArgument (round-2 finding 6): callers MUST
 // pass the already-defaulted effective k (MCP defaults 8 at tools.go, Connect
 // defaults 20 at connectapi.go — BEFORE calling this helper) — a zero k never
-// silently over-fetches candidateK then truncates to an empty result.
+// silently over-fetches CandidateK then truncates to an empty result.
 //
 // SearchReranked takes plain inputs (query text, query vector, k) and does NOT
 // import internal/embed or internal/server (round-2 finding 7): embedding
@@ -1324,13 +1324,13 @@ func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, 
 		return nil, fmt.Errorf("%w: SearchReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
 	}
 	// The lexical reranker (RerankHits/lexicalOverlap) scores against
-	// content for EVERY candidate, and candidateK clamps the candidate pool
+	// content for EVERY candidate, and CandidateK clamps the candidate pool
 	// at 100 regardless of k — so this one surface's fetch view is fixed by
 	// an internal consumer rather than by the caller's own Full flag. The
 	// caller's flag still governs response shaping at the server boundary,
 	// unchanged.
 	opts.Full = true
-	hits, err := s.Search(ctx, scope, subj, vec, candidateK(k), opts)
+	hits, err := s.Search(ctx, scope, subj, vec, CandidateK(k), opts)
 	if err != nil {
 		return nil, err
 	}

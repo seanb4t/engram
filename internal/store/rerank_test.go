@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -25,8 +26,8 @@ func TestCandidateK(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := candidateK(tc.k); got != tc.want {
-				t.Errorf("candidateK(%d) = %d, want %d", tc.k, got, tc.want)
+			if got := CandidateK(tc.k); got != tc.want {
+				t.Errorf("CandidateK(%d) = %d, want %d", tc.k, got, tc.want)
 			}
 		})
 	}
@@ -132,6 +133,74 @@ func TestRerankHitsIgnoresAccessCount(t *testing.T) {
 				"position %d: baseline=%s hot=%s (full baseline order=%v, hot order=%v)",
 				i, baselineOut[i].ID, hotOut[i].ID, idsOf(baselineOut), idsOf(hotOut))
 		}
+	}
+}
+
+// TestVectorOrderScoreThenIDOrder proves VectorOrder reads only Score/ID: a
+// lexically perfect lower-score hit ("b") is NOT promoted over a
+// higher-score hit ("c"), which would only happen if a lexical signal leaked
+// in.
+func TestVectorOrderScoreThenIDOrder(t *testing.T) {
+	t.Parallel()
+	hits := []Memory{
+		{ID: "b", Score: 0.5},
+		{ID: "c", Score: 0.9},
+		{ID: "a", Score: 0.5},
+	}
+	got := VectorOrder(hits, 3)
+	want := []string{"c", "a", "b"}
+	if got := idsOf(got); !reflect.DeepEqual(got, want) {
+		t.Fatalf("VectorOrder order = %v, want %v", got, want)
+	}
+}
+
+// TestVectorOrderTruncatesAndCopies proves the truncation rule (k<=0 or
+// k>=len(hits) returns every hit) and that VectorOrder never mutates its
+// input slice's order.
+func TestVectorOrderTruncatesAndCopies(t *testing.T) {
+	t.Parallel()
+	hits := []Memory{
+		{ID: "1", Score: 0.1},
+		{ID: "2", Score: 0.9},
+		{ID: "3", Score: 0.5},
+	}
+	inputOrderBefore := idsOf(hits)
+
+	if got := VectorOrder(hits, 2); len(got) != 2 {
+		t.Fatalf("VectorOrder(k=2) returned %d hits, want 2", len(got))
+	}
+	if got := VectorOrder(hits, 0); len(got) != len(hits) {
+		t.Fatalf("VectorOrder(k=0) should return every hit, got %d want %d", len(got), len(hits))
+	}
+	if got := VectorOrder(hits, 100); len(got) != len(hits) {
+		t.Fatalf("VectorOrder(k>len(hits)) should return every hit, got %d want %d", len(got), len(hits))
+	}
+
+	if got := idsOf(hits); !reflect.DeepEqual(got, inputOrderBefore) {
+		t.Fatalf("VectorOrder mutated the caller's input slice order: got %v, want %v", got, inputOrderBefore)
+	}
+}
+
+// TestVectorOrderIgnoresAccessCount mirrors TestRerankHitsIgnoresAccessCount:
+// output order is identical across wildly different AccessCount values.
+func TestVectorOrderIgnoresAccessCount(t *testing.T) {
+	t.Parallel()
+	baseline := []Memory{
+		{ID: "a", Score: 0.5, AccessCount: 0},
+		{ID: "b", Score: 0.5, AccessCount: 0},
+		{ID: "c", Score: 0.5, AccessCount: 0},
+	}
+	hot := []Memory{
+		{ID: "a", Score: 0.5, AccessCount: 500_000},
+		{ID: "b", Score: 0.5, AccessCount: 1_000_000},
+		{ID: "c", Score: 0.5, AccessCount: 1},
+	}
+
+	baselineOut := VectorOrder(baseline, 3)
+	hotOut := VectorOrder(hot, 3)
+
+	if got, want := idsOf(baselineOut), idsOf(hotOut); !reflect.DeepEqual(got, want) {
+		t.Fatalf("VectorOrder output order is NOT invariant under AccessCount: baseline=%v hot=%v", got, want)
 	}
 }
 
