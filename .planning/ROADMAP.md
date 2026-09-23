@@ -367,7 +367,7 @@ reranking work (Phase 4) has trustworthy numbers to gate on.
   3. `task eval:retrieval` reports recall@k and MRR for vector-only, lexical-reranked, and (when enabled) Jev-reranked ordering, including a paraphrase case written independently of #261's targets
   4. On that paraphrase case, the shipped ranking (lexical kept, demoted, or replaced per the numbers) does not regress versus vector-only order and keeps #261's target at rank 1
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -382,7 +382,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 01-05-PLAN.md — a live `task eval:retrieval` baseline, the rule's verdict recorded, and a decision checkpoint that confirms the measurement and authorizes the #605 post but never re-chooses (D-05, D-09; RANK-01, RANK-02)
+- [x] 01-05-PLAN.md — a live `task eval:retrieval` baseline, the rule's verdict recorded, and a decision checkpoint that confirms the measurement and authorizes the #605 post but never re-chooses (D-05, D-09; RANK-01, RANK-02)
 
 **Wave 4**
 
