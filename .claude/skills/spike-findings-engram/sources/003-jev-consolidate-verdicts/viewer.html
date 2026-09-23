@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev Pair Verdicts</title>
+<style>
+  :root { --bg:#fbfaf7; --fg:#1d1c1a; --muted:#6b675f; --card:#fff; --line:#e4e0d8;
+          --ok:#1f7a4d; --bad:#b3261e; --amb:#8a6d00; --bar:#3b6ea5; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+          --bg:#16161a; --fg:#ecebe8; --muted:#9a968e; --card:#1f1f24; --line:#33333a;
+          --ok:#5cc28f; --bad:#ff8a80; --amb:#e0c060; --bar:#7aa7d9; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  h1 { font-size:1.3rem; margin:.2em 0 .6em; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; align-items:center; }
+  select, button, input[type=file] { font:inherit; }
+  .summary { color:var(--muted); margin-bottom:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px; }
+  .head { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; margin-bottom:8px; }
+  .tag { font-weight:600; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .amb { color:var(--amb); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:700px) { .grid { grid-template-columns:1fr; } }
+  pre { white-space:pre-wrap; word-break:break-word; margin:0; font:12.5px/1.4 ui-monospace,monospace;
+        max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:8px; }
+  .bars { display:grid; grid-template-columns:90px 1fr 44px; gap:3px 8px; font-size:13px; margin:8px 0; max-width:420px; }
+  .bar { background:var(--line); border-radius:3px; height:10px; align-self:center; }
+  .bar > span { display:block; height:100%; background:var(--bar); border-radius:3px; }
+  .muted { color:var(--muted); font-size:13px; }
+  label.judge { margin-right:10px; font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Jev pair verdicts — spike 003</h1>
+  <div class="controls">
+    <input type="file" id="file" accept=".json" aria-label="Load verdicts.json">
+    <label>Show <select id="filter">
+      <option value="all">all</option><option value="wrong">Jev ≠ gold</option>
+      <option value="low">low confidence (&lt;0.7)</option><option value="amb">ambiguous gold</option>
+    </select></label>
+    <button id="export">Export my judgments</button>
+  </div>
+  <div class="summary" id="summary">Load <code>verdicts.json</code> (written by <code>go run main.go</code>).</div>
+  <div id="list"></div>
+</main>
+<script>
+let data = [], judged = {};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function render() {
+  const f = $("#filter").value;
+  const rows = data.filter(v => !v.error && (f === "all" || (f === "wrong" && !v.correct) ||
+    (f === "low" && (v.probabilities?.[v.choice] ?? 0) < 0.7) || (f === "amb" && v.ambiguous)));
+  const scored = data.filter(v => !v.error && !v.ambiguous);
+  const acc = scored.filter(v => v.correct).length;
+  $("#summary").textContent = `${data.length} pairs · ${scored.length} scored · accuracy ${acc}/${scored.length}` +
+    ` · showing ${rows.length} · your judgments: ${Object.keys(judged).length}`;
+  $("#list").innerHTML = rows.map(v => {
+    const cls = v.ambiguous ? "amb" : v.correct ? "ok" : "bad";
+    const bars = ["duplicate","contradicts","related","unrelated"].map(l => {
+      const p = v.probabilities?.[l] ?? 0;
+      return `<span>${l}</span><div class="bar"><span style="width:${(p*100).toFixed(0)}%"></span></div><span>${p.toFixed(2)}</span>`;
+    }).join("");
+    const j = judged[v.id];
+    const radio = ["jev right","gold right","both defensible"].map(o =>
+      `<label class="judge"><input type="radio" name="j-${esc(v.id)}" value="${o}" ${j===o?"checked":""}> ${o}</label>`).join("");
+    return `<div class="card">
+      <div class="head"><span class="tag">${esc(v.id)}</span>
+        <span>gold <b>${esc(v.gold)}</b>${v.ambiguous?" (ambiguous)":""}${v.synthetic?" · synthetic":""}</span>
+        <span class="${cls}">jev <b>${esc(v.choice)}</b> · conf ${(v.confidence??0).toFixed(2)}</span>
+        <span class="muted">same-subject ${(v.same_subject??0).toFixed(2)} · ${v.ms} ms · ${esc(v.source)}</span></div>
+      <div class="muted">${esc(v.rationale)}</div>
+      <div class="bars">${bars}</div>
+      <div class="grid"><div><div class="muted">A · ${esc(v.a_id)}</div><pre>${esc(v.a)}</pre></div>
+        <div><div class="muted">B · ${esc(v.b_id)}</div><pre>${esc(v.b)}</pre></div></div>
+      <div style="margin-top:8px">${radio}</div></div>`;
+  }).join("");
+  document.querySelectorAll('input[type=radio]').forEach(r => r.onchange = e => {
+    judged[e.target.name.slice(2)] = e.target.value; render(); });
+}
+$("#file").onchange = async e => { data = JSON.parse(await e.target.files[0].text()); render(); };
+$("#filter").onchange = render;
+$("#export").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(judged, null, 2)], {type:"application/json"}));
+  a.download = "judgments.json"; a.click();
+};
+</script>
+</body>
+</html>

@@ -81,6 +81,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
   which is version-driven, so none is in the registry or the status
   histogram.
 - **Not used here:** viper, cocogitto.
+- **Spike findings for engram** (implementation patterns, constraints, gotchas) → `Skill("spike-findings-engram")`
 
 ## Memory contract (stable)
 
