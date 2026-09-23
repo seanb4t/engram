@@ -82,6 +82,10 @@ tasks:
     desc: Measure recall@k/MRR incl. the #261 regression fixture (needs a live Qdrant + gateway)
     cmds:
       - ENGRAM_RETRIEVAL_EVAL=1 go test ./internal/retrievaleval/ -run TestRetrievalEval -v
+  eval:decisions:
+    desc: Live Decisions smoke test against ENGRAM_DECISIONS_BASE_URL (needs a key; spends a fraction of a cent)
+    cmds:
+      - ENGRAM_DECISIONS_LIVE=1 go test ./internal/decide/jev/ -run '^TestJevLive$' -count=1 -v
 
   lint:
     desc: Run all linters
