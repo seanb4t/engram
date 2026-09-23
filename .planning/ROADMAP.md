@@ -507,7 +507,7 @@ the result set actually answers the query.
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-09-23 |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
@@ -546,7 +546,7 @@ the result set actually answers the query.
 | 5. Operator Sweeps & CI Backstop | 2026-09-18.01 | 6/6 | Complete | 2026-09-20 |
 | 6. Cross-Spine Partial Results | 2026-09-18.01 | 3/3 | Complete | 2026-09-20 |
 | 7. Bounded Provider Responses | 2026-09-18.01 | 5/5 | Complete | 2026-09-21 |
-| 1. Eval Foundation & Lexical Reranker Fix | 2026-09-22.01 | 0/4 | Not started | - |
+| 1. Eval Foundation & Lexical Reranker Fix | 2026-09-22.01 | 6/6 | Complete | 2026-09-23 |
 | 2. Decision Interface & Jev Backend | 2026-09-22.01 | 0/6 | Not started | - |
 | 3. Curation Verdicts | 2026-09-22.01 | 0/4 | Not started | - |
 | 4. Jev Reranker & Per-Hit Relevance Signal | 2026-09-22.01 | 0/3 | Not started | - |
