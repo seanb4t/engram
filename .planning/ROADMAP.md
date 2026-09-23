@@ -403,7 +403,34 @@ inert until an operator opts in.
   5. The OpenRouter Go SDK evaluation and its adopt/reject decision are recorded before any hand-written client lands
   6. Every decision call emits an OTLP span carrying latency, question count, input tokens, and cost
 
-**Plans**: TBD
+**Plans:** 8 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — SDK candidate facts and static Decisions surface from live commands (no SDK code run), COVERAGE.md reconciled, blocking-human package-legitimacy checkpoint (D-05, D-07; DEC-05)
+
+**Wave 2**
+
+- [ ] 02-02-PLAN.md — nested-module harness replays both error dialects and a success body through the SDK (E01–E10), fixed R1–R4 verdict table, blocking-human D-06 adopt-or-reject checkpoint, durable decision record text (D-05–D-07; DEC-05)
+
+**Wave 3**
+
+- [ ] 02-03-PLAN.md — tracer: config → `deciderFromConfig` → `decide.Decider` → jev → `{base}/alpha/decisions` → typed noul answer with a `decide` span, on the resolved D-06 branch; nine `ENGRAM_DECISIONS_*` registry rows with a provider-gated `Validate` (D-01–D-03, D-06, D-08, D-10, D-13; DEC-01, DEC-02, DEC-03, DEC-06)
+
+**Wave 4**
+
+- [ ] 02-04-PLAN.md — choice/score types, D-09 structural validation with `Add`, the D-12 named-error vocabulary and `Status`, bounded order-preserving `DecideMany` (D-09, D-10, D-12; DEC-02, DEC-04)
+- [ ] 02-06-PLAN.md — Helm `memory.decisions` off by default with the key via `secretKeyRef` and `chart:validate` guards; configure/deploy docs with the data disclosure, gated against the registry; `CLAUDE.md` row (D-01, D-03, D-04; DEC-01, DEC-03)
+
+**Wave 5**
+
+- [ ] 02-05-PLAN.md — every knob threaded into the jev client, `deps.decider` built at startup only when a provider is set, zero-egress-when-off and enablement-log proofs (D-01–D-03, D-10; DEC-01, DEC-03)
+- [ ] 02-07-PLAN.md — status-only classification for both error dialects, one jittered retry inside the budget, named too-large, status-attributed span with no content in telemetry (D-11–D-13; DEC-04, DEC-06)
+
+**Wave 6**
+
+- [ ] 02-08-PLAN.md — full noul/choice/score wire codec proven on both base-URL shapes, opt-in `TestJevLive` plus `task eval:decisions` with a human live check against OpenRouter and the LiteLLM pass-through (DEC-02, DEC-03)
 
 ### Phase 3: Curation Verdicts
 

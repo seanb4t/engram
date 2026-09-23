@@ -47,7 +47,7 @@ Requirement → test coverage (from RESEARCH.md § Validation Architecture; the 
 | DEC-02 | One interface: batched Choice/Score/Noul → typed answers; structural validation; DecideMany per-item results | unit | `go test ./internal/decide/... -run 'TestDecider|TestValidate|TestDecideMany' -count=1` | ❌ W0 | ⬜ pending |
 | DEC-03 | Jev reaches `{base}/alpha/decisions` for both OpenRouter and LiteLLM bases | unit (httptest) | `go test ./internal/decide/jev/... -run TestJevRequestShape -count=1` | ❌ W0 | ⬜ pending |
 | DEC-04 | Both error dialects, timeout, oversized response, 429/5xx single retry → named errors | unit (httptest) | `go test ./internal/decide/jev/... -run TestJevErrorClassification -count=1` | ❌ W0 | ⬜ pending |
-| DEC-05 | SDK evaluated; adopt/reject recorded before client code | doc + spike test | `go test ./internal/decide/jev/... -run TestSDKEvaluation -count=1` (if kept) + phase doc | ❌ W0 | ⬜ pending |
+| DEC-05 | SDK evaluated; adopt/reject recorded before client code | doc + spike test | `go -C .planning/phases/02-decision-interface-jev-backend/sdk-eval test -run '^TestSDKEvaluation$' -count=1 -race -v ./...` (nested module, plan 02-02) + `rg '^resolution: ' 02-SDK-EVALUATION.md` | ❌ W0 | ⬜ pending |
 | DEC-06 | `decide` span with provider/model/questions/tokens/cost/status attributes | unit (tracetest) | `go test ./internal/decide/jev/... -run TestJevDecideEmitsSpan -count=1` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
