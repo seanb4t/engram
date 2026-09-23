@@ -367,14 +367,14 @@ reranking work (Phase 4) has trustworthy numbers to gate on.
   3. `task eval:retrieval` reports recall@k and MRR for vector-only, lexical-reranked, and (when enabled) Jev-reranked ordering, including a paraphrase case written independently of #261's targets
   4. On that paraphrase case, the shipped ranking (lexical kept, demoted, or replaced per the numbers) does not regress versus vector-only order and keeps #261's target at rank 1
 
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 Plans:
 **Wave 1**
 
 - [x] 01-01-PLAN.md — resolved-config eval gates: `ENGRAM_RETRIEVAL_EVAL` through a package-local koanf load (unregistered, never validated), the differ's symmetric skip from the loader's own returned config, and a cosine-distance differ gate that is fatal on NaN, Inf or zero-norm vectors (D-13–D-15; EVAL-01, EVAL-02)
 - [x] 01-02-PLAN.md — exported `store.CandidateK` and `store.VectorOrder`, plus eval-local comparison rankers (lexical port, cosine blend, overlap gate) with hermetic property tests (D-06, D-07; RANK-01, RANK-02)
-- [ ] 01-03-PLAN.md — a 96-record, six-domain synthetic paraphrase corpus with sticky neighbours, 20+4 topic labels, an integrity test, and a blocking checkpoint where a fresh context writes the queries blind (D-01–D-03, D-12; RANK-01)
+- [x] 01-03-PLAN.md — a 96-record, six-domain synthetic paraphrase corpus with sticky neighbours, 20+4 topic labels, an integrity test, and a blocking checkpoint where a fresh context writes the queries blind (D-01–D-03, D-12; RANK-01)
 
 **Wave 2**
 

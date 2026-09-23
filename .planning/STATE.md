@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 1
 current_phase_name: Eval Foundation & Lexical Reranker Fix
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-09-23T02:44:10.934Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-09-23T03:03:09.152Z"
 last_activity: 2026-09-22
 last_activity_desc: Phase 1 execution started
-state_head: 4eb8d35e17fd1c0ee3aaefcbdac7e08eae8131f5
+state_head: c9069f8f4298785eb9e1091ecc937c60d3c60585
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 6
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-22 after milestone 2026-09-18.01 — 
 ## Current Position
 
 Phase: 1 (Eval Foundation & Lexical Reranker Fix) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-09-22 — Phase 1 execution started
 
@@ -365,6 +365,8 @@ milestone needs in working memory.
 - [Phase 1]: D-14/D-15/D-13 implemented exactly as CONTEXT.md specified: resolved config threaded through StoreAndEmbedderFromEnvNoEnsure, package-local koanf gate for ENGRAM_RETRIEVAL_EVAL kept out of internal/config, cosine-epsilon differ gate replacing bit-identity
 - [Phase 01]: Comparison rankers (lexicalRerank/cosineBlendRerank/overlapGateRerank) placed in internal/retrievaleval per the plan's own CONTEXT.md placement decision, not internal/store, so the eval keeps a lexical row alive even if D-08 later deletes the shipped lexical code.
 - [Phase 01]: overlapGateRerank implemented as a stable partition (promoted subset sorted by overlap/Score/ID, rest in store.VectorOrder) so it mechanically collapses to lexicalRerank at theta=0 and store.VectorOrder at theta>1.
+- [Phase 1]: Blind query author: fresh general-purpose subagent (0 tool calls, no repo context), not the user — keeps D-01's independence boundary mechanical
+- [Phase 1]: 01-03: corrected stale .git plan-commit ledger sentinel (leftover from an earlier milestone's same-numbered phase) to the correct plan-start commit 36444a57
 
 ### Pending Todos
 
@@ -442,8 +444,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T02:44:00.913Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-09-23T03:03:09.131Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -612,6 +614,7 @@ Resume file: None
 | Phase 07 P05 | 104min | 3 tasks | 7 files |
 | Phase 01 P01 | 45min | 3 tasks | 9 files |
 | Phase 01 P02 | 25 min | 2 tasks | 5 files |
+| Phase 01 P03 | ~12min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 
