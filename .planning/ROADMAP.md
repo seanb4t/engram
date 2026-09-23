@@ -348,7 +348,7 @@ Connect `internal` / HTTP 500.
 capability (Jev as the first backend) that measurably improves curation and recall, and the
 lexical reranker's paraphrase regression (#605) is fixed.
 
-- [ ] **Phase 1: Eval Foundation & Lexical Reranker Fix** - Retrieval eval gains a paraphrase case and reports recall@k/MRR across ordering strategies; the lexical reranker regression is measured and resolved
+- [x] **Phase 1: Eval Foundation & Lexical Reranker Fix** - Retrieval eval gains a paraphrase case and reports recall@k/MRR across ordering strategies; the lexical reranker regression is measured and resolved (completed 2026-09-23)
 - [ ] **Phase 2: Decision Interface & Jev Backend** - Provider-neutral Go interface over System One's Choice/Score/Noul vocabulary; Jev backend over OpenRouter's Decisions API, off by default
 - [ ] **Phase 3: Curation Verdicts** - `spine-review consolidate` surfaces advisory relation verdicts per candidate pair, confidence-tiered, never mutating
 - [ ] **Phase 4: Jev Reranker & Per-Hit Relevance Signal** - Opt-in reranking on `search_memory` with a fallback to vector order and a per-hit relevance probability on every surface
@@ -367,7 +367,7 @@ reranking work (Phase 4) has trustworthy numbers to gate on.
   3. `task eval:retrieval` reports recall@k and MRR for vector-only, lexical-reranked, and (when enabled) Jev-reranked ordering, including a paraphrase case written independently of #261's targets
   4. On that paraphrase case, the shipped ranking (lexical kept, demoted, or replaced per the numbers) does not regress versus vector-only order and keeps #261's target at rank 1
 
-**Plans:** 6/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -507,7 +507,7 @@ the result set actually answers the query.
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-09-23 |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
