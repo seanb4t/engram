@@ -403,7 +403,7 @@ inert until an operator opts in.
   5. The OpenRouter Go SDK evaluation and its adopt/reject decision are recorded before any hand-written client lands
   6. Every decision call emits an OTLP span carrying latency, question count, input tokens, and cost
 
-**Plans:** 6/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -426,7 +426,7 @@ Plans:
 **Wave 5**
 
 - [x] 02-05-PLAN.md — every knob threaded into the jev client, `deps.decider` built at startup only when a provider is set, zero-egress-when-off and enablement-log proofs (D-01–D-03, D-10; DEC-01, DEC-03)
-- [ ] 02-07-PLAN.md — status-only classification for both error dialects, one jittered retry inside the budget, named too-large, status-attributed span with no content in telemetry (D-11–D-13; DEC-04, DEC-06)
+- [x] 02-07-PLAN.md — status-only classification for both error dialects, one jittered retry inside the budget, named too-large, status-attributed span with no content in telemetry (D-11–D-13; DEC-04, DEC-06)
 
 **Wave 6**
 

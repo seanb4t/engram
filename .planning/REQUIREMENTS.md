@@ -22,9 +22,9 @@ paraphrase regression (#605) is fixed.
 - [x] **DEC-01**: Operator can enable a typed-decision provider through `ENGRAM_` config; it is off by default, and with it off no decision call is made and behavior is byte-identical to today.
 - [ ] **DEC-02**: Callers use a provider-neutral Go interface speaking the System One contract (shared state plus batched Choice/Score/Noul questions in; typed answers with probabilities and confidence out), so a second backend (the chat-LLM emulator) can be added without changing callers.
 - [x] **DEC-03**: The Jev backend calls `{base}/alpha/decisions` with its own base-URL, API-key, model (default pinned `typesafe/jev-1.13`) and timeout settings, each falling back to the shared OpenRouter values, and works against OpenRouter directly (`https://openrouter.ai/api`) and through the LiteLLM pass-through (`https://llm.fzymgc.house/openrouter`).
-- [ ] **DEC-04**: Decision calls are bounded (timeout, response bytes, drain); failures are classified by HTTP status into named errors (OpenRouter and LiteLLM error bodies differ), and a decision failure never fails the surrounding read or sweep.
+- [x] **DEC-04**: Decision calls are bounded (timeout, response bytes, drain); failures are classified by HTTP status into named errors (OpenRouter and LiteLLM error bodies differ), and a decision failure never fails the surrounding read or sweep.
 - [x] **DEC-05**: The OpenRouter Go SDK for the Decisions API is evaluated (maintained upstream, current module path) and adopted or rejected with the rationale recorded, before any hand-written client.
-- [ ] **DEC-06**: Decision calls emit OTLP spans carrying latency, question count, input tokens and cost.
+- [x] **DEC-06**: Decision calls emit OTLP spans carrying latency, question count, input tokens and cost.
 
 ### Curation verdicts
 
@@ -82,9 +82,9 @@ Which phases cover which requirements. Filled during roadmap creation.
 | DEC-01 | Phase 2 | Complete |
 | DEC-02 | Phase 2 | Pending |
 | DEC-03 | Phase 2 | Complete |
-| DEC-04 | Phase 2 | Pending |
+| DEC-04 | Phase 2 | Complete |
 | DEC-05 | Phase 2 | Complete |
-| DEC-06 | Phase 2 | Pending |
+| DEC-06 | Phase 2 | Complete |
 | CUR-01 | Phase 3 | Pending |
 | CUR-02 | Phase 3 | Pending |
 | CUR-03 | Phase 3 | Pending |
