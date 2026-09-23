@@ -1303,12 +1303,15 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 
 // SearchReranked is the shared search-with-rerank helper: it over-fetches
 // CandidateK(k) raw hits via the existing owner/scope-filtered Search, applies
-// the pure RerankHits lexical-overlap reorder, and truncates to the caller's
-// already-defaulted k. deps.searchMemory (MCP), engramAPI.SearchMemories
+// the D-05-selected rank step via rankCandidates, and truncates to the
+// caller's already-defaulted k. deps.searchMemory (MCP), engramAPI.SearchMemories
 // (Connect), and the retrieval eval all call this — the ONE ranking path for
 // every recall surface (review finding 2/5) — so no surface can drift from the
-// shipped rerank behavior, and reranking runs strictly AFTER
-// ownerScopeFilter's authz-scoped Query, never widening visibility.
+// shipped rank step, and reranking runs strictly AFTER ownerScopeFilter's
+// authz-scoped Query, never widening visibility. Which rank step ships is
+// chosen by the pre-committed D-05 rule on the live retrieval eval
+// (2026-09-22.01 Phase 1, #605, 01-RANKING-DECISION.md); today that is the
+// lexical reranker (rankCandidates, RerankHits).
 //
 // k == 0 is rejected with ErrInvalidArgument (round-2 finding 6): callers MUST
 // pass the already-defaulted effective k (MCP defaults 8 at tools.go, Connect
@@ -1323,18 +1326,20 @@ func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, 
 	if k == 0 {
 		return nil, fmt.Errorf("%w: SearchReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
 	}
-	// The lexical reranker (RerankHits/lexicalOverlap) scores against
-	// content for EVERY candidate, and CandidateK clamps the candidate pool
-	// at 100 regardless of k — so this one surface's fetch view is fixed by
-	// an internal consumer rather than by the caller's own Full flag. The
+	// The shipped rank step (rankCandidates) scores against content for
+	// EVERY candidate, and CandidateK clamps the candidate pool at 100
+	// regardless of k — so this one surface's fetch view is fixed by an
+	// internal consumer rather than by the caller's own Full flag. The
 	// caller's flag still governs response shaping at the server boundary,
-	// unchanged.
+	// unchanged. This input contract (the over-fetch and the forced Full
+	// view) is retained unconditionally for Phase 4's content-reading Jev
+	// reranker (D-08).
 	opts.Full = true
 	hits, err := s.Search(ctx, scope, subj, vec, CandidateK(k), opts)
 	if err != nil {
 		return nil, err
 	}
-	return RerankHits(query, hits, int(k)), nil
+	return rankCandidates(query, hits, int(k)), nil
 }
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.

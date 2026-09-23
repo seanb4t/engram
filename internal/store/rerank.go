@@ -71,6 +71,12 @@ func lexicalOverlap(queryTerms map[string]struct{}, hit Memory) int {
 // can legitimately place a lower-raw-score hit ahead of a higher-scored one.
 //
 // Returns at most k hits; k <= 0 or k >= len(hits) returns every hit reordered.
+//
+// D-05 (2026-09-22.01 Phase 1, #605) measured this against vector-only and
+// four tuned cosine-blend/overlap-gate variants on a live blind multi-domain
+// paraphrase corpus (paraphrase MRR 0.817 vs vector-only's 0.579) and
+// retained it as the shipped rank step — see rankCandidates and
+// 01-RANKING-DECISION.md.
 func RerankHits(query string, hits []Memory, k int) []Memory {
 	queryTerms := tokenize(query)
 	type scored struct {
@@ -98,6 +104,23 @@ func RerankHits(query string, hits []Memory, k int) []Memory {
 		out[i] = ranked[i].m
 	}
 	return out
+}
+
+// rankCandidates is the single rank step SearchReranked applies to its
+// already authz-filtered candidate pool — its final call before truncation
+// to the caller's k. It was chosen by the pre-committed D-05 rule on the
+// live 2026-09-22.01 Phase 1 retrieval eval (#605, 01-RANKING-DECISION.md):
+// lexical reranking (RerankHits) beat vector-only and every tuned
+// cosine-blend/overlap-gate grid point on best-eligible paraphrase MRR
+// (0.817 vs vector-only's 0.579), and the human checkpoint approved that
+// winner ("Approved winner: lexical"). rankCandidates is also the single
+// seam Phase 4's Jev reranker (RANK-03) plugs into (D-08).
+//
+// If a future live eval re-run selects a different winner, this function's
+// body changes to match — and rerank_test.go's TestRankCandidatesIsTheD05Winner
+// is the pin that must be updated deliberately, never silently.
+func rankCandidates(query string, hits []Memory, k int) []Memory {
+	return RerankHits(query, hits, k)
 }
 
 // VectorOrder is the first-stage vector order with a deterministic tie-break:

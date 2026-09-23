@@ -49,6 +49,77 @@ func TestSearchRerankedRejectsZeroK(t *testing.T) {
 	}
 }
 
+// TestRankCandidatesIsTheD05Winner pins rankCandidates — SearchReranked's
+// single shipped rank step — to the D-05-approved winner from the live
+// 2026-09-22.01 Phase 1 retrieval eval (#605, 01-RANKING-DECISION.md): the
+// lexical reranker, RerankHits. decideRanking measured lexical against
+// vector-only and four tuned cosine-blend/overlap-gate grid points on a live
+// blind multi-domain paraphrase corpus and selected lexical by best-eligible
+// paraphrase MRR (0.817 vs vector-only's 0.579); the human checkpoint
+// approved that winner ("Approved winner: lexical" in
+// 01-RANKING-DECISION.md). D-08: rankCandidates is also the single seam
+// Phase 4's Jev reranker plugs into.
+//
+// This is the tuning-cannot-happen-here pin (T-01-18): if a future live
+// eval re-run disagrees with the approved winner, the fix is to re-run plan
+// 01-06's process and update this test deliberately — never to silently
+// re-tune rankCandidates to make some other gate pass.
+//
+// No RED was observed for this task: the lexical branch is the D-05
+// approved winner, and rankCandidates is a direct pass-through to the
+// already-shipped RerankHits, so the assertion below is true from the first
+// commit that adds rankCandidates — there is no "wrong ranker" state for
+// this test to have caught mid-implementation.
+func TestRankCandidatesIsTheD05Winner(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		query string
+		hits  []Memory
+		k     int
+	}{
+		{
+			name:  "mixed scores, k below len",
+			query: "task lint golangci-lint config",
+			hits: []Memory{
+				{ID: "topical-neighbor", Content: "The bare task target runs lint then test; CI invokes it directly.", Score: 0.91},
+				{ID: "high-overlap", Content: "Run task lint before every commit; golangci-lint config lives in .golangci.yaml.", Tags: []string{"lint", "task"}, Score: 0.80},
+				{ID: "unrelated", Content: "Qdrant collection payload schema.", Score: 0.40},
+			},
+			k: 2,
+		},
+		{
+			name:  "tied scores, k equal to len",
+			query: "same content",
+			hits: []Memory{
+				{ID: "b", Content: "same content same content", Score: 0.5},
+				{ID: "a", Content: "same content same content", Score: 0.5},
+			},
+			k: 2,
+		},
+		{
+			name:  "gh261-shaped: lower-score hit has full lexical overlap, k above len",
+			query: "correctable memory MCP server for coding agents",
+			hits: []Memory{
+				{ID: "verbatim-restatement", Content: "correctable memory MCP server for coding agents", Score: 0.55},
+				{ID: "topically-similar", Content: "a memory store for AI assistants with correction support", Score: 0.93},
+			},
+			k: 100,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := rankCandidates(tc.query, tc.hits, tc.k)
+			want := RerankHits(tc.query, tc.hits, tc.k)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("rankCandidates(%q, hits, %d) = %v, want RerankHits output %v (D-05 approved winner: lexical)",
+					tc.query, tc.k, idsOf(got), idsOf(want))
+			}
+		})
+	}
+}
+
 func TestRerankHitsPromotesLexicalOverlap(t *testing.T) {
 	t.Parallel()
 	hits := []Memory{
