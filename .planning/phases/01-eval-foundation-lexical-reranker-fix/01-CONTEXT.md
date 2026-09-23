@@ -78,11 +78,15 @@ per-hit relevance probability (Phase 4).
   config the embedder is built from — checking its four embed instruction/params fields. This
   likely needs a loader that returns the resolved config alongside the embedder (or reuses
   `loadAndValidate`).
-- **D-15:** **Register `ENGRAM_RETRIEVAL_EVAL` in `internal/config`'s field registry** (the single
-  source of truth for `ENGRAM_` vars) so any config source enables it. `TestMain` and each test's
-  gate read the resolved value, and `TestMain` still short-circuits before any Docker/testcontainer
-  startup when it is off. — **Reversibility:** costly — a registered key is documented operator
-  surface (config reference/docs gates), so removing it later touches docs and the registry.
+- **D-15:** (Revised after research, user-confirmed 2026-09-22.) **Do NOT register
+  `ENGRAM_RETRIEVAL_EVAL` in `internal/config`'s field registry.** The registry deliberately
+  excludes test-only vars (`ENGRAM_QDRANT_TEST_ADDR`, `ENGRAM_REQUIRE_QDRANT`), and
+  `TestCheckLegacyIgnoresTestOnlyVar` pins that convention. Instead, resolve the gate with a
+  **test-local koanf load** using the same `ENGRAM_` prefix and precedence rules as production,
+  so any source koanf reads enables it (success criterion 2). Do not call `Validate()`, so a
+  malformed, unrelated ambient `ENGRAM_*` var cannot fail the package when the eval is off.
+  `TestMain` and each test's gate read the resolved value. `TestMain` still short-circuits before
+  any Docker/testcontainer startup when the gate is off.
 
 ### Claude's Discretion
 - Exact domains and record count within 80–120; exact α / threshold grid values; the number of

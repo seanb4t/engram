@@ -6,6 +6,15 @@
 only genuinely new design surface — the pluggable ranker list and the blind-subagent procedure — is
 flagged LOW/MEDIUM and left as an explicit recommendation, not an assumed fact)
 
+> **Post-research revision (2026-09-22, user-confirmed): D-15 changed.** After this research
+> surfaced the registry's test-only-var exclusion convention, the user reversed D-15:
+> `ENGRAM_RETRIEVAL_EVAL` is **NOT** registered in `internal/config`. Resolve it with a
+> **test-local koanf load** (same `ENGRAM_` prefix/precedence, no `Validate()`). Every passage
+> below that says to register the key, add a `Config` struct field for it, or trip registry doc
+> gates for it is **superseded** — CONTEXT.md D-15 is authoritative. The rest of the
+> config-resolution findings (widen `StoreAndEmbedderFromEnvNoEnsure`'s return for D-14; keep the
+> single-load invariant; never `Validate()` in `TestMain`) still apply.
+
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
 
