@@ -16,6 +16,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 | `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
 | `internal/store/` | Qdrant-backed memory store |
 | `internal/embed/` | embedder (OpenAI-compatible) |
+| `internal/decide/` | provider-neutral typed-decision contract (`Decider`, System One questions/answers, named errors); `internal/decide/jev` is the Jev backend over OpenRouter's Decisions API, off unless `ENGRAM_DECISIONS_PROVIDER` is set |
 | `internal/auth/` | OIDC bearer-token verifier (go-oidc + go-sdk auth middleware) |
 | `internal/config/` | koanf config loader + field registry (single source of truth for ENGRAM_ vars) |
 | `charts/engram/` | Helm chart (server + Qdrant), generic/parameterized |

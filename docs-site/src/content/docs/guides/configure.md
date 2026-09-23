@@ -149,6 +149,66 @@ Both switches must be true at once for the pool to start (`ENGRAM_SUMMARY_MODEL`
 
 Source: `internal/config` (registry) + `internal/server/tools.go` (`buildSummaryQueue`, the D-01 AND-gate) + `internal/server/summaryqueue.go` (worker pool).
 
+## Typed decisions (Jev)
+
+engram can optionally ask an external typed-decision provider (Jev, reached
+through OpenRouter's Decisions API) yes/no, multiple-choice, and scored
+questions about a piece of state, and get back probabilities. It is **off by
+default**: set `ENGRAM_DECISIONS_PROVIDER=jev` to enable it. Answers are
+**advisory** — they are surfaced to you and never acted on automatically.
+Enabling it constructs and validates the client at startup; the features that
+actually ask it questions ship separately and will name this setting when
+they do.
+
+**Base URL.** `ENGRAM_DECISIONS_BASE_URL` is required when the provider is
+enabled, and it deliberately does **not** inherit `ENGRAM_OPENAI_BASE_URL` —
+the embeddings/chat gateway does not serve Decisions. engram appends
+`/alpha/decisions` to whatever you set, so `https://openrouter.ai/api`
+resolves to `https://openrouter.ai/api/alpha/decisions`, and a LiteLLM
+pass-through at `https://litellm.example.com/openrouter` resolves to
+`https://litellm.example.com/openrouter/alpha/decisions`. The LiteLLM key
+needs the `/openrouter/alpha/decisions` pass-through route granted, or the
+gateway answers 403. The most likely first failure is a base URL ending in
+`/v1` (or `/api` on the LiteLLM form) — that yields 404.
+
+**Key.** An empty `ENGRAM_DECISIONS_API_KEY` **inherits**
+`ENGRAM_OPENAI_API_KEY` and sends it to the decisions host. This mirrors the
+chat-lane fallback above: if you don't want the embedder or gateway key
+reaching the decisions host, set `ENGRAM_DECISIONS_API_KEY` explicitly.
+Startup logs `api_key_source` so you can see which key applied. In Helm this
+is `memory.decisions.apiKeySecret`.
+
+**Model.** Pinned to `typesafe/jev-1.13`. Do not use the floating
+`~typesafe/jev-latest` — it moves probability thresholds between releases.
+
+**What leaves your deployment.** Each decision call sends the state and
+questions a feature builds (for curation and reranking features, that is
+memory record content) to OpenRouter, which routes Jev to **TypeSafe** (a
+service on the US West Coast). The provider's policy: no training on inputs,
+standard retention, and zero data retention not confirmed. Enable this only
+if that is acceptable for the records in your store.
+
+**Failure behavior.** Each call is bounded by `ENGRAM_DECISIONS_TIMEOUT` (one
+retry on 429/5xx inside that budget) and by response-size and drain bounds.
+Failures are reported as authentication, bad request, context too large
+(state plus questions over Jev's 32k-token context), rate limited,
+unavailable, timeout, or response too large. A decision failure never fails
+the operation that asked for it.
+
+| Environment variable | Flag | Default | Description |
+|---------------------|------|---------|-------------|
+| `ENGRAM_DECISIONS_PROVIDER` | — | _(empty)_ | Decision provider; empty disables typed decisions, `jev` enables it |
+| `ENGRAM_DECISIONS_BASE_URL` | — | _(empty)_ | Decisions API base URL; required when the provider is set, never falls back to `ENGRAM_OPENAI_BASE_URL` |
+| `ENGRAM_DECISIONS_API_KEY` | — | _(empty)_ | API key for the decisions host; empty inherits `ENGRAM_OPENAI_API_KEY` |
+| `ENGRAM_DECISIONS_MODEL` | — | `typesafe/jev-1.13` | Decision model; pinned, do not use a floating alias |
+| `ENGRAM_DECISIONS_TIMEOUT` | — | `10s` | Per-request HTTP client timeout for a decision call. A non-positive value (including `0`) resolves to the `ENGRAM_DECISIONS_MAX_TIMEOUT` ceiling below |
+| `ENGRAM_DECISIONS_MAX_TIMEOUT` | — | `10m` | Ceiling a non-positive `ENGRAM_DECISIONS_TIMEOUT` resolves to. There is deliberately no value meaning "unbounded" |
+| `ENGRAM_DECISIONS_DRAIN_BYTES` | — | `262144` | Byte bound on draining the rest of the response body after a decode, so the underlying connection can be reused. `0` skips the drain entirely |
+| `ENGRAM_DECISIONS_DRAIN_TIMEOUT` | — | `2s` | Time bound on the same post-response drain, paired with the byte bound above. `0` skips the drain entirely |
+| `ENGRAM_DECISIONS_CONCURRENCY` | — | `4` | Caps how many decision calls one batch runs at once |
+
+Source: `internal/config` (registry) + `internal/decide/jev` (the Jev client) + `internal/server/decider.go` (`deciderFromConfig`, the `ENGRAM_OPENAI_API_KEY` fallback).
+
 ## OIDC / Auth
 
 Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + issuer + expiry validation). Without it, all requests are accepted and a loud warning is logged.
