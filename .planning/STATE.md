@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 2
 current_phase_name: Decision Interface & Jev Backend
 status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-09-23T15:21:10.607Z"
+stopped_at: Completed 02-06-PLAN.md
+last_updated: "2026-09-23T15:29:46.378Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 2 execution started
-state_head: b98a7d43c309b3fbabfc9cceb4dd3f8fb5f87bac
+state_head: bbce97b44551c2bc41cc55d8b28e376879e63c30
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 20
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 1 of milestone 2026-09
 ## Current Position
 
 Phase: 2 (Decision Interface & Jev Backend) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-09-23 — Phase 2 execution started
 
@@ -377,6 +377,9 @@ milestone needs in working memory.
 - [Phase 2]: 02-03: decisions.timeout registry default is 10s per PLAN.md task text, superseding PATTERNS.md's earlier 30s draft.
 - [Phase 2]: jev Decide's status/slog now derives engram.decide.status via decide.Status(err) instead of a hardcoded ok/error pair
 - [Phase 2]: DecideMany's Kind-parent lookup uses a map[error]error, not a switch on error values, to satisfy golangci-lint's errorlint without a nolint suppression
+- [Phase 2]: 02-06: values.yaml model/timeout/concurrency default to empty string, not the pinned literal, per the plan's explicit empty-means-binary-default framing
+- [Phase 2]: 02-06: chart:validate decisions block reuses the existing chat-credential/service-token both-directions render shape rather than inventing a new assertion pattern
+- [Phase 2]: 02-06: TestDecisionsVarsDocumented uses a simple heading-to-next-heading substring cut (not recallmaxdocs_test.go's multi-surface table) since only one doc surface is relevant
 
 ### Pending Todos
 
@@ -464,8 +467,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T15:21:10.581Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-09-23T15:29:39.706Z
+Stopped at: Completed 02-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -642,6 +645,7 @@ Resume file: None
 | Phase 02-decision-interface-jev-backend P02 | 14min | 3 tasks | 5 files |
 | Phase 02 P03 | 20 min | 2 tasks | 8 files |
 | Phase 02 P04 | 16min | 2 tasks | 8 files |
+| Phase 2 P06 | 35min | 2 tasks | 7 files |
 
 ## Operator Next Steps
 

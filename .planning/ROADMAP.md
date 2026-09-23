@@ -403,7 +403,7 @@ inert until an operator opts in.
   5. The OpenRouter Go SDK evaluation and its adopt/reject decision are recorded before any hand-written client lands
   6. Every decision call emits an OTLP span carrying latency, question count, input tokens, and cost
 
-**Plans:** 4/8 plans executed
+**Plans:** 5/8 plans executed
 
 Plans:
 **Wave 1**
@@ -421,7 +421,7 @@ Plans:
 **Wave 4**
 
 - [x] 02-04-PLAN.md — choice/score types, D-09 structural validation with `Add`, the D-12 named-error vocabulary and `Status`, bounded order-preserving `DecideMany` (D-09, D-10, D-12; DEC-02, DEC-04)
-- [ ] 02-06-PLAN.md — Helm `memory.decisions` off by default with the key via `secretKeyRef` and `chart:validate` guards; configure/deploy docs with the data disclosure, gated against the registry; `CLAUDE.md` row (D-01, D-03, D-04; DEC-01, DEC-03)
+- [x] 02-06-PLAN.md — Helm `memory.decisions` off by default with the key via `secretKeyRef` and `chart:validate` guards; configure/deploy docs with the data disclosure, gated against the registry; `CLAUDE.md` row (D-01, D-03, D-04; DEC-01, DEC-03)
 
 **Wave 5**
 
