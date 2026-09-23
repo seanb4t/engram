@@ -5181,6 +5181,11 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	t.Setenv("ENGRAM_EMBED_DIM", "3")
 	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
 	t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
+	// Isolate from any ambient ENGRAM_DECISIONS_PROVIDER in the dev/CI shell
+	// (same IN-02 rationale as the summary isolation above): an empty
+	// provider is the documented off default, and this test asserts
+	// d.decider is nil on that path.
+	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "")
 
 	loads := 0
 	orig := configLoad
@@ -5209,6 +5214,63 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	}
 	if !strings.HasPrefix(d.embedderIdentity, "v1:") {
 		t.Errorf("buildDepsFromEnv embedderIdentity = %q, want v1: prefix", d.embedderIdentity)
+	}
+	if d.decider != nil {
+		t.Error("buildDepsFromEnv with ENGRAM_DECISIONS_PROVIDER unset built a non-nil d.decider, want nil (DEC-01)")
+	}
+}
+
+// TestBuildDepsFromEnvRejectsUnknownProvider is hermetic (no Qdrant needed):
+// an unknown ENGRAM_DECISIONS_PROVIDER fails buildDepsFromEnv through
+// deciderFromConfig before any store dial, mirroring
+// TestStoreAndEmbedderFromEnvNoEnsureValidatesConfig's fast-validation-error
+// shape.
+func TestBuildDepsFromEnvRejectsUnknownProvider(t *testing.T) {
+	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "bogus")
+
+	_, err := buildDepsFromEnv(nil, nil)
+	if err == nil {
+		t.Fatal("buildDepsFromEnv with ENGRAM_DECISIONS_PROVIDER=bogus = nil error, want an error naming ENGRAM_DECISIONS_PROVIDER")
+	}
+	if !strings.Contains(err.Error(), "ENGRAM_DECISIONS_PROVIDER") {
+		t.Errorf("error %q, want it to name ENGRAM_DECISIONS_PROVIDER", err)
+	}
+}
+
+// TestBuildDepsFromEnvConstructsDecider proves startup builds a non-nil
+// d.decider when a provider is configured, and that constructing it makes no
+// outbound call (no startup probe or health request, D-01).
+func TestBuildDepsFromEnvConstructsDecider(t *testing.T) {
+	addr := storetest.Addr()
+	if addr == "" {
+		storetest.SkipOrFailNoQdrant(t)
+	}
+
+	var count int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt64(&count, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	t.Setenv("ENGRAM_QDRANT_ADDR", addr)
+	t.Setenv("ENGRAM_QDRANT_COLLECTION", testCollection("mem_constructs_decider_test"))
+	t.Setenv("ENGRAM_EMBED_DIM", "3")
+	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
+	t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
+	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "jev")
+	t.Setenv("ENGRAM_DECISIONS_BASE_URL", srv.URL+"/api")
+	t.Setenv("ENGRAM_DECISIONS_API_KEY", "k")
+
+	d, err := buildDepsFromEnv(nil, nil)
+	if err != nil {
+		t.Fatalf("buildDepsFromEnv: %v", err)
+	}
+	if d.decider == nil {
+		t.Fatal("buildDepsFromEnv with ENGRAM_DECISIONS_PROVIDER=jev built a nil d.decider, want non-nil")
+	}
+	if got := atomic.LoadInt64(&count); got != 0 {
+		t.Errorf("decisions server received %d requests during startup, want 0 (no startup probe)", got)
 	}
 }
 

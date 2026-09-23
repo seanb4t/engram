@@ -25,6 +25,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/config"
+	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/embed"
 	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
@@ -86,6 +87,16 @@ type deps struct {
 	// consumer calls writeCaps.resolved() first, which fills any zero field
 	// with its documented default.
 	writeCaps memoryWriteCaps
+	// decider is the typed-decision backend (internal/decide.Decider). nil
+	// unless ENGRAM_DECISIONS_PROVIDER is set — decided once in
+	// buildDepsFromEnv through deciderFromConfig (D-01). This phase (02-05)
+	// adds no caller of decider.Decide/DecideMany: Phase 4's search_memory
+	// reranker is the first consumer that reads this field. Per the
+	// decide.Decider contract, a decision failure never fails the handler
+	// that asked — every caller treats an error as "no decision" and
+	// continues, never branching on decider being present as a correctness
+	// requirement.
+	decider decide.Decider
 }
 
 // memoryWriteCaps holds the always-enforced memory content/tags write
@@ -317,6 +328,13 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if err != nil {
 		return nil, fmt.Errorf("embedder identity: %w", err)
 	}
+	dec, err := deciderFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if dec != nil {
+		logDeciderEnabled(cfg)
+	}
 	return &deps{
 		st:               st,
 		em:               em,
@@ -326,6 +344,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		usageQueue:       buildUsageQueue(cfg, st, uqm),
 		embedderIdentity: identity,
 		writeCaps:        memoryWriteCapsFromConfig(cfg),
+		decider:          dec,
 	}, nil
 }
 
