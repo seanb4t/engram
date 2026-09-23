@@ -160,8 +160,8 @@ func TestEvalRankersRoster(t *testing.T) {
 	if got, want := idsOf(byName["vector-only"].rank(query, sample, 3)), idsOf(store.VectorOrder(sample, 3)); !reflect.DeepEqual(got, want) {
 		t.Errorf("vector-only output = %v, want store.VectorOrder %v", got, want)
 	}
-	if got, want := idsOf(byName["lexical"].rank(query, sample, 3)), idsOf(lexicalRerank(query, sample, 3)); !reflect.DeepEqual(got, want) {
-		t.Errorf("lexical output = %v, want lexicalRerank %v", got, want)
+	if got, want := idsOf(byName["lexical"].rank(query, sample, 3)), idsOf(store.RerankHits(query, sample, 3)); !reflect.DeepEqual(got, want) {
+		t.Errorf("lexical output = %v, want store.RerankHits %v", got, want)
 	}
 	if got, want := idsOf(byName["overlap-gate-t0.90"].rank(query, sample, 3)), idsOf(overlapGateRerank(query, sample, 3, 0.90)); !reflect.DeepEqual(got, want) {
 		t.Errorf("overlap-gate-t0.90 output = %v, want overlapGateRerank(theta=0.90) %v", got, want)

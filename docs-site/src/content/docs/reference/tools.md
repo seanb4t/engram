@@ -140,7 +140,7 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | `query` | string | yes | Natural-language search query |
 | `scope` | string | conditional | Scope to search within; <!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine --> |
 | `k` | uint64 | no | Number of results to return; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
-| `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
+| `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and a lexical-overlap adjustment selected by the retrieval eval (see below) |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. Applied as a hard pre-filter, before vector ranking. The same filter is available over the Connect read API on `SearchMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
@@ -150,9 +150,10 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 Returns a list of matching memory records. Each result carries a `score`: the
 raw Qdrant cosine similarity for this query (higher = closer), present when
 non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
-Final order may include reranking; `score` remains first-stage dense
-similarity and may be non-monotonic after rerank. `citations` are omitted from
-the default compact view; pass `full=true` to include them.
+Final order may include a lexical-overlap adjustment selected by the
+retrieval eval; `score` remains first-stage dense similarity and may be
+non-monotonic after that adjustment. `citations` are omitted from the
+default compact view; pass `full=true` to include them.
 
 On a cross-spine call (`cross_spine=true`), the response also carries
 `searched_scopes` — every scope you can read that the search spanned, not the

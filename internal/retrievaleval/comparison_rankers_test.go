@@ -19,40 +19,6 @@ func idsOf(hits []store.Memory) []string {
 	return ids
 }
 
-// TestLexicalRerank mirrors internal/store/rerank_test.go's own fixtures
-// (TestRerankHitsPromotesLexicalOverlap, TestRerankHitsDeterministic) to
-// prove lexicalRerank is a faithful port of the lexical-overlap reranker
-// SearchReranked ships at the time of writing.
-func TestLexicalRerank(t *testing.T) {
-	t.Parallel()
-
-	t.Run("promotes lexical overlap over raw score", func(t *testing.T) {
-		t.Parallel()
-		hits := []store.Memory{
-			{ID: "topical-neighbor", Content: "The bare task target runs lint then test; CI invokes it directly.", Score: 0.91},
-			{ID: "high-overlap", Content: "Run task lint before every commit; golangci-lint config lives in .golangci.yaml.", Tags: []string{"lint", "task"}, Score: 0.80},
-		}
-		query := "Before committing, run task lint; golangci-lint config is .golangci.yaml"
-
-		got := lexicalRerank(query, hits, 2)
-		if len(got) != 2 || got[0].ID != "high-overlap" {
-			t.Fatalf("lexicalRerank did not promote the high-lexical-overlap hit above the topical neighbor: %+v", got)
-		}
-	})
-
-	t.Run("deterministic tie-break gives [a b]", func(t *testing.T) {
-		t.Parallel()
-		hits := []store.Memory{
-			{ID: "b", Content: "same content same content", Score: 0.5},
-			{ID: "a", Content: "same content same content", Score: 0.5},
-		}
-		got := lexicalRerank("same content", hits, 2)
-		if got[0].ID != "a" || got[1].ID != "b" {
-			t.Fatalf("expected ID tie-break order [a b], got %v", idsOf(got))
-		}
-	})
-}
-
 // mixedScoreFixture returns a query and a 3-hit fixture spanning a range of
 // Scores and lexical overlaps, shared by TestCosineBlendRerank's alpha-0 and
 // alpha-1000 subtests.
@@ -78,13 +44,13 @@ func TestCosineBlendRerank(t *testing.T) {
 		}
 	})
 
-	t.Run("alpha 1000 equals lexicalRerank", func(t *testing.T) {
+	t.Run("alpha 1000 equals store.RerankHits", func(t *testing.T) {
 		t.Parallel()
 		query, hits := mixedScoreFixture()
 		got := cosineBlendRerank(query, hits, 3, 1000)
-		want := lexicalRerank(query, hits, 3)
+		want := store.RerankHits(query, hits, 3)
 		if !reflect.DeepEqual(idsOf(got), idsOf(want)) {
-			t.Fatalf("cosineBlendRerank(alpha=1000) = %v, want lexicalRerank %v", idsOf(got), idsOf(want))
+			t.Fatalf("cosineBlendRerank(alpha=1000) = %v, want store.RerankHits %v", idsOf(got), idsOf(want))
 		}
 	})
 
@@ -130,13 +96,13 @@ func TestOverlapGateRerank(t *testing.T) {
 		}
 	})
 
-	t.Run("theta 0 equals lexicalRerank", func(t *testing.T) {
+	t.Run("theta 0 equals store.RerankHits", func(t *testing.T) {
 		t.Parallel()
 		query, hits := gateFixture()
 		got := overlapGateRerank(query, hits, 4, 0)
-		want := lexicalRerank(query, hits, 4)
+		want := store.RerankHits(query, hits, 4)
 		if !reflect.DeepEqual(idsOf(got), idsOf(want)) {
-			t.Fatalf("overlapGateRerank(theta=0) = %v, want lexicalRerank %v", idsOf(got), idsOf(want))
+			t.Fatalf("overlapGateRerank(theta=0) = %v, want store.RerankHits %v", idsOf(got), idsOf(want))
 		}
 	})
 
@@ -165,9 +131,9 @@ func TestComparisonRankersDeterministic(t *testing.T) {
 	t.Parallel()
 	query, hits := gateFixture()
 
-	firstLex, secondLex := lexicalRerank(query, hits, 4), lexicalRerank(query, hits, 4)
+	firstLex, secondLex := store.RerankHits(query, hits, 4), store.RerankHits(query, hits, 4)
 	if !reflect.DeepEqual(idsOf(firstLex), idsOf(secondLex)) {
-		t.Errorf("lexicalRerank not deterministic: %v vs %v", idsOf(firstLex), idsOf(secondLex))
+		t.Errorf("store.RerankHits not deterministic: %v vs %v", idsOf(firstLex), idsOf(secondLex))
 	}
 
 	firstBlend, secondBlend := cosineBlendRerank(query, hits, 4, 0.5), cosineBlendRerank(query, hits, 4, 0.5)
@@ -198,8 +164,8 @@ func TestComparisonRankersIgnoreAccessCount(t *testing.T) {
 		{ID: "c", Content: "shared content shared content", Score: 0.5, AccessCount: 1},
 	}
 
-	if got, want := idsOf(lexicalRerank(query, baseline, 3)), idsOf(lexicalRerank(query, hot, 3)); !reflect.DeepEqual(got, want) {
-		t.Errorf("lexicalRerank output order is NOT invariant under AccessCount: baseline=%v hot=%v", got, want)
+	if got, want := idsOf(store.RerankHits(query, baseline, 3)), idsOf(store.RerankHits(query, hot, 3)); !reflect.DeepEqual(got, want) {
+		t.Errorf("store.RerankHits output order is NOT invariant under AccessCount: baseline=%v hot=%v", got, want)
 	}
 	if got, want := idsOf(cosineBlendRerank(query, baseline, 3, 0.5)), idsOf(cosineBlendRerank(query, hot, 3, 0.5)); !reflect.DeepEqual(got, want) {
 		t.Errorf("cosineBlendRerank output order is NOT invariant under AccessCount: baseline=%v hot=%v", got, want)
@@ -219,7 +185,7 @@ func TestComparisonRankersTruncate(t *testing.T) {
 	}
 
 	rankers := map[string]func(k int) []store.Memory{
-		"lexicalRerank": func(k int) []store.Memory { return lexicalRerank(query, hits, k) },
+		"store.RerankHits": func(k int) []store.Memory { return store.RerankHits(query, hits, k) },
 		"cosineBlendRerank": func(k int) []store.Memory {
 			return cosineBlendRerank(query, hits, k, 0.5)
 		},

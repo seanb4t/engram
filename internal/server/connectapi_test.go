@@ -358,9 +358,12 @@ func TestConnectTagsFilter(t *testing.T) {
 //
 // Seeded records use testDeps's fakeEmbedder, which returns a FIXED vector
 // regardless of input — so every record's raw Qdrant score ties exactly, and
-// the reranked ORDER asserted below is entirely RerankHits's lexical-overlap
-// logic, never raw vector similarity (the deterministic differentiator this
-// test needs).
+// the reranked ORDER asserted below is entirely store.SearchReranked's
+// shipped rank step (rankCandidates), never raw vector similarity (the
+// deterministic differentiator this test needs). The D-05 rule on the live
+// 2026-09-22.01 Phase 1 retrieval eval (#605, 01-RANKING-DECISION.md)
+// selected lexical reranking (store.RerankHits) as that shipped step, so the
+// order below is its lexical-overlap logic today.
 func TestRerankParityMCPAndConnect(t *testing.T) {
 	d := testDeps(t)
 	api := &engramAPI{d: d}
@@ -456,7 +459,7 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 			t.Fatalf("MCP/Connect reranked order mismatch:\n MCP:     %v\n Connect: %v", got, want)
 		}
 		if len(got) == 0 || got[0] != recTHigh.ID {
-			t.Errorf("expected the high-lexical-overlap record %s ranked first, got order %v", recTHigh.ID, got)
+			t.Errorf("expected the high-lexical-overlap record %s ranked first by the shipped rank step (D-05: lexical), got order %v", recTHigh.ID, got)
 		}
 	})
 

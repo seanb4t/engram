@@ -87,10 +87,15 @@ func evalRankers() []namedRanker {
 			},
 		},
 		{
+			// D-05's live eval retained lexical reranking as the approved
+			// winner (01-RANKING-DECISION.md), so this roster entry points
+			// directly at the exported store.RerankHits — there is no
+			// eval-local lexical copy to drift from it (see
+			// comparison_rankers.go's file doc comment).
 			name:       "lexical",
 			family:     "lexical",
 			simplicity: 10,
-			rank:       lexicalRerank,
+			rank:       store.RerankHits,
 		},
 	}
 	for i, theta := range gateThetaGrid {
