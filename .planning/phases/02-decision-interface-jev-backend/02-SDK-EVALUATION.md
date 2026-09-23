@@ -2,7 +2,7 @@ sdk_module: github.com/OpenRouterTeam/go-sdk
 sdk_version: v0.8.19
 legitimacy: approved
 verdict: ADOPT-AND-WRAP-CANDIDATE
-resolution: PENDING
+resolution: reject-hand-write
 
 # DEC-05 SDK Evaluation — OpenRouter Go SDK
 
@@ -298,41 +298,25 @@ request, SDK retries can be turned off entirely (`Strategy: "none"` → 1 reques
 config), a context deadline surfaces as `context.DeadlineExceeded`, and both transport-level and
 body-Read errors stay `errors.Is`-matchable through the SDK's wrapping.
 
-## Wrap recipe
+### Resolution
 
-For the recorded version (`v0.8.19`), reaching `{base}/alpha/decisions` for both base shapes,
-turning off retries, classifying status before decode, bounding the response, and applying the
-timeout budget all require the SAME seam: a caller-supplied `http.RoundTripper` installed via
-`openrouter.WithClient(&http.Client{Transport: engramRT})`.
+**2026-09-23 — `resolution: reject-hand-write`.** Verdict `ADOPT-AND-WRAP-CANDIDATE` (rule R3)
+routes to the `blocking-human` checkpoint D-06 reserves for exactly this case — R3 is "stop and
+ask," not a directive to adopt. The user chose `reject-hand-write` at that checkpoint. **This is
+not an override of the recorded verdict or of D-06**: `reject-hand-write` is one of the two
+in-table options the checkpoint offers when the verdict is `ADOPT-AND-WRAP-CANDIDATE`, and the
+user selected it on the recorded evidence rather than overriding the rule table.
 
-- **Both base-URL shapes (E01).** No documented SDK option reaches the LiteLLM gateway shape.
-  `engramRT.RoundTrip` must rewrite `req.URL.Path` before delegating: construct the client with
-  `operations.WithServerURL(strings.TrimSuffix(cfg.BaseURL, "/api"))` when the configured base
-  ends in `/api` (the OpenRouter shape, reaching `/api/alpha/decisions` for free — no rewrite
-  needed) or, for a non-`/api` base such as the LiteLLM pass-through
-  (`https://llm.fzymgc.house/openrouter`), pass that base as-is and have `engramRT` rewrite the
-  SDK's hardcoded `.../api/alpha/decisions` request path down to `.../alpha/decisions` by
-  stripping the literal `/api` segment the SDK always inserts, immediately before
-  `base.RoundTrip(req)`.
-- **Retries off (E07).** Pass `operations.WithRetries(retry.Config{Strategy: "none"})` on every
-  `Create` call so engram's own single-retry-on-429/5xx (D-11) is the only retry that runs — the
-  SDK's default backoff (up to 1 h `MaxElapsedTime`) must never be reachable.
-- **Status classification (E05).** Because the LiteLLM string-`code` dialect defeats the SDK's
-  own decode, `engramRT` must classify by `resp.StatusCode` on the way back from
-  `base.RoundTrip(req)` — before returning control to the SDK's decode step — and attach the
-  status where engram's classifier (D-12) can read it regardless of whether the SDK's own decode
-  later succeeds or falls through to a bare wrapped error. The SDK's own typed errors remain
-  usable for the OpenRouter dialect (informational), but D-12 classification cannot depend on
-  them.
-- **Response byte bound (E06b/E06c).** `utils.ConsumeRawBody`'s unbounded `io.ReadAll` is only
-  safe to leave in place if the byte bound is enforced upstream of it: `engramRT` wraps
-  `resp.Body` in a bounded `io.ReadCloser` (following `internal/httpdrain`'s pattern) that
-  returns an error once `ENGRAM_DECISIONS_DRAIN_BYTES` is exceeded — E06(b) confirmed a
-  body-`Read` error survives `errors.Is` through the SDK's wrapping, so this bound is honored by
-  Create's caller.
-- **Timeout budget (E08).** No extra work needed — pass the caller's `context.Context` (already
-  carrying `ENGRAM_DECISIONS_TIMEOUT`) straight to `Create`; E08 confirmed
-  `errors.Is(err, context.DeadlineExceeded)` holds through the SDK's error wrapping.
+Reason: all three R3 triggers (E01, E05, E06(c)) require engram to own the fix regardless of
+which branch is chosen — E01's hardcoded `/api/alpha/decisions` cannot reach the LiteLLM
+pass-through without a URL-rewriting RoundTripper, E05's LiteLLM string `code` breaks the SDK's
+typed error decode and must be reclassified by HTTP status anyway, and E06(c)'s unbounded
+`ConsumeRawBody` needs a body-bounding wrapper regardless of which client owns the request. With
+path rewriting, status classification, byte bounding and retry override all falling to engram
+either way, adopting the SDK leaves only generated request/answer types as the benefit, at the
+cost of a new direct module dependency (plus `spyzhov/ajson` transitively) on an alpha API that
+ships several releases a day. `internal/decide/jev` is hand-written on `net/http` +
+`encoding/json`, following the `internal/embed`/`internal/summarize` pattern.
 
 ## Hand-write recipe
 
@@ -352,7 +336,7 @@ classification by the HTTP status code the standard library already exposes on `
 scope: repo:engram
 category: decision
 tags: [dec-05, openrouter-go-sdk, decisions-api, jev]
-summary: DEC-05 SDK evaluation of github.com/OpenRouterTeam/go-sdk@v0.8.19 against the Decisions API — verdict ADOPT-AND-WRAP-CANDIDATE (rule R3); D-06 checkpoint outcome pending.
+summary: DEC-05 SDK evaluation of github.com/OpenRouterTeam/go-sdk@v0.8.19 against the Decisions API — verdict ADOPT-AND-WRAP-CANDIDATE (rule R3); D-06 checkpoint resolved reject-hand-write.
 content: |
   Evaluated github.com/OpenRouterTeam/go-sdk@v0.8.19 (evaluation date 2026-09-23) against DEC-05's
   D-05(a)/(b) bar and D-06's DEC-03/DEC-04/DEC-06 fit. D-05(a) passed (not deprecated/retracted,
@@ -373,5 +357,14 @@ content: |
   recipe are recorded in
   .planning/phases/02-decision-interface-jev-backend/02-SDK-EVALUATION.md.
 
-  Outcome: pending the D-06 checkpoint.
+  Outcome: resolved reject-hand-write (2026-09-23). The user chose to hand-write
+  internal/decide/jev on net/http + encoding/json following the internal/embed/internal/summarize
+  pattern, at the blocking-human D-06 checkpoint ADOPT-AND-WRAP-CANDIDATE routes to — an in-table
+  choice, not an override. Rationale: all three R3 triggers (E01 path, E05 LiteLLM string-code
+  decode, E06(c) unbounded read) require engram to own path rewriting, status classification,
+  byte bounding and retry override regardless of which branch is chosen, leaving only generated
+  types as the SDK's benefit against a new direct dependency on an alpha API.
+
+  Store with store_memory (or supersede_memory if an earlier DEC-05 record exists); an executor
+  without engram MCP access leaves this to the orchestrator.
 ```
