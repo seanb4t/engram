@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"time"
@@ -62,25 +63,39 @@ const (
 // provider lanes stay consistent.
 const maxErrorBodyBytes = 4096
 
-// maxSuccessResponseBytes bounds the success-path decode. A Decisions
-// response is small JSON (a handful of typed answers plus usage), so this is
-// a hardcoded internal constant rather than an operator knob (RESEARCH
-// Pitfall 4: no ENGRAM_DECISIONS_MAX_RESPONSE_BYTES registry row), following
-// internal/summarize's identical precedent.
-const maxSuccessResponseBytes = 1 << 20
+// defaultMaxResponseBytes bounds the success-path decode when
+// WithMaxResponseBytes is not set (or is given a non-positive value). A
+// Decisions response is small JSON (a handful of typed answers plus usage),
+// so this is a hardcoded internal constant rather than an operator knob
+// (RESEARCH Pitfall 4: no ENGRAM_DECISIONS_MAX_RESPONSE_BYTES registry row),
+// following internal/summarize's identical precedent.
+const defaultMaxResponseBytes = 1 << 20
+
+// defaultRetryBase and defaultRetryJitter build the default retryDelay: a
+// fixed 100ms base plus up to 300ms of jitter (D-11), so concurrent callers
+// retrying after the same upstream 429/5xx do not all retry in lockstep.
+const (
+	defaultRetryBase   = 100 * time.Millisecond
+	defaultRetryJitter = 300 * time.Millisecond
+)
 
 // Client calls the Jev Decisions API.
 type Client struct {
-	baseURL      string
-	apiKey       string
-	model        string
-	endpoint     string
-	http         *http.Client
-	timeout      time.Duration
-	maxTimeout   time.Duration
-	drainBytes   int64
-	drainTimeout time.Duration
-	concurrency  int
+	baseURL          string
+	apiKey           string
+	model            string
+	endpoint         string
+	http             *http.Client
+	timeout          time.Duration
+	maxTimeout       time.Duration
+	drainBytes       int64
+	drainTimeout     time.Duration
+	concurrency      int
+	maxResponseBytes int64
+	// retryDelay computes the jittered wait before D-11's single retry.
+	// Tests override this field directly (same package) to avoid sleeping
+	// the production jitter.
+	retryDelay func() time.Duration
 }
 
 // Option customizes a Client.
@@ -126,6 +141,19 @@ func WithDrainTimeout(d time.Duration) Option {
 	return func(c *Client) { c.drainTimeout = d }
 }
 
+// WithMaxResponseBytes bounds the success-path response decode (DEC-04). A
+// non-positive n leaves defaultMaxResponseBytes in place — mirrors
+// internal/embed.WithMaxResponseBytes's post-loop-fallback semantics: an
+// out-of-range override is silently ignored rather than producing an
+// unbounded read.
+func WithMaxResponseBytes(n int64) Option {
+	return func(c *Client) {
+		if n > 0 {
+			c.maxResponseBytes = n
+		}
+	}
+}
+
 // WithConcurrency bounds the worker pool DecideMany (plan 02-04) uses. A
 // non-positive n is ignored and defaultConcurrency survives — applied after
 // the options loop in New, mirroring WithMaxTimeout's convention rather than
@@ -153,6 +181,12 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 		// instead of silently overwritten by a post-loop default.
 		drainBytes:   defaultDrainBytes,
 		drainTimeout: defaultDrainTimeout,
+		// The default retryDelay: fixed base plus jitter, computed fresh on
+		// every call (D-11). Tests replace this field directly to avoid
+		// sleeping the production jitter.
+		retryDelay: func() time.Duration {
+			return defaultRetryBase + rand.N(defaultRetryJitter)
+		},
 	}
 	for _, o := range opts {
 		o(c)
@@ -167,6 +201,9 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 	}
 	if c.concurrency <= 0 {
 		c.concurrency = defaultConcurrency
+	}
+	if c.maxResponseBytes <= 0 {
+		c.maxResponseBytes = defaultMaxResponseBytes
 	}
 	// http.Client.Timeout is set to the resolved timeout as a backstop,
 	// alongside the per-call context.WithTimeout budget Decide derives below.
@@ -277,6 +314,8 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 		return decide.Response{}, err
 	}
 
+	// One timeout budget covers both the first attempt and D-11's single
+	// retry — there is never a per-attempt timeout, only this one deadline.
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
@@ -303,10 +342,36 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 		return decide.Response{}, err
 	}
 
+	resp, err = c.attempt(ctx, body)
+	if err != nil && isRetryable(err) {
+		if dl, ok := ctx.Deadline(); ok {
+			d := c.retryDelay()
+			if time.Until(dl) > d {
+				timer := time.NewTimer(d)
+				select {
+				case <-timer.C:
+					resp, err = c.attempt(ctx, body)
+				case <-ctx.Done():
+					timer.Stop()
+					// The budget expired while waiting to retry: report the
+					// original failure, not the wait's cancellation — there
+					// was never a second attempt.
+				}
+			}
+		}
+	}
+	return resp, err
+}
+
+// attempt performs exactly one HTTP exchange against the Decisions endpoint
+// and classifies its outcome (D-12): a transport failure goes through
+// classifyTransport, a non-200 status through classifyStatus, and a success
+// body larger than c.maxResponseBytes becomes a named too-large error. It
+// never retries — Decide owns the single retry (D-11).
+func (c *Client) attempt(ctx context.Context, body []byte) (decide.Response, error) {
 	httpReq, nerr := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if nerr != nil {
-		err = nerr
-		return decide.Response{}, err
+		return decide.Response{}, nerr
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {
@@ -315,36 +380,44 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 
 	httpResp, derr := c.http.Do(httpReq)
 	if derr != nil {
-		err = derr
-		return decide.Response{}, err
+		return decide.Response{}, classifyTransport(ctx, derr)
 	}
 	defer func() { _ = httpResp.Body.Close() }()
 
 	if httpResp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(io.LimitReader(httpResp.Body, maxErrorBodyBytes))
 		httpdrain.Drain(httpResp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time
-		err = fmt.Errorf("decisions: status %d: %s", httpResp.StatusCode, strings.TrimSpace(string(errBody)))
-		return decide.Response{}, err
+		return decide.Response{}, classifyStatus(httpResp.StatusCode, errBody)
+	}
+
+	// Read one byte past the bound: exactly maxResponseBytes bytes is within
+	// bound, but maxResponseBytes+1 proves the body was larger.
+	raw, rerr := io.ReadAll(io.LimitReader(httpResp.Body, c.maxResponseBytes+1))
+	if rerr != nil {
+		httpdrain.Drain(httpResp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time
+		return decide.Response{}, fmt.Errorf("decide: read response: %w", rerr)
+	}
+	if int64(len(raw)) > c.maxResponseBytes {
+		httpdrain.Drain(httpResp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time
+		return decide.Response{}, &decide.Error{Kind: decide.ErrDecisionResponseTooLarge, Status: http.StatusOK}
 	}
 
 	var wr wireResponse
-	if decErr := json.NewDecoder(io.LimitReader(httpResp.Body, maxSuccessResponseBytes)).Decode(&wr); decErr != nil {
+	if decErr := json.Unmarshal(raw, &wr); decErr != nil {
 		httpdrain.Drain(httpResp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time
-		err = fmt.Errorf("decide: decode response: %w", decErr)
-		return decide.Response{}, err
+		return decide.Response{}, fmt.Errorf("decide: decode response: %w", decErr)
 	}
 	httpdrain.Drain(httpResp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time
 
 	answers := make(map[string]decide.Answer, len(wr.Answers))
 	for name, a := range wr.Answers {
 		if a.Type != string(decide.QuestionNoul) {
-			err = fmt.Errorf("decisions: unsupported answer type %q for question %q", a.Type, name)
-			return decide.Response{}, err
+			return decide.Response{}, fmt.Errorf("decisions: unsupported answer type %q for question %q", a.Type, name)
 		}
 		answers[name] = decide.Answer{Type: decide.QuestionNoul, Probability: a.Noul}
 	}
 
-	resp = decide.Response{
+	return decide.Response{
 		Answers:  answers,
 		Model:    wr.Model,
 		ID:       wr.ID,
@@ -354,8 +427,7 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 			OutputTokens: wr.Usage.OutputTokens,
 			CostUSD:      wr.Usage.Cost,
 		},
-	}
-	return resp, nil
+	}, nil
 }
 
 // DecideMany answers many Requests through the shared decide.DecideMany
