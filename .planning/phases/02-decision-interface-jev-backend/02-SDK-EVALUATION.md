@@ -1,6 +1,6 @@
 sdk_module: github.com/OpenRouterTeam/go-sdk
 sdk_version: v0.8.19
-legitimacy: PENDING
+legitimacy: approved
 verdict: PENDING
 resolution: PENDING
 
@@ -239,7 +239,13 @@ verification steps):
   adoption would add; not independently audited here (inherited, never imported directly by
   engram code) — the human confirms it is an established JSON library, not a look-alike.
 
-Outcome recorded by Task 3.
+**Outcome: approved (2026-09-23).** The user approved plan 02-02 downloading, compiling
+and running `github.com/OpenRouterTeam/go-sdk` pinned to exactly `v0.8.19` in the nested
+module under `.planning/`. The orchestrator independently confirmed via the GitHub API:
+the repository is not archived, licensed Apache-2.0, owned by `OpenRouterTeam`, and
+`v0.8.19` was published `2026-09-22T21:42:50Z` (release) with last push
+`2026-09-22T21:43:52Z`. `spyzhov/ajson` is MIT-licensed, created 2019-03-07, has 292
+stars, and is not archived.
 
 ## Behavioral evaluation (plan 02-02)
 
