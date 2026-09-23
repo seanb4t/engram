@@ -1,7 +1,7 @@
 sdk_module: github.com/OpenRouterTeam/go-sdk
 sdk_version: v0.8.19
 legitimacy: approved
-verdict: PENDING
+verdict: ADOPT-AND-WRAP-CANDIDATE
 resolution: PENDING
 
 # DEC-05 SDK Evaluation — OpenRouter Go SDK
@@ -249,12 +249,129 @@ stars, and is not archived.
 
 ## Behavioral evaluation (plan 02-02)
 
-Pending plan 02-02.
+Harness: `.planning/phases/02-decision-interface-jev-backend/sdk-eval/` (nested module
+`engram.invalid/sdkeval`, pinned to `github.com/OpenRouterTeam/go-sdk v0.8.19`). Run with
+`go -C .planning/phases/02-decision-interface-jev-backend/sdk-eval test -run
+'^TestSDKEvaluation$' -count=1 -race -v ./...` (E01–E08) and the same with
+`-run '^TestSDKConcurrency$'` (E09). Every observation line below is pasted verbatim from that
+run. `t.Logf` reports a check's PASS/FAIL against the criterion stated in the plan; the harness
+itself exited 0 both times (a subtest logging `FAIL` is a recorded finding, never a harness
+failure — only a fixture that fails to parse or a server that fails to start would `t.Fatal`).
+
+| check | question | observed | PASS/FAIL |
+|---|---|---|---|
+| E01 path fidelity | Does one documented per-call option (`operations.WithServerURL`, with or without a trailing `/api` trimmed) reach `/api/alpha/decisions` for an OpenRouter-shaped base AND `/openrouter/alpha/decisions` for a LiteLLM-pass-through-shaped base? | `EVAL-E01 FAIL B1(OpenRouter shape, base="http://127.0.0.1:60209/api", want=/api/alpha/decisions)=true via="http://127.0.0.1:60209" attempts=[WithServerURL("http://127.0.0.1:60209/api")->path="/api/api/alpha/decisions", WithServerURL("http://127.0.0.1:60209")->path="/api/alpha/decisions"]; B2(LiteLLM shape, base="http://127.0.0.1:60209/openrouter", want=/openrouter/alpha/decisions)=false via="" attempts=[WithServerURL("http://127.0.0.1:60209/openrouter")->path="/openrouter/api/alpha/decisions"]` | FAIL |
+| E02 request fidelity | Decoding the captured request body: are top-level keys exactly `model`/`state`/`questions`, is noul criteria an object with `true`/`false`, is choice criteria an object, is score criteria an array, are instructions strings? | `EVAL-E02 PASS top_level_keys_extra=[] noul_criteria_has_true=true noul_criteria_has_false=true noul_instructions_kind=string choice_criteria_kind=object choice_instructions_kind=string score_criteria_kind=array score_instructions_kind=string` | PASS |
+| E03 typed decode (D-05 bar b) | Are every answer value, usage, model, id and provider reachable through typed fields (no `map[string]any`/`[]any`/`UnknownRaw`) across `fixtureHappy`, `fixtureBatch50` and `fixtureScore`? | `EVAL-E03 PASS happy/batch50/score answers, usage, model, id and provider all reachable through typed fields; no map[string]any/[]any/UnknownRaw on the answer/usage side` | PASS |
+| E04 caller-supplied client | Does a caller-supplied `*http.Client`/`http.RoundTripper` (`openrouter.WithClient`) see every request `Create` makes? | `EVAL-E04 PASS calls_made=3 requests_seen_by_caller_supplied_client=3` | PASS |
+| E05 error dialects (DEC-04, D-12) | For every error fixture (both OpenRouter numeric-`code` and LiteLLM string-`code` dialects, plus a non-JSON HTML 502), is the HTTP status derivable from the returned error without engram intercepting the response? | `EVAL-E05 FAIL OpenRouter400Choices(card256)(want=400): type=*sdkerrors.BadRequestResponseError api_error=false named_type=true derived_status=400 derivable=true; OpenRouter401(badkey)(want=401): type=*sdkerrors.UnauthorizedResponseError api_error=false named_type=true derived_status=401 derivable=true; OpenRouter400BadType(badtype)(want=400): type=*sdkerrors.BadRequestResponseError api_error=false named_type=true derived_status=400 derivable=true; OpenRouter400MaxTokens(oversize)(want=400): type=*sdkerrors.BadRequestResponseError api_error=false named_type=true derived_status=400 derivable=true; ChatPath400(chatpath)(want=400): type=*sdkerrors.BadRequestResponseError api_error=false named_type=true derived_status=400 derivable=true; LiteLLM401(string code)(want=401): type=*fmt.wrapError api_error=false named_type=false derived_status=0 derivable=false; LiteLLM403(string code)(want=403): type=*fmt.wrapError api_error=false named_type=false derived_status=0 derivable=false; OpenRouter402(want=402): type=*sdkerrors.PaymentRequiredResponseError api_error=false named_type=true derived_status=402 derivable=true; OpenRouter404(want=404): type=*sdkerrors.NotFoundResponseError api_error=false named_type=true derived_status=404 derivable=true; OpenRouter429(want=429): type=*sdkerrors.TooManyRequestsResponseError api_error=false named_type=true derived_status=429 derivable=true; OpenRouter500(want=500): type=*sdkerrors.InternalServerResponseError api_error=false named_type=true derived_status=500 derivable=true; OpenRouter502(want=502): type=*sdkerrors.BadGatewayResponseError api_error=false named_type=true derived_status=502 derivable=true; OpenRouter503(want=503): type=*sdkerrors.ServiceUnavailableResponseError api_error=false named_type=true derived_status=503 derivable=true; OpenRouter524(want=524): type=*sdkerrors.EdgeNetworkTimeoutResponseError api_error=false named_type=true derived_status=524 derivable=true; OpenRouter529(want=529): type=*sdkerrors.ProviderOverloadedResponseError api_error=false named_type=true derived_status=529 derivable=true; HTML502(non-JSON)(want=502): type=*sdkerrors.APIError api_error=true named_type=false derived_status=502 derivable=true` | FAIL |
+| E06 errors.Is propagation (DEC-04) | (a) Does a RoundTripper transport error survive `errors.Is`? (b) Does a body-`Read` error after 64 bytes survive `errors.Is`? (c) How many bytes of a 5 MiB body does the SDK read? | `EVAL-E06 PASS a_transport_err_is_sentinel=true b_body_read_err_is_sentinel=true c_bytes_read=5242880/5242880 c_read_whole_body=true` | PASS (a, b); (c) unbounded read confirmed |
+| E07 retries (D-11) | Request counts under a 3 s deadline: no retry config, `operations.WithRetries(retry.Config{Strategy:"none"})`, and a tightly-bounded backoff config. Can retries be turned off entirely? | `EVAL-E07 PASS no_retry_config_requests=3 retries_strategy_none_requests=1 bounded_backoff_attempt_requests=3` | PASS |
+| E08 deadline | Does a 200 ms context deadline against a 2 s-sleeping server surface as `errors.Is(err, context.DeadlineExceeded)`? | `EVAL-E08 PASS err=error sending request: Post "http://127.0.0.1:60262/api/alpha/decisions": context deadline exceeded is_deadline_exceeded=true` | PASS |
+| E09 concurrency (DEC-05 concurrency edge) | One SDK client driven from 4 goroutines × 25 calls under `-race` — do all 100 succeed with no race? | `EVAL-E09 PASS all 100 calls succeeded across 4 goroutines (-race clean)` | PASS |
+| E10 footprint | Set difference between `go -C sdk-eval list -m all` and `go list -m all` (repo root)? | New modules: `github.com/OpenRouterTeam/go-sdk v0.8.19` (direct), `github.com/spyzhov/ajson v0.8.0` (indirect) — matches 02-01's Dependency footprint table exactly. Already shared with engram's `go.sum`: `github.com/stretchr/testify v1.12.1`, `go.yaml.in/yaml/v3 v3.0.5`. `git status --porcelain -- go.mod go.sum` (repo root) is empty; `git ls-files internal/decide` is empty. | PASS (matches static estimate, no surprise transitive) |
 
 ## Verdict (plan 02-02)
 
-Pending plan 02-02.
+**`verdict: ADOPT-AND-WRAP-CANDIDATE`** — rule **R3** fired: D-05(a) passed (plan 02-01) and E03
+passed (R1/R2 do not apply), but three independent R3 triggers are present —
+
+- **E01 FAILED.** `Decisions.Create` always joins whatever base URL is in effect with the
+  literal string `"/api/alpha/decisions"` (`decisions.go:55`); only the per-call
+  `operations.WithServerURL` is honored (the client-level `openrouter.WithServerURL` is never
+  read by this operation, confirmed both statically in 02-01 and live here). No documented
+  option reaches `/openrouter/alpha/decisions` for the LiteLLM pass-through shape — the OpenRouter
+  shape works (trim the trailing `/api`), but the gateway shape cannot be expressed without a
+  URL-rewriting `http.RoundTripper`.
+- **E05 FAILED.** For the LiteLLM dialect's string `"code":"401"`/`"403"`, the SDK's per-status
+  typed error structs (`Code int64`) fail to unmarshal and `Create` returns a bare
+  `*fmt.wrapError` carrying no HTTP status at all — neither `*sdkerrors.APIError` nor a named
+  per-status type. Every OpenRouter-dialect fixture (numeric `code`), including the non-JSON
+  HTML 502, classified correctly by type; only the LiteLLM string-`code` dialect breaks
+  classification. This is exactly RESEARCH's Pitfall 1 / Open Question 1, now confirmed live.
+- **E06(c) showed an unbounded read.** `utils.ConsumeRawBody` performs a plain `io.ReadAll` with
+  no byte bound (confirmed: read all 5,242,880 bytes of the synthetic body) — DEC-04's
+  response-byte-bound requirement is not met unaided.
+
+E04, E07, E08, E09 and E06(a)/(b) all passed: a caller-supplied `*http.Client` sees every
+request, SDK retries can be turned off entirely (`Strategy: "none"` → 1 request vs. 3 with no
+config), a context deadline surfaces as `context.DeadlineExceeded`, and both transport-level and
+body-Read errors stay `errors.Is`-matchable through the SDK's wrapping.
+
+## Wrap recipe
+
+For the recorded version (`v0.8.19`), reaching `{base}/alpha/decisions` for both base shapes,
+turning off retries, classifying status before decode, bounding the response, and applying the
+timeout budget all require the SAME seam: a caller-supplied `http.RoundTripper` installed via
+`openrouter.WithClient(&http.Client{Transport: engramRT})`.
+
+- **Both base-URL shapes (E01).** No documented SDK option reaches the LiteLLM gateway shape.
+  `engramRT.RoundTrip` must rewrite `req.URL.Path` before delegating: construct the client with
+  `operations.WithServerURL(strings.TrimSuffix(cfg.BaseURL, "/api"))` when the configured base
+  ends in `/api` (the OpenRouter shape, reaching `/api/alpha/decisions` for free — no rewrite
+  needed) or, for a non-`/api` base such as the LiteLLM pass-through
+  (`https://llm.fzymgc.house/openrouter`), pass that base as-is and have `engramRT` rewrite the
+  SDK's hardcoded `.../api/alpha/decisions` request path down to `.../alpha/decisions` by
+  stripping the literal `/api` segment the SDK always inserts, immediately before
+  `base.RoundTrip(req)`.
+- **Retries off (E07).** Pass `operations.WithRetries(retry.Config{Strategy: "none"})` on every
+  `Create` call so engram's own single-retry-on-429/5xx (D-11) is the only retry that runs — the
+  SDK's default backoff (up to 1 h `MaxElapsedTime`) must never be reachable.
+- **Status classification (E05).** Because the LiteLLM string-`code` dialect defeats the SDK's
+  own decode, `engramRT` must classify by `resp.StatusCode` on the way back from
+  `base.RoundTrip(req)` — before returning control to the SDK's decode step — and attach the
+  status where engram's classifier (D-12) can read it regardless of whether the SDK's own decode
+  later succeeds or falls through to a bare wrapped error. The SDK's own typed errors remain
+  usable for the OpenRouter dialect (informational), but D-12 classification cannot depend on
+  them.
+- **Response byte bound (E06b/E06c).** `utils.ConsumeRawBody`'s unbounded `io.ReadAll` is only
+  safe to leave in place if the byte bound is enforced upstream of it: `engramRT` wraps
+  `resp.Body` in a bounded `io.ReadCloser` (following `internal/httpdrain`'s pattern) that
+  returns an error once `ENGRAM_DECISIONS_DRAIN_BYTES` is exceeded — E06(b) confirmed a
+  body-`Read` error survives `errors.Is` through the SDK's wrapping, so this bound is honored by
+  Create's caller.
+- **Timeout budget (E08).** No extra work needed — pass the caller's `context.Context` (already
+  carrying `ENGRAM_DECISIONS_TIMEOUT`) straight to `Create`; E08 confirmed
+  `errors.Is(err, context.DeadlineExceeded)` holds through the SDK's error wrapping.
+
+## Hand-write recipe
+
+`net/http` plus `encoding/json` wire structs following `internal/embed`/`internal/summarize`'s
+`New(base, key, model string, opts ...Option)` shape: `httpdrain.Drain` on every response path
+(request and error bodies alike), `otelhttp` transport via the same pattern those two packages
+use for the `decide` span (D-13), an endpoint built as
+`strings.TrimRight(base, "/") + "/alpha/decisions"` (works unmodified for both the OpenRouter
+shape and the LiteLLM pass-through shape — no URL rewriting needed, unlike the wrap path), and
+classification by the HTTP status code the standard library already exposes on `*http.Response`
+(both the OpenRouter numeric-`code` and LiteLLM string-`code` error bodies collapse to the same
+`ErrDecision*` sentinel per D-12, since classification never depends on decoding `error.code`).
 
 ## Durable decision record (plan 02-02)
 
-Pending plan 02-02.
+```
+scope: repo:engram
+category: decision
+tags: [dec-05, openrouter-go-sdk, decisions-api, jev]
+summary: DEC-05 SDK evaluation of github.com/OpenRouterTeam/go-sdk@v0.8.19 against the Decisions API — verdict ADOPT-AND-WRAP-CANDIDATE (rule R3); D-06 checkpoint outcome pending.
+content: |
+  Evaluated github.com/OpenRouterTeam/go-sdk@v0.8.19 (evaluation date 2026-09-23) against DEC-05's
+  D-05(a)/(b) bar and D-06's DEC-03/DEC-04/DEC-06 fit. D-05(a) passed (not deprecated/retracted,
+  repository not archived, most recent release one day before evaluation). D-05(b)'s behavioral
+  half (E03) passed: every answer/usage/model/id/provider value is reachable through typed Go
+  fields with no map[string]any/[]any/UnknownRaw escape hatch on the answer side. The fixed D-06
+  rule table's R3 fired via three independent findings: (1) E01 — no documented per-call option
+  reaches the LiteLLM pass-through path shape (/openrouter/alpha/decisions); Decisions.Create
+  always joins the literal "/api/alpha/decisions" onto whatever base is configured, and the
+  client-level WithServerURL is never read by this operation. (2) E05 — the LiteLLM dialect's
+  string "code" field (vs. OpenRouter's numeric code) breaks the SDK's typed error decode
+  entirely for 401/403 from that gateway, returning a bare wrapped error with no derivable HTTP
+  status; every OpenRouter-dialect fixture classified correctly. (3) E06(c) — the SDK's raw body
+  read is unbounded (read a full 5 MiB test body with no size cap). E04 (caller-supplied
+  *http.Client), E07 (retries fully disable-able via retry.Config{Strategy:"none"}), E08 (context
+  deadline surfaces as context.DeadlineExceeded) and E06(a/b) (errors.Is propagation through both
+  transport and body-read errors) all passed. Full evidence, the wrap recipe and the hand-write
+  recipe are recorded in
+  .planning/phases/02-decision-interface-jev-backend/02-SDK-EVALUATION.md.
+
+  Outcome: pending the D-06 checkpoint.
+```
