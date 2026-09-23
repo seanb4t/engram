@@ -445,7 +445,31 @@ advisory signal, never as an automatic mutation.
   3. The relation question set (including `updates`) is measured on a labeled pair eval — committing no verbatim spine content — reporting accuracy by confidence bucket and a Brier score
   4. Running `consolidate` with neither `--scope` nor `--all-scopes` gets the scope-or-all-scopes rule error instead of a silent zero-candidate report
 
-**Plans**: TBD
+**Plans:** 8 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — tracer: consolidate → `server.StoreAndDeciderFromEnv` → budgeted `Store.RecordStates` → shared `internal/verdict` question set (five relations + `same_subject`) → `DecideMany` → nested JSON `verdict` per pair; no-provider path byte-identical; verdict edge suite (D-04–D-06, D-09–D-11; CUR-01, CUR-02)
+- [ ] 03-02-PLAN.md — `ENGRAM_DECISIONS_VERDICT_THRESHOLD` (0.9) and `ENGRAM_DECISIONS_VERDICT_STATE_CHARS` (1500) registered with `config.ParseProbability`, provider-gated validation, docs rows and the consolidate data disclosure (D-08, D-09; CUR-02)
+
+**Wave 2**
+
+- [ ] 03-03-PLAN.md — consolidate enforces the registered sweep-scope rule (#508): RunE guard, published Usage, reclassification, rule comment, CLI/reference/upgrade docs, curating-spine invocation line (D-12; CUR-04)
+- [ ] 03-04-PLAN.md — 80-pair synthetic labeled corpus authored toward five classes, label-independent prompt, blocking blind-labeling checkpoint keeping only agreed pairs (D-01, D-02; CUR-03)
+
+**Wave 3**
+
+- [ ] 03-05-PLAN.md — registered knobs and `--verdict-threshold` through `verdictSettings`, `--no-verdicts`, disclosure/summary stderr lines, all-auth warning, degradation paths, no cap, `--help` and goldens, `server.DeciderFromEnv` (D-04, D-08–D-11; CUR-01, CUR-02)
+
+**Wave 4**
+
+- [ ] 03-06-PLAN.md — text view renders verdicts through a sanitized row-field renderer hook; WR-02 guard rewritten into a hostile-leaf sanitization proof; CLI guide section with a docs gate (D-05, D-07, D-10; CUR-01)
+- [ ] 03-07-PLAN.md — gated `internal/curationeval` harness: shared-contract `evaluate`, buckets, Brier, integer D-03 gate, aggregate-only report, private local pair file, `task eval:curation` (D-01, D-03, D-06; CUR-03)
+
+**Wave 5**
+
+- [ ] 03-08-PLAN.md — live `task eval:curation` recorded as an aggregate-only artifact (gate result never tuned), CLAUDE.md layout rows, full phase gate (D-01, D-03; CUR-03)
 
 ### Phase 4: Jev Reranker & Per-Hit Relevance Signal
 
