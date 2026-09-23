@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 2
 current_phase_name: Decision Interface & Jev Backend
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-09-23T13:42:35.515Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-09-23T14:07:44.438Z"
 last_activity: 2026-09-23
-last_activity_desc: Phase 1 complete, transitioned to Phase 2
-state_head: 0669c1aaad2fc06eb354f57684a5720960d5c7fb
+last_activity_desc: Phase 2 execution started
+state_head: f6bc031cd7c6666c5dc3ebd1024eef1644dfbf9b
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 14
-  completed_plans: 6
+  completed_plans: 7
   percent: 20
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 1 of milestone 2026-09
 
 ## Current Position
 
-Phase: 2 (Decision Interface & Jev Backend) — READY TO EXECUTE
-Plan: Not started
+Phase: 2 (Decision Interface & Jev Backend) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-09-23 — Phase 1 complete, transitioned to Phase 2
+Last activity: 2026-09-23 — Phase 2 execution started
 
 ## Deferred Items
 
@@ -371,6 +371,7 @@ milestone needs in working memory.
 - [Phase 1]: Corrected a stale per-plan commit ledger from an earlier milestone's own phase 01-04 (dated 2026-09-18) before computing this plan's actuals.commits — Same class of issue plan 01-03 documented; the ledger guard correctly refused to overwrite a pre-existing file, so the stale value had to be corrected by hand
 - [Phase 1]: Phase 1 Plan 5: D-05 rule verdict on the live 80-120-record multi-domain corpus with independently-authored blind paraphrase queries: winner=lexical (paraphrase MRR 0.817 vs vector-only 0.579), reversing spike 004's 16-record single-domain fixture finding. Plan 01-06 branch: lexical (no internal/store ranking code change required). Checkpoint approved approve-and-post: plan 01-06 authorized to post the #605 evidence comment after its green re-run, carrying three caveats (spike-004 reversal, lexical's 0.950 vs vector-only's 1.000 paraphrase recall@8, and the live AsymmetryDiffer SKIP under a symmetric embed config).
 - [Phase 1]: Plan 01-06 shipped the D-05 approved winner (lexical) as SearchReranked's rank step via the new rankCandidates seam; live post-change re-run confirmed no regression and RANK-02 evidence was posted to #605 (approve-and-post authorization)
+- [Phase 2]: 02-01: DEC-05 candidate github.com/OpenRouterTeam/go-sdk@v0.8.19 passes D-05(a) (not deprecated/retracted/archived, released within 90-day window); package legitimacy checkpoint approved (org match, Apache-2.0, spyzhov/ajson vetted as established MIT library), clearing plan 02-02 to compile and run the SDK in an isolated nested module
 
 ### Pending Todos
 
@@ -458,9 +459,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T12:31:54.213Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-decision-interface-jev-backend/02-CONTEXT.md
+Last session: 2026-09-23T14:04:12.906Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -632,6 +633,7 @@ Resume file: .planning/phases/02-decision-interface-jev-backend/02-CONTEXT.md
 | Phase 01-eval-foundation-lexical-reranker-fix P04 | 35min | 3 tasks | 6 files |
 | Phase 1 P5 | 13min | 3 tasks | 2 files |
 | Phase 01 P06 | ~23min | 3 tasks | 11 files |
+| Phase 02 P01 | 6min | 3 tasks | 2 files |
 
 ## Operator Next Steps
 

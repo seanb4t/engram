@@ -403,12 +403,12 @@ inert until an operator opts in.
   5. The OpenRouter Go SDK evaluation and its adopt/reject decision are recorded before any hand-written client lands
   6. Every decision call emits an OTLP span carrying latency, question count, input tokens, and cost
 
-**Plans:** 8 plans
+**Plans:** 1/8 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — SDK candidate facts and static Decisions surface from live commands (no SDK code run), COVERAGE.md reconciled, blocking-human package-legitimacy checkpoint (D-05, D-07; DEC-05)
+- [x] 02-01-PLAN.md — SDK candidate facts and static Decisions surface from live commands (no SDK code run), COVERAGE.md reconciled, blocking-human package-legitimacy checkpoint (D-05, D-07; DEC-05)
 
 **Wave 2**
 
@@ -535,7 +535,7 @@ the result set actually answers the query.
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
-| 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
+| 2. Headless CLI Client | v0.12.x | 4/4 | In Progress|  |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-08-16 |
