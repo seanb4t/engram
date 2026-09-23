@@ -230,6 +230,63 @@ tasks:
           echo "chart:validate: ENGRAM_SERVICE_AUTH_STATIC_TOKENS secretKeyRef must carry the configured secret key"
           exit 1
         fi
+        # Typed decisions (Jev, DEC-01/D-04). Every ENGRAM_DECISIONS_* row
+        # sits under the memory.decisions.provider gate (D-01) — asserted in
+        # both directions, same reasoning as the chat/service-token blocks
+        # above: the checksum pins the template text but cannot assert the
+        # SET path renders, and a break in the provider gate would leave an
+        # operator's decisions config silently inert or (worse) always-on.
+        if helm template charts/engram | grep -q 'ENGRAM_DECISIONS_'; then
+          echo "chart:validate: default render must NOT emit any ENGRAM_DECISIONS_ var (memory.decisions.provider unset, D-01)"
+          exit 1
+        fi
+        DECISIONS_UNSET_PROVIDER_RENDER=$(helm template charts/engram \
+          --set memory.decisions.baseURL=https://openrouter.example/api \
+          --set memory.decisions.model=m \
+          --set memory.decisions.timeout=5s \
+          --set memory.decisions.concurrency=2 \
+          --set memory.decisions.apiKeySecret.name=cv-dec-secret \
+          --set memory.decisions.apiKeySecret.key=cv-dec-key)
+        if echo "$DECISIONS_UNSET_PROVIDER_RENDER" | grep -q 'ENGRAM_DECISIONS_'; then
+          echo "chart:validate: every ENGRAM_DECISIONS_ var must sit under memory.decisions.provider — setting every OTHER decisions value must still emit nothing"
+          exit 1
+        fi
+        DECISIONS_RENDER=$(helm template charts/engram \
+          --set memory.decisions.provider=jev \
+          --set memory.decisions.baseURL=https://openrouter.example/api)
+        if ! echo "$DECISIONS_RENDER" | grep -q 'name: ENGRAM_DECISIONS_PROVIDER'; then
+          echo "chart:validate: --set memory.decisions.provider=jev must emit ENGRAM_DECISIONS_PROVIDER"
+          exit 1
+        fi
+        if ! echo "$DECISIONS_RENDER" | grep -q 'name: ENGRAM_DECISIONS_BASE_URL'; then
+          echo "chart:validate: --set memory.decisions.baseURL must emit ENGRAM_DECISIONS_BASE_URL"
+          exit 1
+        fi
+        if echo "$DECISIONS_RENDER" | grep -q 'ENGRAM_DECISIONS_API_KEY'; then
+          echo "chart:validate: ENGRAM_DECISIONS_API_KEY must NOT render when memory.decisions.apiKeySecret.name is unset"
+          exit 1
+        fi
+        DECISIONS_KEY_RENDER=$(helm template charts/engram \
+          --set memory.decisions.provider=jev \
+          --set memory.decisions.baseURL=https://openrouter.example/api \
+          --set memory.decisions.apiKeySecret.name=cv-dec-secret \
+          --set memory.decisions.apiKeySecret.key=cv-dec-key)
+        if ! echo "$DECISIONS_KEY_RENDER" | grep -q 'name: ENGRAM_DECISIONS_API_KEY'; then
+          echo "chart:validate: --set memory.decisions.apiKeySecret.{name,key} must emit ENGRAM_DECISIONS_API_KEY"
+          exit 1
+        fi
+        if ! echo "$DECISIONS_KEY_RENDER" | grep -A3 'name: ENGRAM_DECISIONS_API_KEY' | grep -q 'secretKeyRef'; then
+          echo "chart:validate: ENGRAM_DECISIONS_API_KEY must render as a secretKeyRef, never a literal value"
+          exit 1
+        fi
+        if ! echo "$DECISIONS_KEY_RENDER" | grep -A5 'name: ENGRAM_DECISIONS_API_KEY' | grep -q 'name: "cv-dec-secret"'; then
+          echo "chart:validate: ENGRAM_DECISIONS_API_KEY secretKeyRef must carry the configured secret name"
+          exit 1
+        fi
+        if ! echo "$DECISIONS_KEY_RENDER" | grep -A5 'name: ENGRAM_DECISIONS_API_KEY' | grep -q 'key: "cv-dec-key"'; then
+          echo "chart:validate: ENGRAM_DECISIONS_API_KEY secretKeyRef must carry the configured secret key"
+          exit 1
+        fi
         helm lint charts/engram
         # Drift pin: engram.containerEnv is the single source of the
         # Deployment+CronJob container env (D-09). Any edit to this block
@@ -248,8 +305,11 @@ tasks:
         # 2026-09-21 for the four service-principal rows
         # (ENGRAM_SERVICE_AUTH_STATIC_TOKENS secretKeyRef plus the three
         # with-guarded OIDC/owner-claim rows); the default render still omits
-        # all four and the rest of the block is byte-identical.
-        EXPECTED_CHECKSUM="98bda8a99638d33b2a31c11266fd4512e2403a89be369782338fcf27291c9260"
+        # all four and the rest of the block is byte-identical. Re-pinned
+        # 2026-09-23 for the provider-gated ENGRAM_DECISIONS_* rows (DEC-01,
+        # D-04): the default render omits all six, and the rest of the block
+        # stays byte-identical to the pre-phase render.
+        EXPECTED_CHECKSUM="c9eea8464e4f605fd68d953b113dc3325596eb4e4220cf01f002fb24133b4bab"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

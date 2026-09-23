@@ -55,6 +55,31 @@
 {{- with .Values.memory.summarize.timeout }}
 - { name: ENGRAM_SUMMARY_TIMEOUT, value: "{{ . }}" }
 {{- end }}
+{{- /* Typed decisions (Jev). An empty provider omits EVERY ENGRAM_DECISIONS_*
+       var, so the server constructs no decider and makes no call (D-01) —
+       the default render is byte-identical to before this block existed. */}}
+{{- if .Values.memory.decisions.provider }}
+- { name: ENGRAM_DECISIONS_PROVIDER, value: "{{ .Values.memory.decisions.provider }}" }
+{{- with .Values.memory.decisions.baseURL }}
+- { name: ENGRAM_DECISIONS_BASE_URL, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.decisions.model }}
+- { name: ENGRAM_DECISIONS_MODEL, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.decisions.timeout }}
+- { name: ENGRAM_DECISIONS_TIMEOUT, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.decisions.concurrency }}
+- { name: ENGRAM_DECISIONS_CONCURRENCY, value: "{{ . }}" }
+{{- end }}
+{{- if .Values.memory.decisions.apiKeySecret.name }}
+- name: ENGRAM_DECISIONS_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: "{{ .Values.memory.decisions.apiKeySecret.name }}"
+      key: "{{ .Values.memory.decisions.apiKeySecret.key }}"
+{{- end }}
+{{- end }}
 {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
 {{- with .Values.memory.mcpPath }}
 - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }
