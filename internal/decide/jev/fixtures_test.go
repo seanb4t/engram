@@ -94,3 +94,9 @@ const fixtureChoiceSum098 = `{"model":"typesafe/jev-1.13-20260917","answers":{"c
 // an answer type decodeResponse does not recognize ("ranking" is not one of
 // noul/choice/score).
 const fixtureUnknownAnswerType = `{"model":"typesafe/jev-1.13-20260917","answers":{"c":{"type":"ranking"}},"usage":{"input_tokens":10,"output_tokens":2,"cost":0.000001},"id":"gen-fixture-unknown","provider":"TypeSafe"}`
+
+// fixtureTypeMismatch is synthetic: a 200 whose answer for "c" is validly
+// shaped ("choice", noul/choice/score all recognized) but does not match the
+// type of the question actually asked (WR-01) — decodeResponse must reject
+// this rather than silently decode it as a choice answer.
+const fixtureTypeMismatch = `{"model":"typesafe/jev-1.13-20260917","answers":{"c":{"type":"choice","choice":"a","probabilities":{"a":1}}},"usage":{"input_tokens":10,"output_tokens":2,"cost":0.000001},"id":"gen-fixture-typemismatch","provider":"TypeSafe"}`

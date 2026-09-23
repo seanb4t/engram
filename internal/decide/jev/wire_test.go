@@ -446,6 +446,20 @@ func TestJevAnswerMapping(t *testing.T) {
 				t.Errorf("Question = %q, want c", de.Question)
 			}
 		})
+
+		t.Run("answer type does not match requested question type (WR-01)", func(t *testing.T) {
+			req := decide.Request{Questions: map[string]decide.Question{
+				"c": decide.Noul("is it true?", "yes", "no"),
+			}}
+			_, err := decodeResponse([]byte(fixtureTypeMismatch), req)
+			if !errors.Is(err, decide.ErrDecisionMalformedResponse) {
+				t.Errorf("err = %v, want ErrDecisionMalformedResponse", err)
+			}
+			var de *decide.Error
+			if !errors.As(err, &de) || de.Question != "c" {
+				t.Errorf("Question = %q, want c", de.Question)
+			}
+		})
 	})
 
 	t.Run("extra ignored", func(t *testing.T) {

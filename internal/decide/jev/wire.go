@@ -94,12 +94,15 @@ func encodeRequest(model string, req decide.Request) ([]byte, error) {
 
 // decodeResponse decodes body into a decide.Response for every question
 // req.Questions names (DEC-02). An undecodable body, a missing answer for a
-// requested question, or an answer whose Type is not noul/choice/score
-// returns a *decide.Error{Kind: decide.ErrDecisionMalformedResponse} — the
-// last two name the offending question. Answers for names not in
-// req.Questions are dropped: a provider that answers a question nobody
-// asked never leaks it into Response.Answers. Every field is copied
-// verbatim — never rounded, clamped or renormalized (E03).
+// requested question, an answer whose Type does not match the requested
+// question's Type (WR-01 — never trust the wire answer's own claimed Type
+// over what was actually asked), or an answer whose Type is not
+// noul/choice/score returns a *decide.Error{Kind:
+// decide.ErrDecisionMalformedResponse} — the last three name the offending
+// question. Answers for names not in req.Questions are dropped: a provider
+// that answers a question nobody asked never leaks it into Response.Answers.
+// Every field is copied verbatim — never rounded, clamped or renormalized
+// (E03).
 func decodeResponse(body []byte, req decide.Request) (decide.Response, error) {
 	var wr wireResponse
 	if err := json.Unmarshal(body, &wr); err != nil {
@@ -107,9 +110,12 @@ func decodeResponse(body []byte, req decide.Request) (decide.Response, error) {
 	}
 
 	answers := make(map[string]decide.Answer, len(req.Questions))
-	for name := range req.Questions {
+	for name, q := range req.Questions {
 		wa, ok := wr.Answers[name]
 		if !ok {
+			return decide.Response{}, &decide.Error{Kind: decide.ErrDecisionMalformedResponse, Question: name}
+		}
+		if wa.Type != string(q.Type) {
 			return decide.Response{}, &decide.Error{Kind: decide.ErrDecisionMalformedResponse, Question: name}
 		}
 		switch wa.Type {
