@@ -22,10 +22,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-22 after milestone 2026-09-18.01 — Bounded Reads)
+See: .planning/PROJECT.md (updated 2026-09-23 after Phase 1 of milestone 2026-09-22.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 1 — Eval Foundation & Lexical Reranker Fix
+**Current focus:** Phase 2 — Decision Interface & Jev Backend
 
 ## Current Position
 
@@ -427,6 +427,16 @@ Both prior entries were delivered and had simply never been closed out:
 - OBSOLETE 2026-09-21 — the red-evidence harness was removed repo-wide under rule 3p0zsqrhmb ("NEVER write tests for tests"), so TestRedEvidencePatchesAreLive no longer exists and this timeout class cannot recur. Recorded for history: it hit Go's default 601s per-package timeout twice during 06-01's task gate under concurrent machine load.
 - OBSOLETE 2026-09-21 — harness removed (rule 3p0zsqrhmb); internal/store now runs in 352s. This entry's claim that the package "needs materially more than Go's default 601s timeout" was ALSO WRONG on its own terms and seeded a bogus `-timeout 180m` into later plan text: per-patch cost was a stable ~4.5s (phase 3: 25 patches/111s; phase 7: 63/295.7s), so 63 patches cost ~300s intrinsically — half the default. The observed 602-782s spread was machine contention (load avg 18.9 on 16 cores from unrelated work), never harness cost. Divide wall time by unit count before declaring a workload too slow.
 - RESOLVED by the orchestrator between 07-01 and 07-02: task (full repo gate) failed on internal/keylinks.TestNoEscapedPatternsRepoWide against .planning/phases/07-bounded-provider-responses/07-02-PLAN.md:53 (pre-existing since 2a15f189). Fixed by re-quoting the key_links pattern as a YAML single-quoted scalar ('koanf:"drain_bytes"'), matching the repo-wide precedent; internal/keylinks is green.
+- **[Phase 1] (2026-09-22.01) carry-forwards:** (a) `phase.complete 1` again wrote the wrong
+  ROADMAP progress row (`yzmfesbsg0`): it flipped the shipped v0.12.x "1. Shared Auth Chain" row to
+  `Complete | 2026-09-23` and left the active milestone's "1. Eval Foundation" row at `0/4 | Not
+  started` — hand-fix both, and hand-verify the table after every Phase 2–5 `phase.complete`.
+  (b) Stale `.git/gsd-plan-head-before-02-0{1,2,4}` ledgers from an earlier milestone's same-numbered
+  plans exist; 01-03/01-04 hit the same class and corrected by hand — check before Phase 2's
+  `actuals.commits`. (c) For Phase 4 (Jev reranker): lexical's paraphrase recall@8 is 0.950 vs
+  vector-only's 1.000, and the live AsymmetryDiffer SKIPs under a symmetric embed config; the Jev
+  stub in `evalRankers()` is enabled by a pure append and plugs into `store.rankCandidates`.
+  (d) #353, #354 and #605 remain OPEN on GitHub — close them with the milestone PR.
 
 ### Quick Tasks Completed
 
@@ -448,7 +458,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T04:19:38.953Z
+Last session: 2026-09-23T12:15:12Z
 Stopped at: Phase 1 complete, ready to plan Phase 2
 Resume file: None
 
