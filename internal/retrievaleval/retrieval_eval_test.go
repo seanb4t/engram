@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -345,15 +344,23 @@ func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
 			len(queryVec), len(documentVec), dim)
 	}
 
-	// THE Pitfall-12 correctness gate (D-04, hard t.Fatal — not t.Errorf — so
-	// this stops immediately and cannot be obscured by later output, review
-	// B4): the query-side and document-side vectors of the SAME string MUST
-	// differ once asymmetric embedding is correctly configured.
-	if reflect.DeepEqual(queryVec, documentVec) {
-		t.Fatalf("asymmetry differ FAIL: query vector == document vector (dim=%d) — the asymmetric instruction-prefix had no effect; the operator likely wired the no-op ENGRAM_EMBED_QUERY_PARAMS/ENGRAM_EMBED_DOCUMENT_PARAMS/task_type mechanism instead of ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION", dim)
+	// THE Pitfall-12 correctness gate (D-04/D-13, hard t.Fatal — not
+	// t.Errorf — so this stops immediately and cannot be obscured by later
+	// output, review B4): the query-side and document-side vectors of the
+	// SAME string MUST differ MATERIALLY, by cosine distance above
+	// differMinCosineDistance — replacing the retired bit-identity
+	// comparison (#353), which a hosted embedder's harmless float jitter
+	// between two calls could trip even with no real asymmetric effect.
+	distance, err := cosineDistance(queryVec, documentVec)
+	if err != nil {
+		t.Fatalf("asymmetry differ: malformed embedding vector (dim=%d): %v", dim, err)
+	}
+	// Written so a NaN distance can never satisfy the pass condition.
+	if !(distance > differMinCosineDistance) {
+		t.Fatalf("asymmetry differ FAIL: cosine distance %.6g is not above %g — query and document vectors are materially the same (dim=%d) — the asymmetric instruction-prefix had no effect; the operator likely wired the no-op ENGRAM_EMBED_QUERY_PARAMS/ENGRAM_EMBED_DOCUMENT_PARAMS/task_type mechanism instead of ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION", distance, differMinCosineDistance, dim)
 	}
 
-	t.Logf("asymmetry differ PASS: query vector != document vector (dim=%d) — instruction-prefix took effect", dim)
+	t.Logf("asymmetry differ PASS: vectors differ materially (cosine distance=%.6g, dim=%d)", distance, dim)
 }
 
 // newTestcontainerStore builds a *store.Store pinned to storetest's resolved
