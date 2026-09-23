@@ -27,6 +27,7 @@ matrix against the version current at execution and records the result in
 | request.provider (OpenRouter provider-routing preferences) | OPT-OUT | not needed: Jev has a single upstream provider (TypeSafe), so routing preferences select nothing |
 | request.session_id (OpenRouter observability grouping) | OPT-OUT | not needed yet: engram correlates each call through its own decide span (D-13) and the response id |
 | request.trace (OpenRouter Broadcast trace config) | OPT-OUT | not needed yet: engram's own OTLP decide span is the observability record (D-13); forwarding trace ids to OpenRouter is an additive follow-up |
+| request.user (optional end-user identifier) | OPT-OUT | not needed yet: no phase consumer attributes a decision call to an end-user identity; additive if a future caller needs one |
 | answer.noul (probability) | INTEGRATE | |
 | answer.choice (choice, per-option probabilities, confidence) | INTEGRATE | |
 | answer.score (score, per-level probabilities, confidence, legend) | INTEGRATE | |
