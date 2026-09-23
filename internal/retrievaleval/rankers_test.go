@@ -177,10 +177,10 @@ func TestDecideRanking(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name              string
-		rows              []variantSummary
-		wantWinner        string
-		wantReasonSubstr  string
+		name             string
+		rows             []variantSummary
+		wantWinner       string
+		wantReasonSubstr string
 	}{
 		{
 			name: "vector-only has the best MRR",
