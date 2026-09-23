@@ -2803,7 +2803,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			// (D-07): the core returns raw []store.Memory.
 			hits := shapeRecall(ms, a.Full, d.summaryMaxChars)
 			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, cov)
-			return textResult(fmt.Sprintf("%d hits", len(hits))), result, nil
+			return nil, result, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content.", Annotations: annotationsFor("list_memory")},
@@ -2860,7 +2860,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			// (D-07): the core returns raw []store.Memory.
 			mems := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
 			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, cov)
-			return textResult(fmt.Sprintf("%d memories", len(mems))), result, nil
+			return nil, result, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory.", Annotations: annotationsFor("list_scheduled")},
@@ -2870,7 +2870,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 				return nil, nil, err
 			}
 			mems, err := d.listScheduled(ctx, c, a)
-			return textResult(fmt.Sprintf("%d scheduled", len(mems))), map[string]any{"memories": mems}, err
+			return nil, map[string]any{"memories": mems}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns every state recall hides — scheduled (not-yet-active), expired, superseded, and archived records too. The id may be the full UUID or the short_id.", Annotations: annotationsFor("get_memory")},
@@ -2940,7 +2940,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 				return nil, nil, err
 			}
 			hits, err := d.searchDiscovery(ctx, c, a)
-			return textResult(fmt.Sprintf("%d hits", len(hits))), map[string]any{"discoveries": hits}, err
+			return nil, map[string]any{"discoveries": hits}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "set_visibility", Description: "Share or unshare a memory you own. shared=true → readable by any authenticated caller (never writable by others); false → private. The id may be the full UUID or the short_id.", Annotations: annotationsFor("set_visibility")},
@@ -2984,15 +2984,21 @@ func registerTools(s *mcp.Server, d *deps) error {
 				return nil, nil, err
 			}
 			rules, advisory, err := d.listRules(ctx, c, a)
-			msg := fmt.Sprintf("%d rules", len(rules))
+			result := map[string]any{"rules": rules}
 			if advisory != "" {
-				msg += " (" + advisory + ")"
+				result["advisory"] = advisory
 			}
-			return textResult(msg), map[string]any{"rules": rules}, err
+			return nil, result, err
 		})
 	return nil
 }
 
+// textResult gives a write tool its short confirmation text. The read tools
+// (search_memory, list_memory, list_scheduled, search_discovery, list_rules)
+// return a nil result instead, so go-sdk puts the structured result in a
+// TextContent block as serialized JSON too, as MCP 2026-07-28 § Structured
+// Content says a tool SHOULD; a client that reads only `content` then still
+// gets the records rather than a count.
 func textResult(s string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s}}}
 }

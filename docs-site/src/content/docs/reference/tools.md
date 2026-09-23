@@ -153,6 +153,8 @@ non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
 Final order may include reranking; `score` remains first-stage dense
 similarity and may be non-monotonic after rerank. `citations` are omitted from
 the default compact view; pass `full=true` to include them.
+The result is returned as structured content and, per MCP 2026-07-28, also as
+the same JSON in a text block.
 
 On a cross-spine call (`cross_spine=true`), the response also carries
 `searched_scopes` — every scope you can read that the search spanned, not the
@@ -188,6 +190,8 @@ pass `full=true` for complete content.
 
 Returns `{ "memories": [...], "next_cursor": "<token>" }`. An empty or absent `next_cursor` indicates the last page.
 `citations` are omitted from the default compact view; pass `full=true` to include them.
+The result is returned as structured content and, per MCP 2026-07-28, also as
+the same JSON in a text block.
 
 On a cross-spine call (`cross_spine=true`), the response also carries
 `searched_scopes` — every scope you can read that the list spanned, not the
@@ -221,7 +225,9 @@ surface via `list_memory`/`search_memory`, not here.
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
 
-Returns the matching hidden windowed records.
+Returns `{ "memories": [...] }`, the matching hidden windowed records.
+The result is returned as structured content and, per MCP 2026-07-28, also as
+the same JSON in a text block.
 
 ---
 
@@ -455,7 +461,9 @@ Semantic search over the discovery pool. Scope is required unless
 | `k` | uint64 | no | Number of results to return; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
 | `cross_spine` | bool | no | Span all discovery scopes; ignores `scope` when true |
 
-Results carry `citations` and `created_at` (useful as aging signals).
+Returns `{ "discoveries": [...] }`. Results carry `citations` and `created_at`
+(useful as aging signals). The result is returned as structured content and,
+per MCP 2026-07-28, also as the same JSON in a text block.
 
 ---
 
@@ -521,10 +529,12 @@ The default compact shape is a `ruleView` (`short_id`, `id`, `summary`, `tags`,
 `scope`, `created_at`) — note it carries no `content`, so a contradiction or
 duplication check needs `full=true`. `full=true` returns the full records.
 Ordering is oldest-first (this ascending order is specific to `list_rules`).
-A per-scope count above 50 adds a curation-smell advisory to the text result
-only — the returned rules payload is unaffected. The advisory is a volume
-signal only: it says nothing about duplication or contradiction, and it
-cannot fire below 51 rules in a scope.
+The result is returned as structured content and, per MCP 2026-07-28, also as
+the same JSON in a text block.
+A per-scope count above 50 adds a curation-smell advisory to the result under
+`advisory` (absent otherwise) — the `rules` payload is unaffected. The
+advisory is a volume signal only: it says nothing about duplication or
+contradiction, and it cannot fire below 51 rules in a scope.
 
 ---
 
