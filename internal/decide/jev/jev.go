@@ -229,11 +229,15 @@ type wireQuestion struct {
 }
 
 type wireResponse struct {
-	Model    string                `json:"model"`
-	Answers  map[string]wireAnswer `json:"answers"`
-	Usage    wireUsage             `json:"usage"`
-	ID       string                `json:"id"`
-	Provider string                `json:"provider"`
+	Model   string                `json:"model"`
+	Answers map[string]wireAnswer `json:"answers"`
+	// Usage is a pointer so an absent "usage" key decodes to nil — E10
+	// requires distinguishing "no usage reported" from "usage reported as
+	// zero", and both attempt's Response.Usage and the decide span's usage
+	// attributes must omit rather than zero in the absent case.
+	Usage    *wireUsage `json:"usage"`
+	ID       string     `json:"id"`
+	Provider string     `json:"provider"`
 }
 
 type wireAnswer struct {
@@ -261,34 +265,39 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
-		// decide.Status classifies err into the D-12/D-09 vocabulary — a
-		// validation failure below reports "invalid_request" here, not the
-		// generic "error" a hardcoded ok/error pair would give it. Full
-		// status-class classification of network/HTTP failures into named
-		// *decide.Error values is plan 02-07's job; until then an
-		// unclassified transport error falls through Status's default case
-		// to "error", identical to today's behavior.
+		// decide.Status classifies err into the D-12/D-09 vocabulary: a
+		// validation failure reports "invalid_request", every classified
+		// HTTP/transport failure reports its own class word, and success
+		// reports "ok" (D-13).
 		status := decide.Status(err)
 		var modelSnapshot string
 		var inputTokens, outputTokens int64
 		var costUSD *float64
 		if err != nil {
 			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
+			// The span status description is the fixed class word, never
+			// err.Error() — err.Error() may carry a bounded provider detail
+			// string (D-12's Detail field), and the status description is
+			// not the place for that: it would duplicate provider text into
+			// a second telemetry surface for no benefit (D-13).
+			span.SetStatus(codes.Error, status)
 		} else {
 			modelSnapshot = resp.Model
+			span.SetAttributes(attribute.String("engram.decide.model_snapshot", modelSnapshot))
+			// Usage attributes are omitted, never zeroed, when the response
+			// carries no usage (E10) — Jev's response always reports a
+			// model snapshot, but usage is optional on the wire.
 			if resp.Usage != nil {
 				inputTokens = resp.Usage.InputTokens
 				outputTokens = resp.Usage.OutputTokens
 				costUSD = resp.Usage.CostUSD
-			}
-			span.SetAttributes(
-				attribute.String("engram.decide.model_snapshot", modelSnapshot),
-				attribute.Int64("engram.decide.input_tokens", inputTokens),
-				attribute.Int64("engram.decide.output_tokens", outputTokens),
-			)
-			if costUSD != nil {
-				span.SetAttributes(attribute.Float64("engram.decide.cost_usd", *costUSD))
+				span.SetAttributes(
+					attribute.Int64("engram.decide.input_tokens", inputTokens),
+					attribute.Int64("engram.decide.output_tokens", outputTokens),
+				)
+				if costUSD != nil {
+					span.SetAttributes(attribute.Float64("engram.decide.cost_usd", *costUSD))
+				}
 			}
 		}
 		span.SetAttributes(attribute.String("engram.decide.status", status))
@@ -417,16 +426,21 @@ func (c *Client) attempt(ctx context.Context, body []byte) (decide.Response, err
 		answers[name] = decide.Answer{Type: decide.QuestionNoul, Probability: a.Noul}
 	}
 
+	var usage *decide.Usage
+	if wr.Usage != nil {
+		usage = &decide.Usage{
+			InputTokens:  wr.Usage.InputTokens,
+			OutputTokens: wr.Usage.OutputTokens,
+			CostUSD:      wr.Usage.Cost,
+		}
+	}
+
 	return decide.Response{
 		Answers:  answers,
 		Model:    wr.Model,
 		ID:       wr.ID,
 		Provider: wr.Provider,
-		Usage: &decide.Usage{
-			InputTokens:  wr.Usage.InputTokens,
-			OutputTokens: wr.Usage.OutputTokens,
-			CostUSD:      wr.Usage.Cost,
-		},
+		Usage:    usage,
 	}, nil
 }
 
