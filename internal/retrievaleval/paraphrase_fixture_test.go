@@ -93,6 +93,45 @@ func TestParaphraseCorpusIntegrity(t *testing.T) {
 		}
 	})
 
+	// queries proves paraphraseCase.queries (plan 01-04) is in lockstep with
+	// paraphraseTopics: one query per topic, mapped by topic ID, carrying
+	// the exact wantKey the topic declares.
+	t.Run("queries", func(t *testing.T) {
+		t.Parallel()
+		if got, want := len(paraphraseCase.queries), len(paraphraseTopics); got != want {
+			t.Fatalf("paraphraseCase.queries has %d entries, want %d (len(paraphraseTopics))", got, want)
+		}
+
+		wantKeyByTopic := make(map[string]string, len(paraphraseTopics))
+		for _, topic := range paraphraseTopics {
+			wantKeyByTopic[topic.id] = topic.wantKey
+		}
+
+		seenName := make(map[string]bool, len(paraphraseCase.queries))
+		for _, q := range paraphraseCase.queries {
+			if seenName[q.name] {
+				t.Errorf("duplicate query name %q", q.name)
+			}
+			seenName[q.name] = true
+
+			wantKey, ok := wantKeyByTopic[q.name]
+			if !ok {
+				t.Errorf("query name %q is not a topic id in paraphraseTopics", q.name)
+				continue
+			}
+			if q.wantKey != wantKey {
+				t.Errorf("%s: wantKey = %q, want %q (paraphraseTopics)", q.name, q.wantKey, wantKey)
+			}
+
+			if strings.TrimSpace(q.text) == "" {
+				t.Errorf("%s: text is empty", q.name)
+			}
+			if strings.ContainsAny(q.text, "\"`") {
+				t.Errorf("%s: text %q contains a quote or backtick", q.name, q.text)
+			}
+		}
+	})
+
 	t.Run("sticky-neighbours", func(t *testing.T) {
 		t.Parallel()
 		seedByKey := make(map[string]seedRecord, len(paraphraseSeeds))
@@ -293,6 +332,46 @@ func TestParaphraseCorpusIntegrity(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestRetrievalCasesRoles is hermetic (no Qdrant, no embedder) and pins the
+// dataset's two roles (plan 01-04): retrievalCases holds exactly one
+// roleRegressionGuard case (gh261Case, with two queries both targeting
+// recordTKey) and exactly one roleParaphrase case (paraphraseCase).
+func TestRetrievalCasesRoles(t *testing.T) {
+	t.Parallel()
+
+	var guardCases, paraphraseCases []retrievalCase
+	for _, tc := range retrievalCases {
+		switch tc.role {
+		case roleRegressionGuard:
+			guardCases = append(guardCases, tc)
+		case roleParaphrase:
+			paraphraseCases = append(paraphraseCases, tc)
+		}
+	}
+
+	if got, want := len(guardCases), 1; got != want {
+		t.Fatalf("retrievalCases holds %d roleRegressionGuard case(s), want %d", got, want)
+	}
+	if guardCases[0].name != gh261Case.name {
+		t.Errorf("the sole roleRegressionGuard case is %q, want %q (gh261Case)", guardCases[0].name, gh261Case.name)
+	}
+	if got, want := len(guardCases[0].queries), 2; got != want {
+		t.Fatalf("gh261Case has %d queries, want %d", got, want)
+	}
+	for _, q := range guardCases[0].queries {
+		if q.wantKey != recordTKey {
+			t.Errorf("gh261Case query %q has wantKey %q, want %q (recordTKey)", q.name, q.wantKey, recordTKey)
+		}
+	}
+
+	if got, want := len(paraphraseCases), 1; got != want {
+		t.Fatalf("retrievalCases holds %d roleParaphrase case(s), want %d", got, want)
+	}
+	if paraphraseCases[0].name != paraphraseCase.name {
+		t.Errorf("the sole roleParaphrase case is %q, want %q (paraphraseCase)", paraphraseCases[0].name, paraphraseCase.name)
+	}
 }
 
 // leakTokens tokenizes s into lowercase alphanumeric runs, keeping only

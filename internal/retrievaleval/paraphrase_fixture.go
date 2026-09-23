@@ -230,3 +230,63 @@ var paraphraseTopics = []paraphraseTopic{
 	{id: "T23", label: "the record about the retention period required for a legal hold", wantKey: ""},
 	{id: "T24", label: "the record about the push notification quota for the mobile app", wantKey: ""},
 }
+
+// paraphraseCase wraps paraphraseSeeds with the 24 blind queries recorded in
+// .planning/phases/01-eval-foundation-lexical-reranker-fix/01-BLIND-QUERIES.md
+// (D-01 procedure, RANK-01):
+//
+//   - The corpus (paraphraseSeeds) and its 24 topic labels (paraphraseTopics)
+//     were authored in plan 01-03, independently of any query text.
+//   - The blind query author saw ONLY .planning/phases/
+//     01-eval-foundation-lexical-reranker-fix/01-BLIND-QUERY-PROMPT.md's
+//     labels-only prompt (the text below its "---8<---" marker, pasted
+//     verbatim) — never paraphraseSeeds, never a record's wording. The
+//     prompt's content is pinned at commit 2606c358.
+//   - Author: a fresh general-purpose subagent dispatched by the
+//     orchestrator, with no repository context and no tool use (0 tool
+//     calls). Date: 2026-09-22.
+//   - Every query text below is transcribed VERBATIM from
+//     01-BLIND-QUERIES.md's `- Tnn: <query>` reply — no wording was edited
+//     after the blind pass, in either direction.
+//   - The mapping from each query to its wantKey target is a SEPARATE,
+//     non-blind pass (this file, plan 01-04): matching by topic ID against
+//     paraphraseTopics, never by re-reading the blind author's intent. A
+//     no-answer topic (T21-T24, D-12) carries an empty wantKey, unchanged
+//     from paraphraseTopics.
+//
+// This case is written independently of gh261Case's target (RANK-01): its
+// corpus, its labels, and its queries share no authorship or visibility
+// with Record T or gh261Distractors. Its no-answer queries serve Phase 4's
+// per-hit relevance signal (D-12) — this plan excludes them from
+// recall@k/MRR and logs them only.
+var paraphraseCase = retrievalCase{
+	name:        "paraphrase-blind-multidomain",
+	role:        roleParaphrase,
+	seedRecords: paraphraseSeeds,
+	queries: []retrievalQuery{
+		{name: "T01", text: "what did we decide has to happen to code before it gets merged into main", wantKey: "tooling-01"},
+		{name: "T02", text: "in what order do the formatter and linter run, which one goes first", wantKey: "tooling-05"},
+		{name: "T03", text: "where did we put the config file for the linter settings", wantKey: "tooling-09"},
+		{name: "T04", text: "which step runs first in the CI pipeline before everything else", wantKey: "tooling-13"},
+		{name: "T05", text: "how long does a login session or access token stay valid before expiring", wantKey: "auth-01"},
+		{name: "T06", text: "how do service accounts and bots authenticate to our API", wantKey: "auth-05"},
+		{name: "T07", text: "how do we check that an incoming token was actually issued for our service", wantKey: "auth-09"},
+		{name: "T08", text: "how does the admin dashboard keep users logged in between visits", wantKey: "auth-13"},
+		{name: "T09", text: "how do we roll out new versions gradually to a small slice of users first", wantKey: "deploy-01"},
+		{name: "T10", text: "what is the process for rolling back when a release goes bad", wantKey: "deploy-07"},
+		{name: "T11", text: "what has to run at startup before the service starts accepting traffic", wantKey: "deploy-12"},
+		{name: "T12", text: "when something is deleted do we actually remove the row or just flag it", wantKey: "datamodel-01"},
+		{name: "T13", text: "what format do we use for record IDs, UUIDs or something shorter", wantKey: "datamodel-06"},
+		{name: "T14", text: "how do we handle old and new data formats living side by side during a migration", wantKey: "datamodel-11"},
+		{name: "T15", text: "what prefix do all our environment variable names start with", wantKey: "config-01"},
+		{name: "T16", text: "when a setting comes from a flag, env var and config file, which one takes priority", wantKey: "config-06"},
+		{name: "T17", text: "where do secrets and credentials get loaded from at runtime", wantKey: "config-12"},
+		{name: "T18", text: "what database do the tests run against, a real one or an in-memory fake", wantKey: "testing-01"},
+		{name: "T19", text: "what do we do with a flaky test, skip it or quarantine it somewhere", wantKey: "testing-06"},
+		{name: "T20", text: "how do snapshot or golden file tests catch output changes we did not intend", wantKey: "testing-11"},
+		{name: "T21", text: "who is on call this week and how does the rotation work", wantKey: ""},
+		{name: "T22", text: "which GPU driver version did we pin for the training machines", wantKey: ""},
+		{name: "T23", text: "how long do we have to keep data under a legal hold", wantKey: ""},
+		{name: "T24", text: "what is the push notification limit for the mobile app", wantKey: ""},
+	},
+}

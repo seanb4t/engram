@@ -105,8 +105,10 @@ var gh261Case = retrievalCase{
 	},
 }
 
-// retrievalCases is the full labeled dataset TestRetrievalEval runs.
-var retrievalCases = []retrievalCase{gh261Case}
+// retrievalCases is the full labeled dataset TestRetrievalEval runs:
+// gh261Case (roleRegressionGuard, D-10 gate 1) and paraphraseCase
+// (roleParaphrase, D-10 gate 2 and D-05's eligibility clause (b)).
+var retrievalCases = []retrievalCase{gh261Case, paraphraseCase}
 
 // differProbe is the synthetic single-string fixture for
 // TestRetrievalEval_AsymmetryDiffer (the Pitfall-12 correctness gate). It is
