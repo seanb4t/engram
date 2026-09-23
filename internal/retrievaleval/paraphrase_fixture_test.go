@@ -133,6 +133,59 @@ func TestParaphraseCorpusIntegrity(t *testing.T) {
 		}
 	})
 
+	t.Run("size", func(t *testing.T) {
+		t.Parallel()
+
+		if n := len(paraphraseSeeds); n < 80 || n > 120 {
+			t.Errorf("paraphraseSeeds has %d records, want 80..120", n)
+		}
+
+		domains := make(map[string]bool, 8)
+		for _, rec := range paraphraseSeeds {
+			domains[paraphraseDomain(rec.key)] = true
+		}
+		if n := len(domains); n < 6 {
+			t.Errorf("paraphraseSeeds spans %d distinct domains, want at least 6", n)
+		}
+
+		var answerTopics, noAnswerTopics int
+		for _, topic := range paraphraseTopics {
+			if topic.wantKey == "" {
+				noAnswerTopics++
+			} else {
+				answerTopics++
+			}
+		}
+		if answerTopics < 18 || answerTopics > 22 {
+			t.Errorf("paraphraseTopics has %d answer topics, want 18..22", answerTopics)
+		}
+		if noAnswerTopics < 3 || noAnswerTopics > 5 {
+			t.Errorf("paraphraseTopics has %d no-answer topics, want 3..5", noAnswerTopics)
+		}
+
+		// No no-answer topic's label may leak the wording of ANY seed's
+		// content — the same tokenizer rule as label-leak, applied against
+		// the whole corpus rather than a single target (D-12).
+		for _, topic := range paraphraseTopics {
+			if topic.wantKey != "" {
+				continue
+			}
+			labelTokens := leakTokens(topic.label)
+			for _, rec := range paraphraseSeeds {
+				contentTokens := leakTokens(rec.content)
+				shared := 0
+				for tok := range labelTokens {
+					if contentTokens[tok] {
+						shared++
+					}
+				}
+				if shared > 2 {
+					t.Errorf("%s (no-answer): label shares %d qualifying tokens with %s's content (want at most 2)", topic.id, shared, rec.key)
+				}
+			}
+		}
+	})
+
 	t.Run("label-leak", func(t *testing.T) {
 		t.Parallel()
 		seedByKey := make(map[string]seedRecord, len(paraphraseSeeds))
