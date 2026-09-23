@@ -24,6 +24,27 @@ audit `tech_debt` (0 blockers, Nyquist 7/7, security 7/7). Full detail in
 
 **No active milestone** — start the next with `/gsd-new-milestone`.
 
+## Current Milestone: 2026-09-22.01 Typed Decisions & Recall Ranking
+
+**Goal:** Give engram a provider-neutral, advisory-only typed-decision capability (Jev as the
+first backend) and use it to make curation and recall measurably better, while fixing the
+lexical reranker's paraphrase regression (#605).
+
+**Target features:**
+- Provider-neutral decision interface (System One vocabulary: state + Choice/Score/Noul →
+  probabilities), off by default; Jev backend over OpenRouter's Decisions API with its own
+  base-URL/key settings (OpenRouter Go SDK evaluated first); chat-LLM emulator deferred
+- Advisory relation verdicts on `engram spine-review consolidate` (confidence-tiered,
+  `updates` option)
+- Opt-in Jev relevance reranker on `search_memory`, gated on retrieval eval, with a fallback
+  to vector order
+- Per-hit relevance probability on search results (absolute "nothing relevant" signal)
+- Lexical reranker regression (#605): independent paraphrase eval case, then keep/demote/replace
+- Retrieval-eval fixes #353 / #354
+- Operator correctness: #508, #476, #504, #502, #501, #503
+
+**Blueprint:** `spike-findings-engram` skill (spikes 001–004, `.planning/spikes/`).
+
 ## Current State: 2026-09-18.01 — Bounded Reads ✅ COMPLETE (2026-09-22; ship PR pending)
 
 **Delivered:** no Qdrant read or provider response can fail because of unbounded size — a request
@@ -565,17 +586,16 @@ pre-close `REQUIREMENTS.md` snapshot).
 
 ### Active
 
-No active milestone. The next milestone's scoped requirements will live in a fresh
-`.planning/REQUIREMENTS.md` created by `/gsd-new-milestone`.
+Milestone 2026-09-22.01 (Typed Decisions & Recall Ranking) — scoped requirements live in
+`.planning/REQUIREMENTS.md`.
 
 ### Deferred (carry-forward for next milestone)
 
 - [ ] **REQ-ci-renovate-spa-drift live observation** — confirm the self-heal on the first real Renovate `ui/` bump PR, then `/gsd-verify-work 21` (GitHub #369). Blocked in practice by #393: the `ui/` `postUpgradeTask` build OOMKills the shared Renovate pod, so no bump PR completes a rebase.
 - [ ] **Full-stack console e2e harness** — compose + mock OIDC + Playwright, to un-defer Phase 19's live browser↔server↔OIDC UAT (GitHub #366)
-- [ ] **`Taskfile.yaml` yamlfmt / CI-gate reconciliation** — local `task lint:yaml` red while CI is green (GitHub #370). `yamlfmt -lint Taskfile.yaml` passed on 2026-07-29 — likely already resolved; verify on the reporter's setup before closing.
 - [ ] **Runtime reindex-boundary enforcement** — reject/quarantine reads whose embedder-identity hash mismatches live config (v0.10.x stamps the identity; enforcement is a later decision)
 - [ ] **Renovate pod heap cap** — bound the `ui/` build's Node heap so an oversized build fails loud instead of OOMKilling the shared multi-tenant Renovate pod (GitHub #393)
-- [ ] **Phase 13–15 review follow-ups** — #346 (deliberate non-fix; Phase 26's `TestJoin` pins the behavior — consider closing with that rationale), #353/#354 (eval-differ defects), #357, #358
+- [ ] **Phase 13–15 review follow-ups** — #346 (deliberate non-fix; Phase 26's `TestJoin` pins the behavior — consider closing with that rationale), #353/#354 (eval-differ defects — now in milestone 2026-09-22.01), #357, #358
 - [ ] **`REQ-consent-adversarial-proof`** (v0.13.x) — unmet, not merely deferred. The 3-run cap produced only *correct* verdicts, so the confidently-wrong moment was never reached; closing it needs a fixture that reliably misleads on identity, not more runs of the same one (`WINDOWS.md` id 3).
 - [ ] **Phase 03 TDD commit-granularity windows** (v0.13.x) — `WINDOWS.md` ids 1 and 2: RED was genuinely observed but RED+GREEN landed in combined commits. Process debt, not correctness debt.
 - [ ] **`internal/surfaces/toolclass.go:141-142` stale rationale** (v0.13.x) — the comment says `supersede_memory` "explicitly supports none" for `idempotency_key`, contradicting the shipped Phase 03.1 behavior at `internal/server/tools.go:594`. The emitted annotation value is correct; only the justification is wrong. One-line fix.
@@ -974,4 +994,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-22 after milestone 2026-09-18.01 (Bounded Reads) completion*
+*Last updated: 2026-09-22 at milestone 2026-09-22.01 (Typed Decisions & Recall Ranking) start*

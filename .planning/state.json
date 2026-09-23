@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "2026-09-18.01 — Bounded Reads",
+  "milestone": "2026-09-22.01",
   "phases": [
     {
       "number": "9",
@@ -295,9 +295,9 @@
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-22T21:48:19.888Z"
+  "updated_at": "2026-09-23T00:22:19.170Z"
 }
