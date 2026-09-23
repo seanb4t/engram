@@ -349,7 +349,7 @@ capability (Jev as the first backend) that measurably improves curation and reca
 lexical reranker's paraphrase regression (#605) is fixed.
 
 - [x] **Phase 1: Eval Foundation & Lexical Reranker Fix** - Retrieval eval gains a paraphrase case and reports recall@k/MRR across ordering strategies; the lexical reranker regression is measured and resolved (completed 2026-09-23)
-- [ ] **Phase 2: Decision Interface & Jev Backend** - Provider-neutral Go interface over System One's Choice/Score/Noul vocabulary; Jev backend over OpenRouter's Decisions API, off by default
+- [x] **Phase 2: Decision Interface & Jev Backend** - Provider-neutral Go interface over System One's Choice/Score/Noul vocabulary; Jev backend over OpenRouter's Decisions API, off by default (completed 2026-09-23)
 - [ ] **Phase 3: Curation Verdicts** - `spine-review consolidate` surfaces advisory relation verdicts per candidate pair, confidence-tiered, never mutating
 - [ ] **Phase 4: Jev Reranker & Per-Hit Relevance Signal** - Opt-in reranking on `search_memory` with a fallback to vector order and a per-hit relevance probability on every surface
 - [ ] **Phase 5: Operator Correctness** - Five independent operator-surface bug fixes (#476/#504/#502/#501/#503)
@@ -403,7 +403,7 @@ inert until an operator opts in.
   5. The OpenRouter Go SDK evaluation and its adopt/reject decision are recorded before any hand-written client lands
   6. Every decision call emits an OTLP span carrying latency, question count, input tokens, and cost
 
-**Plans:** 8/8 plans executed
+**Plans:** 8/8 plans complete
 
 Plans:
 **Wave 1**
@@ -574,7 +574,7 @@ the result set actually answers the query.
 | 6. Cross-Spine Partial Results | 2026-09-18.01 | 3/3 | Complete | 2026-09-20 |
 | 7. Bounded Provider Responses | 2026-09-18.01 | 5/5 | Complete | 2026-09-21 |
 | 1. Eval Foundation & Lexical Reranker Fix | 2026-09-22.01 | 6/6 | Complete | 2026-09-23 |
-| 2. Decision Interface & Jev Backend | 2026-09-22.01 | 0/6 | Not started | - |
+| 2. Decision Interface & Jev Backend | 2026-09-22.01 | 8/8 | Complete | 2026-09-23 |
 | 3. Curation Verdicts | 2026-09-22.01 | 0/4 | Not started | - |
 | 4. Jev Reranker & Per-Hit Relevance Signal | 2026-09-22.01 | 0/3 | Not started | - |
 | 5. Operator Correctness | 2026-09-22.01 | 0/5 | Not started | - |
