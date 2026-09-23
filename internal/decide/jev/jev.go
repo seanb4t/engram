@@ -224,12 +224,18 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)
-		status := "ok"
+		// decide.Status classifies err into the D-12/D-09 vocabulary — a
+		// validation failure below reports "invalid_request" here, not the
+		// generic "error" a hardcoded ok/error pair would give it. Full
+		// status-class classification of network/HTTP failures into named
+		// *decide.Error values is plan 02-07's job; until then an
+		// unclassified transport error falls through Status's default case
+		// to "error", identical to today's behavior.
+		status := decide.Status(err)
 		var modelSnapshot string
 		var inputTokens, outputTokens int64
 		var costUSD *float64
 		if err != nil {
-			status = "error"
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		} else {
@@ -261,6 +267,15 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 			"duration_ms", duration.Milliseconds(),
 		)
 	}()
+
+	// D-09: cheap structural validation runs before any network I/O. A
+	// validation failure still goes through the status/slog defer above
+	// (engram.decide.status = decide.Status(err), "invalid_request" for
+	// every D-09 sentinel) even though no request was ever sent.
+	if verr := req.Validate(); verr != nil {
+		err = verr
+		return decide.Response{}, err
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -341,4 +356,11 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 		},
 	}
 	return resp, nil
+}
+
+// DecideMany answers many Requests through the shared decide.DecideMany
+// bounded worker pool (D-10), at this Client's configured concurrency
+// (ENGRAM_DECISIONS_CONCURRENCY / WithConcurrency).
+func (c *Client) DecideMany(ctx context.Context, reqs []decide.Request) []decide.Result {
+	return decide.DecideMany(ctx, c.Decide, reqs, c.concurrency)
 }

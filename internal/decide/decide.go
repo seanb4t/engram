@@ -23,6 +23,11 @@ import (
 // errors.go, so callers branch with errors.Is, never on error message text.
 type Decider interface {
 	Decide(ctx context.Context, req Request) (Response, error)
+	// DecideMany answers many Requests through the backend's configured
+	// concurrency (ENGRAM_DECISIONS_CONCURRENCY, D-10), returning one
+	// Result per request in input order. One failed item never fails the
+	// batch.
+	DecideMany(ctx context.Context, reqs []Request) []Result
 }
 
 // State is the shared context every question in a Request is evaluated
