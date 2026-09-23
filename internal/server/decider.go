@@ -6,7 +6,10 @@ package server
 import (
 	"cmp"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/url"
+	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -22,7 +25,11 @@ import (
 // wins when set, otherwise cfg.OpenAI.APIKey (D-03), mirroring
 // summarizerFromConfig's ChatAPIKey precedent. The base URL does NOT get this
 // treatment: it fails Config.Validate when empty and provider=jev instead of
-// falling back here. Any other provider value is a configuration error.
+// falling back here. Every other ENGRAM_DECISIONS_* knob (timeout,
+// max_timeout, drain_bytes, drain_timeout, concurrency) is resolved by the
+// decisions* helpers below and passed through to jev.New, mirroring the
+// summary* resolver shape (D-02, D-10). Any other provider value is a
+// configuration error.
 func deciderFromConfig(cfg *config.Config) (decide.Decider, error) {
 	switch cfg.Decisions.Provider {
 	case "":
@@ -31,8 +38,131 @@ func deciderFromConfig(cfg *config.Config) (decide.Decider, error) {
 		apiKey := cmp.Or(cfg.Decisions.APIKey, cfg.OpenAI.APIKey)
 		return jev.New(cfg.Decisions.BaseURL, apiKey, cfg.Decisions.Model,
 			jev.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
+			jev.WithTimeout(decisionsTimeout(cfg)),
+			jev.WithMaxTimeout(decisionsMaxTimeout(cfg)),
+			jev.WithDrainBytes(decisionsDrainBytes(cfg)),
+			jev.WithDrainTimeout(decisionsDrainTimeout(cfg)),
+			jev.WithConcurrency(decisionsConcurrency(cfg)),
 		), nil
 	default:
 		return nil, fmt.Errorf("ENGRAM_DECISIONS_PROVIDER %q: unknown provider (want \"\" or \"jev\")", cfg.Decisions.Provider)
 	}
+}
+
+// decisionsTimeout parses the per-call HTTP timeout, defaulting to 10s on
+// empty/invalid. 0 is honored by this helper (passed through unchanged);
+// negatives fall back to the default — jev.New resolves a non-positive
+// timeout to decisionsMaxTimeout's ceiling, never unbounded. Mirrors
+// summaryTimeout.
+func decisionsTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Decisions.Timeout)
+	if err != nil || d < 0 {
+		if cfg.Decisions.Timeout != "" {
+			slog.Warn("ENGRAM_DECISIONS_TIMEOUT is set but unparseable or negative; using default 10s",
+				"value", cfg.Decisions.Timeout)
+		}
+		return 10 * time.Second
+	}
+	return d
+}
+
+// decisionsMaxTimeout parses the ceiling a non-positive decisions timeout
+// resolves to, defaulting to 10m on empty/invalid. UNLIKE
+// decisionsDrainBytes/decisionsDrainTimeout below, 0 is NOT a legitimate
+// value here — Config.Validate rejects a non-positive
+// ENGRAM_DECISIONS_MAX_TIMEOUT outright, so any non-positive value reaching
+// this helper falls back to the default rather than being passed on. Mirrors
+// summaryMaxTimeout.
+func decisionsMaxTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Decisions.MaxTimeout)
+	if err != nil || d <= 0 {
+		if cfg.Decisions.MaxTimeout != "" {
+			slog.Warn("ENGRAM_DECISIONS_MAX_TIMEOUT is set but unparseable or non-positive; using default 10m",
+				"value", cfg.Decisions.MaxTimeout)
+		}
+		return 10 * time.Minute
+	}
+	return d
+}
+
+// decisionsDrainBytes parses the byte bound on decide's shared post-response
+// drain, defaulting to 262144 (256 KiB) on empty/invalid. Uses
+// config.ParseNonNegativeIntCap — the SAME exported parser Config.Validate
+// calls for ENGRAM_DECISIONS_DRAIN_BYTES — so the validated range and the
+// enforced range cannot diverge. 0 is a legitimate value (skips the drain
+// entirely) and is honored by this helper; only a negative or unparseable
+// value falls back to the default. Mirrors summaryDrainBytes.
+func decisionsDrainBytes(cfg *config.Config) int64 {
+	n, err := config.ParseNonNegativeIntCap(cfg.Decisions.DrainBytes)
+	if err != nil {
+		if cfg.Decisions.DrainBytes != "" {
+			slog.Warn("ENGRAM_DECISIONS_DRAIN_BYTES is set but unparseable or negative; using default 262144",
+				"value", cfg.Decisions.DrainBytes)
+		}
+		return 262144
+	}
+	return int64(n)
+}
+
+// decisionsDrainTimeout parses the time bound on decide's shared
+// post-response drain, defaulting to 2s on empty/invalid. 0 is a legitimate
+// value (skips the drain entirely) and is honored by this helper; only a
+// negative or unparseable value falls back to the default. Mirrors
+// summaryDrainTimeout.
+func decisionsDrainTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Decisions.DrainTimeout)
+	if err != nil || d < 0 {
+		if cfg.Decisions.DrainTimeout != "" {
+			slog.Warn("ENGRAM_DECISIONS_DRAIN_TIMEOUT is set but unparseable or negative; using default 2s",
+				"value", cfg.Decisions.DrainTimeout)
+		}
+		return 2 * time.Second
+	}
+	return d
+}
+
+// decisionsConcurrency parses the DecideMany worker-pool bound (D-10),
+// defaulting to 4 on empty/invalid. Uses config.ParsePositiveIntCap — the
+// SAME exported parser Config.Validate calls for
+// ENGRAM_DECISIONS_CONCURRENCY — so the validated range and the enforced
+// range cannot diverge. UNLIKE decisionsDrainBytes/decisionsDrainTimeout
+// above, 0 is NOT a legitimate value here: concurrency has no "0 means
+// unbounded" escape hatch, so any non-positive value falls back to the
+// default.
+func decisionsConcurrency(cfg *config.Config) int {
+	n, err := config.ParsePositiveIntCap(cfg.Decisions.Concurrency)
+	if err != nil {
+		if cfg.Decisions.Concurrency != "" {
+			slog.Warn("ENGRAM_DECISIONS_CONCURRENCY is set but unparseable or non-positive; using default 4",
+				"value", cfg.Decisions.Concurrency)
+		}
+		return 4
+	}
+	return n
+}
+
+// logDeciderEnabled logs one Info line naming that typed decisions are
+// enabled, the provider, model, the base URL's host ONLY (never any
+// userinfo, path or query — T-02-05), and which env var supplied the API key
+// (ENGRAM_DECISIONS_API_KEY, ENGRAM_OPENAI_API_KEY, or "none") — never the
+// key's value itself (T-02-08: the D-03 fallback is made visible by naming
+// its source, not by ever surfacing the secret).
+func logDeciderEnabled(cfg *config.Config) {
+	var host string
+	if u, err := url.Parse(cfg.Decisions.BaseURL); err == nil {
+		host = u.Host
+	}
+	apiKeySource := "none"
+	switch {
+	case cfg.Decisions.APIKey != "":
+		apiKeySource = "ENGRAM_DECISIONS_API_KEY"
+	case cfg.OpenAI.APIKey != "":
+		apiKeySource = "ENGRAM_OPENAI_API_KEY"
+	}
+	slog.Info("typed decisions enabled",
+		"provider", cfg.Decisions.Provider,
+		"model", cfg.Decisions.Model,
+		"endpoint_host", host,
+		"api_key_source", apiKeySource,
+	)
 }
