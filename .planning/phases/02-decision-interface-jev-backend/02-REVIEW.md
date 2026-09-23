@@ -110,6 +110,11 @@ Explicitly verified against the review brief:
 
 ### WR-01: decodeResponse trusts the wire answer's own Type over the requested question's Type
 
+**Status:** Fixed in `e3a60dbd` — `decodeResponse` now compares `wa.Type` against
+`req.Questions[name].Type` before dispatching on it and returns
+`ErrDecisionMalformedResponse` on mismatch, with `TestJevAnswerMapping/malformed/answer_type_does_not_match_requested_question_type_(WR-01)`
+proving it.
+
 **File:** `internal/decide/jev/wire.go:109-136`
 **Issue:** `decodeResponse` iterates `req.Questions` (correctly limiting the answer set to
 what was asked), but for each name it switches on `wr.Answers[name].Type` — the type the
