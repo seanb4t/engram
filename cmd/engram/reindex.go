@@ -52,7 +52,7 @@ var reindexCmd = &cobra.Command{
 		// one at the new dimension. dim is the currently-configured embedder's
 		// ENGRAM_EMBED_DIM — reused as the target collection's dimension. Store and
 		// embedder come from a single config load.
-		st, dim, em, identity, err := server.StoreAndEmbedderFromEnvNoEnsure()
+		st, dim, em, identity, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
 		}

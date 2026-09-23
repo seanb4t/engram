@@ -5151,7 +5151,7 @@ func TestStoreAndEmbedderFromEnvNoEnsureValidatesConfig(t *testing.T) {
 	// StoreAndEmbedderFromEnvNoEnsure's loadAndValidate. Validation runs BEFORE any
 	// Qdrant client construction, so this returns fast and needs no live Qdrant.
 	t.Setenv("ENGRAM_OPENAI_BASE_URL", "ftp://nope")
-	_, _, _, _, err := StoreAndEmbedderFromEnvNoEnsure()
+	_, _, _, _, _, err := StoreAndEmbedderFromEnvNoEnsure()
 	if err == nil {
 		t.Fatal("StoreAndEmbedderFromEnvNoEnsure with bad ENGRAM_OPENAI_BASE_URL = nil, want validation error")
 	}
@@ -5225,14 +5225,19 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 	t.Setenv("ENGRAM_EMBED_DIM", "3")
 
 	loads := 0
+	var loaded *config.Config
 	orig := configLoad
 	configLoad = func(flags *flag.FlagSet) (*config.Config, error) {
 		loads++
-		return orig(flags)
+		cfg, err := orig(flags)
+		if err == nil {
+			loaded = cfg
+		}
+		return cfg, err
 	}
 	t.Cleanup(func() { configLoad = orig })
 
-	st, dim, em, identity, err := StoreAndEmbedderFromEnvNoEnsure()
+	st, dim, em, identity, cfg, err := StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("StoreAndEmbedderFromEnvNoEnsure: %v", err)
 	}
@@ -5242,6 +5247,16 @@ func TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce(t *testing.T) {
 
 	if loads != 1 {
 		t.Errorf("StoreAndEmbedderFromEnvNoEnsure loaded config %d times, want exactly 1", loads)
+	}
+
+	// D-14 (#354): the returned config must be the EXACT pointer the counting
+	// wrapper recorded — the store and embedder are built from this SAME
+	// config, never a second, independent load.
+	if cfg != loaded {
+		t.Errorf("StoreAndEmbedderFromEnvNoEnsure returned config %p, want the pointer configLoad produced %p", cfg, loaded)
+	}
+	if cfg.Embed.Dim != "3" {
+		t.Errorf("StoreAndEmbedderFromEnvNoEnsure returned config with Embed.Dim = %q, want %q", cfg.Embed.Dim, "3")
 	}
 
 	// Review round-2 MEDIUM: behavior-test the returned identity, not just its

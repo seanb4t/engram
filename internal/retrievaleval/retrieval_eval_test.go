@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/store/storetest"
@@ -55,6 +56,54 @@ func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
 	return store.New(c, name)
 }
 
+// symmetricEmbedConfig reports whether e carries no query/document asymmetry:
+// all four instruction/params fields are empty. A symmetric embedder config
+// legitimately yields query == document (review B3), and the decision is
+// made from the resolved config the embedder was built from, never an
+// independent read (D-14, #354).
+func symmetricEmbedConfig(e config.EmbedConfig) bool {
+	return e.QueryInstruction == "" &&
+		e.DocumentInstruction == "" &&
+		e.QueryParams == "" &&
+		e.DocumentParams == ""
+}
+
+// TestSymmetricEmbedConfig proves symmetricEmbedConfig decides purely from
+// the four embed instruction/params fields on a resolved *config.Config,
+// covering the row combinations the differ gate's skip depends on (D-14).
+func TestSymmetricEmbedConfig(t *testing.T) {
+	cases := []struct {
+		name                string
+		queryInstruction    string
+		documentInstruction string
+		queryParams         string
+		documentParams      string
+		want                bool
+	}{
+		{"all empty -> symmetric", "", "", "", "", true},
+		{"query instruction only -> asymmetric", "prefix: ", "", "", "", false},
+		{"document instruction only -> asymmetric", "", "prefix: ", "", "", false},
+		{"query params only -> asymmetric", "", "", `{"input_type":"search_query"}`, "", false},
+		{"document params only -> asymmetric", "", "", "", `{"input_type":"search_document"}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ENGRAM_EMBED_QUERY_INSTRUCTION", tc.queryInstruction)
+			t.Setenv("ENGRAM_EMBED_DOCUMENT_INSTRUCTION", tc.documentInstruction)
+			t.Setenv("ENGRAM_EMBED_QUERY_PARAMS", tc.queryParams)
+			t.Setenv("ENGRAM_EMBED_DOCUMENT_PARAMS", tc.documentParams)
+
+			loadedCfg, err := config.Load(nil)
+			if err != nil {
+				t.Fatalf("config.Load: %v", err)
+			}
+			if got := symmetricEmbedConfig(loadedCfg.Embed); got != tc.want {
+				t.Errorf("symmetricEmbedConfig(%+v) = %v, want %v", loadedCfg.Embed, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestRetrievalEval is the retrieval-quality eval: it seeds the labeled dataset
 // in fixtures.go through the exact production doc-embed sequence, searches it
 // through the production query path, and reports recall@k / MRR plus the
@@ -77,7 +126,7 @@ func TestRetrievalEval(t *testing.T) {
 	// ambient ENGRAM_QDRANT_ADDR), which is NEVER where this eval seeds/searches
 	// (round-2 finding 1) — the eval store below is built directly from
 	// storetest's resolved test Qdrant address instead.
-	_, dim, em, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
+	_, dim, em, _, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("build prod-parity embedder: %v", err)
 	}
@@ -240,27 +289,29 @@ func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
 		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
 	}
 
-	// Symmetric-config guard (review B3): a symmetric embedder config (all
-	// four instruction/params env vars empty) legitimately produces
-	// query==document — e.g. OpenAI text-embedding-3-small, bare bge-m3. The
-	// inequality assertion below does not apply to those configs, so skip it
-	// rather than fail the suite for a valid symmetric setup.
-	if os.Getenv("ENGRAM_EMBED_QUERY_INSTRUCTION") == "" &&
-		os.Getenv("ENGRAM_EMBED_DOCUMENT_INSTRUCTION") == "" &&
-		os.Getenv("ENGRAM_EMBED_QUERY_PARAMS") == "" &&
-		os.Getenv("ENGRAM_EMBED_DOCUMENT_PARAMS") == "" {
-		t.Skip("symmetric embedder config (no QUERY/DOCUMENT instruction or params set): query == document is valid here, asymmetry assertion does not apply")
-	}
-
 	ctx := context.Background()
 
 	// Prod-parity embedder — the SAME builder/path TestRetrievalEval uses
 	// (D-03: never a bespoke embed shortcut). Its own store is discarded; this
 	// test never touches Qdrant. dim is KEPT (not discarded) to assert the
-	// vectors are correctly sized, not just non-empty (review B4).
-	_, dim, em, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
+	// vectors are correctly sized, not just non-empty (review B4). Building
+	// happens BEFORE the symmetric-config skip below (D-14): the eval is
+	// enabled here, so a config/embedder build failure is a real failure, not
+	// something to skip past.
+	_, dim, em, _, cfg, err := server.StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("build prod-parity embedder: %v", err)
+	}
+
+	// Symmetric-config guard (review B3, D-14): a symmetric embedder config
+	// (all four instruction/params fields empty on the SAME resolved config
+	// the embedder above was built from — never an independent
+	// process-environment read, #354) legitimately produces query==document
+	// — e.g. OpenAI text-embedding-3-small, bare bge-m3. The inequality
+	// assertion below does not apply to those configs, so skip it rather
+	// than fail the suite for a valid symmetric setup.
+	if symmetricEmbedConfig(cfg.Embed) {
+		t.Skip("symmetric embedder config (no QUERY/DOCUMENT instruction or params set): query == document is valid here, asymmetry assertion does not apply")
 	}
 
 	queryVec, err := em.EmbedQuery(ctx, differProbe)

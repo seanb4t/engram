@@ -265,25 +265,28 @@ func StoreFromEnv() (*store.Store, error) {
 // exactly once — the engram-635 single-load invariant, applied to the reindex
 // path the same way buildDepsFromEnv applies it to serve — and reindex has a
 // path to the identity string to stamp onto reindexed records (Phase 13 SC3,
-// ReindexOptions.Identity).
-func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, string, error) {
+// ReindexOptions.Identity). It also returns the resolved config so a caller
+// that must reason about the SAME config the embedder was built from (the
+// retrieval eval's symmetric-config skip, 2026-09-22.01 Phase 1 D-14, #354)
+// never re-resolves it independently.
+func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, string, *config.Config, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
-		return nil, 0, nil, "", err
+		return nil, 0, nil, "", nil, err
 	}
 	st, dim, err := storeFromConfig(cfg)
 	if err != nil {
-		return nil, 0, nil, "", err
+		return nil, 0, nil, "", nil, err
 	}
 	em, err := embedderFromConfig(cfg)
 	if err != nil {
-		return nil, 0, nil, "", err
+		return nil, 0, nil, "", nil, err
 	}
 	identity, err := config.EmbedderIdentity(cfg)
 	if err != nil {
-		return nil, 0, nil, "", fmt.Errorf("embedder identity: %w", err)
+		return nil, 0, nil, "", nil, fmt.Errorf("embedder identity: %w", err)
 	}
-	return st, dim, em, identity, nil
+	return st, dim, em, identity, cfg, nil
 }
 
 // buildDepsFromEnv wires up the store and embedder from the environment with a
