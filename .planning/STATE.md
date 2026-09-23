@@ -4,17 +4,17 @@ milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
 current_phase: 2
 current_phase_name: Decision Interface & Jev Backend
-status: executing
-stopped_at: Completed 02-07-PLAN.md
-last_updated: "2026-09-23T16:10:52.479Z"
+status: verifying
+stopped_at: Completed 02-08-PLAN.md
+last_updated: "2026-09-23T17:13:38.409Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 2 execution started
-state_head: 768659f3684d9650a938ea986ed834e9a02842d6
+state_head: bd3564f882680671ac6374d1985544abf6c4cbb3
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
   percent: 20
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 1 of milestone 2026-09
 
 Phase: 2 (Decision Interface & Jev Backend) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-23 — Phase 2 execution started
 
 ## Deferred Items
@@ -383,6 +383,9 @@ milestone needs in working memory.
 - [Phase 2]: deps.decider wired into buildDepsFromEnv now (unused this phase) per RESEARCH A4 — not left as a standalone unwired constructor
 - [Phase 2]: logDeciderEnabled fires only when a decider was actually constructed (dec != nil), keeping the off-by-default path silent as well as inert
 - [Phase 2]: 02-07: wireResponse.Usage changed from a value to a pointer field so an absent usage key decodes to nil, matching decide.Response.Usage's doc contract and E10's omit-not-zero span requirement — Found via the no-usage TDD RED subtest; the value-typed field made decide.Response.Usage never nil, so the decide span always set input_tokens/output_tokens to 0 instead of omitting them
+- [Phase 2]: 02-08: wire.go's encodeRequest/decodeResponse complete the choice/score wire mapping; D-06 reject-hand-write reconfirmed (no SDK dependency added)
+- [Phase 2]: 02-08: fixed a latent internal/server/decider_test.go question-name/fixture mismatch that decodeResponse's stricter DEC-02 contract exposed (Rule 1 auto-fix)
+- [Phase 2]: 02-08: live human check (task eval:decisions against OpenRouter and the LiteLLM pass-through) deferred to end-of-phase UAT per workflow.human_verify_mode=end-of-phase, not run by the executor
 
 ### Pending Todos
 
@@ -470,8 +473,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T16:10:52.436Z
-Stopped at: Completed 02-07-PLAN.md
+Last session: 2026-09-23T17:13:38.354Z
+Stopped at: Completed 02-08-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -651,6 +654,7 @@ Resume file: None
 | Phase 2 P06 | 35min | 2 tasks | 7 files |
 | Phase 02 P05 | 11min | 2 tasks | 4 files |
 | Phase 02-decision-interface-jev-backend P07 | 55min | 3 tasks | 6 files |
+| Phase 02-decision-interface-jev-backend P08 | ~46min | 2 tasks | 7 files |
 
 ## Operator Next Steps
 

@@ -403,7 +403,7 @@ inert until an operator opts in.
   5. The OpenRouter Go SDK evaluation and its adopt/reject decision are recorded before any hand-written client lands
   6. Every decision call emits an OTLP span carrying latency, question count, input tokens, and cost
 
-**Plans:** 7/8 plans executed
+**Plans:** 8/8 plans executed
 
 Plans:
 **Wave 1**
@@ -430,7 +430,7 @@ Plans:
 
 **Wave 6**
 
-- [ ] 02-08-PLAN.md — full noul/choice/score wire codec proven on both base-URL shapes, opt-in `TestJevLive` plus `task eval:decisions` with a human live check against OpenRouter and the LiteLLM pass-through (DEC-02, DEC-03)
+- [x] 02-08-PLAN.md — full noul/choice/score wire codec proven on both base-URL shapes, opt-in `TestJevLive` plus `task eval:decisions` with a human live check against OpenRouter and the LiteLLM pass-through (DEC-02, DEC-03)
 
 ### Phase 3: Curation Verdicts
 
