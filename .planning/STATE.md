@@ -4,17 +4,17 @@ milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
 current_phase: 1
 current_phase_name: Eval Foundation & Lexical Reranker Fix
-status: executing
-stopped_at: Completed 01-05-PLAN.md
-last_updated: "2026-09-23T03:59:20.189Z"
+status: verifying
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-09-23T04:19:38.980Z"
 last_activity: 2026-09-22
 last_activity_desc: Phase 1 execution started
-state_head: 1f2ee5e0587f093d6292b7a752712d1e4c354d2b
+state_head: d8ee2d5bacdb683cc0b8fffd417e2fd101be9079
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-22 after milestone 2026-09-18.01 — 
 
 Phase: 1 (Eval Foundation & Lexical Reranker Fix) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-22 — Phase 1 execution started
 
 ## Deferred Items
@@ -370,6 +370,7 @@ milestone needs in working memory.
 - [Phase 1]: D-05 applied mechanically: decideRanking is a pure, unit-tested function (14 subtests) picking the shipped ranking before any live number exists — Prevents a human or agent from picking the winner by eye; the pre-committed rule is code, not judgment
 - [Phase 1]: Corrected a stale per-plan commit ledger from an earlier milestone's own phase 01-04 (dated 2026-09-18) before computing this plan's actuals.commits — Same class of issue plan 01-03 documented; the ledger guard correctly refused to overwrite a pre-existing file, so the stale value had to be corrected by hand
 - [Phase 1]: Phase 1 Plan 5: D-05 rule verdict on the live 80-120-record multi-domain corpus with independently-authored blind paraphrase queries: winner=lexical (paraphrase MRR 0.817 vs vector-only 0.579), reversing spike 004's 16-record single-domain fixture finding. Plan 01-06 branch: lexical (no internal/store ranking code change required). Checkpoint approved approve-and-post: plan 01-06 authorized to post the #605 evidence comment after its green re-run, carrying three caveats (spike-004 reversal, lexical's 0.950 vs vector-only's 1.000 paraphrase recall@8, and the live AsymmetryDiffer SKIP under a symmetric embed config).
+- [Phase 1]: Plan 01-06 shipped the D-05 approved winner (lexical) as SearchReranked's rank step via the new rankCandidates seam; live post-change re-run confirmed no regression and RANK-02 evidence was posted to #605 (approve-and-post authorization)
 
 ### Pending Todos
 
@@ -447,8 +448,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T03:59:20.168Z
-Stopped at: Completed 01-05-PLAN.md
+Last session: 2026-09-23T04:19:38.953Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -620,6 +621,7 @@ Resume file: None
 | Phase 01 P03 | ~12min | 3 tasks | 4 files |
 | Phase 01-eval-foundation-lexical-reranker-fix P04 | 35min | 3 tasks | 6 files |
 | Phase 1 P5 | 13min | 3 tasks | 2 files |
+| Phase 01 P06 | ~23min | 3 tasks | 11 files |
 
 ## Operator Next Steps
 
