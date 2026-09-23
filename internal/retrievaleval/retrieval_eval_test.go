@@ -5,6 +5,7 @@ package retrievaleval
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -54,6 +55,22 @@ func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
 		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
 	}
 	return store.New(c, name)
+}
+
+// requireEvalEnabled skips t unless the resolved koanf gate (D-15) is
+// enabled, and fails t if the gate itself is malformed — mirroring every
+// other gated test in this package, now sourced from resolveEvalGate's
+// package-local koanf load instead of the retired raw process-environment
+// read.
+func requireEvalEnabled(t *testing.T) {
+	t.Helper()
+	enabled, err := retrievalEvalEnabled()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !enabled {
+		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
+	}
 }
 
 // symmetricEmbedConfig reports whether e carries no query/document asymmetry:
@@ -111,9 +128,7 @@ func TestSymmetricEmbedConfig(t *testing.T) {
 // internal/summarize/fidelity_test.go's TestSummaryFidelity — defense-in-depth
 // retained even though TestMain already short-circuits before Docker.
 func TestRetrievalEval(t *testing.T) {
-	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
-		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
-	}
+	requireEvalEnabled(t)
 	if storetest.Addr() == "" {
 		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
 	}
@@ -285,9 +300,7 @@ func TestRetrievalEval(t *testing.T) {
 // requires Docker (or ENGRAM_QDRANT_TEST_ADDR) as a package-level
 // prerequisite; documented here and in plan 14-03.
 func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
-	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
-		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
-	}
+	requireEvalEnabled(t)
 
 	ctx := context.Background()
 
@@ -361,17 +374,24 @@ func newTestcontainerStore(t testing.TB, dim uint64) *store.Store {
 	return st
 }
 
-// TestMain gates the whole package on ENGRAM_RETRIEVAL_EVAL as its FIRST
-// statement, before any testcontainer/Docker startup (review finding 1): when
-// the gate is unset, the required `test` job's `go test ./...` pays zero
-// ADDITIONAL Docker/Qdrant cost from this package (round-2 finding 8). Once
-// the gate is "1", TestMain delegates the rest of the Qdrant lifecycle to
-// storetest.Run with IgnoreRequireQdrant: this package never consulted
-// ENGRAM_REQUIRE_QDRANT before this phase and must not gain that fail-closed
-// behavior now — a missing Qdrant with the eval gate set still only skips
-// (RESEARCH.md Pitfall 6, this plan's recorded decision).
+// TestMain gates the whole package on the resolved ENGRAM_RETRIEVAL_EVAL
+// koanf gate (D-15) as its FIRST statement, before any testcontainer/Docker
+// startup (review finding 1): when the gate is off, the required `test`
+// job's `go test ./...` pays zero ADDITIONAL Docker/Qdrant cost from this
+// package (round-2 finding 8). A malformed gate value fails loudly instead
+// of silently reading as off. Once the gate is enabled, TestMain delegates
+// the rest of the Qdrant lifecycle to storetest.Run with
+// IgnoreRequireQdrant: this package never consulted ENGRAM_REQUIRE_QDRANT
+// before this phase and must not gain that fail-closed behavior now — a
+// missing Qdrant with the eval gate set still only skips (RESEARCH.md
+// Pitfall 6, this plan's recorded decision).
 func TestMain(m *testing.M) {
-	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
+	enabled, err := retrievalEvalEnabled()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+	if !enabled {
 		os.Exit(m.Run())
 	}
 	os.Exit(storetest.Run(m, storetest.IgnoreRequireQdrant()))
@@ -388,8 +408,6 @@ func TestMain(m *testing.M) {
 // Delegates to storetest for the shared-address assertion itself, which
 // skips (does not fail) when the shared-address env var is unset.
 func TestSharedQdrantAddressHonored(t *testing.T) {
-	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
-		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
-	}
+	requireEvalEnabled(t)
 	storetest.AssertSharedAddressHonored(t)
 }
