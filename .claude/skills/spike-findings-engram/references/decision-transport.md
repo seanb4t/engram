@@ -59,13 +59,17 @@
 ## What to Avoid
 
 - Do not route Jev through `openrouter/*` chat model aliases or the chat client — it 400s.
-- Do not assume the chat/embeddings base URL also serves Decisions. As of spike 002
-  (2026-09-22) the LiteLLM gateway (`llm.fzymgc.house`, v1.96.2) had no Decisions route —
-  every Decisions path returned LiteLLM's own 404 before auth. **Gateway support for Jev via
-  OpenRouter is being added** in selfhosted-cluster; re-run
-  `sources/002-jev-gateway-passthrough/probe.sh` against the new route and update this
-  section once it lands. Open point to confirm then: per-virtual-key auth on the route, so
-  it does not spend the cluster key for anyone who can reach it.
+- Do not assume the chat/embeddings base URL also serves Decisions. On the LiteLLM gateway
+  the Decisions route is a **pass-through** at `/openrouter/alpha/decisions` (live since
+  2026-09-22), not under `/v1`. Set the decision base URL to
+  `https://llm.fzymgc.house/openrouter`; the same `/alpha/decisions` suffix then reaches
+  Jev, just as it does from `https://openrouter.ai/api`. Access is per key: a key needs
+  `allowed_passthrough_routes: ["/openrouter/alpha/decisions"]` in its metadata. The
+  engram, fovea and octopus keys have it; others get 403. The durable grant is in
+  selfhosted-cluster PR #2227.
+- Do not rely on the error body shape: LiteLLM returns
+  `{"error":{message,type,param,code:"401"}}` with a string code, while OpenRouter returns
+  `{"error":{message,code:401}}` with a numeric code.
 - Do not parse the error `message` text for control flow; it is a stringified upstream body.
 - Do not use exact-equality thresholds: identical requests vary ±0.03 on a 0.9 probability.
 

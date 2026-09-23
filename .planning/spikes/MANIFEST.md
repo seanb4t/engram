@@ -25,6 +25,6 @@ and write-time hints. Context: `.planning/notes/jev-system-one-decisions.md`,
 | # | Idea | Name | Type | Validates | Verdict | Tags |
 |---|------|------|------|-----------|---------|------|
 | 001 | jev-typed-decisions | jev-openrouter-transport | standard | Given the OpenRouter key, when a Decisions request is POSTed, then typed probabilities return with usable latency and known limits | VALIDATED | jev, openrouter, decisions-api, latency |
-| 002 | jev-typed-decisions | jev-gateway-passthrough | standard | Given the LiteLLM gateway, when a Decisions request is sent through it, then it reaches Jev intact | PARTIAL | jev, litellm, gateway, pass-through |
+| 002 | jev-typed-decisions | jev-gateway-passthrough | standard | Given the LiteLLM gateway, when a Decisions request is sent through it, then it reaches Jev intact | VALIDATED | jev, litellm, gateway, pass-through |
 | 003 | jev-typed-decisions | jev-consolidate-verdicts | standard | Given 39 labeled real spine pairs, when Jev classifies the relation, then accuracy and confidence are usable for advisory consolidate verdicts | VALIDATED | jev, spine-review, consolidate, calibration |
 | 004 | jev-typed-decisions | jev-rerank-eval | comparison | Given the #261 corpus + paraphrase queries, when ranked by vector / lexical / Jev, then Jev's quality justifies its latency | VALIDATED | jev, rerank, retrieval-eval, gh-261 |

@@ -4,7 +4,7 @@ idea: jev-typed-decisions
 name: jev-gateway-passthrough
 type: standard
 validates: "Given the in-cluster LiteLLM gateway (llm.fzymgc.house), when a Decisions request is sent through it, then it reaches OpenRouter's /api/alpha/decisions with typed probabilities intact"
-verdict: PARTIAL
+verdict: VALIDATED
 related: [001]
 tags: [jev, litellm, gateway, llm-fzymgc-house, pass-through, transport]
 ---
@@ -83,3 +83,32 @@ Open points before relying on it (none verified here):
 URL also serves Decisions. It needs its own base-URL key (for example
 `ENGRAM_DECISIONS_BASE_URL`, falling back to the shared OpenRouter base URL), so an operator
 can point it at OpenRouter directly or at a gateway pass-through path.
+
+## Update — 2026-09-22: gateway route live → VALIDATED
+
+The gateway now serves Jev. The user added a LiteLLM pass-through route and granted it to
+three keys:
+
+- **Route:** `POST https://llm.fzymgc.house/openrouter/alpha/decisions`. Callers send their
+  existing LiteLLM virtual key and `"model": "typesafe/jev-1.13"`.
+- **Per-key access:** each key's metadata carries
+  `allowed_passthrough_routes: ["/openrouter/alpha/decisions"]`. The engram, fovea and
+  octopus keys are granted and each got a 200 with a decision (the user's live test).
+  Keys without the grant, such as `openrouter-passthrough`, get 403. This settles the
+  earlier open point: per-key authorization on the pass-through route works on this
+  deployment without spending the cluster key for everyone.
+- **Durable config:** selfhosted-cluster PR #2227 adds the grant to
+  `scripts/seed-litellm-vault.sh` and `docs/operations/litellm.md`, so re-creating a key
+  keeps its Jev access.
+- **Re-probed here without a key:** `/openrouter/alpha/decisions` → 401
+  `{"error":{"message":"Authentication Error, No api key passed in.","type":"auth_error","param":"None","code":"401"}}`;
+  a bad key → 401 "Invalid proxy server token"; `/alpha/decisions` → still 404. This shell
+  has no engram LiteLLM key, so the 200 path rests on the user's test.
+
+Implications for the client:
+
+- The base URL `https://llm.fzymgc.house/openrouter` plus the same `/alpha/decisions` suffix
+  reaches Jev. The same join works for OpenRouter directly (`https://openrouter.ai/api`).
+- Error bodies differ by hop. LiteLLM sends `{"error":{message,type,param,code:"401"}}`
+  (code is a string); OpenRouter sends `{"error":{message,code:401}}` (code is a number).
+  Classify by HTTP status only.

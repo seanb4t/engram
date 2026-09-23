@@ -10,7 +10,7 @@
 | # | Name | Type | Verdict | Feature Area |
 |---|------|------|---------|--------------|
 | 001 | jev-openrouter-transport | standard | VALIDATED | Decision transport |
-| 002 | jev-gateway-passthrough | standard | PARTIAL | Decision transport |
+| 002 | jev-gateway-passthrough | standard | VALIDATED (gateway route added 2026-09-22) | Decision transport |
 | 003 | jev-consolidate-verdicts | standard | VALIDATED | Curation verdicts |
 | 004 | jev-rerank-eval | comparison | VALIDATED | Recall reranking |
 
@@ -19,8 +19,9 @@
 - **Transport:** Jev is reachable today at `https://openrouter.ai/api/alpha/decisions` with
   engram's existing OpenRouter key — p50 267 ms, one call per batch of questions, ≤ 255
   choices, 32k-token context, OpenRouter-wrapped errors classified by status. OpenRouter
-  ships a Go SDK for the Decisions API. The LiteLLM gateway had no Decisions route at spike
-  time; gateway support for Jev via OpenRouter is being added (re-run spike 002 then).
+  ships a Go SDK for the Decisions API. The LiteLLM gateway now serves it at
+  `https://llm.fzymgc.house/openrouter/alpha/decisions` behind a per-key
+  `allowed_passthrough_routes` grant (selfhosted-cluster PR #2227).
 - **Curation:** on 39 real spine pairs, accuracy 0.84 and Brier 0.18; all 26 verdicts at
   p ≥ 0.9 were correct, every miss < 0.8. Misses are refinements and state changes read as
   `related` — an `updates` option is the next iteration. Strongest case for adoption.
