@@ -43,8 +43,8 @@ paraphrase regression (#605) is fixed.
 
 ### Eval fixes
 
-- [ ] **EVAL-01**: The embedding differ gate compares with a cosine epsilon, not `reflect.DeepEqual` on `[]float32` (#353).
-- [ ] **EVAL-02**: The retrieval-eval skip guard reads the resolved koanf config, not raw `os.Getenv` (#354).
+- [x] **EVAL-01**: The embedding differ gate compares with a cosine epsilon, not `reflect.DeepEqual` on `[]float32` (#353).
+- [x] **EVAL-02**: The retrieval-eval skip guard reads the resolved koanf config, not raw `os.Getenv` (#354).
 
 ### Operator correctness
 
@@ -94,8 +94,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | RANK-03 | Phase 4 | Pending |
 | RANK-04 | Phase 4 | Pending |
 | RANK-05 | Phase 4 | Pending |
-| EVAL-01 | Phase 1 | Pending |
-| EVAL-02 | Phase 1 | Pending |
+| EVAL-01 | Phase 1 | Complete |
+| EVAL-02 | Phase 1 | Complete |
 | OPS-01 | Phase 5 | Pending |
 | OPS-02 | Phase 5 | Pending |
 | OPS-03 | Phase 5 | Pending |

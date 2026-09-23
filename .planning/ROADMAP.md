@@ -361,16 +361,18 @@ reranking work (Phase 4) has trustworthy numbers to gate on.
 **Depends on**: Nothing (independent of the decision interface)
 **Requirements**: EVAL-01, EVAL-02, RANK-01, RANK-02
 **Success Criteria** (what must be TRUE):
+
   1. The embedding differ gate compares vectors with a cosine epsilon instead of `reflect.DeepEqual` on `[]float32`, so a near-identical re-embedding no longer registers as changed
   2. The retrieval-eval skip guard reads the resolved koanf config rather than raw `os.Getenv`, so `ENGRAM_RETRIEVAL_EVAL` set via any config source enables it
   3. `task eval:retrieval` reports recall@k and MRR for vector-only, lexical-reranked, and (when enabled) Jev-reranked ordering, including a paraphrase case written independently of #261's targets
   4. On that paraphrase case, the shipped ranking (lexical kept, demoted, or replaced per the numbers) does not regress versus vector-only order and keeps #261's target at rank 1
-**Plans:** 6 plans
+
+**Plans:** 1/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — resolved-config eval gates: `ENGRAM_RETRIEVAL_EVAL` through a package-local koanf load (unregistered, never validated), the differ's symmetric skip from the loader's own returned config, and a cosine-distance differ gate that is fatal on NaN, Inf or zero-norm vectors (D-13–D-15; EVAL-01, EVAL-02)
+- [x] 01-01-PLAN.md — resolved-config eval gates: `ENGRAM_RETRIEVAL_EVAL` through a package-local koanf load (unregistered, never validated), the differ's symmetric skip from the loader's own returned config, and a cosine-distance differ gate that is fatal on NaN, Inf or zero-norm vectors (D-13–D-15; EVAL-01, EVAL-02)
 - [ ] 01-02-PLAN.md — exported `store.CandidateK` and `store.VectorOrder`, plus eval-local comparison rankers (lexical port, cosine blend, overlap gate) with hermetic property tests (D-06, D-07; RANK-01, RANK-02)
 - [ ] 01-03-PLAN.md — a 96-record, six-domain synthetic paraphrase corpus with sticky neighbours, 20+4 topic labels, an integrity test, and a blocking checkpoint where a fresh context writes the queries blind (D-01–D-03, D-12; RANK-01)
 
@@ -393,12 +395,14 @@ inert until an operator opts in.
 **Depends on**: Nothing (independent of 2026-09-22.01 Phase 1)
 **Requirements**: DEC-01, DEC-02, DEC-03, DEC-04, DEC-05, DEC-06
 **Success Criteria** (what must be TRUE):
+
   1. With the decision provider unset, engram's behavior and outbound calls are byte-identical to today; setting `ENGRAM_` config turns it on
   2. A caller can send a batch of Choice/Score/Noul questions against shared state through one Go interface and get back typed probabilities/confidence, without knowing which backend answered
   3. The Jev backend reaches `{base}/alpha/decisions` with its own base-URL/key/model/timeout (falling back to the shared OpenRouter values) and works against both OpenRouter directly and the LiteLLM pass-through
   4. A decision call that times out, overruns its response-byte budget, or errors is classified by HTTP status into a named error and never fails the surrounding read or sweep
   5. The OpenRouter Go SDK evaluation and its adopt/reject decision are recorded before any hand-written client lands
   6. Every decision call emits an OTLP span carrying latency, question count, input tokens, and cost
+
 **Plans**: TBD
 
 ### Phase 3: Curation Verdicts
@@ -408,10 +412,12 @@ advisory signal, never as an automatic mutation.
 **Depends on**: 2026-09-22.01 Phase 2 (decision interface)
 **Requirements**: CUR-01, CUR-02, CUR-03, CUR-04
 **Success Criteria** (what must be TRUE):
+
   1. With decisions enabled, `consolidate --output json` and the text view show, per candidate pair, a relation verdict (duplicate/contradicts/updates/related/unrelated), its probability, and a same-subject probability
   2. A verdict below the configurable confidence threshold (default 0.9) is marked needs-review, and no verdict, at any confidence, ever causes consolidate to mutate a record
   3. The relation question set (including `updates`) is measured on a labeled pair eval — committing no verbatim spine content — reporting accuracy by confidence bucket and a Brier score
   4. Running `consolidate` with neither `--scope` nor `--all-scopes` gets the scope-or-all-scopes rule error instead of a silent zero-candidate report
+
 **Plans**: TBD
 
 ### Phase 4: Jev Reranker & Per-Hit Relevance Signal
@@ -421,10 +427,12 @@ the result set actually answers the query.
 **Depends on**: 2026-09-22.01 Phase 1 (eval harness to gate on), 2026-09-22.01 Phase 2 (decision interface)
 **Requirements**: RANK-03, RANK-04, RANK-05
 **Success Criteria** (what must be TRUE):
+
   1. With the Jev reranker enabled, `search_memory` candidates are reordered by relevance probability, shipped only once the RANK-01/RANK-02 eval numbers justify it
   2. On decision error or timeout, the search call still succeeds and falls back to default order
   3. With the reranker enabled, MCP, Connect, and the CLI all carry a per-hit relevance probability, so a caller can tell when no hit answers the query
   4. The reranker's decision state (query plus candidates) stays within Jev's 32k-token context for candidate sets up to the recall maximum, via summaries or per-candidate truncation
+
 **Plans**: TBD
 
 ### Phase 5: Operator Correctness
@@ -433,11 +441,13 @@ the result set actually answers the query.
 **Depends on**: Nothing (independent; can run any time)
 **Requirements**: OPS-01, OPS-02, OPS-03, OPS-04, OPS-05
 **Success Criteria** (what must be TRUE):
+
   1. The exit-code baseline test passes with `ENGRAM_REINDEX_TARGET` / `ENGRAM_MIGRATE_OWNER` set in the environment
   2. `viewFields`' bare nested-object branch is covered by a test, or removed if genuinely unreachable
   3. `ParsePlanKeyLinks` emits no empty key-link for a fieldless list item, matching its doc comment
   4. A test covers a record inserted mid-sweep whose id sorts below the migrate cursor
   5. `docs-site` `guides/cli.md` lists `migrate`, `migrate status`, and `migrate revert` among the operator commands
+
 **Plans**: TBD
 
 ## Progress
@@ -497,7 +507,7 @@ the result set actually answers the query.
 | 24. Idempotent Capture | v0.11.x | 2/2 | Complete | 2026-07-18 |
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
-| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | Complete    | 2026-08-13 |
+| 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-08-13 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
