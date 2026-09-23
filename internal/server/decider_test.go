@@ -278,7 +278,7 @@ func TestDeciderFromConfigAppliesOptions(t *testing.T) {
 		req := decide.Request{
 			State: decide.State{"a": "x"},
 			Questions: map[string]decide.Question{
-				"q": decide.Noul("is it true", "true", "false"),
+				"same_subject": decide.Noul("is it true", "true", "false"),
 			},
 		}
 
@@ -323,7 +323,7 @@ func TestDeciderFromConfigAppliesOptions(t *testing.T) {
 		req := decide.Request{
 			State: decide.State{"a": "x"},
 			Questions: map[string]decide.Question{
-				"q": decide.Noul("is it true", "true", "false"),
+				"same_subject": decide.Noul("is it true", "true", "false"),
 			},
 		}
 		reqs := make([]decide.Request, 6)

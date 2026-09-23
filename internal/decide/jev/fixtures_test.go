@@ -72,3 +72,25 @@ const fixtureNoulOK = `{"model":"typesafe/jev-1.13-20260917","answers":{"q":{"ty
 // fixtureNoulNoUsage is fixtureNoulOK with the usage key omitted entirely
 // (E10: the usage attributes must be omitted, never zeroed, on this shape).
 const fixtureNoulNoUsage = `{"model":"typesafe/jev-1.13-20260917","answers":{"q":{"type":"noul","noul":0.87}},"id":"gen-fixture-noulnousage","provider":"TypeSafe"}`
+
+// fixtureHappy is spike 001 probe "happy" (extracted verbatim via jq): one
+// choice answer ("relation") and one noul answer ("same_subject").
+const fixtureHappy = `{"model":"typesafe/jev-1.13-20260917","answers":{"relation":{"type":"choice","choice":"duplicate","probabilities":{"unrelated":0,"duplicate":0.92,"related":0.03,"contradicts":0.05},"confidence":0.9},"same_subject":{"type":"noul","noul":0.92}},"usage":{"input_tokens":497,"output_tokens":67,"cost":0.000020874},"id":"gen-dec-1790119657-v90ERBo9Ihr6BnXXvH2K","provider":"TypeSafe"}`
+
+// fixtureBatch50 is spike 001 probe "batch50" (extracted verbatim via jq):
+// 50 noul answers named rel_c00..rel_c49.
+const fixtureBatch50 = `{"model":"typesafe/jev-1.13-20260917","answers":{"rel_c00":{"type":"noul","noul":0.02},"rel_c01":{"type":"noul","noul":0.03},"rel_c02":{"type":"noul","noul":0.02},"rel_c03":{"type":"noul","noul":0.02},"rel_c04":{"type":"noul","noul":0.03},"rel_c05":{"type":"noul","noul":0.03},"rel_c06":{"type":"noul","noul":0.02},"rel_c07":{"type":"noul","noul":0.03},"rel_c08":{"type":"noul","noul":0.03},"rel_c09":{"type":"noul","noul":0.03},"rel_c10":{"type":"noul","noul":0.03},"rel_c11":{"type":"noul","noul":0.03},"rel_c12":{"type":"noul","noul":0.03},"rel_c13":{"type":"noul","noul":0.03},"rel_c14":{"type":"noul","noul":0.03},"rel_c15":{"type":"noul","noul":0.03},"rel_c16":{"type":"noul","noul":0.03},"rel_c17":{"type":"noul","noul":0.9},"rel_c18":{"type":"noul","noul":0.03},"rel_c19":{"type":"noul","noul":0.03},"rel_c20":{"type":"noul","noul":0.03},"rel_c21":{"type":"noul","noul":0.03},"rel_c22":{"type":"noul","noul":0.04},"rel_c23":{"type":"noul","noul":0.03},"rel_c24":{"type":"noul","noul":0.03},"rel_c25":{"type":"noul","noul":0.04},"rel_c26":{"type":"noul","noul":0.03},"rel_c27":{"type":"noul","noul":0.03},"rel_c28":{"type":"noul","noul":0.04},"rel_c29":{"type":"noul","noul":0.03},"rel_c30":{"type":"noul","noul":0.03},"rel_c31":{"type":"noul","noul":0.03},"rel_c32":{"type":"noul","noul":0.03},"rel_c33":{"type":"noul","noul":0.04},"rel_c34":{"type":"noul","noul":0.03},"rel_c35":{"type":"noul","noul":0.03},"rel_c36":{"type":"noul","noul":0.04},"rel_c37":{"type":"noul","noul":0.04},"rel_c38":{"type":"noul","noul":0.03},"rel_c39":{"type":"noul","noul":0.03},"rel_c40":{"type":"noul","noul":0.04},"rel_c41":{"type":"noul","noul":0.03},"rel_c42":{"type":"noul","noul":0.04},"rel_c43":{"type":"noul","noul":0.04},"rel_c44":{"type":"noul","noul":0.04},"rel_c45":{"type":"noul","noul":0.04},"rel_c46":{"type":"noul","noul":0.04},"rel_c47":{"type":"noul","noul":0.04},"rel_c48":{"type":"noul","noul":0.04},"rel_c49":{"type":"noul","noul":0.03}},"usage":{"input_tokens":4028,"output_tokens":954,"cost":0.000169176},"id":"gen-dec-1790119667-Pr6XXtReMocfPyi196hI","provider":"TypeSafe"}`
+
+// fixtureScore is synthetic: a score answer with a 3-level probability
+// distribution, confidence and legend, plus usage/model/id — the spikes
+// never exercised a live score question.
+const fixtureScore = `{"model":"typesafe/jev-1.13-20260917","answers":{"score":{"type":"score","score":1,"confidence":0.8,"probabilities":{"0":0.1,"1":0.8,"2":0.1},"legend":{"0":"can wait","1":"this week","2":"blocking"}}},"usage":{"input_tokens":100,"output_tokens":20,"cost":0.000005},"id":"gen-fixture-score","provider":"TypeSafe"}`
+
+// fixtureChoiceSum098 is synthetic: a choice answer whose probabilities sum
+// to 0.98 (not 1.0), proving decodeResponse never renormalizes (E03).
+const fixtureChoiceSum098 = `{"model":"typesafe/jev-1.13-20260917","answers":{"c":{"type":"choice","choice":"a","probabilities":{"a":0.5,"b":0.48},"confidence":0.9}},"usage":{"input_tokens":10,"output_tokens":2,"cost":0.000001},"id":"gen-fixture-choicesum098","provider":"TypeSafe"}`
+
+// fixtureUnknownAnswerType is synthetic: a 200 whose answer for "c" carries
+// an answer type decodeResponse does not recognize ("ranking" is not one of
+// noul/choice/score).
+const fixtureUnknownAnswerType = `{"model":"typesafe/jev-1.13-20260917","answers":{"c":{"type":"ranking"}},"usage":{"input_tokens":10,"output_tokens":2,"cost":0.000001},"id":"gen-fixture-unknown","provider":"TypeSafe"}`

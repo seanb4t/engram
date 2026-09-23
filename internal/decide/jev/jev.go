@@ -18,7 +18,6 @@ package jev
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -213,48 +212,11 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 
 var _ decide.Decider = (*Client)(nil)
 
-// wireRequest, wireQuestion, wireResponse, wireAnswer and wireUsage are the
-// unexported wire structs for the Decisions API (D-06 reject-hand-write
-// branch): plain net/http + encoding/json, no generated SDK types.
-type wireRequest struct {
-	Model     string                  `json:"model"`
-	State     map[string]any          `json:"state"`
-	Questions map[string]wireQuestion `json:"questions"`
-}
-
-type wireQuestion struct {
-	Type         string            `json:"type"`
-	Instructions string            `json:"instructions"`
-	Criteria     map[string]string `json:"criteria"`
-}
-
-type wireResponse struct {
-	Model   string                `json:"model"`
-	Answers map[string]wireAnswer `json:"answers"`
-	// Usage is a pointer so an absent "usage" key decodes to nil — E10
-	// requires distinguishing "no usage reported" from "usage reported as
-	// zero", and both attempt's Response.Usage and the decide span's usage
-	// attributes must omit rather than zero in the absent case.
-	Usage    *wireUsage `json:"usage"`
-	ID       string     `json:"id"`
-	Provider string     `json:"provider"`
-}
-
-type wireAnswer struct {
-	Type string  `json:"type"`
-	Noul float64 `json:"noul"`
-}
-
-type wireUsage struct {
-	InputTokens  int64    `json:"input_tokens"`
-	OutputTokens int64    `json:"output_tokens"`
-	Cost         *float64 `json:"cost"`
-}
-
-// Decide sends req to {base}/alpha/decisions and decodes the typed noul
-// answers, model snapshot, id, provider and usage into a decide.Response.
-// Every call emits one "decide" span (D-13) and exactly one debug-level slog
-// line; neither carries State, Instructions, criteria or the API key.
+// Decide sends req to {base}/alpha/decisions and decodes the typed noul,
+// choice and score answers, model snapshot, id, provider and usage into a
+// decide.Response (encodeRequest/decodeResponse in wire.go). Every call
+// emits one "decide" span (D-13) and exactly one debug-level slog line;
+// neither carries State, Instructions, criteria or the API key.
 func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Response, err error) {
 	ctx, span := tracer.Start(ctx, "decide", trace.WithAttributes(
 		attribute.String("engram.decide.provider", "jev"),
@@ -328,30 +290,13 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	wireQ := make(map[string]wireQuestion, len(req.Questions))
-	for name, q := range req.Questions {
-		if q.Type != decide.QuestionNoul {
-			err = fmt.Errorf("decide: unsupported question type %q for question %q", q.Type, name)
-			return decide.Response{}, err
-		}
-		wireQ[name] = wireQuestion{
-			Type:         string(q.Type),
-			Instructions: q.Instructions,
-			Criteria:     map[string]string{"true": q.WhenTrue, "false": q.WhenFalse},
-		}
-	}
-
-	body, merr := json.Marshal(wireRequest{
-		Model:     c.model,
-		State:     map[string]any(req.State),
-		Questions: wireQ,
-	})
+	body, merr := encodeRequest(c.model, req)
 	if merr != nil {
-		err = fmt.Errorf("decide: marshal request body: %w", merr)
+		err = merr
 		return decide.Response{}, err
 	}
 
-	resp, err = c.attempt(ctx, body)
+	resp, err = c.attempt(ctx, body, req)
 	if err != nil && isRetryable(err) {
 		if dl, ok := ctx.Deadline(); ok {
 			d := c.retryDelay()
@@ -359,7 +304,7 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 				timer := time.NewTimer(d)
 				select {
 				case <-timer.C:
-					resp, err = c.attempt(ctx, body)
+					resp, err = c.attempt(ctx, body, req)
 				case <-ctx.Done():
 					timer.Stop()
 					// The budget expired while waiting to retry: report the
@@ -375,9 +320,10 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 // attempt performs exactly one HTTP exchange against the Decisions endpoint
 // and classifies its outcome (D-12): a transport failure goes through
 // classifyTransport, a non-200 status through classifyStatus, and a success
-// body larger than c.maxResponseBytes becomes a named too-large error. It
-// never retries — Decide owns the single retry (D-11).
-func (c *Client) attempt(ctx context.Context, body []byte) (decide.Response, error) {
+// body larger than c.maxResponseBytes becomes a named too-large error. A
+// success body within bound is decoded and mapped by decodeResponse against
+// req (DEC-02). It never retries — Decide owns the single retry (D-11).
+func (c *Client) attempt(ctx context.Context, body []byte, req decide.Request) (decide.Response, error) {
 	httpReq, nerr := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if nerr != nil {
 		return decide.Response{}, nerr
@@ -411,37 +357,12 @@ func (c *Client) attempt(ctx context.Context, body []byte) (decide.Response, err
 		return decide.Response{}, &decide.Error{Kind: decide.ErrDecisionResponseTooLarge, Status: http.StatusOK}
 	}
 
-	var wr wireResponse
-	if decErr := json.Unmarshal(raw, &wr); decErr != nil {
-		httpdrain.Drain(httpResp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time
-		return decide.Response{}, fmt.Errorf("decide: decode response: %w", decErr)
-	}
+	resp, decErr := decodeResponse(raw, req)
 	httpdrain.Drain(httpResp.Body, c.drainBytes, c.drainTimeout) // bounded by bytes and time
-
-	answers := make(map[string]decide.Answer, len(wr.Answers))
-	for name, a := range wr.Answers {
-		if a.Type != string(decide.QuestionNoul) {
-			return decide.Response{}, fmt.Errorf("decisions: unsupported answer type %q for question %q", a.Type, name)
-		}
-		answers[name] = decide.Answer{Type: decide.QuestionNoul, Probability: a.Noul}
+	if decErr != nil {
+		return decide.Response{}, decErr
 	}
-
-	var usage *decide.Usage
-	if wr.Usage != nil {
-		usage = &decide.Usage{
-			InputTokens:  wr.Usage.InputTokens,
-			OutputTokens: wr.Usage.OutputTokens,
-			CostUSD:      wr.Usage.Cost,
-		}
-	}
-
-	return decide.Response{
-		Answers:  answers,
-		Model:    wr.Model,
-		ID:       wr.ID,
-		Provider: wr.Provider,
-		Usage:    usage,
-	}, nil
+	return resp, nil
 }
 
 // DecideMany answers many Requests through the shared decide.DecideMany
