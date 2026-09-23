@@ -27,6 +27,7 @@ type Config struct {
 	Memory      MemoryConfig      `koanf:"memory"`
 	Summarize   SummarizeConfig   `koanf:"summarize"`
 	OpenAI      OpenAIConfig      `koanf:"openai"`
+	Decisions   DecisionsConfig   `koanf:"decisions"`
 	OIDC        OIDCConfig        `koanf:"oidc"`
 	ServiceAuth ServiceAuthConfig `koanf:"service_auth"`
 	UI          UIConfig          `koanf:"ui"`
@@ -210,6 +211,32 @@ type OpenAIConfig struct {
 	// inherit APIKey — the fallback is resolved once, at the summarizer
 	// construction site (cmp.Or in summarizerFromConfig), not here (D-02/D-03).
 	ChatAPIKey string `koanf:"chat_api_key"`
+}
+
+// DecisionsConfig selects the typed-decision provider (D-01, D-02, D-03).
+// Presence enables the feature: an empty Provider constructs no client and
+// makes no call, exactly like SummarizeConfig.Model's presence-enables
+// convention.
+//
+// Only APIKey falls back, to ENGRAM_OPENAI_API_KEY — resolved at the wiring
+// seam (internal/server/decider.go), not here, mirroring ChatAPIKey's own
+// fallback precedent. BaseURL never falls back: it fails Config.Validate when
+// empty and Provider is "jev" instead (D-03) — the decisions endpoint must
+// never silently inherit the chat/embeddings gateway's base URL.
+//
+// Values stay strings and are validated by Config.Validate only when the
+// provider is set, following this package's "keep as strings, consumer
+// validates" convention (see the doc comment at the top of this file).
+type DecisionsConfig struct {
+	Provider     string `koanf:"provider"`
+	BaseURL      string `koanf:"base_url"`
+	APIKey       string `koanf:"api_key"`
+	Model        string `koanf:"model"`
+	Timeout      string `koanf:"timeout"`
+	MaxTimeout   string `koanf:"max_timeout"`
+	DrainBytes   string `koanf:"drain_bytes"`
+	DrainTimeout string `koanf:"drain_timeout"`
+	Concurrency  string `koanf:"concurrency"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI
