@@ -1,0 +1,123 @@
+task: [eval:retrieval] ENGRAM_RETRIEVAL_EVAL=1 go test ./internal/retrievaleval/ -run TestRetrievalEval -v
+2026/09/23 00:07:28 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 29.4.0 (via Testcontainers Desktop 1.26.0)
+  API Version: 1.54
+  Operating System: OrbStack
+  Total Memory: 20041 MB
+  Testcontainers for Go Version: v0.44.0
+  Resolved Docker Host: tcp://127.0.0.1:50498
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: fa08c7470bfbd1bb12c540a63c5973033980c18e14f8419096b4880a4cc75f24
+  Test ProcessID: 6515eb5e-f1a8-4010-9374-15070456e393
+2026/09/23 00:07:28 🐳 Creating container for image qdrant/qdrant:v1.19.1
+2026/09/23 00:07:28 🐳 Creating container for image testcontainers/ryuk:0.14.0
+2026/09/23 00:07:28 ✅ Container created: 24e58d064c7c
+2026/09/23 00:07:28 🐳 Starting container: 24e58d064c7c
+2026/09/23 00:07:28 ✅ Container started: 24e58d064c7c
+2026/09/23 00:07:28 ⏳ Waiting for container id 24e58d064c7c image: testcontainers/ryuk:0.14.0. Waiting for: all of: [log message "Started", port 8080/tcp to be listening]
+2026/09/23 00:07:28 Shell not found in container
+2026/09/23 00:07:28 🔔 Container is ready: 24e58d064c7c
+2026/09/23 00:07:28 ✅ Container created: 5227ab388568
+2026/09/23 00:07:28 🐳 Starting container: 5227ab388568
+2026/09/23 00:07:28 ✅ Container started: 5227ab388568
+2026/09/23 00:07:28 ⏳ Waiting for container id 5227ab388568 image: qdrant/qdrant:v1.19.1. Waiting for: all of: [port 6333/tcp to be listening, port 6334/tcp to be listening]
+2026/09/23 00:07:28 🔔 Container is ready: 5227ab388568
+=== RUN   TestRetrievalEval
+2026/09/23 00:07:28 WARN Failed to obtain server version. Unable to check client-server compatibility. Set SkipCompatibilityCheck=true to skip version check. err="server health check failed: rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:6334: connect: connection refused\""
+=== RUN   TestRetrievalEval/gh261-sticky-neighbor-crowding
+    retrieval_eval_test.go:374: gh261-sticky-neighbor-crowding/query-a: score(target)=0.878703 best-distractor-score=0.784238 gap=0.094465 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: gh261-sticky-neighbor-crowding/query-b: score(target)=0.952102 best-distractor-score=0.817654 gap=0.134448 (diagnostic only, never a hard gate)
+=== RUN   TestRetrievalEval/paraphrase-blind-multidomain
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T01: score(target)=0.633523 best-distractor-score=0.664139 gap=-0.030616 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T02: score(target)=0.766599 best-distractor-score=0.804003 gap=-0.037403 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T03: score(target)=0.791064 best-distractor-score=0.764935 gap=0.026129 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T04: score(target)=0.688404 best-distractor-score=0.724664 gap=-0.036261 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T05: score(target)=0.760435 best-distractor-score=0.684794 gap=0.075642 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T06: score(target)=0.791734 best-distractor-score=0.719510 gap=0.072224 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T07: score(target)=0.835619 best-distractor-score=0.816329 gap=0.019290 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T08: score(target)=0.000000 best-distractor-score=0.699617 gap=-0.699617 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T09: score(target)=0.752752 best-distractor-score=0.708592 gap=0.044160 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T10: score(target)=0.723716 best-distractor-score=0.725194 gap=-0.001478 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T11: score(target)=0.681922 best-distractor-score=0.641244 gap=0.040678 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T12: score(target)=0.704252 best-distractor-score=0.701756 gap=0.002497 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T13: score(target)=0.731485 best-distractor-score=0.783470 gap=-0.051985 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T14: score(target)=0.683894 best-distractor-score=0.749521 gap=-0.065627 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T15: score(target)=0.782795 best-distractor-score=0.833316 gap=-0.050521 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T16: score(target)=0.808658 best-distractor-score=0.843270 gap=-0.034612 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T17: score(target)=0.753331 best-distractor-score=0.648503 gap=0.104828 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T18: score(target)=0.634581 best-distractor-score=0.658942 gap=-0.024361 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T19: score(target)=0.772290 best-distractor-score=0.821761 gap=-0.049471 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:374: paraphrase-blind-multidomain/T20: score(target)=0.734680 best-distractor-score=0.808529 gap=-0.073848 (diagnostic only, never a hard gate)
+    retrieval_eval_test.go:286: no-answer paraphrase-blind-multidomain/T21: shipped (SearchReranked) top=auth-03 score=0.578410
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: vector-only top=auth-06 score=0.626070
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: lexical top=auth-03 score=0.578410
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: overlap-gate-t0.90 top=auth-06 score=0.626070
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: overlap-gate-t0.75 top=auth-06 score=0.626070
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: overlap-gate-t0.60 top=auth-06 score=0.626070
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: cosine-blend-a0.05 top=auth-06 score=0.626070
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: cosine-blend-a0.10 top=deploy-02 score=0.613434
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: cosine-blend-a0.20 top=deploy-02 score=0.613434
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T21: cosine-blend-a0.30 top=deploy-02 score=0.613434
+    retrieval_eval_test.go:286: no-answer paraphrase-blind-multidomain/T22: shipped (SearchReranked) top=datamodel-15 score=0.568204
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: vector-only top=datamodel-14 score=0.601522
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: lexical top=datamodel-15 score=0.568204
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: overlap-gate-t0.90 top=datamodel-14 score=0.601522
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: overlap-gate-t0.75 top=datamodel-14 score=0.601522
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: overlap-gate-t0.60 top=datamodel-14 score=0.601522
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: cosine-blend-a0.05 top=datamodel-14 score=0.601522
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: cosine-blend-a0.10 top=datamodel-14 score=0.601522
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: cosine-blend-a0.20 top=tooling-12 score=0.587373
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T22: cosine-blend-a0.30 top=datamodel-15 score=0.568204
+    retrieval_eval_test.go:286: no-answer paraphrase-blind-multidomain/T23: shipped (SearchReranked) top=testing-13 score=0.548974
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: vector-only top=datamodel-03 score=0.607509
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: lexical top=testing-13 score=0.548974
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: overlap-gate-t0.90 top=datamodel-03 score=0.607509
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: overlap-gate-t0.75 top=datamodel-03 score=0.607509
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: overlap-gate-t0.60 top=datamodel-03 score=0.607509
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: cosine-blend-a0.05 top=datamodel-03 score=0.607509
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: cosine-blend-a0.10 top=datamodel-03 score=0.607509
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: cosine-blend-a0.20 top=datamodel-03 score=0.607509
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T23: cosine-blend-a0.30 top=datamodel-03 score=0.607509
+    retrieval_eval_test.go:286: no-answer paraphrase-blind-multidomain/T24: shipped (SearchReranked) top=config-01 score=0.536800
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: vector-only top=deploy-03 score=0.563062
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: lexical top=config-01 score=0.536800
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: overlap-gate-t0.90 top=deploy-03 score=0.563062
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: overlap-gate-t0.75 top=deploy-03 score=0.563062
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: overlap-gate-t0.60 top=deploy-03 score=0.563062
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: cosine-blend-a0.05 top=deploy-01 score=0.557938
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: cosine-blend-a0.10 top=deploy-01 score=0.557938
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: cosine-blend-a0.20 top=config-01 score=0.536800
+    retrieval_eval_test.go:296: no-answer paraphrase-blind-multidomain/T24: cosine-blend-a0.30 top=config-01 score=0.536800
+=== NAME  TestRetrievalEval
+    retrieval_eval_test.go:382: 
+        | variant | #261 ranks | #261 all rank 1 | paraphrase recall@8 | paraphrase MRR | D-05 eligible |
+        |---|---|---|---|---|---|
+        | vector-only | [1 1] | true | 1.000 | 0.579 | yes |
+        | lexical | [1 1] | true | 0.950 | 0.817 | yes |
+        | overlap-gate-t0.90 | [1 1] | true | 1.000 | 0.579 | yes |
+        | overlap-gate-t0.75 | [1 1] | true | 1.000 | 0.579 | yes |
+        | overlap-gate-t0.60 | [1 1] | true | 1.000 | 0.579 | yes |
+        | cosine-blend-a0.05 | [1 1] | true | 1.000 | 0.628 | yes |
+        | cosine-blend-a0.10 | [1 1] | true | 1.000 | 0.631 | yes |
+        | cosine-blend-a0.20 | [1 1] | true | 1.000 | 0.704 | yes |
+        | cosine-blend-a0.30 | [1 1] | true | 1.000 | 0.792 | yes |
+        | jev | Jev: disabled | — | — | — | — |
+        | shipped (SearchReranked) | [1 1] | true | 0.950 | 0.817 | — |
+    retrieval_eval_test.go:392: D-05 decision: winner=lexical reason=best eligible paraphrase MRR eligible=vector-only, lexical, overlap-gate-t0.90, overlap-gate-t0.75, overlap-gate-t0.60, cosine-blend-a0.05, cosine-blend-a0.10, cosine-blend-a0.20, cosine-blend-a0.30
+    retrieval_eval_test.go:395: D-10 gate PASS: #261 target at rank 1 for both queries under the shipped ranking
+    retrieval_eval_test.go:407: D-10 gate PASS: shipped paraphrase MRR 0.817 >= vector-only 0.579
+    retrieval_eval_test.go:423: shipped (SearchReranked) matches: lexical
+--- PASS: TestRetrievalEval (61.97s)
+    --- PASS: TestRetrievalEval/gh261-sticky-neighbor-crowding (8.05s)
+    --- PASS: TestRetrievalEval/paraphrase-blind-multidomain (53.87s)
+=== RUN   TestRetrievalEval_AsymmetryDiffer
+2026/09/23 00:08:30 WARN Failed to obtain server version. Unable to check client-server compatibility. Set SkipCompatibilityCheck=true to skip version check. err="server health check failed: rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:6334: connect: connection refused\""
+    retrieval_eval_test.go:469: symmetric embedder config (no QUERY/DOCUMENT instruction or params set): query == document is valid here, asymmetry assertion does not apply
+--- SKIP: TestRetrievalEval_AsymmetryDiffer (0.02s)
+PASS
+2026/09/23 00:08:30 🐳 Stopping container: 5227ab388568
+2026/09/23 00:08:30 ✅ Container stopped: 5227ab388568
+2026/09/23 00:08:30 🐳 Terminating container: 5227ab388568
+2026/09/23 00:08:30 🚫 Container terminated: 5227ab388568
+ok  	github.com/seanb4t/engram/internal/retrievaleval	63.060s
+EXIT_STATUS:0
