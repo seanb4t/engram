@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
 status: planning
-last_updated: "2026-09-23T00:22:19.166Z"
+last_updated: "2026-09-23T00:36:48.421Z"
 last_activity: 2026-09-22
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-22 after milestone 2026-09-18.01 — Bounded Reads)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone
+**Current focus:** Roadmap created (5 phases) — ready for `/gsd-plan-phase 1`
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 2026-09-22.01 Phase 1: Eval Foundation & Lexical Reranker Fix (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-09-22 — Milestone 2026-09-22.01 started
+Status: Roadmap created — 5 phases, 22/22 requirements mapped, awaiting approval
+Last activity: 2026-09-22 — Roadmap created for milestone 2026-09-22.01 (5 phases: Eval Foundation & Lexical Reranker Fix, Decision Interface & Jev Backend, Curation Verdicts, Jev Reranker & Per-Hit Relevance Signal, Operator Correctness)
 
 ## Deferred Items
 

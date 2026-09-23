@@ -79,13 +79,35 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| DEC-01 | Phase 2 | Pending |
+| DEC-02 | Phase 2 | Pending |
+| DEC-03 | Phase 2 | Pending |
+| DEC-04 | Phase 2 | Pending |
+| DEC-05 | Phase 2 | Pending |
+| DEC-06 | Phase 2 | Pending |
+| CUR-01 | Phase 3 | Pending |
+| CUR-02 | Phase 3 | Pending |
+| CUR-03 | Phase 3 | Pending |
+| CUR-04 | Phase 3 | Pending |
+| RANK-01 | Phase 1 | Pending |
+| RANK-02 | Phase 1 | Pending |
+| RANK-03 | Phase 4 | Pending |
+| RANK-04 | Phase 4 | Pending |
+| RANK-05 | Phase 4 | Pending |
+| EVAL-01 | Phase 1 | Pending |
+| EVAL-02 | Phase 1 | Pending |
+| OPS-01 | Phase 5 | Pending |
+| OPS-02 | Phase 5 | Pending |
+| OPS-03 | Phase 5 | Pending |
+| OPS-04 | Phase 5 | Pending |
+| OPS-05 | Phase 5 | Pending |
 
 **Coverage:**
 
 - v1 requirements: 22 total
-- Mapped to phases: 0
-- Unmapped: 22 ⚠️
+- Mapped to phases: 22
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-22*
-*Last updated: 2026-09-22 after initial definition*
+*Last updated: 2026-09-22 after roadmap creation (5 phases, 22/22 requirements mapped)*
