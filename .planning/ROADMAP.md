@@ -365,7 +365,26 @@ reranking work (Phase 4) has trustworthy numbers to gate on.
   2. The retrieval-eval skip guard reads the resolved koanf config rather than raw `os.Getenv`, so `ENGRAM_RETRIEVAL_EVAL` set via any config source enables it
   3. `task eval:retrieval` reports recall@k and MRR for vector-only, lexical-reranked, and (when enabled) Jev-reranked ordering, including a paraphrase case written independently of #261's targets
   4. On that paraphrase case, the shipped ranking (lexical kept, demoted, or replaced per the numbers) does not regress versus vector-only order and keeps #261's target at rank 1
-**Plans**: TBD
+**Plans:** 6 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 01-01-PLAN.md — resolved-config eval gates: `ENGRAM_RETRIEVAL_EVAL` through a package-local koanf load (unregistered, never validated), the differ's symmetric skip from the loader's own returned config, and a cosine-distance differ gate that is fatal on NaN, Inf or zero-norm vectors (D-13–D-15; EVAL-01, EVAL-02)
+- [ ] 01-02-PLAN.md — exported `store.CandidateK` and `store.VectorOrder`, plus eval-local comparison rankers (lexical port, cosine blend, overlap gate) with hermetic property tests (D-06, D-07; RANK-01, RANK-02)
+- [ ] 01-03-PLAN.md — a 96-record, six-domain synthetic paraphrase corpus with sticky neighbours, 20+4 topic labels, an integrity test, and a blocking checkpoint where a fresh context writes the queries blind (D-01–D-03, D-12; RANK-01)
+
+**Wave 2**
+
+- [ ] 01-04-PLAN.md — per-query targets, a pluggable named-ranker eval with a Jev stub over `SearchReranked`'s own pool, a per-variant recall@k/MRR table, D-05 applied by a unit-tested `decideRanking`, D-10's two hard gates, and the paraphrase case wired from the blind queries (D-01, D-04–D-07, D-09–D-12; RANK-01, RANK-02)
+
+**Wave 3**
+
+- [ ] 01-05-PLAN.md — a live `task eval:retrieval` baseline, the rule's verdict recorded, and a decision checkpoint that confirms the measurement and authorizes the #605 post but never re-chooses (D-05, D-09; RANK-01, RANK-02)
+
+**Wave 4**
+
+- [ ] 01-06-PLAN.md — the approved winner ships through `SearchReranked`'s single `rankCandidates` seam (lexical code deleted from `internal/store` if vector-only wins), with the eval roster, parity test and docs aligned, a live re-run green, and #605 evidence recorded (D-05, D-08, D-09; RANK-02)
 
 ### Phase 2: Decision Interface & Jev Backend
 

@@ -46,7 +46,7 @@ Filled by the planner/executor from the PLAN.md task IDs. Requirement → test c
 | EVAL-01 | Differ gate asserts distance > 1e-3 against the real embedder | integration (gated) | `ENGRAM_RETRIEVAL_EVAL=1 go test ./internal/retrievaleval/ -run TestRetrievalEval_AsymmetryDiffer -v` | ✅ edit | ⬜ pending |
 | EVAL-02 | Gate + symmetric-config skip read resolved koanf config (test-local load, no registry entry, no `Validate()`) | unit (hermetic, `t.Setenv`) | `go test ./internal/retrievaleval/ -run TestEvalGate -v` | ❌ W0 | ⬜ pending |
 | EVAL-02 | `StoreAndEmbedderFromEnvNoEnsure` returns resolved config; single-load invariant holds | unit | `go test ./internal/server/ -run TestStoreAndEmbedderFromEnvNoEnsure -v` | ✅ edit | ⬜ pending |
-| RANK-01 | Blend / overlap-gate rank functions are deterministic and correct | unit | `go test ./internal/store/ -run 'TestCosineBlendRerank|TestOverlapGateRerank' -v` | ❌ W0 | ⬜ pending |
+| RANK-01 | Blend / overlap-gate rank functions are deterministic and correct | unit | `go test ./internal/retrievaleval/ -run 'TestCosineBlendRerank|TestOverlapGateRerank' -v` | ❌ W0 | ⬜ pending |
 | RANK-01 | Paraphrase case + named-ranker table (incl. Jev "disabled") reported | integration (gated) | `task eval:retrieval` | ✅ extend | ⬜ pending |
 | RANK-02 | #261 at rank 1; shipped paraphrase MRR ≥ vector-only | integration (gated, hard `t.Errorf`) | `task eval:retrieval` | ✅ tighten | ⬜ pending |
 
@@ -57,7 +57,7 @@ Filled by the planner/executor from the PLAN.md task IDs. Requirement → test c
 ## Wave 0 Requirements
 
 - [ ] `cosineDistance` unit tests (identical, orthogonal, near-identical, NaN, Inf)
-- [ ] `CosineBlendRerank` / `OverlapGateRerank` hermetic unit tests in `internal/store/rerank_test.go`
+- [ ] `cosineBlendRerank` / `overlapGateRerank` hermetic unit tests in `internal/retrievaleval/comparison_rankers_test.go` (eval-local per plan 01-02; `store.VectorOrder` tests in `internal/store/rerank_test.go`)
 - [ ] Resolved-config gate/skip unit tests in `internal/retrievaleval` (test-local koanf load; replaces the proposed `config_test.go` registry case — D-15 revised)
 
 ---
