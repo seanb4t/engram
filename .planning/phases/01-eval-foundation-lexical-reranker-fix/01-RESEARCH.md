@@ -789,9 +789,9 @@ shipped lexical baseline.
 | A2 | The blind-subagent procedure's exact mechanics (Task-tool dispatch, prompt shape) are a recommendation, not a verified GSD pattern — no prior phase in this repo implemented this before | Blind-subagent query authorship | Medium — if the recommended mechanism turns out to be impractical inside a `gsd-execute-phase` task, the planner needs a fallback that still satisfies D-01's independence requirement (e.g. a human, rather than a subagent, could serve as the "blind" party) |
 | A3 | Deleting `store.RerankHits`/`rerank.go`'s lexical logic is presented as the LIKELY outcome of the D-05 decision rule (based on spike 004's numbers on a different, smaller corpus), not a certainty — the actual Phase 1 corpus (80–120 records, independently-written queries) may produce different numbers | Pluggable ranker design / State of the Art | Medium — if the real eval numbers differ from spike 004's, a tuned blend or gate variant (not vector-only) could win instead; the plan should build for all four D-06 variants, not assume the outcome |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exact α / overlap-threshold grid values (D-07 discretion)**
+1. **Exact α / overlap-threshold grid values (D-07 discretion)** — RESOLVED: plan 01-04 fixes `blendAlphaGrid` / `gateThetaGrid` with documented rationale.
    - What we know: "a small fixed grid (3–4 values each)," tuned against the ≥0.05 MRR margin
      guard.
    - What's unclear: no specific numeric grid is prescribed anywhere in CONTEXT.md or the spikes.
@@ -801,7 +801,7 @@ shipped lexical baseline.
      shared tool words), and record the chosen grid + rationale in the eval's fixture comment.
 
 2. **Whether the paraphrase corpus's synthetic domains should mirror engram's OWN real spine
-   domains (tooling, auth, deploy, ...) or be genuinely unrelated to engram**
+   domains (tooling, auth, deploy, ...) or be genuinely unrelated to engram** — RESOLVED: plan 01-03 uses engram-flavored synthetic domains (tooling, auth, deploy, datamodel, config, testing).
    - What we know: D-02 requires "multi-domain synthetic set... several domains, e.g. tooling,
      auth, deploy, data model, config, testing" and "no verbatim spine content, no secrets."
    - What's unclear: whether domains should intentionally echo engram's actual spine content
