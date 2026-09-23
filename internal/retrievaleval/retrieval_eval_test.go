@@ -378,10 +378,33 @@ func TestRetrievalEval(t *testing.T) {
 	}
 
 	rows := buildSummaries(roster, guardMetrics, paraphraseMetrics, shippedGuard, shippedParaphrase)
-	t.Logf("\n%s", formatVariantTable(rows, rankingDecision{}))
+	d := decideRanking(rows)
+	t.Logf("\n%s", formatVariantTable(rows, d))
+
+	winnerName := d.winner
+	if winnerName == "" {
+		winnerName = "none"
+	}
+	eligibleList := "none"
+	if len(d.eligible) > 0 {
+		eligibleList = strings.Join(d.eligible, ", ")
+	}
+	t.Logf("D-05 decision: winner=%s reason=%s eligible=%s", winnerName, d.reason, eligibleList)
 
 	if shippedGuard.allRank1() {
 		t.Logf("D-10 gate PASS: #261 target at rank 1 for both queries under the shipped ranking")
+	}
+
+	// D-10 gate 2: shipped paraphrase MRR must be at least vector-only's —
+	// a cross-variant comparison, not a per-query rank check.
+	vectorOnlyParaphraseMRR := paraphraseMetrics["vector-only"].mrr()
+	switch {
+	case shippedParaphrase.n == 0:
+		t.Errorf("harness: no paraphrase-role queries measured — D-05 and the MRR gate cannot be evaluated")
+	case shippedParaphrase.mrr() < vectorOnlyParaphraseMRR-mrrEpsilon:
+		t.Errorf("D-10 gate FAILED: shipped paraphrase MRR %.3f < vector-only %.3f", shippedParaphrase.mrr(), vectorOnlyParaphraseMRR)
+	default:
+		t.Logf("D-10 gate PASS: shipped paraphrase MRR %.3f >= vector-only %.3f", shippedParaphrase.mrr(), vectorOnlyParaphraseMRR)
 	}
 
 	var matchNames []string

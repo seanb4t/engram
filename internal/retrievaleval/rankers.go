@@ -22,6 +22,34 @@ const shippedRowName = "shipped (SearchReranked)"
 // or the eval loop changes.
 const jevDisabledReason = "Jev: disabled"
 
+// d05TunedMargin is D-05's anti-overfitting guard: a tuned (grid) variant —
+// cosine-blend or overlap-gate — must beat vector-only's paraphrase MRR by
+// at least this much to win over it when vector-only is itself eligible.
+// D-05's text applies the margin only to tuned variants: an untuned one
+// (lexical) needs no margin, only a strictly better MRR.
+const d05TunedMargin = 0.05
+
+// mrrEpsilon is the floating-point tolerance every D-05 MRR comparison
+// uses, so two values a naive float64 comparison would read as "different"
+// by rounding noise alone are treated as equal.
+const mrrEpsilon = 1e-9
+
+// gateThetaGrid is the fixed D-07 overlap-gate threshold grid, fixed BEFORE
+// any live number exists. It spans near-verbatim-only promotion (0.90) —
+// the #261 shape, where a restatement matches nearly every query term — to
+// moderate promotion (0.60), since a genuine paraphrase matches far fewer
+// terms; D-05's 0.05 margin is the guard against overfitting this grid to
+// this eval's own corpus.
+var gateThetaGrid = []float64{0.90, 0.75, 0.60}
+
+// blendAlphaGrid is the fixed D-07 cosine-blend weight grid, fixed BEFORE
+// any live number exists. It spans a barely-nudging blend (0.05) to an
+// overlap-dominant one (0.30), reflecting spike 004's small raw-cosine
+// gaps between sticky topical neighbours — a small alpha is already
+// enough to matter; D-05's 0.05 margin is the guard against overfitting
+// this grid to this eval's own corpus.
+var blendAlphaGrid = []float64{0.05, 0.10, 0.20, 0.30}
+
 // rankerFunc ranks pool for query, returning at most k hits. It carries the
 // same pure (query, hits, k) contract as store.RerankHits/store.VectorOrder
 // and this package's comparison rankers: no I/O, no server concepts.
@@ -42,13 +70,14 @@ type namedRanker struct {
 
 // evalRankers returns the pluggable named-ranker roster (D-11) the eval
 // measures every retrieval-case query against, over SearchReranked's own
-// candidate pool (store.CandidateK(defaultK)). This is the T1 form:
-// vector-only, lexical, and a disabled Jev stub. Plan 01-04 Task 2 extends
-// this with the D-07 overlap-gate/cosine-blend grid; Phase 4 enables Jev by
-// giving its stub entry a rank function — both are pure appends, never a
-// refactor of this function's shape or the eval loop that consumes it.
+// candidate pool (store.CandidateK(defaultK)): vector-only, lexical, the
+// D-07 overlap-gate grid (highest theta first, so it is also the
+// simplest), the D-07 cosine-blend grid (lowest alpha first), and a
+// disabled Jev stub last. Phase 4 enables Jev by giving its stub entry a
+// rank function — a pure append, never a refactor of this function's shape
+// or the eval loop that consumes it.
 func evalRankers() []namedRanker {
-	return []namedRanker{
+	rankers := []namedRanker{
 		{
 			name:       "vector-only",
 			family:     "vector-only",
@@ -63,13 +92,35 @@ func evalRankers() []namedRanker {
 			simplicity: 10,
 			rank:       lexicalRerank,
 		},
-		{
-			name:           "jev",
-			family:         "jev",
-			simplicity:     99,
-			disabledReason: jevDisabledReason,
-		},
 	}
+	for i, theta := range gateThetaGrid {
+		rankers = append(rankers, namedRanker{
+			name:       fmt.Sprintf("overlap-gate-t%.2f", theta),
+			family:     "overlap-gate",
+			simplicity: 20 + i,
+			tuned:      true,
+			rank: func(query string, pool []store.Memory, k int) []store.Memory {
+				return overlapGateRerank(query, pool, k, theta)
+			},
+		})
+	}
+	for i, alpha := range blendAlphaGrid {
+		rankers = append(rankers, namedRanker{
+			name:       fmt.Sprintf("cosine-blend-a%.2f", alpha),
+			family:     "cosine-blend",
+			simplicity: 30 + i,
+			tuned:      true,
+			rank: func(query string, pool []store.Memory, k int) []store.Memory {
+				return cosineBlendRerank(query, pool, k, alpha)
+			},
+		})
+	}
+	return append(rankers, namedRanker{
+		name:           "jev",
+		family:         "jev",
+		simplicity:     99,
+		disabledReason: jevDisabledReason,
+	})
 }
 
 // variantMetrics accumulates recall@k, MRR and per-query ranks for one
@@ -139,16 +190,13 @@ func (m variantMetrics) allRank1() bool {
 }
 
 // rankingDecision is D-05's mechanically-applied decision: which named
-// ranker (if any) ships, which rows were eligible, and why. Task 1 always
-// passes the zero value (decideRanking does not exist until Task 2); every
-// cell it drives in formatVariantTable then reads "no" or "—". winner and
-// reason are consumed starting Task 2 (decideRanking's return value and the
-// eval's "D-05 decision" log line) — the nolint below is temporary,
-// removed in the same commit that wires their first real reader.
+// ranker (if any) ships, which rows were eligible, and why. The zero value
+// (winner "", eligible nil, reason "") is what formatVariantTable renders
+// before decideRanking has run.
 type rankingDecision struct {
-	winner   string //nolint:unused // consumed by decideRanking + the D-05 log line, plan 01-04 Task 2
+	winner   string
 	eligible []string
-	reason   string //nolint:unused // consumed by decideRanking + the D-05 log line, plan 01-04 Task 2
+	reason   string
 }
 
 // variantSummary is one row of the eval's variant comparison table: a named
@@ -238,4 +286,101 @@ func formatVariantTable(rows []variantSummary, d rankingDecision) string {
 			row.name, row.guardRanks, row.guardAllRank1, row.paraphraseRecall, row.paraphraseMRR, elig)
 	}
 	return b.String()
+}
+
+// decideRanking applies D-05's pre-committed decision rule mechanically —
+// this is the ONLY thing that picks the shipped ranking; no human or agent
+// judgment substitutes for it, and it is committed and unit-tested
+// (TestDecideRanking) before any live number exists:
+//
+//  1. The baseline is the single row with family "vector-only". Its
+//     absence is a hard stop: no winner, naming the missing baseline.
+//  2. Candidates are every row that is neither disabled nor family
+//     "shipped" (disabled and shipped rows never compete in D-05).
+//  3. A candidate is eligible when its guardAllRank1 holds AND its
+//     paraphraseMRR is at least the baseline's (within mrrEpsilon). This
+//     includes the baseline itself, trivially, when its own guardAllRank1
+//     holds. d.eligible lists every row that passes this step — what the
+//     table shows — independent of step 4's margin filter.
+//  4. When the baseline itself is eligible, every TUNED candidate (D-05's
+//     margin applies only to the grid — cosine-blend and overlap-gate,
+//     never lexical, which is untuned) whose paraphraseMRR falls short of
+//     the baseline's by less than d05TunedMargin is dropped from winner
+//     consideration — the anti-overfitting guard. No margin applies when
+//     the baseline itself is ineligible.
+//  5. The winner is the maximum remaining paraphraseMRR; values within
+//     mrrEpsilon tie, broken first by the lowest simplicity, then by the
+//     lexically smallest name.
+//  6. No remaining candidate means no winner, with a reason starting
+//     "no eligible variant".
+func decideRanking(rows []variantSummary) rankingDecision {
+	var baseline *variantSummary
+	for i := range rows {
+		if rows[i].family == "vector-only" {
+			baseline = &rows[i]
+			break
+		}
+	}
+	if baseline == nil {
+		return rankingDecision{reason: "no vector-only baseline row found — D-05 cannot be applied without it"}
+	}
+
+	eligible := make([]variantSummary, 0, len(rows))
+	eligibleNames := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.disabled || row.family == "shipped" {
+			continue
+		}
+		if row.guardAllRank1 && row.paraphraseMRR >= baseline.paraphraseMRR-mrrEpsilon {
+			eligible = append(eligible, row)
+			eligibleNames = append(eligibleNames, row.name)
+		}
+	}
+
+	baselineEligible := false
+	for _, row := range eligible {
+		if row.family == "vector-only" {
+			baselineEligible = true
+			break
+		}
+	}
+
+	finalists := eligible
+	marginDroppedAny := false
+	if baselineEligible {
+		filtered := make([]variantSummary, 0, len(eligible))
+		for _, row := range eligible {
+			if row.tuned && row.paraphraseMRR < baseline.paraphraseMRR+d05TunedMargin-mrrEpsilon {
+				marginDroppedAny = true
+				continue
+			}
+			filtered = append(filtered, row)
+		}
+		finalists = filtered
+	}
+
+	if len(finalists) == 0 {
+		return rankingDecision{eligible: eligibleNames, reason: "no eligible variant: every candidate failed the #261 rank-1 guard or the paraphrase-MRR floor"}
+	}
+
+	best := finalists[0]
+	for _, row := range finalists[1:] {
+		switch {
+		case row.paraphraseMRR > best.paraphraseMRR+mrrEpsilon:
+			best = row
+		case row.paraphraseMRR < best.paraphraseMRR-mrrEpsilon:
+			// Strictly worse — never replaces best.
+		case row.simplicity < best.simplicity:
+			best = row
+		case row.simplicity == best.simplicity && row.name < best.name:
+			best = row
+		}
+	}
+
+	reason := "best eligible paraphrase MRR"
+	if marginDroppedAny && best.name == baseline.name {
+		reason = fmt.Sprintf("vector-only wins: no tuned variant cleared D-05's %.2f margin over vector-only", d05TunedMargin)
+	}
+
+	return rankingDecision{winner: best.name, eligible: eligibleNames, reason: reason}
 }
