@@ -95,3 +95,19 @@ no-answer paraphrase-blind-multidomain/T24: cosine-blend-a0.05 top=deploy-01 sco
 no-answer paraphrase-blind-multidomain/T24: cosine-blend-a0.10 top=deploy-01 score=0.557938
 no-answer paraphrase-blind-multidomain/T24: cosine-blend-a0.20 top=config-01 score=0.536800
 no-answer paraphrase-blind-multidomain/T24: cosine-blend-a0.30 top=config-01 score=0.536800
+
+## Approval
+
+Checkpoint reply: approve-and-post
+
+Approved winner: lexical
+
+Evidence comment authorized: yes
+
+Date: 2026-09-23
+
+User-acknowledged caveats for the #605 evidence write-up:
+
+1. This result reverses spike 004's finding: here, lexical MRR 0.817 beats vector-only MRR 0.579 on the live 80-120-record multi-domain corpus with independently-authored blind paraphrase queries. Spike 004 measured the opposite — lexical MRR 0.656 vs vector-only MRR 0.922 — on a 16-record single-domain target-aware fixture (see `recall-rerank.md`). The two runs are not comparable measurements of the same claim; the live result supersedes the spike finding for shipping purposes.
+2. Lexical's paraphrase recall@8 is 0.950 vs vector-only's 1.000 — one target falls out of the default k=8 window under the lexical ranking that vector-only would have retrieved.
+3. `TestRetrievalEval_AsymmetryDiffer` SKIPPED on this live run because the operator's embed config (`google/gemini-embedding-2`) is symmetric. EVAL-01's cosine asymmetry gate is therefore covered only by the hermetic unit tests in this run, not by a live asymmetric-embedder observation.
