@@ -403,7 +403,7 @@ inert until an operator opts in.
   5. The OpenRouter Go SDK evaluation and its adopt/reject decision are recorded before any hand-written client lands
   6. Every decision call emits an OTLP span carrying latency, question count, input tokens, and cost
 
-**Plans:** 1/8 plans executed
+**Plans:** 3/8 plans executed
 
 Plans:
 **Wave 1**
@@ -412,11 +412,11 @@ Plans:
 
 **Wave 2**
 
-- [ ] 02-02-PLAN.md — nested-module harness replays both error dialects and a success body through the SDK (E01–E10), fixed R1–R4 verdict table, blocking-human D-06 adopt-or-reject checkpoint, durable decision record text (D-05–D-07; DEC-05)
+- [x] 02-02-PLAN.md — nested-module harness replays both error dialects and a success body through the SDK (E01–E10), fixed R1–R4 verdict table, blocking-human D-06 adopt-or-reject checkpoint, durable decision record text (D-05–D-07; DEC-05)
 
 **Wave 3**
 
-- [ ] 02-03-PLAN.md — tracer: config → `deciderFromConfig` → `decide.Decider` → jev → `{base}/alpha/decisions` → typed noul answer with a `decide` span, on the resolved D-06 branch; nine `ENGRAM_DECISIONS_*` registry rows with a provider-gated `Validate` (D-01–D-03, D-06, D-08, D-10, D-13; DEC-01, DEC-02, DEC-03, DEC-06)
+- [x] 02-03-PLAN.md — tracer: config → `deciderFromConfig` → `decide.Decider` → jev → `{base}/alpha/decisions` → typed noul answer with a `decide` span, on the resolved D-06 branch; nine `ENGRAM_DECISIONS_*` registry rows with a provider-gated `Validate` (D-01–D-03, D-06, D-08, D-10, D-13; DEC-01, DEC-02, DEC-03, DEC-06)
 
 **Wave 4**
 

@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 2
 current_phase_name: Decision Interface & Jev Backend
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-09-23T14:41:49.505Z"
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-09-23T15:02:01.546Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 2 execution started
-state_head: f34100873b6743373595dd4a3d4519f6dfd24d4f
+state_head: 1ffc83a95d866df4559d786feadd804a289a1266
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 14
-  completed_plans: 8
+  completed_plans: 9
   percent: 20
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 1 of milestone 2026-09
 ## Current Position
 
 Phase: 2 (Decision Interface & Jev Backend) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-09-23 — Phase 2 execution started
 
@@ -373,6 +373,8 @@ milestone needs in working memory.
 - [Phase 1]: Plan 01-06 shipped the D-05 approved winner (lexical) as SearchReranked's rank step via the new rankCandidates seam; live post-change re-run confirmed no regression and RANK-02 evidence was posted to #605 (approve-and-post authorization)
 - [Phase 2]: 02-01: DEC-05 candidate github.com/OpenRouterTeam/go-sdk@v0.8.19 passes D-05(a) (not deprecated/retracted/archived, released within 90-day window); package legitimacy checkpoint approved (org match, Apache-2.0, spyzhov/ajson vetted as established MIT library), clearing plan 02-02 to compile and run the SDK in an isolated nested module
 - [Phase 02-decision-interface-jev-backend]: D-06 resolved reject-hand-write: internal/decide/jev is hand-written on net/http + encoding/json following the internal/embed / internal/summarize pattern, not built on github.com/OpenRouterTeam/go-sdk — Verdict ADOPT-AND-WRAP-CANDIDATE (rule R3) fired on E01 (no documented option reaches the LiteLLM pass-through path shape), E05 (LiteLLM string code breaks typed error decode), and E06(c) (unbounded io.ReadAll). All three require engram to own path rewriting, status classification and byte bounding regardless of branch, leaving only generated types as the SDK's benefit against a new direct dependency on an alpha API. User chose reject-hand-write as an in-table resolution of the D-06 checkpoint, not an override.
+- [Phase 2]: 02-03: Built jev backend on D-06 reject-hand-write branch (net/http + encoding/json, no OpenRouter SDK dep added).
+- [Phase 2]: 02-03: decisions.timeout registry default is 10s per PLAN.md task text, superseding PATTERNS.md's earlier 30s draft.
 
 ### Pending Todos
 
@@ -460,8 +462,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T14:41:40.858Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-09-23T15:02:01.517Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -636,6 +638,7 @@ Resume file: None
 | Phase 01 P06 | ~23min | 3 tasks | 11 files |
 | Phase 02 P01 | 6min | 3 tasks | 2 files |
 | Phase 02-decision-interface-jev-backend P02 | 14min | 3 tasks | 5 files |
+| Phase 02 P03 | 20 min | 2 tasks | 8 files |
 
 ## Operator Next Steps
 
