@@ -6,26 +6,26 @@ current_phase: 3
 current_phase_name: Curation Verdicts
 status: planning
 stopped_at: Phase 2 complete, ready to plan Phase 3
-last_updated: "2026-09-23T17:50:07.689Z"
+last_updated: "2026-09-23T17:58:16.012Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
 state_head: 544f20792aaf4bfcee153c225d1e4fb74fcde570
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 14
   completed_plans: 14
-  percent: 20
+  percent: 40
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-23 after Phase 1 of milestone 2026-09-22.01)
+See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09-22.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 2 — Decision Interface & Jev Backend
+**Current focus:** Phase 3 — Curation Verdicts
 
 ## Current Position
 
@@ -386,6 +386,8 @@ milestone needs in working memory.
 - [Phase 2]: 02-08: wire.go's encodeRequest/decodeResponse complete the choice/score wire mapping; D-06 reject-hand-write reconfirmed (no SDK dependency added)
 - [Phase 2]: 02-08: fixed a latent internal/server/decider_test.go question-name/fixture mismatch that decodeResponse's stricter DEC-02 contract exposed (Rule 1 auto-fix)
 - [Phase 2]: 02-08: live human check (task eval:decisions against OpenRouter and the LiteLLM pass-through) deferred to end-of-phase UAT per workflow.human_verify_mode=end-of-phase, not run by the executor
+- [Phase 2]: Live check PASSED 2026-09-23 on both base URLs (`02-LIVE-CHECK.md`): OpenRouter direct via the `ENGRAM_OPENAI_API_KEY` fallback, and the LiteLLM pass-through with the deployed engram LiteLLM key via `ENGRAM_DECISIONS_API_KEY` (the local OpenRouter key 401s there, correctly classified `ErrDecisionAuth`)
+- [Phase 2]: WR-01 fixed (`e3a60dbd`): `decodeResponse` rejects an answer whose type mismatches the requested question; IN-01/IN-02 (deploy.md values table rows, UTF-8-safe error-body truncation) remain info-level
 
 ### Pending Todos
 
@@ -452,6 +454,10 @@ Both prior entries were delivered and had simply never been closed out:
   vector-only's 1.000, and the live AsymmetryDiffer SKIPs under a symmetric embed config; the Jev
   stub in `evalRankers()` is enabled by a pure append and plugs into `store.rankCandidates`.
   (d) #353, #354 and #605 remain OPEN on GitHub — close them with the milestone PR.
+- **[Phase 2] (2026-09-22.01):** `phase.complete 2` again mis-targeted a shipped v0.12.x ROADMAP
+  progress row instead of the active milestone's "2. Decision Interface & Jev Backend" row
+  (`yzmfesbsg0`, known bug) — hand-corrected for Phase 2; keep hand-verifying the table after the
+  Phase 3–5 `phase.complete` calls. It also left STATE.md `progress.completed_phases` at 1, fixed by hand to 2.
 
 ### Quick Tasks Completed
 
@@ -473,7 +479,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T17:13:38.354Z
+Last session: 2026-09-23T17:58:16.012Z
 Stopped at: Phase 2 complete, ready to plan Phase 3
 Resume file: None
 
