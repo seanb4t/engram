@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 1
 current_phase_name: Eval Foundation & Lexical Reranker Fix
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-09-23T02:33:16.594Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-09-23T02:44:10.934Z"
 last_activity: 2026-09-22
 last_activity_desc: Phase 1 execution started
-state_head: e03368cceaa97c2e9032986493283d6d6b26dbcb
+state_head: 4eb8d35e17fd1c0ee3aaefcbdac7e08eae8131f5
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-22 after milestone 2026-09-18.01 — 
 ## Current Position
 
 Phase: 1 (Eval Foundation & Lexical Reranker Fix) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-09-22 — Phase 1 execution started
 
@@ -363,6 +363,8 @@ milestone needs in working memory.
 - [Phase 07]: Ceiling helpers (embedMaxTimeout/summaryMaxTimeout) fall back to the 10m default on any non-positive value; drain helpers pass a configured zero through unchanged — D-05/D-08 asymmetry, commented at each helper
 - [Phase 07]: Bare 'task' cannot prove internal/store's 63-patch red-evidence harness alone (Go's 10-min default per-package timeout, not this plan's own explicit -timeout 180m); proven instead via 3 independent explicit-timeout harness runs plus package-scoped task lint/license/fmt checks.
 - [Phase 1]: D-14/D-15/D-13 implemented exactly as CONTEXT.md specified: resolved config threaded through StoreAndEmbedderFromEnvNoEnsure, package-local koanf gate for ENGRAM_RETRIEVAL_EVAL kept out of internal/config, cosine-epsilon differ gate replacing bit-identity
+- [Phase 01]: Comparison rankers (lexicalRerank/cosineBlendRerank/overlapGateRerank) placed in internal/retrievaleval per the plan's own CONTEXT.md placement decision, not internal/store, so the eval keeps a lexical row alive even if D-08 later deletes the shipped lexical code.
+- [Phase 01]: overlapGateRerank implemented as a stable partition (promoted subset sorted by overlap/Score/ID, rest in store.VectorOrder) so it mechanically collapses to lexicalRerank at theta=0 and store.VectorOrder at theta>1.
 
 ### Pending Todos
 
@@ -440,8 +442,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T02:33:10.356Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-09-23T02:44:00.913Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -609,6 +611,7 @@ Resume file: None
 | Phase 07 P04 | 23 min | 3 tasks | 4 files |
 | Phase 07 P05 | 104min | 3 tasks | 7 files |
 | Phase 01 P01 | 45min | 3 tasks | 9 files |
+| Phase 01 P02 | 25 min | 2 tasks | 5 files |
 
 ## Operator Next Steps
 
