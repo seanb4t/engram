@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -120,12 +121,32 @@ func TestSymmetricEmbedConfig(t *testing.T) {
 	}
 }
 
-// TestRetrievalEval is the retrieval-quality eval: it seeds the labeled dataset
-// in fixtures.go through the exact production doc-embed sequence, searches it
-// through the production query path, and reports recall@k / MRR plus the
-// GitHub #261 baseline. The gate mirrors
-// internal/summarize/fidelity_test.go's TestSummaryFidelity — defense-in-depth
-// retained even though TestMain already short-circuits before Docker.
+// recordLabel resolves a Qdrant point id back to its fixture-local key for
+// human-readable logging (idByKey's inverse), falling back to the raw id
+// when no seedRecord.key maps to it (should not happen for hits inside a
+// case's own seeded collection, but logging must never panic on a lookup
+// miss).
+func recordLabel(keyByID map[string]string, id string) string {
+	if key, ok := keyByID[id]; ok {
+		return key
+	}
+	return id
+}
+
+// TestRetrievalEval is the retrieval-quality eval: it seeds the labeled
+// dataset in fixtures.go through the exact production doc-embed sequence,
+// searches it through the production query path, and measures every
+// pluggable named ranker (D-11, rankers.go) over the exact bounded-over-fetch
+// candidate pool store.SearchReranked would rank, alongside the shipped
+// ranking itself. It aggregates recall@k/MRR per (ranker, case-role)
+// pair (D-09), logs a per-variant Markdown table (formatVariantTable), and
+// applies D-10's two hard gates: gh261Case's shipped target at rank 1 for
+// both its queries, and (from plan 01-04 Task 2) shipped paraphrase MRR at
+// least vector-only's. No-answer queries (retrievalQuery.wantKey == "") are
+// excluded from every aggregate and only logged (D-12). The gate mirrors
+// internal/summarize/fidelity_test.go's TestSummaryFidelity —
+// defense-in-depth retained even though TestMain already short-circuits
+// before Docker.
 func TestRetrievalEval(t *testing.T) {
 	requireEvalEnabled(t)
 	if storetest.Addr() == "" {
@@ -146,6 +167,25 @@ func TestRetrievalEval(t *testing.T) {
 	}
 
 	subj := store.Authenticated("retrieval-eval@engram.dev")
+	roster := evalRankers()
+
+	// Per-(ranker, role) aggregates, plus the shipped row's own aggregates —
+	// keyed by roster entry name, populated only from ANSWER queries
+	// (wantKey != ""). The shipped row is measured through
+	// st.SearchReranked itself, never through a local rank function.
+	guardMetrics := make(map[string]variantMetrics, len(roster))
+	paraphraseMetrics := make(map[string]variantMetrics, len(roster))
+	var shippedGuard, shippedParaphrase variantMetrics
+
+	// variantMatchesShipped tracks, per enabled roster entry, whether its
+	// id list equaled the shipped id list on EVERY answer query seen so
+	// far — the "shipped (SearchReranked) matches" diagnostic (T-01-10).
+	variantMatchesShipped := make(map[string]bool, len(roster))
+	for _, r := range roster {
+		if r.rank != nil {
+			variantMatchesShipped[r.name] = true
+		}
+	}
 
 	for _, tc := range retrievalCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,6 +195,7 @@ func TestRetrievalEval(t *testing.T) {
 			scope := "retrieval-eval:project:" + tc.name
 
 			idByKey := make(map[string]string, len(tc.seedRecords))
+			keyByID := make(map[string]string, len(tc.seedRecords))
 			for _, rec := range tc.seedRecords {
 				m := store.Memory{
 					ID:        uuid.NewString(),
@@ -168,116 +209,195 @@ func TestRetrievalEval(t *testing.T) {
 					CreatedAt: time.Now().UTC(),
 				}
 				idByKey[rec.key] = m.ID
+				keyByID[m.ID] = rec.key
 
 				// Exact prod doc-embed sequence (round-2 finding 2):
 				// store.EmbedText folds tags in, then Embed, then Upsert takes
 				// the precomputed vector — never a raw/bespoke shortcut.
 				vec, err := em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 				if err != nil {
-					t.Fatalf("seed %s: embed: %v", rec.key, err)
+					t.Fatalf("harness: seed %s: embed: %v", rec.key, err)
 				}
 				if err := st.Upsert(ctx, m, vec); err != nil {
-					t.Fatalf("seed %s: upsert: %v", rec.key, err)
+					t.Fatalf("harness: seed %s: upsert: %v", rec.key, err)
 				}
-			}
-			wantID, ok := idByKey[tc.wantKey]
-			if !ok {
-				t.Fatalf("fixture bug: wantKey %q not among seeded records", tc.wantKey)
 			}
 			ceilingK := uint64(len(tc.seedRecords)) + 5
 
-			var recallHits, mrrSum float64
 			for _, q := range tc.queries {
-				// The SHIPPED ranking path (review finding 2/5): EmbedQuery
-				// (prod-parity instruction + params) -> Store.SearchReranked at
-				// the production default k — the SAME shared helper
-				// deps.searchMemory (MCP) and engramAPI.SearchMemories (Connect)
-				// call, so this measures exactly what ships and cannot drift
-				// from a raw Store.Search shortcut.
+				// (a) Embed the query through the production query-side path.
 				vec, err := em.EmbedQuery(ctx, q.text)
 				if err != nil {
-					t.Fatalf("%s: embed query: %v", q.name, err)
+					t.Fatalf("harness: %s/%s: embed query: %v", tc.name, q.name, err)
 				}
-				ranked, err := st.SearchReranked(ctx, scope, subj, q.text, vec, defaultK, store.SearchOptions{})
+
+				// (b) Shipped: the real seam — SAME shared helper
+				// deps.searchMemory (MCP) and engramAPI.SearchMemories
+				// (Connect) call, so this measures exactly what ships and
+				// cannot drift from a raw Store.Search shortcut.
+				shipped, err := st.SearchReranked(ctx, scope, subj, q.text, vec, defaultK, store.SearchOptions{})
 				if err != nil {
-					t.Fatalf("%s: search: %v", q.name, err)
+					t.Fatalf("harness: %s/%s: search: %v", tc.name, q.name, err)
 				}
-
-				// Harness-correctness assertions (hard): non-empty and
-				// score-populated. NOT asserted non-increasing / score-descending
-				// here (review finding 3): reranking legitimately promotes a
-				// higher-lexical-overlap hit ahead of a higher-raw-score one, so
-				// the reranked result set is not guaranteed score-descending.
-				if len(ranked) == 0 {
-					t.Errorf("%s: search returned no results", q.name)
+				if len(shipped) == 0 {
+					t.Errorf("harness: %s/%s: search returned no results", tc.name, q.name)
 				}
-				for i, m := range ranked {
+				for i, m := range shipped {
 					if m.Score == 0 {
-						t.Errorf("%s: result %d (%s) has zero score", q.name, i, m.ID)
+						t.Errorf("harness: %s/%s: result %d (%s) has zero score", tc.name, q.name, i, m.ID)
+					}
+				}
+				shippedIDs := make([]string, len(shipped))
+				for i, m := range shipped {
+					shippedIDs[i] = m.ID
+				}
+
+				// (c) Pool: the exact candidate set SearchReranked itself
+				// would rank, so every non-shipped variant below ranks over
+				// an apples-to-apples candidate set.
+				pool, err := st.Search(ctx, scope, subj, vec, store.CandidateK(defaultK), store.SearchOptions{Full: true})
+				if err != nil {
+					t.Fatalf("harness: %s/%s: candidate pool search: %v", tc.name, q.name, err)
+				}
+
+				// (d) Rank the pool with every enabled roster entry.
+				variantRanked := make(map[string][]store.Memory, len(roster))
+				variantIDs := make(map[string][]string, len(roster))
+				for _, r := range roster {
+					if r.rank == nil {
+						continue // disabled (Jev stub): no ranking, no gating.
+					}
+					ranked := r.rank(q.text, pool, defaultK)
+					ids := make([]string, len(ranked))
+					for i, m := range ranked {
+						ids[i] = m.ID
+					}
+					variantRanked[r.name] = ranked
+					variantIDs[r.name] = ids
+				}
+
+				// (e) No-answer query (D-12): logged only, never gated —
+				// excluded from every recall@k/MRR aggregate above.
+				if q.wantKey == "" {
+					shippedTop, shippedScore := "none", float32(0)
+					if len(shipped) > 0 {
+						shippedTop, shippedScore = recordLabel(keyByID, shipped[0].ID), shipped[0].Score
+					}
+					t.Logf("no-answer %s/%s: %s top=%s score=%f", tc.name, q.name, shippedRowName, shippedTop, shippedScore)
+					for _, r := range roster {
+						if r.rank == nil {
+							continue
+						}
+						ranked := variantRanked[r.name]
+						top, score := "none", float32(0)
+						if len(ranked) > 0 {
+							top, score = recordLabel(keyByID, ranked[0].ID), ranked[0].Score
+						}
+						t.Logf("no-answer %s/%s: %s top=%s score=%f", tc.name, q.name, r.name, top, score)
+					}
+					continue
+				}
+
+				// (f) Answer query: resolve wantID, aggregate every
+				// variant's metrics, and update the "matches shipped"
+				// diagnostic.
+				wantID, ok := idByKey[q.wantKey]
+				if !ok {
+					t.Fatalf("harness: fixture bug: wantKey %q not among seeded records for %s/%s", q.wantKey, tc.name, q.name)
+				}
+
+				shippedTarget := &shippedGuard
+				variantTarget := guardMetrics
+				if tc.role == roleParaphrase {
+					shippedTarget = &shippedParaphrase
+					variantTarget = paraphraseMetrics
+				}
+				shippedTarget.add(shippedIDs, wantID)
+				for _, r := range roster {
+					if r.rank == nil {
+						continue
+					}
+					m := variantTarget[r.name]
+					m.add(variantIDs[r.name], wantID)
+					variantTarget[r.name] = m
+
+					if !slices.Equal(variantIDs[r.name], shippedIDs) {
+						variantMatchesShipped[r.name] = false
 					}
 				}
 
-				ids := make([]string, len(ranked))
-				for i, m := range ranked {
-					ids[i] = m.ID
-				}
-				hit := recallAtK(ids, wantID)
-				rr := reciprocalRank(ids, wantID)
-				if hit {
-					recallHits++
-				}
-				mrrSum += rr
-
-				// THE #261 ACCEPTANCE BAR (hard, RANK-based — review finding
-				// 3/4, D-03 supersession per round-2 finding 4): Record T MUST
-				// surface within default k, by POSITION, for this query. Raw-
-				// score separation is reported below as a t.Logf DIAGNOSTIC
-				// ONLY — never a hard gate — because a lexical reranker can
-				// promote T's rank without necessarily raising its raw Qdrant
-				// score above every sticky neighbor (Score is raw first-stage
-				// dense similarity, store.go, unchanged by rerank).
-				var wantScore, bestOtherScore float32
-				rank := 0
-				for i, m := range ranked {
-					if m.ID == wantID {
-						wantScore = m.Score
-						rank = i + 1
-					} else if m.Score > bestOtherScore {
-						bestOtherScore = m.Score
-					}
-				}
-				if rank == 0 {
-					t.Errorf("%s/%s: Record T did NOT surface within default k=%d (hard rank bar FAILED — D-06 insufficient for this query, evidence for a D-07/D-08 escalation)", tc.name, q.name, defaultK)
-				} else {
-					t.Logf("%s/%s: rank=%d/%d (hard rank bar: PASS)", tc.name, q.name, rank, defaultK)
-				}
-				t.Logf("%s/%s: score(T)=%f best-distractor-score=%f gap=%f (diagnostic only, never a hard gate — review finding 3)",
-					tc.name, q.name, wantScore, bestOtherScore, wantScore-bestOtherScore)
-
-				// Prove the harness itself can find T with a generous ceiling —
-				// this is NOT the #261 quality bar (that is the hard rank
-				// assertion above); it only proves the fixture/harness are
-				// sound, independent of ranking quality, so it deliberately
-				// uses raw Store.Search rather than the reranked path.
+				// (g) Prove the harness itself can find the target with a
+				// generous ceiling — this is NOT a ranking-quality bar; it
+				// only proves the fixture/harness are sound, independent of
+				// ranking quality, so it deliberately uses raw Store.Search
+				// rather than any reranked/local-ranked path.
 				ceiling, err := st.Search(ctx, scope, subj, vec, ceilingK, store.SearchOptions{})
 				if err != nil {
-					t.Fatalf("%s: ceiling search: %v", q.name, err)
+					t.Fatalf("harness: %s/%s: ceiling search: %v", tc.name, q.name, err)
 				}
 				ceilingIDs := make([]string, len(ceiling))
 				for i, m := range ceiling {
 					ceilingIDs[i] = m.ID
 				}
 				if !recallAtK(ceilingIDs, wantID) {
-					t.Errorf("%s: Record T not found even at ceiling k=%d — harness/fixture bug, not a ranking result", q.name, ceilingK)
+					t.Errorf("harness: %s/%s: target not found even at ceiling k=%d — harness/fixture bug, not a ranking result", tc.name, q.name, ceilingK)
 				}
-			}
 
-			recallAtDefaultK := recallHits / float64(len(tc.queries))
-			mrr := mrrSum / float64(len(tc.queries))
-			t.Logf("%s: recall@%d=%.2f MRR=%.3f (post-D-06-fix; compare against the 09-01 post-#262 baseline)",
-				tc.name, defaultK, recallAtDefaultK, mrr)
+				// (h) D-10 gate 1: roleRegressionGuard's shipped target MUST
+				// be at rank 1, not merely "within default k".
+				if tc.role == roleRegressionGuard {
+					rank := 0
+					for i, id := range shippedIDs {
+						if id == wantID {
+							rank = i + 1
+							break
+						}
+					}
+					if rank != 1 {
+						t.Errorf("D-10 gate FAILED: #261 target at rank %d (want 1) for %s under the shipped ranking", rank, q.name)
+					}
+				}
+
+				// (i) Raw-score gap: diagnostic only, never a hard gate — a
+				// lexical/gated reranker can promote a hit's rank without
+				// necessarily raising its raw Qdrant score above every
+				// sticky neighbor (Score is raw first-stage dense
+				// similarity, unchanged by reranking).
+				var wantScore, bestOtherScore float32
+				for _, m := range shipped {
+					if m.ID == wantID {
+						wantScore = m.Score
+					} else if m.Score > bestOtherScore {
+						bestOtherScore = m.Score
+					}
+				}
+				t.Logf("%s/%s: score(target)=%f best-distractor-score=%f gap=%f (diagnostic only, never a hard gate)",
+					tc.name, q.name, wantScore, bestOtherScore, wantScore-bestOtherScore)
+			}
 		})
 	}
+
+	rows := buildSummaries(roster, guardMetrics, paraphraseMetrics, shippedGuard, shippedParaphrase)
+	t.Logf("\n%s", formatVariantTable(rows, rankingDecision{}))
+
+	if shippedGuard.allRank1() {
+		t.Logf("D-10 gate PASS: #261 target at rank 1 for both queries under the shipped ranking")
+	}
+
+	var matchNames []string
+	for _, r := range roster {
+		if r.rank == nil {
+			continue
+		}
+		if variantMatchesShipped[r.name] {
+			matchNames = append(matchNames, r.name)
+		}
+	}
+	matches := "none"
+	if len(matchNames) > 0 {
+		matches = strings.Join(matchNames, ", ")
+	}
+	t.Logf("shipped (SearchReranked) matches: %s", matches)
 }
 
 // TestRetrievalEval_AsymmetryDiffer is the Pitfall-12 correctness gate

@@ -14,19 +14,40 @@ type seedRecord struct {
 	tags    []string
 }
 
-// retrievalQuery is one query run against a case's seeded corpus.
+// retrievalQuery is one query run against a case's seeded corpus. wantKey
+// identifies the seedRecord.key this specific query should surface; an
+// empty value marks a no-answer query (D-12) — excluded from recall@k/MRR
+// and logged only (top hit and its score, per variant, never gated).
 type retrievalQuery struct {
-	name string
-	text string
+	name    string
+	text    string
+	wantKey string
 }
 
-// retrievalCase is a labeled retrieval scenario: a seeded corpus, one or more
-// queries, and the seedRecord.key every query in the case should surface.
+// caseRole classifies what a retrievalCase's queries are FOR, so
+// TestRetrievalEval can apply the right D-10 gate and D-05 eligibility
+// clause to a case's queries without a name-based special case.
+type caseRole int
+
+const (
+	// roleRegressionGuard marks the permanent GitHub #261 near-verbatim
+	// crowding fixture: its queries carry D-10 gate 1 (shipped target at
+	// rank 1) and feed D-05 eligibility clause (a).
+	roleRegressionGuard caseRole = iota
+	// roleParaphrase marks the independent, blind-authored paraphrase case:
+	// its answer queries feed D-05 eligibility clause (b) and D-10 gate 2
+	// (shipped paraphrase MRR >= vector-only paraphrase MRR); its no-answer
+	// queries are logged only (D-12).
+	roleParaphrase
+)
+
+// retrievalCase is a labeled retrieval scenario: a seeded corpus and one or
+// more queries, each carrying its own target via retrievalQuery.wantKey.
 type retrievalCase struct {
 	name        string
 	seedRecords []seedRecord
 	queries     []retrievalQuery
-	wantKey     string
+	role        caseRole
 }
 
 // recordTKey identifies Record T — the GitHub #261 target record — within
@@ -61,12 +82,16 @@ var gh261Distractors = []seedRecord{
 // gh261Case is the permanent GitHub #261 regression fixture: Record T plus the
 // 15 sticky topical-neighbor distractors above, and two queries (A/B) that are
 // near-verbatim restatements of Record T. Plan 01 captured Record T's pre-fix
-// rank as a t.Logf baseline; Plan 03 flips "T within default k" to a hard,
-// RANK-based t.Errorf acceptance bar against the shipped D-06 reranker (the
-// same shared store.SearchReranked helper deps.searchMemory/
-// engramAPI.SearchMemories call) — a permanent regression guard.
+// rank as a t.Logf baseline; Plan 03 flipped "T within default k" to a hard,
+// RANK-based t.Errorf acceptance bar; plan 04 tightens it further to rank 1
+// specifically (D-10 gate 1) against the shipped ranking (the same shared
+// store.SearchReranked helper deps.searchMemory/engramAPI.SearchMemories
+// call) — a permanent regression guard. Content and query text are
+// byte-identical to before this restructure (D-04); only the Go struct shape
+// changed, per Pitfall 3's rationale for deleting the case-level wantKey.
 var gh261Case = retrievalCase{
 	name: "gh261-sticky-neighbor-crowding",
+	role: roleRegressionGuard,
 	seedRecords: append([]seedRecord{
 		{
 			key:     recordTKey,
@@ -75,10 +100,9 @@ var gh261Case = retrievalCase{
 		},
 	}, gh261Distractors...),
 	queries: []retrievalQuery{
-		{name: "query-a", text: "Before committing, run `task lint`; the golangci-lint config is .golangci.yaml and it needs to stay clean."},
-		{name: "query-b", text: "Run `task lint` prior to every commit — golangci-lint's config file is .golangci.yaml and must remain clean."},
+		{name: "query-a", text: "Before committing, run `task lint`; the golangci-lint config is .golangci.yaml and it needs to stay clean.", wantKey: recordTKey},
+		{name: "query-b", text: "Run `task lint` prior to every commit — golangci-lint's config file is .golangci.yaml and must remain clean.", wantKey: recordTKey},
 	},
-	wantKey: recordTKey,
 }
 
 // retrievalCases is the full labeled dataset TestRetrievalEval runs.
