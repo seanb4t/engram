@@ -33,7 +33,9 @@ the chat-LLM emulator backend (DEC-F2), write-time hints (DEC-F1).
   and `_CONCURRENCY` (D-08). All registered in `internal/config/registry.go`.
 - **D-03:** Fallback semantics: **the API key falls back** to `ENGRAM_OPENAI_API_KEY`; **the base
   URL does not fall back.** With `provider=jev` and no `ENGRAM_DECISIONS_BASE_URL`, config
-  validation fails with the standard field+hint envelope. Rationale: `ENGRAM_OPENAI_BASE_URL` is
+  validation fails via `Config.Validate()`'s existing style (`fmt.Errorf("ENGRAM_VAR %q: ...")` joined
+  with `errors.Join`; the field+hint envelope is the MCP/Connect tool-call grammar only — corrected
+  after research). Rationale: `ENGRAM_OPENAI_BASE_URL` is
   the LiteLLM `/v1` root, and the spike findings forbid assuming the chat gateway serves
   Decisions. The path `/alpha/decisions` is appended to the base (OpenRouter:
   `https://openrouter.ai/api`; LiteLLM pass-through: `https://llm.fzymgc.house/openrouter`).
