@@ -167,6 +167,18 @@ call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is absent
 (never an empty list, which would read as "searched nothing"), and
 `scopes_truncated` is absent/false.
 
+With [`ENGRAM_SEARCH_RANKER=jev`](/guides/configure/#search-reranking-jev)
+enabled, results are instead reordered by the typed-decision provider's
+probability that each record answers the query — lexical order first, then a
+stable sort by that probability — and each hit carries a per-hit `relevance`
+value between 0 and 1 (values all near zero mean nothing returned actually
+answers the query). Callers decide relevance for themselves from these
+per-hit values; no hit is filtered out on the server's behalf, and there is
+no response-level flag. `relevance` is absent on every hit when the ranker is
+off, and also absent (with `score`-based order unchanged) when a rerank
+attempt fails — the search still succeeds, falling back to the default
+lexical order.
+
 ---
 
 ## list_memory
@@ -457,6 +469,19 @@ Semantic search over the discovery pool. Scope is required unless
 | `cross_spine` | bool | no | Span all discovery scopes; ignores `scope` when true |
 
 Results carry `citations` and `created_at` (useful as aging signals).
+
+With [`ENGRAM_SEARCH_RANKER=jev`](/guides/configure/#search-reranking-jev)
+enabled, results are instead reordered by the typed-decision provider's
+probability that each discovery answers the query — the base order is
+discovery's own vector-similarity order (discoveries have no lexical rank
+step), then a stable sort by that probability — and each hit carries a
+per-hit `relevance` value between 0 and 1 (values all near zero mean nothing
+returned actually answers the query). Callers decide relevance for
+themselves from these per-hit values; no hit is filtered out on the server's
+behalf, and there is no response-level flag. `relevance` is absent on every
+hit when the ranker is off, and also absent (with the vector-similarity order
+unchanged) when a rerank attempt fails — the search still succeeds, falling
+back to the default order.
 
 ---
 

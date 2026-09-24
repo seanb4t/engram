@@ -2806,7 +2806,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score.", Annotations: annotationsFor("search_memory")},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score. When the operator enables Jev reranking, results are reordered by the provider's probability that each record answers the query, and each result carries `relevance` (0 to 1; values all near zero mean nothing returned answers the query); it is absent when reranking is off or fell back.", Annotations: annotationsFor("search_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -2978,7 +2978,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. " + scopeRule.Sentence + "; optional kind=map|fact. Results carry citations + created_at (aging signals).", Annotations: annotationsFor("search_discovery")},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. " + scopeRule.Sentence + "; optional kind=map|fact. Results carry citations + created_at (aging signals). When the operator enables Jev reranking, results are reordered by the provider's probability that each discovery answers the query, and each result carries `relevance` (0 to 1; values all near zero mean nothing returned answers the query); it is absent when reranking is off or fell back.", Annotations: annotationsFor("search_discovery")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchDiscoveryArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
