@@ -311,6 +311,232 @@ func TestMigrateConvergesWithoutLock(t *testing.T) {
 	})
 }
 
+// TestMigrateBelowCursorInsertConverges proves D-05's documented convergence
+// contract (guides/migrate.md "How convergence works") for the ONE mid-sweep
+// case TestMigrateConvergesWithoutLock above cannot exercise: a record
+// inserted mid-sweep whose id sorts BELOW the sweep's already-advanced
+// in-pass cursor (#501). TestMigrateConvergesWithoutLock's laggard id
+// (c5100000-...-900000000002) sorts AFTER every seeded id, so a
+// forward-only cursor could never skip it — that test proves the sweep
+// tolerates a concurrent write, not that a below-cursor write specifically
+// converges.
+//
+// Store.Migrate's default sweep mode never threads a cursor ACROSS passes
+// (migrate.go's doc comment, ~line 138): every pass re-derives its backlog
+// from a fresh exact Count and a fresh Scroll with a nil Offset. WITHIN one
+// pass, scrollAllPoints (spine.go ~line 89) advances a forward id cursor one
+// page at a time, and a record below that in-pass cursor that the pass has
+// already walked past is invisible to the REST of that pass — but it is not
+// lost: the next pass's fresh re-derivation re-counts and re-scrolls the
+// WHOLE backlog from scratch, including anything now below target that a
+// prior pass's cursor had already advanced beyond. This test makes that
+// specific claim observable at the wire, not merely asserted in prose.
+//
+// Construction: spineScrollBatch is pinned to 2 (t.Cleanup-restored,
+// revert_test.go:278's precedent), so a single pass issues several
+// ScrollPoints requests instead of one. Six seeded legacy records give pass
+// 1 three scroll requests (pages of 2 each); midSweepHook fires on the
+// SECOND request, whose Offset names the third seeded id — the in-pass
+// cursor at that moment. Two records are then inserted below every seeded
+// id, from inside h.fn, before that second request's response is even
+// returned (midSweepInterceptor runs onScroll — and so h.fn, synchronously —
+// BEFORE invoker, so both writes are genuinely committed before the sweep
+// reads that page):
+//   - an ordinary Store.Upsert (D-05: the write path stamps
+//     migrate.CurrentVersion unconditionally, so this needs no sweep work at
+//     all, exactly like TestMigrateConvergesWithoutLock's alreadyCurrent);
+//   - a raw-injected below-target laggard (seedLegacyRecordNoFatal), which
+//     pass 1 cannot reach — its sort position is behind where the cursor has
+//     already advanced — but which pass 2's re-derivation must pick up.
+func TestMigrateBelowCursorInsertConverges(t *testing.T) {
+	ctx := context.Background()
+
+	saved := spineScrollBatch
+	spineScrollBatch = 2
+	t.Cleanup(func() { spineScrollBatch = saved })
+
+	h := &midSweepHook{fireOnScroll: 2}
+
+	sweepClient := dialMidSweepTestClient(t, h)
+	collection := testCollection("migrate_below_cursor")
+	_ = sweepClient.DeleteCollection(ctx, collection)
+	t.Cleanup(func() { _ = sweepClient.DeleteCollection(context.Background(), collection) })
+
+	sweepStore := newTestStore(t, sweepClient, collection)
+	if err := sweepStore.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+
+	// Second, non-intercepting store over the same collection — see
+	// TestMigrateConvergesWithoutLock's PA-12 note above.
+	writerClient := dialTestClient(t)
+	writerStore := newTestStore(t, writerClient, collection)
+
+	const scope = "migrate-below-cursor-test:project:mid-sweep"
+
+	// Seeded through writerStore (non-intercepted), so the hook's scroll
+	// ordinal counts only the sweep's own requests — a write-path helper
+	// issuing its own scroll could otherwise arm the trigger early.
+	seededIDs := make([]string, 6)
+	for i := range seededIDs {
+		id := fmt.Sprintf("c5200000-0000-0000-0000-8%011d", i+1)
+		seedLegacyRecord(ctx, t, writerStore, id)
+		seededIDs[i] = id
+	}
+
+	// Both ids sort strictly below every seeded id ("0..." < "8...").
+	const alreadyCurrentID = "c5200000-0000-0000-0000-000000000001"
+	const laggardID = "c5200000-0000-0000-0000-000000000002"
+
+	// h.fn runs inside midSweepInterceptor's callback, on the sweep's own
+	// goroutine, guarded by sync.Once — PER PA-11a IT MUST NOT CALL any
+	// t.Fatal/t.Error-family method; see TestMigrateConvergesWithoutLock's
+	// h.fn above for the full rationale. Failures are recorded via
+	// h.recordErr and drained by the test immediately after Store.Migrate
+	// returns.
+	h.fn = func() {
+		alreadyCurrent := Memory{
+			ID: alreadyCurrentID, Content: "already current below cursor", Scope: scope,
+			Owner: "sub-migrate-test", Category: "note", CreatedAt: time.Now().UTC(),
+		}
+		if err := writerStore.Upsert(ctx, alreadyCurrent, []float32{0.4, 0.5, 0.6}); err != nil {
+			h.recordErr("mid-sweep write: alreadyCurrent upsert(%s): %v", alreadyCurrentID, err)
+			return
+		}
+		if err := seedLegacyRecordNoFatal(ctx, writerStore, laggardID); err != nil {
+			h.recordErr("mid-sweep write: laggard seedLegacyRecordNoFatal(%s): %v", laggardID, err)
+			return
+		}
+
+		// Check the stamped values AT THE CAUSE (write time), not at a
+		// downstream symptom — see TestMigrateConvergesWithoutLock's
+		// identical rationale above.
+		acPayload, err := rawPayloadNoFatal(ctx, writerStore, alreadyCurrentID)
+		if err != nil {
+			h.recordErr("mid-sweep write: read back alreadyCurrent(%s): %v", alreadyCurrentID, err)
+		} else if got := acPayload[schemaVersionKey].GetIntegerValue(); got != 1 {
+			h.recordErr("alreadyCurrent(%s) stored schema_version = %d, want 1 — the CONSTANT produced this value (migrate.CurrentVersion), not a caller-supplied literal", alreadyCurrentID, got)
+		}
+		lgPayload, err := rawPayloadNoFatal(ctx, writerStore, laggardID)
+		if err != nil {
+			h.recordErr("mid-sweep write: read back laggard(%s): %v", laggardID, err)
+		} else if _, ok := lgPayload[schemaVersionKey]; ok {
+			h.recordErr("laggard(%s) stored schema_version key is PRESENT, want ABSENT (below the sweep's resolved target of migrate.CurrentVersion)", laggardID)
+		}
+	}
+
+	// Batch (64) exceeds the seeded backlog (6), so pass 1 walks all six
+	// seeded records across several pages without hitting the per-pass
+	// batch limit.
+	res, migrateErr := sweepStore.Migrate(ctx, MigrateOptions{
+		Steps: []migrate.Step{markerStep(0, 1, "below_cursor_marker")},
+		Batch: 64,
+	})
+
+	if hookErrs := h.drainErrs(); len(hookErrs) > 0 {
+		t.Fatalf("midSweepHook recorded %d error(s) before any subtest ran:\n%s", len(hookErrs), strings.Join(hookErrs, "\n"))
+	}
+
+	fires, triggerMatches, scrolls, writeIDs := h.snapshot()
+	cursor := h.triggerCursorID()
+
+	t.Run("the insert landed below the advanced cursor", func(t *testing.T) {
+		// This subtest gates every other one below: if the fixture no
+		// longer produces a mid-pass scroll, every other subtest would be
+		// vacuous.
+		if fires != 1 {
+			t.Fatalf("h.fires = %d, want 1 — the fixture no longer produces a mid-pass scroll, every other subtest would be vacuous", fires)
+		}
+		if cursor == "" {
+			t.Fatalf("recorded trigger cursor is empty (no Offset on the triggering request) — the fixture no longer produces a mid-pass scroll, every other subtest would be vacuous")
+		}
+		if !slices.Contains(seededIDs, cursor) {
+			t.Errorf("recorded trigger cursor %q is not one of the seeded ids %v — the fixture no longer produces a mid-pass scroll as expected", cursor, seededIDs)
+		}
+		for _, id := range []string{alreadyCurrentID, laggardID} {
+			if strings.Compare(id, cursor) >= 0 {
+				t.Errorf("inserted id %q does not sort strictly below the recorded cursor %q", id, cursor)
+			}
+		}
+	})
+
+	t.Run("already-current below-cursor write needs no sweep work (D-05)", func(t *testing.T) {
+		if slices.Contains(writeIDs, alreadyCurrentID) {
+			t.Errorf("alreadyCurrent id %s appears in the sweep's recorded SetPayload write-id set, want absent", alreadyCurrentID)
+		}
+		raw := rawPayload(ctx, t, sweepStore, alreadyCurrentID)
+		if _, ok := raw["below_cursor_marker"]; ok {
+			t.Errorf("alreadyCurrent(%s) carries below_cursor_marker — it was re-processed", alreadyCurrentID)
+		}
+		if got := raw[schemaVersionKey].GetIntegerValue(); got != 1 {
+			t.Errorf("alreadyCurrent(%s) schema_version = %d, want 1 (unchanged)", alreadyCurrentID, got)
+		}
+	})
+
+	t.Run("below-target below-cursor record is migrated by a later pass", func(t *testing.T) {
+		idx := slices.Index(writeIDs, laggardID)
+		if idx < 0 {
+			t.Fatalf("laggard id %s absent from the sweep's recorded SetPayload write-id set, want present", laggardID)
+		}
+		for _, seeded := range seededIDs {
+			seededIdx := slices.Index(writeIDs, seeded)
+			if seededIdx < 0 {
+				t.Errorf("seeded id %s absent from the sweep's recorded SetPayload write-id set", seeded)
+				continue
+			}
+			if idx <= seededIdx {
+				t.Errorf("laggard write-index %d is not greater than seeded %s write-index %d — the laggard was not migrated by a LATER pass", idx, seeded, seededIdx)
+			}
+		}
+		raw := rawPayload(ctx, t, sweepStore, laggardID)
+		if _, ok := raw["below_cursor_marker"]; !ok {
+			t.Errorf("laggard(%s) missing below_cursor_marker — it was not migrated", laggardID)
+		}
+		if got := raw[schemaVersionKey].GetIntegerValue(); got != 1 {
+			t.Errorf("laggard(%s) schema_version = %d, want 1", laggardID, got)
+		}
+		if res.Passes < 2 {
+			t.Errorf("res.Passes = %d, want >= 2 — the laggard requires a later pass's re-derivation to be picked up", res.Passes)
+		}
+	})
+
+	t.Run("the sweep converged", func(t *testing.T) {
+		if migrateErr != nil {
+			t.Errorf("Store.Migrate returned an error: %v", migrateErr)
+		}
+		if res.Backlog != 0 {
+			t.Errorf("res.Backlog = %d, want 0 (converged)", res.Backlog)
+		}
+		if backlog := migrateBacklogIDs(ctx, t, sweepStore, 1); len(backlog) != 0 {
+			t.Errorf("migrateBacklogIDs(target=1) = %v, want empty", backlog)
+		}
+		for _, id := range seededIDs {
+			raw := rawPayload(ctx, t, sweepStore, id)
+			if _, ok := raw["below_cursor_marker"]; !ok {
+				t.Errorf("seeded record %s missing below_cursor_marker", id)
+			}
+			if got := raw[schemaVersionKey].GetIntegerValue(); got != 1 {
+				t.Errorf("seeded record %s schema_version = %d, want 1", id, got)
+			}
+		}
+		if scrolls <= 1 {
+			t.Errorf("h.scrolls = %d, want > 1 (a mid-sweep moment requires more than a single scroll pass to have existed)", scrolls)
+		}
+		if triggerMatches < 1 {
+			t.Errorf("h.triggerMatches = %d, want >= 1 (the scroll-ordinal trigger never armed, so every negative assertion above is vacuous)", triggerMatches)
+		}
+
+		expected := append(append([]string{}, seededIDs...), laggardID)
+		sort.Strings(expected)
+		gotSorted := append([]string{}, writeIDs...)
+		sort.Strings(gotSorted)
+		if !slices.Equal(expected, gotSorted) {
+			t.Errorf("recorded write-id set mismatch:\n  missing (expected, not observed): %v\n  extra (observed, not expected): %v",
+				diffSorted(expected, gotSorted), diffSorted(gotSorted, expected))
+		}
+	})
+}
+
 // midSweepHook is the shared state driving TestMigrateConvergesWithoutLock's
 // deterministic mid-sweep write and its wire-level SetPayload observation.
 // All fields are guarded by mu except once and fn, which are set up once
@@ -332,11 +558,22 @@ type midSweepHook struct {
 	triggerMatches int
 	errs           []string
 	writeIDs       []string
+
+	// triggerCursor is the triggering scroll's Offset uuid — the in-pass
+	// cursor at the moment h.fn ran — recorded INSIDE once.Do's body,
+	// before h.fn runs, so a test can prove an insert landed below it.
+	// Empty when the triggering request carried no Offset (e.g. it was the
+	// pass's first request). TestMigrateBelowCursorInsertConverges is the
+	// first test to read it via triggerCursorID(); TestMigrateConvergesWithoutLock
+	// does not.
+	triggerCursor string
 }
 
 // onScroll is called once per observed *qdrant.ScrollPoints request, from
-// midSweepInterceptor, on the sweep's own goroutine.
-func (h *midSweepHook) onScroll() {
+// midSweepInterceptor, on the sweep's own goroutine. req is the observed
+// request itself, so the once.Do body below can record its Offset (the
+// in-pass cursor at the moment the mid-sweep write fired).
+func (h *midSweepHook) onScroll(req *qdrant.ScrollPoints) {
 	h.mu.Lock()
 	h.scrolls++
 	armed := h.scrolls >= h.fireOnScroll
@@ -352,9 +589,19 @@ func (h *midSweepHook) onScroll() {
 	h.once.Do(func() {
 		h.mu.Lock()
 		h.fires++
+		h.triggerCursor = req.GetOffset().GetUuid()
 		h.mu.Unlock()
 		h.fn()
 	})
+}
+
+// triggerCursorID returns the triggering scroll's recorded Offset uuid (see
+// triggerCursor's doc comment). Safe to call only after Store.Migrate has
+// returned, like snapshot().
+func (h *midSweepHook) triggerCursorID() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.triggerCursor
 }
 
 // onSetPayload records the point ids selected by one *qdrant.SetPayloadPoints
@@ -410,7 +657,7 @@ func midSweepInterceptor(h *midSweepHook) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		switch r := req.(type) {
 		case *qdrant.ScrollPoints:
-			h.onScroll()
+			h.onScroll(r)
 		case *qdrant.SetPayloadPoints:
 			h.onSetPayload(r)
 		}
