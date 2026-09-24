@@ -520,12 +520,12 @@ Plans:
   4. A test covers a record inserted mid-sweep whose id sorts below the migrate cursor
   5. `docs-site` `guides/cli.md` lists `migrate`, `migrate status`, and `migrate revert` among the operator commands
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — exit-code baseline rows neutralize every env-derived flag default through one helper shared with the goldens; passes with `ENGRAM_REINDEX_TARGET` / `ENGRAM_MIGRATE_OWNER` set, test-only (D-03; OPS-01, #476)
+- [x] 05-01-PLAN.md — exit-code baseline rows neutralize every env-derived flag default through one helper shared with the goldens; passes with `ENGRAM_REINDEX_TARGET` / `ENGRAM_MIGRATE_OWNER` set, test-only (D-03; OPS-01, #476)
 - [ ] 05-02-PLAN.md — `TestViewFieldsBareNestedObject` pins `viewFields`' bare nested-object branch (and its array-of-arrays sibling) with coverage evidence; an empty nested object renders zero rows (D-01; OPS-02, #504)
 - [ ] 05-03-PLAN.md — `ParsePlanKeyLinks` skips fieldless items while the satisfiability scanner still reports them as `malformed` through an item-level parse (D-04; OPS-03, #502)
 - [ ] 05-04-PLAN.md — `TestMigrateBelowCursorInsertConverges`: a mid-sweep insert below the proven in-pass cursor, where an ordinary write needs no work and a below-target record converges on a later pass (D-05; OPS-04, #501)
@@ -592,7 +592,7 @@ Plans:
 | 2. Headless CLI Client | v0.12.x | 4/4 | In Progress|  |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | In Progress|  |
 | 4. Diagnosability | v0.12.x | 4/4 | In Progress|  |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-08-16 |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-08-17 |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
 | 2. Interface Discoverability | v0.13.x | 6/6 | Complete | 2026-08-05 |
