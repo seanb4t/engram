@@ -53,7 +53,9 @@ func scores(q string) []float64 {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	var r struct{ Answers map[string]struct{ Noul float64 } }
+	var r struct {
+		Answers map[string]struct{ Noul float64 }
+	}
 	_ = json.Unmarshal(body, &r)
 	out := make([]float64, len(corpus))
 	for i := range corpus {

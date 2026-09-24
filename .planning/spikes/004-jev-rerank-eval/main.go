@@ -25,7 +25,10 @@ import (
 	"github.com/seanb4t/engram/internal/store"
 )
 
-type doc struct{ key, content string; tags []string }
+type doc struct {
+	key, content string
+	tags         []string
+}
 
 // Corpus copied verbatim from internal/retrievaleval/fixtures.go (gh261Case).
 var corpus = []doc{
@@ -151,7 +154,10 @@ func jevRerank(base, key, q string, cands []store.Memory) (jevResult, error) {
 	return out, nil
 }
 
-type metrics struct{ r1, r3, mrr float64; n int }
+type metrics struct {
+	r1, r3, mrr float64
+	n           int
+}
 
 func (m *metrics) add(rank int) {
 	m.n++
@@ -187,11 +193,11 @@ func main() {
 	}
 
 	type row struct {
-		Query, Set, Want               string
-		VecRank, LexRank, JevRank      int
-		JevWantScore, JevTopScore      float64
-		JevTop                         string
-		JevMs                          int64
+		Query, Set, Want          string
+		VecRank, LexRank, JevRank int
+		JevWantScore, JevTopScore float64
+		JevTop                    string
+		JevMs                     int64
 	}
 	var rows []row
 	agg := map[string]*metrics{}

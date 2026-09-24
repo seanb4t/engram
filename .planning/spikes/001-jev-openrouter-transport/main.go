@@ -23,13 +23,13 @@ import (
 const model = "typesafe/jev-1.13"
 
 type event struct {
-	At       string         `json:"at"`
-	Probe    string         `json:"probe"`
-	Status   int            `json:"status"`
-	Millis   int64          `json:"ms"`
-	Bytes    int            `json:"bytes"`
-	Body     string         `json:"body,omitempty"`
-	Headers  map[string]string `json:"headers,omitempty"`
+	At      string            `json:"at"`
+	Probe   string            `json:"probe"`
+	Status  int               `json:"status"`
+	Millis  int64             `json:"ms"`
+	Bytes   int               `json:"bytes"`
+	Body    string            `json:"body,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 var (
