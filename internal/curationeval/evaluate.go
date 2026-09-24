@@ -5,6 +5,7 @@ package curationeval
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/verdict"
@@ -40,6 +41,14 @@ func evaluate(ctx context.Context, dec decide.Decider, pairs []labeledPair, thre
 
 	preds := make([]prediction, len(pairs))
 	for i, p := range pairs {
+		if i >= len(results) {
+			// A Decider that breaks the one-Result-per-Request contract
+			// degrades the unanswered pairs instead of panicking the eval.
+			preds[i] = prediction{gold: p.label, v: verdict.Unavailable(fmt.Errorf(
+				"%w: decider returned %d results for %d requests",
+				decide.ErrDecisionMalformedResponse, len(results), len(reqs)))}
+			continue
+		}
 		preds[i] = prediction{gold: p.label, v: verdict.FromResult(results[i], threshold)}
 	}
 	return preds

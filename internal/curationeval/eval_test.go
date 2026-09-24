@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/decide/jev"
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/verdict"
@@ -195,5 +196,38 @@ func TestCurationEval(t *testing.T) {
 				t.Log(line)
 			}
 		})
+	}
+}
+
+// shortDecider returns one Result fewer than it was asked for, breaking the
+// Decider contract's one-Result-per-Request guarantee.
+type shortDecider struct{}
+
+func (shortDecider) Decide(context.Context, decide.Request) (decide.Response, error) {
+	return decide.Response{}, nil
+}
+
+func (shortDecider) DecideMany(_ context.Context, reqs []decide.Request) []decide.Result {
+	return make([]decide.Result, len(reqs)-1)
+}
+
+// TestEvaluateShortDecideManyDegrades pins that a short DecideMany result
+// slice degrades the unanswered pair to malformed_response instead of
+// panicking, and keeps one prediction per pair.
+func TestEvaluateShortDecideManyDegrades(t *testing.T) {
+	t.Parallel()
+
+	pairs := syntheticPairs[:3]
+	preds := evaluate(context.Background(), shortDecider{}, pairs, verdict.DefaultThreshold, verdict.DefaultStateChars)
+
+	if len(preds) != len(pairs) {
+		t.Fatalf("len(preds) = %d, want %d", len(preds), len(pairs))
+	}
+	last := preds[len(preds)-1]
+	if last.gold != pairs[len(pairs)-1].label {
+		t.Errorf("last gold = %q, want %q", last.gold, pairs[len(pairs)-1].label)
+	}
+	if last.v.ErrorClass != "malformed_response" {
+		t.Errorf("last ErrorClass = %q, want malformed_response", last.v.ErrorClass)
 	}
 }
