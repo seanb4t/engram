@@ -107,6 +107,82 @@ func TestEmbedderIdentityNeverOnRecallWire(t *testing.T) {
 	}
 }
 
+// TestToRecallViewCarriesRelevance is a D-05 regression guard: recallView is
+// a hand-written allow-list, so toRecallView must explicitly copy Relevance
+// (including a genuine 0) rather than relying on store.Memory carrying it.
+func TestToRecallViewCarriesRelevance(t *testing.T) {
+	high := 0.97
+	v := toRecallView(store.Memory{ID: "u", Content: "hello", Scope: "s", Category: "gotcha", Relevance: &high}, 8)
+	j, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(j), `"relevance":0.97`) {
+		t.Fatalf("recallView JSON = %s, want relevance:0.97", j)
+	}
+
+	zero := 0.0
+	vz := toRecallView(store.Memory{ID: "z", Content: "hello", Scope: "s", Category: "gotcha", Relevance: &zero}, 8)
+	jz, err := json.Marshal(vz)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(jz), `"relevance":0`) {
+		t.Fatalf("recallView JSON (zero relevance) = %s, want relevance:0 present", jz)
+	}
+
+	vn := toRecallView(store.Memory{ID: "n", Content: "hello", Scope: "s", Category: "gotcha"}, 8)
+	jn, err := json.Marshal(vn)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(jn), `"relevance"`) {
+		t.Fatalf("recallView JSON (nil relevance) = %s, want relevance key absent", jn)
+	}
+}
+
+// TestShapeRecallRelevanceFullAndCompact proves shapeRecall's per-hit
+// relevance survives both the full (verbatim store.Memory) and compact
+// (recallView) shapes, and that a nil input never fabricates the key.
+func TestShapeRecallRelevanceFullAndCompact(t *testing.T) {
+	val := 0.42
+	ms := []store.Memory{{ID: "1", Content: "hello", Scope: "s", Category: "gotcha", Relevance: &val}}
+
+	full := shapeRecall(ms, true, 8)
+	fullJSON, err := json.Marshal(full[0])
+	if err != nil {
+		t.Fatalf("marshal full: %v", err)
+	}
+	if !strings.Contains(string(fullJSON), `"relevance":0.42`) {
+		t.Fatalf("full JSON = %s, want relevance:0.42", fullJSON)
+	}
+
+	compact := shapeRecall(ms, false, 8)
+	compactJSON, err := json.Marshal(compact[0])
+	if err != nil {
+		t.Fatalf("marshal compact: %v", err)
+	}
+	if !strings.Contains(string(compactJSON), `"relevance":0.42`) {
+		t.Fatalf("compact JSON = %s, want relevance:0.42", compactJSON)
+	}
+
+	nilMs := []store.Memory{{ID: "2", Content: "hello", Scope: "s", Category: "gotcha"}}
+	fullNil, err := json.Marshal(shapeRecall(nilMs, true, 8)[0])
+	if err != nil {
+		t.Fatalf("marshal full nil: %v", err)
+	}
+	if strings.Contains(string(fullNil), `"relevance"`) {
+		t.Fatalf("full JSON (nil relevance) = %s, want relevance key absent", fullNil)
+	}
+	compactNil, err := json.Marshal(shapeRecall(nilMs, false, 8)[0])
+	if err != nil {
+		t.Fatalf("marshal compact nil: %v", err)
+	}
+	if strings.Contains(string(compactNil), `"relevance"`) {
+		t.Fatalf("compact JSON (nil relevance) = %s, want relevance key absent", compactNil)
+	}
+}
+
 func TestResolveSummaryUpdate(t *testing.T) {
 	clientSum := store.Memory{Summary: "hand-written", SummarySource: store.SummarySourceClient}
 	autoSum := store.Memory{Summary: "machine", SummarySource: store.SummarySourceAuto}
