@@ -37,9 +37,9 @@ paraphrase regression (#605) is fixed.
 
 - [x] **RANK-01**: The retrieval eval includes an independently written paraphrase case alongside #261, reporting recall@k and MRR for vector-only, lexical, and (when enabled) Jev ordering (#605).
 - [x] **RANK-02**: The default ranking does not regress the paraphrase case versus vector-only order and keeps #261's target at rank 1 — the lexical reranker is kept, demoted, or replaced on the RANK-01 numbers (#605).
-- [ ] **RANK-03**: Agent calling `search_memory` with the Jev reranker enabled gets candidates reordered by relevance probability; on decision error or timeout the results fall back to the default order and the call still succeeds.
-- [ ] **RANK-04**: With the reranker enabled, search results carry a per-hit relevance probability across MCP, Connect and the CLI, so a caller can tell when no hit answers the query.
-- [ ] **RANK-05**: The reranker keeps its decision state within Jev's 32k-token context for candidate sets up to the recall maximum (summaries or per-candidate truncation).
+- [x] **RANK-03**: Agent calling `search_memory` with the Jev reranker enabled gets candidates reordered by relevance probability; on decision error or timeout the results fall back to the default order and the call still succeeds.
+- [x] **RANK-04**: With the reranker enabled, search results carry a per-hit relevance probability across MCP, Connect and the CLI, so a caller can tell when no hit answers the query.
+- [x] **RANK-05**: The reranker keeps its decision state within Jev's 32k-token context for candidate sets up to the recall maximum (summaries or per-candidate truncation).
 
 ### Eval fixes
 
@@ -91,9 +91,9 @@ Which phases cover which requirements. Filled during roadmap creation.
 | CUR-04 | Phase 3 | Complete |
 | RANK-01 | Phase 1 | Complete |
 | RANK-02 | Phase 1 | Complete |
-| RANK-03 | Phase 4 | Pending |
-| RANK-04 | Phase 4 | Pending |
-| RANK-05 | Phase 4 | Pending |
+| RANK-03 | Phase 4 | Complete |
+| RANK-04 | Phase 4 | Complete |
+| RANK-05 | Phase 4 | Complete |
 | EVAL-01 | Phase 1 | Complete |
 | EVAL-02 | Phase 1 | Complete |
 | OPS-01 | Phase 5 | Pending |

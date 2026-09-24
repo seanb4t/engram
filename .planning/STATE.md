@@ -4,17 +4,17 @@ milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
 current_phase: 4
 current_phase_name: Jev Reranker & Per-Hit Relevance Signal
-status: executing
-stopped_at: Completed 04-08-PLAN.md
-last_updated: "2026-09-24T15:35:01.883Z"
+status: verifying
+stopped_at: Completed 04-07-PLAN.md
+last_updated: "2026-09-24T16:00:20.621Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 4 execution started
-state_head: 4dbfd3e801d96534bf1e062e24e78f9a66a29847
+state_head: b7d3f664339be33166db76e28a582bd773e0b88b
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 35
-  completed_plans: 29
+  completed_plans: 30
   percent: 60
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-24 after Phase 3 of milestone 2026-09
 
 Phase: 4 (Jev Reranker & Per-Hit Relevance Signal) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-24 — Phase 4 execution started
 
 ## Deferred Items
@@ -416,6 +416,8 @@ milestone needs in working memory.
 - [Phase 4]: SearchDiscoveryReranked skips the lexical step entirely, reusing applyRankHook/applyRelevance over SearchDiscovery's own vector order (D-07 discretion)
 - [Phase 4]: Opt-in eval rows (namedRanker.optIn/variantSummary.optIn) extend the existing disabled/shipped exclusion shape in decideRanking rather than special-casing jev by name — Keeps D-05 structurally closed to any future opt-in-only ranker, not just jev
 - [Phase 4]: 04-08: Search Helm gate deliberately independent of memory.decisions.provider — jev without a provider still renders ENGRAM_SEARCH_RANKER, reaching D-01's server-side rejection rather than silently no-op'ing
+- [Phase 4]: D-02: live Jev retrieval-eval numbers recorded (recall@8 1.000, MRR 0.883, fallbacks 0/26) without changing ship posture; lexical stays the D-05 winner and default ranker, Jev ships opt-in-only.
+- [Phase 4]: Single eval run recorded: zero fallbacks at the production 2s rerank timeout meant the plan's long-timeout re-run condition never triggered, so no 04-EVAL-JEV-LONG-TIMEOUT.log was created.
 
 ### Pending Todos
 
@@ -508,8 +510,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T15:35:01.843Z
-Stopped at: Completed 04-08-PLAN.md
+Last session: 2026-09-24T16:00:20.582Z
+Stopped at: Completed 04-07-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -705,6 +707,7 @@ Resume file: None
 | Phase 04 P05 | 13min | 3 tasks | 8 files |
 | Phase 04 P06 | 9min | 2 tasks | 3 files |
 | Phase 04 P08 | ~15min | 2 tasks | 4 files |
+| Phase 4 P07 | 25min | 2 tasks | 3 files |
 
 ## Operator Next Steps
 
