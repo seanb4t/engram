@@ -1,6 +1,6 @@
 ---
 phase: 04-jev-reranker-per-hit-relevance-signal
-verified: 2026-09-24T18:20:00Z
+verified: 2026-09-24T17:36:42Z
 status: passed
 score: 9/9 must-haves verified
 covered_files:
@@ -65,14 +65,15 @@ covered_files:
   - "internal/store/rerank_jev_test.go"
   - "internal/store/store.go"
   - "proto/engram/v1/engram.proto"
-covered_digest: "v1:sha256:29a819a29cd5d3675c5d5543cbbb22d5098102b562f78cc846cd576402547f93"
+covered_digest: "v1:sha256:bea269d0961f5b7ebfe17b5de5b95affdb7de0ec3272131042d6b72186e3a00f"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
-  previous_status: gaps_found
-  previous_score: 8/9
-  gaps_closed:
-    - "The phase gate is green on the final tree: `task` (lint plus the full test suite) ... the key-links gates ... on the final tree"
+  previous_status: passed
+  previous_score: 9/9
+  previous_verified_at_commit: 35f22121
+  trigger: "stale fingerprint — Phase 5 edited covered file docs-site/src/content/docs/guides/cli.md"
+  gaps_closed: []
   gaps_remaining: []
   regressions: []
 ---
@@ -80,9 +81,33 @@ re_verification:
 # Phase 4: Jev Reranker & Per-Hit Relevance Signal Verification Report
 
 **Phase Goal:** `search_memory` can reorder candidates by Jev relevance and tell a caller when nothing in the result set actually answers the query.
-**Verified:** 2026-09-24T18:20:00Z
+**Verified:** 2026-09-24T17:36:42Z
 **Status:** passed
-**Re-verification:** Yes — after gap closure
+**Re-verification:** Yes — stale-fingerprint regression check after Phase 5 (previous: passed 9/9 at `35f22121`, itself after gap closure)
+
+## Re-Verification After Phase 5 (2026-09-24)
+
+The prior report passed 9/9 at commit `35f22121`; its fingerprint went stale because Phase 5 (operator correctness) touched one covered file.
+
+**What changed in covered files:** `git diff 35f22121..HEAD --stat -- <covered_files>` reports exactly one file, `docs-site/src/content/docs/guides/cli.md` (+5/-3). The hunk is confined to the `### Operator commands` paragraph, which now lists `migrate` (with `status`/`revert`) and `setup` (commit `102c87f0`). The Phase 4 `RELEVANCE` column / per-memory `relevance` prose (lines 131-135) is untouched. No Phase 4 PLAN/SUMMARY, source, test, chart, proto, or eval file changed. All 61 covered paths still exist, so none were pruned.
+
+**Out-of-set change that could have affected Phase 4:** `internal/keylinks/keylinks.go` (Phase 5 commit `ddbae718`, which skips fieldless `key_links` items in `ParsePlanKeyLinks`). It could only change how Phase 4's key links are parsed, so they were re-checked two independent ways (below). Every link still resolves; none is silently skipped.
+
+| Check (run on HEAD `f37c5f0e`) | Command | Result |
+|---|---|---|
+| Phase 4 packages, uncached | `env -u ENGRAM_RETRIEVAL_EVAL -u ENGRAM_DECISIONS_LIVE go test -count=1 ./internal/keylinks/ ./internal/relevance/... ./internal/decide/... ./internal/config/... ./internal/server/... ./internal/retrievaleval/... ./cmd/engram/...` | all `ok` (server 26.4s) |
+| Store rerank/fallback/isolation tests, Qdrant-backed | `go test -count=1 -v -run '^(<names>)$' ./internal/store/`, where `<names>` is every `Test*` in `rerank_jev_test.go` + `discovery_rerank_test.go` (15 tests, exact-name alternation) | 25 PASS (incl. subtests), 0 SKIP, 0 FAIL |
+| Key-links gate | `go test -count=1 -v ./internal/keylinks/ -run TestActiveMilestoneKeyLinksSatisfiable` | `--- PASS` |
+| GSD key links, per plan | `gsd-tools query verify.key-links 04-0{1..8}-PLAN.md` | 23/23 verified (5,2,4,2,3,2,2,3) |
+| GSD artifacts, per plan | `gsd-tools query verify.artifacts 04-0{1..8}-PLAN.md` | 26/26 passed |
+| Docs conformance for `cli.md` | `go test -count=1 ./internal/surfaces/...` | `ok` |
+| Helm chart | `task chart:validate` | `chart:validate: OK` |
+| Proto compatibility | `go tool buf breaking --against '.git#branch=main'` | exit 0 |
+| Debt markers in changed file | `rg -e TBD -e FIXME -e XXX docs-site/src/content/docs/guides/cli.md` | none |
+
+The live Jev eval (truth 2) was not re-run: no network calls, per instruction. `04-EVAL-JEV.md`/`.log` are byte-identical to the prior verification (no diff since `35f22121`), so the recorded measurement stands.
+
+**Result:** no regressions. All 9 truths still hold on HEAD. The rows below are from the prior verification and remain accurate. Only the fingerprint (`verified`, `covered_digest`) and the `re_verification` metadata were updated.
 
 ## Goal Achievement
 
@@ -171,5 +196,5 @@ None. The single gap from the prior verification — `04-04-PLAN.md`'s key-link 
 
 ---
 
-_Verified: 2026-09-24T18:20:00Z_
+_Verified: 2026-09-24T17:36:42Z (re-verification; prior pass 2026-09-24T18:20:00Z at `35f22121`)_
 _Verifier: Claude (gsd-verifier)_
