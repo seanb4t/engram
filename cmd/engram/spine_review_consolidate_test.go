@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -737,6 +739,404 @@ func TestSpineReviewConsolidateVerdictThresholdFlag(t *testing.T) {
 			t.Errorf("RecordStates called %d times, want 0 (no decider configured)", fake.recordStatesCalls)
 		}
 	})
+}
+
+// verdictSuccessResult builds a decide.Result whose Response carries a
+// relation Choice answer at relationProb (all five D-05 probabilities
+// present, the remainder split evenly across the other four) plus a
+// same_subject noul — enough for the Task 2 tests below to observe
+// verdict.FromResult's mapping without a live provider.
+func verdictSuccessResult(relation string, relationProb float64) decide.Result {
+	other := (1 - relationProb) / 4
+	probs := map[string]float64{
+		verdict.Duplicate: other, verdict.Contradicts: other, verdict.Updates: other,
+		verdict.Related: other, verdict.Unrelated: other,
+	}
+	probs[relation] = relationProb
+	return decide.Result{Response: decide.Response{
+		Model: "test-model",
+		Answers: map[string]decide.Answer{
+			verdict.QuestionRelation:    {Type: decide.QuestionChoice, Choice: relation, Probabilities: probs},
+			verdict.QuestionSameSubject: {Type: decide.QuestionNoul, Probability: 0.5},
+		},
+	}}
+}
+
+// scriptedFakeDecider returns pre-built decide.Result values, in order, from
+// its single DecideMany call — it panics if the number of requests it
+// receives doesn't match len(results), a test-authoring bug rather than a
+// production scenario. Decide is never used by these tests.
+type scriptedFakeDecider struct {
+	results []decide.Result
+	calls   int
+}
+
+func (d *scriptedFakeDecider) Decide(_ context.Context, _ decide.Request) (decide.Response, error) {
+	panic("scriptedFakeDecider.Decide: not used by these tests")
+}
+
+func (d *scriptedFakeDecider) DecideMany(_ context.Context, reqs []decide.Request) []decide.Result {
+	d.calls++
+	if len(reqs) != len(d.results) {
+		panic(fmt.Sprintf("scriptedFakeDecider.DecideMany: got %d reqs, want %d results", len(reqs), len(d.results)))
+	}
+	return d.results
+}
+
+// countingFakeDecider only records how many times Decide/DecideMany were
+// called — used to prove a code path that must never reach the decider
+// (--no-verdicts, a state-fetch error) genuinely doesn't.
+type countingFakeDecider struct {
+	decideCalls, decideManyCalls int
+}
+
+func (d *countingFakeDecider) Decide(_ context.Context, _ decide.Request) (decide.Response, error) {
+	d.decideCalls++
+	return decide.Response{}, nil
+}
+
+func (d *countingFakeDecider) DecideMany(_ context.Context, reqs []decide.Request) []decide.Result {
+	d.decideManyCalls++
+	return make([]decide.Result, len(reqs))
+}
+
+// capCountingFakeDecider records the length of reqs its single DecideMany
+// call received and how many times it was called — TestSpineReviewConsolidateNoCapOnPairs
+// uses it to prove D-11's no-cap contract: every buildable pair reaches the
+// decider through exactly one DecideMany call, regardless of pair count.
+type capCountingFakeDecider struct {
+	calls      int
+	lastReqLen int
+}
+
+func (d *capCountingFakeDecider) Decide(_ context.Context, _ decide.Request) (decide.Response, error) {
+	panic("capCountingFakeDecider.Decide: not used")
+}
+
+func (d *capCountingFakeDecider) DecideMany(_ context.Context, reqs []decide.Request) []decide.Result {
+	d.calls++
+	d.lastReqLen = len(reqs)
+	results := make([]decide.Result, len(reqs))
+	for i := range results {
+		results[i] = verdictSuccessResult(verdict.Related, 0.95)
+	}
+	return results
+}
+
+// blockingFakeDecider blocks every Decide call until its context is done,
+// then returns ctx.Err() — DecideMany delegates to the real
+// decide.DecideMany with a per-request function (the plan's own executor
+// note), so the concurrency/ctx-check behavior under test is the
+// production shape, not a hand-rolled substitute.
+type blockingFakeDecider struct{}
+
+func (blockingFakeDecider) Decide(ctx context.Context, _ decide.Request) (decide.Response, error) {
+	<-ctx.Done()
+	return decide.Response{}, ctx.Err()
+}
+
+func (d blockingFakeDecider) DecideMany(ctx context.Context, reqs []decide.Request) []decide.Result {
+	return decide.DecideMany(ctx, func(c context.Context, r decide.Request) (decide.Response, error) {
+		return d.Decide(c, r)
+	}, reqs, 4)
+}
+
+// TestSpineReviewConsolidateNoVerdictsSuppresses proves D-04's opt-out: with
+// --no-verdicts and a provider/decider configured, stdout is byte-identical
+// to the no-provider run, RecordStates and decider call counts are 0, and
+// stderr carries no "consolidate verdicts:" line.
+func TestSpineReviewConsolidateNoVerdictsSuppresses(t *testing.T) {
+	resetClientFlags(t)
+	pairs := []store.DuplicatePair{
+		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.9},
+	}
+	states := map[string]store.RecordState{
+		"id-a": {ID: "id-a", Content: "c"}, "id-b": {ID: "id-b", Content: "c"},
+	}
+	fake := &spineConsolidateFakeStore{pairs: pairs, states: states}
+	dec := &countingFakeDecider{}
+	withFakeConsolidateStoreAndDecider(t, fake, dec, server.VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: verdict.DefaultStateChars, Provider: "jev", Model: "test-model"})
+
+	stdout, stderr, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--no-verdicts", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v", err)
+	}
+	want, err := json.Marshal(consolidateDoc(pairs, "", true, nil, spineConsolidateDefaultTopK, 0, 0))
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if stdout != string(want)+"\n" {
+		t.Errorf("stdout = %q, want %q (byte-identical to the no-provider run)", stdout, string(want)+"\n")
+	}
+	if fake.recordStatesCalls != 0 {
+		t.Errorf("RecordStates called %d times, want 0", fake.recordStatesCalls)
+	}
+	if dec.decideCalls != 0 || dec.decideManyCalls != 0 {
+		t.Errorf("decider called (Decide=%d, DecideMany=%d), want 0 with --no-verdicts", dec.decideCalls, dec.decideManyCalls)
+	}
+	if strings.Contains(stderr, "consolidate verdicts:") {
+		t.Errorf("stderr contains a verdict line despite --no-verdicts: %q", stderr)
+	}
+}
+
+// TestSpineReviewConsolidateFailurePolicy proves D-10's per-pair failure
+// reporting, the disclosure/summary stderr lines, and no-cap (D-11) over
+// four pairs: success, an auth error, a pair missing its second side's
+// state, and a timeout error.
+func TestSpineReviewConsolidateFailurePolicy(t *testing.T) {
+	resetClientFlags(t)
+	pairs := []store.DuplicatePair{
+		{A: "id-a1", B: "id-b1", AShortID: "sa1", BShortID: "sb1", AScope: "s", BScope: "s", Score: 0.9},
+		{A: "id-a2", B: "id-b2", AShortID: "sa2", BShortID: "sb2", AScope: "s", BScope: "s", Score: 0.9},
+		{A: "id-a3", B: "id-b3", AShortID: "sa3", BShortID: "sb3", AScope: "s", BScope: "s", Score: 0.9},
+		{A: "id-a4", B: "id-b4", AShortID: "sa4", BShortID: "sb4", AScope: "s", BScope: "s", Score: 0.9},
+	}
+	states := map[string]store.RecordState{
+		"id-a1": {ID: "id-a1", Content: "c"}, "id-b1": {ID: "id-b1", Content: "c"},
+		"id-a2": {ID: "id-a2", Content: "c"}, "id-b2": {ID: "id-b2", Content: "c"},
+		"id-a3": {ID: "id-a3", Content: "c"}, // id-b3 deliberately absent: D-10's missing-side case
+		"id-a4": {ID: "id-a4", Content: "c"}, "id-b4": {ID: "id-b4", Content: "c"},
+	}
+	fake := &spineConsolidateFakeStore{pairs: pairs, states: states}
+	dec := &scriptedFakeDecider{results: []decide.Result{
+		verdictSuccessResult(verdict.Duplicate, 0.99), // pair0: success
+		{Err: &decide.Error{Kind: decide.ErrDecisionAuth}},    // pair1: auth
+		{Err: &decide.Error{Kind: decide.ErrDecisionTimeout}}, // pair3: timeout (pair2 never reaches the decider)
+	}}
+	settings := server.VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: 1500, Provider: "jev", Model: "test-model", EndpointHost: "example.test:443"}
+	withFakeConsolidateStoreAndDecider(t, fake, dec, settings)
+
+	stdout, stderr, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v", err)
+	}
+	if dec.calls != 1 {
+		t.Errorf("DecideMany called %d times, want exactly 1", dec.calls)
+	}
+
+	var doc struct {
+		Candidates []struct {
+			Verdict map[string]any `json:"verdict"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(stdout): %v (stdout=%q)", err, stdout)
+	}
+	if len(doc.Candidates) != 4 {
+		t.Fatalf("len(candidates) = %d, want 4", len(doc.Candidates))
+	}
+	if got := doc.Candidates[0].Verdict["relation"]; got != verdict.Duplicate {
+		t.Errorf("candidates[0].verdict.relation = %v, want %q", got, verdict.Duplicate)
+	}
+	wantErrors := []string{"auth", "state_unavailable", "timeout"}
+	for i, want := range wantErrors {
+		c := doc.Candidates[i+1].Verdict
+		if got := c["error"]; got != want {
+			t.Errorf("candidates[%d].verdict.error = %v, want %q", i+1, got, want)
+		}
+		if len(c) != 1 {
+			t.Errorf("candidates[%d].verdict has %d keys, want exactly 1 (error): %v", i+1, len(c), c)
+		}
+	}
+
+	wantDisclosure := "consolidate verdicts: requesting advisory verdicts for 4 candidate pair(s) from decisions provider jev (model test-model) at host example.test:443"
+	if !strings.Contains(stderr, wantDisclosure) {
+		t.Errorf("stderr disclosure line missing or wrong: %q, want it to contain %q", stderr, wantDisclosure)
+	}
+	if !strings.Contains(stderr, "1500 characters") || !strings.Contains(stderr, "--no-verdicts") {
+		t.Errorf("stderr disclosure line missing the state-char bound or --no-verdicts mention: %q", stderr)
+	}
+	wantSummary := "consolidate verdicts: requested 4, answered 1, needs_review 0, unavailable 3 (auth=1 state_unavailable=1 timeout=1)"
+	if !strings.Contains(stderr, wantSummary) {
+		t.Errorf("stderr summary line missing or wrong: %q, want it to contain %q", stderr, wantSummary)
+	}
+	if strings.Index(stderr, wantDisclosure) > strings.Index(stderr, wantSummary) {
+		t.Errorf("disclosure line does not precede the summary line: stderr=%q", stderr)
+	}
+}
+
+// TestSpineReviewConsolidateAllAuthFailureWarns proves D-10's loud all-auth
+// signal: every request failing with the auth class prints an extra
+// WARNING line naming both key env vars; a single success among auth
+// failures suppresses it.
+func TestSpineReviewConsolidateAllAuthFailureWarns(t *testing.T) {
+	settings := server.VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: 1500, Provider: "jev", Model: "test-model"}
+	pairs := []store.DuplicatePair{
+		{A: "id-a1", B: "id-b1", AShortID: "sa1", BShortID: "sb1", AScope: "s", BScope: "s", Score: 0.9},
+		{A: "id-a2", B: "id-b2", AShortID: "sa2", BShortID: "sb2", AScope: "s", BScope: "s", Score: 0.9},
+	}
+	states := map[string]store.RecordState{
+		"id-a1": {ID: "id-a1", Content: "c"}, "id-b1": {ID: "id-b1", Content: "c"},
+		"id-a2": {ID: "id-a2", Content: "c"}, "id-b2": {ID: "id-b2", Content: "c"},
+	}
+
+	t.Run("every request fails auth", func(t *testing.T) {
+		resetClientFlags(t)
+		fake := &spineConsolidateFakeStore{pairs: pairs, states: states}
+		dec := &scriptedFakeDecider{results: []decide.Result{
+			{Err: &decide.Error{Kind: decide.ErrDecisionAuth}},
+			{Err: &decide.Error{Kind: decide.ErrDecisionAuth}},
+		}}
+		withFakeConsolidateStoreAndDecider(t, fake, dec, settings)
+
+		_, stderr, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v", err)
+		}
+		if !strings.Contains(stderr, "WARNING:") {
+			t.Fatalf("stderr missing a WARNING line: %q", stderr)
+		}
+		if !strings.Contains(stderr, "ENGRAM_DECISIONS_API_KEY") || !strings.Contains(stderr, "ENGRAM_OPENAI_API_KEY") {
+			t.Errorf("WARNING line does not name both key env vars: %q", stderr)
+		}
+	})
+
+	t.Run("one success among auth failures: no warning", func(t *testing.T) {
+		resetClientFlags(t)
+		fake := &spineConsolidateFakeStore{pairs: pairs, states: states}
+		dec := &scriptedFakeDecider{results: []decide.Result{
+			verdictSuccessResult(verdict.Related, 0.95),
+			{Err: &decide.Error{Kind: decide.ErrDecisionAuth}},
+		}}
+		withFakeConsolidateStoreAndDecider(t, fake, dec, settings)
+
+		_, stderr, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v", err)
+		}
+		if strings.Contains(stderr, "WARNING:") {
+			t.Errorf("stderr contains a WARNING line despite one successful verdict: %q", stderr)
+		}
+	})
+}
+
+// TestSpineReviewConsolidateStateFetchErrorDegrades proves a RecordStates
+// error degrades every pair to state_unavailable, never calls the decider,
+// and still exits 0.
+func TestSpineReviewConsolidateStateFetchErrorDegrades(t *testing.T) {
+	resetClientFlags(t)
+	pairs := []store.DuplicatePair{
+		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.9},
+	}
+	fake := &spineConsolidateFakeStore{pairs: pairs, statesErr: errors.New("qdrant unavailable")}
+	dec := &countingFakeDecider{}
+	withFakeConsolidateStoreAndDecider(t, fake, dec, server.VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: 1500})
+
+	stdout, _, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v", err)
+	}
+	if dec.decideManyCalls != 0 || dec.decideCalls != 0 {
+		t.Errorf("decider was called (DecideMany=%d, Decide=%d), want 0 on a state-fetch error", dec.decideManyCalls, dec.decideCalls)
+	}
+
+	var doc struct {
+		Candidates []struct {
+			Verdict map[string]any `json:"verdict"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(stdout): %v (stdout=%q)", err, stdout)
+	}
+	if len(doc.Candidates) != 1 {
+		t.Fatalf("len(candidates) = %d, want 1", len(doc.Candidates))
+	}
+	if got := doc.Candidates[0].Verdict["error"]; got != "state_unavailable" {
+		t.Errorf("verdict.error = %v, want state_unavailable", got)
+	}
+}
+
+// TestSpineReviewConsolidateDeadlineDuringVerdictPass proves a --timeout
+// deadline reached during the verdict pass leaves every structural
+// candidate present, each verdict classed timeout, and still exits 0.
+func TestSpineReviewConsolidateDeadlineDuringVerdictPass(t *testing.T) {
+	resetClientFlags(t)
+	pairs := []store.DuplicatePair{
+		{A: "id-a1", B: "id-b1", AShortID: "sa1", BShortID: "sb1", AScope: "s", BScope: "s", Score: 0.9},
+		{A: "id-a2", B: "id-b2", AShortID: "sa2", BShortID: "sb2", AScope: "s", BScope: "s", Score: 0.9},
+	}
+	states := map[string]store.RecordState{
+		"id-a1": {ID: "id-a1", Content: "c"}, "id-b1": {ID: "id-b1", Content: "c"},
+		"id-a2": {ID: "id-a2", Content: "c"}, "id-b2": {ID: "id-b2", Content: "c"},
+	}
+	fake := &spineConsolidateFakeStore{pairs: pairs, states: states}
+	withFakeConsolidateStoreAndDecider(t, fake, blockingFakeDecider{}, server.VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: 1500})
+
+	stdout, _, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--timeout", "200ms", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v", err)
+	}
+
+	var doc struct {
+		Candidates []struct {
+			Verdict map[string]any `json:"verdict"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(stdout): %v (stdout=%q)", err, stdout)
+	}
+	if len(doc.Candidates) != 2 {
+		t.Fatalf("len(candidates) = %d, want 2 (structural candidates all present)", len(doc.Candidates))
+	}
+	for i, c := range doc.Candidates {
+		if got := c.Verdict["error"]; got != "timeout" {
+			t.Errorf("candidates[%d].verdict.error = %v, want timeout", i, got)
+		}
+	}
+}
+
+// TestSpineReviewConsolidateNoCapOnPairs proves D-11: 250 candidate pairs
+// produce exactly 250 requests in a single DecideMany call — no cap.
+func TestSpineReviewConsolidateNoCapOnPairs(t *testing.T) {
+	resetClientFlags(t)
+	const n = 250
+	pairs := make([]store.DuplicatePair, n)
+	states := make(map[string]store.RecordState, n*2)
+	for i := 0; i < n; i++ {
+		a, b := fmt.Sprintf("id-a%d", i), fmt.Sprintf("id-b%d", i)
+		pairs[i] = store.DuplicatePair{
+			A: a, B: b, AShortID: fmt.Sprintf("sa%d", i), BShortID: fmt.Sprintf("sb%d", i),
+			AScope: "s", BScope: "s", Score: 0.9,
+		}
+		states[a] = store.RecordState{ID: a, Content: "c"}
+		states[b] = store.RecordState{ID: b, Content: "c"}
+	}
+	fake := &spineConsolidateFakeStore{pairs: pairs, states: states}
+	dec := &capCountingFakeDecider{}
+	withFakeConsolidateStoreAndDecider(t, fake, dec, server.VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: 1500})
+
+	if _, _, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--output", "json"); err != nil {
+		t.Fatalf("runClient: %v", err)
+	}
+	if dec.calls != 1 {
+		t.Errorf("DecideMany called %d times, want exactly 1", dec.calls)
+	}
+	if dec.lastReqLen != n {
+		t.Errorf("DecideMany received %d requests, want %d (no cap, D-11)", dec.lastReqLen, n)
+	}
+}
+
+// TestVerdictHeadlineClause proves the pure headline addendum: it states
+// verdicts are advisory and consolidate never merges or mutates, plus the
+// answered/needs-review/unavailable counts; consolidateSummary's own
+// output carries none of that vocabulary when no pass ran.
+func TestVerdictHeadlineClause(t *testing.T) {
+	stats := verdictOutcome{Requested: 4, Answered: 1, NeedsReview: 0, FailuresByClass: map[string]int{
+		"auth": 1, "state_unavailable": 1, "timeout": 1,
+	}}
+	clause := verdictHeadlineClause(stats)
+	for _, want := range []string{"advisory", "never merges or mutates", "1 answered", "0 needing review", "3 unavailable"} {
+		if !strings.Contains(clause, want) {
+			t.Errorf("verdictHeadlineClause(%+v) = %q, want it to contain %q", stats, clause, want)
+		}
+	}
+
+	headline := consolidateSummary(nil, "s", false, nil, 5, 0, 0)
+	for _, unwanted := range []string{"advisory", "never merges or mutates"} {
+		if strings.Contains(headline, unwanted) {
+			t.Errorf("consolidateSummary() = %q, want no verdict-pass vocabulary when no pass ran", headline)
+		}
+	}
 }
 
 // TestConsolidateStoreSurfaceIsReadOnly proves T-03-02: spineConsolidateStore's

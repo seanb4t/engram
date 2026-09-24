@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -81,6 +83,7 @@ var (
 	spineConsolidateTopK             uint64
 	spineConsolidateMinScore         string
 	spineConsolidateVerdictThreshold string
+	spineConsolidateNoVerdicts       bool
 )
 
 // parseVerdictThreshold parses --verdict-threshold's string value: empty
@@ -168,9 +171,18 @@ var spineReviewConsolidateCmd = &cobra.Command{
 		}
 		text := consolidateSummary(pairs, spineConsolidateScope, spineConsolidateAllScopes, minScore, spineConsolidateTopK, lastScanned, lastQueried)
 		doc := consolidateDoc(pairs, spineConsolidateScope, spineConsolidateAllScopes, minScore, spineConsolidateTopK, lastScanned, lastQueried)
-		if dec != nil {
+		if dec != nil && !spineConsolidateNoVerdicts {
+			if len(pairs) > 0 {
+				cmd.PrintErrln(verdictDisclosureLine(settings, len(pairs)))
+			}
 			verdicts := runVerdictPass(ctx, st, dec, pairs, settings)
 			doc = attachVerdicts(doc, verdicts, settings.Threshold)
+			stats := verdictStats(verdicts)
+			text += verdictHeadlineClause(stats)
+			cmd.PrintErrln(verdictSummaryLine(stats))
+			if warn := verdictAllAuthWarning(stats); warn != "" {
+				cmd.PrintErrln(warn)
+			}
 		}
 		return renderOperator(cmd, format, text, doc)
 	},
@@ -384,6 +396,105 @@ func verdictDoc(v verdict.Verdict) consolidateVerdictDoc {
 	}
 }
 
+// verdictOutcome tallies runVerdictPass's per-pair results into the counts
+// verdictHeadlineClause, verdictSummaryLine and verdictAllAuthWarning each
+// need: Requested is len(verdicts), Answered is the count of decided (not
+// Failed()) verdicts, NeedsReview is how many of those are flagged, and
+// FailuresByClass maps a failed verdict's ErrorClass to its count.
+// Unavailable is never stored separately — it is always
+// Requested-Answered, equivalently the sum of every FailuresByClass value.
+// FailuresByClass's iteration order is unspecified; a caller needing a
+// deterministic rendering (verdictSummaryLine) sorts the keys itself.
+type verdictOutcome struct {
+	Requested, Answered, NeedsReview int
+	FailuresByClass                 map[string]int
+}
+
+// verdictStats reduces verdicts (index-aligned with the pairs runVerdictPass
+// was given) into a verdictOutcome. Pure — no I/O.
+func verdictStats(verdicts []verdict.Verdict) verdictOutcome {
+	out := verdictOutcome{Requested: len(verdicts), FailuresByClass: make(map[string]int)}
+	for _, v := range verdicts {
+		if v.Failed() {
+			out.FailuresByClass[v.ErrorClass]++
+			continue
+		}
+		out.Answered++
+		if v.NeedsReview {
+			out.NeedsReview++
+		}
+	}
+	return out
+}
+
+// verdictHeadlineClause renders the D-10 headline addendum consolidate's
+// RunE appends to consolidateSummary's headline only when the verdict pass
+// ran: it states plainly that verdicts are advisory and consolidate never
+// merges or mutates, then the answered/needs-review/unavailable counts.
+// Pure — value types only.
+func verdictHeadlineClause(stats verdictOutcome) string {
+	unavailable := stats.Requested - stats.Answered
+	return fmt.Sprintf(" — verdicts are advisory and consolidate never merges or mutates: %d answered, %d needing review, %d unavailable",
+		stats.Answered, stats.NeedsReview, unavailable)
+}
+
+// verdictDisclosureLine is the one stderr line printed BEFORE runVerdictPass
+// sends anything (D-10), when at least one candidate pair exists: it names
+// the decisions provider, model and endpoint host, states how many pairs
+// will be sent and what each request carries, and that --no-verdicts skips
+// this. EndpointHost, Provider and Model come from settings — never a
+// second resolution of the same config.
+func verdictDisclosureLine(settings server.VerdictSettings, pairCount int) string {
+	return fmt.Sprintf(
+		"consolidate verdicts: requesting advisory verdicts for %d candidate pair(s) from decisions provider %s (model %s) at host %s, "+
+			"each request carrying both records' summary and up to %d characters of content; --no-verdicts skips this",
+		pairCount, settings.Provider, settings.Model, settings.EndpointHost, settings.StateChars)
+}
+
+// verdictSummaryLine is the one stderr line printed AFTER the verdict pass
+// (D-10): requested/answered/needs_review/unavailable counts, followed by
+// per-class failure counts in sorted class order when any failure occurred.
+// None of this changes the sweep's exit status.
+func verdictSummaryLine(stats verdictOutcome) string {
+	unavailable := stats.Requested - stats.Answered
+	line := fmt.Sprintf("consolidate verdicts: requested %d, answered %d, needs_review %d, unavailable %d",
+		stats.Requested, stats.Answered, stats.NeedsReview, unavailable)
+	if len(stats.FailuresByClass) == 0 {
+		return line
+	}
+	classes := make([]string, 0, len(stats.FailuresByClass))
+	for c := range stats.FailuresByClass {
+		classes = append(classes, c)
+	}
+	sort.Strings(classes)
+	parts := make([]string, 0, len(classes))
+	for _, c := range classes {
+		parts = append(parts, fmt.Sprintf("%s=%d", c, stats.FailuresByClass[c]))
+	}
+	return line + " (" + strings.Join(parts, " ") + ")"
+}
+
+// verdictAllAuthWarning returns a loud WARNING line when every requested
+// verdict failed with the auth class and none succeeded (D-10): it names
+// ENGRAM_DECISIONS_API_KEY (and the ENGRAM_OPENAI_API_KEY it can inherit)
+// and states that the candidates are reported without verdicts. Returns ""
+// (no warning) whenever at least one verdict succeeded, nothing was
+// requested, or the failures are not uniformly the auth class.
+func verdictAllAuthWarning(stats verdictOutcome) string {
+	if stats.Requested == 0 || stats.Answered != 0 {
+		return ""
+	}
+	if len(stats.FailuresByClass) != 1 {
+		return ""
+	}
+	if _, authOnly := stats.FailuresByClass["auth"]; !authOnly {
+		return ""
+	}
+	return "WARNING: every verdict request failed authentication — check ENGRAM_DECISIONS_API_KEY " +
+		"(or the ENGRAM_OPENAI_API_KEY it falls back to) and the configured provider's route grant; " +
+		"candidates are reported without verdicts"
+}
+
 // consolidateSummary renders the operator-facing headline. Pure (value
 // types only — no *store.Store, no context.Context) so it is unit-testable
 // without a live Qdrant, mirroring reindexSummary's/spineScanSummary's
@@ -434,6 +545,9 @@ func init() {
 		"the probability between 0 and 1 below which a verdict is marked needs_review; overrides "+
 			"ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9) for this run; no effect without "+
 			"ENGRAM_DECISIONS_PROVIDER or with --no-verdicts")
+	spineReviewConsolidateCmd.Flags().BoolVar(&spineConsolidateNoVerdicts, "no-verdicts", false,
+		"skip the advisory verdict pass even when ENGRAM_DECISIONS_PROVIDER is set — no record content "+
+			"is sent and no verdict objects appear (see --verdict-threshold)")
 	spineReviewConsolidateCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
 	spineReviewCmd.AddCommand(spineReviewConsolidateCmd)
 }
