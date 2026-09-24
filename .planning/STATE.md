@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 4
 current_phase_name: Jev Reranker & Per-Hit Relevance Signal
 status: executing
-stopped_at: Completed 04-06-PLAN.md
-last_updated: "2026-09-24T15:28:33.254Z"
+stopped_at: Completed 04-08-PLAN.md
+last_updated: "2026-09-24T15:35:01.883Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 4 execution started
-state_head: f16ee36a8d25e5b2d1b5bd28f9bb28f2b96f57dd
+state_head: 4dbfd3e801d96534bf1e062e24e78f9a66a29847
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 35
-  completed_plans: 28
+  completed_plans: 29
   percent: 60
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-24 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (Jev Reranker & Per-Hit Relevance Signal) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-09-24 — Phase 4 execution started
 
@@ -415,6 +415,7 @@ milestone needs in working memory.
 - [Phase 4]: d.rankHook is directly settable from same-package _test.go files for scripted-hook substitution in parity tests, no production test seam needed
 - [Phase 4]: SearchDiscoveryReranked skips the lexical step entirely, reusing applyRankHook/applyRelevance over SearchDiscovery's own vector order (D-07 discretion)
 - [Phase 4]: Opt-in eval rows (namedRanker.optIn/variantSummary.optIn) extend the existing disabled/shipped exclusion shape in decideRanking rather than special-casing jev by name — Keeps D-05 structurally closed to any future opt-in-only ranker, not just jev
+- [Phase 4]: 04-08: Search Helm gate deliberately independent of memory.decisions.provider — jev without a provider still renders ENGRAM_SEARCH_RANKER, reaching D-01's server-side rejection rather than silently no-op'ing
 
 ### Pending Todos
 
@@ -507,8 +508,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T15:28:33.217Z
-Stopped at: Completed 04-06-PLAN.md
+Last session: 2026-09-24T15:35:01.843Z
+Stopped at: Completed 04-08-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -703,6 +704,7 @@ Resume file: None
 | Phase 04 P04 | 20min | 3 tasks | 6 files |
 | Phase 04 P05 | 13min | 3 tasks | 8 files |
 | Phase 04 P06 | 9min | 2 tasks | 3 files |
+| Phase 04 P08 | ~15min | 2 tasks | 4 files |
 
 ## Operator Next Steps
 
