@@ -4,7 +4,7 @@
 
 - **File:** `cmd/engram/operator_view_test.go:441` (`TestOperatorViewDuplicateKeyAdjacency`)
 - **Finding:** `struct field B repeats json tag "dup" also at operator_view_test.go:440`
-- **Status:** Pre-existing, not touched by plan 03-01. The offending line already
+- **Status:** acknowledged
   carries `//nolint:govet` with a comment explaining the duplicate tag is a
   deliberate adjacency-edge probe. `golangci-lint run` (which honors `nolint`
   directives) reports 0 issues across `./internal/verdict/... ./internal/store/...

@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
-current_phase: 5
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 5 complete — all phases complete
-last_updated: "2026-09-24T17:32:17.432Z"
+last_updated: "2026-09-24T18:11:20.301Z"
 last_activity: 2026-09-24
-last_activity_desc: Phase 5 complete
-state_head: 7294b00f5e2ef4957534802ce79a2138a70f575b
+last_activity_desc: Milestone 2026-09-22.01 completed and archived
+state_head: 52d1137bb144deac6104391fc49e99b13e73acaf
 progress:
   total_phases: 5
   completed_phases: 5
   total_plans: 35
   completed_plans: 35
   percent: 100
+current_phase: 5
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-24 after Phase 5 of milestone 2026-09
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-09-24 — Phase 5 complete
+Phase: Milestone 2026-09-22.01 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-24 — Milestone 2026-09-22.01 completed and archived
 
 ## Deferred Items
 
@@ -77,6 +77,12 @@ Items acknowledged and deferred at milestone close on 2026-09-22 (milestone 2026
 |----------|------|--------|
 | deferred_items | Phase 06 / 06-01: `internal/store` `TestRedEvidencePatchesAreLive` hit Go's 601s per-package default timeout under host load | acknowledged — moot: the red-evidence harness was removed in `c1afd6c1` (rule `3p0zsqrhmb`) |
 | deferred_items | Phase 06 / 06-03: same harness timeout recurred at 58 registered patches | acknowledged — moot for the same reason |
+
+Items acknowledged and deferred at milestone close on 2026-09-24 (milestone 2026-09-22.01, `override_closeout` — 1 newly acknowledged, 0 carried forward from a prior close):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_items | Phase 03 / deferred-items.md: plain `go vet ./...` flags the duplicate `json:"dup"` tag at `cmd/engram/operator_view_test.go:441` (`TestOperatorViewDuplicateKeyAdjacency`) | acknowledged — deliberate duplicate-key fixture already marked `//nolint:govet`; golangci-lint (the project gate) reports 0 issues |
 
 Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own acknowledged status line.
 
