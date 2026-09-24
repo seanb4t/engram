@@ -16,6 +16,7 @@ import (
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/decide/jev"
+	"github.com/seanb4t/engram/internal/relevance"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/verdict"
 )
@@ -141,6 +142,147 @@ func decisionsConcurrency(cfg *config.Config) int {
 		return 4
 	}
 	return n
+}
+
+// searchRerankTimeout parses the per-search decision-call timeout
+// (ENGRAM_SEARCH_RERANK_TIMEOUT), defaulting to 2s on empty/invalid. UNLIKE
+// decisionsTimeout, a non-positive value is NEVER honored — Config.Validate
+// already rejects a non-positive ENGRAM_SEARCH_RERANK_TIMEOUT whenever the
+// ranker is jev, so any non-positive value reaching this helper (an
+// out-of-band call that bypassed Validate) falls back to the default rather
+// than resolving to searchDeciderFromConfig's jev.WithMaxTimeout ceiling
+// (10m) — unacceptable on the synchronous search path (D-09).
+func searchRerankTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Search.RerankTimeout)
+	if err != nil || d <= 0 {
+		if cfg.Search.RerankTimeout != "" {
+			slog.Warn("ENGRAM_SEARCH_RERANK_TIMEOUT is set but unparseable or non-positive; using default 2s",
+				"value", cfg.Search.RerankTimeout)
+		}
+		return 2 * time.Second
+	}
+	return d
+}
+
+// searchDeciderFromConfig builds a SECOND, dedicated Jev client for the
+// search-reranking path (D-09): the same base URL, key fallback, model, OTel
+// transport, max-timeout ceiling and drain bounds as deciderFromConfig's
+// consolidate-path client, but its own timeout (searchRerankTimeout, never
+// decisionsTimeout) plus the no-retry Option below — the search path must
+// never share or double the sweep client's single retry. Gated on
+// cfg.Decisions.Provider, NOT cfg.Search.Ranker: the retrieval eval (D-02,
+// SearchRankHookFromEnv below) needs this client whenever a provider is
+// configured, regardless of what the ranker is set to.
+func searchDeciderFromConfig(cfg *config.Config) (decide.Decider, error) {
+	switch cfg.Decisions.Provider {
+	case "":
+		return nil, nil
+	case "jev":
+		apiKey := cmp.Or(cfg.Decisions.APIKey, cfg.OpenAI.APIKey)
+		return jev.New(cfg.Decisions.BaseURL, apiKey, cfg.Decisions.Model,
+			jev.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
+			jev.WithTimeout(searchRerankTimeout(cfg)),
+			jev.WithMaxTimeout(decisionsMaxTimeout(cfg)),
+			jev.WithDrainBytes(decisionsDrainBytes(cfg)),
+			jev.WithDrainTimeout(decisionsDrainTimeout(cfg)),
+			jev.WithNoRetry(),
+		), nil
+	default:
+		return nil, fmt.Errorf("ENGRAM_DECISIONS_PROVIDER %q: unknown provider (want \"\" or \"jev\")", cfg.Decisions.Provider)
+	}
+}
+
+// searchRankHook builds the search-path store.RankHook from cfg (D-01): nil,
+// nil unless cfg.Search.Ranker is "jev" — the ranker enum is what turns
+// search-path reranking on, never the presence of a decisions provider alone
+// (T-04-01: a provider configured for consolidate must never silently start
+// egressing search candidates). When the ranker is jev, the hook is built
+// over searchDeciderFromConfig's dedicated no-retry client; a nil decider
+// there (empty provider, a misconfiguration Config.Validate rejects before
+// this is ever reached in production) still yields a nil hook, never a
+// no-op relevance.Hook wrapper.
+func searchRankHook(cfg *config.Config) (store.RankHook, error) {
+	if cfg.Search.Ranker != "jev" {
+		return nil, nil
+	}
+	dec, err := searchDeciderFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if dec == nil {
+		return nil, nil
+	}
+	return relevance.Hook(dec, relevance.DefaultBudget()), nil
+}
+
+// SearchRerankInfo reports whether the search-path reranker's underlying
+// client is available and, when it is, the model and endpoint host it will
+// egress candidate content to (never the key) and the per-search timeout —
+// provenance for the retrieval eval's Jev row (D-02).
+type SearchRerankInfo struct {
+	Enabled      bool
+	Model        string
+	EndpointHost string
+	Timeout      time.Duration
+}
+
+// SearchRankHookFromEnv builds the search-path store.RankHook and its
+// SearchRerankInfo from a SINGLE config load, for the retrieval eval (D-02).
+// UNLIKE searchRankHook, this returns a non-nil hook whenever
+// ENGRAM_DECISIONS_PROVIDER is set, REGARDLESS of ENGRAM_SEARCH_RANKER — the
+// eval measures the Jev reranking row even when the ranker is off in
+// production. An unset provider returns a nil hook, a zero SearchRerankInfo,
+// and a nil error.
+func SearchRankHookFromEnv() (store.RankHook, SearchRerankInfo, error) {
+	cfg, err := loadAndValidate()
+	if err != nil {
+		return nil, SearchRerankInfo{}, err
+	}
+	dec, err := searchDeciderFromConfig(cfg)
+	if err != nil {
+		return nil, SearchRerankInfo{}, err
+	}
+	if dec == nil {
+		return nil, SearchRerankInfo{}, nil
+	}
+	var host string
+	if u, err := url.Parse(cfg.Decisions.BaseURL); err == nil {
+		host = u.Host
+	}
+	info := SearchRerankInfo{
+		Enabled:      true,
+		Model:        cfg.Decisions.Model,
+		EndpointHost: host,
+		Timeout:      searchRerankTimeout(cfg),
+	}
+	return relevance.Hook(dec, relevance.DefaultBudget()), info, nil
+}
+
+// logSearchRankerEnabled logs one Info line naming that search-path
+// reranking is enabled: the ranker, model, the base URL's host ONLY (never
+// any userinfo, path or query — T-04-01/T-04-07), the rerank timeout, and
+// which env var supplied the API key — never the key's value itself. This is
+// the operator-visible disclosure that every search now egresses candidate
+// text (T-04-01), mirroring logDeciderEnabled's shape.
+func logSearchRankerEnabled(cfg *config.Config) {
+	var host string
+	if u, err := url.Parse(cfg.Decisions.BaseURL); err == nil {
+		host = u.Host
+	}
+	apiKeySource := "none"
+	switch {
+	case cfg.Decisions.APIKey != "":
+		apiKeySource = "ENGRAM_DECISIONS_API_KEY"
+	case cfg.OpenAI.APIKey != "":
+		apiKeySource = "ENGRAM_OPENAI_API_KEY"
+	}
+	slog.Info("search reranking enabled",
+		"ranker", cfg.Search.Ranker,
+		"model", cfg.Decisions.Model,
+		"endpoint_host", host,
+		"rerank_timeout", searchRerankTimeout(cfg),
+		"api_key_source", apiKeySource,
+	)
 }
 
 // VerdictSettings configures the curation-verdict pass: Threshold is the

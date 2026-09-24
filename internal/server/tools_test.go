@@ -4,6 +4,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/jsonschema-go/jsonschema"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -27,6 +29,7 @@ import (
 	flag "github.com/spf13/pflag"
 	"go.opentelemetry.io/otel"
 
+	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/shortid"
 	"github.com/seanb4t/engram/internal/store"
@@ -5186,6 +5189,10 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	// provider is the documented off default, and this test asserts
 	// d.decider is nil on that path.
 	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "")
+	// Same isolation for the search-path ranker (plan 04-03): an empty
+	// ranker is the documented off default, and this test asserts
+	// d.rankHook is nil on that path.
+	t.Setenv("ENGRAM_SEARCH_RANKER", "")
 
 	loads := 0
 	orig := configLoad
@@ -5217,6 +5224,9 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	}
 	if d.decider != nil {
 		t.Error("buildDepsFromEnv with ENGRAM_DECISIONS_PROVIDER unset built a non-nil d.decider, want nil (DEC-01)")
+	}
+	if d.rankHook != nil {
+		t.Error("buildDepsFromEnv with ENGRAM_SEARCH_RANKER unset built a non-nil d.rankHook, want nil (D-01)")
 	}
 }
 
@@ -5272,6 +5282,293 @@ func TestBuildDepsFromEnvConstructsDecider(t *testing.T) {
 	if got := atomic.LoadInt64(&count); got != 0 {
 		t.Errorf("decisions server received %d requests during startup, want 0 (no startup probe)", got)
 	}
+}
+
+// TestBuildDepsFromEnvRankerDefaultIsInert proves T-04-01's core guarantee:
+// with ENGRAM_DECISIONS_PROVIDER=jev set (as consolidate would configure it)
+// but ENGRAM_SEARCH_RANKER left at its documented off default, buildDepsFromEnv
+// builds a non-nil d.decider but a nil d.rankHook, logs no "search reranking
+// enabled" line, and a search over seeded records makes ZERO requests to the
+// Decisions server and returns no relevance — a provider configured for
+// consolidate must never silently start reranking search results.
+func TestBuildDepsFromEnvRankerDefaultIsInert(t *testing.T) {
+	addr := storetest.Addr()
+	if addr == "" {
+		storetest.SkipOrFailNoQdrant(t)
+	}
+
+	var count int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt64(&count, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	var logBuf bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
+	t.Setenv("ENGRAM_QDRANT_ADDR", addr)
+	t.Setenv("ENGRAM_QDRANT_COLLECTION", testCollection("mem_ranker_default_inert_test"))
+	t.Setenv("ENGRAM_EMBED_DIM", "3")
+	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
+	t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
+	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "jev")
+	t.Setenv("ENGRAM_DECISIONS_BASE_URL", srv.URL+"/api")
+	t.Setenv("ENGRAM_DECISIONS_API_KEY", "k")
+	t.Setenv("ENGRAM_SEARCH_RANKER", "")
+
+	d, err := buildDepsFromEnv(nil, nil)
+	if err != nil {
+		t.Fatalf("buildDepsFromEnv: %v", err)
+	}
+	if d.decider == nil {
+		t.Fatal("d.decider = nil, want non-nil (ENGRAM_DECISIONS_PROVIDER=jev)")
+	}
+	if d.rankHook != nil {
+		t.Fatal("d.rankHook = non-nil, want nil (ENGRAM_SEARCH_RANKER unset)")
+	}
+	if strings.Contains(logBuf.String(), "search reranking enabled") {
+		t.Errorf("startup log contains %q, want no such line (ranker not configured)", "search reranking enabled")
+	}
+
+	// The embedder is real (built from ENGRAM_OPENAI_BASE_URL by
+	// buildDepsFromEnv); swap in the fake for the search call below so this
+	// test needs no live embeddings endpoint — buildDepsFromEnv's own wiring
+	// (rankHook/decider/single config load) is what this test proves, not
+	// the embedder.
+	d.em = fakeEmbedder{}
+
+	ctx := context.Background()
+	scope := "ranker-default-inert:project:test"
+	subj := store.Authenticated("actor-ranker-default-inert")
+	m := store.Memory{ID: "e5555555-0000-0000-0000-000000000001", Content: "default ranker stays inert", Scope: scope, Owner: "actor-ranker-default-inert", CreatedAt: timeNow()}
+	if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	t.Cleanup(func() { cleanupErr(t, "Delete "+m.ID, d.st.Delete(ctx, m.ID, subj)) })
+
+	hits, err := d.searchMemory(ctx, caller{Subj: subj}, coreSearchRequest{Scope: scope, Query: "default ranker stays inert", K: 5})
+	if err != nil {
+		t.Fatalf("searchMemory: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("searchMemory returned no hits")
+	}
+	for _, h := range hits {
+		if h.Relevance != nil {
+			t.Errorf("hit %s carries Relevance %v with the ranker unset, want nil", h.ID, *h.Relevance)
+		}
+	}
+	if got := atomic.LoadInt64(&count); got != 0 {
+		t.Errorf("Decisions server received %d requests during search, want 0", got)
+	}
+}
+
+// TestBuildDepsFromEnvRankerJev proves buildDepsFromEnv builds a non-nil
+// d.rankHook when ENGRAM_SEARCH_RANKER=jev is set alongside a provider, and
+// that constructing it makes no outbound call (no startup probe, mirroring
+// TestBuildDepsFromEnvConstructsDecider's decider assertion).
+func TestBuildDepsFromEnvRankerJev(t *testing.T) {
+	addr := storetest.Addr()
+	if addr == "" {
+		storetest.SkipOrFailNoQdrant(t)
+	}
+
+	var count int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt64(&count, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	t.Setenv("ENGRAM_QDRANT_ADDR", addr)
+	t.Setenv("ENGRAM_QDRANT_COLLECTION", testCollection("mem_ranker_jev_test"))
+	t.Setenv("ENGRAM_EMBED_DIM", "3")
+	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
+	t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
+	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "jev")
+	t.Setenv("ENGRAM_DECISIONS_BASE_URL", srv.URL+"/api")
+	t.Setenv("ENGRAM_DECISIONS_API_KEY", "k")
+	t.Setenv("ENGRAM_SEARCH_RANKER", "jev")
+	t.Setenv("ENGRAM_SEARCH_RERANK_TIMEOUT", "2s")
+
+	d, err := buildDepsFromEnv(nil, nil)
+	if err != nil {
+		t.Fatalf("buildDepsFromEnv: %v", err)
+	}
+	if d.rankHook == nil {
+		t.Fatal("d.rankHook = nil, want non-nil (ENGRAM_SEARCH_RANKER=jev)")
+	}
+	if got := atomic.LoadInt64(&count); got != 0 {
+		t.Errorf("Decisions server received %d requests during startup, want 0 (no startup probe)", got)
+	}
+}
+
+// TestBuildDepsFromEnvRejectsJevRankerWithoutProvider is hermetic (no Qdrant
+// needed): ENGRAM_SEARCH_RANKER=jev with ENGRAM_DECISIONS_PROVIDER unset
+// fails buildDepsFromEnv through loadAndValidate (Config.Validate) before any
+// store dial, naming ENGRAM_SEARCH_RANKER — mirrors
+// TestBuildDepsFromEnvRejectsUnknownProvider's fast-validation-error shape.
+func TestBuildDepsFromEnvRejectsJevRankerWithoutProvider(t *testing.T) {
+	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "")
+	t.Setenv("ENGRAM_SEARCH_RANKER", "jev")
+
+	_, err := buildDepsFromEnv(nil, nil)
+	if err == nil {
+		t.Fatal("buildDepsFromEnv with ENGRAM_SEARCH_RANKER=jev and no provider = nil error, want an error naming ENGRAM_SEARCH_RANKER")
+	}
+	if !strings.Contains(err.Error(), "ENGRAM_SEARCH_RANKER") {
+		t.Errorf("error %q, want it to name ENGRAM_SEARCH_RANKER", err)
+	}
+}
+
+// TestSearchRerankNoRetryAndTimeout proves D-09's search-path guarantees
+// through the real configured wiring (searchRankHook(cfg), never a hand-built
+// relevance.Hook): a provider failure costs exactly one request (no retry),
+// and a stalled provider is bounded by ENGRAM_SEARCH_RERANK_TIMEOUT — in
+// both cases the Connect search still succeeds, in the same order as a nil
+// hook, with no relevance attached (D-03's fallback, RANK-03).
+func TestSearchRerankNoRetryAndTimeout(t *testing.T) {
+	d := testDeps(t)
+	api := &engramAPI{d: d}
+	scope := "search-rerank-no-retry:project:test"
+	ctx := context.Background()
+	now := timeNow()
+	subj := store.Authenticated("actor-no-retry-timeout")
+
+	recA := store.Memory{
+		ID: "e6666666-0000-0000-0000-000000000001", Content: "alpha bravo charlie delta echo",
+		Scope: scope, Owner: "actor-no-retry-timeout", CreatedAt: now,
+	}
+	recB := store.Memory{
+		ID: "e6666666-0000-0000-0000-000000000002", Content: "foxtrot golf hotel india juliet",
+		Scope: scope, Owner: "actor-no-retry-timeout", CreatedAt: now,
+	}
+	records := []store.Memory{recA, recB}
+	for _, m := range records {
+		if err := d.st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", m.ID, err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, m := range records {
+			cleanupErr(t, "Delete "+m.ID, d.st.Delete(ctx, m.ID, subj))
+		}
+	})
+
+	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-no-retry-timeout"}})
+	protoIDs := func(ms []*engramv1.Memory) []string {
+		ids := make([]string, len(ms))
+		for i, m := range ms {
+			ids[i] = m.Id
+		}
+		return ids
+	}
+	const query = "alpha bravo charlie delta echo"
+
+	t.Run("503_single_attempt", func(t *testing.T) {
+		var reqCount atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			reqCount.Add(1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+
+		cfg := &config.Config{}
+		cfg.Decisions.Provider = "jev"
+		cfg.Decisions.BaseURL = srv.URL
+		cfg.Decisions.APIKey = "k"
+		cfg.Search.Ranker = "jev"
+		cfg.Search.RerankTimeout = "2s"
+		hook, err := searchRankHook(cfg)
+		if err != nil {
+			t.Fatalf("searchRankHook: %v", err)
+		}
+		d.rankHook = hook
+		t.Cleanup(func() { d.rankHook = nil })
+
+		withHook, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 5}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories (503 hook): %v", err)
+		}
+
+		d.rankHook = nil
+		withoutHook, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 5}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories (nil hook): %v", err)
+		}
+
+		gotIDs := protoIDs(withHook.Msg.Memories)
+		wantIDs := protoIDs(withoutHook.Msg.Memories)
+		if !slices.Equal(gotIDs, wantIDs) {
+			t.Fatalf("fallback order = %v, want nil-hook lexical order %v", gotIDs, wantIDs)
+		}
+		for _, m := range withHook.Msg.Memories {
+			if m.Relevance != nil {
+				t.Errorf("memory %s carries Relevance %v after a 503, want nil", m.Id, m.GetRelevance())
+			}
+		}
+		if got := reqCount.Load(); got != 1 {
+			t.Errorf("Decisions request count = %d, want exactly 1 (no retry)", got)
+		}
+	})
+
+	t.Run("stall_bounded_by_timeout", func(t *testing.T) {
+		release := make(chan struct{})
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			select {
+			case <-release:
+			case <-time.After(2 * time.Second):
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer func() {
+			close(release)
+			srv.Close()
+		}()
+
+		cfg := &config.Config{}
+		cfg.Decisions.Provider = "jev"
+		cfg.Decisions.BaseURL = srv.URL
+		cfg.Decisions.APIKey = "k"
+		cfg.Search.Ranker = "jev"
+		cfg.Search.RerankTimeout = "150ms"
+		hook, err := searchRankHook(cfg)
+		if err != nil {
+			t.Fatalf("searchRankHook: %v", err)
+		}
+		d.rankHook = hook
+		t.Cleanup(func() { d.rankHook = nil })
+
+		start := time.Now()
+		withHook, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 5}))
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatalf("Connect SearchMemories (stalled hook): %v", err)
+		}
+		if elapsed >= 1*time.Second {
+			t.Errorf("elapsed = %v, want under 1s (ENGRAM_SEARCH_RERANK_TIMEOUT=150ms not applied)", elapsed)
+		}
+
+		d.rankHook = nil
+		withoutHook, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 5}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories (nil hook): %v", err)
+		}
+
+		gotIDs := protoIDs(withHook.Msg.Memories)
+		wantIDs := protoIDs(withoutHook.Msg.Memories)
+		if !slices.Equal(gotIDs, wantIDs) {
+			t.Fatalf("fallback order = %v, want nil-hook lexical order %v", gotIDs, wantIDs)
+		}
+		for _, m := range withHook.Msg.Memories {
+			if m.Relevance != nil {
+				t.Errorf("memory %s carries Relevance %v after a stall, want nil", m.Id, m.GetRelevance())
+			}
+		}
+	})
 }
 
 // TestStoreAndEmbedderFromEnvNoEnsureLoadsConfigOnce pins the engram-mbnw

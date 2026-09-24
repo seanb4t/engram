@@ -100,9 +100,9 @@ type deps struct {
 	// rankHook is the optional Phase 4 search-path relevance scorer
 	// (relevance.Hook over a Jev client) threaded into every
 	// store.SearchOptions this deps builds for search_memory. nil unless
-	// the Jev search ranker is configured (plan 04-03's buildDepsFromEnv
-	// wiring) — a zero-value &deps{} test literal keeps today's order,
-	// byte-identically.
+	// ENGRAM_SEARCH_RANKER=jev — the searchRankHook resolver call below is
+	// its only production source (buildDepsFromEnv); a zero-value &deps{}
+	// test literal keeps today's order, byte-identically.
 	rankHook store.RankHook
 }
 
@@ -342,6 +342,13 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if dec != nil {
 		logDeciderEnabled(cfg)
 	}
+	hook, err := searchRankHook(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if hook != nil {
+		logSearchRankerEnabled(cfg)
+	}
 	return &deps{
 		st:               st,
 		em:               em,
@@ -352,6 +359,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		embedderIdentity: identity,
 		writeCaps:        memoryWriteCapsFromConfig(cfg),
 		decider:          dec,
+		rankHook:         hook,
 	}, nil
 }
 

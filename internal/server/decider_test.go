@@ -762,3 +762,254 @@ func TestDeciderFromEnv(t *testing.T) {
 		}
 	})
 }
+
+// TestSearchRerankTimeoutResolver proves searchRerankTimeout's resolution
+// table (D-09): 2s default on empty; an explicit valid value honored; 0,
+// negative and unparseable values all fall back to 2s.
+func TestSearchRerankTimeoutResolver(t *testing.T) {
+	cfg := &config.Config{}
+	if got := searchRerankTimeout(cfg); got != 2*time.Second {
+		t.Errorf("empty = %v, want 2s", got)
+	}
+	cfg.Search.RerankTimeout = "150ms"
+	if got := searchRerankTimeout(cfg); got != 150*time.Millisecond {
+		t.Errorf("150ms = %v, want 150ms", got)
+	}
+	for _, bad := range []string{"0", "-1s", "soon"} {
+		cfg.Search.RerankTimeout = bad
+		if got := searchRerankTimeout(cfg); got != 2*time.Second {
+			t.Errorf("%q = %v, want fallback 2s", bad, got)
+		}
+	}
+}
+
+// TestSearchRankHookFromConfig proves searchRankHook's D-01 gate: provider
+// jev with ranker lexical gives a nil hook (the ranker decides, never the
+// provider alone); ranker jev with provider jev gives a non-nil hook;
+// provider empty (even with ranker jev, a misconfiguration Config.Validate
+// normally rejects before this is reached in production) gives a nil hook
+// and no error.
+func TestSearchRankHookFromConfig(t *testing.T) {
+	t.Run("provider jev, ranker lexical gives nil hook", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Decisions.Provider = "jev"
+		cfg.Decisions.BaseURL = "https://example.invalid/api"
+		cfg.Search.Ranker = "lexical"
+
+		hook, err := searchRankHook(cfg)
+		if err != nil {
+			t.Fatalf("searchRankHook: %v", err)
+		}
+		if hook != nil {
+			t.Error("searchRankHook with ranker=lexical returned a non-nil hook, want nil")
+		}
+	})
+
+	t.Run("ranker jev gives non-nil hook", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Decisions.Provider = "jev"
+		cfg.Decisions.BaseURL = "https://example.invalid/api"
+		cfg.Search.Ranker = "jev"
+		cfg.Search.RerankTimeout = "2s"
+
+		hook, err := searchRankHook(cfg)
+		if err != nil {
+			t.Fatalf("searchRankHook: %v", err)
+		}
+		if hook == nil {
+			t.Error("searchRankHook with ranker=jev returned a nil hook, want non-nil")
+		}
+	})
+
+	t.Run("provider empty gives nil hook and no error", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Search.Ranker = "jev"
+
+		hook, err := searchRankHook(cfg)
+		if err != nil {
+			t.Fatalf("searchRankHook: %v", err)
+		}
+		if hook != nil {
+			t.Error("searchRankHook with an empty provider returned a non-nil hook, want nil")
+		}
+	})
+}
+
+// TestSearchRankerEnabledLogLine mirrors TestDeciderEnabledLogLine over the
+// same three key-source cases: one Info record "search reranking enabled"
+// carrying ranker, model, endpoint_host (host only), rerank_timeout and
+// api_key_source — the key values, userinfo, path and query never appear.
+func TestSearchRankerEnabledLogLine(t *testing.T) {
+	const base = "https://user:s3cret-userinfo@gateway.example/openrouter?x=1"
+
+	cases := []struct {
+		name       string
+		ownKey     string
+		openaiKey  string
+		wantSource string
+	}{
+		{"own key wins", "own-key-VALUE", "", "ENGRAM_DECISIONS_API_KEY"},
+		{"falls back to openai key", "", "openai-key-VALUE", "ENGRAM_OPENAI_API_KEY"},
+		{"neither set", "", "", "none"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			cfg := &config.Config{}
+			cfg.Decisions.Provider = "jev"
+			cfg.Decisions.BaseURL = base
+			cfg.Decisions.Model = "typesafe/jev-1.13"
+			cfg.Decisions.APIKey = tc.ownKey
+			cfg.OpenAI.APIKey = tc.openaiKey
+			cfg.Search.Ranker = "jev"
+			cfg.Search.RerankTimeout = "2s"
+
+			logSearchRankerEnabled(cfg)
+
+			out := buf.String()
+			for _, forbidden := range []string{"s3cret-userinfo", "own-key-VALUE", "openai-key-VALUE", "/openrouter", "x=1"} {
+				if strings.Contains(out, forbidden) {
+					t.Errorf("log output contains forbidden substring %q: %s", forbidden, out)
+				}
+			}
+
+			var found bool
+			for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+				if line == "" {
+					continue
+				}
+				var rec map[string]any
+				if err := json.Unmarshal([]byte(line), &rec); err != nil {
+					t.Fatalf("unmarshal log line %q: %v", line, err)
+				}
+				if rec["msg"] != "search reranking enabled" {
+					continue
+				}
+				found = true
+				if rec["ranker"] != "jev" {
+					t.Errorf("ranker = %v, want jev", rec["ranker"])
+				}
+				if rec["endpoint_host"] != "gateway.example" {
+					t.Errorf("endpoint_host = %v, want gateway.example", rec["endpoint_host"])
+				}
+				if rec["api_key_source"] != tc.wantSource {
+					t.Errorf("api_key_source = %v, want %v", rec["api_key_source"], tc.wantSource)
+				}
+				if _, ok := rec["rerank_timeout"]; !ok {
+					t.Error("rerank_timeout missing from log record")
+				}
+			}
+			if !found {
+				t.Fatal("no 'search reranking enabled' record found in log output")
+			}
+		})
+	}
+}
+
+// TestDeciderFromConfigStillRetries proves the consolidate-path client
+// deciderFromConfig builds is UNCHANGED by this plan: against a
+// 503-then-200 handler it makes two requests and succeeds — the search
+// path's dedicated no-retry client (searchDeciderFromConfig) never affects
+// this one (D-09).
+func TestDeciderFromConfigStillRetries(t *testing.T) {
+	var n int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if atomic.AddInt32(&n, 1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(tracerNoulResponse))
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{}
+	cfg.Decisions.Provider = "jev"
+	cfg.Decisions.BaseURL = srv.URL
+
+	d, err := deciderFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("deciderFromConfig: %v", err)
+	}
+
+	req := decide.Request{
+		State: decide.State{"a": "x"},
+		Questions: map[string]decide.Question{
+			"same_subject": decide.Noul("is it true", "true", "false"),
+		},
+	}
+	if _, err := d.Decide(context.Background(), req); err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	if got := atomic.LoadInt32(&n); got != 2 {
+		t.Errorf("requests = %d, want 2 (one retry)", got)
+	}
+}
+
+// TestSearchRankHookFromEnv proves the retrieval eval's wiring seam (D-02):
+// provider unset gives a nil hook and Enabled false; provider set (ranker
+// lexical, the eval measures the Jev row regardless) gives a non-nil hook,
+// Enabled true, EndpointHost host-only and Timeout 2s; one config load per
+// call.
+func TestSearchRankHookFromEnv(t *testing.T) {
+	t.Run("provider unset", func(t *testing.T) {
+		clearVerdictEnv(t)
+		t.Setenv("ENGRAM_SEARCH_RANKER", "")
+
+		loads := 0
+		orig := configLoad
+		configLoad = func(flags *flag.FlagSet) (*config.Config, error) {
+			loads++
+			return orig(flags)
+		}
+		t.Cleanup(func() { configLoad = orig })
+
+		hook, info, err := SearchRankHookFromEnv()
+		if err != nil {
+			t.Fatalf("SearchRankHookFromEnv: %v", err)
+		}
+		if hook != nil {
+			t.Error("SearchRankHookFromEnv with provider unset returned a non-nil hook, want nil")
+		}
+		if info.Enabled {
+			t.Error("SearchRankHookFromEnv with provider unset returned Enabled=true, want false")
+		}
+		if loads != 1 {
+			t.Errorf("SearchRankHookFromEnv loaded config %d times, want exactly 1", loads)
+		}
+	})
+
+	t.Run("provider set, ranker lexical", func(t *testing.T) {
+		clearVerdictEnv(t)
+		t.Setenv("ENGRAM_DECISIONS_PROVIDER", "jev")
+		t.Setenv("ENGRAM_DECISIONS_BASE_URL", "https://user:secret@example.invalid:8443/openrouter?k=v")
+		t.Setenv("ENGRAM_DECISIONS_MODEL", "typesafe/jev-1.13")
+		t.Setenv("ENGRAM_SEARCH_RANKER", "lexical")
+		t.Setenv("ENGRAM_SEARCH_RERANK_TIMEOUT", "")
+
+		hook, info, err := SearchRankHookFromEnv()
+		if err != nil {
+			t.Fatalf("SearchRankHookFromEnv: %v", err)
+		}
+		if hook == nil {
+			t.Fatal("SearchRankHookFromEnv with provider set returned a nil hook, want non-nil (measures the Jev row regardless of ranker)")
+		}
+		if !info.Enabled {
+			t.Error("info.Enabled = false, want true")
+		}
+		if info.EndpointHost != "example.invalid:8443" {
+			t.Errorf("info.EndpointHost = %q, want %q", info.EndpointHost, "example.invalid:8443")
+		}
+		if info.Timeout != 2*time.Second {
+			t.Errorf("info.Timeout = %v, want 2s", info.Timeout)
+		}
+		if info.Model != "typesafe/jev-1.13" {
+			t.Errorf("info.Model = %q, want %q", info.Model, "typesafe/jev-1.13")
+		}
+	})
+}
