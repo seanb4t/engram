@@ -147,20 +147,25 @@ func TestCurationEval(t *testing.T) {
 	t.Run("committed", func(t *testing.T) {
 		preds := evaluate(ctx, dec, syntheticPairs, settings.Threshold, settings.StateChars)
 
-		scored, correct := 0, 0
+		scored := 0
 		for _, p := range preds {
-			if p.v.Failed() {
-				continue
-			}
-			scored++
-			if p.v.Relation == p.gold {
-				correct++
+			if !p.v.Failed() {
+				scored++
 			}
 		}
 		if scored == 0 {
 			t.Fatal("no verdict was scored")
 		}
-		accuracy := float64(correct) / float64(scored)
-		t.Logf("CURATION-EVAL | committed pairs=%d scored=%d accuracy=%.3f", len(preds), scored, accuracy)
+
+		for _, line := range formatReport("committed", preds, settings.Threshold) {
+			t.Log(line)
+		}
+
+		// D-03's single hard gate: the threshold must be validated on the
+		// committed corpus, or `task eval:curation` must exit non-zero.
+		_, _, result := thresholdGate(preds, settings.Threshold)
+		if result != "PASS" {
+			t.Errorf("gate result = %s, want PASS (threshold %.3f not validated on the committed corpus)", result, settings.Threshold)
+		}
 	})
 }
