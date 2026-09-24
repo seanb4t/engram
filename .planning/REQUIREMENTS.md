@@ -28,7 +28,7 @@ paraphrase regression (#605) is fixed.
 
 ### Curation verdicts
 
-- [ ] **CUR-01**: Operator running `engram spine-review consolidate` with decisions enabled sees, per candidate pair, a relation verdict (`duplicate` / `contradicts` / `updates` / `related` / `unrelated`), its probability, and a same-subject probability in `--output json` and the text view.
+- [x] **CUR-01**: Operator running `engram spine-review consolidate` with decisions enabled sees, per candidate pair, a relation verdict (`duplicate` / `contradicts` / `updates` / `related` / `unrelated`), its probability, and a same-subject probability in `--output json` and the text view.
 - [x] **CUR-02**: Verdicts below a configurable confidence threshold (default 0.9) are marked needs-review, and consolidate never mutates a record because of a verdict.
 - [ ] **CUR-03**: The relation question set (including `updates`) is measured on a labeled pair eval that commits no verbatim spine content, reporting accuracy by confidence bucket and a Brier score.
 - [x] **CUR-04**: Operator running `consolidate` with neither `--scope` nor `--all-scopes` gets the scope-or-all-scopes rule error instead of a silent zero-candidate report (#508).
@@ -85,7 +85,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | DEC-04 | Phase 2 | Complete |
 | DEC-05 | Phase 2 | Complete |
 | DEC-06 | Phase 2 | Complete |
-| CUR-01 | Phase 3 | Pending |
+| CUR-01 | Phase 3 | Complete |
 | CUR-02 | Phase 3 | Complete |
 | CUR-03 | Phase 3 | Pending |
 | CUR-04 | Phase 3 | Complete |

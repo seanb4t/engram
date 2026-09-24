@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 3
 current_phase_name: Curation Verdicts
 status: executing
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-09-24T03:51:08.582Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-09-24T04:23:53.384Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 3 execution started
-state_head: b70352a9e0273d3af70d0bfb44d242eb6725b289
+state_head: cb33f7bbfdb9495d545804d68f6b81f3f2da7cb5
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
   percent: 40
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09
 ## Current Position
 
 Phase: 3 (Curation Verdicts) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-09-23 — Phase 3 execution started
 
@@ -399,6 +399,8 @@ milestone needs in working memory.
 - [Phase 3]: 03-05: verdictSettings copies Provider/Model/EndpointHost from cfg.Decisions unconditionally (no provider gate) — the disclosure line needs them regardless of which knob path resolved Threshold/StateChars
 - [Phase 3]: 03-05: corrected a stale per-plan commit ledger (.git/gsd-plan-head-before-03-05), same class as 03-03's documented issue — verified true pre-plan HEAD via ad4e29b1^ == d13da657 before recording actuals
 - [Phase 3]: 03-05: CUR-02 marked complete via the shared-ID gate (this plan + 03-02 were its only declaring plans); CUR-01 stays unflipped pending sibling plan 03-06
+- [Phase 3]: [Phase 3] 03-06: WR-02 closed structurally via registerRowFieldRenderer + a depth-unbounded generic sanitizing flatten (flattenNested), not a verdict-only special case — every future nested row field renders sanitized by construction.
+- [Phase 3]: [Phase 3] 03-06: consolidate_docs_test.go's positive control drops --no-verdicts (not related/unrelated) to avoid a substring false-negative, since 'related' is a literal substring of 'unrelated'.
 
 ### Pending Todos
 
@@ -490,8 +492,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T03:51:07.762Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-09-24T04:23:22.277Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -677,6 +679,7 @@ Resume file: None
 | Phase 03 P03 | 10 min | 3 tasks | 11 files |
 | Phase 03 P04 | resumed session | 3 tasks | 6 files |
 | Phase 03 P05 | 49min | 3 tasks | 7 files |
+| Phase 03-curation-verdicts P06 | 23min | 3 tasks | 7 files |
 
 ## Operator Next Steps
 
