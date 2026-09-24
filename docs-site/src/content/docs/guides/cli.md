@@ -249,10 +249,10 @@ named tier has at least one entry.
 reports ranked near-duplicate candidate pairs — `(record A, record B,
 score)` rows sorted by score, highest first — using each record's
 **already-stored vector**: no text is re-embedded and no vector ever
-crosses the wire from engram to Qdrant. `--scope` and `--all-scopes` are
-mutually exclusive; supplying neither sweeps a well-defined empty result
-(no record has a literally-empty scope), never an accidental whole-spine
-sweep.
+crosses the wire from engram to Qdrant. Exactly one of `--scope` or
+`--all-scopes` is required: they are mutually exclusive, and supplying
+neither is rejected with exit status `2`, like `spine-review scan`,
+`spine-review verify` and `summarize-missing` (#508).
 
 This command **never merges, never mutates, and never labels a pair a
 "duplicate."** It ranks candidates and stops — deciding whether two
