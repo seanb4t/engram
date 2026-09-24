@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -756,6 +758,106 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil
+	}
+}
+
+// operatorCommandsListHeading is the exact markdown heading
+// extractOperatorCommandsList scans for.
+const operatorCommandsListHeading = "### Operator commands"
+
+// operatorCommandsTableStart matches the first line of the table that
+// follows §Operator commands' prose list — the extraction's lower bound,
+// alongside nextHeadingPattern's next "### " heading (whichever comes
+// first). Declared (?m) so it matches a line start anywhere in the
+// document, not only doc's own start.
+var operatorCommandsTableStart = regexp.MustCompile(`(?m)^\|`)
+
+// extractOperatorCommandsList returns the §Operator commands prose list —
+// from operatorCommandsListHeading up to whichever comes first: the
+// table's own first "|"-prefixed line, or the next "### " heading (reusing
+// consolidate_docs_test.go's nextHeadingPattern) — or "" when the heading
+// itself is absent. A pure function, mirroring
+// extractConsolidateSection's single-extraction discipline: this is the
+// same helper TestCLIGuideOperatorCommandsListsEveryOperatorCommand reads,
+// so no second, drifting extraction can exist.
+func extractOperatorCommandsList(doc string) string {
+	start := strings.Index(doc, operatorCommandsListHeading)
+	if start == -1 {
+		return ""
+	}
+	rest := doc[start+len(operatorCommandsListHeading):]
+
+	end := len(rest)
+	if loc := operatorCommandsTableStart.FindStringIndex(rest); loc != nil && loc[0] < end {
+		end = loc[0]
+	}
+	if loc := nextHeadingPattern.FindStringIndex(rest); loc != nil && loc[0] < end {
+		end = loc[0]
+	}
+	return rest[:end]
+}
+
+// missingOperatorCommandMentions reports which of keys are NOT named in
+// list, and returns them sorted. A key with no space (a top-level command,
+// e.g. "migrate") is present only if the backtick-wrapped key itself
+// occurs in list — this is what keeps "migrate" from being satisfied by
+// "migrate-remap-owner" (a different command whose name merely starts
+// with the same substring) or by "migrate status" (a DIFFERENT, nested
+// command). A key of the form "<group> <leaf>" (e.g. "spine-review scan")
+// is present if EITHER the full backtick-wrapped key occurs, OR both the
+// backtick-wrapped "engram <group>" and the backtick-wrapped leaf occur
+// separately — the guide's existing prose names the spine-review leaves
+// this second way ("every `engram spine-review` leaf (currently `scan`,
+// ...)"). A pure function.
+func missingOperatorCommandMentions(list string, keys []string) []string {
+	var missing []string
+	for _, key := range keys {
+		group, leaf, nested := strings.Cut(key, " ")
+		full := "`" + key + "`"
+		if strings.Contains(list, full) {
+			continue
+		}
+		if nested {
+			engramGroup := "`engram " + group + "`"
+			backtickedLeaf := "`" + leaf + "`"
+			if strings.Contains(list, engramGroup) && strings.Contains(list, backtickedLeaf) {
+				continue
+			}
+		}
+		missing = append(missing, key)
+	}
+	sort.Strings(missing)
+	return missing
+}
+
+// TestCLIGuideOperatorCommandsListsEveryOperatorCommand is the docs gate
+// #503/D-06 adds: the §Operator commands list must name every command
+// operatorCommands() returns, deriving the required set from the LIVE
+// cobra tree rather than a hand-typed list, so a future operator command
+// cannot go unmentioned the way migrate/migrate status/migrate
+// revert/setup did.
+func TestCLIGuideOperatorCommandsListsEveryOperatorCommand(t *testing.T) {
+	data, err := os.ReadFile(cliGuideRelPath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", cliGuideRelPath, err)
+	}
+
+	list := extractOperatorCommandsList(string(data))
+	if list == "" {
+		t.Fatalf("%s: %q section not found (or extraction returned empty)", cliGuideRelPath, operatorCommandsListHeading)
+	}
+
+	cmds := operatorCommands()
+	if len(cmds) == 0 {
+		t.Fatal("the live operator command tree is empty — zero-applicability guard tripped, cannot derive a required set")
+	}
+	keys := make([]string, 0, len(cmds))
+	for _, cmd := range cmds {
+		keys = append(keys, commandKey(cmd))
+	}
+
+	if missing := missingOperatorCommandMentions(list, keys); len(missing) > 0 {
+		t.Errorf("%s %q list is missing: %v (add each as a backticked name)", cliGuideRelPath, operatorCommandsListHeading, missing)
 	}
 }
 
