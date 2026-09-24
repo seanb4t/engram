@@ -350,7 +350,16 @@ var operations = []Operation{
 		// pairs using each record's already-stored vector — never a
 		// mutating Qdrant RPC, never a merge, never a mutation on any path
 		// (T-03-16's mitigation). Idempotent: repeating the same sweep
-		// against unchanged data reports the same ranked pairs.
+		// against unchanged data reports the same ranked pairs. Plan 03-05:
+		// when ENGRAM_DECISIONS_PROVIDER is configured (default off, and
+		// suppressible per-run via --no-verdicts), the optional advisory
+		// verdict pass reads each candidate's stored summary and content
+		// head and sends them to that configured decisions provider — the
+		// row's ONLY outbound network effect — and writes nothing back to
+		// Qdrant or anywhere else. A verdict's probabilities may vary run to
+		// run (the provider's own non-determinism) without any change to
+		// this classification's inputs, so ReadOnly/Destructive:false/
+		// Idempotent/OpenWorld:false all still hold exactly as before.
 		MCPTool: "", CLICommand: "spine-review consolidate",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},

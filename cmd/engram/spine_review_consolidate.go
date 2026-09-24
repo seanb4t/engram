@@ -114,14 +114,32 @@ func parseVerdictThreshold(v string) (set bool, threshold float64, err error) {
 // Read-only by construction — it never issues a mutating Qdrant RPC
 // (T-03-16's mitigation) — and Subject-less like every other operator-tier
 // command on this binary. Never clusters, never applies a default
-// threshold, never labels a pair a "duplicate": the report ranks
+// threshold, never labels a pair a "duplicate": the structural report ranks
 // candidates and stops, per REQ-near-duplicate-report's transparency
 // requirement — deciding whether two records are the same fact is a
 // judgment the operator or a future semantic skill makes, not this
-// command.
+// command. When ENGRAM_DECISIONS_PROVIDER is configured, each pair ALSO
+// gets an advisory relation verdict (D-04..D-11, plan 03-05): a nested
+// verdict object attached to the candidate, never a label on the
+// candidate itself, never acted on, and never able to change this
+// command's exit status. See the Long text below for the full contract.
 var spineReviewConsolidateCmd = &cobra.Command{
 	Use:   "consolidate",
 	Short: "Report ranked near-duplicate candidate pairs across the memory spine",
+	Long: "consolidate ranks near-duplicate candidate pairs across the memory spine by each record's already-stored\n" +
+		"vector cosine score. It never merges, mutates, clusters, or labels a pair a \"duplicate\" — deciding whether\n" +
+		"two records are the same fact is a judgment the operator or a future semantic skill makes, not this command.\n" +
+		"One of --scope or --all-scopes is required.\n" +
+		"\n" +
+		"When ENGRAM_DECISIONS_PROVIDER is set (default off), each candidate pair ALSO gets an advisory relation\n" +
+		"verdict: duplicate, contradicts, updates, related or unrelated, with a full probability distribution and a\n" +
+		"same-subject probability. Computed by sending both records' summary and up to\n" +
+		"ENGRAM_DECISIONS_VERDICT_STATE_CHARS characters of content (default 1500) to that provider — one request per\n" +
+		"pair. A verdict whose relation probability falls below ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9, or\n" +
+		"--verdict-threshold for this run) is marked needs_review. --no-verdicts skips the pass entirely: no record\n" +
+		"content is sent and no verdict objects appear. A failed verdict request is reported per pair (its class, never\n" +
+		"a guess) and never changes this command's exit status. Verdicts are advisory only: consolidate never merges or mutates a record because of one.\n" +
+		"JSON is the stable contract; text is a rendered view of it.",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := requireSweepScope(spineConsolidateScope, spineConsolidateAllScopes); err != nil {
 			return err
