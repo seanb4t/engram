@@ -520,7 +520,7 @@ Plans:
   4. A test covers a record inserted mid-sweep whose id sorts below the migrate cursor
   5. `docs-site` `guides/cli.md` lists `migrate`, `migrate status`, and `migrate revert` among the operator commands
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 **Wave 1**
@@ -529,7 +529,7 @@ Plans:
 - [x] 05-02-PLAN.md — `TestViewFieldsBareNestedObject` pins `viewFields`' bare nested-object branch (and its array-of-arrays sibling) with coverage evidence; an empty nested object renders zero rows (D-01; OPS-02, #504)
 - [x] 05-03-PLAN.md — `ParsePlanKeyLinks` skips fieldless items while the satisfiability scanner still reports them as `malformed` through an item-level parse (D-04; OPS-03, #502)
 - [x] 05-04-PLAN.md — `TestMigrateBelowCursorInsertConverges`: a mid-sweep insert below the proven in-pass cursor, where an ordinary write needs no work and a below-target record converges on a later pass (D-05; OPS-04, #501)
-- [ ] 05-05-PLAN.md — a docs gate derived from `operatorCommands()`, then `guides/cli.md` lists `migrate`, `migrate status`, `migrate revert` and `setup` (D-06; OPS-05, #503)
+- [x] 05-05-PLAN.md — a docs gate derived from `operatorCommands()`, then `guides/cli.md` lists `migrate`, `migrate status`, `migrate revert` and `setup` (D-06; OPS-05, #503)
 
 ## Progress
 

@@ -52,7 +52,7 @@ paraphrase regression (#605) is fixed.
 - [x] **OPS-02**: The bare nested-object branch in `viewFields` is covered by a test, or removed if unreachable (#504).
 - [x] **OPS-03**: `ParsePlanKeyLinks` emits no empty key-link for a fieldless list item, matching its doc comment (#502).
 - [x] **OPS-04**: A test covers a record inserted mid-sweep whose id sorts below the migrate cursor (#501).
-- [ ] **OPS-05**: `docs-site` `guides/cli.md` lists `migrate`, `migrate status` and `migrate revert` among the operator commands (#503).
+- [x] **OPS-05**: `docs-site` `guides/cli.md` lists `migrate`, `migrate status` and `migrate revert` among the operator commands (#503).
 
 ## Future Requirements
 
@@ -100,7 +100,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | OPS-02 | Phase 5 | Complete |
 | OPS-03 | Phase 5 | Complete |
 | OPS-04 | Phase 5 | Complete |
-| OPS-05 | Phase 5 | Pending |
+| OPS-05 | Phase 5 | Complete |
 
 **Coverage:**
 

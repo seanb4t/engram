@@ -4,17 +4,17 @@ milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
 current_phase: 5
 current_phase_name: Operator Correctness
-status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-09-24T16:57:17.536Z"
+status: verifying
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-09-24T17:04:07.378Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 5 execution started
-state_head: 39ef398f0721ab8f3ed7d56ec8cd7e294fce055c
+state_head: 102c87f01a484106e93ddefe5eef4fd8c681743c
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 35
-  completed_plans: 34
+  completed_plans: 35
   percent: 80
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-24 after Phase 4 of milestone 2026-09
 
 Phase: 5 (Operator Correctness) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-24 — Phase 5 execution started
 
 ## Deferred Items
@@ -421,6 +421,7 @@ milestone needs in working memory.
 - [Phase 5]: D-01 resolved to keep-and-pin: viewFields' bare nested-object branch is reached by construction (any-typed doc param), even though no shipped report field reaches it today; verified via before/after coverage profile.
 - [Phase 5]: The RED-exposed empty-nested-object defect (whitespace-only line) is fixed at the same branch the pin test covers, matching the existing empty-array zero-rows precedent.
 - [Phase 5]: D-04 (05-03): ParsePlanKeyLinks skips fieldless key_links items; ScanPlansWithStats reads a new unexported parsePlanKeyLinkItems directly so the satisfiability gate keeps reporting fieldless/prose entries as ShapeMalformed (#502's flush()-drop fix was not used, would reopen the no-op-gate hole)
+- [Phase 5]: D-06: guides/cli.md operator-command list names migrate/migrate status/migrate revert (linked to /guides/migrate/) and setup, gated by TestCLIGuideOperatorCommandsListsEveryOperatorCommand deriving the required set from operatorCommands()
 
 ### Pending Todos
 
@@ -514,8 +515,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T16:57:17.480Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-09-24T17:04:07.314Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -716,6 +717,7 @@ Resume file: None
 | Phase 05 P02 | 6min | 2 tasks | 2 files |
 | Phase 05 P03 | 6min | 1 tasks | 2 files |
 | Phase 05 P04 | 15min | 1 tasks | 1 files |
+| Phase 05 P05 | 20min | 1 tasks | 2 files |
 
 ## Operator Next Steps
 
