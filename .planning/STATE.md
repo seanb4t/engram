@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 4
 current_phase_name: Jev Reranker & Per-Hit Relevance Signal
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-09-24T14:50:22.096Z"
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-09-24T15:02:26.804Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 4 execution started
-state_head: 963df2c3194bcffa0ee851807331ab5826110164
+state_head: 77644d56e776f094403871971fa6ba63413677c6
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 35
-  completed_plans: 25
+  completed_plans: 26
   percent: 60
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-24 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (Jev Reranker & Per-Hit Relevance Signal) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
 Last activity: 2026-09-24 — Phase 4 execution started
 
@@ -410,6 +410,9 @@ milestone needs in working memory.
 - [Phase 4]: Task 2 RED-first closed D-03's malformed-answer gap: FromResponse now rejects NaN/+/-Inf and out-of-[0,1] probabilities via math.IsNaN/IsInf, mapped to the existing ErrDecisionMalformedResponse Kind.
 - [Phase 4]: searchDeciderFromConfig gates on Decisions.Provider (not Search.Ranker) so SearchRankHookFromEnv can serve the retrieval eval whenever a provider is configured, regardless of ranker (D-02)
 - [Phase 4]: searchRankHook returns a plain nil (not a no-op relevance.Hook wrapper) when the underlying decider is nil
+- [Phase 4]: recallView is a hand-written allow-list; Relevance follows the AccessCount/LastAccessedAt pattern, added to both the struct and toRecallView
+- [Phase 4]: renderMemoryTable's RELEVANCE column is data-derived (withScore AND any memory has non-nil Relevance), never flag-derived, keeping a lexical-only response byte-identical
+- [Phase 4]: d.rankHook is directly settable from same-package _test.go files for scripted-hook substitution in parity tests, no production test seam needed
 
 ### Pending Todos
 
@@ -502,8 +505,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T14:50:22.058Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-09-24T15:02:26.766Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -695,6 +698,7 @@ Resume file: None
 | Phase 04 P01 | 18min | 2 tasks | 21 files |
 | Phase 04-jev-reranker-per-hit-relevance-signal P02 | 10min | 2 tasks | 2 files |
 | Phase 04 P03 | 16min | 3 tasks | 12 files |
+| Phase 04 P04 | 20min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 
