@@ -177,6 +177,8 @@ and the equivalent wording in the CLI `Long` help text, `docs-site/guides/cli.md
 `docs-site/guides/configure.md`'s "What leaves your deployment" prose (leave the already-correct
 table row at `configure.md:214` as the reference wording).
 
+**Status:** Fixed in 0d15d0b5
+
 ## Info
 
 ### IN-01: Relation names duplicated as string literals outside `internal/verdict`
