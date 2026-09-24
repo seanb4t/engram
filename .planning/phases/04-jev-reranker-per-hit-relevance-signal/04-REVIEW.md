@@ -182,8 +182,6 @@ shapers, which is the kind of asymmetry that stops being harmless the moment
 either side changes (e.g. a future optimization that reuses/pools
 `store.Memory` values, or writes back through the pointer in place).
 **Fix:** For consistency with `memoryToProto` and the documented invariant,
-
-**Status:** Fixed in 600e3443
 copy the value in `toRecallView` rather than aliasing the pointer:
 ```go
 var relevance *float64
@@ -193,6 +191,8 @@ if m.Relevance != nil {
 }
 // ... Relevance: relevance,
 ```
+
+**Status:** Fixed in 600e3443
 
 ---
 
