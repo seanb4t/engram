@@ -89,14 +89,21 @@ type deps struct {
 	writeCaps memoryWriteCaps
 	// decider is the typed-decision backend (internal/decide.Decider). nil
 	// unless ENGRAM_DECISIONS_PROVIDER is set — decided once in
-	// buildDepsFromEnv through deciderFromConfig (D-01). This phase (02-05)
-	// adds no caller of decider.Decide/DecideMany: Phase 4's search_memory
-	// reranker is the first consumer that reads this field. Per the
-	// decide.Decider contract, a decision failure never fails the handler
-	// that asked — every caller treats an error as "no decision" and
-	// continues, never branching on decider being present as a correctness
-	// requirement.
+	// buildDepsFromEnv through deciderFromConfig (D-01). The search path
+	// uses its own dedicated hook (rankHook below, D-09) built over a
+	// separate no-retry client, so decider itself still has no search
+	// consumer. Per the decide.Decider contract, a decision failure never
+	// fails the handler that asked — every caller treats an error as "no
+	// decision" and continues, never branching on decider being present as
+	// a correctness requirement.
 	decider decide.Decider
+	// rankHook is the optional Phase 4 search-path relevance scorer
+	// (relevance.Hook over a Jev client) threaded into every
+	// store.SearchOptions this deps builds for search_memory. nil unless
+	// the Jev search ranker is configured (plan 04-03's buildDepsFromEnv
+	// wiring) — a zero-value &deps{} test literal keeps today's order,
+	// byte-identically.
+	rankHook store.RankHook
 }
 
 // memoryWriteCaps holds the always-enforced memory content/tags write
@@ -1916,6 +1923,7 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 		IncludeArchived:   req.IncludeArchived,
 		IncludeSuperseded: req.IncludeSuperseded,
 		IncludeScheduled:  req.IncludeScheduled,
+		RankHook:          d.rankHook,
 	})
 }
 

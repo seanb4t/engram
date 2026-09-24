@@ -4,6 +4,8 @@
 package store
 
 import (
+	"context"
+	"math"
 	"sort"
 	"strings"
 )
@@ -121,6 +123,89 @@ func RerankHits(query string, hits []Memory, k int) []Memory {
 // is the pin that must be updated deliberately, never silently.
 func rankCandidates(query string, hits []Memory, k int) []Memory {
 	return RerankHits(query, hits, k)
+}
+
+// RankHook optionally scores per-id relevance of the lexically ordered
+// CandidateK pool SearchReranked already fetched. It is built from
+// primitive types only (context, string, []Memory) so internal/store never
+// imports internal/decide — the seam Phase 4's Jev reranker plugs into
+// (RANK-03, D-08). A nil map or a non-nil error both mean "no scores";
+// RankWithHook/applyRankHook fall back to the plain lexical order in either
+// case, never propagating the error to the caller (D-03).
+type RankHook func(ctx context.Context, query string, hits []Memory) (map[string]float64, error)
+
+// applyRelevance returns a NEW slice built from hits, stable-sorted by
+// relevance descending with no secondary key, when rel carries a finite
+// value in [0, 1] for EVERY hit's ID (extra map keys are ignored); ties
+// (and, since this only runs on a fully-covering map, there are no misses)
+// keep hits' current order — never a secondary tie-break that could
+// override D-03's "ties keep lexical order" contract. On any other rel
+// shape it returns (nil, false) and hits is left completely untouched: no
+// element of hits is read into the returned slice, no Relevance pointer on
+// any hits element is set. Every returned element's Relevance points at a
+// freshly allocated float64 — never at a location inside rel or hits.
+func applyRelevance(hits []Memory, rel map[string]float64) ([]Memory, bool) {
+	if rel == nil {
+		return nil, false
+	}
+	for _, h := range hits {
+		v, ok := rel[h.ID]
+		if !ok || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 1 {
+			return nil, false
+		}
+	}
+	out := make([]Memory, len(hits))
+	copy(out, hits)
+	for i := range out {
+		v := rel[out[i].ID]
+		out[i].Relevance = &v
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return *out[i].Relevance > *out[j].Relevance
+	})
+	return out, true
+}
+
+// applyRankHook is SearchReranked's post-lexical-order step: ordered is
+// returned unchanged when hook is nil or ordered is empty — the hook is
+// NEVER called for an empty pool. Otherwise the hook runs exactly once;
+// its result is applied via applyRelevance when accepted, else ordered is
+// returned unchanged (D-03's fallback — a hook error or rejected map never
+// fails the surrounding search).
+func applyRankHook(ctx context.Context, query string, ordered []Memory, hook RankHook) []Memory {
+	if hook == nil || len(ordered) == 0 {
+		return ordered
+	}
+	rel, err := hook(ctx, query, ordered)
+	if err != nil || rel == nil {
+		return ordered
+	}
+	ranked, ok := applyRelevance(ordered, rel)
+	if !ok {
+		return ordered
+	}
+	return ranked
+}
+
+// RankWithHook is SearchReranked's whole rank step, and the function the
+// retrieval eval's Jev row calls too — so the two paths cannot drift apart.
+// A nil hook returns rankCandidates(query, hits, k), the identical call
+// SearchReranked made before hooks existed (byte-identical default, D-05
+// unaffected). A non-nil hook first ranks the WHOLE pool via
+// rankCandidates(query, hits, len(hits)) — never just k (D-04) — applies
+// the hook over that full pool, and truncates to k only afterward (k <= 0
+// keeps every hit, matching rankCandidates/RerankHits' own truncation
+// rule).
+func RankWithHook(ctx context.Context, query string, hits []Memory, k int, hook RankHook) []Memory {
+	if hook == nil {
+		return rankCandidates(query, hits, k)
+	}
+	ordered := rankCandidates(query, hits, len(hits))
+	ranked := applyRankHook(ctx, query, ordered, hook)
+	if k <= 0 || k >= len(ranked) {
+		return ranked
+	}
+	return ranked[:k]
 }
 
 // VectorOrder is the first-stage vector order with a deterministic tie-break:

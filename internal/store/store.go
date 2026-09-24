@@ -282,6 +282,14 @@ type Memory struct {
 	// returned it (higher = closer). Set only on Search results; zero on
 	// list/get. Lets callers see how close a near-miss ranked (GH#261).
 	Score float32 `json:"score,omitempty"`
+	// Relevance is the Jev decision-provider's P(this record answers the
+	// query) (Phase 4, RANK-03/RANK-04/D-05/D-08), transient like Score:
+	// set only when SearchReranked's RankHook ran and its map was accepted
+	// for this hit — never by the payload builder, never persisted to
+	// Qdrant. A pointer (not a bare float64) so a genuine near-zero
+	// "no-answer" value still serializes under omitempty, distinguishable
+	// from "not scored" (nil).
+	Relevance *float64 `json:"relevance,omitempty"`
 	// EmbedderIdentity is a server-set audit stamp (config.EmbedderIdentity)
 	// of the embedder config that produced this record's stored document
 	// vector, so a future reindex-boundary audit can detect mixed-embedding-
@@ -1163,6 +1171,13 @@ type SearchOptions struct {
 	// unconditionally for its own delegated call regardless of what the
 	// caller passed here; see SearchReranked's doc comment for why.
 	Full bool
+	// RankHook is an optional per-id relevance scorer SearchReranked runs
+	// after its lexical rank step (Phase 4, D-08). nil = today's order,
+	// byte-identically (the MCP lane's Store.Search calls never set this).
+	// Set only by the server, only when the Jev search ranker is
+	// configured; forwarded by SearchReranked only — Store.Search itself
+	// never reads it.
+	RankHook RankHook
 }
 
 // Search returns the k nearest readable memories to vec within scope.
@@ -1311,7 +1326,10 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 // authz-scoped Query, never widening visibility. Which rank step ships is
 // chosen by the pre-committed D-05 rule on the live retrieval eval
 // (2026-09-22.01 Phase 1, #605, 01-RANKING-DECISION.md); today that is the
-// lexical reranker (rankCandidates, RerankHits).
+// lexical reranker (rankCandidates, RerankHits). Phase 4 (RANK-03/D-08) adds
+// an optional post-lexical RankHook step (opts.RankHook) run over the SAME
+// full candidate pool, never widening visibility beyond what the lexical
+// step already saw — see RankWithHook.
 //
 // k == 0 is rejected with ErrInvalidArgument (round-2 finding 6): callers MUST
 // pass the already-defaulted effective k (MCP defaults 8 at tools.go, Connect
@@ -1339,7 +1357,7 @@ func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, 
 	if err != nil {
 		return nil, err
 	}
-	return rankCandidates(query, hits, int(k)), nil
+	return RankWithHook(ctx, query, hits, int(k), opts.RankHook), nil
 }
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.

@@ -126,8 +126,13 @@ type Memory struct {
 	SummaryModel *string `protobuf:"bytes,29,opt,name=summary_model,json=summaryModel,proto3,oneof" json:"summary_model,omitempty"`
 	// Unset means never egressed.
 	SummaryEgressAt *timestamppb.Timestamp `protobuf:"bytes,30,opt,name=summary_egress_at,json=summaryEgressAt,proto3" json:"summary_egress_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// The decision provider's probability (0 to 1) that this record answers
+	// the query; set only when the server's Jev reranker ran and succeeded
+	// for this search. Unset otherwise — distinct from a genuine near-zero
+	// value.
+	Relevance     *float64 `protobuf:"fixed64,31,opt,name=relevance,proto3,oneof" json:"relevance,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Memory) Reset() {
@@ -368,6 +373,13 @@ func (x *Memory) GetSummaryEgressAt() *timestamppb.Timestamp {
 		return x.SummaryEgressAt
 	}
 	return nil
+}
+
+func (x *Memory) GetRelevance() float64 {
+	if x != nil && x.Relevance != nil {
+		return *x.Relevance
+	}
+	return 0
 }
 
 type ScopeCount struct {
@@ -2331,7 +2343,7 @@ var File_engram_v1_engram_proto protoreflect.FileDescriptor
 
 const file_engram_v1_engram_proto_rawDesc = "" +
 	"\n" +
-	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xf2\b\n" +
+	"\x16engram/v1/engram.proto\x12\tengram.v1\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xa3\t\n" +
 	"\x06Memory\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x14\n" +
@@ -2370,10 +2382,13 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"archivedAt\x12*\n" +
 	"\x0eschema_version\x18\x1c \x01(\rH\x01R\rschemaVersion\x88\x01\x01\x12(\n" +
 	"\rsummary_model\x18\x1d \x01(\tH\x02R\fsummaryModel\x88\x01\x01\x12F\n" +
-	"\x11summary_egress_at\x18\x1e \x01(\v2\x1a.google.protobuf.TimestampR\x0fsummaryEgressAtB\x10\n" +
+	"\x11summary_egress_at\x18\x1e \x01(\v2\x1a.google.protobuf.TimestampR\x0fsummaryEgressAt\x12!\n" +
+	"\trelevance\x18\x1f \x01(\x01H\x03R\trelevance\x88\x01\x01B\x10\n" +
 	"\x0e_superseded_byB\x11\n" +
 	"\x0f_schema_versionB\x10\n" +
-	"\x0e_summary_model\"8\n" +
+	"\x0e_summary_modelB\f\n" +
+	"\n" +
+	"_relevance\"8\n" +
 	"\n" +
 	"ScopeCount\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +

@@ -77,6 +77,13 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 	if !m.SummaryEgressAt.IsZero() {
 		summaryEgressAt = timestamppb.New(m.SummaryEgressAt)
 	}
+	// Relevance is nil unless a Phase 4 RankHook ran and succeeded for this
+	// hit (transient like Score); proto.Float64 copies the value rather
+	// than aliasing the store's own pointer.
+	var relevance *float64
+	if m.Relevance != nil {
+		relevance = proto.Float64(*m.Relevance)
+	}
 	return &engramv1.Memory{
 		Id: m.ID, Content: m.Content, Scope: m.Scope,
 		Repo: m.Repo, Workspace: m.Workspace, Worktree: m.Worktree, BaseDir: m.BaseDir,
@@ -103,6 +110,7 @@ func memoryToProto(m store.Memory) *engramv1.Memory {
 		SchemaVersion:   proto.Uint32(uint32(m.SchemaVersion)),
 		SummaryModel:    proto.String(m.SummaryModel),
 		SummaryEgressAt: summaryEgressAt,
+		Relevance:       relevance,
 	}
 }
 
