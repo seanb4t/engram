@@ -167,7 +167,7 @@ func TestRetrievalEval(t *testing.T) {
 	}
 
 	subj := store.Authenticated("retrieval-eval@engram.dev")
-	roster := evalRankers()
+	roster := evalRankers(nil)
 
 	// Per-(ranker, role) aggregates, plus the shipped row's own aggregates —
 	// keyed by roster entry name, populated only from ANSWER queries

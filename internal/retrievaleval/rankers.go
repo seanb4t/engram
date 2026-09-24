@@ -4,6 +4,7 @@
 package retrievaleval
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -16,10 +17,12 @@ import (
 // grep for.
 const shippedRowName = "shipped (SearchReranked)"
 
-// jevDisabledReason is the disabled Jev stub's table cell text (D-11): a
-// stable log marker plans 01-05/01-06 grep for. Phase 4 enables Jev by
-// giving this roster entry a rank function; nothing else about the roster
-// or the eval loop changes.
+// jevDisabledReason is the disabled Jev stub's table cell text (D-11), used
+// when evalRankers is given a nil hook: a stable log marker plans 01-05/01-06
+// grep for. When evalRankers(hook) is given a non-nil hook instead, the jev
+// row is enabled — opt-in, never a D-05 candidate (D-02) — and its rank
+// function is store.RankWithHook composed with that hook, the exact
+// composition SearchReranked ships.
 const jevDisabledReason = "Jev: disabled"
 
 // d05TunedMargin is D-05's anti-overfitting guard: a tuned (grid) variant —
@@ -56,14 +59,17 @@ var blendAlphaGrid = []float64{0.05, 0.10, 0.20, 0.30}
 type rankerFunc func(query string, pool []store.Memory, k int) []store.Memory
 
 // namedRanker is one entry in the pluggable named-ranker roster (D-11). A
-// disabled entry (Jev today) carries a nil rank and a non-empty
+// disabled entry (Jev with a nil hook) carries a nil rank and a non-empty
 // disabledReason; every other entry carries a non-nil rank and an empty
-// disabledReason.
+// disabledReason. optIn marks a row (an enabled Jev row) that is measured
+// and reported but never competes in D-05 — it ships as an operator opt-in,
+// not as the default (D-02).
 type namedRanker struct {
 	name           string
 	family         string
 	simplicity     int
 	tuned          bool
+	optIn          bool
 	rank           rankerFunc
 	disabledReason string
 }
@@ -72,11 +78,15 @@ type namedRanker struct {
 // measures every retrieval-case query against, over SearchReranked's own
 // candidate pool (store.CandidateK(defaultK)): vector-only, lexical, the
 // D-07 overlap-gate grid (highest theta first, so it is also the
-// simplest), the D-07 cosine-blend grid (lowest alpha first), and a
-// disabled Jev stub last. Phase 4 enables Jev by giving its stub entry a
-// rank function — a pure append, never a refactor of this function's shape
-// or the eval loop that consumes it.
-func evalRankers() []namedRanker {
+// simplest), the D-07 cosine-blend grid (lowest alpha first), and a Jev row
+// last. A nil jevHook appends today's disabled stub (jevDisabledReason)
+// unchanged. A non-nil jevHook appends an ENABLED, opt-in jev row instead
+// (D-02): its rank function calls store.RankWithHook with that hook — the
+// exact composition SearchReranked ships — so the eval measures the
+// production reranker, not a copy. The opt-in row is measured and reported
+// like every other row but excluded from the D-05 decision (decideRanking,
+// formatVariantTable): there is no eval bar for shipping it.
+func evalRankers(jevHook store.RankHook) []namedRanker {
 	rankers := []namedRanker{
 		{
 			name:       "vector-only",
@@ -120,11 +130,22 @@ func evalRankers() []namedRanker {
 			},
 		})
 	}
+	if jevHook == nil {
+		return append(rankers, namedRanker{
+			name:           "jev",
+			family:         "jev",
+			simplicity:     99,
+			disabledReason: jevDisabledReason,
+		})
+	}
 	return append(rankers, namedRanker{
-		name:           "jev",
-		family:         "jev",
-		simplicity:     99,
-		disabledReason: jevDisabledReason,
+		name:       "jev",
+		family:     "jev",
+		simplicity: 99,
+		optIn:      true,
+		rank: func(query string, pool []store.Memory, k int) []store.Memory {
+			return store.RankWithHook(context.Background(), query, pool, k, jevHook)
+		},
 	})
 }
 
@@ -206,12 +227,15 @@ type rankingDecision struct {
 
 // variantSummary is one row of the eval's variant comparison table: a named
 // roster entry's per-role aggregate metrics (or the shipped row, family
-// "shipped"), independent of any particular rankingDecision.
+// "shipped"), independent of any particular rankingDecision. optIn mirrors
+// namedRanker.optIn: buildSummaries copies it verbatim, and decideRanking /
+// formatVariantTable both keep an opt-in row out of the D-05 decision (D-02).
 type variantSummary struct {
 	name             string
 	family           string
 	simplicity       int
 	tuned            bool
+	optIn            bool
 	disabled         bool
 	disabledReason   string
 	guardRanks       []int
@@ -234,6 +258,7 @@ func buildSummaries(roster []namedRanker, guardMetrics, paraphraseMetrics map[st
 			family:           r.family,
 			simplicity:       r.simplicity,
 			tuned:            r.tuned,
+			optIn:            r.optIn,
 			disabled:         r.rank == nil,
 			disabledReason:   r.disabledReason,
 			guardRanks:       guardMetrics[r.name].ranks,
@@ -258,10 +283,12 @@ func buildSummaries(roster []namedRanker, guardMetrics, paraphraseMetrics map[st
 // formatVariantTable renders rows as a Markdown table with a leading
 // "| variant |" header — a stable log marker plans 01-05/01-06 grep for —
 // so the eval's t.Logf output is both human-readable and greppable. A
-// disabled row (Jev today) renders its disabledReason in place of numbers.
-// The D-05 eligible column is "yes" for a row named in d.eligible, "no" for
-// any other enabled non-shipped row, and "—" for disabled and shipped rows,
-// which never compete in D-05. Numbers render with 3 decimals.
+// disabled row (Jev with a nil hook) renders its disabledReason in place of
+// numbers. The D-05 eligible column is "opt-in" for an enabled opt-in row
+// (D-02 — it is measured and reported but never a D-05 candidate), "yes" for
+// a row named in d.eligible, "no" for any other enabled non-shipped
+// non-opt-in row, and "—" for disabled and shipped rows, which never compete
+// in D-05. Numbers render with 3 decimals.
 func formatVariantTable(rows []variantSummary, d rankingDecision) string {
 	eligible := make(map[string]bool, len(d.eligible))
 	for _, name := range d.eligible {
@@ -281,9 +308,12 @@ func formatVariantTable(rows []variantSummary, d rankingDecision) string {
 		}
 		elig := "—"
 		if row.family != "shipped" {
-			if eligible[row.name] {
+			switch {
+			case row.optIn:
+				elig = "opt-in"
+			case eligible[row.name]:
 				elig = "yes"
-			} else {
+			default:
 				elig = "no"
 			}
 		}
@@ -300,8 +330,10 @@ func formatVariantTable(rows []variantSummary, d rankingDecision) string {
 //
 //  1. The baseline is the single row with family "vector-only". Its
 //     absence is a hard stop: no winner, naming the missing baseline.
-//  2. Candidates are every row that is neither disabled nor family
-//     "shipped" (disabled and shipped rows never compete in D-05).
+//  2. Candidates are every row that is neither disabled, family "shipped",
+//     nor opt-in (disabled, shipped, and opt-in rows never compete in
+//     D-05 — an opt-in row is measured and reported but ships as an
+//     operator opt-in, not as the default, D-02).
 //  3. A candidate is eligible when its guardAllRank1 holds AND its
 //     paraphraseMRR is at least the baseline's (within mrrEpsilon). This
 //     includes the baseline itself, trivially, when its own guardAllRank1
@@ -333,7 +365,7 @@ func decideRanking(rows []variantSummary) rankingDecision {
 	eligible := make([]variantSummary, 0, len(rows))
 	eligibleNames := make([]string, 0, len(rows))
 	for _, row := range rows {
-		if row.disabled || row.family == "shipped" {
+		if row.disabled || row.family == "shipped" || row.optIn {
 			continue
 		}
 		if row.guardAllRank1 && row.paraphraseMRR >= baseline.paraphraseMRR-mrrEpsilon {

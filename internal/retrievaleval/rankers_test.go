@@ -4,6 +4,7 @@
 package retrievaleval
 
 import (
+	"context"
 	"math"
 	"reflect"
 	"strings"
@@ -67,12 +68,15 @@ func TestVariantMetrics(t *testing.T) {
 
 // TestFormatVariantTable pins the table's structural shape: a leading
 // "| variant |" header, one row per summary, a disabled row rendering its
-// disabledReason instead of numbers, and 3-decimal number formatting.
+// disabledReason instead of numbers, an enabled opt-in row (D-02) rendering
+// its numbers plus "opt-in" in the D-05 eligible column, and 3-decimal
+// number formatting.
 func TestFormatVariantTable(t *testing.T) {
 	t.Parallel()
 	rows := []variantSummary{
 		{name: "vector-only", family: "vector-only", guardRanks: []int{1, 1}, guardAllRank1: true, paraphraseRecall: 0.9, paraphraseMRR: 0.812345},
 		{name: "jev", family: "jev", disabled: true, disabledReason: jevDisabledReason},
+		{name: "jev-enabled", family: "jev", optIn: true, guardRanks: []int{1, 1}, guardAllRank1: true, paraphraseRecall: 0.7, paraphraseMRR: 0.654321},
 	}
 	got := formatVariantTable(rows, rankingDecision{})
 
@@ -85,6 +89,22 @@ func TestFormatVariantTable(t *testing.T) {
 	}
 	if !strings.Contains(got, "0.812") {
 		t.Errorf("numbers not rendered with 3 decimals: %s", got)
+	}
+
+	var optInLine string
+	for _, l := range lines {
+		if strings.HasPrefix(l, "| jev-enabled |") {
+			optInLine = l
+		}
+	}
+	if optInLine == "" {
+		t.Fatalf("no row found for jev-enabled: %s", got)
+	}
+	if !strings.Contains(optInLine, "0.654") {
+		t.Errorf("opt-in row does not render its numbers: %q", optInLine)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(optInLine), "opt-in |") {
+		t.Errorf("opt-in row does not render \"opt-in\" in the D-05 eligible column: %q", optInLine)
 	}
 
 	nonEmpty := 0
@@ -102,11 +122,12 @@ func TestFormatVariantTable(t *testing.T) {
 // TestEvalRankersRoster (T2 form) pins the full ten-entry roster order (the
 // D-07 grid inserted between lexical and the disabled Jev stub), that
 // tuned is true exactly for the gate/blend rows, that simplicity strictly
-// increases across every enabled row, and that every rank function
-// delegates to the exact comparison-ranker/store function it wraps.
+// increases across every enabled row, that optIn is false on every row, and
+// that every rank function delegates to the exact comparison-ranker/store
+// function it wraps.
 func TestEvalRankersRoster(t *testing.T) {
 	t.Parallel()
-	roster := evalRankers()
+	roster := evalRankers(nil)
 
 	wantNames := []string{
 		"vector-only", "lexical",
@@ -129,6 +150,9 @@ func TestEvalRankersRoster(t *testing.T) {
 		wantTuned := r.family == "overlap-gate" || r.family == "cosine-blend"
 		if r.tuned != wantTuned {
 			t.Errorf("%s: tuned = %v, want %v", name, r.tuned, wantTuned)
+		}
+		if r.optIn {
+			t.Errorf("%s: optIn = true, want false (nil-hook roster)", name)
 		}
 	}
 
@@ -171,6 +195,86 @@ func TestEvalRankersRoster(t *testing.T) {
 	}
 }
 
+// TestEvalRankersJevEnabled pins evalRankers(hook)'s enabled-jev-row form
+// (D-02): the same ten names in the same order as the nil-hook roster,
+// every non-jev row byte-identical to its nil-hook counterpart, and the jev
+// row itself enabled (non-nil rank, optIn true, empty disabledReason) with
+// its rank function composing store.RankWithHook with the SAME hook the
+// caller supplied — the exact composition SearchReranked ships, not a
+// scripted copy of it.
+func TestEvalRankersJevEnabled(t *testing.T) {
+	t.Parallel()
+
+	hook := func(_ context.Context, _ string, hits []store.Memory) (map[string]float64, error) {
+		rel := make(map[string]float64, len(hits))
+		for i, h := range hits {
+			// Deterministic, reversed-order relevance: the hook is scripted
+			// so the enabled row's output is provably NOT just the plain
+			// lexical/nil-hook order (which would leave this test unable to
+			// distinguish "hook wired" from "hook ignored").
+			rel[h.ID] = float64(len(hits)-i) / float64(len(hits))
+		}
+		return rel, nil
+	}
+
+	nilRoster := evalRankers(nil)
+	roster := evalRankers(hook)
+
+	wantNames := []string{
+		"vector-only", "lexical",
+		"overlap-gate-t0.90", "overlap-gate-t0.75", "overlap-gate-t0.60",
+		"cosine-blend-a0.05", "cosine-blend-a0.10", "cosine-blend-a0.20", "cosine-blend-a0.30",
+		"jev",
+	}
+	gotNames := make([]string, len(roster))
+	for i, r := range roster {
+		gotNames[i] = r.name
+	}
+	if !reflect.DeepEqual(gotNames, wantNames) {
+		t.Fatalf("roster names = %v, want %v", gotNames, wantNames)
+	}
+
+	for i, r := range roster {
+		if r.name == "jev" {
+			continue
+		}
+		nilR := nilRoster[i]
+		if r.name != nilR.name || r.family != nilR.family || r.simplicity != nilR.simplicity || r.tuned != nilR.tuned {
+			t.Errorf("row %d (%s): name/family/simplicity/tuned = (%s,%s,%d,%v), want (%s,%s,%d,%v)",
+				i, r.name, r.name, r.family, r.simplicity, r.tuned, nilR.name, nilR.family, nilR.simplicity, nilR.tuned)
+		}
+		if r.optIn {
+			t.Errorf("row %d (%s): optIn = true, want false", i, r.name)
+		}
+	}
+
+	jev := roster[len(roster)-1]
+	if jev.name != "jev" {
+		t.Fatalf("last row name = %q, want %q", jev.name, "jev")
+	}
+	if jev.rank == nil {
+		t.Fatal("jev.rank is nil, want non-nil (enabled)")
+	}
+	if !jev.optIn {
+		t.Error("jev.optIn = false, want true")
+	}
+	if jev.disabledReason != "" {
+		t.Errorf("jev.disabledReason = %q, want empty", jev.disabledReason)
+	}
+
+	query := "alpha bravo"
+	pool := []store.Memory{
+		{ID: "a", Content: "alpha bravo", Score: 0.3},
+		{ID: "b", Content: "nothing matching", Score: 0.9},
+		{ID: "c", Content: "alpha only", Score: 0.5},
+	}
+	got := idsOf(jev.rank(query, pool, 2))
+	want := idsOf(store.RankWithHook(context.Background(), query, pool, 2, hook))
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("jev.rank output = %v, want store.RankWithHook %v", got, want)
+	}
+}
+
 // TestDecideRanking pins D-05's decision rule, hermetically, before any live
 // number exists: every clause and every tie rule.
 func TestDecideRanking(t *testing.T) {
@@ -181,6 +285,7 @@ func TestDecideRanking(t *testing.T) {
 		rows             []variantSummary
 		wantWinner       string
 		wantReasonSubstr string
+		wantEligible     []string // non-nil: assert d.eligible equals this exactly
 	}{
 		{
 			name: "vector-only has the best MRR",
@@ -284,6 +389,21 @@ func TestDecideRanking(t *testing.T) {
 			wantWinner: "vector-only",
 		},
 		{
+			// D-02: an enabled, opt-in jev row that passes the #261 guard
+			// with the highest paraphrase MRR of any row must still never
+			// win or appear in eligible — the winner, reason and eligible
+			// list are identical to the same rows with the jev row simply
+			// absent (see wantEligible below, which excludes "jev").
+			name: "opt-in row never wins",
+			rows: []variantSummary{
+				{name: "vector-only", family: "vector-only", simplicity: 0, guardAllRank1: true, paraphraseMRR: 0.70},
+				{name: "lexical", family: "lexical", simplicity: 10, guardAllRank1: true, paraphraseMRR: 0.75},
+				{name: "jev", family: "jev", simplicity: 99, optIn: true, guardAllRank1: true, paraphraseMRR: 0.99},
+			},
+			wantWinner:   "lexical",
+			wantEligible: []string{"vector-only", "lexical"},
+		},
+		{
 			name: "shipped row ignored",
 			rows: []variantSummary{
 				{name: "vector-only", family: "vector-only", simplicity: 0, guardAllRank1: true, paraphraseMRR: 0.70},
@@ -307,6 +427,29 @@ func TestDecideRanking(t *testing.T) {
 			got := decideRanking(tc.rows)
 			if got.winner != tc.wantWinner {
 				t.Errorf("winner = %q, want %q (reason=%q)", got.winner, tc.wantWinner, got.reason)
+			}
+			if tc.wantEligible != nil {
+				if !reflect.DeepEqual(got.eligible, tc.wantEligible) {
+					t.Errorf("eligible = %v, want %v", got.eligible, tc.wantEligible)
+				}
+				// Cross-check against the same rows with every opt-in row
+				// dropped entirely: winner, reason and eligible must be
+				// byte-identical (D-02 — an opt-in row is invisible to D-05).
+				withoutOptIn := make([]variantSummary, 0, len(tc.rows))
+				for _, row := range tc.rows {
+					if !row.optIn {
+						withoutOptIn = append(withoutOptIn, row)
+					}
+				}
+				wantDecision := decideRanking(withoutOptIn)
+				if got.winner != wantDecision.winner || got.reason != wantDecision.reason || !reflect.DeepEqual(got.eligible, wantDecision.eligible) {
+					t.Errorf("decision with opt-in row present = %+v, want identical to without it %+v", got, wantDecision)
+				}
+				for _, name := range got.eligible {
+					if name == "jev" {
+						t.Errorf("eligible %v unexpectedly contains the opt-in jev row", got.eligible)
+					}
+				}
 			}
 			if tc.wantReasonSubstr != "" && !strings.Contains(got.reason, tc.wantReasonSubstr) {
 				t.Errorf("reason = %q, want substring %q", got.reason, tc.wantReasonSubstr)
