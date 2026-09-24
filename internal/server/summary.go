@@ -103,12 +103,17 @@ func shapeRecall(ms []store.Memory, full bool, maxChars int) []any {
 // toRecallView shapes one memory for default (summary) recall.
 func toRecallView(m store.Memory, maxChars int) recallView {
 	summary, truncated := summaryOrTruncation(m, maxChars)
+	var relevance *float64
+	if m.Relevance != nil {
+		r := *m.Relevance
+		relevance = &r
+	}
 	return recallView{
 		ID: m.ID, ShortID: m.ShortID, Summary: summary, SummarySource: string(m.SummarySource), Truncated: truncated,
 		Scope: m.Scope, Category: m.Category, Tags: m.Tags, CreatedAt: m.CreatedAt,
 		Score:          m.Score,
 		AccessCount:    m.AccessCount,
 		LastAccessedAt: m.LastAccessedAt,
-		Relevance:      m.Relevance,
+		Relevance:      relevance,
 	}
 }
