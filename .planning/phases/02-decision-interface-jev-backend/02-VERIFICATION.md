@@ -1,6 +1,6 @@
 ---
 phase: 02-decision-interface-jev-backend
-verified: 2026-09-23T18:30:00Z
+verified: 2026-09-24T17:36:37Z
 status: passed
 score: 6/6 must-haves verified
 covered_files:
@@ -51,12 +51,15 @@ covered_files:
   - "internal/decide/validate.go"
   - "internal/server/decider.go"
   - "internal/server/tools.go"
-covered_digest: "v1:sha256:ecc533d7161bcd5f4cf5fa319d6c2418c1937833060a242ac49c1b670c821e9a"
+covered_digest: "v1:sha256:c3a688ad19de3fc9f15cf0ec1f9e1df6c07cc40ad3d8e8886d338dff67ee48c0"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
   previous_status: passed
   previous_score: 6/6
+  previous_verified_at: 2026-09-23T18:30:00Z
+  previous_commit: 673ff3e5
+  reason: "digest went stale after Phases 3-5 legitimately modified covered files"
   gaps_closed: []
   gaps_remaining: []
   regressions: []
@@ -65,9 +68,51 @@ re_verification:
 # Phase 2: Decision Interface & Jev Backend Verification Report
 
 **Phase Goal:** engram can call a typed-decision provider through a provider-neutral Go interface, fully inert until an operator opts in.
-**Verified:** 2026-09-23T18:30:00Z
+**Verified:** 2026-09-24T17:36:37Z (HEAD `f37c5f0e`)
 **Status:** passed
-**Re-verification:** Yes — previous 02-VERIFICATION.md (verified 2026-09-23T14:00:00Z, `covered_digest: v1:sha256:b6a72b6302...`) went stale after `02-VALIDATION.md` (e71a9037), `02-REVIEW.md` (544f2079), and the new `02-SECURITY.md` (15f9d65d) were committed post-verification. This report recomputes the digest over the current tree and re-checks every truth against current code, not the prior report's narrative.
+**Re-verification:** Yes (second). See "Re-verification 2026-09-24" below: the 2026-09-23T18:30:00Z report (at `673ff3e5`) went stale because Phases 3-5 changed files in its `covered_files`. Every truth was re-checked against HEAD and holds. The first re-verification note follows for history.
+
+## Re-verification 2026-09-24 (after Phases 3-5)
+
+`git diff 673ff3e5..HEAD --stat -- <covered_files>` shows 12 changed files (549+/21-). None of the changes is a Phase 2 regression. Each one adds an opt-in consumer on top of the Phase 2 contract:
+
+| File | Later-phase change | Effect on Phase 2 truths |
+|------|--------------------|--------------------------|
+| `internal/decide/jev/jev.go` | `WithNoRetry()` option + `noRetry` field; the retry guard is now `err != nil && !c.noRetry && isRetryable(err)` (6de67631) | Additive. Default clients still retry once (D-11): `TestJevRetryAndBounds` PASS. The new option is covered by `TestJevNoRetryOption` PASS. Endpoint (`decisionsPath = "/alpha/decisions"`), span attributes, and the `var _ decide.Decider` assertion are unchanged. |
+| `internal/server/decider.go` | `searchRerankTimeout`, `searchDeciderFromConfig`, `searchRankHook`, `SearchRankHookFromEnv`, `logSearchRankerEnabled`, `VerdictSettings`/`verdictSettings`, `StoreAndDeciderFromEnv`, `DeciderFromEnv` | `deciderFromConfig` is unchanged. Its `case "":` still returns `(nil, nil)`. The search client reuses the D-03 key fallback (`cmp.Or(cfg.Decisions.APIKey, cfg.OpenAI.APIKey)`). `searchRankHook` returns nil unless `ENGRAM_SEARCH_RANKER=jev`, and `jev` requires a provider. `TestSearchRankHookFromConfig` (3 subtests) PASS. |
+| `internal/server/tools.go` | `deps.rankHook` threaded into `search_memory`/`search_discovery`. The nil hook keeps the old `SearchDiscovery` call. Tool descriptions mention opt-in `relevance`. | With the provider unset and the ranker at its default, `rankHook` is nil and the search path behaves as before. The description text is static and makes no outbound call. Phase 4 owns that surface. |
+| `internal/config/{config,registry,validate}.go` | `SearchConfig` (`search.ranker` default `lexical`, `search.rerank_timeout` default `2s`), `decisions.verdict_threshold`/`verdict_state_chars`, `ParseProbability` | Verdict-knob validation sits inside the existing `if c.Decisions.Provider == "jev"` block. The unconditional `search.ranker` enum check accepts the default `lexical`, so a deployment with the provider unset validates the same as before. The nine Phase 2 `ENGRAM_DECISIONS_*` rows are intact. |
+| `charts/engram/{templates/_helpers.tpl,values.yaml}`, `Taskfile.yaml` | Ranker-gated `ENGRAM_SEARCH_*` rows. The helper-block checksum was re-pinned. `eval:curation` task added. | `task chart:validate` passes on HEAD (`chart:validate: OK`). The default render still emits no `ENGRAM_DECISIONS_*` or `ENGRAM_SEARCH_*` var, and the provider-gated decisions assertions still pass. |
+| `CLAUDE.md`, `docs-site/.../configure.md`, `deploy.md` | Docs for verdicts, relevance, and the search ranker | `TestDecisionsVarsDocumented` PASS. The DEC var docs are still present. |
+
+Unchanged since `673ff3e5`: `internal/decide/{decide,errors,many,validate}.go`, `jev/{classify,wire,live_test}.go`, `go.mod`, `go.sum`, and all phase-dir PLAN/SUMMARY/support docs.
+
+**Checks re-run on HEAD (no live provider calls; `env -u ENGRAM_RETRIEVAL_EVAL -u ENGRAM_DECISIONS_LIVE -u ENGRAM_CURATION_EVAL`):**
+
+| Check | Command | Result |
+|-------|---------|--------|
+| Build + vet | `go build ./... && go vet ./internal/decide/... ./internal/server/... ./internal/config/...` | clean |
+| Phase suites + key links | `go test -count=1 ./internal/decide/... ./internal/server/... ./internal/config/... ./internal/keylinks/` | all `ok` |
+| Zero egress when the provider is unset (SC1, T-02-13) | `go test -run TestDeciderFromConfigProviderUnset -v ./internal/server/` | PASS |
+| Typed answers + WR-01 (SC2) | `go test -run TestJevAnswerMapping -v ./internal/decide/jev/` | PASS, including `answer_type_does_not_match_requested_question_type_(WR-01)` |
+| Request shape (SC3) | `TestJevRequestShape` | PASS |
+| Error classification (SC4) | `TestJevErrorClassification` | PASS (27 subtest lines) |
+| Retry default intact + new no-retry option | `TestJevRetryAndBounds`, `TestJevNoRetryOption` | PASS |
+| Telemetry (SC6, T-02-17) | `TestJevTelemetryCarriesNoContent` | PASS |
+| Bounded fan-out | `TestDecideMany{Order,Bound,ConcurrencyFloor,Isolation,Empty,Cancel}` | PASS |
+| Live test gated off | `TestJevLive` | SKIP (gate unset, as intended) |
+| Env-var docs parity | `go test -run TestDecisionsVarsDocumented ./internal/config/` | PASS |
+| Chart | `task chart:validate` | `chart:validate: OK` |
+| No SDK dependency (SC5, T-02-SC) | `rg OpenRouterTeam go.mod go.sum` | no matches |
+| Debt markers | `rg 'TODO\|FIXME\|XXX\|TBD\|HACK\|PLACEHOLDER'` over `internal/decide`, `decider.go`, `registry.go`, `validate.go`, `_helpers.tpl` (non-test) | no matches |
+
+`02-LIVE-CHECK.md` is unchanged. SC3's two-transport live evidence therefore still rests on the 2026-09-23 orchestrator-run results. The `Client.Decide` HTTP path it exercised is unchanged apart from the `!c.noRetry` guard, which is inert for clients built without `WithNoRetry`. No live call was made in this pass.
+
+`covered_files` is the same 47-path set as before. Every path still exists and none needed pruning. `covered_digest` was recomputed with `gsd-tools query verification.fingerprint`.
+
+### Re-verification 2026-09-23 (history)
+
+Previous 02-VERIFICATION.md (verified 2026-09-23T14:00:00Z, `covered_digest: v1:sha256:b6a72b6302...`) went stale after `02-VALIDATION.md` (e71a9037), `02-REVIEW.md` (544f2079), and the new `02-SECURITY.md` (15f9d65d) were committed post-verification. This report recomputes the digest over the current tree and re-checks every truth against current code, not the prior report's narrative.
 
 **What changed since the prior report, and why it doesn't flip the verdict:**
 - `02-VALIDATION.md` was rewritten (frontmatter `status: validated`, `nyquist_compliant: true`) with a fuller per-requirement test map and a 2026-09-23 validation audit — content addition, no code change.
@@ -191,5 +236,5 @@ No gaps. All six ROADMAP success criteria and all six DEC-01..DEC-06 requirement
 
 ---
 
-_Verified: 2026-09-23T18:30:00Z_
+_Verified: 2026-09-24T17:36:37Z (re-verified after Phases 3-5; prior pass 2026-09-23T18:30:00Z)_
 _Verifier: Claude (gsd-verifier)_
