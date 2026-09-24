@@ -166,8 +166,29 @@ func TestRetrievalEval(t *testing.T) {
 		t.Fatalf("build prod-parity embedder: %v", err)
 	}
 
+	// D-02: the Jev slot is enabled whenever a decisions provider is
+	// configured, independently of ENGRAM_SEARCH_RANKER — this eval must
+	// measure the Jev row even when production stays lexical. jevHook is
+	// nil (and jevInfo.Enabled false) when no provider is configured, in
+	// which case evalRankers appends its disabled stub exactly as before.
+	jevHook, jevInfo, err := server.SearchRankHookFromEnv()
+	if err != nil {
+		t.Fatalf("build Jev search-rerank hook: %v", err)
+	}
+	t.Logf("JEV-EVAL | enabled=%v model=%s endpoint_host=%s rerank_timeout=%s",
+		jevInfo.Enabled, jevInfo.Model, jevInfo.EndpointHost, jevInfo.Timeout)
+
+	// jevCalls/jevFallbacks count every rank call made through the enabled
+	// jev roster row across every query (answer and no-answer alike): a
+	// fallback is any call whose ranked output is non-empty but carries no
+	// Relevance on its first hit (applyRelevance's full-coverage contract
+	// means "no Relevance" and "fallback" are the same fact). Logged once
+	// at the end via the provenance line below so a timeout- or
+	// error-degraded Jev row can never masquerade as measured ranking.
+	var jevCalls, jevFallbacks int
+
 	subj := store.Authenticated("retrieval-eval@engram.dev")
-	roster := evalRankers(nil)
+	roster := evalRankers(jevHook)
 
 	// Per-(ranker, role) aggregates, plus the shipped row's own aggregates —
 	// keyed by roster entry name, populated only from ANSWER queries
@@ -274,6 +295,13 @@ func TestRetrievalEval(t *testing.T) {
 					}
 					variantRanked[r.name] = ranked
 					variantIDs[r.name] = ids
+
+					if r.optIn {
+						jevCalls++
+						if len(ranked) > 0 && ranked[0].Relevance == nil {
+							jevFallbacks++
+						}
+					}
 				}
 
 				// (e) No-answer query (D-12): logged only, never gated —
@@ -294,6 +322,20 @@ func TestRetrievalEval(t *testing.T) {
 							top, score = recordLabel(keyByID, ranked[0].ID), ranked[0].Score
 						}
 						t.Logf("no-answer %s/%s: %s top=%s score=%f", tc.name, q.name, r.name, top, score)
+					}
+					// The per-hit "nothing answers this" demonstration
+					// (CONTEXT.md): every returned hit's relevance, in
+					// returned order, or "none" on a fallback.
+					if jevInfo.Enabled {
+						relevance := "none"
+						if ranked := variantRanked["jev"]; len(ranked) > 0 && ranked[0].Relevance != nil {
+							vals := make([]string, len(ranked))
+							for i, m := range ranked {
+								vals[i] = fmt.Sprintf("%.3f", *m.Relevance)
+							}
+							relevance = "[" + strings.Join(vals, " ") + "]"
+						}
+						t.Logf("no-answer %s/%s: jev relevance=%s", tc.name, q.name, relevance)
 					}
 					continue
 				}
@@ -421,6 +463,14 @@ func TestRetrievalEval(t *testing.T) {
 		matches = strings.Join(matchNames, ", ")
 	}
 	t.Logf("shipped (SearchReranked) matches: %s", matches)
+
+	// D-03: a fallback- (timeout- or error-) degraded Jev row can never
+	// masquerade as measured Jev ranking — the count is logged whenever the
+	// row was enabled, even when it is 0/0 (never called, e.g. every
+	// candidate pool happened to be empty).
+	if jevInfo.Enabled {
+		t.Logf("JEV-EVAL | fallbacks=%d/%d", jevFallbacks, jevCalls)
+	}
 }
 
 // TestRetrievalEval_AsymmetryDiffer is the Pitfall-12 correctness gate
