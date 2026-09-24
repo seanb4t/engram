@@ -352,7 +352,7 @@ lexical reranker's paraphrase regression (#605) is fixed.
 - [x] **Phase 2: Decision Interface & Jev Backend** - Provider-neutral Go interface over System One's Choice/Score/Noul vocabulary; Jev backend over OpenRouter's Decisions API, off by default (completed 2026-09-23)
 - [x] **Phase 3: Curation Verdicts** - `spine-review consolidate` surfaces advisory relation verdicts per candidate pair, confidence-tiered, never mutating (completed 2026-09-24)
 - [x] **Phase 4: Jev Reranker & Per-Hit Relevance Signal** - Opt-in reranking on `search_memory` with a fallback to vector order and a per-hit relevance probability on every surface (completed 2026-09-24)
-- [ ] **Phase 5: Operator Correctness** - Five independent operator-surface bug fixes (#476/#504/#502/#501/#503)
+- [x] **Phase 5: Operator Correctness** - Five independent operator-surface bug fixes (#476/#504/#502/#501/#503) (completed 2026-09-24)
 
 ### Phase 1: Eval Foundation & Lexical Reranker Fix
 
@@ -520,7 +520,7 @@ Plans:
   4. A test covers a record inserted mid-sweep whose id sorts below the migrate cursor
   5. `docs-site` `guides/cli.md` lists `migrate`, `migrate status`, and `migrate revert` among the operator commands
 
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 **Wave 1**
@@ -631,7 +631,7 @@ Plans:
 | 2. Decision Interface & Jev Backend | 2026-09-22.01 | 8/8 | Complete | 2026-09-23 |
 | 3. Curation Verdicts | 2026-09-22.01 | 8/8 | Complete | 2026-09-24 |
 | 4. Jev Reranker & Per-Hit Relevance Signal | 2026-09-22.01 | 8/8 | Complete | 2026-09-24 |
-| 5. Operator Correctness | 2026-09-22.01 | 0/5 | Not started | - |
+| 5. Operator Correctness | 2026-09-22.01 | 5/5 | Complete | 2026-09-24 |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
 **v0.10.x — Hardening & Write Lane: ✅ shipped 2026-07-16 · 9 phases (13–21) · 19/20 requirements (REQ-ci-renovate-spa-drift's live self-heal observation deferred, post-merge → #369) · audit tech_debt (9/9 Nyquist, 0 blockers).** Full detail: `milestones/v0.10.x-ROADMAP.md`.
