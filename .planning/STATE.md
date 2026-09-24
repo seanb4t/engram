@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 4
 current_phase_name: Jev Reranker & Per-Hit Relevance Signal
 status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-09-24T15:02:26.804Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-09-24T15:17:16.692Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 4 execution started
-state_head: 77644d56e776f094403871971fa6ba63413677c6
+state_head: b673d0e3abe118810b0eb905442912dad2b0831e
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 35
-  completed_plans: 26
+  completed_plans: 27
   percent: 60
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-24 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (Jev Reranker & Per-Hit Relevance Signal) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-09-24 — Phase 4 execution started
 
@@ -413,6 +413,7 @@ milestone needs in working memory.
 - [Phase 4]: recallView is a hand-written allow-list; Relevance follows the AccessCount/LastAccessedAt pattern, added to both the struct and toRecallView
 - [Phase 4]: renderMemoryTable's RELEVANCE column is data-derived (withScore AND any memory has non-nil Relevance), never flag-derived, keeping a lexical-only response byte-identical
 - [Phase 4]: d.rankHook is directly settable from same-package _test.go files for scripted-hook substitution in parity tests, no production test seam needed
+- [Phase 4]: SearchDiscoveryReranked skips the lexical step entirely, reusing applyRankHook/applyRelevance over SearchDiscovery's own vector order (D-07 discretion)
 
 ### Pending Todos
 
@@ -505,8 +506,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T15:02:26.766Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-09-24T15:17:16.655Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -699,6 +700,7 @@ Resume file: None
 | Phase 04-jev-reranker-per-hit-relevance-signal P02 | 10min | 2 tasks | 2 files |
 | Phase 04 P03 | 16min | 3 tasks | 12 files |
 | Phase 04 P04 | 20min | 3 tasks | 6 files |
+| Phase 04 P05 | 13min | 3 tasks | 8 files |
 
 ## Operator Next Steps
 
