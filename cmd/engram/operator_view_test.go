@@ -633,3 +633,127 @@ func TestOperatorViewNonObjectDocument(t *testing.T) {
 		})
 	}
 }
+
+// TestViewFieldsBareNestedObject pins viewFields' bare nested-object branch
+// (the top-level `case '{':` block, operator_view.go ~line 102) and its
+// sibling array-of-arrays element branch (the `case '[':` inside the
+// array-element loop, ~line 91). No shipped operator report reaches either
+// branch today — every *Doc top-level field is a scalar, a time.Time
+// string, or a list (05-CONTEXT.md D-01) — but viewFields takes `any`, so
+// the first future report field of struct or map type lands on the bare-
+// object branch by construction. This test pins that path (#504, OPS-02).
+func TestViewFieldsBareNestedObject(t *testing.T) {
+	type bareNestedInner struct {
+		Flag bool `json:"flag"`
+	}
+	type bareNestedDetail struct {
+		Count int             `json:"count"`
+		Label string          `json:"label"`
+		Inner bareNestedInner `json:"inner"`
+		Tags  []string        `json:"tags"`
+	}
+	type bareNestedDoc struct {
+		Name   string           `json:"name"`
+		Detail bareNestedDetail `json:"detail"`
+	}
+
+	t.Run("populated object renders one sanitized row", func(t *testing.T) {
+		doc := bareNestedDoc{
+			Name: "n",
+			Detail: bareNestedDetail{
+				Count: 3,
+				Label: "x",
+				Inner: bareNestedInner{Flag: true},
+				Tags:  []string{"a", "b"},
+			},
+		}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		var detail *viewField
+		for i := range fields {
+			if fields[i].Key == "detail" {
+				detail = &fields[i]
+			}
+		}
+		if detail == nil {
+			t.Fatal("viewFields(doc) did not return a field for detail")
+		}
+		if detail.Label != "Detail" {
+			t.Errorf("detail.Label = %q, want %q", detail.Label, "Detail")
+		}
+		if detail.Value != "" {
+			t.Errorf("detail.Value = %q, want empty (an object-valued key renders no top-level value)", detail.Value)
+		}
+		want := "count=3 label=x inner.flag=true tags[0]=a tags[1]=b"
+		if len(detail.Rows) != 1 || detail.Rows[0] != want {
+			t.Errorf("detail.Rows = %v, want [%q]", detail.Rows, want)
+		}
+
+		assertViewIdentity(t, "bare-nested-object", doc)
+	})
+
+	t.Run("hostile leaf in a bare nested object is sanitized", func(t *testing.T) {
+		hostile := "line1\nline2\rcr\tindented\x1bESC\x7fDEL"
+		doc := bareNestedDoc{
+			Name: "n",
+			Detail: bareNestedDetail{
+				Count: 3,
+				Label: hostile,
+				Inner: bareNestedInner{Flag: true},
+				Tags:  []string{"a", "b"},
+			},
+		}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		wantNewlines := 2 + len(fields)
+		for _, f := range fields {
+			wantNewlines += len(f.Rows)
+		}
+
+		var buf bytes.Buffer
+		if err := renderOperatorView(&buf, "headline", doc); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		for _, violation := range sanitizationViolations(buf.String(), wantNewlines) {
+			t.Errorf("%v (rendered=%q)", violation, buf.String())
+		}
+	})
+
+	t.Run("array element that is itself an array", func(t *testing.T) {
+		type gridDoc struct {
+			Grid [][]int `json:"grid"`
+		}
+		doc := gridDoc{Grid: [][]int{{1, 2}, {3}}}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		var grid *viewField
+		for i := range fields {
+			if fields[i].Key == "grid" {
+				grid = &fields[i]
+			}
+		}
+		if grid == nil {
+			t.Fatal("viewFields(doc) did not return a field for grid")
+		}
+		want := []string{"[0]=1 [1]=2", "[0]=3"}
+		if len(grid.Rows) != len(want) {
+			t.Fatalf("grid.Rows = %v, want %v", grid.Rows, want)
+		}
+		for i := range want {
+			if grid.Rows[i] != want[i] {
+				t.Errorf("grid.Rows[%d] = %q, want %q", i, grid.Rows[i], want[i])
+			}
+		}
+
+		assertViewIdentity(t, "grid-of-grids", doc)
+	})
+}
