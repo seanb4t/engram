@@ -2,14 +2,14 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
-current_phase: 3
-current_phase_name: Curation Verdicts
-status: verifying
-stopped_at: Completed 03-08-PLAN.md
-last_updated: "2026-09-24T05:18:42.178Z"
-last_activity: 2026-09-23
-last_activity_desc: Phase 3 execution started
-state_head: 1eda09d48ae03d085a0ce25b7c7520d41cef5610
+current_phase: 4
+current_phase_name: Jev Reranker & Per-Hit Relevance Signal
+status: planning
+stopped_at: Phase 3 complete, ready to plan Phase 4
+last_updated: "2026-09-24T05:40:07.439Z"
+last_activity: 2026-09-24
+last_activity_desc: Phase 3 complete, transitioned to Phase 4
+state_head: 5dca5fd6b81b1f4b2d7b83d1abca47115ec01814
 progress:
   total_phases: 5
   completed_phases: 2
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09
 
 ## Current Position
 
-Phase: 3 (Curation Verdicts) — EXECUTING
-Plan: 8 of 8
-Status: Phase complete — ready for verification
-Last activity: 2026-09-23 — Phase 3 execution started
+Phase: 4 — Jev Reranker & Per-Hit Relevance Signal
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-24 — Phase 3 complete, transitioned to Phase 4
 
 ## Deferred Items
 
@@ -496,7 +496,7 @@ Both prior entries were delivered and had simply never been closed out:
 ## Session Continuity
 
 Last session: 2026-09-24T05:18:32.271Z
-Stopped at: Completed 03-08-PLAN.md
+Stopped at: Phase 3 complete, ready to plan Phase 4
 Resume file: None
 
 ## Performance Metrics
