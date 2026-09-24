@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/seanb4t/engram/compare/v0.19.0...v0.20.0) (2026-09-24)
+
+
+### Features
+
+* **decide:** typed decisions and recall ranking (2026-09-22.01) ([#613](https://github.com/seanb4t/engram/issues/613)) ([3b05188](https://github.com/seanb4t/engram/commit/3b0518873c35d7b85f46553f762781fda3c57af8))
+
 ## [0.19.0](https://github.com/seanb4t/engram/compare/v0.18.0...v0.19.0) (2026-09-23)
 
 
