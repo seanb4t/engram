@@ -445,12 +445,12 @@ advisory signal, never as an automatic mutation.
   3. The relation question set (including `updates`) is measured on a labeled pair eval — committing no verbatim spine content — reporting accuracy by confidence bucket and a Brier score
   4. Running `consolidate` with neither `--scope` nor `--all-scopes` gets the scope-or-all-scopes rule error instead of a silent zero-candidate report
 
-**Plans:** 8 plans
+**Plans:** 1/8 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — tracer: consolidate → `server.StoreAndDeciderFromEnv` → budgeted `Store.RecordStates` → shared `internal/verdict` question set (five relations + `same_subject`) → `DecideMany` → nested JSON `verdict` per pair; no-provider path byte-identical; verdict edge suite (D-04–D-06, D-09–D-11; CUR-01, CUR-02)
+- [x] 03-01-PLAN.md — tracer: consolidate → `server.StoreAndDeciderFromEnv` → budgeted `Store.RecordStates` → shared `internal/verdict` question set (five relations + `same_subject`) → `DecideMany` → nested JSON `verdict` per pair; no-provider path byte-identical; verdict edge suite (D-04–D-06, D-09–D-11; CUR-01, CUR-02)
 - [ ] 03-02-PLAN.md — `ENGRAM_DECISIONS_VERDICT_THRESHOLD` (0.9) and `ENGRAM_DECISIONS_VERDICT_STATE_CHARS` (1500) registered with `config.ParseProbability`, provider-gated validation, docs rows and the consolidate data disclosure (D-08, D-09; CUR-02)
 
 **Wave 2**
@@ -560,7 +560,7 @@ the result set actually answers the query.
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | In Progress|  |
-| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-08-14 |
+| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | In Progress|  |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete   | 2026-08-15 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-08-16 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-08-17 |

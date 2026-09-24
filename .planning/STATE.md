@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 3
 current_phase_name: Curation Verdicts
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-09-24T00:12:08.762Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-09-24T01:25:28.913Z"
 last_activity: 2026-09-23
-last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: fb3860e54bd1cd17ea71517f1b021f8ac0599f84
+last_activity_desc: Phase 3 execution started
+state_head: 3944d5967da633a046989fd159f47270bff6e3f4
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 22
-  completed_plans: 14
+  completed_plans: 15
   percent: 40
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09
 
 ## Current Position
 
-Phase: 3 (Curation Verdicts) — READY TO EXECUTE
-Plan: Not started
+Phase: 3 (Curation Verdicts) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-09-23 — Phase 2 complete, transitioned to Phase 3
+Last activity: 2026-09-23 — Phase 3 execution started
 
 ## Deferred Items
 
@@ -388,6 +388,8 @@ milestone needs in working memory.
 - [Phase 2]: 02-08: live human check (task eval:decisions against OpenRouter and the LiteLLM pass-through) deferred to end-of-phase UAT per workflow.human_verify_mode=end-of-phase, not run by the executor
 - [Phase 2]: Live check PASSED 2026-09-23 on both base URLs (`02-LIVE-CHECK.md`): OpenRouter direct via the `ENGRAM_OPENAI_API_KEY` fallback, and the LiteLLM pass-through with the deployed engram LiteLLM key via `ENGRAM_DECISIONS_API_KEY` (the local OpenRouter key 401s there, correctly classified `ErrDecisionAuth`)
 - [Phase 2]: WR-01 fixed (`e3a60dbd`): `decodeResponse` rejects an answer whose type mismatches the requested question; IN-01/IN-02 (deploy.md values table rows, UTF-8-safe error-body truncation) remain info-level
+- [Phase 3]: Deferred FromResult's malformed-answer validation to Task 3 (TDD RED-first), per plan sequencing — Task 1's tracer FromResult mapped answers verbatim with no validation; Task 3 wrote the edge-case test suite first against that code, confirmed RED on TestFromResultMalformed (5/5 subtests), then added the validation for GREEN
+- [Phase 3]: CUR-01/CUR-02 requirements not checked off in REQUIREMENTS.md by this plan — Both are shared with not-yet-executed sibling plans (03-02/03-05, 03-06); requirements.ready-ids correctly reports 0/2 ready under the shared-ID gate
 
 ### Pending Todos
 
@@ -479,9 +481,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-23T21:20:57.090Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-curation-verdicts/03-CONTEXT.md
+Last session: 2026-09-24T01:25:28.878Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -661,6 +663,7 @@ Resume file: .planning/phases/03-curation-verdicts/03-CONTEXT.md
 | Phase 02 P05 | 11min | 2 tasks | 4 files |
 | Phase 02-decision-interface-jev-backend P07 | 55min | 3 tasks | 6 files |
 | Phase 02-decision-interface-jev-backend P08 | ~46min | 2 tasks | 7 files |
+| Phase 3 P01 | 1h 11m | 3 tasks | 9 files |
 
 ## Operator Next Steps
 

@@ -301,12 +301,12 @@
     {
       "number": "2",
       "name": "Decision Interface & Jev Backend",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "3",
       "name": "Curation Verdicts",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "4",
@@ -321,8 +321,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 2 of 5 · 20% · ready to verify"
+    "label": "Advance to the next step",
+    "reason": "Phase 3 of 5 · 40% · executing"
   },
-  "updated_at": "2026-09-23T17:12:59.593Z"
+  "updated_at": "2026-09-24T01:25:14.125Z"
 }
