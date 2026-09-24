@@ -59,7 +59,10 @@ const goldenTestVersion = "test-version"
 // normalizes each named flag's pflag.Flag.DefValue (the field both
 // cmd.Help()'s "(default ...)" text and catalogFlag.Default read) to a
 // fixed, env-independent placeholder for the duration of golden generation
-// — never the environment the test happens to run in.
+// — never the environment the test happens to run in. A new env-derived
+// flag default added to this map is neutralized automatically in both the
+// help/catalog goldens and TestExitCodeBaseline (#476) — both call the same
+// neutralizeEnvDerivedFlagDefaults helper.
 var envDerivedFlagDefaults = map[string]map[string]bool{
 	"reindex":           {"target": true},
 	"migrate-set-owner": {"owner": true},
@@ -70,17 +73,23 @@ var envDerivedFlagDefaults = map[string]map[string]bool{
 	"setup": {"runtime": true, "header": true},
 }
 
-// withGoldenDeterminism pins rootCmd.Version to goldenTestVersion and blanks
-// every flag named in envDerivedFlagDefaults back to its committed,
-// env-independent default, restoring both via t.Cleanup. Every golden must
-// be generated under this, so neither a release version nor a
-// contributor's local environment can perturb it.
-func withGoldenDeterminism(t *testing.T) {
+// neutralizeEnvDerivedFlagDefaults is the single place an env-derived pflag
+// default is neutralized for tests. It blanks every (command, flag) pair
+// named in envDerivedFlagDefaults back to an env-independent "", restoring
+// each via t.Cleanup, so neither a release version nor a contributor's local
+// environment can perturb what a test observes.
+//
+// This helper blanks only pflag.Flag.DefValue: a caller that needs the bound
+// Go variable itself blank (not just the flag's advertised default) must run
+// a flag reset (resetCommandFlagState / resetEveryCommandFlagState) AFTER
+// calling this helper — the reset is what copies DefValue into the bound
+// variable (clienttest_test.go's resetCommandFlagState).
+//
+// It is shared by the help/catalog goldens (withGoldenDeterminism) and
+// TestExitCodeBaseline (#476), so a new env-derived flag default added to
+// envDerivedFlagDefaults is neutralized in both places automatically.
+func neutralizeEnvDerivedFlagDefaults(t *testing.T) {
 	t.Helper()
-
-	origVersion := rootCmd.Version
-	rootCmd.Version = goldenTestVersion
-	t.Cleanup(func() { rootCmd.Version = origVersion })
 
 	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
 		flagNames, ok := envDerivedFlagDefaults[commandKey(cmd)]
@@ -99,6 +108,21 @@ func withGoldenDeterminism(t *testing.T) {
 			}(f, orig))
 		}
 	}
+}
+
+// withGoldenDeterminism pins rootCmd.Version to goldenTestVersion and blanks
+// every flag named in envDerivedFlagDefaults back to its committed,
+// env-independent default, restoring both via t.Cleanup. Every golden must
+// be generated under this, so neither a release version nor a
+// contributor's local environment can perturb it.
+func withGoldenDeterminism(t *testing.T) {
+	t.Helper()
+
+	origVersion := rootCmd.Version
+	rootCmd.Version = goldenTestVersion
+	t.Cleanup(func() { rootCmd.Version = origVersion })
+
+	neutralizeEnvDerivedFlagDefaults(t)
 }
 
 // goldenCommands returns EVERY non-hidden, non-cobra-scaffolding command in
