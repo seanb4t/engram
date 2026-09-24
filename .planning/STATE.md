@@ -6,26 +6,26 @@ current_phase: 4
 current_phase_name: Jev Reranker & Per-Hit Relevance Signal
 status: planning
 stopped_at: Phase 3 complete, ready to plan Phase 4
-last_updated: "2026-09-24T05:40:07.439Z"
+last_updated: "2026-09-24T05:43:29.731Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 5dca5fd6b81b1f4b2d7b83d1abca47115ec01814
+state_head: 58dc854400bcaad79bfea87b7b49a0092c747723
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 22
   completed_plans: 22
-  percent: 40
+  percent: 60
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09-22.01)
+See: .planning/PROJECT.md (updated 2026-09-24 after Phase 3 of milestone 2026-09-22.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 3 — Curation Verdicts
+**Current focus:** Phase 4 — Jev Reranker & Per-Hit Relevance Signal
 
 ## Current Position
 
@@ -404,6 +404,7 @@ milestone needs in working memory.
 - [Phase 3]: curationeval: single koanf load resolves both ENGRAM_CURATION_EVAL and ENGRAM_CURATION_EVAL_PAIRS; evaluate() stays free of internal/server, taking threshold/stateChars as plain values
 - [Phase 3]: 03-08: Live task eval:curation against OpenRouter/jev (typesafe/jev-1.13-20260917) on the 70-pair committed corpus passes the D-03 gate (result=PASS, 40/40 at threshold 0.900); recorded aggregate-only in 03-EVAL-RESULTS.md with provenance. — CUR-03's live measurement, never tuned to pass.
 - [Phase 3]: 03-08: Fixed a within-phase task lint:yaml failure (Taskfile.yaml eval:curation desc over yamlfmt's 120-char cap, introduced by 03-07) via an isolated yamlfmt reflow, committed separately from both plan tasks. — Rule 1 auto-fix; failure blocked the phase gate this plan's Task 2 must leave green.
+- [Phase 3]: Phase 3 shipped CUR-01..CUR-04: consolidate verdicts are default-on when ENGRAM_DECISIONS_PROVIDER is set (--no-verdicts suppresses), advisory, and read-only by construction; live D-03 gate PASS 40/40 at p>=0.9, Brier 0.138, with updates the main confusion sink — Phase 4's reranker should reuse the same shape: one internal/* package owning the question set, called by both the product path and the gated eval
 
 ### Pending Todos
 
@@ -474,6 +475,7 @@ Both prior entries were delivered and had simply never been closed out:
   progress row instead of the active milestone's "2. Decision Interface & Jev Backend" row
   (`yzmfesbsg0`, known bug) — hand-corrected for Phase 2; keep hand-verifying the table after the
   Phase 3–5 `phase.complete` calls. It also left STATE.md `progress.completed_phases` at 1, fixed by hand to 2.
+- **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — none remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
 
 ### Quick Tasks Completed
 
@@ -495,7 +497,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T05:18:32.271Z
+Last session: 2026-09-24T05:43:29.694Z
 Stopped at: Phase 3 complete, ready to plan Phase 4
 Resume file: None
 
