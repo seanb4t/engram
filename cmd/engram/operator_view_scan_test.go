@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/verdict"
 )
 
 // spineViewFixtures returns the fixtures the identity gate runs against
@@ -37,6 +38,37 @@ func spineViewFixtures() map[string][]any {
 		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.5},
 	}
 	consolidateMinScore := float32(0.5)
+
+	// 03-06-PLAN.md Task 2: two more consolidate fixtures carrying advisory
+	// verdicts (plan 03-06) -- a doc with a successful unflagged verdict
+	// alongside a failed one, and a doc with a flagged verdict. These are
+	// what deliberately turns TestOperatorViewFixturesHaveNoUnsanitizedNesting
+	// RED before this task's rewrite (WR-02, 06-REVIEW.md): the verdict
+	// field is the first nested-object row field any operator report has
+	// ever produced.
+	consolidateVerdictSuccessPairs := []store.DuplicatePair{
+		{A: "id-c", B: "id-d", AShortID: "sc", BShortID: "sd", AScope: "s", BScope: "s", Score: 0.6},
+		{A: "id-e", B: "id-f", AShortID: "se", BShortID: "sf", AScope: "s", BScope: "s", Score: 0.4},
+	}
+	consolidateVerdictSuccessVerdicts := []verdict.Verdict{
+		{
+			Relation:      verdict.Duplicate,
+			Probabilities: verdict.Probabilities{Duplicate: 0.9, Contradicts: 0.02, Updates: 0.03, Related: 0.04, Unrelated: 0.01},
+			SameSubject:   0.92, NeedsReview: false, Model: "typesafe/jev-1.13-20260917",
+		},
+		{ErrorClass: "timeout"},
+	}
+
+	consolidateVerdictFlaggedPairs := []store.DuplicatePair{
+		{A: "id-g", B: "id-h", AShortID: "sg", BShortID: "sh", AScope: "s", BScope: "s", Score: 0.5},
+	}
+	consolidateVerdictFlaggedVerdicts := []verdict.Verdict{
+		{
+			Relation:      verdict.Related,
+			Probabilities: verdict.Probabilities{Duplicate: 0.1, Contradicts: 0.1, Updates: 0.1, Related: 0.6, Unrelated: 0.1},
+			SameSubject:   0.4, NeedsReview: true, Model: "typesafe/jev-1.13-20260917",
+		},
+	}
 
 	verifiedAt := time.Date(2031, 6, 15, 12, 0, 0, 0, time.UTC)
 	verifyPopulated := verifyReport{
@@ -61,6 +93,10 @@ func spineViewFixtures() map[string][]any {
 			// A nil minScore with zero candidates: exercises the omitempty
 			// key-absence path and the empty-array path together.
 			consolidateDoc(nil, "", true, nil, 5, 0, 0),
+			// A successful unflagged verdict alongside a failed one.
+			attachVerdicts(consolidateDoc(consolidateVerdictSuccessPairs, "s", false, nil, 5, 2, 2), consolidateVerdictSuccessVerdicts, verdict.DefaultThreshold),
+			// A single flagged (needs_review) verdict.
+			attachVerdicts(consolidateDoc(consolidateVerdictFlaggedPairs, "s", false, nil, 5, 1, 1), consolidateVerdictFlaggedVerdicts, verdict.DefaultThreshold),
 		},
 		"spine-review verify": {
 			// At least one entry in each of the three non-valid tiers.
@@ -90,8 +126,8 @@ func TestSpineViewIdentity(t *testing.T) {
 	// to the humanizer per D-06 (06-CONTEXT.md).
 	t.Run("spine-review consolidate/min_score omitempty field count", func(t *testing.T) {
 		consolidateDocs := fixtures["spine-review consolidate"]
-		if len(consolidateDocs) != 2 {
-			t.Fatalf("spine-review consolidate fixtures = %d, want 2", len(consolidateDocs))
+		if len(consolidateDocs) != 4 {
+			t.Fatalf("spine-review consolidate fixtures = %d, want 4", len(consolidateDocs))
 		}
 		withMinScore, withoutMinScore := consolidateDocs[0], consolidateDocs[1]
 

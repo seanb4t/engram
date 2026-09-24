@@ -137,6 +137,14 @@ func valueKind(raw json.RawMessage) byte {
 // empty string. Every other scalar (number, bool) renders as its verbatim
 // raw text — deliberately never round-tripped through float64, so a large
 // uint64 counter keeps the exact digits encoding/json produced.
+//
+// viewScalar itself only ever sees a genuine scalar — every string reaching
+// the text lane from a container-valued field (a row-level object/array
+// field, or a nested array element) is instead sanitized on the path that
+// walks that container: a registered row-field renderer's returned string
+// (sanitized by viewRow) or a leaf inside the generic flatten (flattenNested,
+// which calls viewScalar per leaf). See sanitizeViewValue's own doc comment
+// for the tier-wide guarantee this composes into.
 func viewScalar(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -353,15 +361,21 @@ func humanizeKey(key string) string {
 // The json lane needs no equivalent sanitization — encoding/json already
 // escapes control characters in its own string encoding.
 //
-// The guarantee is narrower than a blanket statement over "every value"
-// would imply: it only ever runs on a JSON string value viewScalar
-// recognizes by its own kind check (raw[0] == '"'). A value that is itself
-// a JSON array or object two levels deep from the doc root (a nested array
-// element, or a row-level object/array field inside viewRow) bypasses
-// viewScalar's sanitizing branch entirely and renders verbatim (WR-02,
-// 06-REVIEW.md). No operator report struct produces such a shape today —
-// see TestOperatorViewFixturesHaveNoUnsanitizedNesting (operator_output_test.go),
-// which fails loudly the day one does.
+// WR-02 (06-REVIEW.md) closed: every string this tier renders now passes
+// through sanitizeViewValue regardless of nesting depth, not only a
+// top-level or row-level scalar. A container-valued field — a row-level
+// object/array field inside viewRow, or a nested array element inside
+// viewFields — is rendered by ONE of two sanitized paths: a registered row
+// field renderer (registerRowFieldRenderer) whose returned string viewRow
+// itself sanitizes via this function, or the generic flatten
+// (flattenNested), which reduces every value to a scalar leaf and renders
+// each leaf through viewScalar (which calls this function for a JSON
+// string). There is no third path and no shape that reaches the text lane
+// unsanitized. TestOperatorViewFixturesHaveNoUnsanitizedNesting
+// (operator_output_test.go) proves this over the live fixture set by
+// substituting a hostile value for every string leaf and asserting the
+// rendered output carries no unsanitized control rune — not, as its name
+// once implied, by forbidding nesting from existing at all.
 func sanitizeViewValue(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
