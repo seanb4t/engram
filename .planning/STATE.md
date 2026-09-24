@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 3
 current_phase_name: Curation Verdicts
 status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-09-24T01:59:56.019Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-09-24T02:55:52.105Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 3 execution started
-state_head: e0eb1f17f7ea9c3be5b31e3b2b054c26a58c0a19
+state_head: 43830948571b93ead48ed45b05748872cbe05eb2
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 22
-  completed_plans: 17
+  completed_plans: 18
   percent: 40
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09
 ## Current Position
 
 Phase: 3 (Curation Verdicts) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
 Last activity: 2026-09-23 — Phase 3 execution started
 
@@ -395,6 +395,7 @@ milestone needs in working memory.
 - [Phase 3]: Phase 3 Plan 3: Re-derived SurfaceFields flag-set-intersection reasoning against the live four-enforcer tree (scan/verify/consolidate/summarize-missing) rather than assuming it unchanged from the three-enforcer version.
 - [Phase 3]: Phase 3 Plan 3: Re-pointed purge's spine.go exemption citation from the stale line 991 to its current line 1047, found via rg -n rather than trusting the old number.
 - [Phase 3]: Phase 3 Plan 3: Scoped the curating-spine skill's invocation edit to exactly line 70's body sentence (3 added / 2 removed lines), leaving the frontmatter mention and every consent/judgment step untouched.
+- [Phase 3]: Plan 03-04: round-2 blind pass agreed 70/80 pairs; all 10 disagreements were contradicts/updates confusions, kept per-class counts duplicate 16, contradicts 12, updates 10, related 16, unrelated 16 — D-02 independence discipline: author-with-label executor never blind-labels; only agreed pairs kept, dropped IDs not renumbered
 
 ### Pending Todos
 
@@ -486,8 +487,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T01:59:55.869Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-09-24T02:55:47.562Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -671,6 +672,7 @@ Resume file: None
 | Phase 3 P01 | 1h 11m | 3 tasks | 9 files |
 | Phase 03 P02 | 15min | 2 tasks | 6 files |
 | Phase 03 P03 | 10 min | 3 tasks | 11 files |
+| Phase 03 P04 | resumed session | 3 tasks | 6 files |
 
 ## Operator Next Steps
 

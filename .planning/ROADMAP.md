@@ -445,7 +445,7 @@ advisory signal, never as an automatic mutation.
   3. The relation question set (including `updates`) is measured on a labeled pair eval — committing no verbatim spine content — reporting accuracy by confidence bucket and a Brier score
   4. Running `consolidate` with neither `--scope` nor `--all-scopes` gets the scope-or-all-scopes rule error instead of a silent zero-candidate report
 
-**Plans:** 3/8 plans executed
+**Plans:** 4/8 plans executed
 
 Plans:
 **Wave 1**
@@ -456,7 +456,7 @@ Plans:
 **Wave 2**
 
 - [x] 03-03-PLAN.md — consolidate enforces the registered sweep-scope rule (#508): RunE guard, published Usage, reclassification, rule comment, CLI/reference/upgrade docs, curating-spine invocation line (D-12; CUR-04)
-- [ ] 03-04-PLAN.md — 80-pair synthetic labeled corpus authored toward five classes, label-independent prompt, blocking blind-labeling checkpoint keeping only agreed pairs (D-01, D-02; CUR-03)
+- [x] 03-04-PLAN.md — 80-pair synthetic labeled corpus authored toward five classes, label-independent prompt, blocking blind-labeling checkpoint keeping only agreed pairs (D-01, D-02; CUR-03)
 
 **Wave 3**
 
