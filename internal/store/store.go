@@ -1445,6 +1445,41 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 	return out, nil
 }
 
+// SearchDiscoveryReranked is SearchDiscovery's opt-in Jev path (D-07): it
+// over-fetches CandidateK(k) discoveries through the same authz-filtered
+// SearchDiscovery call, hands the whole pool to hook in SearchDiscovery's own
+// vector order — discoveries have no lexical rank step to run first, unlike
+// SearchReranked's rankCandidates — and truncates to k only after ranking.
+// All filtering is SearchDiscovery's own, so reranking here can never widen
+// visibility beyond what SearchDiscovery already returns; hook is handed
+// only the ids SearchDiscovery would have returned. Any hook failure (nil
+// hook, hook error, or a rejected map — see applyRankHook/applyRelevance)
+// falls back to exactly the ids and order SearchDiscovery(..., k) would
+// return: discovery's shipped order, never a lexical reorder (D-03). The
+// server calls this only when a rank hook is configured
+// (ENGRAM_SEARCH_RANKER=jev); the default search_discovery path calls
+// SearchDiscovery directly and never reaches this method.
+//
+// k == 0 is rejected with ErrInvalidArgument, mirroring SearchReranked's own
+// guard: callers must pass their already-defaulted k.
+func (s *Store) SearchDiscoveryReranked(ctx context.Context, scope, kind string, subj Subject, query string, vec []float32, k uint64, hook RankHook) ([]Memory, error) {
+	if k == 0 {
+		return nil, fmt.Errorf("%w: SearchDiscoveryReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
+	}
+	if err := rejectOverMaximum("k", k); err != nil {
+		return nil, err
+	}
+	hits, err := s.SearchDiscovery(ctx, scope, kind, subj, vec, CandidateK(k))
+	if err != nil {
+		return nil, err
+	}
+	ranked := applyRankHook(ctx, query, hits, hook)
+	if k >= uint64(len(ranked)) {
+		return ranked, nil
+	}
+	return ranked[:k], nil
+}
+
 // ListOptions parameterizes List: page window (Limit/Offset) and the server-side
 // category/visibility filters the operator console applies. Zero value = first
 // page, no filters.
