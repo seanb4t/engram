@@ -351,7 +351,7 @@ lexical reranker's paraphrase regression (#605) is fixed.
 - [x] **Phase 1: Eval Foundation & Lexical Reranker Fix** - Retrieval eval gains a paraphrase case and reports recall@k/MRR across ordering strategies; the lexical reranker regression is measured and resolved (completed 2026-09-23)
 - [x] **Phase 2: Decision Interface & Jev Backend** - Provider-neutral Go interface over System One's Choice/Score/Noul vocabulary; Jev backend over OpenRouter's Decisions API, off by default (completed 2026-09-23)
 - [x] **Phase 3: Curation Verdicts** - `spine-review consolidate` surfaces advisory relation verdicts per candidate pair, confidence-tiered, never mutating (completed 2026-09-24)
-- [ ] **Phase 4: Jev Reranker & Per-Hit Relevance Signal** - Opt-in reranking on `search_memory` with a fallback to vector order and a per-hit relevance probability on every surface
+- [x] **Phase 4: Jev Reranker & Per-Hit Relevance Signal** - Opt-in reranking on `search_memory` with a fallback to vector order and a per-hit relevance probability on every surface (completed 2026-09-24)
 - [ ] **Phase 5: Operator Correctness** - Five independent operator-surface bug fixes (#476/#504/#502/#501/#503)
 
 ### Phase 1: Eval Foundation & Lexical Reranker Fix
@@ -484,7 +484,7 @@ the result set actually answers the query.
   3. With the reranker enabled, MCP, Connect, and the CLI all carry a per-hit relevance probability, so a caller can tell when no hit answers the query
   4. The reranker's decision state (query plus candidates) stays within Jev's 32k-token context for candidate sets up to the recall maximum, via summaries or per-candidate truncation
 
-**Plans:** 8/8 plans executed
+**Plans:** 8/8 plans complete
 
 Plans:
 **Wave 1**
@@ -630,7 +630,7 @@ Plans:
 | 1. Eval Foundation & Lexical Reranker Fix | 2026-09-22.01 | 6/6 | Complete | 2026-09-23 |
 | 2. Decision Interface & Jev Backend | 2026-09-22.01 | 8/8 | Complete | 2026-09-23 |
 | 3. Curation Verdicts | 2026-09-22.01 | 8/8 | Complete | 2026-09-24 |
-| 4. Jev Reranker & Per-Hit Relevance Signal | 2026-09-22.01 | 0/3 | Not started | - |
+| 4. Jev Reranker & Per-Hit Relevance Signal | 2026-09-22.01 | 8/8 | Complete | 2026-09-24 |
 | 5. Operator Correctness | 2026-09-22.01 | 0/5 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
