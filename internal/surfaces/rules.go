@@ -163,37 +163,36 @@ const RulePurgeFilterRequiresScope = "purge-filter-requires-scope"
 
 // RuleSweepScopeOrAllScopesRequired is the ID of the rule requiring an
 // explicit --scope (or --all-scopes) at every sweep-style operator leaf:
-// `spine-review scan`, `spine-review verify`, and `summarize-missing`
-// (issue #480). Fields is the flag pair alone (["scope", "all-scopes"]).
-// This rule is CLI-only -- its sole enforcement site is cmd/engram's
-// requireSweepScope, which raises a bare usageErrorf, so nothing carries a
-// field=/hint= envelope for it today. No conditionalErrf call site exists
-// for this rule anywhere in the tree -- internal/server never references
-// this rule's const at all. Fields WOULD drive field=scope attribution,
-// and Hint's "conditional_required" value WOULD become live, only if a
-// future MCP or Connect lane raised this rule through
-// internal/server.conditionalErrf; both are declared for that future lane,
-// not for a live surface.
+// `spine-review scan`, `spine-review verify`, `spine-review consolidate`
+// (since #508) and `summarize-missing` (issue #480). Fields is the flag
+// pair alone (["scope", "all-scopes"]). This rule is CLI-only -- its sole
+// enforcement site is cmd/engram's requireSweepScope, which raises a bare
+// usageErrorf, so nothing carries a field=/hint= envelope for it today. No
+// conditionalErrf call site exists for this rule anywhere in the tree --
+// internal/server never references this rule's const at all. Fields WOULD
+// drive field=scope attribution, and Hint's "conditional_required" value
+// WOULD become live, only if a future MCP or Connect lane raised this rule
+// through internal/server.conditionalErrf; both are declared for that
+// future lane, not for a live surface.
 //
 // SurfaceFields diverges from Fields to
 // []string{"scope", "all-scopes", "dry-run"}. Five commands' own flag sets
 // expose BOTH scope and all-scopes: spine-review scan, spine-review verify,
-// summarize-missing (all three enforce this rule today), plus
-// spine-review consolidate and spine-review purge (neither enforces it --
-// consolidate's NearDuplicates treats Scope:"" AllScopes:false as a
-// well-defined empty result, internal/store/spine.go:384-387; purge applies
-// a scope filter only when !AllScopes && Scope != "", internal/store/
-// spine.go:991, so a class-only purge naming neither flag deliberately
-// spans every scope, D-10). No field set can select exactly the three
-// enforcing leaves by Fields alone: their flag-set intersection is
-// {scope, all-scopes, output, timeout} -- summarize-missing's *entire* set
-// minus dry-run/older-than/limit -- which is a strict subset of both
-// consolidate's and purge's flag sets, so any subset of it also resolves
-// onto both non-enforcers. Adding "dry-run" (a field unique to
+// spine-review consolidate, summarize-missing (all four enforce this rule
+// today), plus spine-review purge, the sole command exposing both flags
+// without enforcing it -- purge applies a scope filter only when
+// !AllScopes && Scope != "", internal/store/spine.go:1047, so a class-only
+// purge naming neither flag deliberately spans every scope (D-10). No
+// field set can select exactly the four enforcing leaves by Fields alone:
+// their flag-set intersection is {scope, all-scopes, output, timeout} --
+// summarize-missing's *entire* set minus dry-run/older-than/limit -- which
+// is a strict subset of purge's flag set too, so any subset of it also
+// resolves onto the one non-enforcer. Adding "dry-run" (a field unique to
 // summarize-missing among the five) narrows cobra_usage resolution to
-// summarize-missing alone -- verified empirically against the live tree
-// (08-01-PLAN.md fact 5). The two leaves this narrowing cannot reach
-// (spine-review scan, spine-review verify) are pinned instead by
+// summarize-missing alone -- re-verified empirically against the live tree
+// for the four-enforcer shape (03-03-PLAN.md, #508). The three leaves this
+// narrowing cannot reach (spine-review scan, spine-review verify,
+// spine-review consolidate) are pinned instead by
 // TestSweepLeavesUsageStatesRegisteredRule in cmd/engram, the explicit
 // whitelist the field-set model cannot express.
 //
@@ -201,7 +200,8 @@ const RulePurgeFilterRequiresScope = "purge-filter-requires-scope"
 // SurfaceDocsSite alone (docs-site/reference/tools.md's summarize-missing
 // section mentions dry-run; neither skill file does, so SurfaceSkill
 // resolves empty; all_scopes is not a proto field on any message, so
-// SurfaceProtoComment resolves empty too -- 08-01-PLAN.md fact 6).
+// SurfaceProtoComment resolves empty too -- 08-01-PLAN.md fact 6, unaffected
+// by the four-enforcer change).
 //
 // TagForm is left empty, same reasoning as RuleDestructiveRequiresApply/
 // RuleVerifyFailOnValues/RulePurgeFilterRequiresScope: no MCP arg struct
