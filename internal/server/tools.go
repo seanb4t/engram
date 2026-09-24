@@ -2099,7 +2099,14 @@ func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryA
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchDiscovery(ctx, scope, a.Kind, c.Subj, vec, a.K)
+	// D-07 CONTEXT boundary: the lexical/vector default stays untouched — a
+	// nil d.rankHook (the default; ENGRAM_SEARCH_RANKER unset or "lexical")
+	// calls SearchDiscovery exactly as before this plan. Only a configured
+	// hook (ranker=jev) routes through the opt-in reranked path.
+	if d.rankHook == nil {
+		return d.st.SearchDiscovery(ctx, scope, a.Kind, c.Subj, vec, a.K)
+	}
+	return d.st.SearchDiscoveryReranked(ctx, scope, a.Kind, c.Subj, a.Query, vec, a.K, d.rankHook)
 }
 
 // updateMemory applies a partial update to one record by id or short id.
