@@ -11,321 +11,321 @@ Below are pairs of short notes from software teams' shared project memory. You h
 - unrelated: Different subjects.
 
 ### P01
-record_a: The mobile client retries a failed upload three times with exponential backoff before giving up.
-record_b: Uploads from the mobile client get retried three times with backoff, and then the client gives up.
+record_a: The ledger service supports only USD-denominated accounts.
+record_b: The ledger service supports USD, EUR, and GBP-denominated accounts.
 
 ### P02
-record_a: The billing API's request timeout for calls to the payment processor is five seconds.
-record_b: The billing API's request timeout for calls to the payment processor is thirty seconds, not five; the five-second figure was wrong.
+record_a: The search API logs the latency of every query it serves.
+record_b: The search API exposes a dashboard showing the slowest queries from the past hour.
 
 ### P03
-record_a: The ledger service's payout table has no currency column, so every amount is assumed to be in USD.
-record_b: The ledger service's payout table now has a currency column, added in this quarter's schema migration.
+record_a: The analytics pipeline stores raw events for exactly ninety days before deleting them.
+record_b: The analytics pipeline stores raw events for one year before deleting them.
 
 ### P04
-record_a: The ingest worker logs each batch's record count at info level after every successful flush.
-record_b: The ingest worker also emits a counter metric for the number of batches flushed, alongside the log line.
+record_a: The analytics pipeline sends a daily report to a shared spreadsheet.
+record_b: The mobile client displays a low-battery banner under ten percent charge.
 
 ### P05
-record_a: The catalog service rebuilds its search index nightly from the primary Postgres table.
-record_b: The mobile client resets its push notification badge count to zero once the app is foregrounded.
+record_a: The billing API signs every webhook payload with an HMAC so receivers can verify authenticity.
+record_b: Every webhook payload from the billing API carries an HMAC signature that lets the receiving system confirm it is authentic.
 
 ### P06
-record_a: The ledger service reconciles each day's transactions against the bank statement before markets close.
-record_b: Every day, before the market closes, the ledger service checks that its transactions match the bank statement.
+record_a: The search API returns results ranked by relevance alone.
+record_b: The search API's ranking blends a recency boost together with relevance.
 
 ### P07
 record_a: The ledger service's daily reconciliation job runs at midnight UTC.
-record_b: The ledger service's daily reconciliation job runs at six in the morning UTC, not midnight; midnight was never correct.
+record_b: The ledger service's daily reconciliation job runs at six in the morning UTC.
 
 ### P08
-record_a: The ledger service supports only USD-denominated accounts.
-record_b: The ledger service now also supports EUR and GBP accounts, added alongside the existing USD support.
+record_a: The mobile client's offline mode allows the user to place new orders while offline.
+record_b: The mobile client's offline mode only allows browsing; placing a new order requires a live connection.
 
 ### P09
-record_a: The ledger service logs every failed reconciliation to a dedicated Slack channel.
-record_b: The ledger service also pages the on-call engineer when three reconciliation failures happen in a row.
+record_a: The billing API's rate limit is one hundred requests per minute per key.
+record_b: The billing API's rate limit is five hundred requests per minute per key.
 
 ### P10
-record_a: The ledger service reconciles transactions against the bank statement every night.
-record_b: The mobile client's dark mode setting can be toggled manually in the settings screen.
+record_a: The billing API rejects a charge request whose currency code is not on its supported list.
+record_b: A charge request naming an unsupported currency code gets rejected by the billing API.
 
 ### P11
-record_a: The ingest worker drops a batch entirely if any single record in it fails validation.
-record_b: If one record in a batch fails validation, the ingest worker discards the whole batch.
+record_a: An email sent by the notification service always includes an unsubscribe link in the footer.
+record_b: Every email the notification service sends carries an unsubscribe link at the bottom.
 
 ### P12
-record_a: The ingest worker processes batches in the order they arrive.
-record_b: The ingest worker actually processes batches by priority, not arrival order; the arrival-order claim is wrong.
+record_a: The notification service supports push and email channels.
+record_b: The notification service supports push, email, and SMS channels.
 
 ### P13
-record_a: The ingest worker validates a record's schema but does not check for duplicate ids.
-record_b: The ingest worker now also checks incoming records for duplicate ids, on top of the existing schema validation.
+record_a: The ledger service assigns a unique transaction id using a UUID.
+record_b: The ledger service stores a human-readable reference number alongside each transaction's UUID, for use on support tickets.
 
 ### P14
-record_a: A malformed JSON payload causes the ingest worker to reject a record with a parse error.
-record_b: A record that fails a required-field check is rejected by the ingest worker with a validation error.
+record_a: The ingest worker logs each batch's record count at info level after every successful flush.
+record_b: The ingest worker exposes a metrics endpoint reporting the number of batches flushed per minute.
 
 ### P15
-record_a: The ingest worker retries a failed batch up to three times before giving up.
-record_b: The catalog service caps a product description at two thousand characters.
+record_a: The billing API allows one hundred requests per minute for each key.
+record_b: The search API lets a customer filter results by category and price range.
 
 ### P16
-record_a: The billing API rejects a charge request when the currency code is not in its supported list.
-record_b: A charge request with an unsupported currency code is rejected by the billing API.
+record_a: The mobile client supports light and dark visual themes.
+record_b: The mobile client offers a high-contrast theme for users who need greater visual accessibility.
 
 ### P17
-record_a: The billing API's maximum charge amount per request is one thousand dollars.
-record_b: The billing API's maximum charge amount per request is ten thousand dollars, not one thousand; that figure was incorrect.
+record_a: The catalog service treats an item's SKU as globally unique across all warehouses.
+record_b: SKUs in the catalog service are unique only within a single warehouse, not globally.
 
 ### P18
-record_a: The billing API supports card payments only.
-record_b: The billing API now also supports ACH bank transfers, in addition to the card payments it already supported.
+record_a: The billing API logs a structured audit event for every refund it processes.
+record_b: The billing API retains audit events for refunds for seven years to satisfy compliance requirements.
 
 ### P19
-record_a: The billing API charges a flat two percent fee on every successful transaction.
-record_b: The billing API also charges a fixed thirty-cent fee per transaction, on top of the percentage fee.
+record_a: The billing API supports card payments only.
+record_b: The billing API supports card payments and ACH bank transfers.
 
 ### P20
-record_a: The billing API signs webhook payloads with an HMAC for authenticity.
-record_b: The search API returns at most fifty results per query.
+record_a: The analytics pipeline computes daily active user counts.
+record_b: The analytics pipeline computes daily, weekly, and monthly active user counts.
 
 ### P21
-record_a: The mobile client caches the user's profile locally so the profile screen loads instantly offline.
-record_b: Because the profile is cached locally, the mobile client's profile screen renders instantly without a network connection.
+record_a: The notification service groups low-priority pushes into a digest.
+record_b: The analytics pipeline sorts events into five-minute windows before aggregating them.
 
 ### P22
-record_a: The mobile client supports biometric login on every device it runs on.
-record_b: The mobile client does not support biometric login on every device; some older devices lack the hardware and it is unsupported there.
+record_a: The notification service sends push notifications instantly, with no batching delay.
+record_b: Push notifications from the notification service are held in a batch for up to a minute before sending.
 
 ### P23
-record_a: The mobile client's dark mode setting is a manual toggle in settings.
-record_b: The mobile client's dark mode setting now also follows the system theme automatically, in addition to the manual toggle.
+record_a: The billing API supports refunding a transaction in full.
+record_b: The billing API sends a refund confirmation email to the customer once a refund is processed.
 
 ### P24
-record_a: The mobile client shows a spinner while a network request is in flight.
-record_b: The mobile client shows a toast message when a network request ultimately times out.
+record_a: The catalog service rebuilds its search index nightly from the primary Postgres table.
+record_b: The mobile client resets its push notification badge count to zero once the app is opened.
 
 ### P25
-record_a: The notification service batches low-priority pushes into a digest.
-record_b: The analytics pipeline buckets events into five-minute windows before aggregating them.
+record_a: The search API has no support for typo correction in queries.
+record_b: The search API corrects common typos in a query before matching it against the index.
 
 ### P26
-record_a: The catalog service hides an item from search results once its stock count reaches zero.
-record_b: Once an item's stock reaches zero, the catalog service stops showing it in search results.
+record_a: The ledger service notifies the on-call engineer after three reconciliation failures in a row.
+record_b: The notification service lets a user silence a specific sender.
 
 ### P27
-record_a: The catalog service treats an item's SKU as globally unique across all warehouses.
-record_b: SKUs in the catalog service are not globally unique; they are only unique per warehouse, contrary to the earlier claim.
+record_a: The notification service lets a user mute notifications from a specific sender.
+record_b: The notification service lets a user mute an entire notification category, not tied to any single sender.
 
 ### P28
-record_a: The catalog service indexes product titles for search.
-record_b: The catalog service now also indexes product descriptions for search, beyond just titles.
+record_a: The notification service's quiet hours feature silences push notifications from ten at night to seven in the morning.
+record_b: The notification service's quiet hours feature silences push notifications from nine at night to eight in the morning.
 
 ### P29
-record_a: The catalog service's search ranks in-stock items above out-of-stock ones.
-record_b: The catalog service's search also boosts items with more customer reviews, independent of stock status.
+record_a: The ingest worker's retry limit for a failed batch is three attempts.
+record_b: The ingest worker's retry limit for a failed batch is five attempts.
 
 ### P30
-record_a: The mobile client caches the user's profile locally for offline access.
-record_b: The ledger service assigns each transaction a UUID as its unique identifier.
+record_a: The catalog service removes an out-of-stock item from search results.
+record_b: The billing API asks for a CVV on every new card charge.
 
 ### P31
-record_a: The search API caps every query response at fifty results regardless of how many matches exist.
-record_b: No matter how many matches a query has, the search API never returns more than fifty results.
+record_a: The ingest worker runs as a single instance with no horizontal scaling.
+record_b: The ingest worker runs as multiple instances that scale horizontally with load.
 
 ### P32
-record_a: The search API ranks results purely by text relevance, with no popularity signal.
-record_b: The search API does factor in a popularity signal when ranking results; the text-relevance-only description was wrong.
+record_a: The mobile client retries a failed upload three times with exponential backoff before giving up.
+record_b: Failed uploads from the mobile client get three backoff-spaced retries and then stop.
 
 ### P33
-record_a: The search API returns results ranked by relevance alone.
-record_b: The search API now blends a recency boost into its relevance ranking, an addition to the plain relevance scoring.
+record_a: The ingest worker exposes a metrics endpoint that reports records processed per second.
+record_b: The mobile client needs a full restart before a new language setting takes effect.
 
 ### P34
-record_a: The search API supports filtering results by category.
-record_b: The search API also supports filtering results by price range, alongside the category filter.
+record_a: The ledger service logs every failed reconciliation to a dedicated Slack channel.
+record_b: The ledger service pages the on-call engineer when three reconciliation failures happen in a row.
 
 ### P35
-record_a: The catalog service hides an out-of-stock item from search results.
-record_b: The billing API requires a CVV on every new card charge.
+record_a: The mobile client caches the user's profile locally so the profile screen loads instantly offline.
+record_b: Because the profile is stored on the device, the mobile client's profile screen appears instantly without network access.
 
 ### P36
-record_a: The notification service retries a failed push delivery up to three times before giving up.
-record_b: A push notification that fails to deliver is retried three times by the notification service before it gives up.
+record_a: The ledger service's payout table has no currency column, so every amount is assumed to be in USD.
+record_b: The ledger service's payout table carries a currency column, and payout amounts are recorded in the currency it names.
 
 ### P37
-record_a: The notification service sends push notifications instantly, with no batching delay.
-record_b: Push notifications from the notification service are batched with up to a one-minute delay, not sent instantly as previously stated.
+record_a: The billing API requires a CVV on every card charge.
+record_b: The billing API does not require a CVV when charging a card that was saved on a prior transaction.
 
 ### P38
-record_a: The notification service supports push and email channels.
-record_b: The notification service now also supports SMS as a third delivery channel, alongside push and email.
+record_a: The catalog service's bulk import tool accepts CSV files only.
+record_b: The catalog service's bulk import tool accepts CSV and JSON files.
 
 ### P39
-record_a: The notification service batches low-priority push notifications into a single digest.
-record_b: The notification service sends high-priority push notifications immediately, bypassing the digest batching.
+record_a: The billing API signs each webhook payload with an HMAC for authenticity.
+record_b: The search API returns no more than fifty results for a single query.
 
 ### P40
-record_a: The search API logs the latency of every query it serves.
-record_b: The ingest worker's dead-letter queue holds a rejected record for thirty days.
+record_a: The ledger service compares each day's transactions to the bank statement before markets close.
+record_b: Prior to market close, the day's recorded transactions are checked for agreement with the bank statement.
 
 ### P41
+record_a: The mobile client supports biometric login on every device it runs on.
+record_b: The mobile client's biometric login is unavailable on devices that lack the required hardware.
+
+### P42
 record_a: The analytics pipeline buckets events into five-minute windows before aggregating them.
 record_b: Events are grouped into five-minute windows by the analytics pipeline prior to aggregation.
 
-### P42
-record_a: The analytics pipeline stores raw events for exactly ninety days before deleting them.
-record_b: The analytics pipeline actually keeps raw events for one year, not ninety days; the ninety-day figure was a mistake.
-
 ### P43
-record_a: The analytics pipeline computes daily active user counts.
-record_b: The analytics pipeline now also computes weekly and monthly active user counts, in addition to the daily figure.
+record_a: The search API logs every query's latency so slow queries can be found later.
+record_b: Every query the search API serves has its response time recorded, which makes finding slow queries possible afterward.
 
 ### P44
-record_a: The analytics pipeline exports daily reports to a shared spreadsheet.
-record_b: The analytics pipeline also posts a daily summary to a chat channel, separate from the spreadsheet export.
+record_a: The search API's autocomplete suggestions come only from past searches by the same user.
+record_b: The search API's autocomplete suggestions draw from past searches across all users, not just the current one.
 
 ### P45
-record_a: The analytics pipeline exports a daily report to a shared spreadsheet.
-record_b: The mobile client shows a low-battery banner under ten percent charge.
+record_a: The mobile client shows a spinner while a network request is in flight.
+record_b: The mobile client shows a toast message when a network request times out.
 
 ### P46
-record_a: A refund in the ledger service always references the original transaction's id.
-record_b: Every refund the ledger service processes carries a reference back to the original transaction's id.
+record_a: The mobile client keeps a local copy of the user's profile for offline access.
+record_b: The ledger service assigns a UUID to each transaction as its identifier.
 
 ### P47
-record_a: A negative balance is impossible in the ledger service; every account is clamped to zero.
-record_b: Accounts in the ledger service can go negative under an overdraft; the claim that balances are clamped to zero was wrong.
+record_a: The notification service batches low-priority push notifications into a single digest.
+record_b: The notification service sends high-priority push notifications immediately, bypassing the digest.
 
 ### P48
-record_a: Two-factor authentication is optional for ledger service accounts.
-record_b: Two-factor authentication became mandatory for every ledger service account this quarter, no longer optional.
+record_a: The ingest worker processes batches in the order they arrive.
+record_b: The ingest worker processes batches by priority rather than arrival order.
 
 ### P49
-record_a: The ledger service assigns a unique transaction id using a UUID.
-record_b: The ledger service stores a human-readable reference number alongside each transaction's UUID, for support tickets.
+record_a: The catalog service caches category pages in a CDN for faster loading.
+record_b: The catalog service invalidates its CDN cache automatically whenever a category's item list changes.
 
 ### P50
-record_a: The notification service includes an unsubscribe link in every email footer.
-record_b: The catalog service groups similar items into a listing with variants.
+record_a: The billing API charges a flat two percent fee on every successful transaction.
+record_b: The billing API charges a fixed thirty-cent fee on every transaction, separate from its percentage-based fee.
 
 ### P51
-record_a: The ingest worker's dead-letter queue keeps a rejected record for thirty days before purging it.
-record_b: Rejected records sit in the ingest worker's dead-letter queue for thirty days before being purged.
+record_a: A negative balance is impossible in the ledger service; every account is clamped to zero.
+record_b: Ledger service accounts with an approved overdraft can carry a negative balance.
 
 ### P52
-record_a: The ingest worker runs as a single instance with no horizontal scaling.
-record_b: The ingest worker does scale horizontally across multiple instances; it was never limited to a single instance.
+record_a: The notification service puts an unsubscribe link in every email footer.
+record_b: The catalog service groups similar items into a listing with variants.
 
 ### P53
-record_a: The ingest worker's retry limit for a failed batch is three attempts.
-record_b: The ingest worker's retry limit for a failed batch was raised to five attempts after three proved too low.
+record_a: The search API supports filtering results by category.
+record_b: The search API supports filtering results by price range.
 
 ### P54
-record_a: The ingest worker exposes a metrics endpoint reporting records processed per second.
-record_b: The ingest worker's metrics endpoint also reports the current size of its dead-letter queue.
+record_a: The mobile client shows a low-battery banner once the device drops below ten percent charge.
+record_b: Once the device's charge falls under ten percent, a low-battery banner appears in the mobile client.
 
 ### P55
-record_a: The billing API's rate limit is one hundred requests per minute per key.
-record_b: The search API supports filtering results by category and price range.
+record_a: The search API ranks results purely by text relevance, with no popularity signal.
+record_b: The search API's ranking blends a popularity signal in with text relevance.
 
 ### P56
-record_a: The billing API signs every webhook payload with an HMAC so receivers can verify authenticity.
-record_b: Webhook payloads from the billing API carry an HMAC signature that lets receivers verify they are authentic.
+record_a: A refund in the ledger service always references the original transaction's id.
+record_b: Every refund the ledger service issues carries a pointer back to the id of the transaction it corrects.
 
 ### P57
-record_a: The billing API requires a CVV on every card charge.
-record_b: The billing API does not require a CVV for a saved card on a repeat charge; the every-charge claim was incorrect.
+record_a: The mobile client requires a full app restart to apply a new language setting.
+record_b: The mobile client applies a new language setting without requiring an app restart.
 
 ### P58
-record_a: The billing API's rate limit is one hundred requests per minute per key.
-record_b: The billing API's rate limit was raised to five hundred requests per minute per key after customer feedback.
+record_a: The ingest worker drops an entire batch when any single record inside it fails validation.
+record_b: If one record in a batch fails validation, the whole batch is discarded by the ingest worker.
 
 ### P59
-record_a: The billing API supports refunding a transaction in full.
-record_b: The billing API also supports partial refunds, up to the original transaction amount.
+record_a: The notification service retries a failed push delivery up to three times before giving up.
+record_b: A push notification that fails to deliver gets three retry attempts from the notification service before it stops trying.
 
 ### P60
-record_a: The ledger service pages the on-call engineer after three reconciliation failures.
-record_b: The notification service lets a user mute a specific sender.
+record_a: The ingest worker validates a record's schema but does not check for duplicate ids.
+record_b: The ingest worker validates a record's schema and rejects any record whose id duplicates one already ingested.
 
 ### P61
-record_a: The mobile client shows a low-battery banner once the device drops below ten percent charge.
-record_b: Once the device's battery falls under ten percent, the mobile client displays a low-battery banner.
+record_a: The billing API's maximum charge amount per request is one thousand dollars.
+record_b: The billing API's maximum charge amount per request is ten thousand dollars.
 
 ### P62
-record_a: The mobile client's offline mode allows the user to place new orders while offline.
-record_b: The mobile client's offline mode does not allow placing new orders; only browsing is available offline, contrary to the earlier claim.
+record_a: The billing API's request timeout for calls to the payment processor is five seconds.
+record_b: The billing API's request timeout for calls to the payment processor is thirty seconds.
 
 ### P63
-record_a: The mobile client requires a full app restart to apply a new language setting.
-record_b: The mobile client now applies a new language setting without a restart, a change from the earlier restart requirement.
+record_a: The mobile client's dark mode setting is a manual toggle in settings.
+record_b: The mobile client's dark mode setting follows the device's system theme, with a manual override still available in settings.
 
 ### P64
-record_a: The mobile client supports light and dark visual themes.
-record_b: The mobile client also supports a high-contrast accessibility theme, separate from light and dark.
+record_a: Deleting a category in the catalog service also deletes every item inside it.
+record_b: Deleting a category in the catalog service moves its items into an uncategorized bucket rather than deleting them.
 
 ### P65
-record_a: The ingest worker exposes a metrics endpoint reporting records processed per second.
-record_b: The mobile client requires a full restart to apply a new language setting.
+record_a: The catalog service hides an item from search results once its stock count reaches zero.
+record_b: An item drops out of catalog search results as soon as its stock count hits zero.
 
 ### P66
-record_a: A product description in the catalog service is limited to two thousand characters.
-record_b: The catalog service caps a product's description at two thousand characters.
+record_a: The ledger service checks its transactions against the bank statement every night.
+record_b: The mobile client lets a user toggle dark mode manually from the settings screen.
 
 ### P67
-record_a: Deleting a category in the catalog service also deletes every item inside it.
-record_b: Deleting a category in the catalog service does not delete its items; they are moved to an uncategorized bucket instead.
+record_a: The catalog service's search ranks in-stock items above out-of-stock ones.
+record_b: The catalog service's search ranking factors in how many customer reviews an item has, independent of stock status.
 
 ### P68
-record_a: The catalog service's bulk import tool accepts CSV files only.
-record_b: The catalog service's bulk import tool now also accepts JSON files, in addition to the CSV support it already had.
+record_a: The ingest worker retries a failed batch up to three times before giving up.
+record_b: The catalog service limits a product description to two thousand characters.
 
 ### P69
-record_a: The catalog service groups similar items into a single product listing with variants.
-record_b: The catalog service lets a customer filter variants by size and color within a listing.
+record_a: The search API caps every query response at fifty results regardless of how many matches exist.
+record_b: No matter how many matches exist, the search API never returns more than fifty results for a single query.
 
 ### P70
-record_a: The catalog service's bulk import tool accepts CSV and JSON files.
-record_b: The billing API charges a flat two percent fee on every transaction.
+record_a: The catalog service indexes product titles for search.
+record_b: The catalog service indexes product titles and product descriptions for search.
 
 ### P71
-record_a: The search API logs every query's latency so slow queries can be found later.
-record_b: Every query the search API serves has its latency logged, making slow queries easy to find later.
+record_a: The search API records the latency of every query it serves.
+record_b: The ingest worker keeps a rejected record in its dead-letter queue for thirty days.
 
 ### P72
-record_a: The search API's autocomplete suggestions come only from past searches by the same user.
-record_b: Autocomplete suggestions actually come from all users' past searches, not just the same user; the earlier scoping claim was wrong.
+record_a: Two-factor authentication is optional for ledger service accounts.
+record_b: Two-factor authentication is required for every ledger service account.
 
 ### P73
-record_a: The search API has no support for typo correction in queries.
-record_b: The search API added typo correction for queries this release, closing the gap the earlier note described.
+record_a: The search API corrects a misspelled word in a query before it is matched against the index.
+record_b: The ledger service never allows an account's balance to fall below zero.
 
 ### P74
-record_a: A query timeout in the search API returns a partial result set rather than an error.
-record_b: A query that exceeds the search API's result-size limit is truncated rather than rejected outright.
+record_a: Users cannot opt out of transactional emails from the notification service.
+record_b: Users can opt out of transactional emails from the notification service through a preference center.
 
 ### P75
-record_a: The search API added typo correction for queries this release.
-record_b: The ledger service clamps every account's balance to zero, never allowing it to go negative.
+record_a: Records that fail validation sit inside the ingest worker's dead-letter queue for thirty days before removal.
+record_b: The ingest worker's dead-letter queue keeps a rejected record for thirty days before purging it.
 
 ### P76
-record_a: An email sent by the notification service always includes an unsubscribe link in the footer.
-record_b: The notification service puts an unsubscribe link in the footer of every email it sends.
+record_a: The catalog service's bulk import tool reads CSV and JSON files.
+record_b: The billing API takes a flat two percent cut of every transaction.
 
 ### P77
-record_a: Users cannot opt out of transactional emails from the notification service.
-record_b: Users can opt out of transactional emails through a preference center; the cannot-opt-out claim was incorrect.
+record_a: The analytics pipeline reports active user counts by day, week, and month.
+record_b: The notification service can deliver a message by push, email, or SMS.
 
 ### P78
-record_a: The notification service's quiet hours feature silences push notifications from ten at night to seven in the morning.
-record_b: The notification service's quiet hours window was extended to run from nine at night to eight in the morning, replacing the earlier window.
+record_a: A product description in the catalog service is limited to two thousand characters.
+record_b: The catalog service will not accept a product description longer than two thousand characters.
 
 ### P79
-record_a: The notification service lets a user mute notifications from a specific sender.
-record_b: The notification service also lets a user mute an entire notification category, not just one sender.
+record_a: The catalog service groups similar items into a single product listing with variants.
+record_b: A customer can filter a listing's variants by size and color.
 
 ### P80
-record_a: The analytics pipeline computes daily, weekly and monthly active user counts.
-record_b: The notification service supports push, email and SMS delivery channels.
+record_a: A payload that fails to parse as valid JSON gets rejected by the ingest worker with a parse error.
+record_b: A record that fails a required-field check gets rejected by the ingest worker with a validation error.
