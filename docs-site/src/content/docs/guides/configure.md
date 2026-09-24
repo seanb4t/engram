@@ -187,8 +187,8 @@ is `memory.decisions.apiKeySecret`.
 questions a feature builds (for curation and reranking features, that is
 memory record content) to OpenRouter, which routes Jev to **TypeSafe** (a
 service on the US West Coast). For `spine-review consolidate`, each request
-carries both records' summary plus up to `ENGRAM_DECISIONS_VERDICT_STATE_CHARS`
-characters of content. The provider's policy: no training on inputs, standard
+carries, per record, up to `ENGRAM_DECISIONS_VERDICT_STATE_CHARS` characters
+total of its summary followed by its content. The provider's policy: no training on inputs, standard
 retention, and zero data retention not confirmed. Enable this only if that is
 acceptable for the records in your store.
 

@@ -287,9 +287,9 @@ never merges or mutates a record because of one. `--no-verdicts` skips
 this pass entirely for one run: no record content is sent and no
 `verdict` key appears anywhere in the report.
 
-Each request carries both records' summary plus up to
-`ENGRAM_DECISIONS_VERDICT_STATE_CHARS` characters of content (default
-`1500`) — see
+Each request carries, per record, up to
+`ENGRAM_DECISIONS_VERDICT_STATE_CHARS` characters total of its summary
+followed by its content (default `1500`) — see
 [configure's "What leaves your deployment"](/guides/configure/#typed-decisions-jev)
 for what that means for your deployment. The decider is asked which of
 five relations best describes how the newer record relates to the older

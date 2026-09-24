@@ -442,8 +442,8 @@ One of --scope or --all-scopes is required.
 
 When ENGRAM_DECISIONS_PROVIDER is set (default off), each candidate pair ALSO gets an advisory relation
 verdict: duplicate, contradicts, updates, related or unrelated, with a full probability distribution and a
-same-subject probability. Computed by sending both records' summary and up to
-ENGRAM_DECISIONS_VERDICT_STATE_CHARS characters of content (default 1500) to that provider — one request per
+same-subject probability. Computed by sending, per record, up to ENGRAM_DECISIONS_VERDICT_STATE_CHARS
+characters total of its summary followed by its content (default 1500) to that provider — one request per
 pair. A verdict whose relation probability falls below ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9, or
 --verdict-threshold for this run) is marked needs_review. --no-verdicts skips the pass entirely: no record
 content is sent and no verdict objects appear. A failed verdict request is reported per pair (its class, never

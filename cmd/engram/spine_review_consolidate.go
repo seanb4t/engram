@@ -133,8 +133,8 @@ var spineReviewConsolidateCmd = &cobra.Command{
 		"\n" +
 		"When ENGRAM_DECISIONS_PROVIDER is set (default off), each candidate pair ALSO gets an advisory relation\n" +
 		"verdict: duplicate, contradicts, updates, related or unrelated, with a full probability distribution and a\n" +
-		"same-subject probability. Computed by sending both records' summary and up to\n" +
-		"ENGRAM_DECISIONS_VERDICT_STATE_CHARS characters of content (default 1500) to that provider — one request per\n" +
+		"same-subject probability. Computed by sending, per record, up to ENGRAM_DECISIONS_VERDICT_STATE_CHARS\n" +
+		"characters total of its summary followed by its content (default 1500) to that provider — one request per\n" +
 		"pair. A verdict whose relation probability falls below ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9, or\n" +
 		"--verdict-threshold for this run) is marked needs_review. --no-verdicts skips the pass entirely: no record\n" +
 		"content is sent and no verdict objects appear. A failed verdict request is reported per pair (its class, never\n" +
@@ -465,7 +465,7 @@ func verdictHeadlineClause(stats verdictOutcome) string {
 func verdictDisclosureLine(settings server.VerdictSettings, pairCount int) string {
 	return fmt.Sprintf(
 		"consolidate verdicts: requesting advisory verdicts for %d candidate pair(s) from decisions provider %s (model %s) at host %s, "+
-			"each request carrying both records' summary and up to %d characters of content; --no-verdicts skips this",
+			"each request carrying, per record, up to %d characters total of its summary followed by its content; --no-verdicts skips this",
 		pairCount, settings.Provider, settings.Model, settings.EndpointHost, settings.StateChars)
 }
 
