@@ -57,6 +57,14 @@ type recallView struct {
 	// enough.
 	AccessCount    uint64     `json:"access_count"`
 	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
+	// Relevance is the Jev decision-provider's per-hit P(this record answers
+	// the query) (Phase 4, D-05), transient like Score: present only when
+	// the reranker ran and succeeded for this search. A pointer so a
+	// genuine 0 still serializes under omitempty, distinguishable from "not
+	// scored" (nil). recallView is a hand-written allow-list — like
+	// AccessCount, this must be explicitly added here AND populated in
+	// toRecallView to surface on the compact list/search shape.
+	Relevance *float64 `json:"relevance,omitempty"`
 }
 
 // summaryOrTruncation is the value the recall path shows in place of content:
@@ -95,11 +103,17 @@ func shapeRecall(ms []store.Memory, full bool, maxChars int) []any {
 // toRecallView shapes one memory for default (summary) recall.
 func toRecallView(m store.Memory, maxChars int) recallView {
 	summary, truncated := summaryOrTruncation(m, maxChars)
+	var relevance *float64
+	if m.Relevance != nil {
+		r := *m.Relevance
+		relevance = &r
+	}
 	return recallView{
 		ID: m.ID, ShortID: m.ShortID, Summary: summary, SummarySource: string(m.SummarySource), Truncated: truncated,
 		Scope: m.Scope, Category: m.Category, Tags: m.Tags, CreatedAt: m.CreatedAt,
 		Score:          m.Score,
 		AccessCount:    m.AccessCount,
 		LastAccessedAt: m.LastAccessedAt,
+		Relevance:      relevance,
 	}
 }

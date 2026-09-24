@@ -55,6 +55,11 @@ message Memory {
   optional string summary_model = 29;
   // Unset means never egressed.
   google.protobuf.Timestamp summary_egress_at = 30;
+  // The decision provider's probability (0 to 1) that this record answers
+  // the query; set only when the server's Jev reranker ran and succeeded
+  // for this search. Unset otherwise — distinct from a genuine near-zero
+  // value.
+  optional double relevance = 31;
 }
 
 message ScopeCount {

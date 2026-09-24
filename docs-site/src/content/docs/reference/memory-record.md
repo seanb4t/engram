@@ -41,6 +41,7 @@ documents every field, its serialized JSON name, allowed values, and who sets it
 | Kind | `kind` | string (optional) | client | Discovery discriminator: `map` or `fact`; present only on `discovery`-category records, set via `store_discovery` — see [Discovery fields](#discovery-fields) |
 | Citations | `citations` | Citation[] | client | Optional structured source anchors on **any** category (required, min 1, only for `discovery`) — see [Citation fields](#citation-fields); never auto-populated |
 | Score | `score` | number (optional) | server (query-time) | **Not a stored payload key.** The Qdrant similarity score for this result on `search_memory` (higher = closer); zero or omitted on unranked `list_memory`/`get_memory` results |
+| Relevance | `relevance` | number (optional) | server (query-time) | **Not a stored payload key.** The Jev reranker's per-hit probability that this record answers the query, on `search_memory`/`search_discovery`; present only when reranking ran and succeeded for this hit |
 
 ### Supersession
 

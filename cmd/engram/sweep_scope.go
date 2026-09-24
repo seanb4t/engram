@@ -21,8 +21,8 @@ func sweepScopeRule() surfaces.ConditionalRule {
 
 // requireSweepScope enforces the sweep --scope-or-all-scopes constraint
 // shared by every sweep-style operator leaf (spine-review scan,
-// spine-review verify, summarize-missing): an explicit --scope or
-// --all-scopes is required. Composes the registered
+// spine-review verify, spine-review consolidate, summarize-missing): an
+// explicit --scope or --all-scopes is required. Composes the registered
 // surfaces.RuleSweepScopeOrAllScopesRequired rule's Sentence into the
 // rejection -- never a bare, unregistered usage check.
 func requireSweepScope(scope string, allScopes bool) error {

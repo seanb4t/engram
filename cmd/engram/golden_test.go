@@ -59,7 +59,10 @@ const goldenTestVersion = "test-version"
 // normalizes each named flag's pflag.Flag.DefValue (the field both
 // cmd.Help()'s "(default ...)" text and catalogFlag.Default read) to a
 // fixed, env-independent placeholder for the duration of golden generation
-// — never the environment the test happens to run in.
+// — never the environment the test happens to run in. A new env-derived
+// flag default added to this map is neutralized automatically in both the
+// help/catalog goldens and TestExitCodeBaseline (#476) — both call the same
+// neutralizeEnvDerivedFlagDefaults helper.
 var envDerivedFlagDefaults = map[string]map[string]bool{
 	"reindex":           {"target": true},
 	"migrate-set-owner": {"owner": true},
@@ -68,6 +71,60 @@ var envDerivedFlagDefaults = map[string]map[string]bool{
 	// --header's default is read via os.Getenv("ENGRAM_HEADERS") at init()
 	// time (02-03-PLAN.md Task 1, D-07) — same hazard, same fix.
 	"setup": {"runtime": true, "header": true},
+}
+
+// neutralizeEnvDerivedFlagDefaults is the single place an env-derived pflag
+// default is neutralized for tests. For every (command, flag) pair named in
+// envDerivedFlagDefaults it blanks both pflag.Flag.DefValue and the bound Go
+// variable, restoring both via t.Cleanup, so a contributor's local
+// environment cannot perturb what a test observes.
+//
+// The bound variable is blanked here rather than left to a later flag reset
+// because resetCommandFlagState skips stringSlice flags (setup's --runtime
+// and --header): a slice flag is emptied through pflag.SliceValue.Replace,
+// and every other flag through Value.Set(""). Each flag's single cleanup
+// restores its DefValue and bound value together, so the restored state does
+// not depend on the order in which other helpers' cleanups run.
+//
+// It is shared by the help/catalog goldens (withGoldenDeterminism) and
+// TestExitCodeBaseline (#476), so a new env-derived flag default added to
+// envDerivedFlagDefaults is neutralized in both places automatically.
+func neutralizeEnvDerivedFlagDefaults(t *testing.T) {
+	t.Helper()
+
+	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
+		flagNames, ok := envDerivedFlagDefaults[commandKey(cmd)]
+		if !ok {
+			continue
+		}
+		for flagName := range flagNames {
+			f := cmd.Flags().Lookup(flagName)
+			if f == nil {
+				continue
+			}
+			origDef := f.DefValue
+			f.DefValue = ""
+			if sv, ok := f.Value.(pflag.SliceValue); ok {
+				origSlice := sv.GetSlice()
+				if err := sv.Replace(nil); err != nil {
+					t.Fatalf("neutralize %s --%s: %v", commandKey(cmd), flagName, err)
+				}
+				t.Cleanup(func() {
+					_ = sv.Replace(origSlice)
+					f.DefValue = origDef
+				})
+				continue
+			}
+			origVal := f.Value.String()
+			if err := f.Value.Set(""); err != nil {
+				t.Fatalf("neutralize %s --%s: %v", commandKey(cmd), flagName, err)
+			}
+			t.Cleanup(func() {
+				_ = f.Value.Set(origVal)
+				f.DefValue = origDef
+			})
+		}
+	}
 }
 
 // withGoldenDeterminism pins rootCmd.Version to goldenTestVersion and blanks
@@ -82,23 +139,7 @@ func withGoldenDeterminism(t *testing.T) {
 	rootCmd.Version = goldenTestVersion
 	t.Cleanup(func() { rootCmd.Version = origVersion })
 
-	for _, cmd := range walkCommands(rootCmd, commandWalkSkip) {
-		flagNames, ok := envDerivedFlagDefaults[commandKey(cmd)]
-		if !ok {
-			continue
-		}
-		for flagName := range flagNames {
-			f := cmd.Flags().Lookup(flagName)
-			if f == nil {
-				continue
-			}
-			orig := f.DefValue
-			f.DefValue = ""
-			t.Cleanup(func(f *pflag.Flag, orig string) func() {
-				return func() { f.DefValue = orig }
-			}(f, orig))
-		}
-	}
+	neutralizeEnvDerivedFlagDefaults(t)
 }
 
 // goldenCommands returns EVERY non-hidden, non-cobra-scaffolding command in

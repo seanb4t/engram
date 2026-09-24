@@ -12,10 +12,14 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 | Path | Responsibility |
 |------|----------------|
-| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + client-tier commands reaching a running server over Connect (`get`, `search`, `list`, `store`, `migration-status`) + operator-tier commands acting on Qdrant directly (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate` (`status`, `revert`) schema-version sweep — see docs-site `guides/migrate`; `migrate-remap-owner` (alias: `migrate-set-owner`, deprecated); `prune-expired`; `summarize-missing`; `backfill-short-ids` (deprecated, use `migrate`); `spine-review` (`scan`, `verify`, `consolidate`, `purge`, `archive`, `restore`)) (entrypoint only) |
+| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + client-tier commands reaching a running server over Connect (`get`, `search`, `list`, `store`, `migration-status`) + operator-tier commands acting on Qdrant directly (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate` (`status`, `revert`) schema-version sweep — see docs-site `guides/migrate`; `migrate-remap-owner` (alias: `migrate-set-owner`, deprecated); `prune-expired`; `summarize-missing`; `backfill-short-ids` (deprecated, use `migrate`); `spine-review` (`scan`, `verify`, `consolidate` — attaches advisory relation verdicts when `ENGRAM_DECISIONS_PROVIDER` is set, `--no-verdicts` skips, requires `--scope` or `--all-scopes`; `purge`, `archive`, `restore`)) (entrypoint only) |
 | `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
 | `internal/store/` | Qdrant-backed memory store |
 | `internal/embed/` | embedder (OpenAI-compatible) |
+| `internal/decide/` | provider-neutral typed-decision contract (`Decider`, System One questions/answers, named errors); `internal/decide/jev` is the Jev backend over OpenRouter's Decisions API, off unless `ENGRAM_DECISIONS_PROVIDER` is set |
+| `internal/verdict/` | advisory relation-verdict contract shared by `spine-review consolidate` and the curation eval — five-option relation question (`duplicate`/`contradicts`/`updates`/`related`/`unrelated`), `same_subject`, per-record `State`, result mapping with `needs_review`; built over `internal/decide` |
+| `internal/relevance/` | the search-path relevance question set shared by the server's rank hook and the retrieval eval (one noul question per candidate, budgeted `verdict.State` per candidate, response mapping), built over `internal/decide`; the store composes it through `store.RankHook` |
+| `internal/curationeval/` | gated labeled-pair eval of the relation verdicts (`task eval:curation`, `ENGRAM_CURATION_EVAL`), blind-labeled synthetic corpus plus an optional private local pair file |
 | `internal/auth/` | OIDC bearer-token verifier (go-oidc + go-sdk auth middleware) |
 | `internal/config/` | koanf config loader + field registry (single source of truth for ENGRAM_ vars) |
 | `charts/engram/` | Helm chart (server + Qdrant), generic/parameterized |
@@ -81,6 +85,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
   which is version-driven, so none is in the registry or the status
   histogram.
 - **Not used here:** viper, cocogitto.
+- **Spike findings for engram** (implementation patterns, constraints, gotchas) → `Skill("spike-findings-engram")`
 
 ## Memory contract (stable)
 
@@ -99,7 +104,11 @@ record predating the key reads as version 0 by absence; never gates recall).
 Recall returns summaries by default with `full=true` opt-in;
 full content via `get_memory`. `search_memory` results carry an always-on per-result
 `score` (raw Qdrant cosine similarity, higher = closer; zero/omitted on unranked
-`list_memory`/`get_memory` results). Design intent: explicit, zero-junk, correctable. Do not
+`list_memory`/`get_memory` results). With `ENGRAM_SEARCH_RANKER=jev` (opt-in; requires
+`ENGRAM_DECISIONS_PROVIDER`), `search_memory` and `search_discovery` results are reordered
+by the decision provider's per-hit probability that the record answers the query and carry
+`relevance` (0 to 1, omitted when reranking is off or fell back); a decision error or timeout
+never fails the search. Design intent: explicit, zero-junk, correctable. Do not
 add auto-extraction. A rejected call names the failing field and a machine-stable hint
 code in one envelope (`field=<name> hint=<code>: <text>`; see docs-site
 `reference/errors.md`), with a memory `summary` bounded at `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`

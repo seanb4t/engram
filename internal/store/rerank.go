@@ -4,16 +4,19 @@
 package store
 
 import (
+	"context"
+	"math"
 	"sort"
 	"strings"
 )
 
-// candidateK computes the bounded over-fetch limit SearchReranked passes to the
+// CandidateK computes the bounded over-fetch limit SearchReranked passes to the
 // underlying vector Search: never collapsing to no over-fetch (Limit == k,
 // leaving the reranker nothing extra to promote from) and never growing
 // unbounded (review finding 7). Scales with k*4 between a floor of 32 and a
-// cap of 100.
-func candidateK(k uint64) uint64 {
+// cap of 100. Exported so the retrieval eval can fetch the exact candidate
+// pool SearchReranked ranks (2026-09-22.01 Phase 1, RANK-01).
+func CandidateK(k uint64) uint64 {
 	c := k * 4
 	if c < 32 {
 		c = 32
@@ -70,6 +73,12 @@ func lexicalOverlap(queryTerms map[string]struct{}, hit Memory) int {
 // can legitimately place a lower-raw-score hit ahead of a higher-scored one.
 //
 // Returns at most k hits; k <= 0 or k >= len(hits) returns every hit reordered.
+//
+// D-05 (2026-09-22.01 Phase 1, #605) measured this against vector-only and
+// four tuned cosine-blend/overlap-gate variants on a live blind multi-domain
+// paraphrase corpus (paraphrase MRR 0.817 vs vector-only's 0.579) and
+// retained it as the shipped rank step — see rankCandidates and
+// 01-RANKING-DECISION.md.
 func RerankHits(query string, hits []Memory, k int) []Memory {
 	queryTerms := tokenize(query)
 	type scored struct {
@@ -97,4 +106,126 @@ func RerankHits(query string, hits []Memory, k int) []Memory {
 		out[i] = ranked[i].m
 	}
 	return out
+}
+
+// rankCandidates is the single rank step SearchReranked applies to its
+// already authz-filtered candidate pool — its final call before truncation
+// to the caller's k. It was chosen by the pre-committed D-05 rule on the
+// live 2026-09-22.01 Phase 1 retrieval eval (#605, 01-RANKING-DECISION.md):
+// lexical reranking (RerankHits) beat vector-only and every tuned
+// cosine-blend/overlap-gate grid point on best-eligible paraphrase MRR
+// (0.817 vs vector-only's 0.579), and the human checkpoint approved that
+// winner ("Approved winner: lexical"). rankCandidates is also the single
+// seam Phase 4's Jev reranker (RANK-03) plugs into (D-08).
+//
+// If a future live eval re-run selects a different winner, this function's
+// body changes to match — and rerank_test.go's TestRankCandidatesIsTheD05Winner
+// is the pin that must be updated deliberately, never silently.
+func rankCandidates(query string, hits []Memory, k int) []Memory {
+	return RerankHits(query, hits, k)
+}
+
+// RankHook optionally scores per-id relevance of the lexically ordered
+// CandidateK pool SearchReranked already fetched. It is built from
+// primitive types only (context, string, []Memory) so internal/store never
+// imports internal/decide — the seam Phase 4's Jev reranker plugs into
+// (RANK-03, D-08). A nil map or a non-nil error both mean "no scores";
+// RankWithHook/applyRankHook fall back to the plain lexical order in either
+// case, never propagating the error to the caller (D-03).
+type RankHook func(ctx context.Context, query string, hits []Memory) (map[string]float64, error)
+
+// applyRelevance returns a NEW slice built from hits, stable-sorted by
+// relevance descending with no secondary key, when rel carries a finite
+// value in [0, 1] for EVERY hit's ID (extra map keys are ignored); ties
+// (and, since this only runs on a fully-covering map, there are no misses)
+// keep hits' current order — never a secondary tie-break that could
+// override D-03's "ties keep lexical order" contract. On any other rel
+// shape it returns (nil, false) and hits is left completely untouched: no
+// element of hits is read into the returned slice, no Relevance pointer on
+// any hits element is set. Every returned element's Relevance points at a
+// freshly allocated float64 — never at a location inside rel or hits.
+func applyRelevance(hits []Memory, rel map[string]float64) ([]Memory, bool) {
+	if rel == nil {
+		return nil, false
+	}
+	for _, h := range hits {
+		v, ok := rel[h.ID]
+		if !ok || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 1 {
+			return nil, false
+		}
+	}
+	out := make([]Memory, len(hits))
+	copy(out, hits)
+	for i := range out {
+		v := rel[out[i].ID]
+		out[i].Relevance = &v
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return *out[i].Relevance > *out[j].Relevance
+	})
+	return out, true
+}
+
+// applyRankHook is SearchReranked's post-lexical-order step: ordered is
+// returned unchanged when hook is nil or ordered is empty — the hook is
+// NEVER called for an empty pool. Otherwise the hook runs exactly once;
+// its result is applied via applyRelevance when accepted, else ordered is
+// returned unchanged (D-03's fallback — a hook error or rejected map never
+// fails the surrounding search).
+func applyRankHook(ctx context.Context, query string, ordered []Memory, hook RankHook) []Memory {
+	if hook == nil || len(ordered) == 0 {
+		return ordered
+	}
+	rel, err := hook(ctx, query, ordered)
+	if err != nil || rel == nil {
+		return ordered
+	}
+	ranked, ok := applyRelevance(ordered, rel)
+	if !ok {
+		return ordered
+	}
+	return ranked
+}
+
+// RankWithHook is SearchReranked's whole rank step, and the function the
+// retrieval eval's Jev row calls too — so the two paths cannot drift apart.
+// A nil hook returns rankCandidates(query, hits, k), the identical call
+// SearchReranked made before hooks existed (byte-identical default, D-05
+// unaffected). A non-nil hook first ranks the WHOLE pool via
+// rankCandidates(query, hits, len(hits)) — never just k (D-04) — applies
+// the hook over that full pool, and truncates to k only afterward (k <= 0
+// keeps every hit, matching rankCandidates/RerankHits' own truncation
+// rule).
+func RankWithHook(ctx context.Context, query string, hits []Memory, k int, hook RankHook) []Memory {
+	if hook == nil {
+		return rankCandidates(query, hits, k)
+	}
+	ordered := rankCandidates(query, hits, len(hits))
+	ranked := applyRankHook(ctx, query, ordered, hook)
+	if k <= 0 || k >= len(ranked) {
+		return ranked
+	}
+	return ranked[:k]
+}
+
+// VectorOrder is the first-stage vector order with a deterministic tie-break:
+// hits sorted stably by Score descending, then ID ascending, then truncated
+// to k (k <= 0 or k >= len(hits) keeps every hit). It is a PURE function of
+// (hits, k) and reads no lexical, usage or query signal. The retrieval eval
+// measures it as the vector-only baseline (D-06), and it is the rank step
+// SearchReranked ships if D-05 selects vector-only (D-08). It never mutates
+// its input.
+func VectorOrder(hits []Memory, k int) []Memory {
+	ranked := make([]Memory, len(hits))
+	copy(ranked, hits)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].Score != ranked[j].Score {
+			return ranked[i].Score > ranked[j].Score
+		}
+		return ranked[i].ID < ranked[j].ID
+	})
+	if k <= 0 || k >= len(ranked) {
+		k = len(ranked)
+	}
+	return ranked[:k]
 }

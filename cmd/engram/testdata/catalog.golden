@@ -819,13 +819,19 @@
           "name": "all-scopes",
           "type": "bool",
           "default": "false",
-          "usage": "span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)"
+          "usage": "span every scope (required if --scope is omitted); mutually exclusive with --scope; a candidate pair may then cross scopes, and each row names both; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope"
         },
         {
           "name": "min-score",
           "type": "string",
           "default": "",
           "usage": "minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — including pairs with a negative score"
+        },
+        {
+          "name": "no-verdicts",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip the advisory verdict pass even when ENGRAM_DECISIONS_PROVIDER is set — no record content is sent and no verdict objects appear (see --verdict-threshold)"
         },
         {
           "name": "output",
@@ -850,6 +856,12 @@
           "type": "uint64",
           "default": "5",
           "usage": "neighbours considered per record"
+        },
+        {
+          "name": "verdict-threshold",
+          "type": "string",
+          "default": "",
+          "usage": "the probability between 0 and 1 below which a verdict is marked needs_review; overrides ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9) for this run; no effect without ENGRAM_DECISIONS_PROVIDER or with --no-verdicts"
         }
       ],
       "blast_radius": {

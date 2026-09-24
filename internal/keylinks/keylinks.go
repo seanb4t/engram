@@ -91,8 +91,10 @@ const (
 
 	// ShapeMalformed marks a key_links entry that is not a structured
 	// from:/to:/via:/pattern: mapping at all — most often a bare prose
-	// string authored as a list item, which YAML accepts and which
-	// ParsePlanKeyLinks records as an entry with every field empty.
+	// string authored as a list item, which YAML accepts. The
+	// satisfiability scanner reads every item through the unexported
+	// parsePlanKeyLinkItems, which records such an entry with every
+	// field empty; ParsePlanKeyLinks itself skips it (#502).
 	//
 	// Such an entry has nothing to compile and nothing to resolve, so
 	// reporting it as ShapeUnsatisfiable actively misleads: it prints an
@@ -142,16 +144,56 @@ const (
 )
 
 // ParsePlanKeyLinks scans path's frontmatter for a must_haves.key_links
-// block and returns one KeyLink per `- from:` entry, mirroring the flat,
-// YAML-ish parsing gsd-core's own parseMustHavesBlock does. It enters
-// link-parsing state only after a key_links: key found inside the
-// frontmatter's must_haves: block, and leaves that state at the next key
-// at or above must_haves:'s indentation — a pattern: key mentioned
-// anywhere else in the document (including this phase's own plan prose)
-// is never treated as a key link. It strips a single pair of
-// leading/trailing quote characters from each scalar value exactly as
-// the consuming tool does, and never backslash-unescapes.
+// block and returns one KeyLink per key_links list item that sets at
+// least one of From, To, Via, or Pattern, mirroring the flat, YAML-ish
+// parsing gsd-core's own parseMustHavesBlock does. A fieldless item — a
+// bare prose string, or one carrying only keys other than
+// from:/to:/via:/pattern: — is skipped here (#502): such an item has
+// nothing to compile or resolve, and returning it as an all-empty
+// KeyLink misled callers into treating "no shape at all" as "an
+// unsatisfiable pattern". The satisfiability scanner still needs to see
+// every item, fieldless ones included, so it can report them as
+// ShapeMalformed; it calls parsePlanKeyLinkItems directly rather than
+// this filtered view. It enters link-parsing state only after a
+// key_links: key found inside the frontmatter's must_haves: block, and
+// leaves that state at the next key at or above must_haves:'s
+// indentation — a pattern: key mentioned anywhere else in the document
+// (including this phase's own plan prose) is never treated as a key
+// link. It strips a single pair of leading/trailing quote characters
+// from each scalar value exactly as the consuming tool does, and never
+// backslash-unescapes.
 func ParsePlanKeyLinks(path string) ([]KeyLink, error) {
+	items, err := parsePlanKeyLinkItems(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var links []KeyLink
+	for _, link := range items {
+		if isFieldlessKeyLink(link) {
+			continue
+		}
+		links = append(links, link)
+	}
+	return links, nil
+}
+
+// isFieldlessKeyLink reports whether link carries none of From, To, Via,
+// or Pattern — the shape ParsePlanKeyLinks skips (#502) but
+// parsePlanKeyLinkItems still returns, so the satisfiability scanner can
+// report it as ShapeMalformed.
+func isFieldlessKeyLink(link KeyLink) bool {
+	return link.From == "" && link.To == "" && link.Via == "" && link.Pattern == ""
+}
+
+// parsePlanKeyLinkItems is the raw walk ParsePlanKeyLinks filters: it
+// returns one KeyLink per `- ` list item found in a must_haves.key_links
+// block, fieldless items included, each seeded with the line of its own
+// `- ` item (see the Line field comment on KeyLink). ScanPlansWithStats
+// calls this directly, not ParsePlanKeyLinks, so the satisfiability gate
+// keeps reporting a fieldless item as ShapeMalformed even though
+// ParsePlanKeyLinks itself no longer returns it.
+func parsePlanKeyLinkItems(path string) ([]KeyLink, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("keylinks: parse %s: %w", path, err)
@@ -519,7 +561,7 @@ func ScanPlansWithStats(repoRoot string, roots []string, mode Mode) ([]Offender,
 				return nil
 			}
 
-			links, perr := ParsePlanKeyLinks(p)
+			links, perr := parsePlanKeyLinkItems(p)
 			if perr != nil {
 				return fmt.Errorf("keylinks: scan %s: %w", p, perr)
 			}

@@ -1,0 +1,1 @@
+No external API integration: the phase consumes Phase 2's provider-neutral `internal/decide` interface and existing `internal/decide/jev` client (one new client option, no new endpoint or capability — the OpenRouter Decisions surface was decided in `.planning/phases/02-decision-interface-jev-backend/COVERAGE.md`), and "MCP" and "Connect" here are engram's own search lanes.

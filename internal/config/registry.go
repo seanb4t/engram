@@ -96,6 +96,47 @@ var registry = []field{
 	{Key: "openai.embeddings_url", Env: "ENGRAM_OPENAI_EMBEDDINGS_URL"},
 	{Key: "openai.chat_base_url", Env: "ENGRAM_OPENAI_CHAT_BASE_URL"},
 	{Key: "openai.chat_api_key", Env: "ENGRAM_OPENAI_CHAT_API_KEY"},
+	// decisions.* (DEC-01/DEC-02/DEC-03, D-01/D-02/D-03): brand-new keys, no
+	// Legacy value (nothing retired to guard against) and no Flag
+	// (provider-tuning values, never typed at a prompt — the same
+	// embed.drain_bytes precedent). Presence enables the feature: an empty
+	// decisions.provider constructs no client and makes no call (D-01),
+	// mirroring summarize.model's presence-enables convention. Only
+	// decisions.api_key falls back — to ENGRAM_OPENAI_API_KEY, resolved at
+	// the wiring seam (cmp.Or in internal/server/decider.go), not here,
+	// mirroring openai.chat_api_key's own fallback precedent.
+	// decisions.base_url deliberately does NOT get this treatment: it has no
+	// Default and fails Config.Validate when empty and provider=jev, rather
+	// than silently inheriting the chat/embeddings base URL (D-03). The
+	// success-path response-bytes bound is an internal constant in
+	// internal/decide/jev, not a registry row (RESEARCH.md Pitfall 4).
+	//
+	// decisions.verdict_threshold (D-08) and decisions.verdict_state_chars
+	// (D-09) are consumed by the operator CLI's verdict pass (spine-review
+	// consolidate), not the server: env-only like their siblings above, since
+	// operator commands load config with no flag overlay (config.Load(nil));
+	// --verdict-threshold (plan 03-05) is a command-local override, not a
+	// second config source.
+	{Key: "decisions.provider", Env: "ENGRAM_DECISIONS_PROVIDER"},
+	{Key: "decisions.base_url", Env: "ENGRAM_DECISIONS_BASE_URL"},
+	{Key: "decisions.api_key", Env: "ENGRAM_DECISIONS_API_KEY"},
+	{Key: "decisions.model", Env: "ENGRAM_DECISIONS_MODEL", Default: "typesafe/jev-1.13"},
+	{Key: "decisions.timeout", Env: "ENGRAM_DECISIONS_TIMEOUT", Default: "10s"},
+	{Key: "decisions.max_timeout", Env: "ENGRAM_DECISIONS_MAX_TIMEOUT", Default: "10m"},
+	{Key: "decisions.drain_bytes", Env: "ENGRAM_DECISIONS_DRAIN_BYTES", Default: "262144"},
+	{Key: "decisions.drain_timeout", Env: "ENGRAM_DECISIONS_DRAIN_TIMEOUT", Default: "2s"},
+	{Key: "decisions.concurrency", Env: "ENGRAM_DECISIONS_CONCURRENCY", Default: "4"},
+	{Key: "decisions.verdict_threshold", Env: "ENGRAM_DECISIONS_VERDICT_THRESHOLD", Default: "0.9"},
+	{Key: "decisions.verdict_state_chars", Env: "ENGRAM_DECISIONS_VERDICT_STATE_CHARS", Default: "1500"},
+	// search.* (D-01, D-09): brand-new keys, no Legacy value (nothing retired
+	// to guard against) and no Flag (deployment-topology values, the same
+	// decisions.* rationale above). search.ranker="jev" requires
+	// ENGRAM_DECISIONS_PROVIDER and reuses its base URL, key and model — it
+	// is not a second provider selector. search.rerank_timeout is dedicated
+	// to the synchronous search path with no retry (D-09): sweeps keep
+	// ENGRAM_DECISIONS_TIMEOUT and their single retry, never this value.
+	{Key: "search.ranker", Env: "ENGRAM_SEARCH_RANKER", Default: "lexical"},
+	{Key: "search.rerank_timeout", Env: "ENGRAM_SEARCH_RERANK_TIMEOUT", Default: "2s"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
 	{Key: "oidc.audience", Env: "ENGRAM_OIDC_AUDIENCE", Legacy: "MEM_OIDC_AUDIENCE", Flag: "oidc-audience"},
 	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},

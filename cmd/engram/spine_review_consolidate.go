@@ -5,17 +5,23 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/seanb4t/engram/internal/config"
+	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/verdict"
 )
 
 // spineConsolidateDefaultTopK is consolidate's --top-k default, mirroring
@@ -28,24 +34,27 @@ const spineConsolidateDefaultTopK uint64 = 5
 // spineConsolidateStore is the minimal store surface consolidate's RunE
 // depends on — satisfied by *store.Store, and by a recording fake in
 // spine_review_consolidate_test.go, so the --scope/--all-scopes/--top-k/
-// --min-score-to-NearDuplicateOptions mapping is provable without dialing
-// a live Qdrant.
+// --min-score-to-NearDuplicateOptions mapping, and the verdict pass's
+// state fetch, are provable without dialing a live Qdrant. Exposes only
+// read methods — NearDuplicates and RecordStates — so no mutating store
+// method is reachable from this file (T-03-02).
 type spineConsolidateStore interface {
 	NearDuplicates(ctx context.Context, opts store.NearDuplicateOptions) ([]store.DuplicatePair, error)
+	RecordStates(ctx context.Context, ids []string) (map[string]store.RecordState, error)
 }
 
-// spineConsolidateStoreFromEnv constructs the store consolidate's RunE
-// calls NearDuplicates on. A package-level var — mirroring
+// spineConsolidateStoreFromEnv constructs the store, decider and verdict
+// settings consolidate's RunE uses. A package-level var — mirroring
 // citationFileReader's injection pattern (spine_review_verify.go) — so
 // spine_review_consolidate_test.go can substitute a recording fake without
 // dialing a live Qdrant. Returns a nil interface (not a non-nil interface
 // wrapping a nil *store.Store) on error.
-var spineConsolidateStoreFromEnv = func() (spineConsolidateStore, error) {
-	st, err := server.StoreFromEnv()
+var spineConsolidateStoreFromEnv = func() (spineConsolidateStore, decide.Decider, server.VerdictSettings, error) {
+	st, dec, settings, err := server.StoreAndDeciderFromEnv()
 	if err != nil {
-		return nil, err
+		return nil, nil, server.VerdictSettings{}, err
 	}
-	return st, nil
+	return st, dec, settings, nil
 }
 
 // parseMinScore parses --min-score's string value into a *float32: empty
@@ -67,28 +76,74 @@ func parseMinScore(v string) (*float32, error) {
 }
 
 var (
-	spineConsolidateScope     string
-	spineConsolidateAllScopes bool
-	spineConsolidateTimeout   time.Duration
-	spineConsolidateOutput    string
-	spineConsolidateTopK      uint64
-	spineConsolidateMinScore  string
+	spineConsolidateScope            string
+	spineConsolidateAllScopes        bool
+	spineConsolidateTimeout          time.Duration
+	spineConsolidateOutput           string
+	spineConsolidateTopK             uint64
+	spineConsolidateMinScore         string
+	spineConsolidateVerdictThreshold string
+	spineConsolidateNoVerdicts       bool
 )
+
+// parseVerdictThreshold parses --verdict-threshold's string value: empty
+// means "use the registered ENGRAM_DECISIONS_VERDICT_THRESHOLD value" (the
+// caller leaves settings.Threshold untouched), so this returns false, 0,
+// nil in that case. Registered as a STRING flag rather than a float flag
+// for the same reason parseMinScore is — its DefValue must be able to state
+// "empty means the registered default", never advertise a bogus numeric
+// default. A non-empty value is parsed via config.ParseProbability — the
+// SAME parser Config.Validate uses for ENGRAM_DECISIONS_VERDICT_THRESHOLD
+// (WR-01) — so a value this flag accepts can never diverge from what the
+// registered var itself would accept; an invalid value is a usage error
+// naming the flag and the value, returned before any store or decider
+// construction.
+func parseVerdictThreshold(v string) (set bool, threshold float64, err error) {
+	if v == "" {
+		return false, 0, nil
+	}
+	threshold, perr := config.ParseProbability(v)
+	if perr != nil {
+		return false, 0, usageErrorf("--verdict-threshold %q: %v", v, perr)
+	}
+	return true, threshold, nil
+}
 
 // spineReviewConsolidateCmd reports ranked near-duplicate candidate pairs
 // across the memory spine, using each record's already-stored vector.
 // Read-only by construction — it never issues a mutating Qdrant RPC
 // (T-03-16's mitigation) — and Subject-less like every other operator-tier
 // command on this binary. Never clusters, never applies a default
-// threshold, never labels a pair a "duplicate": the report ranks
+// threshold, never labels a pair a "duplicate": the structural report ranks
 // candidates and stops, per REQ-near-duplicate-report's transparency
 // requirement — deciding whether two records are the same fact is a
 // judgment the operator or a future semantic skill makes, not this
-// command.
+// command. When ENGRAM_DECISIONS_PROVIDER is configured, each pair ALSO
+// gets an advisory relation verdict (D-04..D-11, plan 03-05): a nested
+// verdict object attached to the candidate, never a label on the
+// candidate itself, never acted on, and never able to change this
+// command's exit status. See the Long text below for the full contract.
 var spineReviewConsolidateCmd = &cobra.Command{
 	Use:   "consolidate",
 	Short: "Report ranked near-duplicate candidate pairs across the memory spine",
+	Long: "consolidate ranks near-duplicate candidate pairs across the memory spine by each record's already-stored\n" +
+		"vector cosine score. It never merges, mutates, clusters, or labels a pair a \"duplicate\" — deciding whether\n" +
+		"two records are the same fact is a judgment the operator or a future semantic skill makes, not this command.\n" +
+		"One of --scope or --all-scopes is required.\n" +
+		"\n" +
+		"When ENGRAM_DECISIONS_PROVIDER is set (default off), each candidate pair ALSO gets an advisory relation\n" +
+		"verdict: duplicate, contradicts, updates, related or unrelated, with a full probability distribution and a\n" +
+		"same-subject probability. Computed by sending, per record, up to ENGRAM_DECISIONS_VERDICT_STATE_CHARS\n" +
+		"characters total of its summary followed by its content (default 1500) to that provider — one request per\n" +
+		"pair. A verdict whose relation probability falls below ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9, or\n" +
+		"--verdict-threshold for this run) is marked needs_review. --no-verdicts skips the pass entirely: no record\n" +
+		"content is sent and no verdict objects appear. A failed verdict request is reported per pair (its class, never\n" +
+		"a guess) and never changes this command's exit status. Verdicts are advisory only: consolidate never merges or mutates a record because of one.\n" +
+		"JSON is the stable contract; text is a rendered view of it.",
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := requireSweepScope(spineConsolidateScope, spineConsolidateAllScopes); err != nil {
+			return err
+		}
 		format, err := operatorOutputFormat(cmd, spineConsolidateOutput)
 		if err != nil {
 			return err
@@ -97,9 +152,16 @@ var spineReviewConsolidateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		st, err := spineConsolidateStoreFromEnv()
+		thresholdSet, thresholdOverride, err := parseVerdictThreshold(spineConsolidateVerdictThreshold)
+		if err != nil {
+			return err
+		}
+		st, dec, settings, err := spineConsolidateStoreFromEnv()
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
+		}
+		if thresholdSet {
+			settings.Threshold = thresholdOverride
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -126,23 +188,90 @@ var spineReviewConsolidateCmd = &cobra.Command{
 			return classifyOperatorErr(err)
 		}
 		text := consolidateSummary(pairs, spineConsolidateScope, spineConsolidateAllScopes, minScore, spineConsolidateTopK, lastScanned, lastQueried)
-		return renderOperator(cmd, format,
-			text, consolidateDoc(pairs, spineConsolidateScope, spineConsolidateAllScopes, minScore, spineConsolidateTopK, lastScanned, lastQueried))
+		doc := consolidateDoc(pairs, spineConsolidateScope, spineConsolidateAllScopes, minScore, spineConsolidateTopK, lastScanned, lastQueried)
+		if dec != nil && !spineConsolidateNoVerdicts {
+			if len(pairs) > 0 {
+				cmd.PrintErrln(verdictDisclosureLine(settings, len(pairs)))
+			}
+			verdicts := runVerdictPass(ctx, st, dec, pairs, settings)
+			doc = attachVerdicts(doc, verdicts, settings.Threshold)
+			stats := verdictStats(verdicts)
+			text += verdictHeadlineClause(stats)
+			cmd.PrintErrln(verdictSummaryLine(stats))
+			if warn := verdictAllAuthWarning(stats); warn != "" {
+				cmd.PrintErrln(warn)
+			}
+		}
+		return renderOperator(cmd, format, text, doc)
 	},
 }
 
 // consolidatePairDoc is one ranked candidate's JSON-mode shape: both
-// records' identities and Score, printed as reported — never normalised,
-// bucketed, or labelled a verdict. Never a record's content or summary
-// text (T-03-05's sibling mitigation).
+// records' identities, Score and, only when the verdict pass ran, an
+// advisory Verdict — the structural fields are never normalised,
+// bucketed, or labelled a verdict themselves (T-03-05's sibling
+// mitigation). Verdict is a pointer tagged omitempty so its presence or
+// absence IS the "did the verdict pass run" signal (D-05), mirroring
+// consolidateReportDoc.MinScore's pointer-plus-omitempty design below.
 type consolidatePairDoc struct {
-	A        string  `json:"a"`
-	B        string  `json:"b"`
-	AShortID string  `json:"a_short_id"`
-	BShortID string  `json:"b_short_id"`
-	AScope   string  `json:"a_scope"`
-	BScope   string  `json:"b_scope"`
-	Score    float32 `json:"score"`
+	A        string                 `json:"a"`
+	B        string                 `json:"b"`
+	AShortID string                 `json:"a_short_id"`
+	BShortID string                 `json:"b_short_id"`
+	AScope   string                 `json:"a_scope"`
+	BScope   string                 `json:"b_scope"`
+	Score    float32                `json:"score"`
+	Verdict  *consolidateVerdictDoc `json:"verdict,omitempty"`
+}
+
+// consolidateProbabilitiesDoc is the D-05 five-key probability
+// distribution, in D-05's fixed key order — field declaration order
+// controls encoding/json's marshaled key order.
+type consolidateProbabilitiesDoc struct {
+	Duplicate   float64 `json:"duplicate"`
+	Contradicts float64 `json:"contradicts"`
+	Updates     float64 `json:"updates"`
+	Related     float64 `json:"related"`
+	Unrelated   float64 `json:"unrelated"`
+}
+
+// consolidateVerdictDoc is one pair's advisory verdict JSON shape (D-05):
+// exactly relation/probabilities/same_subject/needs_review/model on
+// success, or exactly error on failure. A custom MarshalJSON implements
+// this two-shape union — plain field tags cannot, since the success shape
+// must still emit needs_review:false and an empty model string rather
+// than omitting them, while the failure shape must emit ONLY error.
+type consolidateVerdictDoc struct {
+	Relation      string
+	Probabilities consolidateProbabilitiesDoc
+	SameSubject   float64
+	NeedsReview   bool
+	Model         string
+	Error         string
+}
+
+// MarshalJSON implements the two-shape union documented on
+// consolidateVerdictDoc: Error non-empty marshals {"error": "..."} alone;
+// otherwise the five success keys, always present.
+func (d consolidateVerdictDoc) MarshalJSON() ([]byte, error) {
+	if d.Error != "" {
+		return json.Marshal(struct {
+			Error string `json:"error"`
+		}{Error: d.Error})
+	}
+	return json.Marshal(struct {
+		Relation      string                      `json:"relation"`
+		Probabilities consolidateProbabilitiesDoc `json:"probabilities"`
+		SameSubject   float64                     `json:"same_subject"`
+		NeedsReview   bool                        `json:"needs_review"`
+		Model         string                      `json:"model"`
+	}{
+		Relation:      d.Relation,
+		Probabilities: d.Probabilities,
+		SameSubject:   d.SameSubject,
+		NeedsReview:   d.NeedsReview,
+		Model:         d.Model,
+	})
 }
 
 // consolidateReportDoc is the JSON-mode report's exported-field shape.
@@ -154,15 +283,18 @@ type consolidatePairDoc struct {
 // serialization, so that absent key IS the "no filter applied" signal in
 // BOTH lanes together; the human-facing explanation of what the absence
 // means lives in consolidateSummary's headline, never as a second
-// rendering rule here.
+// rendering rule here. VerdictThreshold reuses the same presence-means-
+// applied reasoning: present exactly when the verdict pass ran, carrying
+// the threshold that produced every needs_review flag in Candidates.
 type consolidateReportDoc struct {
-	Scope      string               `json:"scope"`
-	AllScopes  bool                 `json:"all_scopes"`
-	TopK       uint64               `json:"top_k"`
-	MinScore   *float32             `json:"min_score,omitempty"`
-	Scanned    uint64               `json:"scanned"`
-	Queried    uint64               `json:"queried"`
-	Candidates []consolidatePairDoc `json:"candidates"`
+	Scope            string               `json:"scope"`
+	AllScopes        bool                 `json:"all_scopes"`
+	TopK             uint64               `json:"top_k"`
+	MinScore         *float32             `json:"min_score,omitempty"`
+	Scanned          uint64               `json:"scanned"`
+	Queried          uint64               `json:"queried"`
+	Candidates       []consolidatePairDoc `json:"candidates"`
+	VerdictThreshold *float64             `json:"verdict_threshold,omitempty"`
 }
 
 // consolidateDoc converts pairs into consolidateReportDoc, keeping
@@ -181,6 +313,204 @@ func consolidateDoc(pairs []store.DuplicatePair, scope string, allScopes bool, m
 		})
 	}
 	return doc
+}
+
+// runVerdictPass builds and sends one decide.Request per pair whose both
+// record states are available, and returns one verdict.Verdict per pair,
+// index-aligned with pairs. Returns a non-nil empty slice and makes no
+// call at all when pairs is empty. Fetches every id referenced by pairs
+// through exactly one st.RecordStates call; on a state-fetch error every
+// pair gets verdict.Unavailable(state-unavailable); a pair missing either
+// side's state (the id was absent from the fetch) gets the same
+// state-unavailable verdict without being sent to the decider. Every
+// buildable request goes through exactly one dec.DecideMany call (D-11) —
+// no cap on pair count, bounded only by the decider's own concurrency.
+func runVerdictPass(ctx context.Context, st spineConsolidateStore, dec decide.Decider, pairs []store.DuplicatePair, settings server.VerdictSettings) []verdict.Verdict {
+	verdicts := make([]verdict.Verdict, len(pairs))
+	if len(pairs) == 0 {
+		return verdicts
+	}
+
+	ids := make([]string, 0, len(pairs)*2)
+	seen := make(map[string]bool, len(pairs)*2)
+	for _, p := range pairs {
+		for _, id := range [2]string{p.A, p.B} {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+
+	states, err := st.RecordStates(ctx, ids)
+	if err != nil {
+		unavailable := verdict.Unavailable(fmt.Errorf("fetch record states: %w", verdict.ErrStateUnavailable))
+		for i := range verdicts {
+			verdicts[i] = unavailable
+		}
+		return verdicts
+	}
+
+	reqIndexes := make([]int, 0, len(pairs))
+	reqs := make([]decide.Request, 0, len(pairs))
+	for i, p := range pairs {
+		a, aok := states[p.A]
+		b, bok := states[p.B]
+		if !aok || !bok {
+			verdicts[i] = verdict.Unavailable(fmt.Errorf("record state for pair %s/%s: %w", p.A, p.B, verdict.ErrStateUnavailable))
+			continue
+		}
+		req := verdict.PairRequest(
+			verdict.Side{ID: a.ID, CreatedAt: a.CreatedAt, Summary: a.Summary, Content: a.Content},
+			verdict.Side{ID: b.ID, CreatedAt: b.CreatedAt, Summary: b.Summary, Content: b.Content},
+			settings.StateChars,
+		)
+		reqIndexes = append(reqIndexes, i)
+		reqs = append(reqs, req)
+	}
+
+	results := dec.DecideMany(ctx, reqs)
+	for j, res := range results {
+		verdicts[reqIndexes[j]] = verdict.FromResult(res, settings.Threshold)
+	}
+	return verdicts
+}
+
+// attachVerdicts is a pure function that sets doc.VerdictThreshold and
+// index-aligns each candidate's Verdict from verdicts, converting
+// verdict.Verdict into the JSON-mode consolidateVerdictDoc shape (D-05).
+func attachVerdicts(doc consolidateReportDoc, verdicts []verdict.Verdict, threshold float64) consolidateReportDoc {
+	doc.VerdictThreshold = &threshold
+	for i := range doc.Candidates {
+		if i >= len(verdicts) {
+			break
+		}
+		v := verdicts[i]
+		vd := verdictDoc(v)
+		doc.Candidates[i].Verdict = &vd
+	}
+	return doc
+}
+
+// verdictDoc converts one verdict.Verdict into its JSON-mode shape: a
+// failed verdict (Failed()) carries only Error; a decided one carries the
+// five success fields, verbatim.
+func verdictDoc(v verdict.Verdict) consolidateVerdictDoc {
+	if v.Failed() {
+		return consolidateVerdictDoc{Error: v.ErrorClass}
+	}
+	return consolidateVerdictDoc{
+		Relation: v.Relation,
+		Probabilities: consolidateProbabilitiesDoc{
+			Duplicate:   v.Probabilities.Duplicate,
+			Contradicts: v.Probabilities.Contradicts,
+			Updates:     v.Probabilities.Updates,
+			Related:     v.Probabilities.Related,
+			Unrelated:   v.Probabilities.Unrelated,
+		},
+		SameSubject: v.SameSubject,
+		NeedsReview: v.NeedsReview,
+		Model:       v.Model,
+	}
+}
+
+// verdictOutcome tallies runVerdictPass's per-pair results into the counts
+// verdictHeadlineClause, verdictSummaryLine and verdictAllAuthWarning each
+// need: Requested is len(verdicts), Answered is the count of decided (not
+// Failed()) verdicts, NeedsReview is how many of those are flagged, and
+// FailuresByClass maps a failed verdict's ErrorClass to its count.
+// Unavailable is never stored separately — it is always
+// Requested-Answered, equivalently the sum of every FailuresByClass value.
+// FailuresByClass's iteration order is unspecified; a caller needing a
+// deterministic rendering (verdictSummaryLine) sorts the keys itself.
+type verdictOutcome struct {
+	Requested, Answered, NeedsReview int
+	FailuresByClass                  map[string]int
+}
+
+// verdictStats reduces verdicts (index-aligned with the pairs runVerdictPass
+// was given) into a verdictOutcome. Pure — no I/O.
+func verdictStats(verdicts []verdict.Verdict) verdictOutcome {
+	out := verdictOutcome{Requested: len(verdicts), FailuresByClass: make(map[string]int)}
+	for _, v := range verdicts {
+		if v.Failed() {
+			out.FailuresByClass[v.ErrorClass]++
+			continue
+		}
+		out.Answered++
+		if v.NeedsReview {
+			out.NeedsReview++
+		}
+	}
+	return out
+}
+
+// verdictHeadlineClause renders the D-10 headline addendum consolidate's
+// RunE appends to consolidateSummary's headline only when the verdict pass
+// ran: it states plainly that verdicts are advisory and consolidate never
+// merges or mutates, then the answered/needs-review/unavailable counts.
+// Pure — value types only.
+func verdictHeadlineClause(stats verdictOutcome) string {
+	unavailable := stats.Requested - stats.Answered
+	return fmt.Sprintf(" — verdicts are advisory and consolidate never merges or mutates: %d answered, %d needing review, %d unavailable",
+		stats.Answered, stats.NeedsReview, unavailable)
+}
+
+// verdictDisclosureLine is the one stderr line printed BEFORE runVerdictPass
+// sends anything (D-10), when at least one candidate pair exists: it names
+// the decisions provider, model and endpoint host, states how many pairs
+// will be sent and what each request carries, and that --no-verdicts skips
+// this. EndpointHost, Provider and Model come from settings — never a
+// second resolution of the same config.
+func verdictDisclosureLine(settings server.VerdictSettings, pairCount int) string {
+	return fmt.Sprintf(
+		"consolidate verdicts: requesting advisory verdicts for %d candidate pair(s) from decisions provider %s (model %s) at host %s, "+
+			"each request carrying, per record, up to %d characters total of its summary followed by its content; --no-verdicts skips this",
+		pairCount, settings.Provider, settings.Model, settings.EndpointHost, settings.StateChars)
+}
+
+// verdictSummaryLine is the one stderr line printed AFTER the verdict pass
+// (D-10): requested/answered/needs_review/unavailable counts, followed by
+// per-class failure counts in sorted class order when any failure occurred.
+// None of this changes the sweep's exit status.
+func verdictSummaryLine(stats verdictOutcome) string {
+	unavailable := stats.Requested - stats.Answered
+	line := fmt.Sprintf("consolidate verdicts: requested %d, answered %d, needs_review %d, unavailable %d",
+		stats.Requested, stats.Answered, stats.NeedsReview, unavailable)
+	if len(stats.FailuresByClass) == 0 {
+		return line
+	}
+	classes := make([]string, 0, len(stats.FailuresByClass))
+	for c := range stats.FailuresByClass {
+		classes = append(classes, c)
+	}
+	sort.Strings(classes)
+	parts := make([]string, 0, len(classes))
+	for _, c := range classes {
+		parts = append(parts, fmt.Sprintf("%s=%d", c, stats.FailuresByClass[c]))
+	}
+	return line + " (" + strings.Join(parts, " ") + ")"
+}
+
+// verdictAllAuthWarning returns a loud WARNING line when every requested
+// verdict failed with the auth class and none succeeded (D-10): it names
+// ENGRAM_DECISIONS_API_KEY (and the ENGRAM_OPENAI_API_KEY it can inherit)
+// and states that the candidates are reported without verdicts. Returns ""
+// (no warning) whenever at least one verdict succeeded, nothing was
+// requested, or the failures are not uniformly the auth class.
+func verdictAllAuthWarning(stats verdictOutcome) string {
+	if stats.Requested == 0 || stats.Answered != 0 {
+		return ""
+	}
+	if len(stats.FailuresByClass) != 1 {
+		return ""
+	}
+	if _, authOnly := stats.FailuresByClass["auth"]; !authOnly {
+		return ""
+	}
+	return "WARNING: every verdict request failed authentication — check ENGRAM_DECISIONS_API_KEY " +
+		"(or the ENGRAM_OPENAI_API_KEY it falls back to) and the configured provider's route grant; " +
+		"candidates are reported without verdicts"
 }
 
 // consolidateSummary renders the operator-facing headline. Pure (value
@@ -220,7 +550,8 @@ func init() {
 	addOperatorOutputFlag(spineReviewConsolidateCmd, &spineConsolidateOutput)
 	spineReviewConsolidateCmd.Flags().StringVar(&spineConsolidateScope, "scope", "", "only consider records in this scope")
 	spineReviewConsolidateCmd.Flags().BoolVar(&spineConsolidateAllScopes, "all-scopes", false,
-		"span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)")
+		"span every scope (required if --scope is omitted); mutually exclusive with --scope; "+
+			"a candidate pair may then cross scopes, and each row names both; "+sweepScopeRule().Sentence)
 	spineReviewConsolidateCmd.Flags().DurationVar(&spineConsolidateTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
 	spineReviewConsolidateCmd.Flags().Uint64Var(&spineConsolidateTopK, "top-k", spineConsolidateDefaultTopK,
@@ -228,6 +559,13 @@ func init() {
 	spineReviewConsolidateCmd.Flags().StringVar(&spineConsolidateMinScore, "min-score", "",
 		"minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — "+
 			"including pairs with a negative score")
+	spineReviewConsolidateCmd.Flags().StringVar(&spineConsolidateVerdictThreshold, "verdict-threshold", "",
+		"the probability between 0 and 1 below which a verdict is marked needs_review; overrides "+
+			"ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9) for this run; no effect without "+
+			"ENGRAM_DECISIONS_PROVIDER or with --no-verdicts")
+	spineReviewConsolidateCmd.Flags().BoolVar(&spineConsolidateNoVerdicts, "no-verdicts", false,
+		"skip the advisory verdict pass even when ENGRAM_DECISIONS_PROVIDER is set — no record content "+
+			"is sent and no verdict objects appear (see --verdict-threshold)")
 	spineReviewConsolidateCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
 	spineReviewCmd.AddCommand(spineReviewConsolidateCmd)
 }

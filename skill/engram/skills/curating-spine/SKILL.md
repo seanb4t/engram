@@ -67,8 +67,9 @@ this; the discipline stated here is the only one.
 
 ## Getting candidate pairs
 
-Run `engram spine-review consolidate --output json` and consume its
-`candidates` array using the real field names: `a`, `b`, `a_short_id`,
+Run `engram spine-review consolidate --scope <scope> --output json` (or
+`--all-scopes` to span every scope — one of the two is required) and
+consume its `candidates` array using the real field names: `a`, `b`, `a_short_id`,
 `b_short_id`, `a_scope`, `b_scope`, `score`. `score` is raw cosine
 similarity, reported as-is — never bucketed, never a verdict.
 

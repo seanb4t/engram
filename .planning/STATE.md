@@ -1,36 +1,37 @@
 ---
 gsd_state_version: "1.0"
-milestone: 2026-09-18.01
-status: "Milestone 2026-09-18.01 shipped — PR #603"
-stopped_at: Phase 07 complete — all phases complete
-last_updated: "2026-09-22T22:08:05.783Z"
-last_activity_desc: Milestone 2026-09-18.01 shipped as PR #603
-last_activity: 2026-09-22
-state_head: 1b734573c7e335746ce99eb67ddcf0ab5de84915
+milestone: 2026-09-22.01
+milestone_name: Typed Decisions & Recall Ranking
+status: Awaiting next milestone
+stopped_at: Phase 5 complete — all phases complete
+last_updated: "2026-09-24T18:11:20.301Z"
+last_activity: 2026-09-24
+last_activity_desc: Milestone 2026-09-22.01 completed and archived
+state_head: 52d1137bb144deac6104391fc49e99b13e73acaf
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 37
-  completed_plans: 37
-milestone_name: Bounded Reads
-current_phase: 07
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 35
+  completed_plans: 35
+  percent: 100
+current_phase: 5
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-22 after milestone 2026-09-18.01 — Bounded Reads)
+See: .planning/PROJECT.md (updated 2026-09-24 after milestone 2026-09-22.01 — Typed Decisions & Recall Ranking)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 **Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: Milestone 2026-09-18.01 complete
+Phase: Milestone 2026-09-22.01 complete
 Plan: —
-Status: Milestone 2026-09-18.01 shipped — PR #603
-Last activity: 2026-09-22 — Milestone 2026-09-18.01 shipped as PR #603
+Status: Awaiting next milestone
+Last activity: 2026-09-24 — Milestone 2026-09-22.01 completed and archived
 
 ## Deferred Items
 
@@ -76,6 +77,12 @@ Items acknowledged and deferred at milestone close on 2026-09-22 (milestone 2026
 |----------|------|--------|
 | deferred_items | Phase 06 / 06-01: `internal/store` `TestRedEvidencePatchesAreLive` hit Go's 601s per-package default timeout under host load | acknowledged — moot: the red-evidence harness was removed in `c1afd6c1` (rule `3p0zsqrhmb`) |
 | deferred_items | Phase 06 / 06-03: same harness timeout recurred at 58 registered patches | acknowledged — moot for the same reason |
+
+Items acknowledged and deferred at milestone close on 2026-09-24 (milestone 2026-09-22.01, `override_closeout` — 1 newly acknowledged, 0 carried forward from a prior close):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_items | Phase 03 / deferred-items.md: plain `go vet ./...` flags the duplicate `json:"dup"` tag at `cmd/engram/operator_view_test.go:441` (`TestOperatorViewDuplicateKeyAdjacency`) | acknowledged — deliberate duplicate-key fixture already marked `//nolint:govet`; golangci-lint (the project gate) reports 0 issues |
 
 Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own acknowledged status line.
 
@@ -360,6 +367,66 @@ milestone needs in working memory.
 - [Phase 07]: Both byte helpers call config.ParseNonNegativeIntCap (same parser Config.Validate uses), so validated and enforced ranges cannot diverge — T-07-04-02 mitigation
 - [Phase 07]: Ceiling helpers (embedMaxTimeout/summaryMaxTimeout) fall back to the 10m default on any non-positive value; drain helpers pass a configured zero through unchanged — D-05/D-08 asymmetry, commented at each helper
 - [Phase 07]: Bare 'task' cannot prove internal/store's 63-patch red-evidence harness alone (Go's 10-min default per-package timeout, not this plan's own explicit -timeout 180m); proven instead via 3 independent explicit-timeout harness runs plus package-scoped task lint/license/fmt checks.
+- [Phase 1]: D-14/D-15/D-13 implemented exactly as CONTEXT.md specified: resolved config threaded through StoreAndEmbedderFromEnvNoEnsure, package-local koanf gate for ENGRAM_RETRIEVAL_EVAL kept out of internal/config, cosine-epsilon differ gate replacing bit-identity
+- [Phase 01]: Comparison rankers (lexicalRerank/cosineBlendRerank/overlapGateRerank) placed in internal/retrievaleval per the plan's own CONTEXT.md placement decision, not internal/store, so the eval keeps a lexical row alive even if D-08 later deletes the shipped lexical code.
+- [Phase 01]: overlapGateRerank implemented as a stable partition (promoted subset sorted by overlap/Score/ID, rest in store.VectorOrder) so it mechanically collapses to lexicalRerank at theta=0 and store.VectorOrder at theta>1.
+- [Phase 1]: Blind query author: fresh general-purpose subagent (0 tool calls, no repo context), not the user — keeps D-01's independence boundary mechanical
+- [Phase 1]: 01-03: corrected stale .git plan-commit ledger sentinel (leftover from an earlier milestone's same-numbered phase) to the correct plan-start commit 36444a57
+- [Phase 1]: D-05 applied mechanically: decideRanking is a pure, unit-tested function (14 subtests) picking the shipped ranking before any live number exists — Prevents a human or agent from picking the winner by eye; the pre-committed rule is code, not judgment
+- [Phase 1]: Corrected a stale per-plan commit ledger from an earlier milestone's own phase 01-04 (dated 2026-09-18) before computing this plan's actuals.commits — Same class of issue plan 01-03 documented; the ledger guard correctly refused to overwrite a pre-existing file, so the stale value had to be corrected by hand
+- [Phase 1]: Phase 1 Plan 5: D-05 rule verdict on the live 80-120-record multi-domain corpus with independently-authored blind paraphrase queries: winner=lexical (paraphrase MRR 0.817 vs vector-only 0.579), reversing spike 004's 16-record single-domain fixture finding. Plan 01-06 branch: lexical (no internal/store ranking code change required). Checkpoint approved approve-and-post: plan 01-06 authorized to post the #605 evidence comment after its green re-run, carrying three caveats (spike-004 reversal, lexical's 0.950 vs vector-only's 1.000 paraphrase recall@8, and the live AsymmetryDiffer SKIP under a symmetric embed config).
+- [Phase 1]: Plan 01-06 shipped the D-05 approved winner (lexical) as SearchReranked's rank step via the new rankCandidates seam; live post-change re-run confirmed no regression and RANK-02 evidence was posted to #605 (approve-and-post authorization)
+- [Phase 2]: 02-01: DEC-05 candidate github.com/OpenRouterTeam/go-sdk@v0.8.19 passes D-05(a) (not deprecated/retracted/archived, released within 90-day window); package legitimacy checkpoint approved (org match, Apache-2.0, spyzhov/ajson vetted as established MIT library), clearing plan 02-02 to compile and run the SDK in an isolated nested module
+- [Phase 02-decision-interface-jev-backend]: D-06 resolved reject-hand-write: internal/decide/jev is hand-written on net/http + encoding/json following the internal/embed / internal/summarize pattern, not built on github.com/OpenRouterTeam/go-sdk — Verdict ADOPT-AND-WRAP-CANDIDATE (rule R3) fired on E01 (no documented option reaches the LiteLLM pass-through path shape), E05 (LiteLLM string code breaks typed error decode), and E06(c) (unbounded io.ReadAll). All three require engram to own path rewriting, status classification and byte bounding regardless of branch, leaving only generated types as the SDK's benefit against a new direct dependency on an alpha API. User chose reject-hand-write as an in-table resolution of the D-06 checkpoint, not an override.
+- [Phase 2]: 02-03: Built jev backend on D-06 reject-hand-write branch (net/http + encoding/json, no OpenRouter SDK dep added).
+- [Phase 2]: 02-03: decisions.timeout registry default is 10s per PLAN.md task text, superseding PATTERNS.md's earlier 30s draft.
+- [Phase 2]: jev Decide's status/slog now derives engram.decide.status via decide.Status(err) instead of a hardcoded ok/error pair
+- [Phase 2]: DecideMany's Kind-parent lookup uses a map[error]error, not a switch on error values, to satisfy golangci-lint's errorlint without a nolint suppression
+- [Phase 2]: 02-06: values.yaml model/timeout/concurrency default to empty string, not the pinned literal, per the plan's explicit empty-means-binary-default framing
+- [Phase 2]: 02-06: chart:validate decisions block reuses the existing chat-credential/service-token both-directions render shape rather than inventing a new assertion pattern
+- [Phase 2]: 02-06: TestDecisionsVarsDocumented uses a simple heading-to-next-heading substring cut (not recallmaxdocs_test.go's multi-surface table) since only one doc surface is relevant
+- [Phase 2]: deps.decider wired into buildDepsFromEnv now (unused this phase) per RESEARCH A4 — not left as a standalone unwired constructor
+- [Phase 2]: logDeciderEnabled fires only when a decider was actually constructed (dec != nil), keeping the off-by-default path silent as well as inert
+- [Phase 2]: 02-07: wireResponse.Usage changed from a value to a pointer field so an absent usage key decodes to nil, matching decide.Response.Usage's doc contract and E10's omit-not-zero span requirement — Found via the no-usage TDD RED subtest; the value-typed field made decide.Response.Usage never nil, so the decide span always set input_tokens/output_tokens to 0 instead of omitting them
+- [Phase 2]: 02-08: wire.go's encodeRequest/decodeResponse complete the choice/score wire mapping; D-06 reject-hand-write reconfirmed (no SDK dependency added)
+- [Phase 2]: 02-08: fixed a latent internal/server/decider_test.go question-name/fixture mismatch that decodeResponse's stricter DEC-02 contract exposed (Rule 1 auto-fix)
+- [Phase 2]: 02-08: live human check (task eval:decisions against OpenRouter and the LiteLLM pass-through) deferred to end-of-phase UAT per workflow.human_verify_mode=end-of-phase, not run by the executor
+- [Phase 2]: Live check PASSED 2026-09-23 on both base URLs (`02-LIVE-CHECK.md`): OpenRouter direct via the `ENGRAM_OPENAI_API_KEY` fallback, and the LiteLLM pass-through with the deployed engram LiteLLM key via `ENGRAM_DECISIONS_API_KEY` (the local OpenRouter key 401s there, correctly classified `ErrDecisionAuth`)
+- [Phase 2]: WR-01 fixed (`e3a60dbd`): `decodeResponse` rejects an answer whose type mismatches the requested question; IN-01/IN-02 (deploy.md values table rows, UTF-8-safe error-body truncation) remain info-level
+- [Phase 3]: Deferred FromResult's malformed-answer validation to Task 3 (TDD RED-first), per plan sequencing — Task 1's tracer FromResult mapped answers verbatim with no validation; Task 3 wrote the edge-case test suite first against that code, confirmed RED on TestFromResultMalformed (5/5 subtests), then added the validation for GREEN
+- [Phase 3]: CUR-01/CUR-02 requirements not checked off in REQUIREMENTS.md by this plan — Both are shared with not-yet-executed sibling plans (03-02/03-05, 03-06); requirements.ready-ids correctly reports 0/2 ready under the shared-ID gate
+- [Phase 03]: ParseProbability rejects NaN/Inf via math.IsNaN/math.IsInf, not just the [0,1] range check — strconv.ParseFloat parses NaN/Inf without error, and a bare comparison against NaN is always false, so the range check alone would not catch it (T-03-12)
+- [Phase 03]: configure.md's disclosure rewrite links to /guides/cli/#spine-review-consolidate rather than re-describing consolidate inline — keeps the two docs pages from drifting independently
+- [Phase 3]: Phase 3 Plan 3: Re-derived SurfaceFields flag-set-intersection reasoning against the live four-enforcer tree (scan/verify/consolidate/summarize-missing) rather than assuming it unchanged from the three-enforcer version.
+- [Phase 3]: Phase 3 Plan 3: Re-pointed purge's spine.go exemption citation from the stale line 991 to its current line 1047, found via rg -n rather than trusting the old number.
+- [Phase 3]: Phase 3 Plan 3: Scoped the curating-spine skill's invocation edit to exactly line 70's body sentence (3 added / 2 removed lines), leaving the frontmatter mention and every consent/judgment step untouched.
+- [Phase 3]: Plan 03-04: round-2 blind pass agreed 70/80 pairs; all 10 disagreements were contradicts/updates confusions, kept per-class counts duplicate 16, contradicts 12, updates 10, related 16, unrelated 16 — D-02 independence discipline: author-with-label executor never blind-labels; only agreed pairs kept, dropped IDs not renumbered
+- [Phase 3]: 03-05: verdictSettings copies Provider/Model/EndpointHost from cfg.Decisions unconditionally (no provider gate) — the disclosure line needs them regardless of which knob path resolved Threshold/StateChars
+- [Phase 3]: 03-05: corrected a stale per-plan commit ledger (.git/gsd-plan-head-before-03-05), same class as 03-03's documented issue — verified true pre-plan HEAD via ad4e29b1^ == d13da657 before recording actuals
+- [Phase 3]: 03-05: CUR-02 marked complete via the shared-ID gate (this plan + 03-02 were its only declaring plans); CUR-01 stays unflipped pending sibling plan 03-06
+- [Phase 3]: [Phase 3] 03-06: WR-02 closed structurally via registerRowFieldRenderer + a depth-unbounded generic sanitizing flatten (flattenNested), not a verdict-only special case — every future nested row field renders sanitized by construction.
+- [Phase 3]: [Phase 3] 03-06: consolidate_docs_test.go's positive control drops --no-verdicts (not related/unrelated) to avoid a substring false-negative, since 'related' is a literal substring of 'unrelated'.
+- [Phase 3]: curationeval: single koanf load resolves both ENGRAM_CURATION_EVAL and ENGRAM_CURATION_EVAL_PAIRS; evaluate() stays free of internal/server, taking threshold/stateChars as plain values
+- [Phase 3]: 03-08: Live task eval:curation against OpenRouter/jev (typesafe/jev-1.13-20260917) on the 70-pair committed corpus passes the D-03 gate (result=PASS, 40/40 at threshold 0.900); recorded aggregate-only in 03-EVAL-RESULTS.md with provenance. — CUR-03's live measurement, never tuned to pass.
+- [Phase 3]: 03-08: Fixed a within-phase task lint:yaml failure (Taskfile.yaml eval:curation desc over yamlfmt's 120-char cap, introduced by 03-07) via an isolated yamlfmt reflow, committed separately from both plan tasks. — Rule 1 auto-fix; failure blocked the phase gate this plan's Task 2 must leave green.
+- [Phase 3]: Phase 3 shipped CUR-01..CUR-04: consolidate verdicts are default-on when ENGRAM_DECISIONS_PROVIDER is set (--no-verdicts suppresses), advisory, and read-only by construction; live D-03 gate PASS 40/40 at p>=0.9, Brier 0.138, with updates the main confusion sink — Phase 4's reranker should reuse the same shape: one internal/* package owning the question set, called by both the product path and the gated eval
+- [Phase 4]: Proto relevance field uses optional double (not float) per PLAN.md's explicit flagged assumption, matching the MCP float64 exactly.
+- [Phase 4]: Task 1's RANK-05 budget suite (10 tests) passed against plan 04-01's NewRequest/EstimateTokens with no implementation change needed.
+- [Phase 4]: Task 2 RED-first closed D-03's malformed-answer gap: FromResponse now rejects NaN/+/-Inf and out-of-[0,1] probabilities via math.IsNaN/IsInf, mapped to the existing ErrDecisionMalformedResponse Kind.
+- [Phase 4]: searchDeciderFromConfig gates on Decisions.Provider (not Search.Ranker) so SearchRankHookFromEnv can serve the retrieval eval whenever a provider is configured, regardless of ranker (D-02)
+- [Phase 4]: searchRankHook returns a plain nil (not a no-op relevance.Hook wrapper) when the underlying decider is nil
+- [Phase 4]: recallView is a hand-written allow-list; Relevance follows the AccessCount/LastAccessedAt pattern, added to both the struct and toRecallView
+- [Phase 4]: renderMemoryTable's RELEVANCE column is data-derived (withScore AND any memory has non-nil Relevance), never flag-derived, keeping a lexical-only response byte-identical
+- [Phase 4]: d.rankHook is directly settable from same-package _test.go files for scripted-hook substitution in parity tests, no production test seam needed
+- [Phase 4]: SearchDiscoveryReranked skips the lexical step entirely, reusing applyRankHook/applyRelevance over SearchDiscovery's own vector order (D-07 discretion)
+- [Phase 4]: Opt-in eval rows (namedRanker.optIn/variantSummary.optIn) extend the existing disabled/shipped exclusion shape in decideRanking rather than special-casing jev by name — Keeps D-05 structurally closed to any future opt-in-only ranker, not just jev
+- [Phase 4]: 04-08: Search Helm gate deliberately independent of memory.decisions.provider — jev without a provider still renders ENGRAM_SEARCH_RANKER, reaching D-01's server-side rejection rather than silently no-op'ing
+- [Phase 4]: D-02: live Jev retrieval-eval numbers recorded (recall@8 1.000, MRR 0.883, fallbacks 0/26) without changing ship posture; lexical stays the D-05 winner and default ranker, Jev ships opt-in-only.
+- [Phase 4]: Single eval run recorded: zero fallbacks at the production 2s rerank timeout meant the plan's long-timeout re-run condition never triggered, so no 04-EVAL-JEV-LONG-TIMEOUT.log was created.
+- [Phase 5]: D-01 resolved to keep-and-pin: viewFields' bare nested-object branch is reached by construction (any-typed doc param), even though no shipped report field reaches it today; verified via before/after coverage profile.
+- [Phase 5]: The RED-exposed empty-nested-object defect (whitespace-only line) is fixed at the same branch the pin test covers, matching the existing empty-array zero-rows precedent.
+- [Phase 5]: D-04 (05-03): ParsePlanKeyLinks skips fieldless key_links items; ScanPlansWithStats reads a new unexported parsePlanKeyLinkItems directly so the satisfiability gate keeps reporting fieldless/prose entries as ShapeMalformed (#502's flush()-drop fix was not used, would reopen the no-op-gate hole)
+- [Phase 5]: D-06: guides/cli.md operator-command list names migrate/migrate status/migrate revert (linked to /guides/migrate/) and setup, gated by TestCLIGuideOperatorCommandsListsEveryOperatorCommand deriving the required set from operatorCommands()
 
 ### Pending Todos
 
@@ -416,6 +483,23 @@ Both prior entries were delivered and had simply never been closed out:
 - OBSOLETE 2026-09-21 — the red-evidence harness was removed repo-wide under rule 3p0zsqrhmb ("NEVER write tests for tests"), so TestRedEvidencePatchesAreLive no longer exists and this timeout class cannot recur. Recorded for history: it hit Go's default 601s per-package timeout twice during 06-01's task gate under concurrent machine load.
 - OBSOLETE 2026-09-21 — harness removed (rule 3p0zsqrhmb); internal/store now runs in 352s. This entry's claim that the package "needs materially more than Go's default 601s timeout" was ALSO WRONG on its own terms and seeded a bogus `-timeout 180m` into later plan text: per-patch cost was a stable ~4.5s (phase 3: 25 patches/111s; phase 7: 63/295.7s), so 63 patches cost ~300s intrinsically — half the default. The observed 602-782s spread was machine contention (load avg 18.9 on 16 cores from unrelated work), never harness cost. Divide wall time by unit count before declaring a workload too slow.
 - RESOLVED by the orchestrator between 07-01 and 07-02: task (full repo gate) failed on internal/keylinks.TestNoEscapedPatternsRepoWide against .planning/phases/07-bounded-provider-responses/07-02-PLAN.md:53 (pre-existing since 2a15f189). Fixed by re-quoting the key_links pattern as a YAML single-quoted scalar ('koanf:"drain_bytes"'), matching the repo-wide precedent; internal/keylinks is green.
+- **[Phase 1] (2026-09-22.01) carry-forwards:** (a) `phase.complete 1` again wrote the wrong
+  ROADMAP progress row (`yzmfesbsg0`): it flipped the shipped v0.12.x "1. Shared Auth Chain" row to
+  `Complete | 2026-09-23` and left the active milestone's "1. Eval Foundation" row at `0/4 | Not
+  started` — hand-fix both, and hand-verify the table after every Phase 2–5 `phase.complete`.
+  (b) Stale `.git/gsd-plan-head-before-02-0{1,2,4}` ledgers from an earlier milestone's same-numbered
+  plans exist; 01-03/01-04 hit the same class and corrected by hand — check before Phase 2's
+  `actuals.commits`. (c) For Phase 4 (Jev reranker): lexical's paraphrase recall@8 is 0.950 vs
+  vector-only's 1.000, and the live AsymmetryDiffer SKIPs under a symmetric embed config; the Jev
+  stub in `evalRankers()` is enabled by a pure append and plugs into `store.rankCandidates`.
+  (d) #353, #354 and #605 remain OPEN on GitHub — close them with the milestone PR.
+- **[Phase 2] (2026-09-22.01):** `phase.complete 2` again mis-targeted a shipped v0.12.x ROADMAP
+  progress row instead of the active milestone's "2. Decision Interface & Jev Backend" row
+  (`yzmfesbsg0`, known bug) — hand-corrected for Phase 2; keep hand-verifying the table after the
+  Phase 3–5 `phase.complete` calls. It also left STATE.md `progress.completed_phases` at 1, fixed by hand to 2.
+- **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — none remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
+- **[Phase 4] (2026-09-22.01):** `phase.complete 4` mis-targeted a shipped v0.12.x ROADMAP progress row a fourth time (`yzmfesbsg0`) — hand-corrected; hand-verify again after the Phase 5 call. It again left `progress.completed_phases` at 3 (percent 60), fixed by hand to 4 (80) in the transition. Phase 4's code changes (`internal/store/store.go`, `internal/store/rerank.go`, `internal/server/tools.go`) re-staled earlier phases' VERIFICATION.md fingerprints: `isPhaseComplete` now reads Phases 1, 2 and 3 as `stale` (Phase 4 `passed`), which is why `roadmap.analyze` reports them `partial` — re-verify every stale phase (`/gsd-verify-work 01`/`02`/`03`) before the milestone audit. engram record `xhg7dgmqx4` notes the cross-phase key-link drift.
+- **[Phase 5] (2026-09-22.01):** `phase.complete 5` mis-targeted a shipped v0.12.x ROADMAP progress row a fifth time (`yzmfesbsg0`) — hand-corrected, and the Phase 5 row set to 5/5 Complete; it again left `progress.completed_phases` at 4 (percent 80), fixed by hand to 5 (100). Phases 1–4 VERIFICATION.md fingerprints now read `stale` (Phase 5 `passed`) — re-verify each before the milestone audit.
 
 ### Quick Tasks Completed
 
@@ -437,8 +521,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-21T19:00:29.435Z
-Stopped at: Phase 07 complete — all phases complete
+Last session: 2026-09-24T17:04:07.314Z
+Stopped at: Phase 5 complete — all phases complete
 Resume file: None
 
 ## Performance Metrics
@@ -605,6 +689,41 @@ Resume file: None
 | Phase 07 P03 | 35min | 2 tasks | 2 files |
 | Phase 07 P04 | 23 min | 3 tasks | 4 files |
 | Phase 07 P05 | 104min | 3 tasks | 7 files |
+| Phase 01 P01 | 45min | 3 tasks | 9 files |
+| Phase 01 P02 | 25 min | 2 tasks | 5 files |
+| Phase 01 P03 | ~12min | 3 tasks | 4 files |
+| Phase 01-eval-foundation-lexical-reranker-fix P04 | 35min | 3 tasks | 6 files |
+| Phase 1 P5 | 13min | 3 tasks | 2 files |
+| Phase 01 P06 | ~23min | 3 tasks | 11 files |
+| Phase 02 P01 | 6min | 3 tasks | 2 files |
+| Phase 02-decision-interface-jev-backend P02 | 14min | 3 tasks | 5 files |
+| Phase 02 P03 | 20 min | 2 tasks | 8 files |
+| Phase 02 P04 | 16min | 2 tasks | 8 files |
+| Phase 2 P06 | 35min | 2 tasks | 7 files |
+| Phase 02 P05 | 11min | 2 tasks | 4 files |
+| Phase 02-decision-interface-jev-backend P07 | 55min | 3 tasks | 6 files |
+| Phase 02-decision-interface-jev-backend P08 | ~46min | 2 tasks | 7 files |
+| Phase 3 P01 | 1h 11m | 3 tasks | 9 files |
+| Phase 03 P02 | 15min | 2 tasks | 6 files |
+| Phase 03 P03 | 10 min | 3 tasks | 11 files |
+| Phase 03 P04 | resumed session | 3 tasks | 6 files |
+| Phase 03 P05 | 49min | 3 tasks | 7 files |
+| Phase 03-curation-verdicts P06 | 23min | 3 tasks | 7 files |
+| Phase 3 P07 | ~40min | 3 tasks | 11 files |
+| Phase 3 P8 | 35 min | 2 tasks | 3 files |
+| Phase 04 P01 | 18min | 2 tasks | 21 files |
+| Phase 04-jev-reranker-per-hit-relevance-signal P02 | 10min | 2 tasks | 2 files |
+| Phase 04 P03 | 16min | 3 tasks | 12 files |
+| Phase 04 P04 | 20min | 3 tasks | 6 files |
+| Phase 04 P05 | 13min | 3 tasks | 8 files |
+| Phase 04 P06 | 9min | 2 tasks | 3 files |
+| Phase 04 P08 | ~15min | 2 tasks | 4 files |
+| Phase 4 P07 | 25min | 2 tasks | 3 files |
+| Phase 5 P01 | 12min | 1 tasks | 2 files |
+| Phase 05 P02 | 6min | 2 tasks | 2 files |
+| Phase 05 P03 | 6min | 1 tasks | 2 files |
+| Phase 05 P04 | 15min | 1 tasks | 1 files |
+| Phase 05 P05 | 20min | 1 tasks | 2 files |
 
 ## Operator Next Steps
 

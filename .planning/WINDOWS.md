@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 7
+open_count: 8
 waived_count: 0
 fixed_count: 7
-total_count: 14
-last_updated: 2026-09-21T02:31:58.567Z
+total_count: 15
+last_updated: 2026-09-24T01:24:44.462Z
 ---
 
 # Broken Windows Ledger
@@ -29,6 +29,7 @@ last_updated: 2026-09-21T02:31:58.567Z
 | 12 | 05 | unmet-truth | internal/keylinks |  | TestActiveMilestoneKeyLinksSatisfiable fails on 03-02-PLAN.md's stale key_links pattern (unbudgetedView removed from revert.go by an earlier Phase 5 plan); pre-existing, out of scope for 05-05 | open |  | 2026-09-20T19:05:27.260Z |  |
 | 13 | 06 | deviation | internal/store/redevidence_harness_test.go |  | TestRedEvidencePatchesAreLive hit Go's default 601s per-package timeout twice during plan 06-01's task gate (environmental: 54-patch sequential subprocess harness + heavy concurrent unrelated machine load; zero internal/store files touched by 06-01) | open |  | 2026-09-20T22:46:26.903Z |  |
 | 14 | 06 | deviation | internal/store |  | Local full-package internal/store run is not reliably green on a loaded dev machine: at load ~290 the Qdrant TESTCONTAINER died mid-run with 'connection refused / code = Unavailable' (TestSummarizeMissingBoundedOverGRPCLimit), the exact symptom of #497 — yet it passes in 6.35s in isolation, so it is environmental, not a code defect. Distinct from #497/#498, which fixed the CI path (one shared services: container replacing four testcontainers on a 2-vCPU runner); the local testcontainer path was never covered by that fix, and this milestone's fixtures made the run long enough (669s) to expose it. Also exceeds Go's 600s default package timeout locally; needs -timeout 180m. | open |  | 2026-09-21T02:31:58.567Z |  |
+| 15 | 3 | lint-warning | cmd/engram/operator_view_test.go | 441 | Pre-existing raw 'go vet' finding (struct field B repeats json tag) in a deliberate nolint:govet adjacency-edge probe; golangci-lint (the project's real gate) already suppresses it. Out of scope for plan 03-01 (file not in files_modified). | open |  | 2026-09-24T01:24:44.462Z |  |
 
 ````json
 [
@@ -202,6 +203,19 @@ last_updated: 2026-09-21T02:31:58.567Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-21T02:31:58.567Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 15,
+    "kind": "lint-warning",
+    "phase": "3",
+    "file": "cmd/engram/operator_view_test.go",
+    "line": 441,
+    "description": "Pre-existing raw 'go vet' finding (struct field B repeats json tag) in a deliberate nolint:govet adjacency-edge probe; golangci-lint (the project's real gate) already suppresses it. Out of scope for plan 03-01 (file not in files_modified).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-24T01:24:44.462Z",
     "resolved_at": null,
     "milestone": null
   }

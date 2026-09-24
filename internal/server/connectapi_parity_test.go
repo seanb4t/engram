@@ -266,11 +266,19 @@ func autoFillMemory(t *testing.T) store.Memory {
 		case reflect.Bool:
 			fv.SetBool(true)
 		case reflect.Pointer:
-			if fv.Type().Elem().Kind() != reflect.String {
+			switch fv.Type().Elem().Kind() {
+			case reflect.String:
+				sv := "val-" + f.Name
+				fv.Set(reflect.ValueOf(&sv))
+			case reflect.Float64:
+				// Relevance (Phase 4, D-05): offset+0.25 is distinct from
+				// Score's offset+0.5 rendering (both int-based formulas over
+				// disjoint fractional parts, so no two fields can collide).
+				dv := float64(offset) + 0.25
+				fv.Set(reflect.ValueOf(&dv))
+			default:
 				t.Fatalf("autoFillMemory: field %s has an unbranched pointer-element kind %s (type %s)", f.Name, fv.Type().Elem().Kind(), fv.Type())
 			}
-			sv := "val-" + f.Name
-			fv.Set(reflect.ValueOf(&sv))
 		case reflect.Slice:
 			if fv.Type().Elem().Kind() != reflect.String {
 				t.Fatalf("autoFillMemory: field %s has an unbranched slice-element kind %s (type %s)", f.Name, fv.Type().Elem().Kind(), fv.Type())
@@ -601,6 +609,11 @@ func TestConnectMemoryFieldsPopulated(t *testing.T) {
 			t.Errorf("schema_version: got %v want %v", msg.SchemaVersion, m.SchemaVersion)
 		}
 		compared = append(compared, "schema_version")
+
+		if m.Relevance == nil || msg.Relevance == nil || *msg.Relevance != *m.Relevance {
+			t.Errorf("relevance: got %v want %v", msg.Relevance, m.Relevance)
+		}
+		compared = append(compared, "relevance")
 
 		assertDecodeBackCoversAllFields(t, compared)
 	})

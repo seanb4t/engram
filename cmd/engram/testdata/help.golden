@@ -435,19 +435,34 @@ Flags:
 ## engram spine-review consolidate
 
 ```
-Report ranked near-duplicate candidate pairs across the memory spine
+consolidate ranks near-duplicate candidate pairs across the memory spine by each record's already-stored
+vector cosine score. It never merges, mutates, clusters, or labels a pair a "duplicate" — deciding whether
+two records are the same fact is a judgment the operator or a future semantic skill makes, not this command.
+One of --scope or --all-scopes is required.
+
+When ENGRAM_DECISIONS_PROVIDER is set (default off), each candidate pair ALSO gets an advisory relation
+verdict: duplicate, contradicts, updates, related or unrelated, with a full probability distribution and a
+same-subject probability. Computed by sending, per record, up to ENGRAM_DECISIONS_VERDICT_STATE_CHARS
+characters total of its summary followed by its content (default 1500) to that provider — one request per
+pair. A verdict whose relation probability falls below ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9, or
+--verdict-threshold for this run) is marked needs_review. --no-verdicts skips the pass entirely: no record
+content is sent and no verdict objects appear. A failed verdict request is reported per pair (its class, never
+a guess) and never changes this command's exit status. Verdicts are advisory only: consolidate never merges or mutates a record because of one.
+JSON is the stable contract; text is a rendered view of it.
 
 Usage:
   engram spine-review consolidate [flags]
 
 Flags:
-      --all-scopes         span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)
-  -h, --help               help for consolidate
-      --min-score string   minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — including pairs with a negative score
-      --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
-      --scope string       only consider records in this scope
-      --timeout duration   max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
-      --top-k uint         neighbours considered per record (default 5)
+      --all-scopes                 span every scope (required if --scope is omitted); mutually exclusive with --scope; a candidate pair may then cross scopes, and each row names both; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope
+  -h, --help                       help for consolidate
+      --min-score string           minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — including pairs with a negative score
+      --no-verdicts                skip the advisory verdict pass even when ENGRAM_DECISIONS_PROVIDER is set — no record content is sent and no verdict objects appear (see --verdict-threshold)
+      --output string              output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
+      --scope string               only consider records in this scope
+      --timeout duration           max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 5m0s)
+      --top-k uint                 neighbours considered per record (default 5)
+      --verdict-threshold string   the probability between 0 and 1 below which a verdict is marked needs_review; overrides ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9) for this run; no effect without ENGRAM_DECISIONS_PROVIDER or with --no-verdicts
 ```
 
 ## engram spine-review purge

@@ -55,6 +55,42 @@
 {{- with .Values.memory.summarize.timeout }}
 - { name: ENGRAM_SUMMARY_TIMEOUT, value: "{{ . }}" }
 {{- end }}
+{{- /* Typed decisions (Jev). An empty provider omits EVERY ENGRAM_DECISIONS_*
+       var, so the server constructs no decider and makes no call (D-01) —
+       the default render is byte-identical to before this block existed. */}}
+{{- if .Values.memory.decisions.provider }}
+- { name: ENGRAM_DECISIONS_PROVIDER, value: "{{ .Values.memory.decisions.provider }}" }
+{{- with .Values.memory.decisions.baseURL }}
+- { name: ENGRAM_DECISIONS_BASE_URL, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.decisions.model }}
+- { name: ENGRAM_DECISIONS_MODEL, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.decisions.timeout }}
+- { name: ENGRAM_DECISIONS_TIMEOUT, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.decisions.concurrency }}
+- { name: ENGRAM_DECISIONS_CONCURRENCY, value: "{{ . }}" }
+{{- end }}
+{{- if .Values.memory.decisions.apiKeySecret.name }}
+- name: ENGRAM_DECISIONS_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: "{{ .Values.memory.decisions.apiKeySecret.name }}"
+      key: "{{ .Values.memory.decisions.apiKeySecret.key }}"
+{{- end }}
+{{- end }}
+{{- /* Search reranking (Jev, D-10). An unset or "lexical" ranker omits
+       EVERY search variable, so the default render is byte-identical.
+       Deliberately NOT nested under memory.decisions.provider — "jev"
+       without a provider still renders here, so it fails loudly at server
+       startup instead of silently rendering nothing (D-01). */}}
+{{- if and .Values.memory.search.ranker (ne .Values.memory.search.ranker "lexical") }}
+- { name: ENGRAM_SEARCH_RANKER, value: "{{ .Values.memory.search.ranker }}" }
+{{- with .Values.memory.search.rerankTimeout }}
+- { name: ENGRAM_SEARCH_RERANK_TIMEOUT, value: "{{ . }}" }
+{{- end }}
+{{- end }}
 {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
 {{- with .Values.memory.mcpPath }}
 - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }

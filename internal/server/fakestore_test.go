@@ -525,6 +525,36 @@ func (s *spyStore) SearchDiscovery(_ context.Context, scope, kind string, subj s
 	return matched, nil
 }
 
+// SearchDiscoveryReranked mirrors SearchDiscovery's filtering exactly — this
+// fake has no separate over-fetch/rank-hook concept, so it applies the hook
+// (when non-nil) as a no-op scoring pass and truncates to k, enough for
+// tests that only need to prove delegation (which method was called, with
+// which scope/args), never a second ranking implementation.
+func (s *spyStore) SearchDiscoveryReranked(_ context.Context, scope, kind string, subj store.Subject, _ string, _ []float32, k uint64, _ store.RankHook) ([]store.Memory, error) {
+	s.mu.Lock()
+	owner := ownerOfSubject(subj)
+	s.record("SearchDiscoveryReranked", owner, scope)
+	var matched []store.Memory
+	for _, m := range s.records {
+		if m.Category != "discovery" || !readableBy(m, owner) {
+			continue
+		}
+		if scope != "" && m.Scope != scope {
+			continue
+		}
+		if kind != "" && m.Kind != kind {
+			continue
+		}
+		matched = append(matched, m)
+	}
+	s.mu.Unlock()
+	sort.Slice(matched, func(i, j int) bool { return matched[i].CreatedAt.After(matched[j].CreatedAt) })
+	if uint64(len(matched)) > k {
+		matched = matched[:k]
+	}
+	return matched, nil
+}
+
 // TestSpyStoreRecordsMethodAndSubject pins the spy's core contract (Task 1
 // acceptance): a call records the method name and the caller's owner.
 func TestSpyStoreRecordsMethodAndSubject(t *testing.T) {

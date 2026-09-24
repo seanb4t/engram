@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -380,26 +382,84 @@ func TestOperatorDocsAreHandDeclared(t *testing.T) {
 	}
 }
 
+// hostileLeafValue is the replacement text TestOperatorViewFixturesHaveNoUnsanitizedNesting
+// substitutes for every string leaf of every fixture: an ASCII newline, a
+// carriage return, a tab, ESC (0x1b) and DEL (0x7f), each surrounded by
+// plain text so a failure to sanitize is visible as extra lines or stray
+// bytes rather than silently absorbed into an adjacent word.
+const hostileLeafValue = "x\ny\r\t\x1b\x7fz"
+
+// replaceStringLeaves walks v — the result of json.Unmarshal(b, &v) for
+// some `any` v, so objects decode as map[string]any and arrays as []any —
+// recursively replacing every string leaf at any depth with
+// hostileLeafValue. Non-string scalars (float64, bool, nil) and container
+// shapes are otherwise preserved structurally, so re-marshaling the result
+// keeps every fixture's own field/row/array shape intact.
+func replaceStringLeaves(v any) any {
+	switch val := v.(type) {
+	case string:
+		return hostileLeafValue
+	case map[string]any:
+		out := make(map[string]any, len(val))
+		for k, vv := range val {
+			out[k] = replaceStringLeaves(vv)
+		}
+		return out
+	case []any:
+		out := make([]any, len(val))
+		for i, vv := range val {
+			out[i] = replaceStringLeaves(vv)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// sanitizationViolations checks a rendered operator-view string for (a) any
+// rune strictly below 0x20 other than newline, or the DEL rune 0x7f, and
+// (b) exactly wantNewlines newlines — returning one error per violation
+// found. This is the ONE checker both TestOperatorViewFixturesHaveNoUnsanitizedNesting
+// (run over every real fixture, hostile-leaf-substituted) and its own
+// "red control" subtest (run directly over a string carrying raw,
+// unsanitized control characters) call, so the positive fixture sweep and
+// the proof that the sweep can actually fail share one implementation.
+func sanitizationViolations(out string, wantNewlines int) []error {
+	var errs []error
+	for _, r := range out {
+		if r == '\n' {
+			continue
+		}
+		if r < 0x20 || r == 0x7f {
+			errs = append(errs, fmt.Errorf("rendered output contains unsanitized control rune %U", r))
+		}
+	}
+	if got := strings.Count(out, "\n"); got != wantNewlines {
+		errs = append(errs, fmt.Errorf("rendered output has %d newline(s), want %d", got, wantNewlines))
+	}
+	return errs
+}
+
 // TestOperatorViewFixturesHaveNoUnsanitizedNesting is the WR-02
-// (06-REVIEW.md) regression guard: sanitizeViewValue's control-character
-// stripping — the mitigation for T-06-03 — only ever reaches a top-level
-// scalar string field (viewFields's default case) or a row-level scalar
-// field rendered by viewRow's own key=value walk. viewScalar's kind switch
-// (operator_view.go) recognizes only a JSON string and JSON null; every
-// other shape, including a nested array or object TWO levels deep from the
-// doc root (an array-of-arrays element, or a row-level object/array
-// field), falls through to `return string(raw)` verbatim and UNSANITIZED.
-//
-// No operator report struct produces such a shape today (confirmed via `rg
-// '\[\]\[\]|map\[string\]' cmd/engram/*.go` over non-test files, and
-// re-proven here structurally over the live fixture set rather than by
-// grep alone), so this test passes today and is designed to fail LOUDLY —
-// not silently reintroduce the T-06-03 gap — the day a future report field
-// crosses that boundary. This is deliberately a test-only guard, not a
-// production-code change: WR-02's suggested exhaustive viewScalar rewrite
-// is out of scope here because no live doc needs it yet, and rewriting
-// rendering behavior for a shape nothing produces risks changing
-// `--output text` for no live benefit.
+// (06-REVIEW.md) regression guard. Before plan 03-06, sanitizeViewValue's
+// control-character stripping only ever reached a top-level scalar string
+// field or a row-level scalar field, because every nested value (an
+// array-of-arrays element, or a row-level object/array field) fell through
+// viewScalar's kind switch to `return string(raw)` verbatim and
+// UNSANITIZED — this test used to assert that no fixture produced such a
+// shape at all. Plan 03-06 closed the gap directly instead: viewRow now
+// renders a row-level object/array field through either a registered
+// row-field renderer (registerRowFieldRenderer) or a generic sanitizing
+// flatten (flattenNested), and viewFields routes a nested array element the
+// same way — every string this tier renders passes through
+// sanitizeViewValue regardless of depth (operator_view.go). So this test no
+// longer forbids nesting; it PROVES sanitization survives it: for every
+// fixture, every string leaf at any depth is replaced with a hostile value
+// (newline, carriage return, tab, ESC, DEL), the fixture is re-rendered,
+// and the rendered output must carry no unsanitized control rune and
+// exactly the newline count renderOperatorView's own contract predicts. The
+// "red control" subtest is the committed non-vacuity proof that
+// sanitizationViolations can actually fail.
 func TestOperatorViewFixturesHaveNoUnsanitizedNesting(t *testing.T) {
 	fixtures := operatorViewFixtures()
 	names := make([]string, 0, len(fixtures))
@@ -411,64 +471,50 @@ func TestOperatorViewFixturesHaveNoUnsanitizedNesting(t *testing.T) {
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
 			for i, doc := range fixtures[name] {
+				label := fmt.Sprintf("%s/%d", name, i)
 				b, err := json.Marshal(doc)
 				if err != nil {
-					t.Fatalf("%s/%d: json.Marshal: %v", name, i, err)
+					t.Fatalf("%s: json.Marshal: %v", label, err)
 				}
-				assertNoTwoLevelContainerNesting(t, fmt.Sprintf("%s/%d", name, i), b)
+				var decoded any
+				if err := json.Unmarshal(b, &decoded); err != nil {
+					t.Fatalf("%s: json.Unmarshal: %v", label, err)
+				}
+				hostileBytes, err := json.Marshal(replaceStringLeaves(decoded))
+				if err != nil {
+					t.Fatalf("%s: json.Marshal(hostile): %v", label, err)
+				}
+				hostileDoc := json.RawMessage(hostileBytes)
+
+				fields, err := viewFields(hostileDoc)
+				if err != nil {
+					t.Fatalf("%s: viewFields: %v", label, err)
+				}
+				if len(fields) == 0 {
+					t.Fatalf("%s: fixture has zero top-level fields, want at least one", label)
+				}
+				wantNewlines := 2 + len(fields)
+				for _, f := range fields {
+					wantNewlines += len(f.Rows)
+				}
+
+				var buf bytes.Buffer
+				if err := renderOperatorView(&buf, "headline", hostileDoc); err != nil {
+					t.Fatalf("%s: renderOperatorView: %v", label, err)
+				}
+				for _, violation := range sanitizationViolations(buf.String(), wantNewlines) {
+					t.Errorf("%s: %v (rendered=%q)", label, violation, buf.String())
+				}
 			}
 		})
 	}
-}
 
-// assertNoTwoLevelContainerNesting walks a marshaled operator doc's
-// top-level object exactly as viewFields does, and fails if any array
-// element or row-level field is itself a JSON array or object — the shape
-// viewScalar renders verbatim, unsanitized, because its kind switch only
-// recognizes JSON string and null.
-func assertNoTwoLevelContainerNesting(t *testing.T, label string, docJSON []byte) {
-	t.Helper()
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(docJSON, &top); err != nil {
-		// A non-object top-level document (errViewNotObject's case) has no
-		// field table to walk.
-		return
-	}
-	for key, raw := range top {
-		switch valueKind(raw) {
-		case '[':
-			var elems []json.RawMessage
-			if err := json.Unmarshal(raw, &elems); err != nil {
-				t.Fatalf("%s: field %q: json.Unmarshal array: %v", label, key, err)
-			}
-			for i, elem := range elems {
-				switch valueKind(elem) {
-				case '{':
-					assertRowHasNoContainerFields(t, label, key, elem)
-				case '[':
-					t.Errorf("%s: field %q element %d is a nested array — sanitizeViewValue's guarantee does not reach this shape (WR-02, 06-REVIEW.md); either give viewScalar an exhaustive kind switch or keep this field one level deep", label, key, i)
-				}
-			}
-		case '{':
-			assertRowHasNoContainerFields(t, label, key, raw)
+	t.Run("red control", func(t *testing.T) {
+		hostile := "value with a raw control rune \x1b[31mred\x1b[0m and a raw DEL \x7f byte, written directly, bypassing every renderer"
+		if violations := sanitizationViolations(hostile, 0); len(violations) == 0 {
+			t.Fatal("sanitizationViolations found no violation over a string carrying raw, unsanitized control characters — the checker cannot fail, so it proves nothing")
 		}
-	}
-}
-
-// assertRowHasNoContainerFields fails if any key inside a rendered row
-// (viewRow's key=value walk) is itself a JSON array or object — see
-// TestOperatorViewFixturesHaveNoUnsanitizedNesting.
-func assertRowHasNoContainerFields(t *testing.T, label, fieldKey string, raw json.RawMessage) {
-	t.Helper()
-	var row map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &row); err != nil {
-		t.Fatalf("%s: field %q: json.Unmarshal row: %v", label, fieldKey, err)
-	}
-	for rowKey, val := range row {
-		if kind := valueKind(val); kind == '[' || kind == '{' {
-			t.Errorf("%s: field %q row key %q is a nested %c — sanitizeViewValue's guarantee does not reach this shape (WR-02, 06-REVIEW.md); either give viewScalar an exhaustive kind switch or keep row fields scalar", label, fieldKey, rowKey, kind)
-		}
-	}
+	})
 }
 
 // TestOperatorOutputEncoding proves a scope/tag value carrying a
@@ -712,6 +758,125 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 	default:
 		t.Fatalf("operatorInvalidOutputArgs: no row defined for command %q", name)
 		return nil
+	}
+}
+
+// operatorCommandsListHeading is the exact markdown heading
+// extractOperatorCommandsList scans for.
+const operatorCommandsListHeading = "### Operator commands"
+
+// operatorCommandsListHeadingPattern matches operatorCommandsListHeading
+// only as a whole line, so a longer heading that merely starts with the
+// same text is not mistaken for it.
+var operatorCommandsListHeadingPattern = regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(operatorCommandsListHeading) + `$`)
+
+// operatorCommandsTableStart matches the first line of the table that
+// follows §Operator commands' prose list — the extraction's lower bound,
+// alongside nextHeadingPattern's next "### " heading (whichever comes
+// first). Declared (?m) so it matches a line start anywhere in the
+// document, not only doc's own start.
+var operatorCommandsTableStart = regexp.MustCompile(`(?m)^\|`)
+
+// extractOperatorCommandsList returns the §Operator commands prose list —
+// from operatorCommandsListHeading up to whichever comes first: the
+// table's own first "|"-prefixed line, or the next "### " heading (reusing
+// consolidate_docs_test.go's nextHeadingPattern) — or "" when the heading
+// itself is absent. A pure function, mirroring
+// extractConsolidateSection's single-extraction discipline: this is the
+// same helper TestCLIGuideOperatorCommandsListsEveryOperatorCommand reads,
+// so no second, drifting extraction can exist.
+func extractOperatorCommandsList(doc string) string {
+	loc := operatorCommandsListHeadingPattern.FindStringIndex(doc)
+	if loc == nil {
+		return ""
+	}
+	rest := doc[loc[1]:]
+
+	end := len(rest)
+	if loc := operatorCommandsTableStart.FindStringIndex(rest); loc != nil && loc[0] < end {
+		end = loc[0]
+	}
+	if loc := nextHeadingPattern.FindStringIndex(rest); loc != nil && loc[0] < end {
+		end = loc[0]
+	}
+	return rest[:end]
+}
+
+// missingOperatorCommandMentions reports which of keys are NOT named in
+// list, and returns them sorted. A key with no space (a top-level command,
+// e.g. "migrate") is present only if the backtick-wrapped key itself
+// occurs in list — this is what keeps "migrate" from being satisfied by
+// "migrate-remap-owner" (a different command whose name merely starts
+// with the same substring) or by "migrate status" (a DIFFERENT, nested
+// command). A key of the form "<group> <leaf>" (e.g. "spine-review scan")
+// is present if EITHER the full backtick-wrapped key occurs, OR the
+// backtick-wrapped leaf occurs inside the parenthetical that directly
+// follows a backtick-wrapped mention of its group ("`<group>`" or
+// "`engram <group>`", with only unbackticked words between the mention and
+// the opening parenthesis). The guide names the spine-review and migrate
+// leaves this second way ("every `engram spine-review` leaf (currently
+// `scan`, ...)", "`migrate` (and its `status` / `revert` subcommands; ...)").
+// A leaf named anywhere else in the list does not count. A pure function.
+func missingOperatorCommandMentions(list string, keys []string) []string {
+	var missing []string
+	for _, key := range keys {
+		group, leaf, nested := strings.Cut(key, " ")
+		full := "`" + key + "`"
+		if strings.Contains(list, full) {
+			continue
+		}
+		if nested && groupParentheticalNamesLeaf(list, group, leaf) {
+			continue
+		}
+		missing = append(missing, key)
+	}
+	sort.Strings(missing)
+	return missing
+}
+
+// groupParentheticalNamesLeaf reports whether a backtick-wrapped mention of
+// group ("`<group>`" or "`engram <group>`") is followed, across only
+// unbackticked text, by a parenthetical containing the backtick-wrapped
+// leaf. The parenthetical may hold one level of nested parentheses, such
+// as a markdown link target.
+func groupParentheticalNamesLeaf(list, group, leaf string) bool {
+	re := regexp.MustCompile("`(?:engram )?" + regexp.QuoteMeta(group) + "`[^()`]*\\(((?:[^()]|\\([^()]*\\))*)\\)")
+	for _, m := range re.FindAllStringSubmatch(list, -1) {
+		if strings.Contains(m[1], "`"+leaf+"`") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestCLIGuideOperatorCommandsListsEveryOperatorCommand is the docs gate
+// #503/D-06 adds: the §Operator commands list must name every command
+// operatorCommands() returns, deriving the required set from the LIVE
+// cobra tree rather than a hand-typed list, so a future operator command
+// cannot go unmentioned the way migrate/migrate status/migrate
+// revert/setup did.
+func TestCLIGuideOperatorCommandsListsEveryOperatorCommand(t *testing.T) {
+	data, err := os.ReadFile(cliGuideRelPath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", cliGuideRelPath, err)
+	}
+
+	list := extractOperatorCommandsList(string(data))
+	if list == "" {
+		t.Fatalf("%s: %q section not found (or extraction returned empty)", cliGuideRelPath, operatorCommandsListHeading)
+	}
+
+	cmds := operatorCommands()
+	if len(cmds) == 0 {
+		t.Fatal("the live operator command tree is empty — zero-applicability guard tripped, cannot derive a required set")
+	}
+	keys := make([]string, 0, len(cmds))
+	for _, cmd := range cmds {
+		keys = append(keys, commandKey(cmd))
+	}
+
+	if missing := missingOperatorCommandMentions(list, keys); len(missing) > 0 {
+		t.Errorf("%s %q list is missing: %v (add each as a backticked name)", cliGuideRelPath, operatorCommandsListHeading, missing)
 	}
 }
 

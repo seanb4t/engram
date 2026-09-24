@@ -38,6 +38,7 @@ one predictable, migration-safe contract.
 | call `ListMemories`/`engram list` with `limit: 0` (or `--limit` omitted) expecting every matching record back in one response, or rely on an over-1000 `limit`/`k` being clamped rather than rejected | §16 |
 | treat a cross-spine `search`/`list` failure as "no results", or branch on its error to detect a coverage-enumeration problem | §17 |
 | rely on `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` meaning no request deadline at all | §18 |
+| script `spine-review consolidate` without `--scope` or `--all-scopes` | §19 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -490,6 +491,17 @@ accommodate a very slow local/self-hosted model. Set an explicit positive
 duration instead (e.g. `ENGRAM_EMBED_TIMEOUT=30m`), raising
 `ENGRAM_EMBED_MAX_TIMEOUT`/`ENGRAM_SUMMARY_MAX_TIMEOUT` above the default
 `10m` first if the request genuinely needs longer than that to resolve to.
+
+### 19. `spine-review consolidate` now requires `--scope` or `--all-scopes`
+
+Before this release, `spine-review consolidate` with neither `--scope` nor
+`--all-scopes` exited `0` with zero candidates — a silent, apparently-complete
+empty report. **It now exits `2`** with the same sweep-scope rule message
+`spine-review scan`, `spine-review verify` and `summarize-missing` already
+enforce: a sweep requires an explicit `--scope` or `--all-scopes` (#508).
+
+**Who should act:** anyone who scripted `spine-review consolidate` without a
+scope flag. Add `--scope <scope>` or `--all-scopes`.
 
 ---
 

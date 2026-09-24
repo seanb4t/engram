@@ -282,6 +282,14 @@ type Memory struct {
 	// returned it (higher = closer). Set only on Search results; zero on
 	// list/get. Lets callers see how close a near-miss ranked (GH#261).
 	Score float32 `json:"score,omitempty"`
+	// Relevance is the Jev decision-provider's P(this record answers the
+	// query) (Phase 4, RANK-03/RANK-04/D-05/D-08), transient like Score:
+	// set only when SearchReranked's RankHook ran and its map was accepted
+	// for this hit — never by the payload builder, never persisted to
+	// Qdrant. A pointer (not a bare float64) so a genuine near-zero
+	// "no-answer" value still serializes under omitempty, distinguishable
+	// from "not scored" (nil).
+	Relevance *float64 `json:"relevance,omitempty"`
 	// EmbedderIdentity is a server-set audit stamp (config.EmbedderIdentity)
 	// of the embedder config that produced this record's stored document
 	// vector, so a future reindex-boundary audit can detect mixed-embedding-
@@ -1163,6 +1171,13 @@ type SearchOptions struct {
 	// unconditionally for its own delegated call regardless of what the
 	// caller passed here; see SearchReranked's doc comment for why.
 	Full bool
+	// RankHook is an optional per-id relevance scorer SearchReranked runs
+	// after its lexical rank step (Phase 4, D-08). nil = today's order,
+	// byte-identically (the MCP lane's Store.Search calls never set this).
+	// Set only by the server, only when the Jev search ranker is
+	// configured; forwarded by SearchReranked only — Store.Search itself
+	// never reads it.
+	RankHook RankHook
 }
 
 // Search returns the k nearest readable memories to vec within scope.
@@ -1192,9 +1207,9 @@ func (s *Store) Search(ctx context.Context, scope string, subj Subject, vec []fl
 
 	// D-10 backstop: refused before any filter construction or RPC.
 	// SearchReranked needs no call of its own — it delegates here with
-	// candidateK(k) (clamped to at most 100, always well under
+	// CandidateK(k) (clamped to at most 100, always well under
 	// MaxRecallLimit), so this guard can never reject a SearchReranked call
-	// for being over the maximum; that is fine, since candidateK already
+	// for being over the maximum; that is fine, since CandidateK already
 	// bounds SearchReranked's actual RPC cost independent of the caller's k,
 	// so a duplicate guard there would add nothing.
 	if err := rejectOverMaximum("k", k); err != nil {
@@ -1302,18 +1317,24 @@ func memoriesFromPoints(res []*qdrant.ScoredPoint) []Memory {
 }
 
 // SearchReranked is the shared search-with-rerank helper: it over-fetches
-// candidateK(k) raw hits via the existing owner/scope-filtered Search, applies
-// the pure RerankHits lexical-overlap reorder, and truncates to the caller's
-// already-defaulted k. deps.searchMemory (MCP), engramAPI.SearchMemories
+// CandidateK(k) raw hits via the existing owner/scope-filtered Search, applies
+// the D-05-selected rank step via rankCandidates, and truncates to the
+// caller's already-defaulted k. deps.searchMemory (MCP), engramAPI.SearchMemories
 // (Connect), and the retrieval eval all call this — the ONE ranking path for
 // every recall surface (review finding 2/5) — so no surface can drift from the
-// shipped rerank behavior, and reranking runs strictly AFTER
-// ownerScopeFilter's authz-scoped Query, never widening visibility.
+// shipped rank step, and reranking runs strictly AFTER ownerScopeFilter's
+// authz-scoped Query, never widening visibility. Which rank step ships is
+// chosen by the pre-committed D-05 rule on the live retrieval eval
+// (2026-09-22.01 Phase 1, #605, 01-RANKING-DECISION.md); today that is the
+// lexical reranker (rankCandidates, RerankHits). Phase 4 (RANK-03/D-08) adds
+// an optional post-lexical RankHook step (opts.RankHook) run over the SAME
+// full candidate pool, never widening visibility beyond what the lexical
+// step already saw — see RankWithHook.
 //
 // k == 0 is rejected with ErrInvalidArgument (round-2 finding 6): callers MUST
 // pass the already-defaulted effective k (MCP defaults 8 at tools.go, Connect
 // defaults 20 at connectapi.go — BEFORE calling this helper) — a zero k never
-// silently over-fetches candidateK then truncates to an empty result.
+// silently over-fetches CandidateK then truncates to an empty result.
 //
 // SearchReranked takes plain inputs (query text, query vector, k) and does NOT
 // import internal/embed or internal/server (round-2 finding 7): embedding
@@ -1323,18 +1344,20 @@ func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, 
 	if k == 0 {
 		return nil, fmt.Errorf("%w: SearchReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
 	}
-	// The lexical reranker (RerankHits/lexicalOverlap) scores against
-	// content for EVERY candidate, and candidateK clamps the candidate pool
-	// at 100 regardless of k — so this one surface's fetch view is fixed by
-	// an internal consumer rather than by the caller's own Full flag. The
+	// The shipped rank step (rankCandidates) scores against content for
+	// EVERY candidate, and CandidateK clamps the candidate pool at 100
+	// regardless of k — so this one surface's fetch view is fixed by an
+	// internal consumer rather than by the caller's own Full flag. The
 	// caller's flag still governs response shaping at the server boundary,
-	// unchanged.
+	// unchanged. This input contract (the over-fetch and the forced Full
+	// view) is retained unconditionally for Phase 4's content-reading Jev
+	// reranker (D-08).
 	opts.Full = true
-	hits, err := s.Search(ctx, scope, subj, vec, candidateK(k), opts)
+	hits, err := s.Search(ctx, scope, subj, vec, CandidateK(k), opts)
 	if err != nil {
 		return nil, err
 	}
-	return RerankHits(query, hits, int(k)), nil
+	return RankWithHook(ctx, query, hits, int(k), opts.RankHook), nil
 }
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
@@ -1420,6 +1443,41 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 		out = append(out, m)
 	}
 	return out, nil
+}
+
+// SearchDiscoveryReranked is SearchDiscovery's opt-in Jev path (D-07): it
+// over-fetches CandidateK(k) discoveries through the same authz-filtered
+// SearchDiscovery call, hands the whole pool to hook in SearchDiscovery's own
+// vector order — discoveries have no lexical rank step to run first, unlike
+// SearchReranked's rankCandidates — and truncates to k only after ranking.
+// All filtering is SearchDiscovery's own, so reranking here can never widen
+// visibility beyond what SearchDiscovery already returns; hook is handed
+// only the ids SearchDiscovery would have returned. Any hook failure (nil
+// hook, hook error, or a rejected map — see applyRankHook/applyRelevance)
+// falls back to exactly the ids and order SearchDiscovery(..., k) would
+// return: discovery's shipped order, never a lexical reorder (D-03). The
+// server calls this only when a rank hook is configured
+// (ENGRAM_SEARCH_RANKER=jev); the default search_discovery path calls
+// SearchDiscovery directly and never reaches this method.
+//
+// k == 0 is rejected with ErrInvalidArgument, mirroring SearchReranked's own
+// guard: callers must pass their already-defaulted k.
+func (s *Store) SearchDiscoveryReranked(ctx context.Context, scope, kind string, subj Subject, query string, vec []float32, k uint64, hook RankHook) ([]Memory, error) {
+	if k == 0 {
+		return nil, fmt.Errorf("%w: SearchDiscoveryReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
+	}
+	if err := rejectOverMaximum("k", k); err != nil {
+		return nil, err
+	}
+	hits, err := s.SearchDiscovery(ctx, scope, kind, subj, vec, CandidateK(k))
+	if err != nil {
+		return nil, err
+	}
+	ranked := applyRankHook(ctx, query, hits, hook)
+	if k >= uint64(len(ranked)) {
+		return ranked, nil
+	}
+	return ranked[:k], nil
 }
 
 // ListOptions parameterizes List: page window (Limit/Offset) and the server-side

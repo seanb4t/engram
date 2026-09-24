@@ -27,6 +27,8 @@ type Config struct {
 	Memory      MemoryConfig      `koanf:"memory"`
 	Summarize   SummarizeConfig   `koanf:"summarize"`
 	OpenAI      OpenAIConfig      `koanf:"openai"`
+	Decisions   DecisionsConfig   `koanf:"decisions"`
+	Search      SearchConfig      `koanf:"search"`
 	OIDC        OIDCConfig        `koanf:"oidc"`
 	ServiceAuth ServiceAuthConfig `koanf:"service_auth"`
 	UI          UIConfig          `koanf:"ui"`
@@ -210,6 +212,58 @@ type OpenAIConfig struct {
 	// inherit APIKey — the fallback is resolved once, at the summarizer
 	// construction site (cmp.Or in summarizerFromConfig), not here (D-02/D-03).
 	ChatAPIKey string `koanf:"chat_api_key"`
+}
+
+// DecisionsConfig selects the typed-decision provider (D-01, D-02, D-03).
+// Presence enables the feature: an empty Provider constructs no client and
+// makes no call, exactly like SummarizeConfig.Model's presence-enables
+// convention.
+//
+// Only APIKey falls back, to ENGRAM_OPENAI_API_KEY — resolved at the wiring
+// seam (internal/server/decider.go), not here, mirroring ChatAPIKey's own
+// fallback precedent. BaseURL never falls back: it fails Config.Validate when
+// empty and Provider is "jev" instead (D-03) — the decisions endpoint must
+// never silently inherit the chat/embeddings gateway's base URL.
+//
+// Values stay strings and are validated by Config.Validate only when the
+// provider is set, following this package's "keep as strings, consumer
+// validates" convention (see the doc comment at the top of this file).
+type DecisionsConfig struct {
+	Provider     string `koanf:"provider"`
+	BaseURL      string `koanf:"base_url"`
+	APIKey       string `koanf:"api_key"`
+	Model        string `koanf:"model"`
+	Timeout      string `koanf:"timeout"`
+	MaxTimeout   string `koanf:"max_timeout"`
+	DrainBytes   string `koanf:"drain_bytes"`
+	DrainTimeout string `koanf:"drain_timeout"`
+	Concurrency  string `koanf:"concurrency"`
+	// VerdictThreshold (D-08) is the needs-review threshold for consolidate's
+	// advisory verdicts (a probability in [0, 1]), overridable per run by
+	// --verdict-threshold.
+	VerdictThreshold string `koanf:"verdict_threshold"`
+	// VerdictStateChars (D-09) is the per-record state length, in Unicode
+	// characters, sent to the provider for each side of a consolidate
+	// candidate pair.
+	VerdictStateChars string `koanf:"verdict_state_chars"`
+}
+
+// SearchConfig selects the search-path (`search_memory`/`search_discovery`)
+// reranker (D-01, D-09). Values stay strings, like DecisionsConfig, and are
+// validated by Config.Validate only when Ranker is "jev".
+type SearchConfig struct {
+	// Ranker is "" or "lexical" (default, off) or "jev" (search-path
+	// reranking enabled). "jev" requires Decisions.Provider to be set — it
+	// reuses the decisions base URL, key and model, but never shares the
+	// consolidate-path client's retry (D-09).
+	Ranker string `koanf:"ranker"`
+	// RerankTimeout bounds a single search-path decision call
+	// (ENGRAM_SEARCH_RERANK_TIMEOUT, default "2s"). Dedicated to the
+	// synchronous search path, never Decisions.Timeout/MaxTimeout — a zero
+	// value here would resolve to the 10m decisions ceiling on a path that
+	// must return quickly (D-09), so it is validated strictly positive
+	// whenever Ranker is "jev".
+	RerankTimeout string `koanf:"rerank_timeout"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI

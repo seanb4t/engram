@@ -25,6 +25,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/config"
+	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/embed"
 	"github.com/seanb4t/engram/internal/migrate"
 	"github.com/seanb4t/engram/internal/store"
@@ -86,6 +87,23 @@ type deps struct {
 	// consumer calls writeCaps.resolved() first, which fills any zero field
 	// with its documented default.
 	writeCaps memoryWriteCaps
+	// decider is the typed-decision backend (internal/decide.Decider). nil
+	// unless ENGRAM_DECISIONS_PROVIDER is set — decided once in
+	// buildDepsFromEnv through deciderFromConfig (D-01). The search path
+	// uses its own dedicated hook (rankHook below, D-09) built over a
+	// separate no-retry client, so decider itself still has no search
+	// consumer. Per the decide.Decider contract, a decision failure never
+	// fails the handler that asked — every caller treats an error as "no
+	// decision" and continues, never branching on decider being present as
+	// a correctness requirement.
+	decider decide.Decider
+	// rankHook is the optional Phase 4 search-path relevance scorer
+	// (relevance.Hook over a Jev client) threaded into every
+	// store.SearchOptions this deps builds for search_memory. nil unless
+	// ENGRAM_SEARCH_RANKER=jev — the searchRankHook resolver call below is
+	// its only production source (buildDepsFromEnv); a zero-value &deps{}
+	// test literal keeps today's order, byte-identically.
+	rankHook store.RankHook
 }
 
 // memoryWriteCaps holds the always-enforced memory content/tags write
@@ -265,25 +283,28 @@ func StoreFromEnv() (*store.Store, error) {
 // exactly once — the engram-635 single-load invariant, applied to the reindex
 // path the same way buildDepsFromEnv applies it to serve — and reindex has a
 // path to the identity string to stamp onto reindexed records (Phase 13 SC3,
-// ReindexOptions.Identity).
-func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, string, error) {
+// ReindexOptions.Identity). It also returns the resolved config so a caller
+// that must reason about the SAME config the embedder was built from (the
+// retrieval eval's symmetric-config skip, 2026-09-22.01 Phase 1 D-14, #354)
+// never re-resolves it independently.
+func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, string, *config.Config, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
-		return nil, 0, nil, "", err
+		return nil, 0, nil, "", nil, err
 	}
 	st, dim, err := storeFromConfig(cfg)
 	if err != nil {
-		return nil, 0, nil, "", err
+		return nil, 0, nil, "", nil, err
 	}
 	em, err := embedderFromConfig(cfg)
 	if err != nil {
-		return nil, 0, nil, "", err
+		return nil, 0, nil, "", nil, err
 	}
 	identity, err := config.EmbedderIdentity(cfg)
 	if err != nil {
-		return nil, 0, nil, "", fmt.Errorf("embedder identity: %w", err)
+		return nil, 0, nil, "", nil, fmt.Errorf("embedder identity: %w", err)
 	}
-	return st, dim, em, identity, nil
+	return st, dim, em, identity, cfg, nil
 }
 
 // buildDepsFromEnv wires up the store and embedder from the environment with a
@@ -314,6 +335,20 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if err != nil {
 		return nil, fmt.Errorf("embedder identity: %w", err)
 	}
+	dec, err := deciderFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if dec != nil {
+		logDeciderEnabled(cfg)
+	}
+	hook, err := searchRankHook(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if hook != nil {
+		logSearchRankerEnabled(cfg)
+	}
 	return &deps{
 		st:               st,
 		em:               em,
@@ -323,6 +358,8 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		usageQueue:       buildUsageQueue(cfg, st, uqm),
 		embedderIdentity: identity,
 		writeCaps:        memoryWriteCapsFromConfig(cfg),
+		decider:          dec,
+		rankHook:         hook,
 	}, nil
 }
 
@@ -1894,6 +1931,7 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 		IncludeArchived:   req.IncludeArchived,
 		IncludeSuperseded: req.IncludeSuperseded,
 		IncludeScheduled:  req.IncludeScheduled,
+		RankHook:          d.rankHook,
 	})
 }
 
@@ -2061,7 +2099,14 @@ func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryA
 	if err != nil {
 		return nil, err
 	}
-	return d.st.SearchDiscovery(ctx, scope, a.Kind, c.Subj, vec, a.K)
+	// D-07 CONTEXT boundary: the lexical/vector default stays untouched — a
+	// nil d.rankHook (the default; ENGRAM_SEARCH_RANKER unset or "lexical")
+	// calls SearchDiscovery exactly as before this plan. Only a configured
+	// hook (ranker=jev) routes through the opt-in reranked path.
+	if d.rankHook == nil {
+		return d.st.SearchDiscovery(ctx, scope, a.Kind, c.Subj, vec, a.K)
+	}
+	return d.st.SearchDiscoveryReranked(ctx, scope, a.Kind, c.Subj, a.Query, vec, a.K, d.rankHook)
 }
 
 // updateMemory applies a partial update to one record by id or short id.
@@ -2761,7 +2806,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score.", Annotations: annotationsFor("search_memory")},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score. When the operator enables Jev reranking, results are reordered by the provider's probability that each record answers the query, and each result carries `relevance` (0 to 1; values all near zero mean nothing returned answers the query); it is absent when reranking is off or fell back.", Annotations: annotationsFor("search_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -2933,7 +2978,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("stored %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. " + scopeRule.Sentence + "; optional kind=map|fact. Results carry citations + created_at (aging signals).", Annotations: annotationsFor("search_discovery")},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_discovery", Description: "Semantic search over the discovery pool. " + scopeRule.Sentence + "; optional kind=map|fact. Results carry citations + created_at (aging signals). When the operator enables Jev reranking, results are reordered by the provider's probability that each discovery answers the query, and each result carries `relevance` (0 to 1; values all near zero mean nothing returned answers the query); it is absent when reranking is off or fell back.", Annotations: annotationsFor("search_discovery")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchDiscoveryArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {

@@ -23,8 +23,10 @@ var errViewNotObject = errors.New("operator view: marshaled document is not a JS
 // derived from a struct field name, so it stays correct across omitempty,
 // json:"-", and embedded-struct promotion. Label is humanizeKey(Key), used
 // only for the top-level rendering. Value is the rendered scalar (empty for
-// a container-valued key). Rows is one rendered line per array element, or
-// a single rendered line for an object-valued key; nil for a scalar key.
+// a container-valued key). Rows is one rendered line per array element; a
+// single rendered line for an object-valued key whose rendering is
+// non-empty; zero rows (non-nil) when it renders empty, e.g. `{}`; nil for
+// a scalar key.
 type viewField struct {
 	Key   string
 	Label string
@@ -81,15 +83,31 @@ func viewFields(doc any) ([]viewField, error) {
 			}
 			rows := make([]string, 0, len(elems))
 			for _, elem := range elems {
-				if valueKind(elem) == '{' {
-					row, err := viewRow(elem)
+				var row string
+				switch valueKind(elem) {
+				case '{':
+					row, err = viewRow(elem)
 					if err != nil {
 						return nil, err
 					}
-					rows = append(rows, row)
-				} else {
-					rows = append(rows, viewScalar(elem))
+				case '[':
+					parts, err := flattenNested("", elem)
+					if err != nil {
+						return nil, err
+					}
+					row = strings.Join(parts, " ")
+				default:
+					row = viewScalar(elem)
 				}
+				// An element whose rendering is blank ({}, [], "", null, or
+				// a string of only whitespace/control bytes) would print as a
+				// whitespace-only line. Dropping it would misstate the
+				// element count, so it falls back to its own compact JSON
+				// literal instead, sanitized like every other value.
+				if strings.TrimSpace(row) == "" {
+					row = sanitizeViewValue(string(elem))
+				}
+				rows = append(rows, row)
 			}
 			field.Rows = rows
 		case '{':
@@ -97,7 +115,11 @@ func viewFields(doc any) ([]viewField, error) {
 			if err != nil {
 				return nil, err
 			}
-			field.Rows = []string{row}
+			if row == "" {
+				field.Rows = []string{}
+			} else {
+				field.Rows = []string{row}
+			}
 		default:
 			field.Value = viewScalar(raw)
 		}
@@ -130,6 +152,14 @@ func valueKind(raw json.RawMessage) byte {
 // empty string. Every other scalar (number, bool) renders as its verbatim
 // raw text — deliberately never round-tripped through float64, so a large
 // uint64 counter keeps the exact digits encoding/json produced.
+//
+// viewScalar itself only ever sees a genuine scalar — every string reaching
+// the text lane from a container-valued field (a row-level object/array
+// field, or a nested array element) is instead sanitized on the path that
+// walks that container: a registered row-field renderer's returned string
+// (sanitized by viewRow) or a leaf inside the generic flatten (flattenNested,
+// which calls viewScalar per leaf). See sanitizeViewValue's own doc comment
+// for the tier-wide guarantee this composes into.
 func viewScalar(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -151,6 +181,34 @@ func viewScalar(raw json.RawMessage) string {
 	return string(raw)
 }
 
+// rowFieldRenderers maps a row-level field key to a function that renders
+// that field's own JSON object/array value directly, bypassing the generic
+// sanitizing flatten below. Populated only by registerRowFieldRenderer,
+// called only from init functions.
+var rowFieldRenderers = map[string]func(json.RawMessage) (string, error){}
+
+// registerRowFieldRenderer registers fn as the row-field renderer for key:
+// when viewRow encounters an object or array value under this key, it calls
+// fn with the raw bytes instead of falling through to the generic
+// sanitizing flatten, and sanitizes fn's returned string itself via
+// sanitizeViewValue (fn owns no sanitization responsibility — see viewRow).
+// Panics on an empty key, a nil fn, or registering the same key twice —
+// call only from an init function, never at request time, so a build-time
+// registration conflict fails loudly rather than silently overwriting a
+// sibling package's renderer.
+func registerRowFieldRenderer(key string, fn func(json.RawMessage) (string, error)) {
+	if key == "" {
+		panic("registerRowFieldRenderer: empty key")
+	}
+	if fn == nil {
+		panic("registerRowFieldRenderer: nil fn")
+	}
+	if _, exists := rowFieldRenderers[key]; exists {
+		panic(fmt.Sprintf("registerRowFieldRenderer: %q already registered", key))
+	}
+	rowFieldRenderers[key] = fn
+}
+
 // viewRow renders one JSON object as a single "key=value ..." line, walking
 // its keys in document order with the same Token-plus-Decode idiom
 // viewFields uses. It deliberately uses the RAW key, never humanizeKey —
@@ -158,6 +216,17 @@ func viewScalar(raw json.RawMessage) string {
 // nested rows are scanned and keep raw keys so they stay dense and
 // grep-friendly. This is not an inconsistency to "fix"; it is the
 // documented shape (06-CONTEXT.md D-05, D-07).
+//
+// A field whose value is a JSON object or array (WR-02, 06-REVIEW.md) is
+// handled one of two ways: if a renderer is registered for that key
+// (registerRowFieldRenderer), it is called with the raw value bytes and its
+// returned string is sanitized via sanitizeViewValue and appended as one
+// part with NO "key=" prefix — the renderer owns its own token text.
+// Otherwise the value is walked by the generic sanitizing flatten
+// (flattenNested), which emits one sanitized "path=value" part per scalar
+// leaf at any depth. Either way, every string this function contributes to
+// the rendered row has passed through sanitizeViewValue by the time it
+// returns.
 func viewRow(raw json.RawMessage) (string, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	tok, err := dec.Token()
@@ -182,9 +251,105 @@ func viewRow(raw json.RawMessage) (string, error) {
 		if err := dec.Decode(&val); err != nil {
 			return "", err
 		}
-		parts = append(parts, key+"="+viewScalar(val))
+		switch valueKind(val) {
+		case '{', '[':
+			if fn, ok := rowFieldRenderers[key]; ok {
+				rendered, err := fn(val)
+				if err != nil {
+					return "", err
+				}
+				parts = append(parts, sanitizeViewValue(rendered))
+				continue
+			}
+			nested, err := flattenNested(key, val)
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, nested...)
+		default:
+			parts = append(parts, key+"="+viewScalar(val))
+		}
 	}
 	return strings.Join(parts, " "), nil
+}
+
+// flattenNested renders raw — a JSON object or array value found where a
+// row-level field or an array-of-arrays element has no registered renderer
+// — as one or more "path=value" parts, walked recursively in document
+// order. path is built from prefix by appending ".key" for each object key
+// and "[i]" for each array index: a doubly-nested value like
+// {"a":{"b":1}} with prefix "outer" renders as "outer.a.b=1", and [[1,2]]
+// with prefix "" renders as "[0][0]=1 [0][1]=2". Every scalar leaf renders
+// through viewScalar — the same sanitizing path every other scalar in this
+// tier uses — so this is the fallback WR-02 (06-REVIEW.md) closes for ANY
+// nested shape a future report field introduces, not only the one shape
+// today's reports produce.
+func flattenNested(prefix string, raw json.RawMessage) ([]string, error) {
+	switch valueKind(raw) {
+	case '{':
+		return flattenObject(prefix, raw)
+	case '[':
+		return flattenArray(prefix, raw)
+	default:
+		return []string{prefix + "=" + viewScalar(raw)}, nil
+	}
+}
+
+// flattenObject walks a JSON object's keys in document order, appending
+// ".key" to prefix (or using the bare key when prefix is empty) for each
+// nested part. See flattenNested.
+func flattenObject(prefix string, raw json.RawMessage) ([]string, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		return nil, fmt.Errorf("operator view: flatten value %s is not a JSON object", raw)
+	}
+	var parts []string
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return nil, fmt.Errorf("operator view: unexpected flatten key token %v", keyTok)
+		}
+		var val json.RawMessage
+		if err := dec.Decode(&val); err != nil {
+			return nil, err
+		}
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		sub, err := flattenNested(path, val)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, sub...)
+	}
+	return parts, nil
+}
+
+// flattenArray walks a JSON array's elements in order, appending "[i]" to
+// prefix for each nested part. See flattenNested.
+func flattenArray(prefix string, raw json.RawMessage) ([]string, error) {
+	var elems []json.RawMessage
+	if err := json.Unmarshal(raw, &elems); err != nil {
+		return nil, err
+	}
+	var parts []string
+	for i, elem := range elems {
+		sub, err := flattenNested(fmt.Sprintf("%s[%d]", prefix, i), elem)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, sub...)
+	}
+	return parts, nil
 }
 
 // humanizeKey turns a JSON key into a top-level display label: underscores
@@ -211,15 +376,21 @@ func humanizeKey(key string) string {
 // The json lane needs no equivalent sanitization — encoding/json already
 // escapes control characters in its own string encoding.
 //
-// The guarantee is narrower than a blanket statement over "every value"
-// would imply: it only ever runs on a JSON string value viewScalar
-// recognizes by its own kind check (raw[0] == '"'). A value that is itself
-// a JSON array or object two levels deep from the doc root (a nested array
-// element, or a row-level object/array field inside viewRow) bypasses
-// viewScalar's sanitizing branch entirely and renders verbatim (WR-02,
-// 06-REVIEW.md). No operator report struct produces such a shape today —
-// see TestOperatorViewFixturesHaveNoUnsanitizedNesting (operator_output_test.go),
-// which fails loudly the day one does.
+// WR-02 (06-REVIEW.md) closed: every string this tier renders now passes
+// through sanitizeViewValue regardless of nesting depth, not only a
+// top-level or row-level scalar. A container-valued field — a row-level
+// object/array field inside viewRow, or a nested array element inside
+// viewFields — is rendered by ONE of two sanitized paths: a registered row
+// field renderer (registerRowFieldRenderer) whose returned string viewRow
+// itself sanitizes via this function, or the generic flatten
+// (flattenNested), which reduces every value to a scalar leaf and renders
+// each leaf through viewScalar (which calls this function for a JSON
+// string). There is no third path and no shape that reaches the text lane
+// unsanitized. TestOperatorViewFixturesHaveNoUnsanitizedNesting
+// (operator_output_test.go) proves this over the live fixture set by
+// substituting a hostile value for every string leaf and asserting the
+// rendered output carries no unsanitized control rune — not, as its name
+// once implied, by forbidding nesting from existing at all.
 func sanitizeViewValue(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))

@@ -633,3 +633,274 @@ func TestOperatorViewNonObjectDocument(t *testing.T) {
 		})
 	}
 }
+
+// TestViewFieldsBareNestedObject pins viewFields' bare nested-object branch
+// (its top-level `case '{':` block) and its sibling array-of-arrays element
+// branch (the `case '[':` inside its array-element loop). No shipped
+// operator report reaches either branch today — every *Doc top-level field
+// is a scalar, a time.Time string, or a list (05-CONTEXT.md D-01) — but
+// viewFields takes `any`, so the first future report field of struct or
+// map type lands on the bare-object branch by construction. This test pins that path (#504, OPS-02).
+func TestViewFieldsBareNestedObject(t *testing.T) {
+	type bareNestedInner struct {
+		Flag bool `json:"flag"`
+	}
+	type bareNestedDetail struct {
+		Count int             `json:"count"`
+		Label string          `json:"label"`
+		Inner bareNestedInner `json:"inner"`
+		Tags  []string        `json:"tags"`
+	}
+	type bareNestedDoc struct {
+		Name   string           `json:"name"`
+		Detail bareNestedDetail `json:"detail"`
+	}
+
+	t.Run("populated object renders one sanitized row", func(t *testing.T) {
+		doc := bareNestedDoc{
+			Name: "n",
+			Detail: bareNestedDetail{
+				Count: 3,
+				Label: "x",
+				Inner: bareNestedInner{Flag: true},
+				Tags:  []string{"a", "b"},
+			},
+		}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		var detail *viewField
+		for i := range fields {
+			if fields[i].Key == "detail" {
+				detail = &fields[i]
+			}
+		}
+		if detail == nil {
+			t.Fatal("viewFields(doc) did not return a field for detail")
+		}
+		if detail.Label != "Detail" {
+			t.Errorf("detail.Label = %q, want %q", detail.Label, "Detail")
+		}
+		if detail.Value != "" {
+			t.Errorf("detail.Value = %q, want empty (an object-valued key renders no top-level value)", detail.Value)
+		}
+		want := "count=3 label=x inner.flag=true tags[0]=a tags[1]=b"
+		if len(detail.Rows) != 1 || detail.Rows[0] != want {
+			t.Errorf("detail.Rows = %v, want [%q]", detail.Rows, want)
+		}
+
+		assertViewIdentity(t, "bare-nested-object", doc)
+	})
+
+	t.Run("hostile leaf in a bare nested object is sanitized", func(t *testing.T) {
+		hostile := "line1\nline2\rcr\tindented\x1bESC\x7fDEL"
+		doc := bareNestedDoc{
+			Name: "n",
+			Detail: bareNestedDetail{
+				Count: 3,
+				Label: hostile,
+				Inner: bareNestedInner{Flag: true},
+				Tags:  []string{"a", "b"},
+			},
+		}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		wantNewlines := 2 + len(fields)
+		for _, f := range fields {
+			wantNewlines += len(f.Rows)
+		}
+
+		var buf bytes.Buffer
+		if err := renderOperatorView(&buf, "headline", doc); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		for _, violation := range sanitizationViolations(buf.String(), wantNewlines) {
+			t.Errorf("%v (rendered=%q)", violation, buf.String())
+		}
+	})
+
+	t.Run("array element that is itself an array", func(t *testing.T) {
+		type gridDoc struct {
+			Grid [][]int `json:"grid"`
+		}
+		doc := gridDoc{Grid: [][]int{{1, 2}, {3}}}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		var grid *viewField
+		for i := range fields {
+			if fields[i].Key == "grid" {
+				grid = &fields[i]
+			}
+		}
+		if grid == nil {
+			t.Fatal("viewFields(doc) did not return a field for grid")
+		}
+		want := []string{"[0]=1 [1]=2", "[0]=3"}
+		if len(grid.Rows) != len(want) {
+			t.Fatalf("grid.Rows = %v, want %v", grid.Rows, want)
+		}
+		for i := range want {
+			if grid.Rows[i] != want[i] {
+				t.Errorf("grid.Rows[%d] = %q, want %q", i, grid.Rows[i], want[i])
+			}
+		}
+
+		assertViewIdentity(t, "grid-of-grids", doc)
+	})
+}
+
+// TestViewFieldsEmptyNestedObjectRendersNoRows pins the empty-object edge
+// case of viewFields' bare nested-object branch (its top-level `case '{':`
+// block): a row that renders to the empty string must contribute zero
+// rows, matching the empty-array precedent (TestOperatorViewEmptyShapes)
+// and renderOperatorView's documented "the output ... never a trailing
+// blank line" contract. Before this fix, an empty nested object rendered as
+// a single row holding the empty string, which renderOperatorView printed
+// as a whitespace-only four-space line.
+func TestViewFieldsEmptyNestedObjectRendersNoRows(t *testing.T) {
+	type emptyNestedInner struct{}
+	type emptyNestedDoc struct {
+		Name  string           `json:"name"`
+		Empty emptyNestedInner `json:"empty"`
+	}
+	type emptyNestedWrapper struct {
+		Inner emptyNestedInner `json:"inner"`
+	}
+	type emptyNestedWrapperDoc struct {
+		Wrapper emptyNestedWrapper `json:"wrapper"`
+	}
+
+	t.Run("last field is an empty struct", func(t *testing.T) {
+		doc := emptyNestedDoc{Name: "n"}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		var empty *viewField
+		for i := range fields {
+			if fields[i].Key == "empty" {
+				empty = &fields[i]
+			}
+		}
+		if empty == nil {
+			t.Fatal("viewFields(doc) did not return a field for empty")
+		}
+		if empty.Value != "" {
+			t.Errorf("empty.Value = %q, want empty", empty.Value)
+		}
+		if empty.Rows == nil {
+			t.Errorf("empty.Rows = nil, want a non-nil empty slice (a container key whose rendering is zero-length)")
+		}
+		if len(empty.Rows) != 0 {
+			t.Errorf("empty.Rows = %v, want zero rows", empty.Rows)
+		}
+
+		assertViewIdentity(t, "empty-nested-object", doc)
+
+		var buf bytes.Buffer
+		if err := renderOperatorView(&buf, "headline", doc); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		out := buf.String()
+		for _, line := range strings.Split(out, "\n") {
+			if line != "" && strings.TrimSpace(line) == "" {
+				t.Errorf("rendered output %q contains a whitespace-only line %q", out, line)
+			}
+		}
+		if !strings.HasSuffix(out, "  Empty\n") {
+			t.Errorf("rendered output %q does not end with the Empty label line followed by exactly one newline", out)
+		}
+	})
+
+	t.Run("wrapper whose only member is an empty struct", func(t *testing.T) {
+		doc := emptyNestedWrapperDoc{}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		if len(fields) != 1 || fields[0].Key != "wrapper" {
+			t.Fatalf("viewFields(doc) = %+v, want a single wrapper field", fields)
+		}
+		wrapper := fields[0]
+		if wrapper.Value != "" {
+			t.Errorf("wrapper.Value = %q, want empty", wrapper.Value)
+		}
+		if wrapper.Rows == nil {
+			t.Errorf("wrapper.Rows = nil, want a non-nil empty slice")
+		}
+		if len(wrapper.Rows) != 0 {
+			t.Errorf("wrapper.Rows = %v, want zero rows", wrapper.Rows)
+		}
+
+		assertViewIdentity(t, "empty-nested-wrapper", doc)
+	})
+}
+
+// TestViewFieldsBlankArrayElementKeepsItsRow pins the array-element branch
+// of viewFields (the `case '[':` element loop): an element whose rendering
+// is blank must still contribute exactly one row, so the element count
+// stays honest, and that row must not be whitespace-only. The row falls back
+// to the element's own compact JSON literal.
+func TestViewFieldsBlankArrayElementKeepsItsRow(t *testing.T) {
+	type omitEmptyItem struct {
+		Name string `json:"name,omitempty"`
+	}
+	type blankElemsDoc struct {
+		Items []omitEmptyItem `json:"items"`
+		Tags  []string        `json:"tags"`
+		Grid  [][]int         `json:"grid"`
+		Any   []any           `json:"any"`
+	}
+	doc := blankElemsDoc{
+		Items: []omitEmptyItem{{}, {Name: "x"}},
+		Tags:  []string{"", "a", " \n"},
+		Grid:  [][]int{{}},
+		Any:   []any{nil},
+	}
+
+	fields, err := viewFields(doc)
+	if err != nil {
+		t.Fatalf("viewFields: %v", err)
+	}
+	want := map[string][]string{
+		"items": {"{}", "name=x"},
+		"tags":  {`""`, "a", `" \n"`},
+		"grid":  {"[]"},
+		"any":   {"null"},
+	}
+	for _, f := range fields {
+		w := want[f.Key]
+		if len(f.Rows) != len(w) {
+			t.Errorf("%s.Rows = %q, want %q", f.Key, f.Rows, w)
+			continue
+		}
+		for i := range w {
+			if f.Rows[i] != w[i] {
+				t.Errorf("%s.Rows[%d] = %q, want %q", f.Key, i, f.Rows[i], w[i])
+			}
+		}
+	}
+
+	assertViewIdentity(t, "blank-array-elements", doc)
+
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, "headline", doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	out := buf.String()
+	for _, line := range strings.Split(out, "\n") {
+		if line != "" && strings.TrimSpace(line) == "" {
+			t.Errorf("rendered output %q contains a whitespace-only line %q", out, line)
+		}
+	}
+}

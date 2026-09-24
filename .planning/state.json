@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "2026-09-18.01 — Bounded Reads",
+  "milestone": "2026-09-22.01 — Typed Decisions & Recall Ranking",
   "phases": [
     {
       "number": "9",
@@ -292,12 +292,37 @@
       "number": "7",
       "name": "Bounded Provider Responses",
       "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Eval Foundation & Lexical Reranker Fix",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Decision Interface & Jev Backend",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Curation Verdicts",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Jev Reranker & Per-Hit Relevance Signal",
+      "status": "in_progress"
+    },
+    {
+      "number": "5",
+      "name": "Operator Correctness",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (verify)",
+    "reason": "Phase 4 of 5 · 60% · ready to verify"
   },
-  "updated_at": "2026-09-22T21:48:19.888Z"
+  "updated_at": "2026-09-24T16:00:14.255Z"
 }

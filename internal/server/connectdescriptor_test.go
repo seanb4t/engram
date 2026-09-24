@@ -145,7 +145,10 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// presence (D-14) but that is a proto3_optional flag, not a distinct
 	// protoreflect.Cardinality value, so their expected cardinality is still
 	// Optional (singular) like every other non-repeated field here.
-	assertFields(t, fd, "Memory", 30, map[protoreflect.FieldNumber]fieldSpec{
+	// Phase 4 (D-05): relevance (field 31) is a further additive field —
+	// the Jev reranker's per-hit P(relevant); field count bumped from 30 to
+	// 31 accordingly.
+	assertFields(t, fd, "Memory", 31, map[protoreflect.FieldNumber]fieldSpec{
 		1:  {name: "id", kind: protoreflect.StringKind},
 		14: {name: "created_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
 		17: {name: "score", kind: protoreflect.FloatKind},
@@ -162,6 +165,7 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		28: {name: "schema_version", kind: protoreflect.Uint32Kind},
 		29: {name: "summary_model", kind: protoreflect.StringKind},
 		30: {name: "summary_egress_at", kind: protoreflect.MessageKind, msgType: "google.protobuf.Timestamp"},
+		31: {name: "relevance", kind: protoreflect.DoubleKind},
 	})
 	assertFields(t, fd, "ScopeCount", 2, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "scope", kind: protoreflect.StringKind},

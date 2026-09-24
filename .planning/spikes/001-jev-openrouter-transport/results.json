@@ -1,0 +1,380 @@
+{
+  "events": [
+    {
+      "at": "2026-09-22T23:27:37.606261Z",
+      "probe": "happy",
+      "status": 200,
+      "ms": 376,
+      "bytes": 379,
+      "body": "{\"model\":\"typesafe/jev-1.13-20260917\",\"answers\":{\"relation\":{\"type\":\"choice\",\"choice\":\"duplicate\",\"probabilities\":{\"unrelated\":0,\"duplicate\":0.92,\"related\":0.03,\"contradicts\":0.05},\"confidence\":0.9},\"same_subject\":{\"type\":\"noul\",\"noul\":0.92}},\"usage\":{\"input_tokens\":497,\"output_tokens\":67,\"cost\":0.000020874},\"id\":\"gen-dec-1790119657-v90ERBo9Ihr6BnXXvH2K\",\"provider\":\"TypeSafe\"}",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Generation-Id": "gen-dec-1790119657-v90ERBo9Ihr6BnXXvH2K"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:37.862348Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 256,
+      "bytes": 380,
+      "body": "{\"model\":\"typesafe/jev-1.13-20260917\",\"answers\":{\"relation\":{\"type\":\"choice\",\"choice\":\"duplicate\",\"probabilities\":{\"contradicts\":0.08,\"unrelated\":0,\"related\":0.03,\"duplicate\":0.89},\"confidence\":0.86},\"same_subject\":{\"type\":\"noul\",\"noul\":0.91}},\"usage\":{\"input_tokens\":497,\"output_tokens\":67,\"cost\":0.000020874},\"id\":\"gen-dec-1790119657-J3i6MZguSJ2e5tpkCal1\",\"provider\":\"TypeSafe\"}",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Generation-Id": "gen-dec-1790119657-J3i6MZguSJ2e5tpkCal1"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:38.100869Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 238,
+      "bytes": 377,
+      "body": "{\"model\":\"typesafe/jev-1.13-20260917\",\"answers\":{\"relation\":{\"type\":\"choice\",\"choice\":\"unrelated\",\"probabilities\":{\"unrelated\":0.99,\"duplicate\":0,\"contradicts\":0,\"related\":0.01},\"confidence\":0.99},\"same_subject\":{\"type\":\"noul\",\"noul\":0.02}},\"usage\":{\"input_tokens\":494,\"output_tokens\":69,\"cost\":0.000020748},\"id\":\"gen-dec-1790119657-7TrGI4l9DLS21SEaPEns\",\"provider\":\"TypeSafe\"}",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Generation-Id": "gen-dec-1790119657-7TrGI4l9DLS21SEaPEns"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:39.228447Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 1127,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:39.721272Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 492,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:40.076546Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 355,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:40.502324Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 425,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:41.00048Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 498,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:41.267988Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 267,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:41.502148Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 234,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:41.828425Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 326,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:42.08025Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 251,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:42.310657Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 230,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:42.537876Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 227,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:43.044486Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 506,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:43.411942Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 367,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:43.662258Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 250,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:43.878356Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 216,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:44.13384Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 255,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:44.398141Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 264,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:44.617237Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 219,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:44.818569Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 201,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:45.141473Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 322,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:45.491398Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 349,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:45.687237Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 195,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:45.875444Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 188,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:46.192667Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 317,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:46.512523Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 319,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:46.955842Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 443,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:47.42527Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 469,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:47.762194Z",
+      "probe": "latency",
+      "status": 200,
+      "ms": 336,
+      "bytes": 377
+    },
+    {
+      "at": "2026-09-22T23:27:48.078141Z",
+      "probe": "batch50",
+      "status": 200,
+      "ms": 315,
+      "bytes": 2087,
+      "body": "{\"model\":\"typesafe/jev-1.13-20260917\",\"answers\":{\"rel_c00\":{\"type\":\"noul\",\"noul\":0.02},\"rel_c01\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c02\":{\"type\":\"noul\",\"noul\":0.02},\"rel_c03\":{\"type\":\"noul\",\"noul\":0.02},\"rel_c04\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c05\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c06\":{\"type\":\"noul\",\"noul\":0.02},\"rel_c07\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c08\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c09\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c10\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c11\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c12\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c13\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c14\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c15\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c16\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c17\":{\"type\":\"noul\",\"noul\":0.9},\"rel_c18\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c19\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c20\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c21\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c22\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c23\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c24\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c25\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c26\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c27\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c28\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c29\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c30\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c31\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c32\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c33\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c34\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c35\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c36\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c37\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c38\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c39\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c40\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c41\":{\"type\":\"noul\",\"noul\":0.03},\"rel_c42\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c43\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c44\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c45\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c46\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c47\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c48\":{\"type\":\"noul\",\"noul\":0.04},\"rel_c49\":{\"type\":\"noul\",\"noul\":0.03}},\"usage\":{\"input_tokens\":4028,\"output_tokens\":954,\"cost\":0.000169176},\"id\":\"gen-dec-1790119667-Pr6XXtReMocfPyi196hI\",\"provider\":\"TypeSafe\"}",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Generation-Id": "gen-dec-1790119667-Pr6XXtReMocfPyi196hI"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:49.336131Z",
+      "probe": "card255",
+      "status": 200,
+      "ms": 1257,
+      "bytes": 3067
+    },
+    {
+      "at": "2026-09-22T23:27:49.450382Z",
+      "probe": "card256",
+      "status": 400,
+      "ms": 114,
+      "bytes": 110,
+      "body": "{\"error\":{\"message\":\"HTTP 400: {\\\"detail\\\":\\\"Too many choices. Must have at most 255 choices.\\\"}\",\"code\":400}}",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Generation-Id": "gen-dec-1790119669-GPD2KpWlpJYvbgDUaOFI"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:49.470659Z",
+      "probe": "badkey",
+      "status": 401,
+      "ms": 20,
+      "bytes": 64,
+      "body": "{\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}",
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:49.495324Z",
+      "probe": "badtype",
+      "status": 400,
+      "ms": 24,
+      "bytes": 475,
+      "body": "{\"error\":{\"message\":\"[\\n  {\\n    \\\"code\\\": \\\"invalid_union\\\",\\n    \\\"errors\\\": [],\\n    \\\"note\\\": \\\"No matching discriminator\\\",\\n    \\\"discriminator\\\": \\\"type\\\",\\n    \\\"options\\\": [\\n      \\\"noul\\\",\\n      \\\"choice\\\",\\n      \\\"score\\\"\\n    ],\\n    \\\"path\\\": [\\n      \\\"questions\\\",\\n      \\\"q\\\",\\n      \\\"type\\\"\\n    ],\\n    \\\"message\\\": \\\"Invalid discriminator value. Expected 'noul' | 'choice' | 'score'\\\"\\n  }\\n]\",\"code\":400},\"user_id\":\"REDACTED\"}",
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:49.930585Z",
+      "probe": "oversize",
+      "status": 400,
+      "ms": 434,
+      "bytes": 98,
+      "body": "{\"error\":{\"message\":\"HTTP 400: {\\\"detail\\\":{\\\"error_type\\\":\\\"max_tokens_exceeded\\\"}}\",\"code\":400}}",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Generation-Id": "gen-dec-1790119669-t8gJE96DuWm9KjkLMXU5"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:49.973999Z",
+      "probe": "chatpath",
+      "status": 400,
+      "ms": 43,
+      "bytes": 220,
+      "body": "{\"error\":{\"message\":\"typesafe/jev-1.13 is a decisions model and cannot be used with the chat/completions endpoint. Use the /api/alpha/decisions endpoint instead.\",\"code\":400},\"user_id\":\"REDACTED\"}",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Generation-Id": "gen-1790119669-l90ZO4XnhA5YPxN6R5V0"
+      }
+    },
+    {
+      "at": "2026-09-22T23:27:50.244547Z",
+      "probe": "determinism",
+      "status": 200,
+      "ms": 270,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:50.452698Z",
+      "probe": "determinism",
+      "status": 200,
+      "ms": 208,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:50.633777Z",
+      "probe": "determinism",
+      "status": 200,
+      "ms": 181,
+      "bytes": 379
+    },
+    {
+      "at": "2026-09-22T23:27:50.937346Z",
+      "probe": "determinism",
+      "status": 200,
+      "ms": 303,
+      "bytes": 380
+    },
+    {
+      "at": "2026-09-22T23:27:51.160251Z",
+      "probe": "determinism",
+      "status": 200,
+      "ms": 222,
+      "bytes": 379
+    }
+  ],
+  "latency_ms": [
+    256,
+    238,
+    1127,
+    492,
+    355,
+    425,
+    498,
+    267,
+    234,
+    326,
+    251,
+    230,
+    227,
+    506,
+    367,
+    250,
+    216,
+    255,
+    264,
+    219,
+    201,
+    322,
+    349,
+    195,
+    188,
+    317,
+    319,
+    443,
+    469,
+    336
+  ]
+}

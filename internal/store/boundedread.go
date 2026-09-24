@@ -318,6 +318,27 @@ func (s *Store) citationsView() readView {
 	}
 }
 
+// verdictStateRecordCeiling is the TRUE per-record payload ceiling for a
+// verdictStateView (D-09) read under c: content + the summary term + the
+// uncapped fields allowance. No tags term and no citations term — the
+// verdict-state view excludes both fields entirely. At DefaultRecordCaps()
+// this is 82432 bytes.
+func verdictStateRecordCeiling(c RecordCaps) int {
+	return c.ContentBytes + summaryTerm(c) + uncappedFieldsAllowance
+}
+
+// verdictStateView includes exactly content, summary and created_at (D-09)
+// and is sized from s.RecordCaps() via verdictStateRecordCeiling. Its one
+// caller is Store.RecordStates (verdictstate.go), which feeds the
+// curation-verdict pass's truncated per-record state — never a
+// general-purpose read.
+func (s *Store) verdictStateView() readView {
+	return readView{
+		selector:       qdrant.NewWithPayloadInclude("content", "summary", "created_at"),
+		maxRecordBytes: verdictStateRecordCeiling(s.RecordCaps()),
+	}
+}
+
 // nearDuplicateIdentityView is the two-field (short_id, scope) readView
 // NearDuplicates' id enumeration uses (D-04) — sized like keysView but for
 // two small strings instead of one timestamp. A package-level function, not

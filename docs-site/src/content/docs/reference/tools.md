@@ -140,7 +140,7 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 | `query` | string | yes | Natural-language search query |
 | `scope` | string | conditional | Scope to search within; <!-- engram:rule:start scope-required-unless-cross-spine -->scope is required unless cross_spine is true<!-- engram:rule:end scope-required-unless-cross-spine --> |
 | `k` | uint64 | no | Number of results to return; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
-| `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and reranking (see below) |
+| `tags` | string[] | no | Restrict to records carrying **all** listed tags (AND). Omit for no tag filter. Applied as a hard pre-filter, then results are ranked by vector similarity and a lexical-overlap adjustment selected by the retrieval eval (see below) |
 | `categories` | string[] | no | Restrict to records in **any** of the listed categories (OR) — the opposite of `tags`' ALL/AND semantics, since a record carries exactly one category. Omit or pass an empty array for no category filter. An unmatched value returns zero results, never an error; any stored category is accepted, including `discovery` and `rule`, not just the four `store_memory` write values. Applied as a hard pre-filter, before vector ranking. The same filter is available over the Connect read API on `SearchMemories`. |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
@@ -150,9 +150,10 @@ memories. By default returns compact summaries; pass `full=true` for complete co
 Returns a list of matching memory records. Each result carries a `score`: the
 raw Qdrant cosine similarity for this query (higher = closer), present when
 non-zero. Unranked `list_memory`/`get_memory` results have a zero/omitted score.
-Final order may include reranking; `score` remains first-stage dense
-similarity and may be non-monotonic after rerank. `citations` are omitted from
-the default compact view; pass `full=true` to include them.
+Final order may include a lexical-overlap adjustment selected by the
+retrieval eval; `score` remains first-stage dense similarity and may be
+non-monotonic after that adjustment. `citations` are omitted from the
+default compact view; pass `full=true` to include them.
 The result is returned as structured content and, per MCP 2026-07-28, also as
 the same JSON in a text block.
 
@@ -167,6 +168,18 @@ If the coverage enumeration itself fails after hits were already found, the
 call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is absent
 (never an empty list, which would read as "searched nothing"), and
 `scopes_truncated` is absent/false.
+
+With [`ENGRAM_SEARCH_RANKER=jev`](/guides/configure/#search-reranking-jev)
+enabled, results are instead reordered by the typed-decision provider's
+probability that each record answers the query — lexical order first, then a
+stable sort by that probability — and each hit carries a per-hit `relevance`
+value between 0 and 1 (values all near zero mean nothing returned actually
+answers the query). Callers decide relevance for themselves from these
+per-hit values; no hit is filtered out on the server's behalf, and there is
+no response-level flag. `relevance` is absent on every hit when the ranker is
+off, and also absent (with `score`-based order unchanged) when a rerank
+attempt fails — the search still succeeds, falling back to the default
+lexical order.
 
 ---
 
@@ -465,6 +478,19 @@ Returns `{ "discoveries": [...] }`. Results carry `citations` and `created_at`
 (useful as aging signals). The result is returned as structured content and,
 per MCP 2026-07-28, also as the same JSON in a text block.
 
+With [`ENGRAM_SEARCH_RANKER=jev`](/guides/configure/#search-reranking-jev)
+enabled, results are instead reordered by the typed-decision provider's
+probability that each discovery answers the query — the base order is
+discovery's own vector-similarity order (discoveries have no lexical rank
+step), then a stable sort by that probability — and each hit carries a
+per-hit `relevance` value between 0 and 1 (values all near zero mean nothing
+returned actually answers the query). Callers decide relevance for
+themselves from these per-hit values; no hit is filtered out on the server's
+behalf, and there is no response-level flag. `relevance` is absent on every
+hit when the ranker is off, and also absent (with the vector-similarity order
+unchanged) when a rerank attempt fails — the search still succeeds, falling
+back to the default order.
+
 ---
 
 ## set_visibility
@@ -547,7 +573,7 @@ Auto-generated summaries are created offline using the configured model.
 engram summarize-missing (--scope <scope> | --all-scopes) [flags]
 ```
 
-Like the other sweep-style operator commands (`spine-review scan`, `spine-review verify`), this command enforces one constraint: <!-- engram:rule:start sweep-scope-or-all-scopes-required -->a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope<!-- engram:rule:end sweep-scope-or-all-scopes-required -->.
+Like the other sweep-style operator commands (`spine-review scan`, `spine-review verify`, `spine-review consolidate`), this command enforces one constraint: <!-- engram:rule:start sweep-scope-or-all-scopes-required -->a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope<!-- engram:rule:end sweep-scope-or-all-scopes-required -->.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

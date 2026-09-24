@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"strconv"
@@ -280,6 +281,118 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// decisions.provider (D-01): checked unconditionally, unlike every other
+	// decisions.* field below — a typo in the provider enum must fail startup
+	// even when the feature is otherwise off.
+	if c.Decisions.Provider != "" && c.Decisions.Provider != "jev" {
+		errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_PROVIDER %q: must be empty (off) or \"jev\"", c.Decisions.Provider))
+	}
+
+	// Gated like Summarize.Model above (D-01): a deployment that never sets
+	// ENGRAM_DECISIONS_PROVIDER validates byte-identically to before this
+	// block existed. ENGRAM_DECISIONS_API_KEY is deliberately not validated
+	// here (it has no verifiable shape, and empty is meaningful: inherit
+	// ENGRAM_OPENAI_API_KEY at the wiring seam, D-03).
+	if c.Decisions.Provider == "jev" {
+		switch u, err := url.Parse(c.Decisions.BaseURL); {
+		case c.Decisions.BaseURL == "":
+			errs = append(errs, errors.New("ENGRAM_DECISIONS_BASE_URL is empty: required when ENGRAM_DECISIONS_PROVIDER=jev (does not fall back to ENGRAM_OPENAI_BASE_URL)"))
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_BASE_URL %q: must be a valid URL: %w", c.Decisions.BaseURL, err))
+		case u.Scheme != "http" && u.Scheme != "https":
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_BASE_URL %q: scheme must be http or https", c.Decisions.BaseURL))
+		case u.Host == "":
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_BASE_URL %q: missing host", c.Decisions.BaseURL))
+		}
+
+		if c.Decisions.Model == "" {
+			errs = append(errs, errors.New("ENGRAM_DECISIONS_MODEL is empty"))
+		}
+
+		// decisions.timeout: a non-negative Go duration; 0 resolves to the
+		// max_timeout ceiling in the jev client, never unbounded.
+		switch d, err := time.ParseDuration(c.Decisions.Timeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_TIMEOUT %q: must be a Go duration (e.g. 10s, 2m): %w", c.Decisions.Timeout, err))
+		case d < 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_TIMEOUT %q: must not be negative", c.Decisions.Timeout))
+		}
+
+		// decisions.max_timeout: UNLIKE decisions.timeout above, zero is
+		// always rejected — this is the ceiling a non-positive timeout
+		// resolves to, and a zero ceiling would be exactly the unbounded
+		// request this rule exists to prevent.
+		switch d, err := time.ParseDuration(c.Decisions.MaxTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_MAX_TIMEOUT %q: must be a Go duration (e.g. 10s, 2m): %w", c.Decisions.MaxTimeout, err))
+		case d <= 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_MAX_TIMEOUT %q: must be a positive duration", c.Decisions.MaxTimeout))
+		}
+
+		// decisions.drain_bytes / decisions.drain_timeout: zero is a
+		// deliberately supported operator setting (skips the drain
+		// entirely); negative is rejected — the same embed.*/summarize.*
+		// drain-bound convention.
+		if _, err := ParseNonNegativeIntCap(c.Decisions.DrainBytes); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_DRAIN_BYTES %q: %w", c.Decisions.DrainBytes, err))
+		}
+
+		switch d, err := time.ParseDuration(c.Decisions.DrainTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_DRAIN_TIMEOUT %q: must be a Go duration (e.g. 10s, 2m): %w", c.Decisions.DrainTimeout, err))
+		case d < 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_DRAIN_TIMEOUT %q: must not be negative", c.Decisions.DrainTimeout))
+		}
+
+		// decisions.concurrency: always positive — the DecideMany (plan
+		// 02-04) worker-pool bound has no "0 means unbounded" escape hatch.
+		if _, err := ParsePositiveIntCap(c.Decisions.Concurrency); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_CONCURRENCY %q: %w", c.Decisions.Concurrency, err))
+		}
+
+		// decisions.verdict_threshold (D-08): must parse as a probability in
+		// [0, 1] via ParseProbability — the SAME exported parser
+		// internal/server and the consolidate flag call, so the validated
+		// range equals the enforced range (WR-01).
+		if _, err := ParseProbability(c.Decisions.VerdictThreshold); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_VERDICT_THRESHOLD %q: %w", c.Decisions.VerdictThreshold, err))
+		}
+
+		// decisions.verdict_state_chars (D-09): always positive, like
+		// decisions.concurrency above — no "0 means unbounded" escape hatch
+		// (an unbounded per-record state would defeat the byte-budget
+		// discipline this knob exists to enforce).
+		if _, err := ParsePositiveIntCap(c.Decisions.VerdictStateChars); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_VERDICT_STATE_CHARS %q: %w", c.Decisions.VerdictStateChars, err))
+		}
+	}
+
+	// search.ranker (D-01): checked unconditionally, unlike search.rerank_timeout
+	// below — a typo in the ranker enum must fail startup even when reranking
+	// is otherwise off.
+	if c.Search.Ranker != "" && c.Search.Ranker != "lexical" && c.Search.Ranker != "jev" {
+		errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RANKER %q: must be empty, \"lexical\", or \"jev\"", c.Search.Ranker))
+	}
+
+	// Gated on the ranker being "jev": a deployment that never sets
+	// ENGRAM_SEARCH_RANKER=jev validates byte-identically to before this
+	// block existed.
+	if c.Search.Ranker == "jev" {
+		if c.Decisions.Provider == "" {
+			errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RANKER=jev requires ENGRAM_DECISIONS_PROVIDER to be set (naming both: ENGRAM_SEARCH_RANKER=%q, ENGRAM_DECISIONS_PROVIDER=%q)", c.Search.Ranker, c.Decisions.Provider))
+		}
+
+		// search.rerank_timeout: UNLIKE decisions.timeout, zero is always
+		// rejected — a zero here would resolve to the 10m decisions max-timeout
+		// ceiling on the synchronous search path, which is unacceptable (D-09).
+		switch d, err := time.ParseDuration(c.Search.RerankTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RERANK_TIMEOUT %q: must be a Go duration (e.g. 2s, 500ms): %w", c.Search.RerankTimeout, err))
+		case d <= 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RERANK_TIMEOUT %q: must be a positive duration", c.Search.RerankTimeout))
+		}
+	}
+
 	// These three run unconditionally (not gated by Summarize.Model), since the
 	// fields carry safe defaults and the runtime "both model set AND on_write
 	// true" AND-gate (D-01) is decided later in buildDepsFromEnv, not here.
@@ -354,6 +467,27 @@ func ParsePositiveIntCap(value string) (int, error) {
 	}
 	if n <= 0 {
 		return 0, errors.New("must be greater than 0")
+	}
+	return n, nil
+}
+
+// ParseProbability parses value as a probability in [0, 1], using
+// strconv.ParseFloat and rejecting NaN, infinities, and anything outside the
+// [0, 1] range. Exported so internal/server (the verdict-threshold resolver)
+// and the consolidate command's --verdict-threshold flag call this SAME
+// parser Config.Validate uses for ENGRAM_DECISIONS_VERDICT_THRESHOLD, so the
+// validated range equals the enforced range (WR-01, mirroring
+// ParsePositiveIntCap's doc and shape).
+func ParseProbability(value string) (float64, error) {
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("must be a probability between 0 and 1: %w", err)
+	}
+	if math.IsNaN(n) || math.IsInf(n, 0) {
+		return 0, errors.New("must be a probability between 0 and 1")
+	}
+	if n < 0 || n > 1 {
+		return 0, errors.New("must be a probability between 0 and 1")
 	}
 	return n, nil
 }

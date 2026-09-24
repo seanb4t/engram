@@ -5,14 +5,16 @@ package retrievaleval
 
 import (
 	"context"
+	"fmt"
 	"os"
-	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/store/storetest"
@@ -55,16 +57,98 @@ func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
 	return store.New(c, name)
 }
 
-// TestRetrievalEval is the retrieval-quality eval: it seeds the labeled dataset
-// in fixtures.go through the exact production doc-embed sequence, searches it
-// through the production query path, and reports recall@k / MRR plus the
-// GitHub #261 baseline. The gate mirrors
-// internal/summarize/fidelity_test.go's TestSummaryFidelity — defense-in-depth
-// retained even though TestMain already short-circuits before Docker.
-func TestRetrievalEval(t *testing.T) {
-	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
+// requireEvalEnabled skips t unless the resolved koanf gate (D-15) is
+// enabled, and fails t if the gate itself is malformed — mirroring every
+// other gated test in this package, now sourced from resolveEvalGate's
+// package-local koanf load instead of the retired raw process-environment
+// read.
+func requireEvalEnabled(t *testing.T) {
+	t.Helper()
+	enabled, err := retrievalEvalEnabled()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !enabled {
 		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
 	}
+}
+
+// symmetricEmbedConfig reports whether e carries no query/document asymmetry:
+// all four instruction/params fields are empty. A symmetric embedder config
+// legitimately yields query == document (review B3), and the decision is
+// made from the resolved config the embedder was built from, never an
+// independent read (D-14, #354).
+func symmetricEmbedConfig(e config.EmbedConfig) bool {
+	return e.QueryInstruction == "" &&
+		e.DocumentInstruction == "" &&
+		e.QueryParams == "" &&
+		e.DocumentParams == ""
+}
+
+// TestSymmetricEmbedConfig proves symmetricEmbedConfig decides purely from
+// the four embed instruction/params fields on a resolved *config.Config,
+// covering the row combinations the differ gate's skip depends on (D-14).
+func TestSymmetricEmbedConfig(t *testing.T) {
+	cases := []struct {
+		name                string
+		queryInstruction    string
+		documentInstruction string
+		queryParams         string
+		documentParams      string
+		want                bool
+	}{
+		{"all empty -> symmetric", "", "", "", "", true},
+		{"query instruction only -> asymmetric", "prefix: ", "", "", "", false},
+		{"document instruction only -> asymmetric", "", "prefix: ", "", "", false},
+		{"query params only -> asymmetric", "", "", `{"input_type":"search_query"}`, "", false},
+		{"document params only -> asymmetric", "", "", "", `{"input_type":"search_document"}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ENGRAM_EMBED_QUERY_INSTRUCTION", tc.queryInstruction)
+			t.Setenv("ENGRAM_EMBED_DOCUMENT_INSTRUCTION", tc.documentInstruction)
+			t.Setenv("ENGRAM_EMBED_QUERY_PARAMS", tc.queryParams)
+			t.Setenv("ENGRAM_EMBED_DOCUMENT_PARAMS", tc.documentParams)
+
+			loadedCfg, err := config.Load(nil)
+			if err != nil {
+				t.Fatalf("config.Load: %v", err)
+			}
+			if got := symmetricEmbedConfig(loadedCfg.Embed); got != tc.want {
+				t.Errorf("symmetricEmbedConfig(%+v) = %v, want %v", loadedCfg.Embed, got, tc.want)
+			}
+		})
+	}
+}
+
+// recordLabel resolves a Qdrant point id back to its fixture-local key for
+// human-readable logging (idByKey's inverse), falling back to the raw id
+// when no seedRecord.key maps to it (should not happen for hits inside a
+// case's own seeded collection, but logging must never panic on a lookup
+// miss).
+func recordLabel(keyByID map[string]string, id string) string {
+	if key, ok := keyByID[id]; ok {
+		return key
+	}
+	return id
+}
+
+// TestRetrievalEval is the retrieval-quality eval: it seeds the labeled
+// dataset in fixtures.go through the exact production doc-embed sequence,
+// searches it through the production query path, and measures every
+// pluggable named ranker (D-11, rankers.go) over the exact bounded-over-fetch
+// candidate pool store.SearchReranked would rank, alongside the shipped
+// ranking itself. It aggregates recall@k/MRR per (ranker, case-role)
+// pair (D-09), logs a per-variant Markdown table (formatVariantTable), and
+// applies D-10's two hard gates: gh261Case's shipped target at rank 1 for
+// both its queries, and (from plan 01-04 Task 2) shipped paraphrase MRR at
+// least vector-only's. No-answer queries (retrievalQuery.wantKey == "") are
+// excluded from every aggregate and only logged (D-12). The gate mirrors
+// internal/summarize/fidelity_test.go's TestSummaryFidelity —
+// defense-in-depth retained even though TestMain already short-circuits
+// before Docker.
+func TestRetrievalEval(t *testing.T) {
+	requireEvalEnabled(t)
 	if storetest.Addr() == "" {
 		t.Skip("no Qdrant available: set ENGRAM_QDRANT_TEST_ADDR or start Docker (testcontainers)")
 	}
@@ -77,12 +161,52 @@ func TestRetrievalEval(t *testing.T) {
 	// ambient ENGRAM_QDRANT_ADDR), which is NEVER where this eval seeds/searches
 	// (round-2 finding 1) — the eval store below is built directly from
 	// storetest's resolved test Qdrant address instead.
-	_, dim, em, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
+	_, dim, em, _, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("build prod-parity embedder: %v", err)
 	}
 
+	// D-02: the Jev slot is enabled whenever a decisions provider is
+	// configured, independently of ENGRAM_SEARCH_RANKER — this eval must
+	// measure the Jev row even when production stays lexical. jevHook is
+	// nil (and jevInfo.Enabled false) when no provider is configured, in
+	// which case evalRankers appends its disabled stub exactly as before.
+	jevHook, jevInfo, err := server.SearchRankHookFromEnv()
+	if err != nil {
+		t.Fatalf("build Jev search-rerank hook: %v", err)
+	}
+	t.Logf("JEV-EVAL | enabled=%v model=%s endpoint_host=%s rerank_timeout=%s",
+		jevInfo.Enabled, jevInfo.Model, jevInfo.EndpointHost, jevInfo.Timeout)
+
+	// jevCalls/jevFallbacks count every rank call made through the enabled
+	// jev roster row across every query (answer and no-answer alike): a
+	// fallback is any call whose ranked output is non-empty but carries no
+	// Relevance on its first hit (applyRelevance's full-coverage contract
+	// means "no Relevance" and "fallback" are the same fact). Logged once
+	// at the end via the provenance line below so a timeout- or
+	// error-degraded Jev row can never masquerade as measured ranking.
+	var jevCalls, jevFallbacks int
+
 	subj := store.Authenticated("retrieval-eval@engram.dev")
+	roster := evalRankers(jevHook)
+
+	// Per-(ranker, role) aggregates, plus the shipped row's own aggregates —
+	// keyed by roster entry name, populated only from ANSWER queries
+	// (wantKey != ""). The shipped row is measured through
+	// st.SearchReranked itself, never through a local rank function.
+	guardMetrics := make(map[string]variantMetrics, len(roster))
+	paraphraseMetrics := make(map[string]variantMetrics, len(roster))
+	var shippedGuard, shippedParaphrase variantMetrics
+
+	// variantMatchesShipped tracks, per enabled roster entry, whether its
+	// id list equaled the shipped id list on EVERY answer query seen so
+	// far — the "shipped (SearchReranked) matches" diagnostic (T-01-10).
+	variantMatchesShipped := make(map[string]bool, len(roster))
+	for _, r := range roster {
+		if r.rank != nil {
+			variantMatchesShipped[r.name] = true
+		}
+	}
 
 	for _, tc := range retrievalCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -92,6 +216,7 @@ func TestRetrievalEval(t *testing.T) {
 			scope := "retrieval-eval:project:" + tc.name
 
 			idByKey := make(map[string]string, len(tc.seedRecords))
+			keyByID := make(map[string]string, len(tc.seedRecords))
 			for _, rec := range tc.seedRecords {
 				m := store.Memory{
 					ID:        uuid.NewString(),
@@ -105,115 +230,246 @@ func TestRetrievalEval(t *testing.T) {
 					CreatedAt: time.Now().UTC(),
 				}
 				idByKey[rec.key] = m.ID
+				keyByID[m.ID] = rec.key
 
 				// Exact prod doc-embed sequence (round-2 finding 2):
 				// store.EmbedText folds tags in, then Embed, then Upsert takes
 				// the precomputed vector — never a raw/bespoke shortcut.
 				vec, err := em.Embed(ctx, store.EmbedText(m.Content, m.Tags))
 				if err != nil {
-					t.Fatalf("seed %s: embed: %v", rec.key, err)
+					t.Fatalf("harness: seed %s: embed: %v", rec.key, err)
 				}
 				if err := st.Upsert(ctx, m, vec); err != nil {
-					t.Fatalf("seed %s: upsert: %v", rec.key, err)
+					t.Fatalf("harness: seed %s: upsert: %v", rec.key, err)
 				}
-			}
-			wantID, ok := idByKey[tc.wantKey]
-			if !ok {
-				t.Fatalf("fixture bug: wantKey %q not among seeded records", tc.wantKey)
 			}
 			ceilingK := uint64(len(tc.seedRecords)) + 5
 
-			var recallHits, mrrSum float64
 			for _, q := range tc.queries {
-				// The SHIPPED ranking path (review finding 2/5): EmbedQuery
-				// (prod-parity instruction + params) -> Store.SearchReranked at
-				// the production default k — the SAME shared helper
-				// deps.searchMemory (MCP) and engramAPI.SearchMemories (Connect)
-				// call, so this measures exactly what ships and cannot drift
-				// from a raw Store.Search shortcut.
+				// (a) Embed the query through the production query-side path.
 				vec, err := em.EmbedQuery(ctx, q.text)
 				if err != nil {
-					t.Fatalf("%s: embed query: %v", q.name, err)
+					t.Fatalf("harness: %s/%s: embed query: %v", tc.name, q.name, err)
 				}
-				ranked, err := st.SearchReranked(ctx, scope, subj, q.text, vec, defaultK, store.SearchOptions{})
+
+				// (b) Shipped: the real seam — SAME shared helper
+				// deps.searchMemory (MCP) and engramAPI.SearchMemories
+				// (Connect) call, so this measures exactly what ships and
+				// cannot drift from a raw Store.Search shortcut.
+				shipped, err := st.SearchReranked(ctx, scope, subj, q.text, vec, defaultK, store.SearchOptions{})
 				if err != nil {
-					t.Fatalf("%s: search: %v", q.name, err)
+					t.Fatalf("harness: %s/%s: search: %v", tc.name, q.name, err)
 				}
-
-				// Harness-correctness assertions (hard): non-empty and
-				// score-populated. NOT asserted non-increasing / score-descending
-				// here (review finding 3): reranking legitimately promotes a
-				// higher-lexical-overlap hit ahead of a higher-raw-score one, so
-				// the reranked result set is not guaranteed score-descending.
-				if len(ranked) == 0 {
-					t.Errorf("%s: search returned no results", q.name)
+				if len(shipped) == 0 {
+					t.Errorf("harness: %s/%s: search returned no results", tc.name, q.name)
 				}
-				for i, m := range ranked {
+				for i, m := range shipped {
 					if m.Score == 0 {
-						t.Errorf("%s: result %d (%s) has zero score", q.name, i, m.ID)
+						t.Errorf("harness: %s/%s: result %d (%s) has zero score", tc.name, q.name, i, m.ID)
+					}
+				}
+				shippedIDs := make([]string, len(shipped))
+				for i, m := range shipped {
+					shippedIDs[i] = m.ID
+				}
+
+				// (c) Pool: the exact candidate set SearchReranked itself
+				// would rank, so every non-shipped variant below ranks over
+				// an apples-to-apples candidate set.
+				pool, err := st.Search(ctx, scope, subj, vec, store.CandidateK(defaultK), store.SearchOptions{Full: true})
+				if err != nil {
+					t.Fatalf("harness: %s/%s: candidate pool search: %v", tc.name, q.name, err)
+				}
+
+				// (d) Rank the pool with every enabled roster entry.
+				variantRanked := make(map[string][]store.Memory, len(roster))
+				variantIDs := make(map[string][]string, len(roster))
+				for _, r := range roster {
+					if r.rank == nil {
+						continue // disabled (Jev stub): no ranking, no gating.
+					}
+					ranked := r.rank(q.text, pool, defaultK)
+					ids := make([]string, len(ranked))
+					for i, m := range ranked {
+						ids[i] = m.ID
+					}
+					variantRanked[r.name] = ranked
+					variantIDs[r.name] = ids
+
+					if r.optIn {
+						jevCalls++
+						if len(ranked) > 0 && ranked[0].Relevance == nil {
+							jevFallbacks++
+						}
 					}
 				}
 
-				ids := make([]string, len(ranked))
-				for i, m := range ranked {
-					ids[i] = m.ID
+				// (e) No-answer query (D-12): logged only, never gated —
+				// excluded from every recall@k/MRR aggregate above.
+				if q.wantKey == "" {
+					shippedTop, shippedScore := "none", float32(0)
+					if len(shipped) > 0 {
+						shippedTop, shippedScore = recordLabel(keyByID, shipped[0].ID), shipped[0].Score
+					}
+					t.Logf("no-answer %s/%s: %s top=%s score=%f", tc.name, q.name, shippedRowName, shippedTop, shippedScore)
+					for _, r := range roster {
+						if r.rank == nil {
+							continue
+						}
+						ranked := variantRanked[r.name]
+						top, score := "none", float32(0)
+						if len(ranked) > 0 {
+							top, score = recordLabel(keyByID, ranked[0].ID), ranked[0].Score
+						}
+						t.Logf("no-answer %s/%s: %s top=%s score=%f", tc.name, q.name, r.name, top, score)
+					}
+					// The per-hit "nothing answers this" demonstration
+					// (CONTEXT.md): every returned hit's relevance, in
+					// returned order, or "none" on a fallback.
+					if jevInfo.Enabled {
+						relevance := "none"
+						if ranked := variantRanked["jev"]; len(ranked) > 0 && ranked[0].Relevance != nil {
+							vals := make([]string, len(ranked))
+							for i, m := range ranked {
+								vals[i] = fmt.Sprintf("%.3f", *m.Relevance)
+							}
+							relevance = "[" + strings.Join(vals, " ") + "]"
+						}
+						t.Logf("no-answer %s/%s: jev relevance=%s", tc.name, q.name, relevance)
+					}
+					continue
 				}
-				hit := recallAtK(ids, wantID)
-				rr := reciprocalRank(ids, wantID)
-				if hit {
-					recallHits++
-				}
-				mrrSum += rr
 
-				// THE #261 ACCEPTANCE BAR (hard, RANK-based — review finding
-				// 3/4, D-03 supersession per round-2 finding 4): Record T MUST
-				// surface within default k, by POSITION, for this query. Raw-
-				// score separation is reported below as a t.Logf DIAGNOSTIC
-				// ONLY — never a hard gate — because a lexical reranker can
-				// promote T's rank without necessarily raising its raw Qdrant
-				// score above every sticky neighbor (Score is raw first-stage
-				// dense similarity, store.go, unchanged by rerank).
-				var wantScore, bestOtherScore float32
-				rank := 0
-				for i, m := range ranked {
-					if m.ID == wantID {
-						wantScore = m.Score
-						rank = i + 1
-					} else if m.Score > bestOtherScore {
-						bestOtherScore = m.Score
+				// (f) Answer query: resolve wantID, aggregate every
+				// variant's metrics, and update the "matches shipped"
+				// diagnostic.
+				wantID, ok := idByKey[q.wantKey]
+				if !ok {
+					t.Fatalf("harness: fixture bug: wantKey %q not among seeded records for %s/%s", q.wantKey, tc.name, q.name)
+				}
+
+				shippedTarget := &shippedGuard
+				variantTarget := guardMetrics
+				if tc.role == roleParaphrase {
+					shippedTarget = &shippedParaphrase
+					variantTarget = paraphraseMetrics
+				}
+				shippedTarget.add(shippedIDs, wantID)
+				for _, r := range roster {
+					if r.rank == nil {
+						continue
+					}
+					m := variantTarget[r.name]
+					m.add(variantIDs[r.name], wantID)
+					variantTarget[r.name] = m
+
+					if !slices.Equal(variantIDs[r.name], shippedIDs) {
+						variantMatchesShipped[r.name] = false
 					}
 				}
-				if rank == 0 {
-					t.Errorf("%s/%s: Record T did NOT surface within default k=%d (hard rank bar FAILED — D-06 insufficient for this query, evidence for a D-07/D-08 escalation)", tc.name, q.name, defaultK)
-				} else {
-					t.Logf("%s/%s: rank=%d/%d (hard rank bar: PASS)", tc.name, q.name, rank, defaultK)
-				}
-				t.Logf("%s/%s: score(T)=%f best-distractor-score=%f gap=%f (diagnostic only, never a hard gate — review finding 3)",
-					tc.name, q.name, wantScore, bestOtherScore, wantScore-bestOtherScore)
 
-				// Prove the harness itself can find T with a generous ceiling —
-				// this is NOT the #261 quality bar (that is the hard rank
-				// assertion above); it only proves the fixture/harness are
-				// sound, independent of ranking quality, so it deliberately
-				// uses raw Store.Search rather than the reranked path.
+				// (g) Prove the harness itself can find the target with a
+				// generous ceiling — this is NOT a ranking-quality bar; it
+				// only proves the fixture/harness are sound, independent of
+				// ranking quality, so it deliberately uses raw Store.Search
+				// rather than any reranked/local-ranked path.
 				ceiling, err := st.Search(ctx, scope, subj, vec, ceilingK, store.SearchOptions{})
 				if err != nil {
-					t.Fatalf("%s: ceiling search: %v", q.name, err)
+					t.Fatalf("harness: %s/%s: ceiling search: %v", tc.name, q.name, err)
 				}
 				ceilingIDs := make([]string, len(ceiling))
 				for i, m := range ceiling {
 					ceilingIDs[i] = m.ID
 				}
 				if !recallAtK(ceilingIDs, wantID) {
-					t.Errorf("%s: Record T not found even at ceiling k=%d — harness/fixture bug, not a ranking result", q.name, ceilingK)
+					t.Errorf("harness: %s/%s: target not found even at ceiling k=%d — harness/fixture bug, not a ranking result", tc.name, q.name, ceilingK)
 				}
-			}
 
-			recallAtDefaultK := recallHits / float64(len(tc.queries))
-			mrr := mrrSum / float64(len(tc.queries))
-			t.Logf("%s: recall@%d=%.2f MRR=%.3f (post-D-06-fix; compare against the 09-01 post-#262 baseline)",
-				tc.name, defaultK, recallAtDefaultK, mrr)
+				// (h) D-10 gate 1: roleRegressionGuard's shipped target MUST
+				// be at rank 1, not merely "within default k".
+				if tc.role == roleRegressionGuard {
+					rank := 0
+					for i, id := range shippedIDs {
+						if id == wantID {
+							rank = i + 1
+							break
+						}
+					}
+					if rank != 1 {
+						t.Errorf("D-10 gate FAILED: #261 target at rank %d (want 1) for %s under the shipped ranking", rank, q.name)
+					}
+				}
+
+				// (i) Raw-score gap: diagnostic only, never a hard gate — a
+				// lexical/gated reranker can promote a hit's rank without
+				// necessarily raising its raw Qdrant score above every
+				// sticky neighbor (Score is raw first-stage dense
+				// similarity, unchanged by reranking).
+				var wantScore, bestOtherScore float32
+				for _, m := range shipped {
+					if m.ID == wantID {
+						wantScore = m.Score
+					} else if m.Score > bestOtherScore {
+						bestOtherScore = m.Score
+					}
+				}
+				t.Logf("%s/%s: score(target)=%f best-distractor-score=%f gap=%f (diagnostic only, never a hard gate)",
+					tc.name, q.name, wantScore, bestOtherScore, wantScore-bestOtherScore)
+			}
 		})
+	}
+
+	rows := buildSummaries(roster, guardMetrics, paraphraseMetrics, shippedGuard, shippedParaphrase)
+	d := decideRanking(rows)
+	t.Logf("\n%s", formatVariantTable(rows, d))
+
+	winnerName := d.winner
+	if winnerName == "" {
+		winnerName = "none"
+	}
+	eligibleList := "none"
+	if len(d.eligible) > 0 {
+		eligibleList = strings.Join(d.eligible, ", ")
+	}
+	t.Logf("D-05 decision: winner=%s reason=%s eligible=%s", winnerName, d.reason, eligibleList)
+
+	if shippedGuard.allRank1() {
+		t.Logf("D-10 gate PASS: #261 target at rank 1 for both queries under the shipped ranking")
+	}
+
+	// D-10 gate 2: shipped paraphrase MRR must be at least vector-only's —
+	// a cross-variant comparison, not a per-query rank check.
+	vectorOnlyParaphraseMRR := paraphraseMetrics["vector-only"].mrr()
+	switch {
+	case shippedParaphrase.n == 0:
+		t.Errorf("harness: no paraphrase-role queries measured — D-05 and the MRR gate cannot be evaluated")
+	case shippedParaphrase.mrr() < vectorOnlyParaphraseMRR-mrrEpsilon:
+		t.Errorf("D-10 gate FAILED: shipped paraphrase MRR %.3f < vector-only %.3f", shippedParaphrase.mrr(), vectorOnlyParaphraseMRR)
+	default:
+		t.Logf("D-10 gate PASS: shipped paraphrase MRR %.3f >= vector-only %.3f", shippedParaphrase.mrr(), vectorOnlyParaphraseMRR)
+	}
+
+	var matchNames []string
+	for _, r := range roster {
+		if r.rank == nil {
+			continue
+		}
+		if variantMatchesShipped[r.name] {
+			matchNames = append(matchNames, r.name)
+		}
+	}
+	matches := "none"
+	if len(matchNames) > 0 {
+		matches = strings.Join(matchNames, ", ")
+	}
+	t.Logf("shipped (SearchReranked) matches: %s", matches)
+
+	// D-03: a fallback- (timeout- or error-) degraded Jev row can never
+	// masquerade as measured Jev ranking — the count is logged whenever the
+	// row was enabled, even when it is 0/0 (never called, e.g. every
+	// candidate pool happened to be empty).
+	if jevInfo.Enabled {
+		t.Logf("JEV-EVAL | fallbacks=%d/%d", jevFallbacks, jevCalls)
 	}
 }
 
@@ -236,31 +492,31 @@ func TestRetrievalEval(t *testing.T) {
 // requires Docker (or ENGRAM_QDRANT_TEST_ADDR) as a package-level
 // prerequisite; documented here and in plan 14-03.
 func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
-	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
-		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
-	}
-
-	// Symmetric-config guard (review B3): a symmetric embedder config (all
-	// four instruction/params env vars empty) legitimately produces
-	// query==document — e.g. OpenAI text-embedding-3-small, bare bge-m3. The
-	// inequality assertion below does not apply to those configs, so skip it
-	// rather than fail the suite for a valid symmetric setup.
-	if os.Getenv("ENGRAM_EMBED_QUERY_INSTRUCTION") == "" &&
-		os.Getenv("ENGRAM_EMBED_DOCUMENT_INSTRUCTION") == "" &&
-		os.Getenv("ENGRAM_EMBED_QUERY_PARAMS") == "" &&
-		os.Getenv("ENGRAM_EMBED_DOCUMENT_PARAMS") == "" {
-		t.Skip("symmetric embedder config (no QUERY/DOCUMENT instruction or params set): query == document is valid here, asymmetry assertion does not apply")
-	}
+	requireEvalEnabled(t)
 
 	ctx := context.Background()
 
 	// Prod-parity embedder — the SAME builder/path TestRetrievalEval uses
 	// (D-03: never a bespoke embed shortcut). Its own store is discarded; this
 	// test never touches Qdrant. dim is KEPT (not discarded) to assert the
-	// vectors are correctly sized, not just non-empty (review B4).
-	_, dim, em, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
+	// vectors are correctly sized, not just non-empty (review B4). Building
+	// happens BEFORE the symmetric-config skip below (D-14): the eval is
+	// enabled here, so a config/embedder build failure is a real failure, not
+	// something to skip past.
+	_, dim, em, _, cfg, err := server.StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("build prod-parity embedder: %v", err)
+	}
+
+	// Symmetric-config guard (review B3, D-14): a symmetric embedder config
+	// (all four instruction/params fields empty on the SAME resolved config
+	// the embedder above was built from — never an independent
+	// process-environment read, #354) legitimately produces query==document
+	// — e.g. OpenAI text-embedding-3-small, bare bge-m3. The inequality
+	// assertion below does not apply to those configs, so skip it rather
+	// than fail the suite for a valid symmetric setup.
+	if symmetricEmbedConfig(cfg.Embed) {
+		t.Skip("symmetric embedder config (no QUERY/DOCUMENT instruction or params set): query == document is valid here, asymmetry assertion does not apply")
 	}
 
 	queryVec, err := em.EmbedQuery(ctx, differProbe)
@@ -281,15 +537,23 @@ func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
 			len(queryVec), len(documentVec), dim)
 	}
 
-	// THE Pitfall-12 correctness gate (D-04, hard t.Fatal — not t.Errorf — so
-	// this stops immediately and cannot be obscured by later output, review
-	// B4): the query-side and document-side vectors of the SAME string MUST
-	// differ once asymmetric embedding is correctly configured.
-	if reflect.DeepEqual(queryVec, documentVec) {
-		t.Fatalf("asymmetry differ FAIL: query vector == document vector (dim=%d) — the asymmetric instruction-prefix had no effect; the operator likely wired the no-op ENGRAM_EMBED_QUERY_PARAMS/ENGRAM_EMBED_DOCUMENT_PARAMS/task_type mechanism instead of ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION", dim)
+	// THE Pitfall-12 correctness gate (D-04/D-13, hard t.Fatal — not
+	// t.Errorf — so this stops immediately and cannot be obscured by later
+	// output, review B4): the query-side and document-side vectors of the
+	// SAME string MUST differ MATERIALLY, by cosine distance above
+	// differMinCosineDistance — replacing the retired bit-identity
+	// comparison (#353), which a hosted embedder's harmless float jitter
+	// between two calls could trip even with no real asymmetric effect.
+	distance, err := cosineDistance(queryVec, documentVec)
+	if err != nil {
+		t.Fatalf("asymmetry differ: malformed embedding vector (dim=%d): %v", dim, err)
+	}
+	// Written so a NaN distance can never satisfy the pass condition.
+	if !(distance > differMinCosineDistance) {
+		t.Fatalf("asymmetry differ FAIL: cosine distance %.6g is not above %g — query and document vectors are materially the same (dim=%d) — the asymmetric instruction-prefix had no effect; the operator likely wired the no-op ENGRAM_EMBED_QUERY_PARAMS/ENGRAM_EMBED_DOCUMENT_PARAMS/task_type mechanism instead of ENGRAM_EMBED_QUERY_INSTRUCTION/ENGRAM_EMBED_DOCUMENT_INSTRUCTION", distance, differMinCosineDistance, dim)
 	}
 
-	t.Logf("asymmetry differ PASS: query vector != document vector (dim=%d) — instruction-prefix took effect", dim)
+	t.Logf("asymmetry differ PASS: vectors differ materially (cosine distance=%.6g, dim=%d)", distance, dim)
 }
 
 // newTestcontainerStore builds a *store.Store pinned to storetest's resolved
@@ -310,17 +574,24 @@ func newTestcontainerStore(t testing.TB, dim uint64) *store.Store {
 	return st
 }
 
-// TestMain gates the whole package on ENGRAM_RETRIEVAL_EVAL as its FIRST
-// statement, before any testcontainer/Docker startup (review finding 1): when
-// the gate is unset, the required `test` job's `go test ./...` pays zero
-// ADDITIONAL Docker/Qdrant cost from this package (round-2 finding 8). Once
-// the gate is "1", TestMain delegates the rest of the Qdrant lifecycle to
-// storetest.Run with IgnoreRequireQdrant: this package never consulted
-// ENGRAM_REQUIRE_QDRANT before this phase and must not gain that fail-closed
-// behavior now — a missing Qdrant with the eval gate set still only skips
-// (RESEARCH.md Pitfall 6, this plan's recorded decision).
+// TestMain gates the whole package on the resolved ENGRAM_RETRIEVAL_EVAL
+// koanf gate (D-15) as its FIRST statement, before any testcontainer/Docker
+// startup (review finding 1): when the gate is off, the required `test`
+// job's `go test ./...` pays zero ADDITIONAL Docker/Qdrant cost from this
+// package (round-2 finding 8). A malformed gate value fails loudly instead
+// of silently reading as off. Once the gate is enabled, TestMain delegates
+// the rest of the Qdrant lifecycle to storetest.Run with
+// IgnoreRequireQdrant: this package never consulted ENGRAM_REQUIRE_QDRANT
+// before this phase and must not gain that fail-closed behavior now — a
+// missing Qdrant with the eval gate set still only skips (RESEARCH.md
+// Pitfall 6, this plan's recorded decision).
 func TestMain(m *testing.M) {
-	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
+	enabled, err := retrievalEvalEnabled()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+	if !enabled {
 		os.Exit(m.Run())
 	}
 	os.Exit(storetest.Run(m, storetest.IgnoreRequireQdrant()))
@@ -337,8 +608,6 @@ func TestMain(m *testing.M) {
 // Delegates to storetest for the shared-address assertion itself, which
 // skips (does not fail) when the shared-address env var is unset.
 func TestSharedQdrantAddressHonored(t *testing.T) {
-	if os.Getenv("ENGRAM_RETRIEVAL_EVAL") != "1" {
-		t.Skip("set ENGRAM_RETRIEVAL_EVAL=1 (and the gateway/model env) to run the retrieval eval")
-	}
+	requireEvalEnabled(t)
 	storetest.AssertSharedAddressHonored(t)
 }

@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -25,8 +26,8 @@ func TestCandidateK(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := candidateK(tc.k); got != tc.want {
-				t.Errorf("candidateK(%d) = %d, want %d", tc.k, got, tc.want)
+			if got := CandidateK(tc.k); got != tc.want {
+				t.Errorf("CandidateK(%d) = %d, want %d", tc.k, got, tc.want)
 			}
 		})
 	}
@@ -45,6 +46,77 @@ func TestSearchRerankedRejectsZeroK(t *testing.T) {
 	}
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Errorf("SearchReranked(k=0) error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+// TestRankCandidatesIsTheD05Winner pins rankCandidates — SearchReranked's
+// single shipped rank step — to the D-05-approved winner from the live
+// 2026-09-22.01 Phase 1 retrieval eval (#605, 01-RANKING-DECISION.md): the
+// lexical reranker, RerankHits. decideRanking measured lexical against
+// vector-only and four tuned cosine-blend/overlap-gate grid points on a live
+// blind multi-domain paraphrase corpus and selected lexical by best-eligible
+// paraphrase MRR (0.817 vs vector-only's 0.579); the human checkpoint
+// approved that winner ("Approved winner: lexical" in
+// 01-RANKING-DECISION.md). D-08: rankCandidates is also the single seam
+// Phase 4's Jev reranker plugs into.
+//
+// This is the tuning-cannot-happen-here pin (T-01-18): if a future live
+// eval re-run disagrees with the approved winner, the fix is to re-run plan
+// 01-06's process and update this test deliberately — never to silently
+// re-tune rankCandidates to make some other gate pass.
+//
+// No RED was observed for this task: the lexical branch is the D-05
+// approved winner, and rankCandidates is a direct pass-through to the
+// already-shipped RerankHits, so the assertion below is true from the first
+// commit that adds rankCandidates — there is no "wrong ranker" state for
+// this test to have caught mid-implementation.
+func TestRankCandidatesIsTheD05Winner(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		query string
+		hits  []Memory
+		k     int
+	}{
+		{
+			name:  "mixed scores, k below len",
+			query: "task lint golangci-lint config",
+			hits: []Memory{
+				{ID: "topical-neighbor", Content: "The bare task target runs lint then test; CI invokes it directly.", Score: 0.91},
+				{ID: "high-overlap", Content: "Run task lint before every commit; golangci-lint config lives in .golangci.yaml.", Tags: []string{"lint", "task"}, Score: 0.80},
+				{ID: "unrelated", Content: "Qdrant collection payload schema.", Score: 0.40},
+			},
+			k: 2,
+		},
+		{
+			name:  "tied scores, k equal to len",
+			query: "same content",
+			hits: []Memory{
+				{ID: "b", Content: "same content same content", Score: 0.5},
+				{ID: "a", Content: "same content same content", Score: 0.5},
+			},
+			k: 2,
+		},
+		{
+			name:  "gh261-shaped: lower-score hit has full lexical overlap, k above len",
+			query: "correctable memory MCP server for coding agents",
+			hits: []Memory{
+				{ID: "verbatim-restatement", Content: "correctable memory MCP server for coding agents", Score: 0.55},
+				{ID: "topically-similar", Content: "a memory store for AI assistants with correction support", Score: 0.93},
+			},
+			k: 100,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := rankCandidates(tc.query, tc.hits, tc.k)
+			want := RerankHits(tc.query, tc.hits, tc.k)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("rankCandidates(%q, hits, %d) = %v, want RerankHits output %v (D-05 approved winner: lexical)",
+					tc.query, tc.k, idsOf(got), idsOf(want))
+			}
+		})
 	}
 }
 
@@ -132,6 +204,74 @@ func TestRerankHitsIgnoresAccessCount(t *testing.T) {
 				"position %d: baseline=%s hot=%s (full baseline order=%v, hot order=%v)",
 				i, baselineOut[i].ID, hotOut[i].ID, idsOf(baselineOut), idsOf(hotOut))
 		}
+	}
+}
+
+// TestVectorOrderScoreThenIDOrder proves VectorOrder reads only Score/ID: a
+// lexically perfect lower-score hit ("b") is NOT promoted over a
+// higher-score hit ("c"), which would only happen if a lexical signal leaked
+// in.
+func TestVectorOrderScoreThenIDOrder(t *testing.T) {
+	t.Parallel()
+	hits := []Memory{
+		{ID: "b", Score: 0.5},
+		{ID: "c", Score: 0.9},
+		{ID: "a", Score: 0.5},
+	}
+	got := VectorOrder(hits, 3)
+	want := []string{"c", "a", "b"}
+	if got := idsOf(got); !reflect.DeepEqual(got, want) {
+		t.Fatalf("VectorOrder order = %v, want %v", got, want)
+	}
+}
+
+// TestVectorOrderTruncatesAndCopies proves the truncation rule (k<=0 or
+// k>=len(hits) returns every hit) and that VectorOrder never mutates its
+// input slice's order.
+func TestVectorOrderTruncatesAndCopies(t *testing.T) {
+	t.Parallel()
+	hits := []Memory{
+		{ID: "1", Score: 0.1},
+		{ID: "2", Score: 0.9},
+		{ID: "3", Score: 0.5},
+	}
+	inputOrderBefore := idsOf(hits)
+
+	if got := VectorOrder(hits, 2); len(got) != 2 {
+		t.Fatalf("VectorOrder(k=2) returned %d hits, want 2", len(got))
+	}
+	if got := VectorOrder(hits, 0); len(got) != len(hits) {
+		t.Fatalf("VectorOrder(k=0) should return every hit, got %d want %d", len(got), len(hits))
+	}
+	if got := VectorOrder(hits, 100); len(got) != len(hits) {
+		t.Fatalf("VectorOrder(k>len(hits)) should return every hit, got %d want %d", len(got), len(hits))
+	}
+
+	if got := idsOf(hits); !reflect.DeepEqual(got, inputOrderBefore) {
+		t.Fatalf("VectorOrder mutated the caller's input slice order: got %v, want %v", got, inputOrderBefore)
+	}
+}
+
+// TestVectorOrderIgnoresAccessCount mirrors TestRerankHitsIgnoresAccessCount:
+// output order is identical across wildly different AccessCount values.
+func TestVectorOrderIgnoresAccessCount(t *testing.T) {
+	t.Parallel()
+	baseline := []Memory{
+		{ID: "a", Score: 0.5, AccessCount: 0},
+		{ID: "b", Score: 0.5, AccessCount: 0},
+		{ID: "c", Score: 0.5, AccessCount: 0},
+	}
+	hot := []Memory{
+		{ID: "a", Score: 0.5, AccessCount: 500_000},
+		{ID: "b", Score: 0.5, AccessCount: 1_000_000},
+		{ID: "c", Score: 0.5, AccessCount: 1},
+	}
+
+	baselineOut := VectorOrder(baseline, 3)
+	hotOut := VectorOrder(hot, 3)
+
+	if got, want := idsOf(baselineOut), idsOf(hotOut); !reflect.DeepEqual(got, want) {
+		t.Fatalf("VectorOrder output order is NOT invariant under AccessCount: baseline=%v hot=%v", got, want)
 	}
 }
 
