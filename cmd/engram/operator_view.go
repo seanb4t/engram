@@ -81,13 +81,20 @@ func viewFields(doc any) ([]viewField, error) {
 			}
 			rows := make([]string, 0, len(elems))
 			for _, elem := range elems {
-				if valueKind(elem) == '{' {
+				switch valueKind(elem) {
+				case '{':
 					row, err := viewRow(elem)
 					if err != nil {
 						return nil, err
 					}
 					rows = append(rows, row)
-				} else {
+				case '[':
+					parts, err := flattenNested("", elem)
+					if err != nil {
+						return nil, err
+					}
+					rows = append(rows, strings.Join(parts, " "))
+				default:
 					rows = append(rows, viewScalar(elem))
 				}
 			}
@@ -151,6 +158,34 @@ func viewScalar(raw json.RawMessage) string {
 	return string(raw)
 }
 
+// rowFieldRenderers maps a row-level field key to a function that renders
+// that field's own JSON object/array value directly, bypassing the generic
+// sanitizing flatten below. Populated only by registerRowFieldRenderer,
+// called only from init functions.
+var rowFieldRenderers = map[string]func(json.RawMessage) (string, error){}
+
+// registerRowFieldRenderer registers fn as the row-field renderer for key:
+// when viewRow encounters an object or array value under this key, it calls
+// fn with the raw bytes instead of falling through to the generic
+// sanitizing flatten, and sanitizes fn's returned string itself via
+// sanitizeViewValue (fn owns no sanitization responsibility — see viewRow).
+// Panics on an empty key, a nil fn, or registering the same key twice —
+// call only from an init function, never at request time, so a build-time
+// registration conflict fails loudly rather than silently overwriting a
+// sibling package's renderer.
+func registerRowFieldRenderer(key string, fn func(json.RawMessage) (string, error)) {
+	if key == "" {
+		panic("registerRowFieldRenderer: empty key")
+	}
+	if fn == nil {
+		panic("registerRowFieldRenderer: nil fn")
+	}
+	if _, exists := rowFieldRenderers[key]; exists {
+		panic(fmt.Sprintf("registerRowFieldRenderer: %q already registered", key))
+	}
+	rowFieldRenderers[key] = fn
+}
+
 // viewRow renders one JSON object as a single "key=value ..." line, walking
 // its keys in document order with the same Token-plus-Decode idiom
 // viewFields uses. It deliberately uses the RAW key, never humanizeKey —
@@ -158,6 +193,17 @@ func viewScalar(raw json.RawMessage) string {
 // nested rows are scanned and keep raw keys so they stay dense and
 // grep-friendly. This is not an inconsistency to "fix"; it is the
 // documented shape (06-CONTEXT.md D-05, D-07).
+//
+// A field whose value is a JSON object or array (WR-02, 06-REVIEW.md) is
+// handled one of two ways: if a renderer is registered for that key
+// (registerRowFieldRenderer), it is called with the raw value bytes and its
+// returned string is sanitized via sanitizeViewValue and appended as one
+// part with NO "key=" prefix — the renderer owns its own token text.
+// Otherwise the value is walked by the generic sanitizing flatten
+// (flattenNested), which emits one sanitized "path=value" part per scalar
+// leaf at any depth. Either way, every string this function contributes to
+// the rendered row has passed through sanitizeViewValue by the time it
+// returns.
 func viewRow(raw json.RawMessage) (string, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	tok, err := dec.Token()
@@ -182,9 +228,105 @@ func viewRow(raw json.RawMessage) (string, error) {
 		if err := dec.Decode(&val); err != nil {
 			return "", err
 		}
-		parts = append(parts, key+"="+viewScalar(val))
+		switch valueKind(val) {
+		case '{', '[':
+			if fn, ok := rowFieldRenderers[key]; ok {
+				rendered, err := fn(val)
+				if err != nil {
+					return "", err
+				}
+				parts = append(parts, sanitizeViewValue(rendered))
+				continue
+			}
+			nested, err := flattenNested(key, val)
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, nested...)
+		default:
+			parts = append(parts, key+"="+viewScalar(val))
+		}
 	}
 	return strings.Join(parts, " "), nil
+}
+
+// flattenNested renders raw — a JSON object or array value found where a
+// row-level field or an array-of-arrays element has no registered renderer
+// — as one or more "path=value" parts, walked recursively in document
+// order. path is built from prefix by appending ".key" for each object key
+// and "[i]" for each array index: a doubly-nested value like
+// {"a":{"b":1}} with prefix "outer" renders as "outer.a.b=1", and [[1,2]]
+// with prefix "" renders as "[0][0]=1 [0][1]=2". Every scalar leaf renders
+// through viewScalar — the same sanitizing path every other scalar in this
+// tier uses — so this is the fallback WR-02 (06-REVIEW.md) closes for ANY
+// nested shape a future report field introduces, not only the one shape
+// today's reports produce.
+func flattenNested(prefix string, raw json.RawMessage) ([]string, error) {
+	switch valueKind(raw) {
+	case '{':
+		return flattenObject(prefix, raw)
+	case '[':
+		return flattenArray(prefix, raw)
+	default:
+		return []string{prefix + "=" + viewScalar(raw)}, nil
+	}
+}
+
+// flattenObject walks a JSON object's keys in document order, appending
+// ".key" to prefix (or using the bare key when prefix is empty) for each
+// nested part. See flattenNested.
+func flattenObject(prefix string, raw json.RawMessage) ([]string, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		return nil, fmt.Errorf("operator view: flatten value %s is not a JSON object", raw)
+	}
+	var parts []string
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return nil, fmt.Errorf("operator view: unexpected flatten key token %v", keyTok)
+		}
+		var val json.RawMessage
+		if err := dec.Decode(&val); err != nil {
+			return nil, err
+		}
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		sub, err := flattenNested(path, val)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, sub...)
+	}
+	return parts, nil
+}
+
+// flattenArray walks a JSON array's elements in order, appending "[i]" to
+// prefix for each nested part. See flattenNested.
+func flattenArray(prefix string, raw json.RawMessage) ([]string, error) {
+	var elems []json.RawMessage
+	if err := json.Unmarshal(raw, &elems); err != nil {
+		return nil, err
+	}
+	var parts []string
+	for i, elem := range elems {
+		sub, err := flattenNested(fmt.Sprintf("%s[%d]", prefix, i), elem)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, sub...)
+	}
+	return parts, nil
 }
 
 // humanizeKey turns a JSON key into a top-level display label: underscores

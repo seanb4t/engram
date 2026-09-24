@@ -337,15 +337,22 @@ func TestConsolidateRowNamesBothScopes(t *testing.T) {
 	}
 }
 
-// TestConsolidateNeverLabelsPairAsDuplicateOrCluster proves no per-pair
-// row (rendered view or json) carries a duplicate/cluster/group verdict
-// label. consolidateSummary's own "NOT duplicates" disclaimer is
-// deliberately excluded from this check -- stating the report's meaning
-// plainly is required (see the CLI guide); labelling an individual
-// CANDIDATE ROW a verdict is what is forbidden. Per-pair detail now lives
-// only in the rendered view's candidate rows (R1 moved it out of
-// consolidateSummary), so this checks those rows rather than summary
-// text.
+// TestConsolidateNeverLabelsPairAsDuplicateOrCluster proves the STRUCTURAL
+// ranking itself never labels a pair: this test builds a doc with no
+// verdict pass (no candidate's Verdict field is ever set), so no per-pair
+// row (rendered view or json) may carry a duplicate/cluster/group label
+// coming from that structural data alone. consolidateSummary's own "NOT
+// duplicates" disclaimer is deliberately excluded from this check --
+// stating the report's meaning plainly is required (see the CLI guide);
+// labelling an individual CANDIDATE ROW a verdict from the structural
+// fields is what is forbidden. This is orthogonal to plan 03-06's advisory
+// verdict rendering (spine_review_consolidate_view.go): once the verdict
+// pass runs, a candidate's OWN advisory verdict may legitimately name any
+// of the five relations, including "duplicate" -- that is the verdict
+// object doing its documented job (D-05), not the structural label this
+// test guards against. Per-pair detail now lives only in the rendered
+// view's candidate rows (R1 moved it out of consolidateSummary), so this
+// checks those rows rather than summary text.
 func TestConsolidateNeverLabelsPairAsDuplicateOrCluster(t *testing.T) {
 	pairs := []store.DuplicatePair{
 		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.99},
@@ -1137,6 +1144,112 @@ func TestVerdictHeadlineClause(t *testing.T) {
 			t.Errorf("consolidateSummary() = %q, want no verdict-pass vocabulary when no pass ran", headline)
 		}
 	}
+}
+
+// TestConsolidateTextViewRendersVerdict proves D-07/D-10's text form over
+// three candidates: a successful unflagged verdict, a successful flagged
+// verdict, and a failed one — rendered through renderOperatorView, which is
+// consolidate's real text lane, via attachVerdicts' real JSON-mode
+// conversion (never a hand-built verdictView literal).
+func TestConsolidateTextViewRendersVerdict(t *testing.T) {
+	pairs := []store.DuplicatePair{
+		{A: "id-a1", B: "id-b1", AShortID: "sa1", BShortID: "sb1", AScope: "s", BScope: "s", Score: 0.9},
+		{A: "id-a2", B: "id-b2", AShortID: "sa2", BShortID: "sb2", AScope: "s", BScope: "s", Score: 0.8},
+		{A: "id-a3", B: "id-b3", AShortID: "sa3", BShortID: "sb3", AScope: "s", BScope: "s", Score: 0.7},
+	}
+	verdicts := []verdict.Verdict{
+		{
+			Relation:      verdict.Duplicate,
+			Probabilities: verdict.Probabilities{Duplicate: 0.93, Contradicts: 0.01, Updates: 0.02, Related: 0.03, Unrelated: 0.01},
+			SameSubject:   0.97,
+			NeedsReview:   false,
+			Model:         "typesafe/jev-1.13-20260917",
+		},
+		{
+			Relation:      verdict.Related,
+			Probabilities: verdict.Probabilities{Duplicate: 0.1, Contradicts: 0.1, Updates: 0.08, Related: 0.62, Unrelated: 0.1},
+			SameSubject:   0.55,
+			NeedsReview:   true,
+			Model:         "typesafe/jev-1.13-20260917",
+		},
+		{ErrorClass: "timeout"},
+	}
+
+	doc := attachVerdicts(consolidateDoc(pairs, "s", false, nil, 5, 3, 3), verdicts, 0.9)
+
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, "headline", doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	out := buf.String()
+
+	var rows []string
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "a=") {
+			rows = append(rows, trimmed)
+		}
+	}
+	if len(rows) != 3 {
+		t.Fatalf("got %d candidate rows, want 3: %v (full output %q)", len(rows), rows, out)
+	}
+
+	first := rows[0]
+	for _, want := range []string{"verdict=duplicate p=0.93", "same_subject=0.97", "probabilities=duplicate:0.93,contradicts:", "model=typesafe/jev-1.13-20260917"} {
+		if !strings.Contains(first, want) {
+			t.Errorf("row[0] = %q, want it to contain %q", first, want)
+		}
+	}
+	if strings.Contains(first, "[needs review]") {
+		t.Errorf("row[0] = %q, want no [needs review] marker (unflagged)", first)
+	}
+
+	second := rows[1]
+	if !strings.Contains(second, "verdict=related p=0.62 [needs review]") {
+		t.Errorf("row[1] = %q, want it to contain %q", second, "verdict=related p=0.62 [needs review]")
+	}
+
+	third := rows[2]
+	if !strings.Contains(third, "verdict unavailable (timeout)") {
+		t.Errorf("row[2] = %q, want it to contain %q", third, "verdict unavailable (timeout)")
+	}
+
+	if !strings.Contains(out, "Verdict threshold") {
+		t.Errorf("rendered output = %q, want a top-level \"Verdict threshold\" line", out)
+	}
+}
+
+// TestRegisterRowFieldRendererRejectsDuplicates proves
+// registerRowFieldRenderer panics on an empty key, a nil fn, or a duplicate
+// registration — "verdict" is already registered by
+// spine_review_consolidate_view.go's own init, so the duplicate case needs
+// no setup here.
+func TestRegisterRowFieldRendererRejectsDuplicates(t *testing.T) {
+	assertPanics := func(t *testing.T, name string, fn func()) {
+		t.Helper()
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("%s: expected a panic, got none", name)
+			}
+		}()
+		fn()
+	}
+
+	t.Run("empty key", func(t *testing.T) {
+		assertPanics(t, "empty key", func() {
+			registerRowFieldRenderer("", func(json.RawMessage) (string, error) { return "", nil })
+		})
+	})
+	t.Run("nil fn", func(t *testing.T) {
+		assertPanics(t, "nil fn", func() {
+			registerRowFieldRenderer("verdict-test-nil-fn", nil)
+		})
+	})
+	t.Run("duplicate key", func(t *testing.T) {
+		assertPanics(t, "duplicate key", func() {
+			registerRowFieldRenderer("verdict", func(json.RawMessage) (string, error) { return "", nil })
+		})
+	})
 }
 
 // TestConsolidateStoreSurfaceIsReadOnly proves T-03-02: spineConsolidateStore's
