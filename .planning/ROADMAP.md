@@ -445,7 +445,7 @@ advisory signal, never as an automatic mutation.
   3. The relation question set (including `updates`) is measured on a labeled pair eval — committing no verbatim spine content — reporting accuracy by confidence bucket and a Brier score
   4. Running `consolidate` with neither `--scope` nor `--all-scopes` gets the scope-or-all-scopes rule error instead of a silent zero-candidate report
 
-**Plans:** 4/8 plans executed
+**Plans:** 5/8 plans executed
 
 Plans:
 **Wave 1**
@@ -460,7 +460,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 03-05-PLAN.md — registered knobs and `--verdict-threshold` through `verdictSettings`, `--no-verdicts`, disclosure/summary stderr lines, all-auth warning, degradation paths, no cap, `--help` and goldens, `server.DeciderFromEnv` (D-04, D-08–D-11; CUR-01, CUR-02)
+- [x] 03-05-PLAN.md — registered knobs and `--verdict-threshold` through `verdictSettings`, `--no-verdicts`, disclosure/summary stderr lines, all-auth warning, degradation paths, no cap, `--help` and goldens, `server.DeciderFromEnv` (D-04, D-08–D-11; CUR-01, CUR-02)
 
 **Wave 4**
 
