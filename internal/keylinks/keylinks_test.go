@@ -324,11 +324,12 @@ func TestScanPlansDeterministic(t *testing.T) {
 
 // TestMalformedKeyLinkEntry pins the reporting of a key_links entry that
 // is a bare prose string rather than a from/to/pattern mapping. YAML
-// accepts it, ParsePlanKeyLinks records it with every field empty, and
-// before ShapeMalformed existed it surfaced as ShapeUnsatisfiable with
-// an empty pattern and the repo root printed as BOTH the from and the to
-// path — a message that sends a reader hunting a regex bug that is not
-// there.
+// accepts it; the satisfiability scanner reads it via the unexported
+// parsePlanKeyLinkItems, which records it with every field empty (the
+// exported ParsePlanKeyLinks skips such an item, #502), and before
+// ShapeMalformed existed it surfaced as ShapeUnsatisfiable with an empty
+// pattern and the repo root printed as BOTH the from and the to path —
+// a message that sends a reader hunting a regex bug that is not there.
 //
 // The negative half is the load-bearing one: asserting only "an offender
 // is reported" passes just as happily on the old, misleading shape, so
@@ -440,4 +441,113 @@ func missingKeysClause(t *testing.T, fix string) string {
 		t.Fatalf("fix does not start with %q: %q", prefix, fix)
 	}
 	return clause
+}
+
+// TestParsePlanKeyLinksSkipsFieldlessItems pins ParsePlanKeyLinks's
+// documented contract (#502): a fieldless key_links item — a bare prose
+// string, or one carrying only keys other than from/to/via/pattern —
+// never leaves the exported parser as an empty KeyLink. The satisfiability
+// scanner keeps seeing fieldless items on purpose (it reads the unexported
+// parsePlanKeyLinkItems directly, not this filtered view), so
+// TestMalformedKeyLinkEntry's ShapeMalformed reporting is unaffected by
+// this change — the last subtest here pins that explicitly.
+func TestParsePlanKeyLinksSkipsFieldlessItems(t *testing.T) {
+	writeFixture := func(t *testing.T, entry string) string {
+		t.Helper()
+		dir := t.TempDir()
+		targetDir := filepath.Join(dir, "phases", "00-fixture")
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		plan := "---\nmust_haves:\n  key_links:\n" + entry + "---\n\nfixture plan.\n"
+		if err := os.WriteFile(filepath.Join(targetDir, "00-01-PLAN.md"), []byte(plan), 0o600); err != nil {
+			t.Fatalf("write plan: %v", err)
+		}
+		// A sibling SUMMARY is what pulls a plan into satisfiability scope.
+		if err := os.WriteFile(filepath.Join(targetDir, "00-01-SUMMARY.md"), []byte("done\n"), 0o600); err != nil {
+			t.Fatalf("write summary: %v", err)
+		}
+		return dir
+	}
+
+	// Items in document order: (a) well-formed mapping, (b) bare prose
+	// string, (c) an item whose only key is unrecognized (description:),
+	// (d) an item whose only key is via: (partial, but not fieldless —
+	// ParsePlanKeyLinks keeps it), (e) a second well-formed mapping. Line
+	// numbers below are 1-based positions in the fixture file this entry
+	// produces: (a)'s pattern: is line 7, (b) is line 8, (c) is line 9,
+	// (d) is line 10, (e)'s pattern: is line 13.
+	mixedEntry := "" +
+		"    - from: \"a.txt\"\n" +
+		"      to: \"b.txt\"\n" +
+		"      via: \"link a to b\"\n" +
+		"      pattern: \"alpha\"\n" +
+		"    - \"a bare prose claim\"\n" +
+		"    - description: \"just a note\"\n" +
+		"    - via: \"just linked, no from/to yet\"\n" +
+		"    - from: \"c.txt\"\n" +
+		"      to: \"d.txt\"\n" +
+		"      pattern: \"gamma\"\n"
+
+	t.Run("fieldless items are skipped and the rest keep document order and lines", func(t *testing.T) {
+		dir := writeFixture(t, mixedEntry)
+		planPath := filepath.Join(dir, "phases", "00-fixture", "00-01-PLAN.md")
+
+		links, err := ParsePlanKeyLinks(planPath)
+		if err != nil {
+			t.Fatalf("ParsePlanKeyLinks: %v", err)
+		}
+		if len(links) != 3 {
+			t.Fatalf("expected exactly 3 links (fieldless items (b) and (c) skipped), got %d: %v", len(links), links)
+		}
+
+		a, d, e := links[0], links[1], links[2]
+		if a.From != "a.txt" || a.To != "b.txt" || a.Via != "link a to b" || a.Pattern != "alpha" || a.Line != 7 {
+			t.Errorf("link (a) = %+v, want From=a.txt To=b.txt Via=\"link a to b\" Pattern=alpha Line=7", a)
+		}
+		if d.Via != "just linked, no from/to yet" || d.From != "" || d.To != "" || d.Pattern != "" || d.Line != 10 {
+			t.Errorf("link (d) = %+v, want Via set, From/To/Pattern empty, Line=10 (its own list-item line)", d)
+		}
+		if e.From != "c.txt" || e.To != "d.txt" || e.Via != "" || e.Pattern != "gamma" || e.Line != 13 {
+			t.Errorf("link (e) = %+v, want From=c.txt To=d.txt Pattern=gamma Line=13", e)
+		}
+	})
+
+	t.Run("a block of only fieldless items yields no links", func(t *testing.T) {
+		dir := writeFixture(t, "    - \"first prose claim\"\n    - \"second prose claim\"\n")
+		planPath := filepath.Join(dir, "phases", "00-fixture", "00-01-PLAN.md")
+
+		links, err := ParsePlanKeyLinks(planPath)
+		if err != nil {
+			t.Fatalf("ParsePlanKeyLinks: %v", err)
+		}
+		if len(links) != 0 {
+			t.Errorf("expected zero links, got %d: %v", len(links), links)
+		}
+	})
+
+	t.Run("the satisfiability scanner still reports each fieldless item as malformed", func(t *testing.T) {
+		dir := writeFixture(t, mixedEntry)
+
+		offenders, err := ScanPlans(dir, []string{"phases"}, ModeSatisfiability)
+		if err != nil {
+			t.Fatalf("ScanPlans: %v", err)
+		}
+		if len(offenders) != 3 {
+			t.Fatalf("expected exactly 3 malformed offenders — (a) and (e) produce none since their from files don't exist yet — got %d: %v", len(offenders), offenders)
+		}
+		wantLines := map[int]bool{8: true, 9: true, 10: true}
+		for _, off := range offenders {
+			if off.Shape != ShapeMalformed {
+				t.Errorf("offender at line %d has shape %q, want %q", off.Line, off.Shape, ShapeMalformed)
+			}
+			if !wantLines[off.Line] {
+				t.Errorf("unexpected offender line %d, want one of 8, 9, 10", off.Line)
+			}
+			delete(wantLines, off.Line)
+		}
+		if len(wantLines) != 0 {
+			t.Errorf("missing offenders at lines: %v", wantLines)
+		}
+	})
 }
