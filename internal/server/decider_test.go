@@ -19,9 +19,13 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
+	flag "github.com/spf13/pflag"
+
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/decide/jev"
+	"github.com/seanb4t/engram/internal/store/storetest"
+	"github.com/seanb4t/engram/internal/verdict"
 )
 
 // tracerNoulResponse is spike 001's "happy" probe body with the relation
@@ -519,4 +523,73 @@ func TestDeciderEnabledLogLine(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStoreAndDeciderFromEnv proves the curation-verdict wiring seam
+// (D-04): with ENGRAM_DECISIONS_PROVIDER empty it returns a non-nil store,
+// a nil decider, a nil error, and settings equal to
+// verdict.DefaultThreshold/verdict.DefaultStateChars; with provider "jev"
+// and a base URL it returns a non-nil decider; each call loads config
+// exactly once through the configLoad seam.
+func TestStoreAndDeciderFromEnv(t *testing.T) {
+	addr := storetest.Addr()
+	if addr == "" {
+		storetest.SkipOrFailNoQdrant(t)
+	}
+
+	t.Run("provider unset", func(t *testing.T) {
+		t.Setenv("ENGRAM_QDRANT_ADDR", addr)
+		t.Setenv("ENGRAM_QDRANT_COLLECTION", testCollection("mem_store_and_decider_unset_test"))
+		t.Setenv("ENGRAM_EMBED_DIM", "3")
+		t.Setenv("ENGRAM_SUMMARY_MODEL", "")
+		t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
+		t.Setenv("ENGRAM_DECISIONS_PROVIDER", "")
+
+		loads := 0
+		orig := configLoad
+		configLoad = func(flags *flag.FlagSet) (*config.Config, error) {
+			loads++
+			return orig(flags)
+		}
+		t.Cleanup(func() { configLoad = orig })
+
+		st, dec, settings, err := StoreAndDeciderFromEnv()
+		if err != nil {
+			t.Fatalf("StoreAndDeciderFromEnv: %v", err)
+		}
+		if st == nil {
+			t.Error("StoreAndDeciderFromEnv returned a nil store")
+		}
+		if dec != nil {
+			t.Error("StoreAndDeciderFromEnv with ENGRAM_DECISIONS_PROVIDER unset returned a non-nil decider, want nil (D-04)")
+		}
+		want := VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: verdict.DefaultStateChars}
+		if settings != want {
+			t.Errorf("settings = %+v, want %+v", settings, want)
+		}
+		if loads != 1 {
+			t.Errorf("StoreAndDeciderFromEnv loaded config %d times, want exactly 1", loads)
+		}
+	})
+
+	t.Run("provider jev", func(t *testing.T) {
+		t.Setenv("ENGRAM_QDRANT_ADDR", addr)
+		t.Setenv("ENGRAM_QDRANT_COLLECTION", testCollection("mem_store_and_decider_jev_test"))
+		t.Setenv("ENGRAM_EMBED_DIM", "3")
+		t.Setenv("ENGRAM_SUMMARY_MODEL", "")
+		t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
+		t.Setenv("ENGRAM_DECISIONS_PROVIDER", "jev")
+		t.Setenv("ENGRAM_DECISIONS_BASE_URL", "https://example.invalid/api")
+
+		st, dec, _, err := StoreAndDeciderFromEnv()
+		if err != nil {
+			t.Fatalf("StoreAndDeciderFromEnv: %v", err)
+		}
+		if st == nil {
+			t.Error("StoreAndDeciderFromEnv returned a nil store")
+		}
+		if dec == nil {
+			t.Error("StoreAndDeciderFromEnv with ENGRAM_DECISIONS_PROVIDER=jev returned a nil decider, want non-nil")
+		}
+	})
 }

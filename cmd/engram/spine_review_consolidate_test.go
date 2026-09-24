@@ -7,10 +7,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/seanb4t/engram/internal/decide"
+	"github.com/seanb4t/engram/internal/decide/jev"
+	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/verdict"
 )
 
 // spineConsolidateFakeStore is a recording fake satisfying
@@ -19,13 +27,20 @@ import (
 // canned result -- without dialing a live Qdrant. Also invokes
 // opts.Progress (when set) with its own configured counts, so the
 // stderr-wiring test can prove the RunE plumbs the callback through
-// without needing a real sweep.
+// without needing a real sweep. states/statesErr/recordStatesCalls let the
+// verdict-pass tests observe and control RecordStates without a live
+// Qdrant.
 type spineConsolidateFakeStore struct {
 	called                           bool
 	gotOpts                          store.NearDuplicateOptions
 	pairs                            []store.DuplicatePair
 	err                              error
 	progressScanned, progressQueried uint64
+
+	states             map[string]store.RecordState
+	statesErr          error
+	recordStatesCalls  int
+	gotRecordStatesIDs []string
 }
 
 func (f *spineConsolidateFakeStore) NearDuplicates(_ context.Context, opts store.NearDuplicateOptions) ([]store.DuplicatePair, error) {
@@ -37,12 +52,43 @@ func (f *spineConsolidateFakeStore) NearDuplicates(_ context.Context, opts store
 	return f.pairs, f.err
 }
 
+// RecordStates records the call and ids it was invoked with, then returns
+// f.states filtered to exactly those ids (an id with no matching entry in
+// f.states is simply absent from the result, mirroring the real store's
+// unknown-id contract), or f.statesErr when set.
+func (f *spineConsolidateFakeStore) RecordStates(_ context.Context, ids []string) (map[string]store.RecordState, error) {
+	f.recordStatesCalls++
+	f.gotRecordStatesIDs = ids
+	if f.statesErr != nil {
+		return nil, f.statesErr
+	}
+	out := make(map[string]store.RecordState, len(ids))
+	for _, id := range ids {
+		if s, ok := f.states[id]; ok {
+			out[id] = s
+		}
+	}
+	return out, nil
+}
+
 // withFakeConsolidateStore substitutes spineConsolidateStoreFromEnv with
-// one that returns fake, restoring the real constructor via t.Cleanup.
+// one that returns fake and a nil decider (the no-provider path every
+// pre-verdict test exercises), restoring the real constructor via
+// t.Cleanup.
 func withFakeConsolidateStore(t *testing.T, fake *spineConsolidateFakeStore) {
 	t.Helper()
+	withFakeConsolidateStoreAndDecider(t, fake, nil, server.VerdictSettings{})
+}
+
+// withFakeConsolidateStoreAndDecider substitutes spineConsolidateStoreFromEnv
+// with one that returns fake, dec and settings, restoring the real
+// constructor via t.Cleanup.
+func withFakeConsolidateStoreAndDecider(t *testing.T, fake *spineConsolidateFakeStore, dec decide.Decider, settings server.VerdictSettings) {
+	t.Helper()
 	orig := spineConsolidateStoreFromEnv
-	spineConsolidateStoreFromEnv = func() (spineConsolidateStore, error) { return fake, nil }
+	spineConsolidateStoreFromEnv = func() (spineConsolidateStore, decide.Decider, server.VerdictSettings, error) {
+		return fake, dec, settings, nil
+	}
 	t.Cleanup(func() { spineConsolidateStoreFromEnv = orig })
 }
 
@@ -398,5 +444,170 @@ func TestConsolidateMinScoreOmitemptySymmetry(t *testing.T) {
 	gotWithout := countTopLevelFieldLines(bufWithout.String())
 	if gotWithout != gotWith-1 {
 		t.Errorf("countTopLevelFieldLines(nil-minScore rendered) = %d, want %d (one fewer top-level field line than the non-nil case's %d)", gotWithout, gotWith-1, gotWith)
+	}
+}
+
+// tracerVerdictResponse is the canned Decisions response the verdict
+// tracer test's httptest handler replies with: a relation choice answer
+// (duplicate, all five probabilities) and a same_subject noul answer.
+const tracerVerdictResponse = `{
+	"model": "typesafe/jev-1.13-20260917",
+	"answers": {
+		"relation": {"type": "choice", "choice": "duplicate", "probabilities": {"duplicate": 0.95, "contradicts": 0.01, "updates": 0.02, "related": 0.01, "unrelated": 0.01}},
+		"same_subject": {"type": "noul", "noul": 0.97}
+	}
+}`
+
+// TestSpineReviewConsolidateVerdictTracer proves the end-to-end verdict
+// slice (D-04..D-06, D-09..D-11): a fake store returns one candidate pair
+// whose states flow through a real jev.Client to an httptest Decisions
+// endpoint and back as a nested JSON verdict.
+func TestSpineReviewConsolidateVerdictTracer(t *testing.T) {
+	resetClientFlags(t)
+
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(tracerVerdictResponse))
+	}))
+	defer srv.Close()
+
+	newer := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	older := newer.Add(-time.Hour)
+	fake := &spineConsolidateFakeStore{
+		pairs: []store.DuplicatePair{
+			{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.9},
+		},
+		states: map[string]store.RecordState{
+			// id-a is the NEWER record: PairRequest must send it as record_b
+			// regardless of its A/B position in the pair.
+			"id-a": {ID: "id-a", Content: "content-a", CreatedAt: newer},
+			"id-b": {ID: "id-b", Content: "content-b", CreatedAt: older},
+		},
+	}
+	settings := server.VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: verdict.DefaultStateChars}
+	dec := jev.New(srv.URL+"/api", "test-key", "")
+	withFakeConsolidateStoreAndDecider(t, fake, dec, settings)
+
+	stdout, _, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v", err)
+	}
+	if fake.recordStatesCalls != 1 {
+		t.Errorf("RecordStates called %d times, want exactly 1", fake.recordStatesCalls)
+	}
+
+	stateMap, _ := gotBody["state"].(map[string]any)
+	wantRecordB := verdict.State(fake.states["id-a"].Summary, fake.states["id-a"].Content, settings.StateChars)
+	wantRecordA := verdict.State(fake.states["id-b"].Summary, fake.states["id-b"].Content, settings.StateChars)
+	if got, _ := stateMap["record_b"].(string); got != wantRecordB {
+		t.Errorf("state.record_b = %q, want %q (id-a is the newer record)", got, wantRecordB)
+	}
+	if got, _ := stateMap["record_a"].(string); got != wantRecordA {
+		t.Errorf("state.record_a = %q, want %q", got, wantRecordA)
+	}
+
+	questions, _ := gotBody["questions"].(map[string]any)
+	relationQ, _ := questions["relation"].(map[string]any)
+	criteria, _ := relationQ["criteria"].(map[string]any)
+	if len(criteria) != 5 {
+		t.Errorf("relation question criteria has %d keys, want 5: %v", len(criteria), criteria)
+	}
+	for _, name := range verdict.Relations() {
+		if _, ok := criteria[name]; !ok {
+			t.Errorf("relation question criteria is missing %q: %v", name, criteria)
+		}
+	}
+	sameSubjectQ, _ := questions["same_subject"].(map[string]any)
+	if sameSubjectQ["type"] != "noul" {
+		t.Errorf("same_subject question type = %v, want noul", sameSubjectQ["type"])
+	}
+
+	var doc struct {
+		VerdictThreshold float64 `json:"verdict_threshold"`
+		Candidates       []struct {
+			Verdict map[string]any `json:"verdict"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("json.Unmarshal(stdout): %v (stdout=%q)", err, stdout)
+	}
+	if doc.VerdictThreshold != 0.9 {
+		t.Errorf("verdict_threshold = %v, want 0.9", doc.VerdictThreshold)
+	}
+	if len(doc.Candidates) != 1 {
+		t.Fatalf("len(candidates) = %d, want 1", len(doc.Candidates))
+	}
+	v := doc.Candidates[0].Verdict
+	wantKeys := []string{"relation", "probabilities", "same_subject", "needs_review", "model"}
+	if len(v) != len(wantKeys) {
+		t.Errorf("verdict has %d keys, want %d: %v", len(v), len(wantKeys), v)
+	}
+	for _, k := range wantKeys {
+		if _, ok := v[k]; !ok {
+			t.Errorf("verdict is missing key %q: %v", k, v)
+		}
+	}
+	if v["relation"] != "duplicate" {
+		t.Errorf("verdict.relation = %v, want duplicate", v["relation"])
+	}
+	if v["needs_review"] != false {
+		t.Errorf("verdict.needs_review = %v, want false", v["needs_review"])
+	}
+	if v["model"] != "typesafe/jev-1.13-20260917" {
+		t.Errorf("verdict.model = %v, want typesafe/jev-1.13-20260917", v["model"])
+	}
+}
+
+// TestSpineReviewConsolidateNoProviderByteIdentical proves D-04: with a
+// nil decider, stdout is byte-identical to json.Marshal(consolidateDoc(...))
+// plus a newline, carries no verdict key, and RecordStates is never
+// called.
+func TestSpineReviewConsolidateNoProviderByteIdentical(t *testing.T) {
+	resetClientFlags(t)
+	fake := &spineConsolidateFakeStore{
+		pairs:           []store.DuplicatePair{{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.9}},
+		progressScanned: 5, progressQueried: 5,
+	}
+	withFakeConsolidateStore(t, fake)
+
+	stdout, stderr, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--output", "json")
+	if err != nil {
+		t.Fatalf("runClient: %v", err)
+	}
+
+	want, err := json.Marshal(consolidateDoc(fake.pairs, "", true, nil, spineConsolidateDefaultTopK, fake.progressScanned, fake.progressQueried))
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if stdout != string(want)+"\n" {
+		t.Errorf("stdout = %q, want %q (byte-identical to json.Marshal(consolidateDoc(...)) plus a newline)", stdout, string(want)+"\n")
+	}
+	if strings.Contains(stdout, "verdict") {
+		t.Errorf("stdout contains %q, want no verdict key with no provider configured: %q", "verdict", stdout)
+	}
+	if strings.Contains(stderr, "verdict") {
+		t.Errorf("stderr contains %q, want no verdict text with no provider configured: %q", "verdict", stderr)
+	}
+	if fake.recordStatesCalls != 0 {
+		t.Errorf("RecordStates called %d times, want 0 (no decider configured)", fake.recordStatesCalls)
+	}
+}
+
+// TestConsolidateStoreSurfaceIsReadOnly proves T-03-02: spineConsolidateStore's
+// method set is exactly {NearDuplicates, RecordStates} — no mutating store
+// method is reachable through this interface.
+func TestConsolidateStoreSurfaceIsReadOnly(t *testing.T) {
+	typ := reflect.TypeOf((*spineConsolidateStore)(nil)).Elem()
+	want := map[string]bool{"NearDuplicates": true, "RecordStates": true}
+	if typ.NumMethod() != len(want) {
+		t.Fatalf("spineConsolidateStore has %d methods, want %d: %v", typ.NumMethod(), len(want), typ)
+	}
+	for i := 0; i < typ.NumMethod(); i++ {
+		name := typ.Method(i).Name
+		if !want[name] {
+			t.Errorf("spineConsolidateStore has unexpected method %q, want exactly %v", name, want)
+		}
 	}
 }

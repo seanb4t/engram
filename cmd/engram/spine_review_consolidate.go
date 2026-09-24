@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,8 +15,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/verdict"
 )
 
 // spineConsolidateDefaultTopK is consolidate's --top-k default, mirroring
@@ -28,24 +31,27 @@ const spineConsolidateDefaultTopK uint64 = 5
 // spineConsolidateStore is the minimal store surface consolidate's RunE
 // depends on — satisfied by *store.Store, and by a recording fake in
 // spine_review_consolidate_test.go, so the --scope/--all-scopes/--top-k/
-// --min-score-to-NearDuplicateOptions mapping is provable without dialing
-// a live Qdrant.
+// --min-score-to-NearDuplicateOptions mapping, and the verdict pass's
+// state fetch, are provable without dialing a live Qdrant. Exposes only
+// read methods — NearDuplicates and RecordStates — so no mutating store
+// method is reachable from this file (T-03-02).
 type spineConsolidateStore interface {
 	NearDuplicates(ctx context.Context, opts store.NearDuplicateOptions) ([]store.DuplicatePair, error)
+	RecordStates(ctx context.Context, ids []string) (map[string]store.RecordState, error)
 }
 
-// spineConsolidateStoreFromEnv constructs the store consolidate's RunE
-// calls NearDuplicates on. A package-level var — mirroring
+// spineConsolidateStoreFromEnv constructs the store, decider and verdict
+// settings consolidate's RunE uses. A package-level var — mirroring
 // citationFileReader's injection pattern (spine_review_verify.go) — so
 // spine_review_consolidate_test.go can substitute a recording fake without
 // dialing a live Qdrant. Returns a nil interface (not a non-nil interface
 // wrapping a nil *store.Store) on error.
-var spineConsolidateStoreFromEnv = func() (spineConsolidateStore, error) {
-	st, err := server.StoreFromEnv()
+var spineConsolidateStoreFromEnv = func() (spineConsolidateStore, decide.Decider, server.VerdictSettings, error) {
+	st, dec, settings, err := server.StoreAndDeciderFromEnv()
 	if err != nil {
-		return nil, err
+		return nil, nil, server.VerdictSettings{}, err
 	}
-	return st, nil
+	return st, dec, settings, nil
 }
 
 // parseMinScore parses --min-score's string value into a *float32: empty
@@ -97,7 +103,7 @@ var spineReviewConsolidateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		st, err := spineConsolidateStoreFromEnv()
+		st, dec, settings, err := spineConsolidateStoreFromEnv()
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
 		}
@@ -126,23 +132,81 @@ var spineReviewConsolidateCmd = &cobra.Command{
 			return classifyOperatorErr(err)
 		}
 		text := consolidateSummary(pairs, spineConsolidateScope, spineConsolidateAllScopes, minScore, spineConsolidateTopK, lastScanned, lastQueried)
-		return renderOperator(cmd, format,
-			text, consolidateDoc(pairs, spineConsolidateScope, spineConsolidateAllScopes, minScore, spineConsolidateTopK, lastScanned, lastQueried))
+		doc := consolidateDoc(pairs, spineConsolidateScope, spineConsolidateAllScopes, minScore, spineConsolidateTopK, lastScanned, lastQueried)
+		if dec != nil {
+			verdicts := runVerdictPass(ctx, st, dec, pairs, settings)
+			doc = attachVerdicts(doc, verdicts, settings.Threshold)
+		}
+		return renderOperator(cmd, format, text, doc)
 	},
 }
 
 // consolidatePairDoc is one ranked candidate's JSON-mode shape: both
-// records' identities and Score, printed as reported — never normalised,
-// bucketed, or labelled a verdict. Never a record's content or summary
-// text (T-03-05's sibling mitigation).
+// records' identities, Score and, only when the verdict pass ran, an
+// advisory Verdict — the structural fields are never normalised,
+// bucketed, or labelled a verdict themselves (T-03-05's sibling
+// mitigation). Verdict is a pointer tagged omitempty so its presence or
+// absence IS the "did the verdict pass run" signal (D-05), mirroring
+// consolidateReportDoc.MinScore's pointer-plus-omitempty design below.
 type consolidatePairDoc struct {
-	A        string  `json:"a"`
-	B        string  `json:"b"`
-	AShortID string  `json:"a_short_id"`
-	BShortID string  `json:"b_short_id"`
-	AScope   string  `json:"a_scope"`
-	BScope   string  `json:"b_scope"`
-	Score    float32 `json:"score"`
+	A        string                 `json:"a"`
+	B        string                 `json:"b"`
+	AShortID string                 `json:"a_short_id"`
+	BShortID string                 `json:"b_short_id"`
+	AScope   string                 `json:"a_scope"`
+	BScope   string                 `json:"b_scope"`
+	Score    float32                `json:"score"`
+	Verdict  *consolidateVerdictDoc `json:"verdict,omitempty"`
+}
+
+// consolidateProbabilitiesDoc is the D-05 five-key probability
+// distribution, in D-05's fixed key order — field declaration order
+// controls encoding/json's marshaled key order.
+type consolidateProbabilitiesDoc struct {
+	Duplicate   float64 `json:"duplicate"`
+	Contradicts float64 `json:"contradicts"`
+	Updates     float64 `json:"updates"`
+	Related     float64 `json:"related"`
+	Unrelated   float64 `json:"unrelated"`
+}
+
+// consolidateVerdictDoc is one pair's advisory verdict JSON shape (D-05):
+// exactly relation/probabilities/same_subject/needs_review/model on
+// success, or exactly error on failure. A custom MarshalJSON implements
+// this two-shape union — plain field tags cannot, since the success shape
+// must still emit needs_review:false and an empty model string rather
+// than omitting them, while the failure shape must emit ONLY error.
+type consolidateVerdictDoc struct {
+	Relation      string
+	Probabilities consolidateProbabilitiesDoc
+	SameSubject   float64
+	NeedsReview   bool
+	Model         string
+	Error         string
+}
+
+// MarshalJSON implements the two-shape union documented on
+// consolidateVerdictDoc: Error non-empty marshals {"error": "..."} alone;
+// otherwise the five success keys, always present.
+func (d consolidateVerdictDoc) MarshalJSON() ([]byte, error) {
+	if d.Error != "" {
+		return json.Marshal(struct {
+			Error string `json:"error"`
+		}{Error: d.Error})
+	}
+	return json.Marshal(struct {
+		Relation      string                      `json:"relation"`
+		Probabilities consolidateProbabilitiesDoc `json:"probabilities"`
+		SameSubject   float64                     `json:"same_subject"`
+		NeedsReview   bool                        `json:"needs_review"`
+		Model         string                      `json:"model"`
+	}{
+		Relation:      d.Relation,
+		Probabilities: d.Probabilities,
+		SameSubject:   d.SameSubject,
+		NeedsReview:   d.NeedsReview,
+		Model:         d.Model,
+	})
 }
 
 // consolidateReportDoc is the JSON-mode report's exported-field shape.
@@ -154,15 +218,18 @@ type consolidatePairDoc struct {
 // serialization, so that absent key IS the "no filter applied" signal in
 // BOTH lanes together; the human-facing explanation of what the absence
 // means lives in consolidateSummary's headline, never as a second
-// rendering rule here.
+// rendering rule here. VerdictThreshold reuses the same presence-means-
+// applied reasoning: present exactly when the verdict pass ran, carrying
+// the threshold that produced every needs_review flag in Candidates.
 type consolidateReportDoc struct {
-	Scope      string               `json:"scope"`
-	AllScopes  bool                 `json:"all_scopes"`
-	TopK       uint64               `json:"top_k"`
-	MinScore   *float32             `json:"min_score,omitempty"`
-	Scanned    uint64               `json:"scanned"`
-	Queried    uint64               `json:"queried"`
-	Candidates []consolidatePairDoc `json:"candidates"`
+	Scope            string               `json:"scope"`
+	AllScopes        bool                 `json:"all_scopes"`
+	TopK             uint64               `json:"top_k"`
+	MinScore         *float32             `json:"min_score,omitempty"`
+	Scanned          uint64               `json:"scanned"`
+	Queried          uint64               `json:"queried"`
+	Candidates       []consolidatePairDoc `json:"candidates"`
+	VerdictThreshold *float64             `json:"verdict_threshold,omitempty"`
 }
 
 // consolidateDoc converts pairs into consolidateReportDoc, keeping
@@ -181,6 +248,105 @@ func consolidateDoc(pairs []store.DuplicatePair, scope string, allScopes bool, m
 		})
 	}
 	return doc
+}
+
+// runVerdictPass builds and sends one decide.Request per pair whose both
+// record states are available, and returns one verdict.Verdict per pair,
+// index-aligned with pairs. Returns a non-nil empty slice and makes no
+// call at all when pairs is empty. Fetches every id referenced by pairs
+// through exactly one st.RecordStates call; on a state-fetch error every
+// pair gets verdict.Unavailable(state-unavailable); a pair missing either
+// side's state (the id was absent from the fetch) gets the same
+// state-unavailable verdict without being sent to the decider. Every
+// buildable request goes through exactly one dec.DecideMany call (D-11) —
+// no cap on pair count, bounded only by the decider's own concurrency.
+func runVerdictPass(ctx context.Context, st spineConsolidateStore, dec decide.Decider, pairs []store.DuplicatePair, settings server.VerdictSettings) []verdict.Verdict {
+	verdicts := make([]verdict.Verdict, len(pairs))
+	if len(pairs) == 0 {
+		return verdicts
+	}
+
+	ids := make([]string, 0, len(pairs)*2)
+	seen := make(map[string]bool, len(pairs)*2)
+	for _, p := range pairs {
+		for _, id := range [2]string{p.A, p.B} {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+
+	states, err := st.RecordStates(ctx, ids)
+	if err != nil {
+		unavailable := verdict.Unavailable(fmt.Errorf("fetch record states: %w", verdict.ErrStateUnavailable))
+		for i := range verdicts {
+			verdicts[i] = unavailable
+		}
+		return verdicts
+	}
+
+	reqIndexes := make([]int, 0, len(pairs))
+	reqs := make([]decide.Request, 0, len(pairs))
+	for i, p := range pairs {
+		a, aok := states[p.A]
+		b, bok := states[p.B]
+		if !aok || !bok {
+			verdicts[i] = verdict.Unavailable(fmt.Errorf("record state for pair %s/%s: %w", p.A, p.B, verdict.ErrStateUnavailable))
+			continue
+		}
+		req := verdict.PairRequest(
+			verdict.Side{ID: a.ID, CreatedAt: a.CreatedAt, Summary: a.Summary, Content: a.Content},
+			verdict.Side{ID: b.ID, CreatedAt: b.CreatedAt, Summary: b.Summary, Content: b.Content},
+			settings.StateChars,
+		)
+		reqIndexes = append(reqIndexes, i)
+		reqs = append(reqs, req)
+	}
+
+	results := dec.DecideMany(ctx, reqs)
+	for j, res := range results {
+		verdicts[reqIndexes[j]] = verdict.FromResult(res, settings.Threshold)
+	}
+	return verdicts
+}
+
+// attachVerdicts is a pure function that sets doc.VerdictThreshold and
+// index-aligns each candidate's Verdict from verdicts, converting
+// verdict.Verdict into the JSON-mode consolidateVerdictDoc shape (D-05).
+func attachVerdicts(doc consolidateReportDoc, verdicts []verdict.Verdict, threshold float64) consolidateReportDoc {
+	doc.VerdictThreshold = &threshold
+	for i := range doc.Candidates {
+		if i >= len(verdicts) {
+			break
+		}
+		v := verdicts[i]
+		vd := verdictDoc(v)
+		doc.Candidates[i].Verdict = &vd
+	}
+	return doc
+}
+
+// verdictDoc converts one verdict.Verdict into its JSON-mode shape: a
+// failed verdict (Failed()) carries only Error; a decided one carries the
+// five success fields, verbatim.
+func verdictDoc(v verdict.Verdict) consolidateVerdictDoc {
+	if v.Failed() {
+		return consolidateVerdictDoc{Error: v.ErrorClass}
+	}
+	return consolidateVerdictDoc{
+		Relation: v.Relation,
+		Probabilities: consolidateProbabilitiesDoc{
+			Duplicate:   v.Probabilities.Duplicate,
+			Contradicts: v.Probabilities.Contradicts,
+			Updates:     v.Probabilities.Updates,
+			Related:     v.Probabilities.Related,
+			Unrelated:   v.Probabilities.Unrelated,
+		},
+		SameSubject: v.SameSubject,
+		NeedsReview: v.NeedsReview,
+		Model:       v.Model,
+	}
 }
 
 // consolidateSummary renders the operator-facing headline. Pure (value

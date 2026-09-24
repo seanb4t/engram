@@ -16,6 +16,8 @@ import (
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/decide/jev"
+	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/verdict"
 )
 
 // deciderFromConfig builds the typed-decision Decider from an already-loaded
@@ -139,6 +141,50 @@ func decisionsConcurrency(cfg *config.Config) int {
 		return 4
 	}
 	return n
+}
+
+// VerdictSettings configures the curation-verdict pass: Threshold is the
+// D-08 boundary below which a verdict's relation probability is flagged
+// needs_review, and StateChars is the D-09 per-record state truncation
+// length. Plan 03-05 extends verdictSettings below to read the operator
+// knobs plan 03-02 registers, falling back to these same defaults when
+// unset; today it always returns the defaults.
+type VerdictSettings struct {
+	Threshold  float64
+	StateChars int
+}
+
+// verdictSettings resolves VerdictSettings. cfg is unused today — plan
+// 03-05 extends this function to read the ENGRAM_DECISIONS_VERDICT_*
+// knobs plan 03-02 registers, matching every other decisions* resolver's
+// shape (warn-and-default on empty/invalid, never error).
+//
+//nolint:unparam,revive // cfg intentionally unread until plan 03-05 wires the registered knobs; kept in the signature now so StoreAndDeciderFromEnv never needs a second signature change
+func verdictSettings(cfg *config.Config) VerdictSettings {
+	return VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: verdict.DefaultStateChars}
+}
+
+// StoreAndDeciderFromEnv builds the store, the typed-decision Decider and
+// the curation-verdict settings from a SINGLE config load — the same
+// StoreAndXFromEnv wiring-seam shape as StoreAndSummarizerFromEnv, but
+// WITHOUT that function's "feature unset means error" branch: an empty
+// ENGRAM_DECISIONS_PROVIDER resolves to a nil Decider and a nil error
+// (D-04), never a startup error — the curation-verdict pass is off by
+// default, not a required dependency.
+func StoreAndDeciderFromEnv() (*store.Store, decide.Decider, VerdictSettings, error) {
+	cfg, err := loadAndValidate()
+	if err != nil {
+		return nil, nil, VerdictSettings{}, err
+	}
+	st, err := ensureStoreFromConfig(cfg)
+	if err != nil {
+		return nil, nil, VerdictSettings{}, err
+	}
+	dec, err := deciderFromConfig(cfg)
+	if err != nil {
+		return nil, nil, VerdictSettings{}, err
+	}
+	return st, dec, verdictSettings(cfg), nil
 }
 
 // logDeciderEnabled logs one Info line naming that typed decisions are
