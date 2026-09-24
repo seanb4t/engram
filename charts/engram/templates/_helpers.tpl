@@ -80,6 +80,17 @@
       key: "{{ .Values.memory.decisions.apiKeySecret.key }}"
 {{- end }}
 {{- end }}
+{{- /* Search reranking (Jev, D-10). An unset or "lexical" ranker omits
+       EVERY search variable, so the default render is byte-identical.
+       Deliberately NOT nested under memory.decisions.provider — "jev"
+       without a provider still renders here, so it fails loudly at server
+       startup instead of silently rendering nothing (D-01). */}}
+{{- if and .Values.memory.search.ranker (ne .Values.memory.search.ranker "lexical") }}
+- { name: ENGRAM_SEARCH_RANKER, value: "{{ .Values.memory.search.ranker }}" }
+{{- with .Values.memory.search.rerankTimeout }}
+- { name: ENGRAM_SEARCH_RERANK_TIMEOUT, value: "{{ . }}" }
+{{- end }}
+{{- end }}
 {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
 {{- with .Values.memory.mcpPath }}
 - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }

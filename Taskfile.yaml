@@ -296,6 +296,57 @@ tasks:
           echo "chart:validate: ENGRAM_DECISIONS_API_KEY secretKeyRef must carry the configured secret key"
           exit 1
         fi
+        # Search reranking (Jev, D-10). Every ENGRAM_SEARCH_* row sits under
+        # the memory.search.ranker gate (set and not "lexical"), asserted in
+        # both directions for the same reason as the decisions block above.
+        # The ranker is deliberately independent of memory.decisions.provider
+        # — (c) pins that "jev" without a provider still renders, reaching
+        # the server's D-01 validation instead of rendering nothing.
+        if helm template charts/engram | grep -q 'ENGRAM_SEARCH_'; then
+          echo "chart:validate: default render must NOT emit any ENGRAM_SEARCH_ var (memory.search.ranker unset, D-10)"
+          exit 1
+        fi
+        SEARCH_LEXICAL_RENDER=$(helm template charts/engram \
+          --set memory.search.ranker=lexical \
+          --set memory.search.rerankTimeout=5s)
+        if echo "$SEARCH_LEXICAL_RENDER" | grep -q 'ENGRAM_SEARCH_'; then
+          echo "chart:validate: memory.search.ranker=lexical must NOT emit any ENGRAM_SEARCH_ var, even with rerankTimeout set"
+          exit 1
+        fi
+        SEARCH_EMPTY_RANKER_RENDER=$(helm template charts/engram \
+          --set memory.search.ranker= \
+          --set memory.search.rerankTimeout=5s)
+        if echo "$SEARCH_EMPTY_RANKER_RENDER" | grep -q 'ENGRAM_SEARCH_'; then
+          echo "chart:validate: an empty memory.search.ranker must NOT emit any ENGRAM_SEARCH_ var, even with rerankTimeout set (the timeout sits under the ranker gate)"
+          exit 1
+        fi
+        SEARCH_JEV_NO_PROVIDER_RENDER=$(helm template charts/engram \
+          --set memory.search.ranker=jev)
+        if ! echo "$SEARCH_JEV_NO_PROVIDER_RENDER" | grep -q 'name: ENGRAM_SEARCH_RANKER, value: "jev"'; then
+          echo "chart:validate: memory.search.ranker=jev must emit ENGRAM_SEARCH_RANKER, even without memory.decisions.provider set (D-01 handles the rejection server-side)"
+          exit 1
+        fi
+        if echo "$SEARCH_JEV_NO_PROVIDER_RENDER" | grep -q 'ENGRAM_SEARCH_RERANK_TIMEOUT'; then
+          echo "chart:validate: ENGRAM_SEARCH_RERANK_TIMEOUT must NOT render when memory.search.rerankTimeout is unset"
+          exit 1
+        fi
+        SEARCH_JEV_FULL_RENDER=$(helm template charts/engram \
+          --set memory.search.ranker=jev \
+          --set memory.search.rerankTimeout=1500ms \
+          --set memory.decisions.provider=jev \
+          --set memory.decisions.baseURL=https://openrouter.example/api)
+        if ! echo "$SEARCH_JEV_FULL_RENDER" | grep -q 'name: ENGRAM_SEARCH_RANKER, value: "jev"'; then
+          echo "chart:validate: memory.search.ranker=jev must emit ENGRAM_SEARCH_RANKER alongside memory.decisions.provider"
+          exit 1
+        fi
+        if ! echo "$SEARCH_JEV_FULL_RENDER" | grep -q 'name: ENGRAM_SEARCH_RERANK_TIMEOUT, value: "1500ms"'; then
+          echo "chart:validate: memory.search.rerankTimeout=1500ms must emit ENGRAM_SEARCH_RERANK_TIMEOUT with that value"
+          exit 1
+        fi
+        if ! echo "$SEARCH_JEV_FULL_RENDER" | grep -q 'name: ENGRAM_DECISIONS_PROVIDER'; then
+          echo "chart:validate: memory.decisions.provider=jev must still emit ENGRAM_DECISIONS_PROVIDER alongside the search ranker"
+          exit 1
+        fi
         helm lint charts/engram
         # Drift pin: engram.containerEnv is the single source of the
         # Deployment+CronJob container env (D-09). Any edit to this block
@@ -317,8 +368,11 @@ tasks:
         # all four and the rest of the block is byte-identical. Re-pinned
         # 2026-09-23 for the provider-gated ENGRAM_DECISIONS_* rows (DEC-01,
         # D-04): the default render omits all six, and the rest of the block
-        # stays byte-identical to the pre-phase render.
-        EXPECTED_CHECKSUM="c9eea8464e4f605fd68d953b113dc3325596eb4e4220cf01f002fb24133b4bab"
+        # stays byte-identical to the pre-phase render. Re-pinned 2026-09-24
+        # for the ranker-gated ENGRAM_SEARCH_RANKER / ENGRAM_SEARCH_RERANK_TIMEOUT
+        # rows (D-10): the default render omits both, and the rest of the
+        # block stays byte-identical to the pre-phase render.
+        EXPECTED_CHECKSUM="e42446d1d749690366becdd9d02300250d549f66b36225fc6debab11bf5767ed"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

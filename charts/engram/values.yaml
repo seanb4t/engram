@@ -144,6 +144,17 @@ memory:
     model: "" # ENGRAM_DECISIONS_MODEL; empty means the binary default, pinned "typesafe/jev-1.13" (do not use ~typesafe/jev-latest)
     timeout: "" # ENGRAM_DECISIONS_TIMEOUT; empty means the binary default of 10s
     concurrency: "" # ENGRAM_DECISIONS_CONCURRENCY; empty means the binary default of 4
+  # Search reranking (Jev). The default "lexical" renders no search variable,
+  # so search order and response shape stay as shipped (D-10). "jev" reorders
+  # search_memory / search_discovery results by the decision provider's
+  # per-hit relevance probability and adds a per-hit relevance value; it
+  # requires memory.decisions.provider (the server refuses to start
+  # without it). While enabled, EVERY search sends the query plus up to 100
+  # candidate records' summary and content head to that provider — read the
+  # configure guide's "Search reranking (Jev)" section first.
+  search:
+    ranker: lexical # ENGRAM_SEARCH_RANKER; "lexical" (default) or "jev"
+    rerankTimeout: "" # ENGRAM_SEARCH_RERANK_TIMEOUT; empty means the binary default of 2s. One attempt, no retry — on timeout or error the search falls back to lexical order.
   qdrant:
     collection: "memory"
   oidc:
