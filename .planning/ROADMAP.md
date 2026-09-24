@@ -445,7 +445,7 @@ advisory signal, never as an automatic mutation.
   3. The relation question set (including `updates`) is measured on a labeled pair eval — committing no verbatim spine content — reporting accuracy by confidence bucket and a Brier score
   4. Running `consolidate` with neither `--scope` nor `--all-scopes` gets the scope-or-all-scopes rule error instead of a silent zero-candidate report
 
-**Plans:** 7/8 plans executed
+**Plans:** 8/8 plans executed
 
 Plans:
 **Wave 1**
@@ -469,7 +469,7 @@ Plans:
 
 **Wave 5**
 
-- [ ] 03-08-PLAN.md — live `task eval:curation` recorded as an aggregate-only artifact (gate result never tuned), CLAUDE.md layout rows, full phase gate (D-01, D-03; CUR-03)
+- [x] 03-08-PLAN.md — live `task eval:curation` recorded as an aggregate-only artifact (gate result never tuned), CLAUDE.md layout rows, full phase gate (D-01, D-03; CUR-03)
 
 ### Phase 4: Jev Reranker & Per-Hit Relevance Signal
 

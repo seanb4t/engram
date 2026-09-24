@@ -4,17 +4,17 @@ milestone: 2026-09-22.01
 milestone_name: Typed Decisions & Recall Ranking
 current_phase: 3
 current_phase_name: Curation Verdicts
-status: executing
-stopped_at: Completed 03-07-PLAN.md
-last_updated: "2026-09-24T04:56:50.321Z"
+status: verifying
+stopped_at: Completed 03-08-PLAN.md
+last_updated: "2026-09-24T05:18:42.178Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 3 execution started
-state_head: e4fb72b02b39bd33e8af4fab23ee13881d99637d
+state_head: 1eda09d48ae03d085a0ce25b7c7520d41cef5610
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 22
-  completed_plans: 21
+  completed_plans: 22
   percent: 40
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09
 
 Phase: 3 (Curation Verdicts) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-23 — Phase 3 execution started
 
 ## Deferred Items
@@ -402,6 +402,8 @@ milestone needs in working memory.
 - [Phase 3]: [Phase 3] 03-06: WR-02 closed structurally via registerRowFieldRenderer + a depth-unbounded generic sanitizing flatten (flattenNested), not a verdict-only special case — every future nested row field renders sanitized by construction.
 - [Phase 3]: [Phase 3] 03-06: consolidate_docs_test.go's positive control drops --no-verdicts (not related/unrelated) to avoid a substring false-negative, since 'related' is a literal substring of 'unrelated'.
 - [Phase 3]: curationeval: single koanf load resolves both ENGRAM_CURATION_EVAL and ENGRAM_CURATION_EVAL_PAIRS; evaluate() stays free of internal/server, taking threshold/stateChars as plain values
+- [Phase 3]: 03-08: Live task eval:curation against OpenRouter/jev (typesafe/jev-1.13-20260917) on the 70-pair committed corpus passes the D-03 gate (result=PASS, 40/40 at threshold 0.900); recorded aggregate-only in 03-EVAL-RESULTS.md with provenance. — CUR-03's live measurement, never tuned to pass.
+- [Phase 3]: 03-08: Fixed a within-phase task lint:yaml failure (Taskfile.yaml eval:curation desc over yamlfmt's 120-char cap, introduced by 03-07) via an isolated yamlfmt reflow, committed separately from both plan tasks. — Rule 1 auto-fix; failure blocked the phase gate this plan's Task 2 must leave green.
 
 ### Pending Todos
 
@@ -493,8 +495,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T04:56:50.159Z
-Stopped at: Completed 03-07-PLAN.md
+Last session: 2026-09-24T05:18:32.271Z
+Stopped at: Completed 03-08-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -682,6 +684,7 @@ Resume file: None
 | Phase 03 P05 | 49min | 3 tasks | 7 files |
 | Phase 03-curation-verdicts P06 | 23min | 3 tasks | 7 files |
 | Phase 3 P07 | ~40min | 3 tasks | 11 files |
+| Phase 3 P8 | 35 min | 2 tasks | 3 files |
 
 ## Operator Next Steps
 
