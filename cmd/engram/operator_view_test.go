@@ -757,3 +757,92 @@ func TestViewFieldsBareNestedObject(t *testing.T) {
 		assertViewIdentity(t, "grid-of-grids", doc)
 	})
 }
+
+// TestViewFieldsEmptyNestedObjectRendersNoRows pins the empty-object edge
+// case of viewFields' bare nested-object branch (case '{':, operator_view.go
+// ~line 102): a row that renders to the empty string must contribute zero
+// rows, matching the empty-array precedent (TestOperatorViewEmptyShapes)
+// and renderOperatorView's documented "the output ... never a trailing
+// blank line" contract. Before this fix, an empty nested object rendered as
+// a single row holding the empty string, which renderOperatorView printed
+// as a whitespace-only four-space line.
+func TestViewFieldsEmptyNestedObjectRendersNoRows(t *testing.T) {
+	type emptyNestedInner struct{}
+	type emptyNestedDoc struct {
+		Name  string           `json:"name"`
+		Empty emptyNestedInner `json:"empty"`
+	}
+	type emptyNestedWrapper struct {
+		Inner emptyNestedInner `json:"inner"`
+	}
+	type emptyNestedWrapperDoc struct {
+		Wrapper emptyNestedWrapper `json:"wrapper"`
+	}
+
+	t.Run("last field is an empty struct", func(t *testing.T) {
+		doc := emptyNestedDoc{Name: "n"}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		var empty *viewField
+		for i := range fields {
+			if fields[i].Key == "empty" {
+				empty = &fields[i]
+			}
+		}
+		if empty == nil {
+			t.Fatal("viewFields(doc) did not return a field for empty")
+		}
+		if empty.Value != "" {
+			t.Errorf("empty.Value = %q, want empty", empty.Value)
+		}
+		if empty.Rows == nil {
+			t.Errorf("empty.Rows = nil, want a non-nil empty slice (a container key whose rendering is zero-length)")
+		}
+		if len(empty.Rows) != 0 {
+			t.Errorf("empty.Rows = %v, want zero rows", empty.Rows)
+		}
+
+		assertViewIdentity(t, "empty-nested-object", doc)
+
+		var buf bytes.Buffer
+		if err := renderOperatorView(&buf, "headline", doc); err != nil {
+			t.Fatalf("renderOperatorView: %v", err)
+		}
+		out := buf.String()
+		for _, line := range strings.Split(out, "\n") {
+			if line != "" && strings.TrimSpace(line) == "" {
+				t.Errorf("rendered output %q contains a whitespace-only line %q", out, line)
+			}
+		}
+		if !strings.HasSuffix(out, "  Empty\n") {
+			t.Errorf("rendered output %q does not end with the Empty label line followed by exactly one newline", out)
+		}
+	})
+
+	t.Run("wrapper whose only member is an empty struct", func(t *testing.T) {
+		doc := emptyNestedWrapperDoc{}
+
+		fields, err := viewFields(doc)
+		if err != nil {
+			t.Fatalf("viewFields: %v", err)
+		}
+		if len(fields) != 1 || fields[0].Key != "wrapper" {
+			t.Fatalf("viewFields(doc) = %+v, want a single wrapper field", fields)
+		}
+		wrapper := fields[0]
+		if wrapper.Value != "" {
+			t.Errorf("wrapper.Value = %q, want empty", wrapper.Value)
+		}
+		if wrapper.Rows == nil {
+			t.Errorf("wrapper.Rows = nil, want a non-nil empty slice")
+		}
+		if len(wrapper.Rows) != 0 {
+			t.Errorf("wrapper.Rows = %v, want zero rows", wrapper.Rows)
+		}
+
+		assertViewIdentity(t, "empty-nested-wrapper", doc)
+	})
+}

@@ -23,8 +23,10 @@ var errViewNotObject = errors.New("operator view: marshaled document is not a JS
 // derived from a struct field name, so it stays correct across omitempty,
 // json:"-", and embedded-struct promotion. Label is humanizeKey(Key), used
 // only for the top-level rendering. Value is the rendered scalar (empty for
-// a container-valued key). Rows is one rendered line per array element, or
-// a single rendered line for an object-valued key; nil for a scalar key.
+// a container-valued key). Rows is one rendered line per array element; a
+// single rendered line for an object-valued key whose rendering is
+// non-empty; zero rows (non-nil) when it renders empty, e.g. `{}`; nil for
+// a scalar key.
 type viewField struct {
 	Key   string
 	Label string
@@ -104,7 +106,11 @@ func viewFields(doc any) ([]viewField, error) {
 			if err != nil {
 				return nil, err
 			}
-			field.Rows = []string{row}
+			if row == "" {
+				field.Rows = []string{}
+			} else {
+				field.Rows = []string{row}
+			}
 		default:
 			field.Value = viewScalar(raw)
 		}
