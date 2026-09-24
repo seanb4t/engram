@@ -21,7 +21,7 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-24 after Phase 4 of milestone 2026-09-22.01)
+See: .planning/PROJECT.md (updated 2026-09-24 after Phase 5 of milestone 2026-09-22.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 **Current focus:** Phase 5 — Operator Correctness
@@ -493,6 +493,7 @@ Both prior entries were delivered and had simply never been closed out:
   Phase 3–5 `phase.complete` calls. It also left STATE.md `progress.completed_phases` at 1, fixed by hand to 2.
 - **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — none remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
 - **[Phase 4] (2026-09-22.01):** `phase.complete 4` mis-targeted a shipped v0.12.x ROADMAP progress row a fourth time (`yzmfesbsg0`) — hand-corrected; hand-verify again after the Phase 5 call. It again left `progress.completed_phases` at 3 (percent 60), fixed by hand to 4 (80) in the transition. Phase 4's code changes (`internal/store/store.go`, `internal/store/rerank.go`, `internal/server/tools.go`) re-staled earlier phases' VERIFICATION.md fingerprints: `isPhaseComplete` now reads Phases 1, 2 and 3 as `stale` (Phase 4 `passed`), which is why `roadmap.analyze` reports them `partial` — re-verify every stale phase (`/gsd-verify-work 01`/`02`/`03`) before the milestone audit. engram record `xhg7dgmqx4` notes the cross-phase key-link drift.
+- **[Phase 5] (2026-09-22.01):** `phase.complete 5` mis-targeted a shipped v0.12.x ROADMAP progress row a fifth time (`yzmfesbsg0`) — hand-corrected, and the Phase 5 row set to 5/5 Complete; it again left `progress.completed_phases` at 4 (percent 80), fixed by hand to 5 (100). Phases 1–4 VERIFICATION.md fingerprints now read `stale` (Phase 5 `passed`) — re-verify each before the milestone audit.
 
 ### Quick Tasks Completed
 

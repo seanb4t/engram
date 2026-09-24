@@ -22,7 +22,7 @@ because of unbounded size. Seven phases (1–7); 37 plans, 87 tasks, 20/20 requi
 audit `tech_debt` (0 blockers, Nyquist 7/7, security 7/7). Full detail in
 `.planning/milestones/2026-09-18.01-ROADMAP.md`.
 
-**Active milestone — 2026-09-22.01 — Typed Decisions & Recall Ranking** — Phases 1–4 of 5 complete
+**Active milestone — 2026-09-22.01 — Typed Decisions & Recall Ranking** — Phases 1–5 of 5 complete
 (2026-09-24); see Current Milestone below.
 
 ## Current Milestone: 2026-09-22.01 Typed Decisions & Recall Ranking
@@ -601,6 +601,11 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **RANK-03** — opt-in `ENGRAM_SEARCH_RANKER=jev` (default `lexical`; `jev` requires `ENGRAM_DECISIONS_PROVIDER`, else `Config.Validate` fails) stable-sorts the lexical-ranked `CandidateK` pool by Jev P(relevant) in one Decisions request via a server-held `store.RankHook`, after the pinned `rankCandidates` step, then truncates to k; a dedicated no-retry client (`jev.WithNoRetry`) bounded by `ENGRAM_SEARCH_RERANK_TIMEOUT` (2s) falls back to exactly the lexical order on any failure and the search still succeeds; `search_discovery` gets the same opt-in path (`SearchDiscoveryReranked`) with its default unchanged; Helm `memory.search.*` (D-10). Live eval: Jev paraphrase recall@8 1.000 / MRR 0.883 vs lexical 0.950 / 0.817 vs vector-only 1.000 / 0.579, #261 at rank 1, 0/26 fallbacks at 2s (`04-EVAL-JEV.md`); shipped opt-in regardless (D-02) — 2026-09-22.01 Phase 4
 - ✓ **RANK-04** — with the Jev ranker on, every hit carries an omitempty `relevance` probability (0–1) beside the cosine `score` on MCP `search_memory`/`search_discovery`, Connect (`optional double relevance = 31`) and `engram search` (a data-derived RELEVANCE column); absent when the ranker did not run or fell back. Per-hit only (D-06): no-answer queries score 0.01–0.03 — 2026-09-22.01 Phase 4
 - ✓ **RANK-05** — `internal/relevance` builds the decision state from summary + content head at 600 chars/candidate, shrinking uniformly (floor 100) so query + up to 100 candidates stay under a 28k-token estimate, inside Jev's 32k context at the recall maximum — 2026-09-22.01 Phase 4
+- ✓ **OPS-01** — the exit-code baseline isolates itself from ambient env: `neutralizeEnvDerivedFlagDefaults` blanks env-derived flag defaults and values (string, and via `pflag.SliceValue.Replace` for `setup --runtime`/`--header`) with a cleanup restore, so `TestExitCodeBaseline` passes with `ENGRAM_REINDEX_TARGET`/`ENGRAM_MIGRATE_OWNER`/`ENGRAM_RUNTIME`/`ENGRAM_HEADERS` set; test-only (#476) — 2026-09-22.01 Phase 5
+- ✓ **OPS-02** — `viewFields`' bare nested-object branch is pinned by a direct test; an empty nested object renders zero rows, and a blank array element renders its compact JSON literal so it keeps its row (#504) — 2026-09-22.01 Phase 5
+- ✓ **OPS-03** — `ParsePlanKeyLinks` skips fieldless key_links items, while the satisfiability scanner still reads the raw items so malformed entries stay reported (#502) — 2026-09-22.01 Phase 5
+- ✓ **OPS-04** — `TestMigrateBelowCursorInsertConverges` covers a record inserted mid-sweep below the migrate cursor, asserting convergence on a later pass with no production change (#501) — 2026-09-22.01 Phase 5
+- ✓ **OPS-05** — `guides/cli.md` §Operator commands lists `migrate` (with `status`/`revert`) and `setup`, gated by a docs test derived from the live `operatorCommands()` tree (#503) — 2026-09-22.01 Phase 5
 
 ### Active
 
@@ -630,6 +635,7 @@ Milestone 2026-09-22.01 (Typed Decisions & Recall Ranking) — scoped requiremen
 - [ ] **`seanb4t/homebrew-tap` cask DSL deprecation** — `uninstall_postflight` → `uninstall_postflight_steps` (warned twice on the v0.17.0 upgrade).
 - [ ] **`curating-spine` skill ignores the verdict object** (2026-09-22.01 Phase 3) — consolidate now emits an advisory nested `verdict` per pair, but the skill does not yet read it; teach it to read `relation`/`probabilities`/`needs_review` as a prior while keeping its explicit-consent contract unchanged. No GitHub issue filed yet.
 - [ ] **Response-level "nothing relevant" signal for search** (2026-09-22.01 Phase 4, D-06) — the Jev ranker ships per-hit `relevance` only; a response-level `no_relevant_results` flag or threshold was declined for now, as was an eval bar gating the opt-in (D-02). The live no-answer values (0.01–0.03) are the evidence base if it is revisited. No GitHub issue filed yet.
+- [ ] **Operator text view does not sanitize JSON object keys** (2026-09-22.01 Phase 5 security audit, informational) — keys print raw in `viewRow`/`flattenObject`/`humanizeKey`; no user-controlled key reaches them today (struct tags and proto field names only), but a future `map<>`/`Struct` field would print control characters unsanitized. Sanitize keys and add a hostile-key test. No GitHub issue filed yet.
 
 > **Closed by v0.13.x:** the two-tier CLI error model gap (Phase 1 unified the taxonomy rather than
 > documenting a boundary — what #467 actually asked for), the v0.12.x Nyquist `VALIDATION.md`
@@ -1035,4 +1041,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-24 after Phase 4 (Jev Reranker & Per-Hit Relevance Signal) of milestone 2026-09-22.01*
+*Last updated: 2026-09-24 after Phase 5 (Operator Correctness) of milestone 2026-09-22.01*
