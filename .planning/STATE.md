@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 4
 current_phase_name: Jev Reranker & Per-Hit Relevance Signal
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-09-24T14:21:43.048Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-09-24T14:34:26.954Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 4 execution started
-state_head: 14e080608809689f63537077af3954ff3f7b3abb
+state_head: 04a632ea7fc0c8cec1bf11ce9d50620eb0a0d443
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 33
-  completed_plans: 23
+  total_plans: 35
+  completed_plans: 24
   percent: 60
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-24 after Phase 3 of milestone 2026-09
 ## Current Position
 
 Phase: 4 (Jev Reranker & Per-Hit Relevance Signal) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-09-24 — Phase 4 execution started
 
@@ -406,6 +406,8 @@ milestone needs in working memory.
 - [Phase 3]: 03-08: Fixed a within-phase task lint:yaml failure (Taskfile.yaml eval:curation desc over yamlfmt's 120-char cap, introduced by 03-07) via an isolated yamlfmt reflow, committed separately from both plan tasks. — Rule 1 auto-fix; failure blocked the phase gate this plan's Task 2 must leave green.
 - [Phase 3]: Phase 3 shipped CUR-01..CUR-04: consolidate verdicts are default-on when ENGRAM_DECISIONS_PROVIDER is set (--no-verdicts suppresses), advisory, and read-only by construction; live D-03 gate PASS 40/40 at p>=0.9, Brier 0.138, with updates the main confusion sink — Phase 4's reranker should reuse the same shape: one internal/* package owning the question set, called by both the product path and the gated eval
 - [Phase 4]: Proto relevance field uses optional double (not float) per PLAN.md's explicit flagged assumption, matching the MCP float64 exactly.
+- [Phase 4]: Task 1's RANK-05 budget suite (10 tests) passed against plan 04-01's NewRequest/EstimateTokens with no implementation change needed.
+- [Phase 4]: Task 2 RED-first closed D-03's malformed-answer gap: FromResponse now rejects NaN/+/-Inf and out-of-[0,1] probabilities via math.IsNaN/IsInf, mapped to the existing ErrDecisionMalformedResponse Kind.
 
 ### Pending Todos
 
@@ -498,8 +500,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T14:21:39.376Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-09-24T14:34:26.915Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -689,6 +691,7 @@ Resume file: None
 | Phase 3 P07 | ~40min | 3 tasks | 11 files |
 | Phase 3 P8 | 35 min | 2 tasks | 3 files |
 | Phase 04 P01 | 18min | 2 tasks | 21 files |
+| Phase 04-jev-reranker-per-hit-relevance-signal P02 | 10min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
