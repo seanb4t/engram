@@ -846,3 +846,62 @@ func TestViewFieldsEmptyNestedObjectRendersNoRows(t *testing.T) {
 		assertViewIdentity(t, "empty-nested-wrapper", doc)
 	})
 }
+
+// TestViewFieldsBlankArrayElementKeepsItsRow pins the array-element branch
+// of viewFields (the `case '[':` element loop): an element whose rendering
+// is blank must still contribute exactly one row, so the element count
+// stays honest, and that row must not be whitespace-only. The row falls back
+// to the element's own compact JSON literal.
+func TestViewFieldsBlankArrayElementKeepsItsRow(t *testing.T) {
+	type omitEmptyItem struct {
+		Name string `json:"name,omitempty"`
+	}
+	type blankElemsDoc struct {
+		Items []omitEmptyItem `json:"items"`
+		Tags  []string        `json:"tags"`
+		Grid  [][]int         `json:"grid"`
+		Any   []any           `json:"any"`
+	}
+	doc := blankElemsDoc{
+		Items: []omitEmptyItem{{}, {Name: "x"}},
+		Tags:  []string{"", "a", " \n"},
+		Grid:  [][]int{{}},
+		Any:   []any{nil},
+	}
+
+	fields, err := viewFields(doc)
+	if err != nil {
+		t.Fatalf("viewFields: %v", err)
+	}
+	want := map[string][]string{
+		"items": {"{}", "name=x"},
+		"tags":  {`""`, "a", `" \n"`},
+		"grid":  {"[]"},
+		"any":   {"null"},
+	}
+	for _, f := range fields {
+		w := want[f.Key]
+		if len(f.Rows) != len(w) {
+			t.Errorf("%s.Rows = %q, want %q", f.Key, f.Rows, w)
+			continue
+		}
+		for i := range w {
+			if f.Rows[i] != w[i] {
+				t.Errorf("%s.Rows[%d] = %q, want %q", f.Key, i, f.Rows[i], w[i])
+			}
+		}
+	}
+
+	assertViewIdentity(t, "blank-array-elements", doc)
+
+	var buf bytes.Buffer
+	if err := renderOperatorView(&buf, "headline", doc); err != nil {
+		t.Fatalf("renderOperatorView: %v", err)
+	}
+	out := buf.String()
+	for _, line := range strings.Split(out, "\n") {
+		if line != "" && strings.TrimSpace(line) == "" {
+			t.Errorf("rendered output %q contains a whitespace-only line %q", out, line)
+		}
+	}
+}

@@ -83,22 +83,31 @@ func viewFields(doc any) ([]viewField, error) {
 			}
 			rows := make([]string, 0, len(elems))
 			for _, elem := range elems {
+				var row string
 				switch valueKind(elem) {
 				case '{':
-					row, err := viewRow(elem)
+					row, err = viewRow(elem)
 					if err != nil {
 						return nil, err
 					}
-					rows = append(rows, row)
 				case '[':
 					parts, err := flattenNested("", elem)
 					if err != nil {
 						return nil, err
 					}
-					rows = append(rows, strings.Join(parts, " "))
+					row = strings.Join(parts, " ")
 				default:
-					rows = append(rows, viewScalar(elem))
+					row = viewScalar(elem)
 				}
+				// An element whose rendering is blank ({}, [], "", null, or
+				// a string of only whitespace/control bytes) would print as a
+				// whitespace-only line. Dropping it would misstate the
+				// element count, so it falls back to its own compact JSON
+				// literal instead, sanitized like every other value.
+				if strings.TrimSpace(row) == "" {
+					row = sanitizeViewValue(string(elem))
+				}
+				rows = append(rows, row)
 			}
 			field.Rows = rows
 		case '{':
