@@ -484,7 +484,27 @@ the result set actually answers the query.
   3. With the reranker enabled, MCP, Connect, and the CLI all carry a per-hit relevance probability, so a caller can tell when no hit answers the query
   4. The reranker's decision state (query plus candidates) stays within Jev's 32k-token context for candidate sets up to the recall maximum, via summaries or per-candidate truncation
 
-**Plans**: TBD
+**Plans:** 7 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — tracer: server-held `relevance.Hook` over a real jev client → `store.SearchReranked` (lexical step on the whole CandidateK pool, ONE Decisions request, stable sort, truncate) → `optional double relevance = 31` on Connect; store-composition edge suite (fallback matrix, ties, byte-identical nil hook, authz-scoped input, pool ≤ 100 at k=1000) (D-03–D-05, D-07, D-08; RANK-03, RANK-04, RANK-05)
+
+**Wave 2**
+
+- [ ] 04-02-PLAN.md — RANK-05 budget suite (28000-token estimate at 100 candidates for ASCII/CJK/emoji, boundary, floor, query cap, empty/single/duplicates) and RED-first provider-answer validation with content-free fallback logging (D-03, D-04, D-08; RANK-05, RANK-03)
+- [ ] 04-03-PLAN.md — `jev.WithNoRetry`, `ENGRAM_SEARCH_RANKER`/`ENGRAM_SEARCH_RERANK_TIMEOUT` registry rows and validation, configure-guide disclosure with a docs gate, dedicated no-retry search decider wired into deps, inert by default (D-01, D-09; RANK-03)
+- [ ] 04-04-PLAN.md — per-hit `relevance` on MCP compact results and the `engram search` RELEVANCE column/JSON field; MCP/Connect parity under the hook incl. cross_spine and no cross-owner leak (D-05–D-07; RANK-04, RANK-03)
+
+**Wave 3**
+
+- [ ] 04-05-PLAN.md — opt-in `Store.SearchDiscoveryReranked` (vector-order base, shipped-order fallback) behind the hook, relevance on both discovery lanes, MCP descriptions and reference docs (D-03, D-05–D-07; RANK-03, RANK-04)
+- [ ] 04-06-PLAN.md — retrieval eval's Jev slot enabled when a provider is configured, measured through the shipped composition, opt-in and outside the D-05 decision, with fallback counts and no-answer relevance lines (D-02; RANK-03)
+
+**Wave 4**
+
+- [ ] 04-07-PLAN.md — live `task eval:retrieval` with the Jev slot recorded verbatim with provenance (no ship bar), CLAUDE.md rows, full phase gate (D-02; RANK-03, RANK-04, RANK-05)
 
 ### Phase 5: Operator Correctness
 

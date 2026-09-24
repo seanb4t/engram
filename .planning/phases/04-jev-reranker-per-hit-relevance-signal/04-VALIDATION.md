@@ -42,15 +42,16 @@ Requirement → test coverage (from RESEARCH.md § Validation Architecture; plan
 
 | Requirement | Behavior | Test Type | Automated Command | File Exists | Status |
 |-------------|----------|-----------|-------------------|-------------|--------|
-| RANK-03 | Jev re-sorts lexical order; falls back to lexical on error/timeout; call succeeds | unit | `go test ./internal/store/ -run TestSearchRerankedWithRankHook -v` | ❌ W0 | ⬜ pending |
-| RANK-03 | `rankCandidates` still the D-05 winner (pin unchanged) | unit | `go test ./internal/store/ -run TestRankCandidatesIsTheD05Winner -v` | ✅ keep | ⬜ pending |
-| RANK-03 | MCP / Connect parity incl. jev-enabled fake decider | integration | `go test ./internal/server/ -run TestRerankParityMCPAndConnect -v` | ✅ extend | ⬜ pending |
-| RANK-03 | search_discovery default byte-identical; jev path reranks | unit | `go test ./internal/store/ ./internal/server/ -run 'Discovery' -v` | ❌ W0 | ⬜ pending |
-| RANK-04 | `relevance` on MCP JSON, Connect proto, CLI when jev succeeded; absent otherwise | unit + golden | `go test ./internal/server/ ./cmd/engram/ -run 'Relevance' -v` | ❌ W0 | ⬜ pending |
+| RANK-03 | Jev re-sorts lexical order; falls back to lexical on error/timeout; call succeeds | unit + integration | `go test ./internal/store/ -run '^TestRankWithHook' -v` and `go test ./internal/server/ -run '^(TestSearchRerankJevTracer\|TestSearchRerankNoRetryAndTimeout)$' -v` (plans 04-01, 04-03) | ❌ W0 | ⬜ pending |
+| RANK-03 | `rankCandidates` still the D-05 winner (pin unchanged) | unit | `go test ./internal/store/ -run '^TestRankCandidatesIsTheD05Winner$' -v` | ✅ keep | ⬜ pending |
+| RANK-03 | MCP / Connect parity incl. jev-enabled hook | integration | `go test ./internal/server/ -run '^TestRerankParityMCPAndConnect$' -v` (plan 04-04 adds five `jev_hook` subtests) | ✅ extend | ⬜ pending |
+| RANK-03 | search_discovery default byte-identical; jev path reranks | unit + integration | `go test ./internal/store/ -run '^TestSearchDiscoveryReranked' -v` and `go test ./internal/server/ -run '^(TestSearchDiscoveryDefaultPathUnchanged\|TestSearchDiscoveryRelevanceBothLanes)$' -v` (plan 04-05) | ❌ W0 | ⬜ pending |
+| RANK-04 | `relevance` on MCP JSON, Connect proto, CLI when jev succeeded; absent otherwise | unit | `go test ./internal/server/ -run '^(TestToRecallViewCarriesRelevance\|TestShapeRecallRelevanceFullAndCompact\|TestSearchRerankJevTracer)$' -v` and `go test ./cmd/engram/ -run '^(TestClientSearchTextOutputRelevanceColumn\|TestClientSearchJSONCarriesRelevance\|TestClientListNeverShowsRelevance)$' -v` (plans 04-01, 04-04) | ❌ W0 | ⬜ pending |
 | RANK-04 | Proto field additive | CI gate | `task proto:lint` + `go tool buf breaking --against '.git#branch=main'` | ✅ | ⬜ pending |
-| RANK-05 | Query + 100 candidates under the token budget | unit | `go test ./internal/store/ -run 'Budget' -v` | ❌ W0 | ⬜ pending |
-| D-01 | ranker=jev without provider fails validation | unit | `go test ./internal/config/ -run 'TestSearch' -v` | ❌ W0 | ⬜ pending |
-| D-09 | Search-path client never retries; sweep client still retries once | unit | `go test ./internal/decide/jev/ -run 'Retry' -v` | ❌ W0 | ⬜ pending |
+| RANK-05 | Query + 100 candidates under the token budget | unit | `go test ./internal/relevance/ -run '^(TestNewRequest\|TestEstimateTokensCeil)' -v` and `go test ./internal/store/ -run '^TestSearchRerankedRankHookPoolAtRecallMaximum$' -v` (plans 04-02, 04-01) | ❌ W0 | ⬜ pending |
+| D-01 | ranker=jev without provider fails validation | unit | `go test ./internal/config/ -run '^(TestSearchRegistryEntries\|TestSearchConfigValidate\|TestSearchVarsDocumented)$' -v` (plan 04-03) | ❌ W0 | ⬜ pending |
+| D-09 | Search-path client never retries; sweep client still retries once | unit | `go test ./internal/decide/jev/ -run '^TestJevNoRetryOption$' -v` and `go test ./internal/server/ -run '^TestDeciderFromConfigStillRetries$' -v` (plan 04-03) | ❌ W0 | ⬜ pending |
+| D-02 | Jev eval row opt-in, outside D-05 | unit | `go test ./internal/retrievaleval/ -run '^(TestEvalRankersJevEnabled\|TestDecideRanking)$' -v` (plan 04-06) | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
