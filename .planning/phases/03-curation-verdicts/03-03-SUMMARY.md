@@ -155,7 +155,7 @@ Each task was committed atomically:
 2. **Task 2: The rule's registration comment and the reference guide's sweep-leaf list** - `32fe5fd3` (docs)
 3. **Task 3: CLI guide, upgrade entry, and the curating-spine invocation line** - `019ed35e` (docs)
 
-**Plan metadata commit:** recorded separately after this SUMMARY is committed.
+**Plan metadata commit:** `e0eb1f1` (docs: complete plan)
 
 _Note: Task 1 is a `tdd="true"` tracer — the RED evidence (test-classification move causing 3 sweep-scope tests to fail) was captured before the guard and Usage string landed, then the guard, Usage change, and new precedence-proving test were committed together as one `fix` commit per the plan's own instruction ("commit as fix(consolidate): ...")._
 
