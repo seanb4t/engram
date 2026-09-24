@@ -28,6 +28,7 @@ type Config struct {
 	Summarize   SummarizeConfig   `koanf:"summarize"`
 	OpenAI      OpenAIConfig      `koanf:"openai"`
 	Decisions   DecisionsConfig   `koanf:"decisions"`
+	Search      SearchConfig      `koanf:"search"`
 	OIDC        OIDCConfig        `koanf:"oidc"`
 	ServiceAuth ServiceAuthConfig `koanf:"service_auth"`
 	UI          UIConfig          `koanf:"ui"`
@@ -245,6 +246,24 @@ type DecisionsConfig struct {
 	// characters, sent to the provider for each side of a consolidate
 	// candidate pair.
 	VerdictStateChars string `koanf:"verdict_state_chars"`
+}
+
+// SearchConfig selects the search-path (`search_memory`/`search_discovery`)
+// reranker (D-01, D-09). Values stay strings, like DecisionsConfig, and are
+// validated by Config.Validate only when Ranker is "jev".
+type SearchConfig struct {
+	// Ranker is "" or "lexical" (default, off) or "jev" (search-path
+	// reranking enabled). "jev" requires Decisions.Provider to be set — it
+	// reuses the decisions base URL, key and model, but never shares the
+	// consolidate-path client's retry (D-09).
+	Ranker string `koanf:"ranker"`
+	// RerankTimeout bounds a single search-path decision call
+	// (ENGRAM_SEARCH_RERANK_TIMEOUT, default "2s"). Dedicated to the
+	// synchronous search path, never Decisions.Timeout/MaxTimeout — a zero
+	// value here would resolve to the 10m decisions ceiling on a path that
+	// must return quickly (D-09), so it is validated strictly positive
+	// whenever Ranker is "jev".
+	RerankTimeout string `koanf:"rerank_timeout"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI

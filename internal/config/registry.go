@@ -128,6 +128,15 @@ var registry = []field{
 	{Key: "decisions.concurrency", Env: "ENGRAM_DECISIONS_CONCURRENCY", Default: "4"},
 	{Key: "decisions.verdict_threshold", Env: "ENGRAM_DECISIONS_VERDICT_THRESHOLD", Default: "0.9"},
 	{Key: "decisions.verdict_state_chars", Env: "ENGRAM_DECISIONS_VERDICT_STATE_CHARS", Default: "1500"},
+	// search.* (D-01, D-09): brand-new keys, no Legacy value (nothing retired
+	// to guard against) and no Flag (deployment-topology values, the same
+	// decisions.* rationale above). search.ranker="jev" requires
+	// ENGRAM_DECISIONS_PROVIDER and reuses its base URL, key and model — it
+	// is not a second provider selector. search.rerank_timeout is dedicated
+	// to the synchronous search path with no retry (D-09): sweeps keep
+	// ENGRAM_DECISIONS_TIMEOUT and their single retry, never this value.
+	{Key: "search.ranker", Env: "ENGRAM_SEARCH_RANKER", Default: "lexical"},
+	{Key: "search.rerank_timeout", Env: "ENGRAM_SEARCH_RERANK_TIMEOUT", Default: "2s"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
 	{Key: "oidc.audience", Env: "ENGRAM_OIDC_AUDIENCE", Legacy: "MEM_OIDC_AUDIENCE", Flag: "oidc-audience"},
 	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},

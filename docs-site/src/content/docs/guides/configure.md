@@ -160,7 +160,10 @@ Enabling it constructs and validates the client at startup. The provider is
 asked by
 [`engram spine-review consolidate`](/guides/cli/#spine-review-consolidate),
 which attaches an advisory relation verdict to each candidate pair by default
-whenever `ENGRAM_DECISIONS_PROVIDER` is set (`--no-verdicts` skips it).
+whenever `ENGRAM_DECISIONS_PROVIDER` is set (`--no-verdicts` skips it), and,
+when `ENGRAM_SEARCH_RANKER=jev` (see
+[Search reranking (Jev)](#search-reranking-jev) below), by every
+`search_memory`/`search_discovery` call.
 
 **Base URL.** `ENGRAM_DECISIONS_BASE_URL` is required when the provider is
 enabled, and it deliberately does **not** inherit `ENGRAM_OPENAI_BASE_URL` —
@@ -214,6 +217,39 @@ the operation that asked for it.
 | `ENGRAM_DECISIONS_VERDICT_STATE_CHARS` | — | `1500` | How many characters of each record (its summary, then the head of its content) a `spine-review consolidate` verdict request sends; a positive integer |
 
 Source: `internal/config` (registry) + `internal/decide/jev` (the Jev client) + `internal/server/decider.go` (`deciderFromConfig`, the `ENGRAM_OPENAI_API_KEY` fallback).
+
+## Search reranking (Jev)
+
+`search_memory` and `search_discovery` can optionally be reordered by the
+typed-decision provider's probability that each candidate record answers the
+query, instead of the default lexical-overlap ranking. It is **off by
+default**: set `ENGRAM_SEARCH_RANKER=jev` to enable it. Enabling it reorders
+results and adds a per-hit `relevance` value; it requires
+`ENGRAM_DECISIONS_PROVIDER` to already be set and reuses its base URL, key
+and model — there is no separate provider selector for search. Lexical stays
+the default ranker.
+
+**What leaves your deployment.** On EVERY search while enabled: the query and,
+for up to 100 candidate records the caller can already read, each record's
+summary followed by the head of its content, 600 characters each (shrunk
+further if needed to fit the provider's context). This is the same provider
+and data policy as the [Typed decisions](#typed-decisions-jev) section above —
+see its **What leaves your deployment** paragraph for the destination and
+retention policy.
+
+**Failure behavior.** One request per search, bounded by
+`ENGRAM_SEARCH_RERANK_TIMEOUT`, with no retry (unlike the consolidate path's
+single retry). On any failure — timeout, error, or malformed answer — the
+search still succeeds and falls back to the default lexical order, with no
+`relevance` values attached. Startup logs `search reranking enabled` when the
+ranker is `jev`.
+
+| Environment variable | Flag | Default | Description |
+|---------------------|------|---------|-------------|
+| `ENGRAM_SEARCH_RANKER` | — | `lexical` | Search-path reranker; empty or `lexical` keeps today's ranking, `jev` reorders by relevance (requires `ENGRAM_DECISIONS_PROVIDER`) |
+| `ENGRAM_SEARCH_RERANK_TIMEOUT` | — | `2s` | Per-search decision call timeout; dedicated to the search path (never shared with `ENGRAM_DECISIONS_TIMEOUT`). Must be strictly positive when the ranker is `jev` |
+
+Source: `internal/config` (registry) + `internal/server/decider.go` (`searchDeciderFromConfig`, `searchRankHook`) + `internal/decide/jev` (`WithNoRetry`).
 
 ## OIDC / Auth
 

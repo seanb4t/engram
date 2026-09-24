@@ -367,6 +367,32 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// search.ranker (D-01): checked unconditionally, unlike search.rerank_timeout
+	// below — a typo in the ranker enum must fail startup even when reranking
+	// is otherwise off.
+	if c.Search.Ranker != "" && c.Search.Ranker != "lexical" && c.Search.Ranker != "jev" {
+		errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RANKER %q: must be empty, \"lexical\", or \"jev\"", c.Search.Ranker))
+	}
+
+	// Gated on the ranker being "jev": a deployment that never sets
+	// ENGRAM_SEARCH_RANKER=jev validates byte-identically to before this
+	// block existed.
+	if c.Search.Ranker == "jev" {
+		if c.Decisions.Provider == "" {
+			errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RANKER=jev requires ENGRAM_DECISIONS_PROVIDER to be set (naming both: ENGRAM_SEARCH_RANKER=%q, ENGRAM_DECISIONS_PROVIDER=%q)", c.Search.Ranker, c.Decisions.Provider))
+		}
+
+		// search.rerank_timeout: UNLIKE decisions.timeout, zero is always
+		// rejected — a zero here would resolve to the 10m decisions max-timeout
+		// ceiling on the synchronous search path, which is unacceptable (D-09).
+		switch d, err := time.ParseDuration(c.Search.RerankTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RERANK_TIMEOUT %q: must be a Go duration (e.g. 2s, 500ms): %w", c.Search.RerankTimeout, err))
+		case d <= 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RERANK_TIMEOUT %q: must be a positive duration", c.Search.RerankTimeout))
+		}
+	}
+
 	// These three run unconditionally (not gated by Summarize.Model), since the
 	// fields carry safe defaults and the runtime "both model set AND on_write
 	// true" AND-gate (D-01) is decided later in buildDepsFromEnv, not here.
