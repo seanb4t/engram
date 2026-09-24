@@ -21,10 +21,10 @@ current_phase: 5
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-24 after Phase 5 of milestone 2026-09-22.01)
+See: .planning/PROJECT.md (updated 2026-09-24 after milestone 2026-09-22.01 — Typed Decisions & Recall Ranking)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 5 — Operator Correctness
+**Current focus:** Planning next milestone
 
 ## Current Position
 
