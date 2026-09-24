@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 3
 current_phase_name: Curation Verdicts
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-09-24T01:25:28.913Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-09-24T01:36:48.899Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 3 execution started
-state_head: 3944d5967da633a046989fd159f47270bff6e3f4
+state_head: caa46bcc3afbc64013e6d77b67283cb826a8eee3
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 22
-  completed_plans: 15
+  completed_plans: 16
   percent: 40
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09
 ## Current Position
 
 Phase: 3 (Curation Verdicts) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-09-23 — Phase 3 execution started
 
@@ -390,6 +390,8 @@ milestone needs in working memory.
 - [Phase 2]: WR-01 fixed (`e3a60dbd`): `decodeResponse` rejects an answer whose type mismatches the requested question; IN-01/IN-02 (deploy.md values table rows, UTF-8-safe error-body truncation) remain info-level
 - [Phase 3]: Deferred FromResult's malformed-answer validation to Task 3 (TDD RED-first), per plan sequencing — Task 1's tracer FromResult mapped answers verbatim with no validation; Task 3 wrote the edge-case test suite first against that code, confirmed RED on TestFromResultMalformed (5/5 subtests), then added the validation for GREEN
 - [Phase 3]: CUR-01/CUR-02 requirements not checked off in REQUIREMENTS.md by this plan — Both are shared with not-yet-executed sibling plans (03-02/03-05, 03-06); requirements.ready-ids correctly reports 0/2 ready under the shared-ID gate
+- [Phase 03]: ParseProbability rejects NaN/Inf via math.IsNaN/math.IsInf, not just the [0,1] range check — strconv.ParseFloat parses NaN/Inf without error, and a bare comparison against NaN is always false, so the range check alone would not catch it (T-03-12)
+- [Phase 03]: configure.md's disclosure rewrite links to /guides/cli/#spine-review-consolidate rather than re-describing consolidate inline — keeps the two docs pages from drifting independently
 
 ### Pending Todos
 
@@ -481,8 +483,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T01:25:28.878Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-09-24T01:36:48.863Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -664,6 +666,7 @@ Resume file: None
 | Phase 02-decision-interface-jev-backend P07 | 55min | 3 tasks | 6 files |
 | Phase 02-decision-interface-jev-backend P08 | ~46min | 2 tasks | 7 files |
 | Phase 3 P01 | 1h 11m | 3 tasks | 9 files |
+| Phase 03 P02 | 15min | 2 tasks | 6 files |
 
 ## Operator Next Steps
 
