@@ -241,6 +241,10 @@ type DecisionsConfig struct {
 	// advisory verdicts (a probability in [0, 1]), overridable per run by
 	// --verdict-threshold.
 	VerdictThreshold string `koanf:"verdict_threshold"`
+	// VerdictStateChars (D-09) is the per-record state length, in Unicode
+	// characters, sent to the provider for each side of a consolidate
+	// candidate pair.
+	VerdictStateChars string `koanf:"verdict_state_chars"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI

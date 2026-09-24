@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// decisionsField is one of the ten ENGRAM_DECISIONS_* registry rows (D-01,
-// D-02, D-08).
+// decisionsField is one of the eleven ENGRAM_DECISIONS_* registry rows
+// (D-01, D-02, D-08, D-09).
 type decisionsField struct {
 	key string
 	env string
@@ -18,7 +18,7 @@ type decisionsField struct {
 	get func(*Config) string
 }
 
-// decisionsFields is the ten-key table both TestDecisionsRegistryEntries
+// decisionsFields is the eleven-key table both TestDecisionsRegistryEntries
 // subtests drive, so no key is asserted by a hand-written one-off block.
 var decisionsFields = []decisionsField{
 	{"decisions.provider", "ENGRAM_DECISIONS_PROVIDER", "", func(c *Config) string { return c.Decisions.Provider }},
@@ -31,6 +31,7 @@ var decisionsFields = []decisionsField{
 	{"decisions.drain_timeout", "ENGRAM_DECISIONS_DRAIN_TIMEOUT", "2s", func(c *Config) string { return c.Decisions.DrainTimeout }},
 	{"decisions.concurrency", "ENGRAM_DECISIONS_CONCURRENCY", "4", func(c *Config) string { return c.Decisions.Concurrency }},
 	{"decisions.verdict_threshold", "ENGRAM_DECISIONS_VERDICT_THRESHOLD", "0.9", func(c *Config) string { return c.Decisions.VerdictThreshold }},
+	{"decisions.verdict_state_chars", "ENGRAM_DECISIONS_VERDICT_STATE_CHARS", "1500", func(c *Config) string { return c.Decisions.VerdictStateChars }},
 }
 
 // TestDecisionsRegistryEntries pins D-01/D-02: the registry carries exactly
@@ -104,15 +105,16 @@ func TestDecisionsRegistryEntries(t *testing.T) {
 func decisionsJevEnabled() *Config {
 	c := validConfig()
 	c.Decisions = DecisionsConfig{
-		Provider:         "jev",
-		BaseURL:          "https://openrouter.ai/api",
-		Model:            "typesafe/jev-1.13",
-		Timeout:          "10s",
-		MaxTimeout:       "10m",
-		DrainBytes:       "262144",
-		DrainTimeout:     "2s",
-		Concurrency:      "4",
-		VerdictThreshold: "0.9",
+		Provider:          "jev",
+		BaseURL:           "https://openrouter.ai/api",
+		Model:             "typesafe/jev-1.13",
+		Timeout:           "10s",
+		MaxTimeout:        "10m",
+		DrainBytes:        "262144",
+		DrainTimeout:      "2s",
+		Concurrency:       "4",
+		VerdictThreshold:  "0.9",
+		VerdictStateChars: "1500",
 	}
 	return c
 }
@@ -127,13 +129,14 @@ func TestDecisionsValidate(t *testing.T) {
 	t.Run("provider empty is inert even with every other field malformed (E01)", func(t *testing.T) {
 		c := validConfig()
 		c.Decisions = DecisionsConfig{
-			Provider:         "",
-			BaseURL:          "ftp://",
-			Timeout:          "x",
-			MaxTimeout:       "0",
-			DrainBytes:       "-1",
-			Concurrency:      "0",
-			VerdictThreshold: "garbage",
+			Provider:          "",
+			BaseURL:           "ftp://",
+			Timeout:           "x",
+			MaxTimeout:        "0",
+			DrainBytes:        "-1",
+			Concurrency:       "0",
+			VerdictThreshold:  "garbage",
+			VerdictStateChars: "0",
 		}
 		if err := c.Validate(); err != nil {
 			t.Fatalf("Validate() = %v, want nil (provider empty disables the whole decisions block)", err)
@@ -185,6 +188,11 @@ func TestDecisionsValidate(t *testing.T) {
 		{"verdict_threshold NaN rejected", func(c *Config) { c.Decisions.VerdictThreshold = "NaN" }, true, "ENGRAM_DECISIONS_VERDICT_THRESHOLD"},
 		{"verdict_threshold zero accepted", func(c *Config) { c.Decisions.VerdictThreshold = "0" }, false, ""},
 		{"verdict_threshold one accepted", func(c *Config) { c.Decisions.VerdictThreshold = "1" }, false, ""},
+		{"verdict_state_chars zero rejected", func(c *Config) { c.Decisions.VerdictStateChars = "0" }, true, "ENGRAM_DECISIONS_VERDICT_STATE_CHARS"},
+		{"verdict_state_chars negative rejected", func(c *Config) { c.Decisions.VerdictStateChars = "-5" }, true, "ENGRAM_DECISIONS_VERDICT_STATE_CHARS"},
+		{"verdict_state_chars non-numeric rejected", func(c *Config) { c.Decisions.VerdictStateChars = "abc" }, true, "ENGRAM_DECISIONS_VERDICT_STATE_CHARS"},
+		{"verdict_state_chars one accepted", func(c *Config) { c.Decisions.VerdictStateChars = "1" }, false, ""},
+		{"verdict_state_chars 1500 accepted", func(c *Config) { c.Decisions.VerdictStateChars = "1500" }, false, ""},
 		{"valid control, no mutation", func(*Config) {}, false, ""},
 	}
 	for _, tc := range cases {

@@ -111,11 +111,12 @@ var registry = []field{
 	// success-path response-bytes bound is an internal constant in
 	// internal/decide/jev, not a registry row (RESEARCH.md Pitfall 4).
 	//
-	// decisions.verdict_threshold (D-08) is consumed by the operator CLI's
-	// verdict pass (spine-review consolidate), not the server: env-only like
-	// its siblings above, since operator commands load config with no flag
-	// overlay (config.Load(nil)); --verdict-threshold (plan 03-05) is a
-	// command-local override, not a second config source.
+	// decisions.verdict_threshold (D-08) and decisions.verdict_state_chars
+	// (D-09) are consumed by the operator CLI's verdict pass (spine-review
+	// consolidate), not the server: env-only like their siblings above, since
+	// operator commands load config with no flag overlay (config.Load(nil));
+	// --verdict-threshold (plan 03-05) is a command-local override, not a
+	// second config source.
 	{Key: "decisions.provider", Env: "ENGRAM_DECISIONS_PROVIDER"},
 	{Key: "decisions.base_url", Env: "ENGRAM_DECISIONS_BASE_URL"},
 	{Key: "decisions.api_key", Env: "ENGRAM_DECISIONS_API_KEY"},
@@ -126,6 +127,7 @@ var registry = []field{
 	{Key: "decisions.drain_timeout", Env: "ENGRAM_DECISIONS_DRAIN_TIMEOUT", Default: "2s"},
 	{Key: "decisions.concurrency", Env: "ENGRAM_DECISIONS_CONCURRENCY", Default: "4"},
 	{Key: "decisions.verdict_threshold", Env: "ENGRAM_DECISIONS_VERDICT_THRESHOLD", Default: "0.9"},
+	{Key: "decisions.verdict_state_chars", Env: "ENGRAM_DECISIONS_VERDICT_STATE_CHARS", Default: "1500"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
 	{Key: "oidc.audience", Env: "ENGRAM_OIDC_AUDIENCE", Legacy: "MEM_OIDC_AUDIENCE", Flag: "oidc-audience"},
 	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},

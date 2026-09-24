@@ -357,6 +357,14 @@ func (c *Config) Validate() error {
 		if _, err := ParseProbability(c.Decisions.VerdictThreshold); err != nil {
 			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_VERDICT_THRESHOLD %q: %w", c.Decisions.VerdictThreshold, err))
 		}
+
+		// decisions.verdict_state_chars (D-09): always positive, like
+		// decisions.concurrency above — no "0 means unbounded" escape hatch
+		// (an unbounded per-record state would defeat the byte-budget
+		// discipline this knob exists to enforce).
+		if _, err := ParsePositiveIntCap(c.Decisions.VerdictStateChars); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_VERDICT_STATE_CHARS %q: %w", c.Decisions.VerdictStateChars, err))
+		}
 	}
 
 	// These three run unconditionally (not gated by Summarize.Model), since the

@@ -156,9 +156,11 @@ through OpenRouter's Decisions API) yes/no, multiple-choice, and scored
 questions about a piece of state, and get back probabilities. It is **off by
 default**: set `ENGRAM_DECISIONS_PROVIDER=jev` to enable it. Answers are
 **advisory** — they are surfaced to you and never acted on automatically.
-Enabling it constructs and validates the client at startup; the features that
-actually ask it questions ship separately and will name this setting when
-they do.
+Enabling it constructs and validates the client at startup. The provider is
+asked by
+[`engram spine-review consolidate`](/guides/cli/#spine-review-consolidate),
+which attaches an advisory relation verdict to each candidate pair by default
+whenever `ENGRAM_DECISIONS_PROVIDER` is set (`--no-verdicts` skips it).
 
 **Base URL.** `ENGRAM_DECISIONS_BASE_URL` is required when the provider is
 enabled, and it deliberately does **not** inherit `ENGRAM_OPENAI_BASE_URL` —
@@ -184,9 +186,11 @@ is `memory.decisions.apiKeySecret`.
 **What leaves your deployment.** Each decision call sends the state and
 questions a feature builds (for curation and reranking features, that is
 memory record content) to OpenRouter, which routes Jev to **TypeSafe** (a
-service on the US West Coast). The provider's policy: no training on inputs,
-standard retention, and zero data retention not confirmed. Enable this only
-if that is acceptable for the records in your store.
+service on the US West Coast). For `spine-review consolidate`, each request
+carries both records' summary plus up to `ENGRAM_DECISIONS_VERDICT_STATE_CHARS`
+characters of content. The provider's policy: no training on inputs, standard
+retention, and zero data retention not confirmed. Enable this only if that is
+acceptable for the records in your store.
 
 **Failure behavior.** Each call is bounded by `ENGRAM_DECISIONS_TIMEOUT` (one
 retry on 429/5xx inside that budget) and by response-size and drain bounds.
@@ -207,6 +211,7 @@ the operation that asked for it.
 | `ENGRAM_DECISIONS_DRAIN_TIMEOUT` | — | `2s` | Time bound on the same post-response drain, paired with the byte bound above. `0` skips the drain entirely |
 | `ENGRAM_DECISIONS_CONCURRENCY` | — | `4` | Caps how many decision calls one batch runs at once |
 | `ENGRAM_DECISIONS_VERDICT_THRESHOLD` | — | `0.9` | The probability below which a `spine-review consolidate` verdict is marked `needs_review`; a probability between 0 and 1. `--verdict-threshold` overrides it for one run |
+| `ENGRAM_DECISIONS_VERDICT_STATE_CHARS` | — | `1500` | How many characters of each record (its summary, then the head of its content) a `spine-review consolidate` verdict request sends; a positive integer |
 
 Source: `internal/config` (registry) + `internal/decide/jev` (the Jev client) + `internal/server/decider.go` (`deciderFromConfig`, the `ENGRAM_OPENAI_API_KEY` fallback).
 
