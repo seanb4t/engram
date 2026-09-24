@@ -64,7 +64,7 @@ func TestLoadLocalPairsRejects(t *testing.T) {
 	cases := []struct {
 		name       string
 		content    *string // nil means "file does not exist"
-		wantLineNo int      // 0 means no line number is expected in the error
+		wantLineNo int     // 0 means no line number is expected in the error
 	}{
 		{"missing_file", nil, 0},
 		{"empty_file", strPtr(""), 0},

@@ -906,7 +906,7 @@ func TestSpineReviewConsolidateFailurePolicy(t *testing.T) {
 	}
 	fake := &spineConsolidateFakeStore{pairs: pairs, states: states}
 	dec := &scriptedFakeDecider{results: []decide.Result{
-		verdictSuccessResult(verdict.Duplicate, 0.99), // pair0: success
+		verdictSuccessResult(verdict.Duplicate, 0.99),         // pair0: success
 		{Err: &decide.Error{Kind: decide.ErrDecisionAuth}},    // pair1: auth
 		{Err: &decide.Error{Kind: decide.ErrDecisionTimeout}}, // pair3: timeout (pair2 never reaches the decider)
 	}}

@@ -425,7 +425,7 @@ func verdictDoc(v verdict.Verdict) consolidateVerdictDoc {
 // deterministic rendering (verdictSummaryLine) sorts the keys itself.
 type verdictOutcome struct {
 	Requested, Answered, NeedsReview int
-	FailuresByClass                 map[string]int
+	FailuresByClass                  map[string]int
 }
 
 // verdictStats reduces verdicts (index-aligned with the pairs runVerdictPass
