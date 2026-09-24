@@ -58,6 +58,12 @@ Not in this phase: changing the default ranker (lexical stays default), a respon
   search path**; on timeout/error the call falls back to lexical order and still succeeds. Sweeps
   (consolidate) keep the decisions timeout and single retry.
 
+### Helm (added 2026-09-24 after planning, user-confirmed)
+- **D-10:** Expose the search ranker in the **Helm chart**: `memory.search.ranker` (default
+  `lexical`) and `memory.search.rerankTimeout`, rendered as `ENGRAM_SEARCH_RANKER` /
+  `ENGRAM_SEARCH_RERANK_TIMEOUT` and gated like the existing `memory.decisions` block, so the
+  **default render stays byte-identical**; `task chart:validate` checksum and deploy docs updated.
+
 ### Claude's Discretion
 - Exact per-candidate budget and token-estimate constants within D-08; Noul question wording
   (start from spike 004's criteria); how `search_discovery`'s ranking path is threaded to the same
