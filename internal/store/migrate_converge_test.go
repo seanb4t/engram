@@ -440,16 +440,18 @@ func TestMigrateBelowCursorInsertConverges(t *testing.T) {
 	fires, triggerMatches, scrolls, writeIDs := h.snapshot()
 	cursor := h.triggerCursorID()
 
+	// These preconditions gate every subtest below, so they run in the
+	// parent: a t.Fatalf inside a subtest would end only that subtest, and
+	// a fixture that no longer produces a mid-pass scroll would then surface
+	// as a cascade of misleading sibling failures.
+	if fires != 1 {
+		t.Fatalf("h.fires = %d, want 1 — the fixture no longer produces a mid-pass scroll, every subtest would be vacuous", fires)
+	}
+	if cursor == "" {
+		t.Fatalf("recorded trigger cursor is empty (no Offset on the triggering request) — the fixture no longer produces a mid-pass scroll, every subtest would be vacuous")
+	}
+
 	t.Run("the insert landed below the advanced cursor", func(t *testing.T) {
-		// This subtest gates every other one below: if the fixture no
-		// longer produces a mid-pass scroll, every other subtest would be
-		// vacuous.
-		if fires != 1 {
-			t.Fatalf("h.fires = %d, want 1 — the fixture no longer produces a mid-pass scroll, every other subtest would be vacuous", fires)
-		}
-		if cursor == "" {
-			t.Fatalf("recorded trigger cursor is empty (no Offset on the triggering request) — the fixture no longer produces a mid-pass scroll, every other subtest would be vacuous")
-		}
 		if !slices.Contains(seededIDs, cursor) {
 			t.Errorf("recorded trigger cursor %q is not one of the seeded ids %v — the fixture no longer produces a mid-pass scroll as expected", cursor, seededIDs)
 		}
