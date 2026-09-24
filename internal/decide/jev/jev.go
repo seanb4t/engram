@@ -95,6 +95,9 @@ type Client struct {
 	// Tests override this field directly (same package) to avoid sleeping
 	// the production jitter.
 	retryDelay func() time.Duration
+	// noRetry disables D-11's single retry entirely when set via
+	// WithNoRetry — see that Option's doc comment.
+	noRetry bool
 }
 
 // Option customizes a Client.
@@ -160,6 +163,15 @@ func WithMaxResponseBytes(n int64) Option {
 // no "0 means disabled" semantics.
 func WithConcurrency(n int) Option {
 	return func(c *Client) { c.concurrency = n }
+}
+
+// WithNoRetry disables D-11's single retry entirely. A caller on a
+// latency-bound synchronous path (search reranking, D-09) gets exactly one
+// attempt inside its timeout budget instead of risking a second attempt
+// eating into an already-tight deadline; sweeps and other batch callers keep
+// the retry by simply not passing this option.
+func WithNoRetry() Option {
+	return func(c *Client) { c.noRetry = true }
 }
 
 // New returns a Jev Client for the given base URL, API key, and model. An
@@ -297,7 +309,7 @@ func (c *Client) Decide(ctx context.Context, req decide.Request) (resp decide.Re
 	}
 
 	resp, err = c.attempt(ctx, body, req)
-	if err != nil && isRetryable(err) {
+	if err != nil && !c.noRetry && isRetryable(err) {
 		if dl, ok := ctx.Deadline(); ok {
 			d := c.retryDelay()
 			if time.Until(dl) > d {

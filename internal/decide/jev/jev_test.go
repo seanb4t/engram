@@ -29,6 +29,116 @@ func oneNoulRequest() decide.Request {
 // production jitter (per this plan's Executor notes).
 func noRetryDelay(c *Client) { c.retryDelay = func() time.Duration { return 0 } }
 
+// TestJevNoRetryOption proves D-09's client half: a Client built with
+// WithNoRetry() makes exactly ONE HTTP attempt on a retryable failure and
+// returns the classified error, even though the same handler would have
+// succeeded on a second attempt; a default Client (no WithNoRetry) against
+// the identical handler still retries once, per D-11.
+func TestJevNoRetryOption(t *testing.T) {
+	t.Run("503_once", func(t *testing.T) {
+		var n int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if atomic.AddInt32(&n, 1) == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(fixtureOpenRouter503))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fixtureNoulOK))
+		}))
+		defer srv.Close()
+
+		c := New(srv.URL, "k", "m", WithNoRetry())
+		noRetryDelay(c)
+		_, err := c.Decide(context.Background(), oneNoulRequest())
+		if !errors.Is(err, decide.ErrDecisionUnavailable) {
+			t.Errorf("err = %v, want ErrDecisionUnavailable", err)
+		}
+		if got := atomic.LoadInt32(&n); got != 1 {
+			t.Errorf("requests = %d, want 1", got)
+		}
+	})
+
+	t.Run("429_once", func(t *testing.T) {
+		var n int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if atomic.AddInt32(&n, 1) == 1 {
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = w.Write([]byte(fixtureOpenRouter429))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fixtureNoulOK))
+		}))
+		defer srv.Close()
+
+		c := New(srv.URL, "k", "m", WithNoRetry())
+		noRetryDelay(c)
+		_, err := c.Decide(context.Background(), oneNoulRequest())
+		if !errors.Is(err, decide.ErrDecisionRateLimited) {
+			t.Errorf("err = %v, want ErrDecisionRateLimited", err)
+		}
+		if got := atomic.LoadInt32(&n); got != 1 {
+			t.Errorf("requests = %d, want 1", got)
+		}
+	})
+
+	t.Run("dropped_connection_once", func(t *testing.T) {
+		var n int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if atomic.AddInt32(&n, 1) == 1 {
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					t.Fatal("ResponseWriter does not support Hijacker")
+				}
+				conn, _, herr := hj.Hijack()
+				if herr != nil {
+					t.Fatalf("Hijack: %v", herr)
+				}
+				_ = conn.Close() // abrupt close, no response written
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fixtureNoulOK))
+		}))
+		defer srv.Close()
+
+		c := New(srv.URL, "k", "m", WithNoRetry())
+		noRetryDelay(c)
+		_, err := c.Decide(context.Background(), oneNoulRequest())
+		if !errors.Is(err, decide.ErrDecisionUnavailable) {
+			t.Errorf("err = %v, want ErrDecisionUnavailable", err)
+		}
+		if got := atomic.LoadInt32(&n); got != 1 {
+			t.Errorf("requests = %d, want 1", got)
+		}
+	})
+
+	t.Run("default_client_still_retries", func(t *testing.T) {
+		var n int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if atomic.AddInt32(&n, 1) == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(fixtureOpenRouter503))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fixtureNoulOK))
+		}))
+		defer srv.Close()
+
+		c := New(srv.URL, "k", "m")
+		noRetryDelay(c)
+		_, err := c.Decide(context.Background(), oneNoulRequest())
+		if err != nil {
+			t.Fatalf("Decide: %v", err)
+		}
+		if got := atomic.LoadInt32(&n); got != 2 {
+			t.Errorf("requests = %d, want 2", got)
+		}
+	})
+}
+
 // TestJevRetryAndBounds proves D-11 (exactly one jittered retry, only on
 // 429/5xx or a non-timeout transport failure, inside the one timeout
 // budget) and DEC-04's success/error body bounds, by request count.
