@@ -52,6 +52,7 @@ Requirement → test coverage (from RESEARCH.md § Validation Architecture; plan
 | D-01 | ranker=jev without provider fails validation | unit | `go test ./internal/config/ -run '^(TestSearchRegistryEntries\|TestSearchConfigValidate\|TestSearchVarsDocumented)$' -v` (plan 04-03) | ❌ W0 | ⬜ pending |
 | D-09 | Search-path client never retries; sweep client still retries once | unit | `go test ./internal/decide/jev/ -run '^TestJevNoRetryOption$' -v` and `go test ./internal/server/ -run '^TestDeciderFromConfigStillRetries$' -v` (plan 04-03) | ❌ W0 | ⬜ pending |
 | D-02 | Jev eval row opt-in, outside D-05 | unit | `go test ./internal/retrievaleval/ -run '^(TestEvalRankersJevEnabled\|TestDecideRanking)$' -v` (plan 04-06) | ❌ W0 | ⬜ pending |
+| D-10 | Helm `memory.search.*` rows ranker-gated; default render byte-identical | chart | `task chart:validate` (plan 04-08 adds the search assertions and re-pins the checksum) | ✅ extend | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
