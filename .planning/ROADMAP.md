@@ -445,7 +445,7 @@ advisory signal, never as an automatic mutation.
   3. The relation question set (including `updates`) is measured on a labeled pair eval — committing no verbatim spine content — reporting accuracy by confidence bucket and a Brier score
   4. Running `consolidate` with neither `--scope` nor `--all-scopes` gets the scope-or-all-scopes rule error instead of a silent zero-candidate report
 
-**Plans:** 6/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -465,7 +465,7 @@ Plans:
 **Wave 4**
 
 - [x] 03-06-PLAN.md — text view renders verdicts through a sanitized row-field renderer hook; WR-02 guard rewritten into a hostile-leaf sanitization proof; CLI guide section with a docs gate (D-05, D-07, D-10; CUR-01)
-- [ ] 03-07-PLAN.md — gated `internal/curationeval` harness: shared-contract `evaluate`, buckets, Brier, integer D-03 gate, aggregate-only report, private local pair file, `task eval:curation` (D-01, D-03, D-06; CUR-03)
+- [x] 03-07-PLAN.md — gated `internal/curationeval` harness: shared-contract `evaluate`, buckets, Brier, integer D-03 gate, aggregate-only report, private local pair file, `task eval:curation` (D-01, D-03, D-06; CUR-03)
 
 **Wave 5**
 

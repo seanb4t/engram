@@ -5,16 +5,16 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 3
 current_phase_name: Curation Verdicts
 status: executing
-stopped_at: Completed 03-06-PLAN.md
-last_updated: "2026-09-24T04:23:53.384Z"
+stopped_at: Completed 03-07-PLAN.md
+last_updated: "2026-09-24T04:56:50.321Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 3 execution started
-state_head: cb33f7bbfdb9495d545804d68f6b81f3f2da7cb5
+state_head: e4fb72b02b39bd33e8af4fab23ee13881d99637d
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
   percent: 40
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-23 after Phase 2 of milestone 2026-09
 ## Current Position
 
 Phase: 3 (Curation Verdicts) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-09-23 — Phase 3 execution started
 
@@ -401,6 +401,7 @@ milestone needs in working memory.
 - [Phase 3]: 03-05: CUR-02 marked complete via the shared-ID gate (this plan + 03-02 were its only declaring plans); CUR-01 stays unflipped pending sibling plan 03-06
 - [Phase 3]: [Phase 3] 03-06: WR-02 closed structurally via registerRowFieldRenderer + a depth-unbounded generic sanitizing flatten (flattenNested), not a verdict-only special case — every future nested row field renders sanitized by construction.
 - [Phase 3]: [Phase 3] 03-06: consolidate_docs_test.go's positive control drops --no-verdicts (not related/unrelated) to avoid a substring false-negative, since 'related' is a literal substring of 'unrelated'.
+- [Phase 3]: curationeval: single koanf load resolves both ENGRAM_CURATION_EVAL and ENGRAM_CURATION_EVAL_PAIRS; evaluate() stays free of internal/server, taking threshold/stateChars as plain values
 
 ### Pending Todos
 
@@ -492,8 +493,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T04:23:22.277Z
-Stopped at: Completed 03-06-PLAN.md
+Last session: 2026-09-24T04:56:50.159Z
+Stopped at: Completed 03-07-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -680,6 +681,7 @@ Resume file: None
 | Phase 03 P04 | resumed session | 3 tasks | 6 files |
 | Phase 03 P05 | 49min | 3 tasks | 7 files |
 | Phase 03-curation-verdicts P06 | 23min | 3 tasks | 7 files |
+| Phase 3 P07 | ~40min | 3 tasks | 11 files |
 
 ## Operator Next Steps
 
