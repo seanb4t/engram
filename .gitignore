@@ -66,3 +66,6 @@ ui/**/__screenshots__/
 
 # Local MCP server wiring (machine-specific absolute paths; not shareable)
 .mcp.json
+
+# Private real-spine pair files for ENGRAM_CURATION_EVAL_PAIRS (D-01); never commit
+internal/curationeval/testdata/local/

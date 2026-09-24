@@ -125,7 +125,7 @@ func TestEvaluateAgainstStubProvider(t *testing.T) {
 // syntheticPairs through a real Decisions provider and requires at least
 // one scored verdict. Off by default (D-15) — see resolveEvalGate.
 func TestCurationEval(t *testing.T) {
-	enabled, _, gerr := curationEvalEnabled()
+	enabled, pairsPath, gerr := curationEvalEnabled()
 	if gerr != nil {
 		t.Fatalf("%v", gerr)
 	}
@@ -168,4 +168,32 @@ func TestCurationEval(t *testing.T) {
 			t.Errorf("gate result = %s, want PASS (threshold %.3f not validated on the committed corpus)", result, settings.Threshold)
 		}
 	})
+
+	// D-01's private real-spine mode: only runs when
+	// ENGRAM_CURATION_EVAL_PAIRS names a local file. Aggregates only — no
+	// D-03 gate on this corpus (D-03 gates the committed set only).
+	if pairsPath != "" {
+		t.Run("local", func(t *testing.T) {
+			pairs, lerr := loadLocalPairs(pairsPath)
+			if lerr != nil {
+				t.Fatalf("loadLocalPairs: %v", lerr)
+			}
+
+			preds := evaluate(ctx, dec, pairs, settings.Threshold, settings.StateChars)
+
+			scored := 0
+			for _, p := range preds {
+				if !p.v.Failed() {
+					scored++
+				}
+			}
+			if scored == 0 {
+				t.Fatal("no verdict was scored")
+			}
+
+			for _, line := range formatReport("local", preds, settings.Threshold) {
+				t.Log(line)
+			}
+		})
+	}
 }
