@@ -1,20 +1,62 @@
 ---
 phase: 03-curation-verdicts
-verified: 2026-09-24T05:38:50Z
+verified: 2026-09-24T17:37:17Z
 status: passed
 score: 4/4 must-haves verified
 covered_files: [".gitignore",".planning/phases/03-curation-verdicts/03-01-PLAN.md",".planning/phases/03-curation-verdicts/03-01-SUMMARY.md",".planning/phases/03-curation-verdicts/03-02-PLAN.md",".planning/phases/03-curation-verdicts/03-02-SUMMARY.md",".planning/phases/03-curation-verdicts/03-03-PLAN.md",".planning/phases/03-curation-verdicts/03-03-SUMMARY.md",".planning/phases/03-curation-verdicts/03-04-PLAN.md",".planning/phases/03-curation-verdicts/03-04-SUMMARY.md",".planning/phases/03-curation-verdicts/03-05-PLAN.md",".planning/phases/03-curation-verdicts/03-05-SUMMARY.md",".planning/phases/03-curation-verdicts/03-06-PLAN.md",".planning/phases/03-curation-verdicts/03-06-SUMMARY.md",".planning/phases/03-curation-verdicts/03-07-PLAN.md",".planning/phases/03-curation-verdicts/03-07-SUMMARY.md",".planning/phases/03-curation-verdicts/03-08-PLAN.md",".planning/phases/03-curation-verdicts/03-08-SUMMARY.md",".planning/phases/03-curation-verdicts/03-BLIND-LABEL-PROMPT.md",".planning/phases/03-curation-verdicts/03-BLIND-LABELS-ROUND1.md",".planning/phases/03-curation-verdicts/03-BLIND-LABELS.md",".planning/phases/03-curation-verdicts/03-CONTEXT.md",".planning/phases/03-curation-verdicts/03-EVAL-RESULTS.md",".planning/phases/03-curation-verdicts/03-REVIEW.md",".planning/phases/03-curation-verdicts/03-SECURITY.md",".planning/phases/03-curation-verdicts/03-VALIDATION.md","CLAUDE.md","Taskfile.yaml","cmd/engram/consolidate_docs_test.go","cmd/engram/operator_view.go","cmd/engram/spine_review_consolidate.go","cmd/engram/spine_review_consolidate_test.go","cmd/engram/spine_review_consolidate_view.go","cmd/engram/sweep_scope.go","cmd/engram/sweep_scope_test.go","docs-site/src/content/docs/guides/cli.md","docs-site/src/content/docs/guides/configure.md","docs-site/src/content/docs/guides/upgrade.md","docs-site/src/content/docs/reference/tools.md","internal/config/config.go","internal/config/decisions_config_test.go","internal/config/decisions_docs_test.go","internal/config/registry.go","internal/config/validate.go","internal/curationeval/doc.go","internal/curationeval/eval_test.go","internal/curationeval/evaluate.go","internal/curationeval/gate.go","internal/curationeval/gate_test.go","internal/curationeval/localfile.go","internal/curationeval/localfile_test.go","internal/curationeval/metrics.go","internal/curationeval/metrics_test.go","internal/curationeval/pairs.go","internal/curationeval/pairs_test.go","internal/server/decider.go","internal/server/decider_test.go","internal/skills/data/curating-spine/SKILL.md","internal/store/boundedread.go","internal/store/verdictstate.go","internal/store/verdictstate_test.go","internal/surfaces/rules.go","internal/surfaces/toolclass.go","internal/verdict/verdict.go","internal/verdict/verdict_test.go","skill/engram/skills/curating-spine/SKILL.md"]
-covered_digest: "v1:sha256:bb5d7bd2e821599e0eb0dcb93e62425e7a670a2ebe0bf81caaea0c1157bf8b58"
+covered_digest: "v1:sha256:beb3c8db6eb6f567faf264af03ee5647c9bfb026cef2d92f0460c51103ae6a64"
 behavior_unverified: 0
 overrides_applied: 0
+re_verification:
+  previous_status: passed
+  previous_score: 4/4
+  previous_verified_at_commit: 58dc8544
+  reverified_at_commit: f37c5f0e
+  reason: "stale fingerprint: Phases 4-5 changed covered files (operator_view.go, decider.go, config, docs, Taskfile, CLAUDE.md)"
+  gaps_closed: []
+  gaps_remaining: []
+  regressions: []
 ---
 
 # Phase 3: Curation Verdicts Verification Report
 
 **Phase Goal:** Operators running `spine-review consolidate` see AI-assisted relation verdicts as an advisory signal, never as an automatic mutation.
-**Verified:** 2026-09-24T05:38:50Z
+**Verified:** 2026-09-24T17:37:17Z (initial: 2026-09-24T05:38:50Z at `58dc8544`)
 **Status:** passed
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — fingerprint went stale after later-phase changes; re-verified against HEAD `f37c5f0e`
+
+## Re-verification (2026-09-24T17:37:17Z, HEAD `f37c5f0e`)
+
+The initial pass at `58dc8544` went `stale` because Phases 4 and 5 changed covered files. This pass re-checks all four truths against HEAD. It is not a carry-forward.
+
+**Covered-file drift** (`git diff 58dc8544..HEAD --stat -- <covered_files>`): 11 files, +606/-14. All 65 covered paths still exist, so none were pruned.
+
+| File | Changed by | Effect on Phase 3 |
+|------|-----------|-------------------|
+| `cmd/engram/operator_view.go` | Phase 5 (`3ab6c86f`, `ccb1441e`) | `viewFields` only. A blank top-level array element now falls back to its compact JSON literal, and an empty nested object renders as zero rows. `viewRow`, `rowFieldRenderers` and `registerRowFieldRenderer` are unchanged, so `renderVerdictView` still gets the same marshaled verdict bytes. A consolidate pair row always has ids and a similarity, so it is never blank and never takes the new fallback. `TestConsolidateTextViewRendersVerdict` passes. |
+| `internal/server/decider.go` (+ `decider_test.go`) | Phase 4 | Additive. Adds `searchRerankTimeout`, `searchDeciderFromConfig`, `searchRankHook`, `SearchRankHookFromEnv` and `logSearchRankerEnabled`. `deciderFromConfig`, `VerdictSettings`/`verdictSettings` and `StoreAndDeciderFromEnv` are unchanged. The consolidate path keeps its own retrying client. `TestVerdictSettings*` (3) pass. |
+| `internal/config/{config,registry,validate}.go` | Phase 4 | Additive `SearchConfig`, `search.ranker` and `search.rerank_timeout` rows, and a jev-gated validate block. `decisions.verdict_threshold` (default `0.9`) and `decisions.verdict_state_chars` are unchanged. |
+| `CLAUDE.md`, `Taskfile.yaml`, `docs-site/.../{cli,configure,tools}.md` | Phases 4-5 | Additive documentation for the search ranker and migrate. No verdict wording was lost: the only `-` line in configure.md is the `--no-verdicts` sentence, which was extended. The `eval:curation` target is still present (Taskfile.yaml:89). |
+
+`cmd/engram/spine_review_consolidate{,_view}.go`, `sweep_scope.go`, `internal/verdict/`, `internal/curationeval/`, `internal/store/{verdictstate,boundedread}.go` and `03-EVAL-RESULTS.md` have **zero** diff since `58dc8544`.
+
+**Checks re-run on HEAD** (with `env -u ENGRAM_RETRIEVAL_EVAL -u ENGRAM_CURATION_EVAL -u ENGRAM_DECISIONS_LIVE`, `-count=1`, and no live provider calls):
+
+| Check | Result |
+|-------|--------|
+| `go test ./internal/verdict/... ./internal/curationeval/... ./internal/config/... ./internal/server/... ./internal/keylinks/ ./cmd/engram/...` | all `ok` |
+| `go test -v -run TestFromResultThresholdBoundary ./internal/verdict/` | PASS (truth 2, threshold boundary) |
+| `go test -v -run 'TestSpineReviewConsolidate\|TestVerdictHeadlineClause\|TestConsolidate' ./cmd/engram/` | 28/28 PASS, including `VerdictTracer`, `VerdictThresholdFlag`, `NoVerdictsSuppresses`, `NoProviderByteIdentical`, `StateFetchErrorDegrades`, `TextViewRendersVerdict`, `StoreSurfaceIsReadOnly` and `ScopeGuardPrecedesEverything` |
+| `go test -v -run 'TestSweepLeavesReject\|TestNoHandRolledSweepScopeGuards' ./cmd/engram/` | PASS (truth 4) |
+| `go test -v -run TestRecordStates ./internal/store/` | 4/4 PASS, including `TestRecordStatesDoesNotMutate` |
+| `go test -v ./internal/curationeval/` | 13 PASS. `TestCurationEval` and `TestWriteBlindLabelPrompt` SKIP as expected, because the live eval is gated off. `TestPairFixtureIntegrity` passes. |
+| `go run ./cmd/engram spine-review consolidate` (no flags) | `Error: a sweep requires an explicit --scope or --all-scopes...`, `exit status 2` |
+| `gsd-tools query verify.key-links` / `verify.artifacts` for plans 03-01..03-08 | key links 20/20 verified, artifacts 26/26 passed |
+| Debt-marker scan (`TBD\|FIXME\|XXX\|TODO\|HACK\|PLACEHOLDER`) over the phase source plus changed files | zero matches |
+
+The live D-03 eval was not re-run, because it would need network calls to a decision provider. `03-EVAL-RESULTS.md` has not changed since the initial verification (`gate threshold=0.900 n=40 correct=40 result=PASS`, `brier=0.138`). The verdict question set and mapping it measured (`internal/verdict`, `internal/curationeval`) have zero diff, so that result still describes the shipped contract.
+
+**Outcome:** 4/4 truths still hold on HEAD. No regressions, no new gaps, and no human-verification items. The `lint + test` suite and `license:check` recorded under Behavioral Spot-Checks below come from the initial pass and were not re-run here. This pass ran only the targeted tests listed above.
 
 ## Goal Achievement
 
@@ -97,5 +139,5 @@ No gaps. All 4 roadmap Success Criteria and all 4 requirement IDs (CUR-01..CUR-0
 
 ---
 
-_Verified: 2026-09-24T05:38:50Z_
+_Verified: 2026-09-24T05:38:50Z (initial), re-verified 2026-09-24T17:37:17Z at `f37c5f0e`_
 _Verifier: Claude (gsd-verifier)_
