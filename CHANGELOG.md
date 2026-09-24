@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.19.0](https://github.com/seanb4t/engram/compare/v0.18.0...v0.19.0) (2026-09-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **store:** Connect `ListMemories` with `limit: 0` (and `engram list` without `--limit`) now returns at most 1000 records instead of every matching record; any recall `limit`/`k` above 1000 is rejected with `field=<limit|k> hint=out_of_range`. `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` no longer mean "no request deadline"; they resolve to `ENGRAM_{EMBED,SUMMARY}_MAX_TIMEOUT` (default 10m). Memory writes over 65536 content bytes, 128 tags, or 128 bytes per tag are rejected. See docs-site `guides/upgrade` §14–§18.
+
+### Features
+
+* **store:** bounded Qdrant reads and provider responses (2026-09-18.01) ([#603](https://github.com/seanb4t/engram/issues/603)) ([c5e3445](https://github.com/seanb4t/engram/commit/c5e3445650fd17a3a6457e34171f3d17956174bd))
+
+
+### Bug Fixes
+
+* **mcp:** return recall results as JSON text alongside structured content ([#607](https://github.com/seanb4t/engram/issues/607)) ([2417134](https://github.com/seanb4t/engram/commit/2417134c59077f4a589046461e0d98eb639f9388))
+
 ## [0.18.0](https://github.com/seanb4t/engram/compare/v0.17.1...v0.18.0) (2026-09-21)
 
 
