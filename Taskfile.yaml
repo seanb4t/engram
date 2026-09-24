@@ -86,6 +86,10 @@ tasks:
     desc: Live Decisions smoke test against ENGRAM_DECISIONS_BASE_URL (needs a key; spends a fraction of a cent)
     cmds:
       - ENGRAM_DECISIONS_LIVE=1 go test ./internal/decide/jev/ -run '^TestJevLive$' -count=1 -v
+  eval:curation:
+    desc: Measure relation-verdict accuracy by confidence bucket and Brier on the labeled pair set (needs ENGRAM_DECISIONS_PROVIDER, ENGRAM_DECISIONS_BASE_URL and a key; spends a fraction of a cent)
+    cmds:
+      - ENGRAM_CURATION_EVAL=1 go test ./internal/curationeval/ -run '^TestCurationEval$' -count=1 -v
 
   lint:
     desc: Run all linters
