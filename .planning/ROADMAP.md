@@ -484,7 +484,7 @@ the result set actually answers the query.
   3. With the reranker enabled, MCP, Connect, and the CLI all carry a per-hit relevance probability, so a caller can tell when no hit answers the query
   4. The reranker's decision state (query plus candidates) stays within Jev's 32k-token context for candidate sets up to the recall maximum, via summaries or per-candidate truncation
 
-**Plans:** 5/8 plans executed
+**Plans:** 6/8 plans executed
 
 Plans:
 **Wave 1**
@@ -500,7 +500,7 @@ Plans:
 **Wave 3**
 
 - [x] 04-05-PLAN.md — opt-in `Store.SearchDiscoveryReranked` (vector-order base, shipped-order fallback) behind the hook, relevance on both discovery lanes, MCP descriptions and reference docs (D-03, D-05–D-07; RANK-03, RANK-04)
-- [ ] 04-06-PLAN.md — retrieval eval's Jev slot enabled when a provider is configured, measured through the shipped composition, opt-in and outside the D-05 decision, with fallback counts and no-answer relevance lines (D-02; RANK-03)
+- [x] 04-06-PLAN.md — retrieval eval's Jev slot enabled when a provider is configured, measured through the shipped composition, opt-in and outside the D-05 decision, with fallback counts and no-answer relevance lines (D-02; RANK-03)
 - [ ] 04-08-PLAN.md — Helm `memory.search.ranker` (default `lexical`) / `memory.search.rerankTimeout` rendered as `ENGRAM_SEARCH_*` under a ranker gate, default render byte-identical, `chart:validate` both directions + re-pinned checksum, deploy guide rows (D-10; RANK-03)
 
 **Wave 4**
