@@ -18,6 +18,7 @@ import (
 	"connectrpc.com/connect"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
@@ -514,6 +515,239 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 		}
 		if len(mcpOut) != 0 {
 			t.Errorf("actor-B saw %d of actor-A's private records via MCP through the reranked path: %+v", len(mcpOut), mcpOut)
+		}
+	})
+
+	// --- D-06/D-07 jev-hook parity subtests (Phase 4 Plan 04-04) ---
+	//
+	// withRankHook installs a scripted store.RankHook on d for the duration
+	// of one subtest, restoring the prior value (nil, since no earlier
+	// subtest in this function sets one) via the subtest's own t.Cleanup —
+	// so each "jev hook" subtest starts from a clean, hookless deps.
+	withRankHook := func(t *testing.T, hook store.RankHook) {
+		t.Helper()
+		prev := d.rankHook
+		d.rankHook = hook
+		t.Cleanup(func() { d.rankHook = prev })
+	}
+
+	// newScriptedRankHook returns a deterministic store.RankHook: recOldPython
+	// scores 0.9, recCI scores 0.6, everything else (including any id in
+	// extra) scores per extra or 0.1 by default. If seen is non-nil, every id
+	// the hook is ever handed is appended to it — the no-leak subtest below
+	// uses this to prove a filtered-out record is never handed to the hook
+	// at all, not merely dropped from its output.
+	newScriptedRankHook := func(seen *[]string, extra map[string]float64) store.RankHook {
+		probs := map[string]float64{recOldPython.ID: 0.9, recCI.ID: 0.6}
+		for id, p := range extra {
+			probs[id] = p
+		}
+		return func(_ context.Context, _ string, hits []store.Memory) (map[string]float64, error) {
+			out := make(map[string]float64, len(hits))
+			for _, h := range hits {
+				if seen != nil {
+					*seen = append(*seen, h.ID)
+				}
+				if p, ok := probs[h.ID]; ok {
+					out[h.ID] = p
+					continue
+				}
+				out[h.ID] = 0.1
+			}
+			return out, nil
+		}
+	}
+
+	idsOfMCP := func(ms []store.Memory) []string {
+		out := make([]string, len(ms))
+		for i, m := range ms {
+			out[i] = m.ID
+		}
+		return out
+	}
+	idsOfConnect := func(ms []*engramv1.Memory) []string {
+		out := make([]string, len(ms))
+		for i, m := range ms {
+			out[i] = m.Id
+		}
+		return out
+	}
+
+	t.Run("jev hook: MCP and Connect agree on order and relevance", func(t *testing.T) {
+		noHookIDs := connectIDs(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4})
+
+		withRankHook(t, newScriptedRankHook(nil, nil))
+		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4})
+		if err != nil {
+			t.Fatalf("MCP searchMemory: %v", err)
+		}
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories: %v", err)
+		}
+
+		mIDs, cIDs := idsOfMCP(mcpOut), idsOfConnect(resp.Msg.Memories)
+		if !slices.Equal(mIDs, cIDs) {
+			t.Fatalf("MCP/Connect order mismatch under jev hook:\n MCP:     %v\n Connect: %v", mIDs, cIDs)
+		}
+
+		sortedHook := slices.Clone(mIDs)
+		sortedNoHook := slices.Clone(noHookIDs)
+		slices.Sort(sortedHook)
+		slices.Sort(sortedNoHook)
+		if !slices.Equal(sortedHook, sortedNoHook) {
+			t.Fatalf("jev hook changed result membership (must only reorder): hook=%v no-hook=%v", mIDs, noHookIDs)
+		}
+
+		connectByID := make(map[string]*engramv1.Memory, len(resp.Msg.Memories))
+		for _, m := range resp.Msg.Memories {
+			connectByID[m.Id] = m
+		}
+		for _, m := range mcpOut {
+			cm, ok := connectByID[m.ID]
+			if !ok {
+				t.Fatalf("Connect result missing id %s present in MCP result", m.ID)
+			}
+			if m.Relevance == nil || cm.Relevance == nil {
+				t.Fatalf("relevance not set on both lanes for id %s: MCP=%v Connect=%v", m.ID, m.Relevance, cm.Relevance)
+			}
+			if *m.Relevance != cm.GetRelevance() {
+				t.Errorf("relevance mismatch for id %s: MCP=%v Connect=%v", m.ID, *m.Relevance, cm.GetRelevance())
+			}
+		}
+	})
+
+	t.Run("jev hook error: both fall back to the identical lexical order", func(t *testing.T) {
+		noHookIDs := connectIDs(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4})
+
+		errHook := store.RankHook(func(_ context.Context, _ string, _ []store.Memory) (map[string]float64, error) {
+			return nil, errors.New("boom: scripted rank hook failure")
+		})
+		withRankHook(t, errHook)
+		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4})
+		if err != nil {
+			t.Fatalf("MCP searchMemory: %v", err)
+		}
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories: %v", err)
+		}
+
+		mIDs, cIDs := idsOfMCP(mcpOut), idsOfConnect(resp.Msg.Memories)
+		if !slices.Equal(mIDs, noHookIDs) {
+			t.Fatalf("MCP order under a failing hook = %v, want identical no-hook order %v", mIDs, noHookIDs)
+		}
+		if !slices.Equal(cIDs, noHookIDs) {
+			t.Fatalf("Connect order under a failing hook = %v, want identical no-hook order %v", cIDs, noHookIDs)
+		}
+		for _, m := range mcpOut {
+			if m.Relevance != nil {
+				t.Errorf("MCP hit %s carries relevance %v under a failing hook, want nil", m.ID, *m.Relevance)
+			}
+		}
+		for _, m := range resp.Msg.Memories {
+			if m.Relevance != nil {
+				t.Errorf("Connect hit %s carries relevance %v under a failing hook, want nil", m.Id, m.GetRelevance())
+			}
+		}
+	})
+
+	t.Run("jev hook with cross_spine", func(t *testing.T) {
+		withRankHook(t, newScriptedRankHook(nil, nil))
+		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Query: query, K: 4, CrossSpine: true})
+		if err != nil {
+			t.Fatalf("MCP cross_spine searchMemory: %v", err)
+		}
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, K: 4, CrossSpine: true}))
+		if err != nil {
+			t.Fatalf("Connect cross_spine SearchMemories: %v", err)
+		}
+
+		mIDs, cIDs := idsOfMCP(mcpOut), idsOfConnect(resp.Msg.Memories)
+		if !slices.Equal(mIDs, cIDs) {
+			t.Fatalf("cross_spine MCP/Connect order mismatch under jev hook:\n MCP:     %v\n Connect: %v", mIDs, cIDs)
+		}
+
+		connectByID := make(map[string]*engramv1.Memory, len(resp.Msg.Memories))
+		for _, m := range resp.Msg.Memories {
+			connectByID[m.Id] = m
+		}
+		for _, m := range mcpOut {
+			cm, ok := connectByID[m.ID]
+			if !ok {
+				t.Fatalf("Connect cross_spine result missing id %s present in MCP result", m.ID)
+			}
+			if m.Relevance == nil || cm.Relevance == nil || *m.Relevance != cm.GetRelevance() {
+				t.Errorf("cross_spine relevance mismatch for id %s: MCP=%v Connect=%v", m.ID, m.Relevance, cm.Relevance)
+			}
+		}
+	})
+
+	t.Run("jev hook never surfaces another owner's record", func(t *testing.T) {
+		recBPrivate := store.Memory{
+			ID:      "e3333333-0000-0000-0000-000000000005",
+			Content: "actor-B's own private note about running task lint, similar wording to the fixture.",
+			Scope:   scope, Owner: "actor-B", Tags: []string{"task"}, CreatedAt: now,
+		}
+		if err := d.st.Upsert(ctx, recBPrivate, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("seed %s: %v", recBPrivate.ID, err)
+		}
+		t.Cleanup(func() {
+			cleanupErr(t, "Delete "+recBPrivate.ID, d.st.Delete(ctx, recBPrivate.ID, store.Authenticated("actor-B")))
+		})
+
+		var seen []string
+		withRankHook(t, newScriptedRankHook(&seen, map[string]float64{recBPrivate.ID: 1.0}))
+
+		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4})
+		if err != nil {
+			t.Fatalf("MCP searchMemory: %v", err)
+		}
+		resp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories: %v", err)
+		}
+
+		if slices.ContainsFunc(mcpOut, func(m store.Memory) bool { return m.ID == recBPrivate.ID }) {
+			t.Errorf("MCP returned actor-B's private record %s under the jev hook", recBPrivate.ID)
+		}
+		if slices.ContainsFunc(resp.Msg.Memories, func(m *engramv1.Memory) bool { return m.Id == recBPrivate.ID }) {
+			t.Errorf("Connect returned actor-B's private record %s under the jev hook", recBPrivate.ID)
+		}
+		if slices.Contains(seen, recBPrivate.ID) {
+			t.Errorf("rank hook was handed actor-B's private record %s; want it filtered out before ranking ever sees it", recBPrivate.ID)
+		}
+	})
+
+	t.Run("jev hook adds no response-level flag", func(t *testing.T) {
+		populatedFieldNames := func(m interface {
+			ProtoReflect() protoreflect.Message
+		},
+		) []string {
+			var names []string
+			m.ProtoReflect().Range(func(fd protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
+				names = append(names, string(fd.Name()))
+				return true
+			})
+			slices.Sort(names)
+			return names
+		}
+
+		noHookResp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories (no hook): %v", err)
+		}
+		noHookFields := populatedFieldNames(noHookResp.Msg)
+
+		withRankHook(t, newScriptedRankHook(nil, nil))
+		hookResp, err := api.SearchMemories(actx, connect.NewRequest(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4}))
+		if err != nil {
+			t.Fatalf("Connect SearchMemories (hook): %v", err)
+		}
+		hookFields := populatedFieldNames(hookResp.Msg)
+
+		if !slices.Equal(hookFields, noHookFields) {
+			t.Fatalf("response-level populated fields changed under the jev hook:\n no-hook: %v\n hook:    %v", noHookFields, hookFields)
 		}
 	})
 }
