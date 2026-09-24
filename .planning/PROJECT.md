@@ -16,37 +16,53 @@ shipped. Every locked decision and every routed requirement below is **implement
 to main**. This document records the as-built state so future milestones build on an accurate
 foundation.
 
-**Latest milestone — 2026-09-18.01 — Bounded Reads — ✅ COMPLETE 2026-09-22** (on branch
-`feat/2026-09-18.01`, not yet merged or released): no Qdrant read or provider response can fail
-because of unbounded size. Seven phases (1–7); 37 plans, 87 tasks, 20/20 requirements verified,
-audit `tech_debt` (0 blockers, Nyquist 7/7, security 7/7). Full detail in
-`.planning/milestones/2026-09-18.01-ROADMAP.md`.
+**Latest milestone — 2026-09-22.01 — Typed Decisions & Recall Ranking — ✅ COMPLETE 2026-09-24**
+(on branch `feat/2026-09-22.01`, not yet merged or released): a provider-neutral, advisory-only
+typed-decision capability with Jev as the first backend, used for curation verdicts and an opt-in
+search reranker, plus the #605 paraphrase-regression resolution. Five phases (1–5); 35 plans, 83
+tasks, 22/22 requirements verified, audit `tech_debt` (0 blockers, Nyquist 5/5, security 5/5).
+Full detail in `.planning/milestones/2026-09-22.01-ROADMAP.md`. The previous milestone,
+2026-09-18.01 Bounded Reads, shipped 2026-09-22 as PR #603 and was released as v0.19.0 (#604).
 
-**Active milestone — 2026-09-22.01 — Typed Decisions & Recall Ranking** — Phases 1–5 of 5 complete
-(2026-09-24); see Current Milestone below.
+**No active milestone** — start the next with `/gsd-new-milestone`.
 
-## Current Milestone: 2026-09-22.01 Typed Decisions & Recall Ranking
+## Current State: 2026-09-22.01 — Typed Decisions & Recall Ranking ✅ COMPLETE (2026-09-24; ship PR pending)
 
-**Goal:** Give engram a provider-neutral, advisory-only typed-decision capability (Jev as the
-first backend) and use it to make curation and recall measurably better, while fixing the
-lexical reranker's paraphrase regression (#605).
+**Delivered:** engram gained a provider-neutral, advisory-only typed-decision capability.
+`internal/decide` is the System One contract (state + Choice/Score/Noul questions → typed answers
+with probabilities), validated client-side before any call, with a bounded `DecideMany` pool, a
+16-sentinel failure taxonomy and a `decide` span; `internal/decide/jev` is a hand-written
+`net/http` client for OpenRouter's Decisions API, reachable directly and through the LiteLLM
+pass-through (the OpenRouter Go SDK was evaluated and rejected). Everything is off unless
+`ENGRAM_DECISIONS_PROVIDER` is set. A blind 96-record / 24-query paraphrase retrieval eval kept the
+lexical reranker on live evidence (MRR 0.817 vs vector-only 0.579, #261 at rank 1; #605), with the
+eval gates fixed (#353 cosine epsilon, #354 koanf skip guard). `spine-review consolidate` attaches
+an advisory nested `verdict` per candidate pair (relation, full probability map, `same_subject`,
+`needs_review` below 0.9), structurally unable to mutate, measured on a blind-labeled 70-pair corpus
+(live gate 40/40 at p ≥ 0.9, Brier 0.138), and now refuses a missing `--scope`/`--all-scopes`
+(#508). `ENGRAM_SEARCH_RANKER=jev` (opt-in) reorders `search_memory`/`search_discovery` by
+per-hit P(relevant) in one Decisions request under a 2s no-retry budget, stamps `relevance` on MCP,
+Connect (`optional double relevance = 31`) and the CLI, and falls back to exactly the lexical order
+on any failure (live Jev MRR 0.883, 0/26 fallbacks). Five operator-correctness fixes closed
+#476/#504/#502/#501/#503. Full detail archived at
+`milestones/2026-09-22.01-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md`.
 
-**Target features:**
-- Provider-neutral decision interface (System One vocabulary: state + Choice/Score/Noul →
-  probabilities), off by default; Jev backend over OpenRouter's Decisions API with its own
-  base-URL/key settings (OpenRouter Go SDK evaluated first); chat-LLM emulator deferred
-- Advisory relation verdicts on `engram spine-review consolidate` (confidence-tiered,
-  `updates` option)
-- Opt-in Jev relevance reranker on `search_memory`, gated on retrieval eval, with a fallback
-  to vector order
-- Per-hit relevance probability on search results (absolute "nothing relevant" signal)
-- Lexical reranker regression (#605): independent paraphrase eval case, then keep/demote/replace
-- Retrieval-eval fixes #353 / #354
-- Operator correctness: #508, #476, #504, #502, #501, #503
+**Standing constraints held:** zero new Go dependencies; decisions stay advisory (a verdict never
+mutates, a reranker failure never fails a search); the default render, default config and default
+ranking are byte-identical to before; no verbatim spine content committed (eval corpora are
+synthetic, the private local pair file reports aggregates only).
 
-**Blueprint:** `spike-findings-engram` skill (spikes 001–004, `.planning/spikes/`).
+**Carried tech debt:** GitHub #605/#508/#353/#354 stay open until the ship PR closes them (no
+`Closes` trailer on the branch); follow-ups #610 (curating-spine reads the verdict object), #611
+(operator-view key sanitizing), #612 (review nits). The response-level "nothing relevant" flag was
+declined (D-06), not deferred.
 
-## Current State: 2026-09-18.01 — Bounded Reads ✅ COMPLETE (2026-09-22; ship PR pending)
+**Closeout:** `override_closeout` — 1 newly acknowledged (plain `go vet` on the deliberate
+duplicate-tag fixture), 0 carried forward (see STATE.md Deferred Items).
+
+<details>
+<summary>Previous: 2026-09-18.01 — Bounded Reads ✅ SHIPPED (2026-09-22, PR #603; released v0.19.0)</summary>
+
 
 **Delivered:** no Qdrant read or provider response can fail because of unbounded size — a request
 either succeeds or fails with a clear, named error, never an opaque Connect `internal` / HTTP 500.
@@ -87,6 +103,8 @@ dispatch for a second consecutive milestone, root cause undiagnosed; 07 WR-02
 
 **Closeout:** `override_closeout` — 2 newly acknowledged (the removed harness's timeout entries),
 2 carried forward (see STATE.md Deferred Items).
+
+</details>
 
 <details>
 <summary>Previous: 2026-09-13.01 — Setup v2 ✅ SHIPPED (2026-09-17, v0.17.0; observed 2026-09-18)</summary>
@@ -609,8 +627,8 @@ pre-close `REQUIREMENTS.md` snapshot).
 
 ### Active
 
-Milestone 2026-09-22.01 (Typed Decisions & Recall Ranking) — scoped requirements live in
-`.planning/REQUIREMENTS.md`.
+None — no active milestone. Start the next with `/gsd-new-milestone`; the Deferred list below is
+the candidate pool.
 
 ### Deferred (carry-forward for next milestone)
 
@@ -636,6 +654,7 @@ Milestone 2026-09-22.01 (Typed Decisions & Recall Ranking) — scoped requiremen
 - [ ] **`curating-spine` skill ignores the verdict object** (2026-09-22.01 Phase 3) — consolidate now emits an advisory nested `verdict` per pair, but the skill does not yet read it; teach it to read `relation`/`probabilities`/`needs_review` as a prior while keeping its explicit-consent contract unchanged. Tracked as #610.
 - [ ] **Response-level "nothing relevant" signal for search** (2026-09-22.01 Phase 4, D-06) — the Jev ranker ships per-hit `relevance` only; a response-level `no_relevant_results` flag or threshold was declined for now, as was an eval bar gating the opt-in (D-02). The live no-answer values (0.01–0.03) are the evidence base if it is revisited. No GitHub issue filed yet.
 - [ ] **Operator text view does not sanitize JSON object keys** (2026-09-22.01 Phase 5 security audit, informational) — keys print raw in `viewRow`/`flattenObject`/`humanizeKey`; no user-controlled key reaches them today (struct tags and proto field names only), but a future `map<>`/`Struct` field would print control characters unsanitized. Sanitize keys and add a hostile-key test. Tracked as #611.
+- [ ] **2026-09-22.01 review nits** — deploy.md `decisions.apiKeySecret`/drain rows, UTF-8-safe error-body excerpt truncation in `internal/decide/jev`, relation-name literals outside `internal/verdict`, and tools.md naming the lexical mechanism instead of the eval-selected rank step. Tracked as #612.
 
 > **Closed by v0.13.x:** the two-tier CLI error model gap (Phase 1 unified the taxonomy rather than
 > documenting a boundary — what #467 actually asked for), the v0.12.x Nyquist `VALIDATION.md`
@@ -665,12 +684,12 @@ Milestone 2026-09-22.01 (Typed Decisions & Recall Ranking) — scoped requiremen
 
 - **Ecosystem:** Go 1.26 static binary (`CGO_ENABLED=0`, distroless), Qdrant gRPC vector store, OpenAI-compatible embeddings/chat gateway. UI/docs built with pnpm + Node (not in the server image).
 - **Surfaces:** MCP tool server (primary, StreamableHTTP at `/mcp`), ConnectRPC `EngramService` v1 (5 read + 6 write RPCs), the `engram search|store|list` headless CLI over the generated Connect stubs, SvelteKit adapter-static operator console vendored via `go:embed`, Astro Starlight docs site on Cloudflare Workers.
-- **Bounded reads (2026-09-18.01, complete 2026-09-22, ship PR pending):** every full-payload Qdrant read in `internal/store` goes through `scrollOrderedPage` (`orderedpage.go`) or a byte-budgeted `scrollAllPoints` view (`boundedread.go`/`spine.go`), sized from `DefaultRecordCaps()`; searches fetch payloads by id through `fetchPayloadBatch` (`searchfetch.go`), all with a batch-of-1 legacy fallback that fails loudly with `ErrResponseTooLarge`. A new read site must compose one of these primitives — `unbudgetedView` no longer exists. `store.MaxRecallLimit` (1000) is the one recall maximum. `storetest` is usable only from `package store_test` files (import cycle). Provider HTTP clients drain through `internal/httpdrain`.
+- **Bounded reads (2026-09-18.01, shipped 2026-09-22 as PR #603, released v0.19.0):** every full-payload Qdrant read in `internal/store` goes through `scrollOrderedPage` (`orderedpage.go`) or a byte-budgeted `scrollAllPoints` view (`boundedread.go`/`spine.go`), sized from `DefaultRecordCaps()`; searches fetch payloads by id through `fetchPayloadBatch` (`searchfetch.go`), all with a batch-of-1 legacy fallback that fails loudly with `ErrResponseTooLarge`. A new read site must compose one of these primitives — `unbudgetedView` no longer exists. `store.MaxRecallLimit` (1000) is the one recall maximum. `storetest` is usable only from `package store_test` files (import cycle). Provider HTTP clients drain through `internal/httpdrain`.
 - **Setup v2 (2026-09-13.01, shipped 2026-09-17 as v0.17.0):** `internal/setup/drift.go` owns the single `Observe` → `Compare` classification (`already-correct` / `would-write` + facets / `preserved`) that both preview and `--apply` consult; `apply.go` returns before the write loop on `preserved`/`already-correct` and re-observes after a real write; observed header values never leave a local (`Observation`/`ObservedHeader` carry no value field). `HeaderSpec` renders per runtime with no shared formatter; `ErrHeaderUnsupported` is Codex's decline. `plugin.go`'s `PluginRuntime` probes `plugin list --json` once per run and authors `marketplace add`/`install`/`update` (Codex: remove-then-add) against engram's own marketplace only; `skills.DetectPresence` is read-only. `cmd/engram/man.go` generates byte-stable pages the cask's `post_install` writes to `share/man/man1`. Verification records that stand in for live-CLI tests: `04-OBSERVATIONS.md` (literal-echo shapes) and `05-RELEASE-0.17.0.md` (v0.17.0 observed end-to-end under an isolated `HOME`/`CODEX_HOME`).
 - **Distribution & agent bootstrap (2026-08-23.01, shipped 2026-09-12 as v0.16.0):** the binary ships as a Homebrew cask (`seanb4t/homebrew-tap`, `Casks/engram.rb`) published by GoReleaser's `homebrew_casks:` through a dedicated tap-publisher App — the token field MUST stay the bare `{{ .Env.HOMEBREW_TAP_TOKEN }}` form, since GoReleaser regex-matches it on the raw string and only a real tag exercises it. `internal/setup` is a stdlib-only leaf: a `Runtime` interface authoring `Plan`s of argv `Action`s executed through an injectable `Environment.Run` seam, with Claude Code / Codex / opencode as shell-out writers and `generic` as an opt-in zero-action portable-config emitter; secrets are env-var references, never argv. `internal/skills` embeds the five curation skills (`//go:embed all:data`, drift-gated byte-for-byte against `skill/engram/skills`) and installs them natively per runtime, with Codex additionally getting a delimited AGENTS.md index spliced in place (only `fs.ErrNotExist` is the create case). `internal/setupgen` renders `/engram-setup`'s mechanical prose from real Plans; `surfacesgen --check-setup` and CI's regenerate-and-diff keep it equal. `cmd/engram/releaseconfig_test.go` pins the cask hook ordering, the `SKIP_HOMEBREW_UPLOAD` guard, and the credential shape as own-config text assertions.
-- **Typed decisions (2026-09-22.01 Phase 2):** `internal/decide` is the provider-neutral contract (`Decider`, `State`, `Question` via `Noul`/`Choice`/`Score` constructors, `Answer`, `Usage`, `Status(err)`), with client-side structural validation before any network call and a bounded `DecideMany` worker pool (`ENGRAM_DECISIONS_CONCURRENCY`, default 4). `internal/decide/jev` is a hand-written `net/http` client (`jev.go`, `wire.go`, `classify.go`); `decodeResponse` requires an answer for every requested question and rejects one whose type mismatches the request (WR-01). `internal/server/decider.go` builds the decider into `deps` only when the provider is set — nothing calls it yet; Phase 3 (curation verdicts) and Phase 4 (reranker) are the first callers and own the never-fail-the-read contract. Helm `memory.decisions.*` is off by default, with the key from `memory.decisions.apiKeySecret` (secretKeyRef). `task eval:decisions` (`ENGRAM_DECISIONS_LIVE=1`) is the live check.
-- **Curation verdicts (2026-09-22.01 Phase 3):** `internal/verdict` owns the one question set (five-option relation Choice + `same_subject` Noul per pair, one Decisions request each), the summary-plus-content-head state truncation and the `decide.Result → Verdict` mapping; both `spine-review consolidate` and the gated `internal/curationeval` harness call it, so the eval measures the shipped contract. Consolidate's `runVerdictPass` makes one budgeted `Store.RecordStates` fetch and one `DecideMany` call per sweep, and its `spineConsolidateStore` interface is read-only by construction. The text lane renders the verdict from the marshaled JSON through `registerRowFieldRenderer`, and a generic `flattenNested` sanitizes every nested row field. Eval result: `updates` is the main confusion sink (gold `contradicts`/`related` predicted as `updates`), which drives the high `needs_review` rate (30/70).
-- **Jev reranker (2026-09-22.01 Phase 4):** `internal/store` never imports `internal/decide`: ranking reaches Jev through `store.RankHook` (`rerank.go`), a server-built hook (`searchRankHook` in `internal/server/decider.go`) that is nil unless `ENGRAM_SEARCH_RANKER=jev`. `SearchReranked` runs the pinned `rankCandidates` step first, then `applyRankHook` stable-sorts by P(relevant) and `applyRelevance` stamps `Memory.Relevance` only when every hit got a value — any error, timeout or partial answer returns the lexical order untouched, so authz filtering always precedes the hook and a failed hook is invisible except in the missing field. `SearchDiscoveryReranked` reuses the same two helpers over discovery's own vector order (no lexical step). `internal/relevance` owns the Noul-per-candidate request and the D-08 budget (`DefaultCandidateChars` 600, `MinCandidateChars` 100, `DefaultTokenBudget` 28000, chars/4 estimate). The search path uses its own decider built with `jev.WithNoRetry()` and `ENGRAM_SEARCH_RERANK_TIMEOUT`; consolidate keeps the decisions timeout and single retry. `store.RankWithHook` is the shared composition the retrieval eval's opt-in `jev` row calls, so the eval measures the shipped path.
+- **Typed decisions (2026-09-22.01 Phase 2, complete 2026-09-24):** `internal/decide` is the provider-neutral contract (`Decider`, `State`, `Question` via `Noul`/`Choice`/`Score` constructors, `Answer`, `Usage`, `Status(err)`), with client-side structural validation before any network call and a bounded `DecideMany` worker pool (`ENGRAM_DECISIONS_CONCURRENCY`, default 4). `internal/decide/jev` is a hand-written `net/http` client (`jev.go`, `wire.go`, `classify.go`); `decodeResponse` requires an answer for every requested question and rejects one whose type mismatches the request (WR-01). `internal/server/decider.go` builds the decider into `deps` only when the provider is set — nothing calls it yet; Phase 3 (curation verdicts) and Phase 4 (reranker) are the first callers and own the never-fail-the-read contract. Helm `memory.decisions.*` is off by default, with the key from `memory.decisions.apiKeySecret` (secretKeyRef). `task eval:decisions` (`ENGRAM_DECISIONS_LIVE=1`) is the live check.
+- **Curation verdicts (2026-09-22.01 Phase 3, complete 2026-09-24):** `internal/verdict` owns the one question set (five-option relation Choice + `same_subject` Noul per pair, one Decisions request each), the summary-plus-content-head state truncation and the `decide.Result → Verdict` mapping; both `spine-review consolidate` and the gated `internal/curationeval` harness call it, so the eval measures the shipped contract. Consolidate's `runVerdictPass` makes one budgeted `Store.RecordStates` fetch and one `DecideMany` call per sweep, and its `spineConsolidateStore` interface is read-only by construction. The text lane renders the verdict from the marshaled JSON through `registerRowFieldRenderer`, and a generic `flattenNested` sanitizes every nested row field. Eval result: `updates` is the main confusion sink (gold `contradicts`/`related` predicted as `updates`), which drives the high `needs_review` rate (30/70).
+- **Jev reranker (2026-09-22.01 Phase 4, complete 2026-09-24):** `internal/store` never imports `internal/decide`: ranking reaches Jev through `store.RankHook` (`rerank.go`), a server-built hook (`searchRankHook` in `internal/server/decider.go`) that is nil unless `ENGRAM_SEARCH_RANKER=jev`. `SearchReranked` runs the pinned `rankCandidates` step first, then `applyRankHook` stable-sorts by P(relevant) and `applyRelevance` stamps `Memory.Relevance` only when every hit got a value — any error, timeout or partial answer returns the lexical order untouched, so authz filtering always precedes the hook and a failed hook is invisible except in the missing field. `SearchDiscoveryReranked` reuses the same two helpers over discovery's own vector order (no lexical step). `internal/relevance` owns the Noul-per-candidate request and the D-08 budget (`DefaultCandidateChars` 600, `MinCandidateChars` 100, `DefaultTokenBudget` 28000, chars/4 estimate). The search path uses its own decider built with `jev.WithNoRetry()` and `ENGRAM_SEARCH_RERANK_TIMEOUT`; consolidate keeps the decisions timeout and single retry. `store.RankWithHook` is the shared composition the retrieval eval's opt-in `jev` row calls, so the eval measures the shipped path.
 - **Identity:** OIDC bearer tokens on the MCP lane become the memory `actor`; the authz `owner` key is a configurable claim (default `email`). No issuer → single anonymous empty-owner bucket.
 - **VCS/build:** git (branch + PR; never push to `main` directly); `task` runner; buf-generated `gen/` tree committed and CI-checked; release-please-driven releases (binary + image via goreleaser, OCI Helm chart).
 - **Connect observe lane:** authenticated via the cookie/OIDC lane (sealed session → verified `sub`); mounted only when the UI is enabled, headless by default (R1–R4 shipped in PR #248/#266, reconciled 2026-07-08). The MCP lane's no-issuer anonymous empty-owner bucket is unaffected.
@@ -1041,4 +1060,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-24 after Phase 5 (Operator Correctness) of milestone 2026-09-22.01*
+*Last updated: 2026-09-24 after the 2026-09-22.01 Typed Decisions & Recall Ranking milestone*
