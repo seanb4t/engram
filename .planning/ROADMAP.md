@@ -479,7 +479,7 @@ the result set actually answers the query.
 **Requirements**: RANK-03, RANK-04, RANK-05
 **Success Criteria** (what must be TRUE):
 
-  1. With the Jev reranker enabled, `search_memory` candidates are reordered by relevance probability, shipped only once the RANK-01/RANK-02 eval numbers justify it
+  1. With the Jev reranker enabled, `search_memory` candidates are reordered by relevance probability; the reranker ships opt-in regardless of the numbers (D-02), with its live RANK-01/RANK-02 eval numbers recorded alongside lexical and vector
   2. On decision error or timeout, the search call still succeeds and falls back to default order
   3. With the reranker enabled, MCP, Connect, and the CLI all carry a per-hit relevance probability, so a caller can tell when no hit answers the query
   4. The reranker's decision state (query plus candidates) stays within Jev's 32k-token context for candidate sets up to the recall maximum, via summaries or per-candidate truncation
