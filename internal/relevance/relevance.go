@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/store"
@@ -171,10 +172,14 @@ func NewRequest(query string, hits []store.Memory, b Budget) (decide.Request, er
 }
 
 // FromResponse maps resp to a per-id relevance-probability map: for every
-// hit index i, resp.Answers[CandidateKey(i)] must be present and of type
-// decide.QuestionNoul, else FromResponse returns a *decide.Error with Kind
-// decide.ErrDecisionMalformedResponse naming the missing/mistyped question.
-// On success, hits[i].ID maps to the answer's Probability, verbatim.
+// hit index i, resp.Answers[CandidateKey(i)] must be present, of type
+// decide.QuestionNoul, and carry a finite Probability in [0, 1] — else
+// FromResponse returns a *decide.Error with Kind
+// decide.ErrDecisionMalformedResponse naming the missing/mistyped/
+// out-of-range question (D-03: NaN, +Inf, -Inf, below 0 and above 1 are
+// all malformed; exactly 0 and exactly 1 are accepted). On success,
+// hits[i].ID maps to the answer's Probability, verbatim — never rounded,
+// clamped or renormalized.
 func FromResponse(resp decide.Response, hits []store.Memory) (map[string]float64, error) {
 	out := make(map[string]float64, len(hits))
 	for i, h := range hits {
@@ -183,7 +188,11 @@ func FromResponse(resp decide.Response, hits []store.Memory) (map[string]float64
 		if !ok || ans.Type != decide.QuestionNoul {
 			return nil, &decide.Error{Kind: decide.ErrDecisionMalformedResponse, Question: key}
 		}
-		out[h.ID] = ans.Probability
+		p := ans.Probability
+		if math.IsNaN(p) || math.IsInf(p, 0) || p < 0 || p > 1 {
+			return nil, &decide.Error{Kind: decide.ErrDecisionMalformedResponse, Question: key}
+		}
+		out[h.ID] = p
 	}
 	return out, nil
 }

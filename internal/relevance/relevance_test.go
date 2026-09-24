@@ -4,8 +4,13 @@
 package relevance
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -393,5 +398,262 @@ func TestNewRequestAtRecallMaximum(t *testing.T) {
 	}
 	if got := len(req.Questions); got != int(n) {
 		t.Errorf("len(req.Questions) = %d, want %d", got, n)
+	}
+}
+
+// TestFromResponse pins D-03's response-mapping truth: complete noul
+// answers map each hit id to its probability verbatim, an extra answer key
+// is ignored, and every malformed shape (missing answer, mistyped answer,
+// NaN, +Inf, -Inf, below 0, above 1) returns a *decide.Error matching
+// decide.ErrDecisionMalformedResponse via errors.Is, classified
+// malformed_response by decide.Status, with a nil map. The NaN/Inf/range
+// rows are RED-first: plan 04-01's FromResponse carried probabilities
+// verbatim without a finiteness/range check.
+func TestFromResponse(t *testing.T) {
+	hits := []store.Memory{
+		{ID: "id-0"}, {ID: "id-1"}, {ID: "id-2"}, {ID: "id-3"}, {ID: "id-4"},
+	}
+
+	t.Run("complete answers map verbatim, extra key ignored", func(t *testing.T) {
+		resp := decide.Response{Answers: map[string]decide.Answer{
+			CandidateKey(0): {Type: decide.QuestionNoul, Probability: 0.97},
+			CandidateKey(1): {Type: decide.QuestionNoul, Probability: 0.4},
+			CandidateKey(2): {Type: decide.QuestionNoul, Probability: 0.02},
+			CandidateKey(3): {Type: decide.QuestionNoul, Probability: 0},
+			CandidateKey(4): {Type: decide.QuestionNoul, Probability: 1},
+			"cXX":           {Type: decide.QuestionNoul, Probability: 0.5},
+		}}
+		got, err := FromResponse(resp, hits)
+		if err != nil {
+			t.Fatalf("FromResponse: %v", err)
+		}
+		want := map[string]float64{"id-0": 0.97, "id-1": 0.4, "id-2": 0.02, "id-3": 0, "id-4": 1}
+		if len(got) != len(want) {
+			t.Fatalf("len(got) = %d, want %d: %v", len(got), len(want), got)
+		}
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("got[%q] = %v, want %v", k, got[k], v)
+			}
+		}
+	})
+
+	malformedCases := []struct {
+		name   string
+		mutate func(map[string]decide.Answer)
+	}{
+		{"missing answer", func(m map[string]decide.Answer) { delete(m, CandidateKey(1)) }},
+		{"wrong type", func(m map[string]decide.Answer) {
+			m[CandidateKey(1)] = decide.Answer{Type: decide.QuestionChoice, Choice: "x"}
+		}},
+		{"NaN", func(m map[string]decide.Answer) {
+			m[CandidateKey(1)] = decide.Answer{Type: decide.QuestionNoul, Probability: math.NaN()}
+		}},
+		{"+Inf", func(m map[string]decide.Answer) {
+			m[CandidateKey(1)] = decide.Answer{Type: decide.QuestionNoul, Probability: math.Inf(1)}
+		}},
+		{"-Inf", func(m map[string]decide.Answer) {
+			m[CandidateKey(1)] = decide.Answer{Type: decide.QuestionNoul, Probability: math.Inf(-1)}
+		}},
+		{"below zero", func(m map[string]decide.Answer) {
+			m[CandidateKey(1)] = decide.Answer{Type: decide.QuestionNoul, Probability: -0.01}
+		}},
+		{"above one", func(m map[string]decide.Answer) {
+			m[CandidateKey(1)] = decide.Answer{Type: decide.QuestionNoul, Probability: 1.01}
+		}},
+	}
+	for _, tc := range malformedCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := make(map[string]decide.Answer, len(hits))
+			for i := range hits {
+				m[CandidateKey(i)] = decide.Answer{Type: decide.QuestionNoul, Probability: 0.5}
+			}
+			tc.mutate(m)
+
+			got, err := FromResponse(decide.Response{Answers: m}, hits)
+			if got != nil {
+				t.Errorf("map = %v, want nil", got)
+			}
+			if !errors.Is(err, decide.ErrDecisionMalformedResponse) {
+				t.Fatalf("err = %v, want errors.Is(err, decide.ErrDecisionMalformedResponse)", err)
+			}
+			if got := decide.Status(err); got != "malformed_response" {
+				t.Errorf("decide.Status(err) = %q, want malformed_response", got)
+			}
+		})
+	}
+
+	t.Run("boundary values 0 and 1 are accepted, not rejected", func(t *testing.T) {
+		m := map[string]decide.Answer{
+			CandidateKey(0): {Type: decide.QuestionNoul, Probability: 0},
+			CandidateKey(1): {Type: decide.QuestionNoul, Probability: 1},
+		}
+		got, err := FromResponse(decide.Response{Answers: m}, hits[:2])
+		if err != nil {
+			t.Fatalf("FromResponse: %v", err)
+		}
+		if got["id-0"] != 0 || got["id-1"] != 1 {
+			t.Errorf("got = %v, want {id-0:0, id-1:1}", got)
+		}
+	})
+}
+
+// countingDecider is a fake decide.Decider that counts Decide/DecideMany
+// calls and records the last Request handed to Decide, returning a fixed
+// (resp, err) pair — the shape TestHookCallsDecideOnce/NilDecider/
+// EmptyHitsNoCall/FailureLogIsContentFree drive Hook through.
+type countingDecider struct {
+	decideCalls     int
+	decideManyCalls int
+	lastReq         decide.Request
+	resp            decide.Response
+	err             error
+}
+
+func (d *countingDecider) Decide(_ context.Context, req decide.Request) (decide.Response, error) {
+	d.decideCalls++
+	d.lastReq = req
+	return d.resp, d.err
+}
+
+func (d *countingDecider) DecideMany(_ context.Context, reqs []decide.Request) []decide.Result {
+	d.decideManyCalls++
+	out := make([]decide.Result, len(reqs))
+	for i := range reqs {
+		out[i] = decide.Result{Response: d.resp, Err: d.err}
+	}
+	return out
+}
+
+// TestHookCallsDecideOnce pins D-04's single-call guarantee: a Hook
+// invocation calls Decide exactly once with one question per hit, never
+// DecideMany, and returns a map with one entry per hit.
+func TestHookCallsDecideOnce(t *testing.T) {
+	hits := []store.Memory{
+		{ID: "id-0", Content: "a"},
+		{ID: "id-1", Content: "b"},
+		{ID: "id-2", Content: "c"},
+	}
+	resp := decide.Response{Answers: map[string]decide.Answer{
+		CandidateKey(0): {Type: decide.QuestionNoul, Probability: 0.1},
+		CandidateKey(1): {Type: decide.QuestionNoul, Probability: 0.2},
+		CandidateKey(2): {Type: decide.QuestionNoul, Probability: 0.3},
+	}}
+	dec := &countingDecider{resp: resp}
+	hook := Hook(dec, DefaultBudget())
+	if hook == nil {
+		t.Fatal("Hook returned nil for a non-nil decider")
+	}
+
+	got, err := hook(context.Background(), "q", hits)
+	if err != nil {
+		t.Fatalf("hook: %v", err)
+	}
+	if dec.decideCalls != 1 {
+		t.Errorf("decideCalls = %d, want 1", dec.decideCalls)
+	}
+	if dec.decideManyCalls != 0 {
+		t.Errorf("decideManyCalls = %d, want 0", dec.decideManyCalls)
+	}
+	if len(dec.lastReq.Questions) != len(hits) {
+		t.Errorf("lastReq.Questions count = %d, want %d", len(dec.lastReq.Questions), len(hits))
+	}
+	if len(got) != len(hits) {
+		t.Errorf("returned map has %d entries, want %d", len(got), len(hits))
+	}
+}
+
+// TestHookNilDecider pins Hook's nil-decider contract: Hook(nil, b) is a
+// nil RankHook, so store.RankWithHook treats it as the byte-identical
+// no-rerank path.
+func TestHookNilDecider(t *testing.T) {
+	if h := Hook(nil, DefaultBudget()); h != nil {
+		t.Errorf("Hook(nil, DefaultBudget()) = non-nil, want nil")
+	}
+}
+
+// TestHookEmptyHitsNoCall pins the empty-input truth for Hook: zero hits
+// return (nil, an error satisfying errors.Is(err, ErrNoCandidates)) with
+// zero Decide calls.
+func TestHookEmptyHitsNoCall(t *testing.T) {
+	dec := &countingDecider{}
+	hook := Hook(dec, DefaultBudget())
+
+	got, err := hook(context.Background(), "q", nil)
+	if got != nil {
+		t.Errorf("map = %v, want nil", got)
+	}
+	if !errors.Is(err, ErrNoCandidates) {
+		t.Errorf("err = %v, want errors.Is(err, ErrNoCandidates)", err)
+	}
+	if dec.decideCalls != 0 {
+		t.Errorf("decideCalls = %d, want 0", dec.decideCalls)
+	}
+}
+
+// TestHookFailureLogIsContentFree pins T-04-05: on any failure (a
+// provider-classified Decide error or a malformed answer set), Hook logs
+// exactly one Warn record whose only attribute is the class word from
+// decide.Status(err) (or malformed_response for the malformed case) — a
+// sentinel planted in the query and in every candidate's content appears
+// in neither the log output nor err.Error().
+func TestHookFailureLogIsContentFree(t *testing.T) {
+	const sentinel = "SENTINEL-RELEVANCE-7f3a"
+	hits := []store.Memory{
+		{ID: "id-0", Summary: sentinel, Content: sentinel},
+		{ID: "id-1", Summary: sentinel, Content: sentinel},
+	}
+	query := sentinel
+
+	cases := []struct {
+		name      string
+		decideErr error
+		resp      decide.Response
+		wantClass string
+	}{
+		{"unavailable", &decide.Error{Kind: decide.ErrDecisionUnavailable}, decide.Response{}, "unavailable"},
+		{"timeout", &decide.Error{Kind: decide.ErrDecisionTimeout}, decide.Response{}, "timeout"},
+		{"context_too_large", &decide.Error{Kind: decide.ErrDecisionContextTooLarge}, decide.Response{}, "context_too_large"},
+		{"rate_limited", &decide.Error{Kind: decide.ErrDecisionRateLimited}, decide.Response{}, "rate_limited"},
+		{"auth", &decide.Error{Kind: decide.ErrDecisionAuth}, decide.Response{}, "auth"},
+		{"malformed", nil, decide.Response{Answers: map[string]decide.Answer{}}, "malformed_response"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			dec := &countingDecider{resp: tc.resp, err: tc.decideErr}
+			hook := Hook(dec, DefaultBudget())
+			_, err := hook(context.Background(), query, hits)
+			if err == nil {
+				t.Fatal("hook err = nil, want non-nil")
+			}
+
+			out := buf.String()
+			lines := strings.Split(strings.TrimSpace(out), "\n")
+			if len(lines) != 1 || lines[0] == "" {
+				t.Fatalf("log output = %q, want exactly one line", out)
+			}
+			var rec map[string]any
+			if uerr := json.Unmarshal([]byte(lines[0]), &rec); uerr != nil {
+				t.Fatalf("log line did not parse as JSON: %v", uerr)
+			}
+			if rec["level"] != "WARN" {
+				t.Errorf("level = %v, want WARN", rec["level"])
+			}
+			if rec["class"] != tc.wantClass {
+				t.Errorf("class = %v, want %q", rec["class"], tc.wantClass)
+			}
+			if strings.Contains(out, sentinel) {
+				t.Errorf("log output contains sentinel: %q", out)
+			}
+			if strings.Contains(err.Error(), sentinel) {
+				t.Errorf("err.Error() contains sentinel: %q", err.Error())
+			}
+		})
 	}
 }
