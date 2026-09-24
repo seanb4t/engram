@@ -74,16 +74,17 @@ var envDerivedFlagDefaults = map[string]map[string]bool{
 }
 
 // neutralizeEnvDerivedFlagDefaults is the single place an env-derived pflag
-// default is neutralized for tests. It blanks every (command, flag) pair
-// named in envDerivedFlagDefaults back to an env-independent "", restoring
-// each via t.Cleanup, so neither a release version nor a contributor's local
-// environment can perturb what a test observes.
+// default is neutralized for tests. For every (command, flag) pair named in
+// envDerivedFlagDefaults it blanks both pflag.Flag.DefValue and the bound Go
+// variable, restoring both via t.Cleanup, so a contributor's local
+// environment cannot perturb what a test observes.
 //
-// This helper blanks only pflag.Flag.DefValue: a caller that needs the bound
-// Go variable itself blank (not just the flag's advertised default) must run
-// a flag reset (resetCommandFlagState / resetEveryCommandFlagState) AFTER
-// calling this helper — the reset is what copies DefValue into the bound
-// variable (clienttest_test.go's resetCommandFlagState).
+// The bound variable is blanked here rather than left to a later flag reset
+// because resetCommandFlagState skips stringSlice flags (setup's --runtime
+// and --header): a slice flag is emptied through pflag.SliceValue.Replace,
+// and every other flag through Value.Set(""). Each flag's single cleanup
+// restores its DefValue and bound value together, so the restored state does
+// not depend on the order in which other helpers' cleanups run.
 //
 // It is shared by the help/catalog goldens (withGoldenDeterminism) and
 // TestExitCodeBaseline (#476), so a new env-derived flag default added to
@@ -101,11 +102,27 @@ func neutralizeEnvDerivedFlagDefaults(t *testing.T) {
 			if f == nil {
 				continue
 			}
-			orig := f.DefValue
+			origDef := f.DefValue
 			f.DefValue = ""
-			t.Cleanup(func(f *pflag.Flag, orig string) func() {
-				return func() { f.DefValue = orig }
-			}(f, orig))
+			if sv, ok := f.Value.(pflag.SliceValue); ok {
+				origSlice := sv.GetSlice()
+				if err := sv.Replace(nil); err != nil {
+					t.Fatalf("neutralize %s --%s: %v", commandKey(cmd), flagName, err)
+				}
+				t.Cleanup(func() {
+					_ = sv.Replace(origSlice)
+					f.DefValue = origDef
+				})
+				continue
+			}
+			origVal := f.Value.String()
+			if err := f.Value.Set(""); err != nil {
+				t.Fatalf("neutralize %s --%s: %v", commandKey(cmd), flagName, err)
+			}
+			t.Cleanup(func() {
+				_ = f.Value.Set(origVal)
+				f.DefValue = origDef
+			})
 		}
 	}
 }

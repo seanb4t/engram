@@ -612,10 +612,9 @@ func TestExitCodeBaseline(t *testing.T) {
 			for k, v := range c.env {
 				t.Setenv(k, v)
 			}
-			// Must run before the resets below: the reset copies
-			// pflag.Flag.DefValue into the bound Go variable, and an
-			// init()-time os.Getenv default would otherwise carry the
-			// caller's shell into a "missing" row (#476).
+			// Blanks every init()-time os.Getenv flag default and its bound
+			// Go variable, so the caller's shell cannot leak into a
+			// "missing" row (#476).
 			neutralizeEnvDerivedFlagDefaults(t)
 			resetClientFlags(t)
 			resetEveryCommandFlagState(t, rootCmd)
