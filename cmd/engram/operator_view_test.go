@@ -635,13 +635,12 @@ func TestOperatorViewNonObjectDocument(t *testing.T) {
 }
 
 // TestViewFieldsBareNestedObject pins viewFields' bare nested-object branch
-// (the top-level `case '{':` block, operator_view.go ~line 102) and its
-// sibling array-of-arrays element branch (the `case '[':` inside the
-// array-element loop, ~line 91). No shipped operator report reaches either
-// branch today — every *Doc top-level field is a scalar, a time.Time
-// string, or a list (05-CONTEXT.md D-01) — but viewFields takes `any`, so
-// the first future report field of struct or map type lands on the bare-
-// object branch by construction. This test pins that path (#504, OPS-02).
+// (its top-level `case '{':` block) and its sibling array-of-arrays element
+// branch (the `case '[':` inside its array-element loop). No shipped
+// operator report reaches either branch today — every *Doc top-level field
+// is a scalar, a time.Time string, or a list (05-CONTEXT.md D-01) — but
+// viewFields takes `any`, so the first future report field of struct or
+// map type lands on the bare-object branch by construction. This test pins that path (#504, OPS-02).
 func TestViewFieldsBareNestedObject(t *testing.T) {
 	type bareNestedInner struct {
 		Flag bool `json:"flag"`
@@ -759,8 +758,8 @@ func TestViewFieldsBareNestedObject(t *testing.T) {
 }
 
 // TestViewFieldsEmptyNestedObjectRendersNoRows pins the empty-object edge
-// case of viewFields' bare nested-object branch (case '{':, operator_view.go
-// ~line 102): a row that renders to the empty string must contribute zero
+// case of viewFields' bare nested-object branch (its top-level `case '{':`
+// block): a row that renders to the empty string must contribute zero
 // rows, matching the empty-array precedent (TestOperatorViewEmptyShapes)
 // and renderOperatorView's documented "the output ... never a trailing
 // blank line" contract. Before this fix, an empty nested object rendered as
