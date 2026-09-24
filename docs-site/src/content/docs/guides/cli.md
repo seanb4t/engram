@@ -254,16 +254,19 @@ crosses the wire from engram to Qdrant. Exactly one of `--scope` or
 neither is rejected with exit status `2`, like `spine-review scan`,
 `spine-review verify` and `summarize-missing` (#508).
 
-This command **never merges, never mutates, and never labels a pair a
-"duplicate."** It ranks candidates and stops — deciding whether two
+The **structural ranking never merges, never mutates, and never labels a
+pair a "duplicate."** It ranks candidates and stops — deciding whether two
 records are the same fact is a judgment for the operator (or a future
-semantic skill) to make with the ranked list in hand, not a verdict this
+semantic skill) to make with the ranked list in hand, not something this
 structural sweep pre-decides. There is no clustering and no default
 similarity threshold: `--min-score` bounds report SIZE, not correctness,
 and its absence (the default) means **no filtering at all** — a pair with
 a negative cosine score is reported just like any other. `--top-k` bounds
 how many neighbours are considered per record (a small default; see the
-flag's own `--help` text for the exact number).
+flag's own `--help` text for the exact number). The optional advisory
+verdict described below MAY name any relation, including `duplicate` —
+that is the verdict object doing its documented job, not the structural
+ranking pre-labelling a pair.
 
 With `--all-scopes`, a candidate pair may span **two different scopes** —
 two scopes holding the same fact is exactly the duplication an operator
@@ -273,6 +276,92 @@ is never confused with a cross-scope one.
 
 A scope with fewer than two records reports zero candidates and exits `0`;
 the JSON `candidates` array is `[]`, never `null`, in that case.
+
+#### Advisory verdicts
+
+When
+[`ENGRAM_DECISIONS_PROVIDER`](/guides/configure/#typed-decisions-jev) is
+set (off by default), each candidate pair ALSO gets an **advisory**
+relation verdict, surfaced to you and never acted on — consolidate still
+never merges or mutates a record because of one. `--no-verdicts` skips
+this pass entirely for one run: no record content is sent and no
+`verdict` key appears anywhere in the report.
+
+Each request carries both records' summary plus up to
+`ENGRAM_DECISIONS_VERDICT_STATE_CHARS` characters of content (default
+`1500`) — see
+[configure's "What leaves your deployment"](/guides/configure/#typed-decisions-jev)
+for what that means for your deployment. The decider is asked which of
+five relations best describes how the newer record relates to the older
+one; the more recently created record of the pair is always sent as
+`record_b`, so `updates` means the NEWER record updates the older one,
+regardless of which side of the pair (`a`/`b`) it happened to land on in
+the structural ranking:
+
+| Relation | Meaning |
+|----------|---------|
+| `duplicate` | Both state the same fact; keeping both is redundant (one may be more complete). |
+| `contradicts` | They make incompatible claims about the same subject; one corrects or reverses the other. |
+| `updates` | The newer record (`record_b`) is a newer state or a more complete version of the same fact. |
+| `related` | Same subject area, but different and compatible facts; both are worth keeping. |
+| `unrelated` | Different subjects. |
+
+A second question asks whether both records are about the same specific
+subject — `same_subject`, a probability. A verdict whose own relation
+probability falls strictly below `ENGRAM_DECISIONS_VERDICT_THRESHOLD`
+(default `0.9`, or `--verdict-threshold` to override it for one run) is
+flagged `needs_review`.
+
+A successful verdict's JSON shape:
+
+```json
+{
+  "relation": "duplicate",
+  "probabilities": {"duplicate": 0.93, "contradicts": 0.01, "updates": 0.02, "related": 0.03, "unrelated": 0.01},
+  "same_subject": 0.97,
+  "needs_review": false,
+  "model": "typesafe/jev-1.13-20260917"
+}
+```
+
+A failed request instead reports only its failure class:
+
+```json
+{"error": "timeout"}
+```
+
+`--output text` renders the same object as `verdict=duplicate p=0.93
+same_subject=0.97
+probabilities=duplicate:0.93,contradicts:0.01,updates:0.02,related:0.03,unrelated:0.01
+model=typesafe/jev-1.13-20260917`, appending ` [needs review]` when
+flagged, or `verdict unavailable (<class>)` for a failure — text is a
+rendered view of the same JSON object (D-05), never a second source of
+truth.
+
+`<class>` is one of: `auth`, `bad_request`, `context_too_large`,
+`rate_limited`, `unavailable`, `timeout`, `response_too_large`,
+`malformed_response`, `invalid_request`, `canceled`, `error`, or
+`state_unavailable` (the record's stored state could not be fetched from
+engram's own store, before any request left for the provider). A failed
+verdict is reported per pair and **never changes this command's exit
+status** — consolidate still exits `0` even when every verdict fails.
+`--timeout` bounds the whole sweep, including the verdict pass: a
+deadline reached mid-pass reports every still-outstanding pair `verdict
+unavailable (timeout)` rather than aborting the sweep or dropping
+candidates.
+
+Before sending anything, consolidate prints one line to stderr naming the
+decisions provider, model, endpoint host and the per-record character
+bound; after the pass, one summary line with requested/answered/
+needs_review/unavailable counts and, on any failure, a per-class
+breakdown. Neither line ever reaches stdout — a piped `--output json |
+jq .` consumer never sees them, and script-based consumption of the JSON
+report is unaffected either way.
+
+**Reader guidance, not a rule the renderer enforces:** a `related`
+verdict paired with a high `same_subject` probability is often worth a
+second look — a genuine refinement or state change that falls just short
+of a clean `updates` verdict tends to land there.
 
 ### `spine-review archive` / `spine-review restore`
 
