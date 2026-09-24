@@ -126,6 +126,14 @@ capability existed. The JSON lane already carried `searched_scopes` and
 `scopes_truncated` on every response before this release, now joined by
 `scopes_unknown`, and is unaffected by this change beyond that addition.
 
+When the server runs the Jev reranker (`ENGRAM_SEARCH_RANKER=jev`, see
+[Search reranking (Jev)](/guides/configure/#search-reranking-jev)),
+`engram search` text output gains a RELEVANCE column and JSON output gains a
+per-memory `relevance` field — the provider's probability, 0 to 1, that the
+record answers the query; values all near zero mean nothing returned answers
+it. Without it, output is unchanged byte for byte. `engram list` output
+never carries relevance.
+
 ### Operator commands
 
 Every operator command — `reindex`, `prune-expired`, `summarize-missing`,

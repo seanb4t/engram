@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -502,8 +503,15 @@ func renderJSON(w io.Writer, m proto.Message) error {
 // text/tabwriter. withScore adds a SCORE column (search results carry a
 // meaningful score; list results do not). STATE is unconditional (D-12):
 // blank for a live record, comma-joined state words (memoryStateCell) for a
-// record carrying archived/superseded/expired/scheduled state.
+// record carrying archived/superseded/expired/scheduled state. RELEVANCE is
+// data-derived (D-05): it appears only when withScore is true AND at least
+// one memory in mems carries a non-nil Relevance (the reranker ran for this
+// response) — a plain lexical response renders byte-identical to before
+// this column existed.
 func renderMemoryTable(w io.Writer, mems []*engramv1.Memory, withScore bool) error {
+	withRelevance := withScore && slices.ContainsFunc(mems, func(m *engramv1.Memory) bool {
+		return m.Relevance != nil
+	})
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	var writeErr error
 	writeLine := func(format string, a ...any) {
@@ -512,19 +520,30 @@ func renderMemoryTable(w io.Writer, mems []*engramv1.Memory, withScore bool) err
 		}
 		_, writeErr = fmt.Fprintf(tw, format, a...)
 	}
-	if withScore {
+	switch {
+	case withRelevance:
+		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSTATE\tSCORE\tRELEVANCE\tSUMMARY\n")
+	case withScore:
 		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSTATE\tSCORE\tSUMMARY\n")
-	} else {
+	default:
 		writeLine("SHORT_ID\tSCOPE\tCATEGORY\tSTATE\tSUMMARY\n")
 	}
 	now := time.Now()
 	for _, m := range mems {
 		summary := truncateSummary(m.GetSummary(), 80)
 		state := memoryStateCell(m, now)
-		if withScore {
+		switch {
+		case withRelevance:
+			relevance := "-"
+			if m.Relevance != nil {
+				relevance = fmt.Sprintf("%.4f", m.GetRelevance())
+			}
+			writeLine("%s\t%s\t%s\t%s\t%.4f\t%s\t%s\n",
+				m.GetShortId(), m.GetScope(), m.GetCategory(), state, m.GetScore(), relevance, summary)
+		case withScore:
 			writeLine("%s\t%s\t%s\t%s\t%.4f\t%s\n",
 				m.GetShortId(), m.GetScope(), m.GetCategory(), state, m.GetScore(), summary)
-		} else {
+		default:
 			writeLine("%s\t%s\t%s\t%s\t%s\n",
 				m.GetShortId(), m.GetScope(), m.GetCategory(), state, summary)
 		}

@@ -356,6 +356,140 @@ func TestClientSearchTextOutputStateColumn(t *testing.T) {
 	}
 }
 
+// TestClientSearchTextOutputRelevanceColumn is a D-05 regression guard: the
+// RELEVANCE column is data-derived — present only when at least one
+// returned memory carries relevance — and never disturbs any other header
+// or row when absent.
+func TestClientSearchTextOutputRelevanceColumn(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
+	high := 0.97
+	low := 0.02
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{
+				Memories: []*engramv1.Memory{
+					{ShortId: "HIGH111111", Scope: "repo:x", Relevance: &high},
+					{ShortId: "LOW2222222", Scope: "repo:x", Relevance: &low},
+				},
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	header := strings.SplitN(stdout, "\n", 2)[0]
+	if got, want := strings.Fields(header), []string{"SHORT_ID", "SCOPE", "CATEGORY", "STATE", "SCORE", "RELEVANCE", "SUMMARY"}; !slices.Equal(got, want) {
+		t.Errorf("header fields = %v, want %v (stdout = %q)", got, want, stdout)
+	}
+	highLine := lineContaining(t, stdout, "HIGH111111")
+	if !strings.Contains(highLine, "0.9700") {
+		t.Errorf("high-relevance row = %q, want it to contain 0.9700", highLine)
+	}
+	lowLine := lineContaining(t, stdout, "LOW2222222")
+	if !strings.Contains(lowLine, "0.0200") {
+		t.Errorf("low-relevance row = %q, want it to contain 0.0200", lowLine)
+	}
+
+	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
+	svcNoRel := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{
+				Memories: []*engramv1.Memory{
+					{ShortId: "PLAIN11111", Scope: "repo:x"},
+				},
+			}, nil
+		},
+	}
+	urlNoRel := startStubServer(t, svcNoRel)
+	stdoutNoRel, _, err := runClient(t, "search", "--server", urlNoRel, "--query", "q", "--scope", "repo:x", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	headerNoRel := strings.SplitN(stdoutNoRel, "\n", 2)[0]
+	if got, want := strings.Fields(headerNoRel), []string{"SHORT_ID", "SCOPE", "CATEGORY", "STATE", "SCORE", "SUMMARY"}; !slices.Equal(got, want) {
+		t.Errorf("no-relevance header fields = %v, want %v (stdout = %q)", got, want, stdoutNoRel)
+	}
+}
+
+// TestClientSearchJSONCarriesRelevance proves --output json decodes the
+// additive relevance field verbatim when the server set it, and omits the
+// key when it did not.
+func TestClientSearchJSONCarriesRelevance(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, searchCmd)
+	half := 0.5
+	svc := &stubEngramService{
+		searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+			return &engramv1.SearchMemoriesResponse{
+				Memories: []*engramv1.Memory{
+					{ShortId: "REL1111111", Scope: "repo:x", Relevance: &half},
+					{ShortId: "NOREL222222", Scope: "repo:x"},
+				},
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var out struct {
+		Memories []map[string]json.RawMessage `json:"memories"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("stdout did not unmarshal: %v\nstdout=%q", err, stdout)
+	}
+	if len(out.Memories) != 2 {
+		t.Fatalf("len(memories) = %d, want 2", len(out.Memories))
+	}
+	var relevance0 *float64
+	if raw, ok := out.Memories[0]["relevance"]; ok {
+		if err := json.Unmarshal(raw, &relevance0); err != nil {
+			t.Fatalf("unmarshal memories[0].relevance: %v", err)
+		}
+	}
+	if relevance0 == nil || *relevance0 != 0.5 {
+		t.Errorf("memories[0].relevance = %v, want 0.5", relevance0)
+	}
+	if _, ok := out.Memories[1]["relevance"]; ok {
+		t.Errorf("memories[1] carries a relevance key, want it absent: %+v", out.Memories[1])
+	}
+}
+
+// TestClientListNeverShowsRelevance proves `engram list` text output is
+// unaffected by relevance — no SCORE, no RELEVANCE — even when the server
+// returns memories carrying relevance.
+func TestClientListNeverShowsRelevance(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	rel := 0.9
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return &engramv1.ListMemoriesResponse{
+				Memories: []*engramv1.Memory{
+					{ShortId: "LIST111111", Scope: "repo:x", Relevance: &rel},
+				},
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "list", "--server", url, "--scope", "repo:x", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	header := strings.SplitN(stdout, "\n", 2)[0]
+	if got, want := strings.Fields(header), []string{"SHORT_ID", "SCOPE", "CATEGORY", "STATE", "SUMMARY"}; !slices.Equal(got, want) {
+		t.Errorf("list header fields = %v, want %v (stdout = %q)", got, want, stdout)
+	}
+}
+
 // TestClientSearchCrossSpineEndToEnd is the phase's tracer slice: the
 // --cross-spine flag reaches the wire request untouched (D-01), and the
 // text-mode coverage footer reports a count only, never the scope names
