@@ -40,6 +40,8 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 | `memory.decisions.model` | `ENGRAM_DECISIONS_MODEL` | Decision model (default `typesafe/jev-1.13`, pinned) |
 | `memory.decisions.timeout` | `ENGRAM_DECISIONS_TIMEOUT` | Per-request decision call timeout (empty → binary default `10s`) |
 | `memory.decisions.concurrency` | `ENGRAM_DECISIONS_CONCURRENCY` | Cap on concurrent decision calls per batch (empty → binary default `4`) |
+| `memory.search.ranker` | `ENGRAM_SEARCH_RANKER` | Search ranker; `lexical` (default; renders no variable) or `jev` (opt-in reranking of `search_memory` and `search_discovery` by the decision provider, adding a per-hit `relevance`; requires `memory.decisions.provider`) |
+| `memory.search.rerankTimeout` | `ENGRAM_SEARCH_RERANK_TIMEOUT` | Per-search rerank call timeout, one attempt and no retry (empty → binary default `2s`) |
 
 `ENGRAM_QDRANT_ADDR` is set automatically by the chart to the in-cluster Qdrant service address and does not need a Helm value.
 
@@ -49,6 +51,15 @@ The `ENGRAM_OPENAI_API_KEY` value comes from a Kubernetes Secret (`memory.openai
 empty, the server inherits the `ENGRAM_OPENAI_API_KEY` secret. Every
 `memory.decisions.*` variable renders only when `memory.decisions.provider`
 is set.
+
+Both `memory.search.*` variables render only when `memory.search.ranker` is
+set to a value other than `lexical`, so a default install is unchanged.
+`jev` needs `memory.decisions.provider` with its base URL and key, and
+without it the server refuses to start and names both variables. While
+`jev` is on, every search sends the query and candidate record text to the
+decisions provider, and a failed or slow call falls back to lexical order
+without failing the search — read [Search reranking (Jev)](/guides/configure/#search-reranking-jev)
+before enabling it.
 
 For the full environment variable reference, see [Configure](/guides/configure/).
 
