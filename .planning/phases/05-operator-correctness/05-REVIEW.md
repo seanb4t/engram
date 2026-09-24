@@ -80,6 +80,8 @@ for _, elem := range elems {
 ```
 Add a case to `TestViewFieldsEmptyNestedObjectRendersNoRows`, or a sibling test, that covers `[{}]` and `[""]`.
 
+**Status:** Fixed in ccb1441e
+
 ### WR-02: `neutralizeEnvDerivedFlagDefaults` does not neutralize the `setup` string-slice flags in `TestExitCodeBaseline`
 
 **File:** `cmd/engram/golden_test.go:62-65, 76-111`; `cmd/engram/exitcode_baseline_test.go:615-621`; root cause in `cmd/engram/clienttest_test.go:225-227`
@@ -101,6 +103,8 @@ t.Cleanup(func() { f.DefValue = orig })
 ```
 If you don't make that change, correct the two doc comments so they no longer claim coverage for the `setup` entries.
 
+**Status:** Fixed in e0ef82fb — the helper now blanks the bound value too (`pflag.SliceValue.Replace` for slices, `Value.Set` otherwise) and restores value and `DefValue` in one cleanup
+
 ## Info
 
 ### IN-01: Cleanup order leaves `reindexTarget` / `migrateOwner` blank after the baseline test
@@ -109,11 +113,15 @@ If you don't make that change, correct the two doc comments so they no longer cl
 **Issue:** `t.Cleanup` runs LIFO. The `doReset` cleanups from `resetEveryCommandFlagState` run before the `DefValue` restores from `neutralizeEnvDerivedFlagDefaults`. The reset therefore copies the still-blank `""` back into the bound variables, and only afterwards is `DefValue` restored to the ambient value. After the test, the process-global `reindexTarget` and `migrateOwner` no longer match their flag's `DefValue`. Separately, the helper's doc (`golden_test.go:79`) still says it protects against "a release version". Version pinning moved to `withGoldenDeterminism`.
 **Fix:** Have the helper also set and restore the bound value (`f.Value.Set("")`, then restore in its own cleanup), so the result does not depend on cleanup order. Drop the "release version" clause from the helper's doc.
 
+**Status:** Fixed in e0ef82fb (with WR-02)
+
 ### IN-02: The nested-command matching in the docs gate is loose
 
 **File:** `cmd/engram/operator_output_test.go:810-828`
 **Issue:** A `<group> <leaf>` key is accepted if the backticked `engram <group>` and the backticked `leaf` both appear anywhere in the list, independently. A future nested command whose leaf name matches any other backticked token (for example `` `status` ``), under a group mentioned as `` `engram <group>` ``, would pass without being listed. `strings.Index(doc, "### Operator commands")` also prefix-matches a longer heading.
 **Fix:** Require the leaf inside the group's own parenthetical, or use the full `` `group leaf` `` form only. Anchor the heading with `(?m)^### Operator commands$`.
+
+**Status:** Fixed in e04a7359 (with IN-05)
 
 ### IN-03: Line-number references in test comments were already stale when written
 
@@ -121,17 +129,23 @@ If you don't make that change, correct the two doc comments so they no longer cl
 **Issue:** The comments point at "operator_view.go ~line 102" and "~line 91". After this phase's own edit, the branches are at lines 104 and 93.
 **Fix:** Refer to the branches by name (`case '{':` in `viewFields`, the `case '[':` element branch) rather than by line number.
 
+**Status:** Fixed in 6be892a8
+
 ### IN-04: "This subtest gates every other one below" is false
 
 **File:** `internal/store/migrate_converge_test.go:443-450`
 **Issue:** `t.Fatalf` inside a `t.Run` subtest ends only that subtest, so the sibling subtests still run. The siblings have independent assertions and are not vacuous. However, a fixture regression causes a cascade of misleading failures instead of the single gated failure the comment describes.
 **Fix:** Move the `fires` and `cursor` precondition checks to the parent test body, before the first `t.Run`, using `t.Fatalf` there.
 
+**Status:** Fixed in 323691ac
+
 ### IN-05: The operator-commands prose list is hard to parse
 
 **File:** `docs-site/src/content/docs/guides/cli.md:139-144`
 **Issue:** The list contains a nested "…, `migrate status`, and `migrate revert` (see …), `migrate-remap-owner`, …, and every …". It has two "and"s, which reads as the list ending twice.
 **Fix:** Group the migrate verbs parenthetically, for example "`migrate` (and its `status` / `revert` subcommands; see the [Migrate guide](/guides/migrate/))". If you do this, update the docs gate as well: its nested-key fallback only accepts `` `engram migrate` `` plus the backticked leaf.
+
+**Status:** Fixed in e04a7359 (with IN-02; the docs gate now accepts a leaf inside its group's parenthetical)
 
 ---
 
