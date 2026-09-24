@@ -6,26 +6,26 @@ current_phase: 05
 current_phase_name: Operator Correctness
 status: planning
 stopped_at: Phase 4 complete, ready to plan Phase 05
-last_updated: "2026-09-24T16:27:52.522Z"
+last_updated: "2026-09-24T16:31:57.417Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 4 complete, transitioned to Phase 05
-state_head: fd9f575f1afcf4d48e61d4ccdb8089ec5fc313a6
+state_head: 35f22121c0629a3cc3f99c617301bd4dbb9e88d6
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 35
   completed_plans: 30
-  percent: 60
+  percent: 80
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-24 after Phase 3 of milestone 2026-09-22.01)
+See: .planning/PROJECT.md (updated 2026-09-24 after Phase 4 of milestone 2026-09-22.01)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 4 — Jev Reranker & Per-Hit Relevance Signal
+**Current focus:** Phase 05 — Operator Correctness
 
 ## Current Position
 
@@ -489,6 +489,7 @@ Both prior entries were delivered and had simply never been closed out:
   (`yzmfesbsg0`, known bug) — hand-corrected for Phase 2; keep hand-verifying the table after the
   Phase 3–5 `phase.complete` calls. It also left STATE.md `progress.completed_phases` at 1, fixed by hand to 2.
 - **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — none remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
+- **[Phase 4] (2026-09-22.01):** `phase.complete 4` mis-targeted a shipped v0.12.x ROADMAP progress row a fourth time (`yzmfesbsg0`) — hand-corrected; hand-verify again after the Phase 5 call. It again left `progress.completed_phases` at 3 (percent 60), fixed by hand to 4 (80) in the transition. Phase 4's code changes (`internal/store/store.go`, `internal/store/rerank.go`, `internal/server/tools.go`) re-staled earlier phases' VERIFICATION.md fingerprints: `isPhaseComplete` now reads Phases 1, 2 and 3 as `stale` (Phase 4 `passed`), which is why `roadmap.analyze` reports them `partial` — re-verify every stale phase (`/gsd-verify-work 01`/`02`/`03`) before the milestone audit. engram record `xhg7dgmqx4` notes the cross-phase key-link drift.
 
 ### Quick Tasks Completed
 
@@ -510,7 +511,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T16:00:20.582Z
+Last session: 2026-09-24T16:31:51.156Z
 Stopped at: Phase 4 complete, ready to plan Phase 05
 Resume file: None
 
