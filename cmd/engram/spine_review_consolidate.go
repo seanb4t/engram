@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/store"
@@ -73,13 +74,37 @@ func parseMinScore(v string) (*float32, error) {
 }
 
 var (
-	spineConsolidateScope     string
-	spineConsolidateAllScopes bool
-	spineConsolidateTimeout   time.Duration
-	spineConsolidateOutput    string
-	spineConsolidateTopK      uint64
-	spineConsolidateMinScore  string
+	spineConsolidateScope            string
+	spineConsolidateAllScopes        bool
+	spineConsolidateTimeout          time.Duration
+	spineConsolidateOutput           string
+	spineConsolidateTopK             uint64
+	spineConsolidateMinScore         string
+	spineConsolidateVerdictThreshold string
 )
+
+// parseVerdictThreshold parses --verdict-threshold's string value: empty
+// means "use the registered ENGRAM_DECISIONS_VERDICT_THRESHOLD value" (the
+// caller leaves settings.Threshold untouched), so this returns false, 0,
+// nil in that case. Registered as a STRING flag rather than a float flag
+// for the same reason parseMinScore is — its DefValue must be able to state
+// "empty means the registered default", never advertise a bogus numeric
+// default. A non-empty value is parsed via config.ParseProbability — the
+// SAME parser Config.Validate uses for ENGRAM_DECISIONS_VERDICT_THRESHOLD
+// (WR-01) — so a value this flag accepts can never diverge from what the
+// registered var itself would accept; an invalid value is a usage error
+// naming the flag and the value, returned before any store or decider
+// construction.
+func parseVerdictThreshold(v string) (set bool, threshold float64, err error) {
+	if v == "" {
+		return false, 0, nil
+	}
+	threshold, perr := config.ParseProbability(v)
+	if perr != nil {
+		return false, 0, usageErrorf("--verdict-threshold %q: %v", v, perr)
+	}
+	return true, threshold, nil
+}
 
 // spineReviewConsolidateCmd reports ranked near-duplicate candidate pairs
 // across the memory spine, using each record's already-stored vector.
@@ -106,9 +131,16 @@ var spineReviewConsolidateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		thresholdSet, thresholdOverride, err := parseVerdictThreshold(spineConsolidateVerdictThreshold)
+		if err != nil {
+			return err
+		}
 		st, dec, settings, err := spineConsolidateStoreFromEnv()
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
+		}
+		if thresholdSet {
+			settings.Threshold = thresholdOverride
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -398,6 +430,10 @@ func init() {
 	spineReviewConsolidateCmd.Flags().StringVar(&spineConsolidateMinScore, "min-score", "",
 		"minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — "+
 			"including pairs with a negative score")
+	spineReviewConsolidateCmd.Flags().StringVar(&spineConsolidateVerdictThreshold, "verdict-threshold", "",
+		"the probability between 0 and 1 below which a verdict is marked needs_review; overrides "+
+			"ENGRAM_DECISIONS_VERDICT_THRESHOLD (default 0.9) for this run; no effect without "+
+			"ENGRAM_DECISIONS_PROVIDER or with --no-verdicts")
 	spineReviewConsolidateCmd.MarkFlagsMutuallyExclusive("scope", "all-scopes")
 	spineReviewCmd.AddCommand(spineReviewConsolidateCmd)
 }

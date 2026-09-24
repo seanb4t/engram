@@ -595,6 +595,150 @@ func TestSpineReviewConsolidateNoProviderByteIdentical(t *testing.T) {
 	}
 }
 
+// verdictThresholdFakeDecider is a canned decide.Decider answering every
+// request with a "related" choice at probability 0.8 (all five
+// probabilities present, D-05) and a same_subject noul — enough for
+// TestSpineReviewConsolidateVerdictThresholdFlag to observe needs_review
+// flip purely as a function of --verdict-threshold, with no live provider.
+type verdictThresholdFakeDecider struct{}
+
+func (verdictThresholdFakeDecider) Decide(_ context.Context, _ decide.Request) (decide.Response, error) {
+	return verdictThresholdFakeDecider{}.response(), nil
+}
+
+func (d verdictThresholdFakeDecider) DecideMany(_ context.Context, reqs []decide.Request) []decide.Result {
+	results := make([]decide.Result, len(reqs))
+	for i := range reqs {
+		results[i] = decide.Result{Response: d.response()}
+	}
+	return results
+}
+
+func (verdictThresholdFakeDecider) response() decide.Response {
+	return decide.Response{
+		Model: "test-model",
+		Answers: map[string]decide.Answer{
+			verdict.QuestionRelation: {
+				Type:   decide.QuestionChoice,
+				Choice: verdict.Related,
+				Probabilities: map[string]float64{
+					verdict.Duplicate: 0.05, verdict.Contradicts: 0.05, verdict.Updates: 0.05,
+					verdict.Related: 0.8, verdict.Unrelated: 0.05,
+				},
+			},
+			verdict.QuestionSameSubject: {Type: decide.QuestionNoul, Probability: 0.5},
+		},
+	}
+}
+
+// TestSpineReviewConsolidateVerdictThresholdFlag proves D-08's flag
+// override end to end: a fake decider answering "related" at 0.8 flips
+// needs_review as a function of --verdict-threshold alone, an invalid value
+// exits exitUsage before the store/decider constructor is ever called, and
+// an unrelated --verdict-threshold with no provider configured leaves the
+// no-provider stdout byte-identical.
+func TestSpineReviewConsolidateVerdictThresholdFlag(t *testing.T) {
+	pairs := []store.DuplicatePair{
+		{A: "id-a", B: "id-b", AShortID: "sa", BShortID: "sb", AScope: "s", BScope: "s", Score: 0.9},
+	}
+	states := map[string]store.RecordState{
+		"id-a": {ID: "id-a", Content: "content-a"},
+		"id-b": {ID: "id-b", Content: "content-b"},
+	}
+
+	cases := []struct {
+		name            string
+		flagValue       string
+		wantThreshold   float64
+		wantNeedsReview bool
+	}{
+		{"default 0.9: below threshold, needs_review true", "", 0.9, true},
+		{"override 0.75: at or above, needs_review false", "0.75", 0.75, false},
+		{"override 0.8 exactly p: needs_review false (strict less-than)", "0.8", 0.8, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetClientFlags(t)
+			fake := &spineConsolidateFakeStore{pairs: pairs, states: states}
+			withFakeConsolidateStoreAndDecider(t, fake, verdictThresholdFakeDecider{}, server.VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: verdict.DefaultStateChars})
+
+			args := []string{"spine-review", "consolidate", "--all-scopes", "--output", "json"}
+			if tc.flagValue != "" {
+				args = append(args, "--verdict-threshold", tc.flagValue)
+			}
+			stdout, _, err := runClient(t, args...)
+			if err != nil {
+				t.Fatalf("runClient: %v", err)
+			}
+
+			var doc struct {
+				VerdictThreshold float64 `json:"verdict_threshold"`
+				Candidates       []struct {
+					Verdict map[string]any `json:"verdict"`
+				} `json:"candidates"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+				t.Fatalf("json.Unmarshal(stdout): %v (stdout=%q)", err, stdout)
+			}
+			if doc.VerdictThreshold != tc.wantThreshold {
+				t.Errorf("verdict_threshold = %v, want %v", doc.VerdictThreshold, tc.wantThreshold)
+			}
+			if len(doc.Candidates) != 1 {
+				t.Fatalf("len(candidates) = %d, want 1", len(doc.Candidates))
+			}
+			if got := doc.Candidates[0].Verdict["needs_review"]; got != tc.wantNeedsReview {
+				t.Errorf("needs_review = %v, want %v", got, tc.wantNeedsReview)
+			}
+		})
+	}
+
+	t.Run("invalid values exit usage before construction", func(t *testing.T) {
+		for _, bad := range []string{"-0.1", "1.5", "NaN", "abc"} {
+			t.Run(bad, func(t *testing.T) {
+				resetClientFlags(t)
+				orig := spineConsolidateStoreFromEnv
+				spineConsolidateStoreFromEnv = func() (spineConsolidateStore, decide.Decider, server.VerdictSettings, error) {
+					t.Error("spineConsolidateStoreFromEnv was called despite an invalid --verdict-threshold")
+					return nil, nil, server.VerdictSettings{}, nil
+				}
+				t.Cleanup(func() { spineConsolidateStoreFromEnv = orig })
+
+				_, _, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--verdict-threshold", bad)
+				if err == nil {
+					t.Fatalf("expected an error for --verdict-threshold %q, got nil", bad)
+				}
+				if got := exitCodeFromError(err); got != exitUsage {
+					t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+				}
+				if !strings.Contains(err.Error(), "--verdict-threshold") {
+					t.Errorf("error = %v, want it to name --verdict-threshold", err)
+				}
+			})
+		}
+	})
+
+	t.Run("no provider configured: byte-identical stdout regardless of the flag", func(t *testing.T) {
+		resetClientFlags(t)
+		fake := &spineConsolidateFakeStore{pairs: pairs}
+		withFakeConsolidateStore(t, fake)
+
+		stdout, _, err := runClient(t, "spine-review", "consolidate", "--all-scopes", "--verdict-threshold", "0.5", "--output", "json")
+		if err != nil {
+			t.Fatalf("runClient: %v", err)
+		}
+		want, err := json.Marshal(consolidateDoc(pairs, "", true, nil, spineConsolidateDefaultTopK, 0, 0))
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		if stdout != string(want)+"\n" {
+			t.Errorf("stdout = %q, want %q (byte-identical to the no-provider run)", stdout, string(want)+"\n")
+		}
+		if fake.recordStatesCalls != 0 {
+			t.Errorf("RecordStates called %d times, want 0 (no decider configured)", fake.recordStatesCalls)
+		}
+	})
+}
+
 // TestConsolidateStoreSurfaceIsReadOnly proves T-03-02: spineConsolidateStore's
 // method set is exactly {NearDuplicates, RecordStates} — no mutating store
 // method is reachable through this interface.

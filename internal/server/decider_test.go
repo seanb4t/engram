@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -563,9 +564,16 @@ func TestStoreAndDeciderFromEnv(t *testing.T) {
 		if dec != nil {
 			t.Error("StoreAndDeciderFromEnv with ENGRAM_DECISIONS_PROVIDER unset returned a non-nil decider, want nil (D-04)")
 		}
-		want := VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: verdict.DefaultStateChars}
-		if settings != want {
-			t.Errorf("settings = %+v, want %+v", settings, want)
+		// Threshold/StateChars only — Provider/Model/EndpointHost are
+		// populated from cfg.Decisions unconditionally (03-05's D-08/D-09
+		// resolver has no provider gate), so this subtest, which does not
+		// clear ENGRAM_DECISIONS_MODEL, is not the place to pin their
+		// value; TestDeciderFromEnv/provider_unset covers that.
+		if settings.Threshold != verdict.DefaultThreshold {
+			t.Errorf("settings.Threshold = %v, want %v (verdict.DefaultThreshold)", settings.Threshold, verdict.DefaultThreshold)
+		}
+		if settings.StateChars != verdict.DefaultStateChars {
+			t.Errorf("settings.StateChars = %v, want %v (verdict.DefaultStateChars)", settings.StateChars, verdict.DefaultStateChars)
 		}
 		if loads != 1 {
 			t.Errorf("StoreAndDeciderFromEnv loaded config %d times, want exactly 1", loads)
@@ -590,6 +598,167 @@ func TestStoreAndDeciderFromEnv(t *testing.T) {
 		}
 		if dec == nil {
 			t.Error("StoreAndDeciderFromEnv with ENGRAM_DECISIONS_PROVIDER=jev returned a nil decider, want non-nil")
+		}
+	})
+}
+
+// clearVerdictEnv isolates a test from ambient ENGRAM_DECISIONS_* env vars
+// (D-08/D-09's knobs and the provider/base-url fields verdictSettings and
+// DeciderFromEnv read), so each subtest below starts from a known state
+// regardless of what the host environment or a sibling test left set.
+func clearVerdictEnv(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{
+		"ENGRAM_DECISIONS_PROVIDER", "ENGRAM_DECISIONS_BASE_URL", "ENGRAM_DECISIONS_MODEL",
+		"ENGRAM_DECISIONS_API_KEY", "ENGRAM_DECISIONS_VERDICT_THRESHOLD", "ENGRAM_DECISIONS_VERDICT_STATE_CHARS",
+	} {
+		t.Setenv(name, "")
+	}
+}
+
+// TestVerdictSettingsDefaultsMatchVerdictPackage proves the assumption-delta
+// invariant (D-08, D-09): with both registered knobs empty,
+// config.Load(nil)'s registered defaults resolve through verdictSettings to
+// exactly verdict.DefaultThreshold/verdict.DefaultStateChars — the registry
+// default and the package fallback cannot drift.
+func TestVerdictSettingsDefaultsMatchVerdictPackage(t *testing.T) {
+	clearVerdictEnv(t)
+
+	cfg, err := config.Load(nil)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	got := verdictSettings(cfg)
+	if got.Threshold != verdict.DefaultThreshold {
+		t.Errorf("Threshold = %v, want %v (verdict.DefaultThreshold)", got.Threshold, verdict.DefaultThreshold)
+	}
+	if got.StateChars != verdict.DefaultStateChars {
+		t.Errorf("StateChars = %v, want %v (verdict.DefaultStateChars)", got.StateChars, verdict.DefaultStateChars)
+	}
+}
+
+// TestVerdictSettingsResolvesKnobs proves 0.75/800 resolve as given, and
+// that an unparseable or out-of-range threshold (2, NaN, abc) and an
+// unparseable or non-positive state-chars value (0, abc) each fall back to
+// the package defaults.
+func TestVerdictSettingsResolvesKnobs(t *testing.T) {
+	t.Run("valid values resolve as given", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Decisions.VerdictThreshold = "0.75"
+		cfg.Decisions.VerdictStateChars = "800"
+		got := verdictSettings(cfg)
+		if got.Threshold != 0.75 {
+			t.Errorf("Threshold = %v, want 0.75", got.Threshold)
+		}
+		if got.StateChars != 800 {
+			t.Errorf("StateChars = %v, want 800", got.StateChars)
+		}
+	})
+
+	for _, bad := range []string{"2", "NaN", "abc"} {
+		t.Run("threshold falls back on "+bad, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Decisions.VerdictThreshold = bad
+			cfg.Decisions.VerdictStateChars = "800"
+			got := verdictSettings(cfg)
+			if got.Threshold != verdict.DefaultThreshold {
+				t.Errorf("Threshold = %v, want %v (default)", got.Threshold, verdict.DefaultThreshold)
+			}
+		})
+	}
+
+	for _, bad := range []string{"0", "abc"} {
+		t.Run("state chars falls back on "+bad, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Decisions.VerdictThreshold = "0.75"
+			cfg.Decisions.VerdictStateChars = bad
+			got := verdictSettings(cfg)
+			if got.StateChars != verdict.DefaultStateChars {
+				t.Errorf("StateChars = %v, want %v (default)", got.StateChars, verdict.DefaultStateChars)
+			}
+		})
+	}
+}
+
+// TestVerdictSettingsEndpointHostOnly proves T-03-04's mitigation: a base
+// URL carrying userinfo, path and query resolves to EndpointHost
+// "decisions.example.com:8443" only — the settings value contains no
+// "secret", "openrouter" or "k=v".
+func TestVerdictSettingsEndpointHostOnly(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Decisions.BaseURL = "https://user:secret@decisions.example.com:8443/openrouter?k=v"
+
+	got := verdictSettings(cfg)
+	if got.EndpointHost != "decisions.example.com:8443" {
+		t.Errorf("EndpointHost = %q, want %q", got.EndpointHost, "decisions.example.com:8443")
+	}
+	full := fmt.Sprintf("%+v", got)
+	for _, forbidden := range []string{"secret", "openrouter", "k=v"} {
+		if strings.Contains(full, forbidden) {
+			t.Errorf("VerdictSettings %+v contains forbidden substring %q", got, forbidden)
+		}
+	}
+}
+
+// TestDeciderFromEnv proves the curation-eval wiring seam: provider empty
+// returns a nil decider and a nil error with exactly one config load;
+// provider "jev" plus a base URL returns a non-nil decider and settings
+// with Provider "jev" and the configured model. Isolated from ambient
+// ENGRAM_DECISIONS_* env with t.Setenv.
+func TestDeciderFromEnv(t *testing.T) {
+	t.Run("provider unset", func(t *testing.T) {
+		clearVerdictEnv(t)
+
+		loads := 0
+		orig := configLoad
+		configLoad = func(flags *flag.FlagSet) (*config.Config, error) {
+			loads++
+			return orig(flags)
+		}
+		t.Cleanup(func() { configLoad = orig })
+
+		dec, settings, err := DeciderFromEnv()
+		if err != nil {
+			t.Fatalf("DeciderFromEnv: %v", err)
+		}
+		if dec != nil {
+			t.Error("DeciderFromEnv with ENGRAM_DECISIONS_PROVIDER unset returned a non-nil decider, want nil")
+		}
+		// Threshold/StateChars/Provider only — Model resolves to the
+		// registry default (jev.DefaultModel) regardless of provider, since
+		// 03-05's resolver copies cfg.Decisions.Model unconditionally.
+		if settings.Threshold != verdict.DefaultThreshold {
+			t.Errorf("settings.Threshold = %v, want %v (verdict.DefaultThreshold)", settings.Threshold, verdict.DefaultThreshold)
+		}
+		if settings.StateChars != verdict.DefaultStateChars {
+			t.Errorf("settings.StateChars = %v, want %v (verdict.DefaultStateChars)", settings.StateChars, verdict.DefaultStateChars)
+		}
+		if settings.Provider != "" {
+			t.Errorf("settings.Provider = %q, want \"\"", settings.Provider)
+		}
+		if loads != 1 {
+			t.Errorf("DeciderFromEnv loaded config %d times, want exactly 1", loads)
+		}
+	})
+
+	t.Run("provider jev", func(t *testing.T) {
+		clearVerdictEnv(t)
+		t.Setenv("ENGRAM_DECISIONS_PROVIDER", "jev")
+		t.Setenv("ENGRAM_DECISIONS_BASE_URL", "https://example.invalid/api")
+		t.Setenv("ENGRAM_DECISIONS_MODEL", "typesafe/jev-1.13")
+
+		dec, settings, err := DeciderFromEnv()
+		if err != nil {
+			t.Fatalf("DeciderFromEnv: %v", err)
+		}
+		if dec == nil {
+			t.Error("DeciderFromEnv with ENGRAM_DECISIONS_PROVIDER=jev returned a nil decider, want non-nil")
+		}
+		if settings.Provider != "jev" {
+			t.Errorf("settings.Provider = %q, want %q", settings.Provider, "jev")
+		}
+		if settings.Model != "typesafe/jev-1.13" {
+			t.Errorf("settings.Model = %q, want %q", settings.Model, "typesafe/jev-1.13")
 		}
 	})
 }

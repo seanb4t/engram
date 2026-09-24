@@ -146,22 +146,60 @@ func decisionsConcurrency(cfg *config.Config) int {
 // VerdictSettings configures the curation-verdict pass: Threshold is the
 // D-08 boundary below which a verdict's relation probability is flagged
 // needs_review, and StateChars is the D-09 per-record state truncation
-// length. Plan 03-05 extends verdictSettings below to read the operator
-// knobs plan 03-02 registers, falling back to these same defaults when
-// unset; today it always returns the defaults.
+// length. Provider, Model and EndpointHost identify what will receive
+// record content — consolidate's disclosure line (plan 03-05) names them
+// before anything is sent. EndpointHost is the base URL's host ONLY — never
+// userinfo, path or query — mirroring logDeciderEnabled's own host-only
+// rule.
 type VerdictSettings struct {
-	Threshold  float64
-	StateChars int
+	Threshold    float64
+	StateChars   int
+	Provider     string
+	Model        string
+	EndpointHost string
 }
 
-// verdictSettings resolves VerdictSettings. cfg is unused today — plan
-// 03-05 extends this function to read the ENGRAM_DECISIONS_VERDICT_*
-// knobs plan 03-02 registers, matching every other decisions* resolver's
-// shape (warn-and-default on empty/invalid, never error).
-//
-//nolint:unparam,revive // cfg intentionally unread until plan 03-05 wires the registered knobs; kept in the signature now so StoreAndDeciderFromEnv never needs a second signature change
+// verdictSettings resolves VerdictSettings from the registered
+// ENGRAM_DECISIONS_VERDICT_THRESHOLD/ENGRAM_DECISIONS_VERDICT_STATE_CHARS
+// knobs (plan 03-02), each parsed with the SAME exported parser
+// Config.Validate uses (config.ParseProbability/config.ParsePositiveIntCap)
+// — the validated range and the enforced range cannot diverge (WR-01).
+// Falls back to the internal/verdict package defaults with a slog.Warn
+// naming the var when it is set but unparseable, mirroring
+// decisionsConcurrency's shape above; an unset var (empty string) is
+// silently defaulted — Load's env TransformFunc already preserves the
+// registry default in that case, so this function only ever sees "set but
+// unparseable" as a distinct case from "unset". Provider and Model are
+// copied from cfg.Decisions verbatim; EndpointHost is
+// cfg.Decisions.BaseURL's host only (empty on a parse error).
 func verdictSettings(cfg *config.Config) VerdictSettings {
-	return VerdictSettings{Threshold: verdict.DefaultThreshold, StateChars: verdict.DefaultStateChars}
+	threshold, err := config.ParseProbability(cfg.Decisions.VerdictThreshold)
+	if err != nil {
+		if cfg.Decisions.VerdictThreshold != "" {
+			slog.Warn("ENGRAM_DECISIONS_VERDICT_THRESHOLD is set but unparseable or out of range; using default",
+				"value", cfg.Decisions.VerdictThreshold, "default", verdict.DefaultThreshold)
+		}
+		threshold = verdict.DefaultThreshold
+	}
+	stateChars, err := config.ParsePositiveIntCap(cfg.Decisions.VerdictStateChars)
+	if err != nil {
+		if cfg.Decisions.VerdictStateChars != "" {
+			slog.Warn("ENGRAM_DECISIONS_VERDICT_STATE_CHARS is set but unparseable or non-positive; using default",
+				"value", cfg.Decisions.VerdictStateChars, "default", verdict.DefaultStateChars)
+		}
+		stateChars = verdict.DefaultStateChars
+	}
+	var host string
+	if u, err := url.Parse(cfg.Decisions.BaseURL); err == nil {
+		host = u.Host
+	}
+	return VerdictSettings{
+		Threshold:    threshold,
+		StateChars:   stateChars,
+		Provider:     cfg.Decisions.Provider,
+		Model:        cfg.Decisions.Model,
+		EndpointHost: host,
+	}
 }
 
 // StoreAndDeciderFromEnv builds the store, the typed-decision Decider and
@@ -185,6 +223,23 @@ func StoreAndDeciderFromEnv() (*store.Store, decide.Decider, VerdictSettings, er
 		return nil, nil, VerdictSettings{}, err
 	}
 	return st, dec, verdictSettings(cfg), nil
+}
+
+// DeciderFromEnv builds the typed-decision Decider and the curation-verdict
+// settings from a SINGLE config load, WITHOUT a store — the curation eval
+// (plan 03-07) needs no Qdrant, unlike StoreAndDeciderFromEnv above. An
+// empty ENGRAM_DECISIONS_PROVIDER resolves to a nil Decider and a nil error
+// (D-04), never a startup error, exactly like deciderFromConfig itself.
+func DeciderFromEnv() (decide.Decider, VerdictSettings, error) {
+	cfg, err := loadAndValidate()
+	if err != nil {
+		return nil, VerdictSettings{}, err
+	}
+	dec, err := deciderFromConfig(cfg)
+	if err != nil {
+		return nil, VerdictSettings{}, err
+	}
+	return dec, verdictSettings(cfg), nil
 }
 
 // logDeciderEnabled logs one Info line naming that typed decisions are
