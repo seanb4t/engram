@@ -206,6 +206,7 @@ the operation that asked for it.
 | `ENGRAM_DECISIONS_DRAIN_BYTES` | — | `262144` | Byte bound on draining the rest of the response body after a decode, so the underlying connection can be reused. `0` skips the drain entirely |
 | `ENGRAM_DECISIONS_DRAIN_TIMEOUT` | — | `2s` | Time bound on the same post-response drain, paired with the byte bound above. `0` skips the drain entirely |
 | `ENGRAM_DECISIONS_CONCURRENCY` | — | `4` | Caps how many decision calls one batch runs at once |
+| `ENGRAM_DECISIONS_VERDICT_THRESHOLD` | — | `0.9` | The probability below which a `spine-review consolidate` verdict is marked `needs_review`; a probability between 0 and 1. `--verdict-threshold` overrides it for one run |
 
 Source: `internal/config` (registry) + `internal/decide/jev` (the Jev client) + `internal/server/decider.go` (`deciderFromConfig`, the `ENGRAM_OPENAI_API_KEY` fallback).
 

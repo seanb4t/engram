@@ -4,12 +4,13 @@
 package config
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// decisionsField is one of the nine ENGRAM_DECISIONS_* registry rows (D-01,
-// D-02).
+// decisionsField is one of the ten ENGRAM_DECISIONS_* registry rows (D-01,
+// D-02, D-08).
 type decisionsField struct {
 	key string
 	env string
@@ -17,7 +18,7 @@ type decisionsField struct {
 	get func(*Config) string
 }
 
-// decisionsFields is the nine-key table both TestDecisionsRegistryEntries
+// decisionsFields is the ten-key table both TestDecisionsRegistryEntries
 // subtests drive, so no key is asserted by a hand-written one-off block.
 var decisionsFields = []decisionsField{
 	{"decisions.provider", "ENGRAM_DECISIONS_PROVIDER", "", func(c *Config) string { return c.Decisions.Provider }},
@@ -29,6 +30,7 @@ var decisionsFields = []decisionsField{
 	{"decisions.drain_bytes", "ENGRAM_DECISIONS_DRAIN_BYTES", "262144", func(c *Config) string { return c.Decisions.DrainBytes }},
 	{"decisions.drain_timeout", "ENGRAM_DECISIONS_DRAIN_TIMEOUT", "2s", func(c *Config) string { return c.Decisions.DrainTimeout }},
 	{"decisions.concurrency", "ENGRAM_DECISIONS_CONCURRENCY", "4", func(c *Config) string { return c.Decisions.Concurrency }},
+	{"decisions.verdict_threshold", "ENGRAM_DECISIONS_VERDICT_THRESHOLD", "0.9", func(c *Config) string { return c.Decisions.VerdictThreshold }},
 }
 
 // TestDecisionsRegistryEntries pins D-01/D-02: the registry carries exactly
@@ -102,14 +104,15 @@ func TestDecisionsRegistryEntries(t *testing.T) {
 func decisionsJevEnabled() *Config {
 	c := validConfig()
 	c.Decisions = DecisionsConfig{
-		Provider:     "jev",
-		BaseURL:      "https://openrouter.ai/api",
-		Model:        "typesafe/jev-1.13",
-		Timeout:      "10s",
-		MaxTimeout:   "10m",
-		DrainBytes:   "262144",
-		DrainTimeout: "2s",
-		Concurrency:  "4",
+		Provider:         "jev",
+		BaseURL:          "https://openrouter.ai/api",
+		Model:            "typesafe/jev-1.13",
+		Timeout:          "10s",
+		MaxTimeout:       "10m",
+		DrainBytes:       "262144",
+		DrainTimeout:     "2s",
+		Concurrency:      "4",
+		VerdictThreshold: "0.9",
 	}
 	return c
 }
@@ -124,12 +127,13 @@ func TestDecisionsValidate(t *testing.T) {
 	t.Run("provider empty is inert even with every other field malformed (E01)", func(t *testing.T) {
 		c := validConfig()
 		c.Decisions = DecisionsConfig{
-			Provider:    "",
-			BaseURL:     "ftp://",
-			Timeout:     "x",
-			MaxTimeout:  "0",
-			DrainBytes:  "-1",
-			Concurrency: "0",
+			Provider:         "",
+			BaseURL:          "ftp://",
+			Timeout:          "x",
+			MaxTimeout:       "0",
+			DrainBytes:       "-1",
+			Concurrency:      "0",
+			VerdictThreshold: "garbage",
 		}
 		if err := c.Validate(); err != nil {
 			t.Fatalf("Validate() = %v, want nil (provider empty disables the whole decisions block)", err)
@@ -177,6 +181,10 @@ func TestDecisionsValidate(t *testing.T) {
 		{"concurrency non-numeric rejected", func(c *Config) { c.Decisions.Concurrency = "abc" }, true, "ENGRAM_DECISIONS_CONCURRENCY"},
 		{"model empty rejected", func(c *Config) { c.Decisions.Model = "" }, true, "ENGRAM_DECISIONS_MODEL"},
 		{"api_key empty accepted (never validated)", func(c *Config) { c.Decisions.APIKey = "" }, false, ""},
+		{"verdict_threshold above 1 rejected", func(c *Config) { c.Decisions.VerdictThreshold = "1.5" }, true, "ENGRAM_DECISIONS_VERDICT_THRESHOLD"},
+		{"verdict_threshold NaN rejected", func(c *Config) { c.Decisions.VerdictThreshold = "NaN" }, true, "ENGRAM_DECISIONS_VERDICT_THRESHOLD"},
+		{"verdict_threshold zero accepted", func(c *Config) { c.Decisions.VerdictThreshold = "0" }, false, ""},
+		{"verdict_threshold one accepted", func(c *Config) { c.Decisions.VerdictThreshold = "1" }, false, ""},
 		{"valid control, no mutation", func(*Config) {}, false, ""},
 	}
 	for _, tc := range cases {
@@ -195,6 +203,38 @@ func TestDecisionsValidate(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("Validate() error = %q, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestParseProbability pins D-08/CUR-02's boundary/precision contract:
+// ParseProbability accepts every value in [0, 1] and returns it unrounded
+// (the exact float64 strconv.ParseFloat gives), and rejects anything outside
+// that range, NaN, infinities, and unparseable input.
+func TestParseProbability(t *testing.T) {
+	accept := []string{"0", "1", "0.9", "0.95", "1.0"}
+	for _, v := range accept {
+		t.Run("accepts "+v, func(t *testing.T) {
+			got, err := ParseProbability(v)
+			if err != nil {
+				t.Fatalf("ParseProbability(%q) = %v, want nil error", v, err)
+			}
+			want, werr := strconv.ParseFloat(v, 64)
+			if werr != nil {
+				t.Fatalf("test fixture bug: strconv.ParseFloat(%q): %v", v, werr)
+			}
+			if got != want {
+				t.Errorf("ParseProbability(%q) = %v, want %v (unrounded)", v, got, want)
+			}
+		})
+	}
+
+	reject := []string{"-0.01", "1.01", "NaN", "nan", "Inf", "+Inf", "-Inf", "abc", ""}
+	for _, v := range reject {
+		t.Run("rejects "+v, func(t *testing.T) {
+			if _, err := ParseProbability(v); err == nil {
+				t.Errorf("ParseProbability(%q) = nil error, want non-nil", v)
 			}
 		})
 	}

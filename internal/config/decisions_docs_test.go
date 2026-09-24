@@ -76,8 +76,8 @@ func missingDecisionsDocs(section string, envs []string) []string {
 // the disclosure anchors an operator needs before enabling the feature.
 func TestDecisionsVarsDocumented(t *testing.T) {
 	envs := decisionsRegistryEnvNames()
-	if len(envs) != 9 {
-		t.Fatalf("decisionsRegistryEnvNames() returned %d names, want 9 (positive control -- an empty or short derivation must not pass vacuously): %v", len(envs), envs)
+	if len(envs) != 10 {
+		t.Fatalf("decisionsRegistryEnvNames() returned %d names, want 10 (positive control -- an empty or short derivation must not pass vacuously): %v", len(envs), envs)
 	}
 
 	t.Run("red control: missingDecisionsDocs catches an omitted var", func(t *testing.T) {
@@ -91,7 +91,8 @@ func TestDecisionsVarsDocumented(t *testing.T) {
 			"| `ENGRAM_DECISIONS_TIMEOUT` | — | 10s | ... |\n" +
 			"| `ENGRAM_DECISIONS_MAX_TIMEOUT` | — | 10m | ... |\n" +
 			"| `ENGRAM_DECISIONS_DRAIN_BYTES` | — | 262144 | ... |\n" +
-			"| `ENGRAM_DECISIONS_DRAIN_TIMEOUT` | — | 2s | ... |\n"
+			"| `ENGRAM_DECISIONS_DRAIN_TIMEOUT` | — | 2s | ... |\n" +
+			"| `ENGRAM_DECISIONS_VERDICT_THRESHOLD` | — | 0.9 | ... |\n"
 		// deliberately omits ENGRAM_DECISIONS_CONCURRENCY
 		got := missingDecisionsDocs(synthetic, envs)
 		want := []string{"ENGRAM_DECISIONS_CONCURRENCY"}

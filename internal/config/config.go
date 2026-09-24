@@ -237,6 +237,10 @@ type DecisionsConfig struct {
 	DrainBytes   string `koanf:"drain_bytes"`
 	DrainTimeout string `koanf:"drain_timeout"`
 	Concurrency  string `koanf:"concurrency"`
+	// VerdictThreshold (D-08) is the needs-review threshold for consolidate's
+	// advisory verdicts (a probability in [0, 1]), overridable per run by
+	// --verdict-threshold.
+	VerdictThreshold string `koanf:"verdict_threshold"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI

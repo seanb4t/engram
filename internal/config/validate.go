@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"strconv"
@@ -348,6 +349,14 @@ func (c *Config) Validate() error {
 		if _, err := ParsePositiveIntCap(c.Decisions.Concurrency); err != nil {
 			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_CONCURRENCY %q: %w", c.Decisions.Concurrency, err))
 		}
+
+		// decisions.verdict_threshold (D-08): must parse as a probability in
+		// [0, 1] via ParseProbability — the SAME exported parser
+		// internal/server and the consolidate flag call, so the validated
+		// range equals the enforced range (WR-01).
+		if _, err := ParseProbability(c.Decisions.VerdictThreshold); err != nil {
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_VERDICT_THRESHOLD %q: %w", c.Decisions.VerdictThreshold, err))
+		}
 	}
 
 	// These three run unconditionally (not gated by Summarize.Model), since the
@@ -424,6 +433,27 @@ func ParsePositiveIntCap(value string) (int, error) {
 	}
 	if n <= 0 {
 		return 0, errors.New("must be greater than 0")
+	}
+	return n, nil
+}
+
+// ParseProbability parses value as a probability in [0, 1], using
+// strconv.ParseFloat and rejecting NaN, infinities, and anything outside the
+// [0, 1] range. Exported so internal/server (the verdict-threshold resolver)
+// and the consolidate command's --verdict-threshold flag call this SAME
+// parser Config.Validate uses for ENGRAM_DECISIONS_VERDICT_THRESHOLD, so the
+// validated range equals the enforced range (WR-01, mirroring
+// ParsePositiveIntCap's doc and shape).
+func ParseProbability(value string) (float64, error) {
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("must be a probability between 0 and 1: %w", err)
+	}
+	if math.IsNaN(n) || math.IsInf(n, 0) {
+		return 0, errors.New("must be a probability between 0 and 1")
+	}
+	if n < 0 || n > 1 {
+		return 0, errors.New("must be a probability between 0 and 1")
 	}
 	return n, nil
 }
