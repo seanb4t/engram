@@ -441,7 +441,7 @@ Usage:
   engram spine-review consolidate [flags]
 
 Flags:
-      --all-scopes         span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)
+      --all-scopes         span every scope (required if --scope is omitted); mutually exclusive with --scope; a candidate pair may then cross scopes, and each row names both; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope
   -h, --help               help for consolidate
       --min-score string   minimum cosine score a pair must carry to be reported; absent (the default) means NO filter at all — including pairs with a negative score
       --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json

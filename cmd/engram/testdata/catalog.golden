@@ -819,7 +819,7 @@
           "name": "all-scopes",
           "type": "bool",
           "default": "false",
-          "usage": "span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)"
+          "usage": "span every scope (required if --scope is omitted); mutually exclusive with --scope; a candidate pair may then cross scopes, and each row names both; a sweep requires an explicit --scope or --all-scopes: name one scope, or opt into every scope"
         },
         {
           "name": "min-score",

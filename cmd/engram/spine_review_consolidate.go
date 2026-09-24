@@ -95,6 +95,9 @@ var spineReviewConsolidateCmd = &cobra.Command{
 	Use:   "consolidate",
 	Short: "Report ranked near-duplicate candidate pairs across the memory spine",
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := requireSweepScope(spineConsolidateScope, spineConsolidateAllScopes); err != nil {
+			return err
+		}
 		format, err := operatorOutputFormat(cmd, spineConsolidateOutput)
 		if err != nil {
 			return err
@@ -386,7 +389,8 @@ func init() {
 	addOperatorOutputFlag(spineReviewConsolidateCmd, &spineConsolidateOutput)
 	spineReviewConsolidateCmd.Flags().StringVar(&spineConsolidateScope, "scope", "", "only consider records in this scope")
 	spineReviewConsolidateCmd.Flags().BoolVar(&spineConsolidateAllScopes, "all-scopes", false,
-		"span every scope; a candidate pair may then cross scopes, and each row names both (mutually exclusive with --scope)")
+		"span every scope (required if --scope is omitted); mutually exclusive with --scope; "+
+			"a candidate pair may then cross scopes, and each row names both; "+sweepScopeRule().Sentence)
 	spineReviewConsolidateCmd.Flags().DurationVar(&spineConsolidateTimeout, "timeout", 5*time.Minute,
 		"max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C")
 	spineReviewConsolidateCmd.Flags().Uint64Var(&spineConsolidateTopK, "top-k", spineConsolidateDefaultTopK,

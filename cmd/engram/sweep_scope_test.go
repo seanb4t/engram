@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/seanb4t/engram/internal/decide"
+	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/surfaces"
 )
 
@@ -21,9 +23,10 @@ import (
 // here when the live command routes its rejection through
 // requireSweepScope (cmd/engram/sweep_scope.go).
 var enforcingSweepLeaves = map[string]bool{
-	"spine-review scan":   true,
-	"spine-review verify": true,
-	"summarize-missing":   true,
+	"spine-review scan":        true,
+	"spine-review verify":      true,
+	"spine-review consolidate": true,
+	"summarize-missing":        true,
 }
 
 // nonEnforcingSweepLeaves is the companion declaration for live commands
@@ -36,8 +39,7 @@ var enforcingSweepLeaves = map[string]bool{
 // classified"; TestNoHandRolledSweepScopeGuards below exists to catch the
 // latter.
 var nonEnforcingSweepLeaves = map[string]bool{
-	"spine-review consolidate": true,
-	"spine-review purge":       true,
+	"spine-review purge": true,
 }
 
 // sweepScopeFlagPairCommands walks the live cobra tree and returns, as a
@@ -238,5 +240,38 @@ func TestSweepLeavesUsageStatesRegisteredRule(t *testing.T) {
 		if !checked[key] {
 			t.Errorf("%s: not found in the live command tree", key)
 		}
+	}
+}
+
+// TestSpineReviewConsolidateScopeGuardPrecedesEverything proves the
+// requireSweepScope guard is the FIRST statement of consolidate's RunE:
+// with neither --scope nor --all-scopes, the rejection carries the
+// registered Sentence (never the --output validation error, even though
+// --output is also invalid here), and spineConsolidateStoreFromEnv is
+// never called -- proven by substituting it with a function that fails the
+// test if invoked, restored via t.Cleanup.
+func TestSpineReviewConsolidateScopeGuardPrecedesEverything(t *testing.T) {
+	rule, ok := surfaces.RuleByID(surfaces.RuleSweepScopeOrAllScopesRequired)
+	if !ok {
+		t.Fatal("surfaces.RuleSweepScopeOrAllScopesRequired not found in registry")
+	}
+
+	resetClientFlags(t)
+	orig := spineConsolidateStoreFromEnv
+	spineConsolidateStoreFromEnv = func() (spineConsolidateStore, decide.Decider, server.VerdictSettings, error) {
+		t.Error("spineConsolidateStoreFromEnv was called -- the scope guard must precede store construction")
+		return nil, nil, server.VerdictSettings{}, nil
+	}
+	t.Cleanup(func() { spineConsolidateStoreFromEnv = orig })
+
+	_, _, err := runClient(t, "spine-review", "consolidate", "--output", "yaml")
+	if err == nil {
+		t.Fatal("expected an error for consolidate with neither --scope nor --all-scopes, got nil")
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (exitUsage)", got, exitUsage)
+	}
+	if err.Error() != rule.Sentence {
+		t.Errorf("err.Error() = %q, want registered Sentence %q (not the --output validation error)", err.Error(), rule.Sentence)
 	}
 }
