@@ -5,17 +5,17 @@ milestone_name: Typed Decisions & Recall Ranking
 current_phase: 4
 current_phase_name: Jev Reranker & Per-Hit Relevance Signal
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-09-24T14:03:01.678Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-09-24T14:21:43.048Z"
 last_activity: 2026-09-24
-last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: e390ba10bc4d6a6e0287b87b4b55458dda2d32c4
+last_activity_desc: Phase 4 execution started
+state_head: 14e080608809689f63537077af3954ff3f7b3abb
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 30
-  completed_plans: 22
-  percent: 20
+  total_plans: 33
+  completed_plans: 23
+  percent: 60
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-24 after Phase 3 of milestone 2026-09
 
 ## Current Position
 
-Phase: 4 (Jev Reranker & Per-Hit Relevance Signal) — READY TO EXECUTE
-Plan: Not started
+Phase: 4 (Jev Reranker & Per-Hit Relevance Signal) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-09-24 — Phase 3 complete, transitioned to Phase 4
+Last activity: 2026-09-24 — Phase 4 execution started
 
 ## Deferred Items
 
@@ -405,6 +405,7 @@ milestone needs in working memory.
 - [Phase 3]: 03-08: Live task eval:curation against OpenRouter/jev (typesafe/jev-1.13-20260917) on the 70-pair committed corpus passes the D-03 gate (result=PASS, 40/40 at threshold 0.900); recorded aggregate-only in 03-EVAL-RESULTS.md with provenance. — CUR-03's live measurement, never tuned to pass.
 - [Phase 3]: 03-08: Fixed a within-phase task lint:yaml failure (Taskfile.yaml eval:curation desc over yamlfmt's 120-char cap, introduced by 03-07) via an isolated yamlfmt reflow, committed separately from both plan tasks. — Rule 1 auto-fix; failure blocked the phase gate this plan's Task 2 must leave green.
 - [Phase 3]: Phase 3 shipped CUR-01..CUR-04: consolidate verdicts are default-on when ENGRAM_DECISIONS_PROVIDER is set (--no-verdicts suppresses), advisory, and read-only by construction; live D-03 gate PASS 40/40 at p>=0.9, Brier 0.138, with updates the main confusion sink — Phase 4's reranker should reuse the same shape: one internal/* package owning the question set, called by both the product path and the gated eval
+- [Phase 4]: Proto relevance field uses optional double (not float) per PLAN.md's explicit flagged assumption, matching the MCP float64 exactly.
 
 ### Pending Todos
 
@@ -497,9 +498,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-24T05:54:32.814Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-jev-reranker-per-hit-relevance-signal/04-CONTEXT.md
+Last session: 2026-09-24T14:21:39.376Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -687,6 +688,7 @@ Resume file: .planning/phases/04-jev-reranker-per-hit-relevance-signal/04-CONTEX
 | Phase 03-curation-verdicts P06 | 23min | 3 tasks | 7 files |
 | Phase 3 P07 | ~40min | 3 tasks | 11 files |
 | Phase 3 P8 | 35 min | 2 tasks | 3 files |
+| Phase 04 P01 | 18min | 2 tasks | 21 files |
 
 ## Operator Next Steps
 

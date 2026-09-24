@@ -306,12 +306,12 @@
     {
       "number": "3",
       "name": "Curation Verdicts",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "4",
       "name": "Jev Reranker & Per-Hit Relevance Signal",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "5",
@@ -321,8 +321,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 3 of 5 · 40% · ready to verify"
+    "label": "Advance to the next step",
+    "reason": "Phase 4 of 5 · 60% · executing"
   },
-  "updated_at": "2026-09-24T05:18:31.659Z"
+  "updated_at": "2026-09-24T14:21:35.112Z"
 }
