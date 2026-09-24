@@ -765,6 +765,11 @@ func operatorInvalidOutputArgs(t *testing.T, name string) []string {
 // extractOperatorCommandsList scans for.
 const operatorCommandsListHeading = "### Operator commands"
 
+// operatorCommandsListHeadingPattern matches operatorCommandsListHeading
+// only as a whole line, so a longer heading that merely starts with the
+// same text is not mistaken for it.
+var operatorCommandsListHeadingPattern = regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(operatorCommandsListHeading) + `$`)
+
 // operatorCommandsTableStart matches the first line of the table that
 // follows §Operator commands' prose list — the extraction's lower bound,
 // alongside nextHeadingPattern's next "### " heading (whichever comes
@@ -781,11 +786,11 @@ var operatorCommandsTableStart = regexp.MustCompile(`(?m)^\|`)
 // same helper TestCLIGuideOperatorCommandsListsEveryOperatorCommand reads,
 // so no second, drifting extraction can exist.
 func extractOperatorCommandsList(doc string) string {
-	start := strings.Index(doc, operatorCommandsListHeading)
-	if start == -1 {
+	loc := operatorCommandsListHeadingPattern.FindStringIndex(doc)
+	if loc == nil {
 		return ""
 	}
-	rest := doc[start+len(operatorCommandsListHeading):]
+	rest := doc[loc[1]:]
 
 	end := len(rest)
 	if loc := operatorCommandsTableStart.FindStringIndex(rest); loc != nil && loc[0] < end {
@@ -804,11 +809,14 @@ func extractOperatorCommandsList(doc string) string {
 // "migrate-remap-owner" (a different command whose name merely starts
 // with the same substring) or by "migrate status" (a DIFFERENT, nested
 // command). A key of the form "<group> <leaf>" (e.g. "spine-review scan")
-// is present if EITHER the full backtick-wrapped key occurs, OR both the
-// backtick-wrapped "engram <group>" and the backtick-wrapped leaf occur
-// separately — the guide's existing prose names the spine-review leaves
-// this second way ("every `engram spine-review` leaf (currently `scan`,
-// ...)"). A pure function.
+// is present if EITHER the full backtick-wrapped key occurs, OR the
+// backtick-wrapped leaf occurs inside the parenthetical that directly
+// follows a backtick-wrapped mention of its group ("`<group>`" or
+// "`engram <group>`", with only unbackticked words between the mention and
+// the opening parenthesis). The guide names the spine-review and migrate
+// leaves this second way ("every `engram spine-review` leaf (currently
+// `scan`, ...)", "`migrate` (and its `status` / `revert` subcommands; ...)").
+// A leaf named anywhere else in the list does not count. A pure function.
 func missingOperatorCommandMentions(list string, keys []string) []string {
 	var missing []string
 	for _, key := range keys {
@@ -817,17 +825,28 @@ func missingOperatorCommandMentions(list string, keys []string) []string {
 		if strings.Contains(list, full) {
 			continue
 		}
-		if nested {
-			engramGroup := "`engram " + group + "`"
-			backtickedLeaf := "`" + leaf + "`"
-			if strings.Contains(list, engramGroup) && strings.Contains(list, backtickedLeaf) {
-				continue
-			}
+		if nested && groupParentheticalNamesLeaf(list, group, leaf) {
+			continue
 		}
 		missing = append(missing, key)
 	}
 	sort.Strings(missing)
 	return missing
+}
+
+// groupParentheticalNamesLeaf reports whether a backtick-wrapped mention of
+// group ("`<group>`" or "`engram <group>`") is followed, across only
+// unbackticked text, by a parenthetical containing the backtick-wrapped
+// leaf. The parenthetical may hold one level of nested parentheses, such
+// as a markdown link target.
+func groupParentheticalNamesLeaf(list, group, leaf string) bool {
+	re := regexp.MustCompile("`(?:engram )?" + regexp.QuoteMeta(group) + "`[^()`]*\\(((?:[^()]|\\([^()]*\\))*)\\)")
+	for _, m := range re.FindAllStringSubmatch(list, -1) {
+		if strings.Contains(m[1], "`"+leaf+"`") {
+			return true
+		}
+	}
+	return false
 }
 
 // TestCLIGuideOperatorCommandsListsEveryOperatorCommand is the docs gate

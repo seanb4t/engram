@@ -137,10 +137,10 @@ never carries relevance.
 ### Operator commands
 
 Every operator command — `reindex`, `prune-expired`, `summarize-missing`,
-`backfill-short-ids`, `migrate`, `migrate status`, and `migrate revert` (see
-the [Migrate guide](/guides/migrate/)), `migrate-remap-owner`, its deprecated
-alias `migrate-set-owner`, `setup`, and every `engram spine-review` leaf
-(currently `scan`, `verify`, `consolidate`, `archive`, `restore`, and
+`backfill-short-ids`, `migrate` (plus its `status` and `revert` subcommands;
+see the [Migrate guide](/guides/migrate/)), `migrate-remap-owner`, its
+deprecated alias `migrate-set-owner`, `setup`, and every `engram spine-review`
+leaf (currently `scan`, `verify`, `consolidate`, `archive`, `restore`, and
 `purge`) — also accepts `--output`:
 
 | Value | Behavior |
