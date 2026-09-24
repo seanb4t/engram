@@ -52,11 +52,26 @@ import (
 //     seeded source once the run<=2 interleave invariant held) and
 //     renumbered P01-P80 in the shuffled order, so neither pair position
 //     nor id encodes its class.
-//   - Task 3, round 2: records the blind-labeling outcome here: pairs
-//     blind-labeled, pairs kept (per-relation counts), dropped pair ids,
-//     the labeling date, and the prompt's commit SHA. Until Task 3 runs,
-//     syntheticPairs holds every hardened, authored pair, not yet
-//     filtered by agreement.
+//   - Task 3, round 2 (2026-09-23): a second fresh, tool-less subagent
+//     (dispatched by the orchestrator, no repository context, 0 tool
+//     calls) blind-labeled the hardened, shuffled 80-pair corpus from
+//     commit ee010289's 03-BLIND-LABEL-PROMPT.md text alone. Its reply is
+//     recorded verbatim at 03-BLIND-LABELS.md. 70 of 80 pairs agreed and
+//     are kept; 10 disagreed and were dropped (ids not renumbered):
+//     P03, P06, P07, P25, P36, P57, P60, P61, P62, P72 — every
+//     disagreement was a contradicts/updates confusion in either
+//     direction (intended contradicts, blind updates: P03, P07, P61,
+//     P62; intended updates, blind contradicts: P06, P25, P36, P57, P60,
+//     P72), matching this plan's flagged D-06 criteria-overlap risk
+//     ("duplicate" "one may be more complete" vs "updates" "a more
+//     complete version" — here it was contradicts/updates that actually
+//     collided instead). No related/unrelated/duplicate pair was
+//     dropped, including the deliberately hard related-near-miss (P13,
+//     P27, P53, P80) and low-overlap duplicate (P40, P56, P75) pairs
+//     from the hardening pass above, which the blind pass confirmed
+//     correctly. Kept per-relation counts: duplicate 16, contradicts 12,
+//     updates 10, related 16, unrelated 16 (70 total) — all at or above
+//     the 7-per-class floor, within the 50-80 total band.
 
 // labeledPair is one CUR-03 fixture pair: two short notes about the same
 // or different fictional projects, recordB written after recordA, and the
@@ -71,11 +86,8 @@ type labeledPair struct {
 var syntheticPairs = []labeledPair{
 	{id: "P01", label: "updates", recordA: "The ledger service supports only USD-denominated accounts.", recordB: "The ledger service supports USD, EUR, and GBP-denominated accounts."},
 	{id: "P02", label: "related", recordA: "The search API logs the latency of every query it serves.", recordB: "The search API exposes a dashboard showing the slowest queries from the past hour."},
-	{id: "P03", label: "contradicts", recordA: "The analytics pipeline stores raw events for exactly ninety days before deleting them.", recordB: "The analytics pipeline stores raw events for one year before deleting them."},
 	{id: "P04", label: "unrelated", recordA: "The analytics pipeline sends a daily report to a shared spreadsheet.", recordB: "The mobile client displays a low-battery banner under ten percent charge."},
 	{id: "P05", label: "duplicate", recordA: "The billing API signs every webhook payload with an HMAC so receivers can verify authenticity.", recordB: "Every webhook payload from the billing API carries an HMAC signature that lets the receiving system confirm it is authentic."},
-	{id: "P06", label: "updates", recordA: "The search API returns results ranked by relevance alone.", recordB: "The search API's ranking blends a recency boost together with relevance."},
-	{id: "P07", label: "contradicts", recordA: "The ledger service's daily reconciliation job runs at midnight UTC.", recordB: "The ledger service's daily reconciliation job runs at six in the morning UTC."},
 	{id: "P08", label: "contradicts", recordA: "The mobile client's offline mode allows the user to place new orders while offline.", recordB: "The mobile client's offline mode only allows browsing; placing a new order requires a live connection."},
 	{id: "P09", label: "updates", recordA: "The billing API's rate limit is one hundred requests per minute per key.", recordB: "The billing API's rate limit is five hundred requests per minute per key."},
 	{id: "P10", label: "duplicate", recordA: "The billing API rejects a charge request whose currency code is not on its supported list.", recordB: "A charge request naming an unsupported currency code gets rejected by the billing API."},
@@ -93,7 +105,6 @@ var syntheticPairs = []labeledPair{
 	{id: "P22", label: "contradicts", recordA: "The notification service sends push notifications instantly, with no batching delay.", recordB: "Push notifications from the notification service are held in a batch for up to a minute before sending."},
 	{id: "P23", label: "related", recordA: "The billing API supports refunding a transaction in full.", recordB: "The billing API sends a refund confirmation email to the customer once a refund is processed."},
 	{id: "P24", label: "unrelated", recordA: "The catalog service rebuilds its search index nightly from the primary Postgres table.", recordB: "The mobile client resets its push notification badge count to zero once the app is opened."},
-	{id: "P25", label: "updates", recordA: "The search API has no support for typo correction in queries.", recordB: "The search API corrects common typos in a query before matching it against the index."},
 	{id: "P26", label: "unrelated", recordA: "The ledger service notifies the on-call engineer after three reconciliation failures in a row.", recordB: "The notification service lets a user silence a specific sender."},
 	{id: "P27", label: "related", recordA: "The notification service lets a user mute notifications from a specific sender.", recordB: "The notification service lets a user mute an entire notification category, not tied to any single sender."},
 	{id: "P28", label: "updates", recordA: "The notification service's quiet hours feature silences push notifications from ten at night to seven in the morning.", recordB: "The notification service's quiet hours feature silences push notifications from nine at night to eight in the morning."},
@@ -104,7 +115,6 @@ var syntheticPairs = []labeledPair{
 	{id: "P33", label: "unrelated", recordA: "The ingest worker exposes a metrics endpoint that reports records processed per second.", recordB: "The mobile client needs a full restart before a new language setting takes effect."},
 	{id: "P34", label: "related", recordA: "The ledger service logs every failed reconciliation to a dedicated Slack channel.", recordB: "The ledger service pages the on-call engineer when three reconciliation failures happen in a row."},
 	{id: "P35", label: "duplicate", recordA: "The mobile client caches the user's profile locally so the profile screen loads instantly offline.", recordB: "Because the profile is stored on the device, the mobile client's profile screen appears instantly without network access."},
-	{id: "P36", label: "updates", recordA: "The ledger service's payout table has no currency column, so every amount is assumed to be in USD.", recordB: "The ledger service's payout table carries a currency column, and payout amounts are recorded in the currency it names."},
 	{id: "P37", label: "contradicts", recordA: "The billing API requires a CVV on every card charge.", recordB: "The billing API does not require a CVV when charging a card that was saved on a prior transaction."},
 	{id: "P38", label: "updates", recordA: "The catalog service's bulk import tool accepts CSV files only.", recordB: "The catalog service's bulk import tool accepts CSV and JSON files."},
 	{id: "P39", label: "unrelated", recordA: "The billing API signs each webhook payload with an HMAC for authenticity.", recordB: "The search API returns no more than fifty results for a single query."},
@@ -125,12 +135,8 @@ var syntheticPairs = []labeledPair{
 	{id: "P54", label: "duplicate", recordA: "The mobile client shows a low-battery banner once the device drops below ten percent charge.", recordB: "Once the device's charge falls under ten percent, a low-battery banner appears in the mobile client."},
 	{id: "P55", label: "contradicts", recordA: "The search API ranks results purely by text relevance, with no popularity signal.", recordB: "The search API's ranking blends a popularity signal in with text relevance."},
 	{id: "P56", label: "duplicate", recordA: "A refund in the ledger service always references the original transaction's id.", recordB: "Every refund the ledger service issues carries a pointer back to the id of the transaction it corrects."},
-	{id: "P57", label: "updates", recordA: "The mobile client requires a full app restart to apply a new language setting.", recordB: "The mobile client applies a new language setting without requiring an app restart."},
 	{id: "P58", label: "duplicate", recordA: "The ingest worker drops an entire batch when any single record inside it fails validation.", recordB: "If one record in a batch fails validation, the whole batch is discarded by the ingest worker."},
 	{id: "P59", label: "duplicate", recordA: "The notification service retries a failed push delivery up to three times before giving up.", recordB: "A push notification that fails to deliver gets three retry attempts from the notification service before it stops trying."},
-	{id: "P60", label: "updates", recordA: "The ingest worker validates a record's schema but does not check for duplicate ids.", recordB: "The ingest worker validates a record's schema and rejects any record whose id duplicates one already ingested."},
-	{id: "P61", label: "contradicts", recordA: "The billing API's maximum charge amount per request is one thousand dollars.", recordB: "The billing API's maximum charge amount per request is ten thousand dollars."},
-	{id: "P62", label: "contradicts", recordA: "The billing API's request timeout for calls to the payment processor is five seconds.", recordB: "The billing API's request timeout for calls to the payment processor is thirty seconds."},
 	{id: "P63", label: "updates", recordA: "The mobile client's dark mode setting is a manual toggle in settings.", recordB: "The mobile client's dark mode setting follows the device's system theme, with a manual override still available in settings."},
 	{id: "P64", label: "contradicts", recordA: "Deleting a category in the catalog service also deletes every item inside it.", recordB: "Deleting a category in the catalog service moves its items into an uncategorized bucket rather than deleting them."},
 	{id: "P65", label: "duplicate", recordA: "The catalog service hides an item from search results once its stock count reaches zero.", recordB: "An item drops out of catalog search results as soon as its stock count hits zero."},
@@ -140,7 +146,6 @@ var syntheticPairs = []labeledPair{
 	{id: "P69", label: "duplicate", recordA: "The search API caps every query response at fifty results regardless of how many matches exist.", recordB: "No matter how many matches exist, the search API never returns more than fifty results for a single query."},
 	{id: "P70", label: "updates", recordA: "The catalog service indexes product titles for search.", recordB: "The catalog service indexes product titles and product descriptions for search."},
 	{id: "P71", label: "unrelated", recordA: "The search API records the latency of every query it serves.", recordB: "The ingest worker keeps a rejected record in its dead-letter queue for thirty days."},
-	{id: "P72", label: "updates", recordA: "Two-factor authentication is optional for ledger service accounts.", recordB: "Two-factor authentication is required for every ledger service account."},
 	{id: "P73", label: "unrelated", recordA: "The search API corrects a misspelled word in a query before it is matched against the index.", recordB: "The ledger service never allows an account's balance to fall below zero."},
 	{id: "P74", label: "contradicts", recordA: "Users cannot opt out of transactional emails from the notification service.", recordB: "Users can opt out of transactional emails from the notification service through a preference center."},
 	{id: "P75", label: "duplicate", recordA: "Records that fail validation sit inside the ingest worker's dead-letter queue for thirty days before removal.", recordB: "The ingest worker's dead-letter queue keeps a rejected record for thirty days before purging it."},

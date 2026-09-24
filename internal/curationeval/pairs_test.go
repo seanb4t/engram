@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -76,20 +77,30 @@ func TestPairFixtureIntegrity(t *testing.T) {
 		if len(syntheticPairs) == 0 {
 			t.Fatal("syntheticPairs is empty")
 		}
-		run, longest, prev := 0, 0, ""
+		// Consecutive here means originally adjacent in the P01..P80
+		// authored sequence (numeric id difference of 1), not merely
+		// adjacent in the (possibly filtered) slice: after Task 3 drops
+		// disagreed pairs without renumbering (D-02), two agreed pairs
+		// that were never adjacent when the corpus was authored and
+		// interleaved can become slice-adjacent purely because a pair
+		// between them was removed. That incidental adjacency carries no
+		// position-reveals-nothing information about the original
+		// sequence, so it must not count toward a run.
+		run, longest, prevLabel, prevNum := 0, 0, "", -2
 		for _, p := range syntheticPairs {
-			if p.label == prev {
+			num := pairIDNumber(t, p.id)
+			if p.label == prevLabel && num == prevNum+1 {
 				run++
 			} else {
 				run = 1
-				prev = p.label
 			}
+			prevLabel, prevNum = p.label, num
 			if run > longest {
 				longest = run
 			}
 		}
 		if longest > 2 {
-			t.Errorf("longest run of consecutive same-label pairs is %d, want at most 2", longest)
+			t.Errorf("longest run of consecutive (originally-adjacent) same-label pairs is %d, want at most 2", longest)
 		}
 	})
 
@@ -175,6 +186,18 @@ func TestPairFixtureIntegrity(t *testing.T) {
 			checkText(p.id+" recordB", p.recordB)
 		}
 	})
+}
+
+// pairIDNumber parses the numeric suffix of a "Pnn" id (already validated by
+// the "ids" subtest's pattern), for the "interleave" subtest's originally-
+// adjacent check.
+func pairIDNumber(t *testing.T, id string) int {
+	t.Helper()
+	n, err := strconv.Atoi(strings.TrimPrefix(id, "P"))
+	if err != nil {
+		t.Fatalf("id %q: %v", id, err)
+	}
+	return n
 }
 
 // checkPairText enforces the text subtest's per-record rules: 40 to 600
