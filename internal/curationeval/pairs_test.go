@@ -93,6 +93,22 @@ func TestPairFixtureIntegrity(t *testing.T) {
 		}
 	})
 
+	t.Run("size", func(t *testing.T) {
+		t.Parallel()
+		if n := len(syntheticPairs); n < 50 || n > 80 {
+			t.Errorf("syntheticPairs has %d pairs, want 50..80", n)
+		}
+		counts := make(map[string]int, len(verdict.Relations()))
+		for _, p := range syntheticPairs {
+			counts[p.label]++
+		}
+		for _, r := range verdict.Relations() {
+			if counts[r] < 7 {
+				t.Errorf("relation %q has %d pairs, want at least 7", r, counts[r])
+			}
+		}
+	})
+
 	t.Run("denylist", func(t *testing.T) {
 		t.Parallel()
 
