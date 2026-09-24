@@ -11,6 +11,7 @@ package verdict
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -229,25 +230,34 @@ func Unavailable(err error) Verdict {
 }
 
 // FromResult maps one decide.Result to a Verdict (D-05): a non-nil
-// res.Err returns Unavailable(res.Err); otherwise the relation answer's
-// choice and its five probabilities are copied verbatim (no rounding,
-// clamping or renormalizing), SameSubject from the same_subject noul's
-// Probability, Model from res.Response.Model, and NeedsReview is
-// probabilities[relation] strictly below threshold (D-08) —
-// probabilities[relation] is the single source of truth, never re-derived
-// locally.
+// res.Err returns Unavailable(res.Err). Otherwise the response is
+// validated before mapping — a missing relation answer, a relation answer
+// not of type choice, a Choice outside the five D-05 names, a relation
+// answer missing any of the five probabilities, a missing same_subject
+// answer, or a same_subject answer not of type noul each yield
+// ErrorClass malformed_response and no other populated field. Extra
+// probability keys are ignored, never an error. On a valid response the
+// relation answer's choice and its five probabilities are copied verbatim
+// (no rounding, clamping or renormalizing), SameSubject from the
+// same_subject noul's Probability, Model from res.Response.Model, and
+// NeedsReview is probabilities[relation] strictly below threshold (D-08)
+// — probabilities[relation] is the single source of truth, never
+// re-derived locally.
 func FromResult(res decide.Result, threshold float64) Verdict {
 	if res.Err != nil {
 		return Unavailable(res.Err)
 	}
-	relation := res.Response.Answers[QuestionRelation]
-	sameSubject := res.Response.Answers[QuestionSameSubject]
-	probs := Probabilities{
-		Duplicate:   relation.Probabilities[Duplicate],
-		Contradicts: relation.Probabilities[Contradicts],
-		Updates:     relation.Probabilities[Updates],
-		Related:     relation.Probabilities[Related],
-		Unrelated:   relation.Probabilities[Unrelated],
+	relation, ok := res.Response.Answers[QuestionRelation]
+	if !ok || relation.Type != decide.QuestionChoice || !slices.Contains(Relations(), relation.Choice) {
+		return malformedVerdict(QuestionRelation)
+	}
+	probs, ok := probabilitiesFromMap(relation.Probabilities)
+	if !ok {
+		return malformedVerdict(QuestionRelation)
+	}
+	sameSubject, ok := res.Response.Answers[QuestionSameSubject]
+	if !ok || sameSubject.Type != decide.QuestionNoul {
+		return malformedVerdict(QuestionSameSubject)
 	}
 	p := relation.Probabilities[relation.Choice]
 	return Verdict{
@@ -257,4 +267,30 @@ func FromResult(res decide.Result, threshold float64) Verdict {
 		NeedsReview:   p < threshold,
 		Model:         res.Response.Model,
 	}
+}
+
+// probabilitiesFromMap copies the five D-05 relation probabilities out of
+// m, returning false when m is missing any of them. Extra keys in m are
+// ignored, never an error.
+func probabilitiesFromMap(m map[string]float64) (Probabilities, bool) {
+	for _, name := range Relations() {
+		if _, ok := m[name]; !ok {
+			return Probabilities{}, false
+		}
+	}
+	return Probabilities{
+		Duplicate:   m[Duplicate],
+		Contradicts: m[Contradicts],
+		Updates:     m[Updates],
+		Related:     m[Related],
+		Unrelated:   m[Unrelated],
+	}, true
+}
+
+// malformedVerdict returns a Verdict whose ErrorClass is
+// malformed_response, naming question — the same *decide.Error shape
+// decide.Status already classifies, so FromResult introduces no new error
+// class.
+func malformedVerdict(question string) Verdict {
+	return Unavailable(&decide.Error{Kind: decide.ErrDecisionMalformedResponse, Question: question})
 }
