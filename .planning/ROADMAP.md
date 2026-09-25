@@ -372,6 +372,7 @@ place a newcomer can learn the store — on the existing stack (Svelte 5, Svelte
 out to the CLI.
 
 - [ ] **Phase 1: Store Prerequisites** - Authz-gated Archive/Restore, RelatedMemories, and ListTags land in `internal/store`, no proto or UI yet
+- [ ] **Phase 01.1: Console Sketches (INSERTED)** - Throwaway HTML sketches of the console surfaces to pick a visual direction before any UI-SPEC
 - [ ] **Phase 2: Recall-First Search** - Honest id/short_id/text resolution, server-driven command palette, dense virtualized results row with facets and score/relevance
 - [ ] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided
 - [ ] **Phase 4: Curation Surfaces** - Supersede, archive/restore, rules, and scheduled views for operators, with resume-envelope coverage, an a11y audit, and an e2e round trip
@@ -394,12 +395,26 @@ built on top of them.
 
 **Plans:** 0/? plans (not yet planned)
 
+### Phase 01.1: Console Sketches (INSERTED)
+
+**Goal:** Throwaway HTML sketches (`/gsd-sketch`) of the console's key surfaces — dense result row,
+hover-expand overlay, server-driven command palette, detail pane, curation dialogs, local graph and
+tag cloud — pick a visual direction, and wrap it up (`/gsd-sketch --wrap-up`) as findings the UI
+phases' UI-SPECs build on. Design exploration only: no production code.
+**Requirements**: None (design input for the UI-SPECs of Phases 2, 4, 5, 6)
+**Depends on:** Nothing (runs any time before Phase 2's discussion)
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 01.1 to break down)
+
 ### Phase 2: Recall-First Search
 
 **Goal**: A user typing a UUID, short_id, or free text into any console search surface gets an
 honest, cross-spine result set, with the command palette and search box no longer lying about what
 they searched.
-**Depends on**: Nothing (uses existing RPCs)
+**Depends on**: 2026-09-25.01 Phase 01.1 (sketch direction); otherwise nothing (uses existing RPCs)
 **Requirements**: ENTRY-01, ENTRY-02, ENTRY-03, ENTRY-04, ENTRY-05, ENTRY-06, ROW-01, ROW-02, ROW-03, ROW-04, ROW-05, ROW-06, ROW-07, DSYS-01, DSYS-02
 **Success Criteria** (what must be TRUE):
 
@@ -412,6 +427,7 @@ they searched.
   7. The project-local `engram-console-conventions` and `engram-connect-client` skills exist and this phase's UI-SPEC cites them
 
 **Plans:** 0/? plans (not yet planned)
+**UI hint**: yes
 
 ### Phase 3: Curation RPCs & MCP Tools
 
@@ -447,6 +463,7 @@ and end-to-end check.
   5. A WCAG 2.2 keyboard/contrast audit and Web Interface Guidelines review pass, or findings are fixed or recorded, using the vetted third-party skills once `fable-security-review` clears them; the chromedp console e2e exercises entry-point resolution, a supersede, and an archive/restore round trip against a live server
 
 **Plans:** 0/? plans (not yet planned)
+**UI hint**: yes
 
 ### Phase 5: Related-Memories Graph & Tag Cloud
 
@@ -464,6 +481,7 @@ this codebase and is flagged for a research/UI-spec pass at plan time.
   4. A tag cloud sized by count quantile, in DOM order matching reading order, is built from `ListTags` counts; clicking a tag adds it as a filter chip, and the same counts are available via chip autocomplete without opening the cloud
 
 **Plans:** 0/? plans (not yet planned)
+**UI hint**: yes
 
 ### Phase 6: Query Understanding
 
@@ -481,6 +499,7 @@ existing consumers and is flagged for a research pass at plan time.
   4. A test proves no query text appears in logs unless the explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set
 
 **Plans:** 0/? plans (not yet planned)
+**UI hint**: yes
 
 ## Progress
 
@@ -584,6 +603,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 4. Jev Reranker & Per-Hit Relevance Signal | 2026-09-22.01 | 8/8 | Complete | 2026-09-24 |
 | 5. Operator Correctness | 2026-09-22.01 | 5/5 | Complete | 2026-09-24 |
 | 1. Store Prerequisites | 2026-09-25.01 | 3/3 | Not started | - |
+| 01.1. Console Sketches (INSERTED) | 2026-09-25.01 | 0/0 | Not started | - |
 | 2. Recall-First Search | 2026-09-25.01 | 15/15 | Not started | - |
 | 3. Curation RPCs & MCP Tools | 2026-09-25.01 | 6/6 | Not started | - |
 | 4. Curation Surfaces | 2026-09-25.01 | 7/7 | Not started | - |

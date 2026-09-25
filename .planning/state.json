@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "2026-09-25.01",
+  "milestone": "2026-09-25.01 — Console Overhaul",
   "phases": [
     {
       "number": "9",
@@ -317,12 +317,42 @@
       "number": "5",
       "name": "Operator Correctness",
       "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Store Prerequisites",
+      "status": "in_progress"
+    },
+    {
+      "number": "2",
+      "name": "Recall-First Search",
+      "status": "pending"
+    },
+    {
+      "number": "3",
+      "name": "Curation RPCs & MCP Tools",
+      "status": "pending"
+    },
+    {
+      "number": "4",
+      "name": "Curation Surfaces",
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Related-Memories Graph & Tag Cloud",
+      "status": "pending"
+    },
+    {
+      "number": "6",
+      "name": "Query Understanding",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:discuss-phase",
-    "label": "Discuss the first phase",
-    "reason": "Project initialized — plan your first phase"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 1)",
+    "reason": "Phase 1 of 6 — needs a plan"
   },
-  "updated_at": "2026-09-25T19:15:19.519Z"
+  "updated_at": "2026-09-25T23:17:43.563Z"
 }

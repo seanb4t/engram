@@ -6,12 +6,12 @@ current_phase: 1
 current_phase_name: Store Prerequisites
 status: planning
 stopped_at: Phase 1 context gathered
-last_updated: "2026-09-25T23:08:18.570Z"
+last_updated: "2026-09-25T23:18:54.928Z"
 last_activity: 2026-09-25
 last_activity_desc: Roadmap created for 2026-09-25.01
-state_head: 029d3f368aea5f115379f87d03899267e29a96a3
+state_head: 5dc7923dd1a651c15c9826bb1999ab4b3feb36d5
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -519,6 +519,7 @@ Both prior entries were delivered and had simply never been closed out:
 - 2026-08-23.01 ROADMAP.md created: 6 phases (1–6), 25/25 requirements mapped, 0 orphans. Phase numbering restarted at 1. The research-suggested 9-phase breakdown collapsed: Codex/Cursor/opencode's separate high-risk Phase 7 merged into one Runtime Registration phase (Phase 3) after live verification retired the TOML/JSONC and opencode-schema risks; `engram version --json` folded into the cask phase (Phase 1) rather than standing alone.
 
 - 2026-09-18.01 ROADMAP.md created: 7 phases (1–7), 20/20 requirements mapped, 0 orphans. Phase numbering restarted at 1. Research's 6-phase build order was refined by splitting its single per-site-migration phase into Phase 4 (List/ListScheduled/Search) and Phase 5 (the five operator sweeps, plus REQ-recv-limit-backstop and REQ-ci-store-green) so the backstop lands only after every regression test in this milestone already passes without it, and so REQ-ci-store-green sits in the LAST phase that adds oversized Qdrant fixtures. Both discuss-phase decision requirements were placed with the phase implementing their outcome: REQ-content-cap-decided in Phase 3 (Shared Bounded-Read Mechanism, the natural complement to byte-budget pages) and REQ-list-limit-contract-decided in Phase 4 (List migration, whose paging shape the decision determines). Phase 6 (Cross-Spine Partial Results, #456) and Phase 7 (Bounded Provider Responses, #457/#347) are independent single-purpose tails per research, kept as standalone phases since each is a real user-observable behavior change, not internal-quality-only work.
+- Phase 01.1 inserted after Phase 1: Console Sketches — /gsd-sketch visual direction before the UI phases' UI-SPECs; UI hint set on Phases 2, 4, 5, 6
 
 ## Session Continuity
 
