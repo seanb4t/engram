@@ -7,6 +7,9 @@ tags: [jev, rerank, telemetry, otel, search_memory, gh-618]
 
 # Implement Jev reranker telemetry (#618)
 
+> **Done 2026-09-25** — shipped as PR #619 (`bd73c184`), released in v0.21.0.
+> Audit field names are `before_rank`/`after_rank` (see the design note).
+
 Design: `.planning/notes/jev-rerank-telemetry-design.md`. Issue #618 states
 the problem; this todo is the agreed solution.
 
