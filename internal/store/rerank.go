@@ -171,20 +171,36 @@ func applyRelevance(hits []Memory, rel map[string]float64) ([]Memory, bool) {
 // NEVER called for an empty pool. Otherwise the hook runs exactly once;
 // its result is applied via applyRelevance when accepted, else ordered is
 // returned unchanged (D-03's fallback — a hook error or rejected map never
-// fails the surrounding search).
-func applyRankHook(ctx context.Context, query string, ordered []Memory, hook RankHook) []Memory {
-	if hook == nil || len(ordered) == 0 {
-		return ordered
+// fails the surrounding search). The returned rankReport records which of
+// those happened (#618): a nil hook leaves outcome empty (nothing is
+// stamped — the ranker is off), an empty pool is skipped, a hook error is a
+// fallback whose class the hook itself stamps, and a map the store rejects
+// is a fallback classed here (rejected_scores / no_scores).
+func applyRankHook(ctx context.Context, query string, ordered []Memory, hook RankHook) ([]Memory, rankReport) {
+	rep := rankReport{before: ordered, after: ordered}
+	if hook == nil {
+		return ordered, rep
+	}
+	if len(ordered) == 0 {
+		rep.outcome = RerankOutcomeSkipped
+		return ordered, rep
 	}
 	rel, err := hook(ctx, query, ordered)
-	if err != nil || rel == nil {
-		return ordered
+	switch {
+	case err != nil:
+		rep.outcome = RerankOutcomeFallback
+		return ordered, rep
+	case rel == nil:
+		rep.outcome, rep.fallbackClass = RerankOutcomeFallback, "no_scores"
+		return ordered, rep
 	}
 	ranked, ok := applyRelevance(ordered, rel)
 	if !ok {
-		return ordered
+		rep.outcome, rep.fallbackClass = RerankOutcomeFallback, "rejected_scores"
+		return ordered, rep
 	}
-	return ranked
+	rep.outcome, rep.after = RerankOutcomeApplied, ranked
+	return ranked, rep
 }
 
 // RankWithHook is SearchReranked's whole rank step, and the function the
@@ -197,15 +213,25 @@ func applyRankHook(ctx context.Context, query string, ordered []Memory, hook Ran
 // keeps every hit, matching rankCandidates/RerankHits' own truncation
 // rule).
 func RankWithHook(ctx context.Context, query string, hits []Memory, k int, hook RankHook) []Memory {
+	out, _ := rankWithReport(ctx, query, hits, k, hook)
+	return out
+}
+
+// rankWithReport is RankWithHook plus the rankReport SearchReranked stamps
+// and audits (#618); RankWithHook discards it so the retrieval eval's Jev
+// row stays a pure ordering call. The report's k is the caller's k, so
+// displacement is measured within the window the caller received.
+func rankWithReport(ctx context.Context, query string, hits []Memory, k int, hook RankHook) ([]Memory, rankReport) {
 	if hook == nil {
-		return rankCandidates(query, hits, k)
+		return rankCandidates(query, hits, k), rankReport{}
 	}
 	ordered := rankCandidates(query, hits, len(hits))
-	ranked := applyRankHook(ctx, query, ordered, hook)
+	ranked, rep := applyRankHook(ctx, query, ordered, hook)
+	rep.k = k
 	if k <= 0 || k >= len(ranked) {
-		return ranked
+		return ranked, rep
 	}
-	return ranked[:k]
+	return ranked[:k], rep
 }
 
 // VectorOrder is the first-stage vector order with a deterministic tie-break:

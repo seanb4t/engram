@@ -90,6 +90,9 @@
 {{- with .Values.memory.search.rerankTimeout }}
 - { name: ENGRAM_SEARCH_RERANK_TIMEOUT, value: "{{ . }}" }
 {{- end }}
+{{- with .Values.memory.search.rerankAudit }}
+- { name: ENGRAM_SEARCH_RERANK_AUDIT, value: "{{ . }}" }
+{{- end }}
 {{- end }}
 {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
 {{- with .Values.memory.mcpPath }}

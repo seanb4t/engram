@@ -4,12 +4,15 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -446,5 +449,61 @@ func TestSearchRerankedRankHookPoolAtRecallMaximum(t *testing.T) {
 	}
 	if len(got) != 100 {
 		t.Fatalf("got %d hits at k=MaxRecallLimit, want 100", len(got))
+	}
+}
+
+// TestSearchRerankedAuditGate proves SearchOptions.RankAudit is the ONLY
+// thing that makes SearchReranked emit the "search rerank audit" line
+// (#618): off → no line even with a hook that applied; on → exactly one
+// line, carrying the caller's owner and query and never record content.
+func TestSearchRerankedAuditGate(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	scope := "rank-audit-gate:project:test"
+	defer func() { cleanupErr(t, "DeleteAllRaw "+scope, s.DeleteAllRaw(ctx, scope)) }()
+	vec := []float32{0.1, 0.2, 0.3}
+	const sentinel = "SENTINEL-AUDIT-GATE-4b2d"
+	for i, id := range []string{"e6000000-0000-0000-0000-000000000001", "e6000000-0000-0000-0000-000000000002"} {
+		m := Memory{ID: id, Content: sentinel, Summary: sentinel, Scope: scope, Owner: "owner-A", CreatedAt: time.Now().UTC().Add(time.Duration(i) * time.Second)}
+		if err := s.Upsert(ctx, m, vec); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	hook := allSameHook(0.5)
+
+	for _, audit := range []bool{false, true} {
+		t.Run(fmt.Sprintf("audit=%v", audit), func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			if _, err := s.SearchReranked(ctx, scope, Authenticated("owner-A"), "audit query", vec, 10, SearchOptions{RankHook: hook, RankAudit: audit}); err != nil {
+				t.Fatalf("SearchReranked: %v", err)
+			}
+			var lines []string
+			for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+				if strings.Contains(l, `"search rerank audit"`) {
+					lines = append(lines, l)
+				}
+			}
+			if !audit {
+				if len(lines) != 0 {
+					t.Fatalf("audit off emitted %d audit lines: %v", len(lines), lines)
+				}
+				return
+			}
+			if len(lines) != 1 {
+				t.Fatalf("audit on emitted %d audit lines, want 1: %q", len(lines), buf.String())
+			}
+			if strings.Contains(lines[0], sentinel) {
+				t.Fatalf("audit line leaked record content: %s", lines[0])
+			}
+			for _, want := range []string{`"owner":"owner-A"`, `"query":"audit query"`, `"outcome":"applied"`, `"surface":"search_memory"`} {
+				if !strings.Contains(lines[0], want) {
+					t.Errorf("audit line missing %s: %s", want, lines[0])
+				}
+			}
+		})
 	}
 }

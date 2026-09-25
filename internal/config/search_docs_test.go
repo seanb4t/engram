@@ -71,8 +71,8 @@ func missingSearchDocs(section string, envs []string) []string {
 // anchors an operator needs before enabling search-path reranking.
 func TestSearchVarsDocumented(t *testing.T) {
 	envs := searchRegistryEnvNames()
-	if len(envs) != 2 {
-		t.Fatalf("searchRegistryEnvNames() returned %d names, want 2 (positive control -- an empty or short derivation must not pass vacuously): %v", len(envs), envs)
+	if len(envs) != 3 {
+		t.Fatalf("searchRegistryEnvNames() returned %d names, want 3 (positive control -- an empty or short derivation must not pass vacuously): %v", len(envs), envs)
 	}
 
 	t.Run("red control: missingSearchDocs catches an omitted var", func(t *testing.T) {
@@ -80,10 +80,10 @@ func TestSearchVarsDocumented(t *testing.T) {
 			"| Environment variable | Flag | Default | Description |\n" +
 			"|---------------------|------|---------|-------------|\n" +
 			"| `ENGRAM_SEARCH_RANKER` | — | `lexical` | ... |\n"
-		// deliberately omits ENGRAM_SEARCH_RERANK_TIMEOUT
+		// deliberately omits ENGRAM_SEARCH_RERANK_TIMEOUT and ENGRAM_SEARCH_RERANK_AUDIT
 		got := missingSearchDocs(synthetic, envs)
-		want := []string{"ENGRAM_SEARCH_RERANK_TIMEOUT"}
-		if len(got) != len(want) || (len(got) > 0 && got[0] != want[0]) {
+		want := []string{"ENGRAM_SEARCH_RERANK_TIMEOUT", "ENGRAM_SEARCH_RERANK_AUDIT"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Fatalf("missingSearchDocs() = %v, want %v (proves this gate can go red)", got, want)
 		}
 	})

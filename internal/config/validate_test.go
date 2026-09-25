@@ -19,6 +19,7 @@ func validConfig() *Config {
 		Summarize: SummarizeConfig{OnWrite: "false", Workers: "2", QueueSize: "256"},
 		Usage:     UsageConfig{Signals: "true"},
 		Connect:   ConnectConfig{Headless: "false"},
+		Search:    SearchConfig{RerankAudit: "false"},
 	}
 }
 

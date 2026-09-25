@@ -67,7 +67,7 @@ func TestSearchDiscoveryRerankedFallbackIsShippedOrder(t *testing.T) {
 	}
 	wantIDs := recordIDs(want)
 
-	nilHookGot, err := s.SearchDiscoveryReranked(ctx, scope, "", subj, "query text", query, 3, nil)
+	nilHookGot, err := s.SearchDiscoveryReranked(ctx, scope, "", subj, "query text", query, 3, nil, false)
 	if err != nil {
 		t.Fatalf("SearchDiscoveryReranked(nil hook): %v", err)
 	}
@@ -83,7 +83,7 @@ func TestSearchDiscoveryRerankedFallbackIsShippedOrder(t *testing.T) {
 	errHook := RankHook(func(_ context.Context, _ string, _ []Memory) (map[string]float64, error) {
 		return nil, errors.New("boom: scripted hook failure")
 	})
-	errHookGot, err := s.SearchDiscoveryReranked(ctx, scope, "", subj, "query text", query, 3, errHook)
+	errHookGot, err := s.SearchDiscoveryReranked(ctx, scope, "", subj, "query text", query, 3, errHook, false)
 	if err != nil {
 		t.Fatalf("SearchDiscoveryReranked(error hook): %v", err)
 	}
@@ -132,7 +132,7 @@ func TestSearchDiscoveryRerankedSortsAndStamps(t *testing.T) {
 		return rel, nil
 	})
 
-	got, err := s.SearchDiscoveryReranked(ctx, scope, "", subj, "query text", query, 3, hook)
+	got, err := s.SearchDiscoveryReranked(ctx, scope, "", subj, "query text", query, 3, hook, false)
 	if err != nil {
 		t.Fatalf("SearchDiscoveryReranked: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestSearchDiscoveryRerankedOwnerIsolation(t *testing.T) {
 		return rel, nil
 	})
 
-	got, err := s.SearchDiscoveryReranked(ctx, scope, "", Authenticated("owner-A"), "query", vec, 10, hook)
+	got, err := s.SearchDiscoveryReranked(ctx, scope, "", Authenticated("owner-A"), "query", vec, 10, hook, false)
 	if err != nil {
 		t.Fatalf("SearchDiscoveryReranked: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestSearchDiscoveryRerankedRejectsZeroK(t *testing.T) {
 	t.Parallel()
 	s := New(nil, "unused-hermetic-collection")
 	_, err := s.SearchDiscoveryReranked(context.Background(), "scope", "", Authenticated("actor"),
-		"query", []float32{0.1, 0.2}, 0, nil)
+		"query", []float32{0.1, 0.2}, 0, nil, false)
 	if err == nil {
 		t.Fatal("SearchDiscoveryReranked(k=0) should error, not silently over-fetch-then-truncate-to-empty")
 	}

@@ -404,6 +404,12 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_USAGE_SIGNALS %q: must be a boolean: %w", c.Usage.Signals, err))
 	}
 
+	// search.rerank_audit (#618) is a boolean like the two above; unconditional
+	// so a typo fails startup even while the ranker is off.
+	if _, err := strconv.ParseBool(c.Search.RerankAudit); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RERANK_AUDIT %q: must be a boolean: %w", c.Search.RerankAudit, err))
+	}
+
 	// connect.headless (D-10) is validated at load, not only at point of use,
 	// so a typo fails startup rather than silently reading as off.
 	if _, err := strconv.ParseBool(c.Connect.Headless); err != nil {

@@ -137,6 +137,7 @@ var registry = []field{
 	// ENGRAM_DECISIONS_TIMEOUT and their single retry, never this value.
 	{Key: "search.ranker", Env: "ENGRAM_SEARCH_RANKER", Default: "lexical"},
 	{Key: "search.rerank_timeout", Env: "ENGRAM_SEARCH_RERANK_TIMEOUT", Default: "2s"},
+	{Key: "search.rerank_audit", Env: "ENGRAM_SEARCH_RERANK_AUDIT", Default: "false"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
 	{Key: "oidc.audience", Env: "ENGRAM_OIDC_AUDIENCE", Legacy: "MEM_OIDC_AUDIENCE", Flag: "oidc-audience"},
 	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},

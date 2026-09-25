@@ -16,6 +16,9 @@ import (
 	"log/slog"
 	"math"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/verdict"
@@ -213,9 +216,14 @@ func errClass(err error) string {
 
 // logFallback emits the one WarnContext line a Hook failure produces,
 // carrying only the class word from errClass — never the query, a
-// candidate state, or err.Error().
+// candidate state, or err.Error() — and stamps that same class word on the
+// ambient search span as store.AttrRerankFallbackClass (#618), so the span
+// says why it fell back without a log join. The store stamps the outcome
+// itself; only the hook can classify its own failure.
 func logFallback(ctx context.Context, err error) {
-	slog.WarnContext(ctx, "search rerank fell back to lexical order", "class", errClass(err))
+	class := errClass(err)
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String(store.AttrRerankFallbackClass, class))
+	slog.WarnContext(ctx, "search rerank fell back to lexical order", "class", class)
 }
 
 // Hook builds a store.RankHook over dec, budgeted by b. A nil dec returns a

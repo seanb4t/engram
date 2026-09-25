@@ -264,6 +264,12 @@ type SearchConfig struct {
 	// must return quickly (D-09), so it is validated strictly positive
 	// whenever Ranker is "jev".
 	RerankTimeout string `koanf:"rerank_timeout"`
+	// RerankAudit ("false" default) turns on the per-search audit log line
+	// (ENGRAM_SEARCH_RERANK_AUDIT, #618): query text plus candidate ids,
+	// ranks and scores — never content — for an offline grading pass while
+	// the Jev ranker is being evaluated. Validated as a boolean
+	// unconditionally; it has no effect unless Ranker is "jev".
+	RerankAudit string `koanf:"rerank_audit"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI
