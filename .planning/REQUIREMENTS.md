@@ -123,51 +123,51 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENTRY-01 | — | Pending |
-| ENTRY-02 | — | Pending |
-| ENTRY-03 | — | Pending |
-| ENTRY-04 | — | Pending |
-| ENTRY-05 | — | Pending |
-| ENTRY-06 | — | Pending |
-| ROW-01 | — | Pending |
-| ROW-02 | — | Pending |
-| ROW-03 | — | Pending |
-| ROW-04 | — | Pending |
-| ROW-05 | — | Pending |
-| ROW-06 | — | Pending |
-| ROW-07 | — | Pending |
-| STORE-01 | — | Pending |
-| STORE-02 | — | Pending |
-| STORE-03 | — | Pending |
-| RPC-01 | — | Pending |
-| RPC-02 | — | Pending |
-| RPC-03 | — | Pending |
-| RPC-04 | — | Pending |
-| RPC-05 | — | Pending |
-| RPC-06 | — | Pending |
-| CUR-01 | — | Pending |
-| CUR-02 | — | Pending |
-| CUR-03 | — | Pending |
-| CUR-04 | — | Pending |
-| CUR-05 | — | Pending |
-| GRAPH-01 | — | Pending |
-| GRAPH-02 | — | Pending |
-| GRAPH-03 | — | Pending |
-| TAGS-01 | — | Pending |
-| TAGS-02 | — | Pending |
-| NLQ-01 | — | Pending |
-| NLQ-02 | — | Pending |
-| NLQ-03 | — | Pending |
-| NLQ-04 | — | Pending |
-| DSYS-01 | — | Pending |
-| DSYS-02 | — | Pending |
-| DSYS-03 | — | Pending |
-| DSYS-04 | — | Pending |
+| ENTRY-01 | Phase 2 | Mapped |
+| ENTRY-02 | Phase 2 | Mapped |
+| ENTRY-03 | Phase 2 | Mapped |
+| ENTRY-04 | Phase 2 | Mapped |
+| ENTRY-05 | Phase 2 | Mapped |
+| ENTRY-06 | Phase 2 | Mapped |
+| ROW-01 | Phase 2 | Mapped |
+| ROW-02 | Phase 2 | Mapped |
+| ROW-03 | Phase 2 | Mapped |
+| ROW-04 | Phase 2 | Mapped |
+| ROW-05 | Phase 2 | Mapped |
+| ROW-06 | Phase 2 | Mapped |
+| ROW-07 | Phase 2 | Mapped |
+| STORE-01 | Phase 1 | Mapped |
+| STORE-02 | Phase 1 | Mapped |
+| STORE-03 | Phase 1 | Mapped |
+| RPC-01 | Phase 3 | Mapped |
+| RPC-02 | Phase 3 | Mapped |
+| RPC-03 | Phase 3 | Mapped |
+| RPC-04 | Phase 3 | Mapped |
+| RPC-05 | Phase 3 | Mapped |
+| RPC-06 | Phase 3 | Mapped |
+| CUR-01 | Phase 4 | Mapped |
+| CUR-02 | Phase 4 | Mapped |
+| CUR-03 | Phase 4 | Mapped |
+| CUR-04 | Phase 4 | Mapped |
+| CUR-05 | Phase 4 | Mapped |
+| GRAPH-01 | Phase 5 | Mapped |
+| GRAPH-02 | Phase 5 | Mapped |
+| GRAPH-03 | Phase 5 | Mapped |
+| TAGS-01 | Phase 5 | Mapped |
+| TAGS-02 | Phase 5 | Mapped |
+| NLQ-01 | Phase 6 | Mapped |
+| NLQ-02 | Phase 6 | Mapped |
+| NLQ-03 | Phase 6 | Mapped |
+| NLQ-04 | Phase 6 | Mapped |
+| DSYS-01 | Phase 2 | Mapped |
+| DSYS-02 | Phase 2 | Mapped |
+| DSYS-03 | Phase 4 | Mapped |
+| DSYS-04 | Phase 4 | Mapped |
 
 **Coverage:**
 - v1 requirements: 40 total
-- Mapped to phases: 0
-- Unmapped: 40 ⚠️
+- Mapped to phases: 40
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-25*
