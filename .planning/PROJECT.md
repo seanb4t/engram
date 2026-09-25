@@ -24,7 +24,30 @@ tasks, 22/22 requirements verified, audit `tech_debt` (0 blockers, Nyquist 5/5, 
 Full detail in `.planning/milestones/2026-09-22.01-ROADMAP.md`. The previous milestone,
 2026-09-18.01 Bounded Reads, shipped 2026-09-22 as PR #603 and was released as v0.19.0 (#604).
 
-**No active milestone** — start the next with `/gsd-new-milestone`.
+## Current Milestone: 2026-09-25.01 Console Overhaul
+
+**Goal:** Make the operator console a recall-first, keyboard-fast, honest search tool that
+surfaces every server capability, then a real curation workbench, then a place a newcomer can
+learn the store — without changing the stack (Svelte 5, shadcn-svelte 1.7, bits-ui, Tailwind 4,
+TanStack Query 6).
+
+**Target features:**
+- Honest unified entry: id / short_id / free-text resolution, cross-spine by default, a
+  server-driven command palette, truthful result feedback and field-named errors ("the entry
+  point must not lie" — see `notes/console-overhaul-exploration.md` for the two live bugs)
+- Dense results row with hover-expand, right-hand detail pane, `j`/`k` traversal, `score` and
+  `relevance` rendered, facets on category, tags, time window, derived state, and scope
+- New Connect RPCs: `SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`, `ListRules`,
+  `ListScheduled`, `RelatedMemories`, `ListTags` (facet counts)
+- Curation surfaces: supersede with history chain, archive/restore, rules and scheduled views
+- Related-memories graph (supersession, shared tags, shared citations, vector neighbours), tag
+  cloud with counts, scope autocomplete
+- Natural-language query understanding rendered as removable, user-confirmed filter chips —
+  provider-neutral, off by default, advisory only
+- Project-local skills `engram-console-conventions` and `engram-connect-client`; vetted
+  third-party design/a11y skills
+
+**Build order:** developer recall first, operator curation second, newcomer browsing third.
 
 ## Current State: 2026-09-22.01 — Typed Decisions & Recall Ranking ✅ COMPLETE (2026-09-24; ship PR pending)
 
@@ -627,8 +650,17 @@ pre-close `REQUIREMENTS.md` snapshot).
 
 ### Active
 
-None — no active milestone. Start the next with `/gsd-new-milestone`; the Deferred list below is
-the candidate pool.
+Milestone 2026-09-25.01 — Console Overhaul. Scoped in `REQUIREMENTS.md` (REQ-IDs) and phased in
+`ROADMAP.md`; the Deferred list below remains the candidate pool for what this milestone does not
+absorb.
+
+- [ ] Honest unified search entry (id / short_id / text; cross-spine default; server-driven palette)
+- [ ] Dense hover-expand results row, detail pane, keyboard traversal, score/relevance, facets
+- [ ] Connect RPCs: SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags
+- [ ] Curation surfaces: supersede, archive/restore, rules and scheduled views
+- [ ] Related-memories graph, tag cloud, scope autocomplete
+- [ ] Natural-language query understanding as advisory, user-confirmed filter chips
+- [ ] Console conventions + Connect client skills; vetted design/a11y skills
 
 ### Deferred (carry-forward for next milestone)
 
@@ -1060,4 +1092,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-24 after the 2026-09-22.01 Typed Decisions & Recall Ranking milestone*
+*Last updated: 2026-09-25 after opening milestone 2026-09-25.01 Console Overhaul*

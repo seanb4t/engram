@@ -1,37 +1,33 @@
 ---
 gsd_state_version: "1.0"
-milestone: 2026-09-22.01
-milestone_name: Typed Decisions & Recall Ranking
-status: Awaiting next milestone
-stopped_at: Phase 5 complete — all phases complete
-last_updated: "2026-09-24T18:11:20.301Z"
-last_activity: 2026-09-24
-last_activity_desc: Milestone 2026-09-22.01 completed and archived
-state_head: 52d1137bb144deac6104391fc49e99b13e73acaf
+milestone: 2026-09-25.01
+milestone_name: Console Overhaul
+status: planning
+last_updated: "2026-09-25T19:15:19.516Z"
+last_activity: 2026-09-25
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 35
-  completed_plans: 35
-  percent: 100
-current_phase: 5
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-24 after milestone 2026-09-22.01 — Typed Decisions & Recall Ranking)
+See: .planning/PROJECT.md (updated 2026-09-25 after opening milestone 2026-09-25.01 — Console Overhaul)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
 **Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: Milestone 2026-09-22.01 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-24 — Milestone 2026-09-22.01 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-25 — Milestone 2026-09-25.01 started
 
 ## Deferred Items
 
