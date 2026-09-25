@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "2026-09-22.01 — Typed Decisions & Recall Ranking",
+  "milestone": "2026-09-25.01",
   "phases": [
     {
       "number": "9",
@@ -311,18 +311,18 @@
     {
       "number": "4",
       "name": "Jev Reranker & Per-Hit Relevance Signal",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "5",
       "name": "Operator Correctness",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 4 of 5 · 60% · ready to verify"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-24T16:00:14.255Z"
+  "updated_at": "2026-09-25T19:15:19.519Z"
 }
