@@ -23,7 +23,7 @@
     "paneforge": "1.0.2",
     "playwright": "1.63.0",
     "shadcn-svelte": "1.7.0",
-    "svelte": "5.57.0",
+    "svelte": "5.57.1",
     "svelte-check": "4.7.6",
     "svelte-sonner": "1.2.1",
     "tailwindcss": "4.3.3",
