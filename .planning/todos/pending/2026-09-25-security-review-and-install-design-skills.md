@@ -3,6 +3,7 @@ created: 2026-09-25T00:00:00.000Z
 title: Security-review then install the three design/a11y registry skills
 area: tooling
 severity: minor
+resolves_phase: 4
 files:
   - .planning/notes/console-overhaul-exploration.md
 ---
