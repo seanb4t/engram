@@ -96,6 +96,23 @@
         "vitest-browser-svelte"
       ],
       "groupName": "vitest monorepo (core + browser + svelte adapter)"
+    },
+    {
+      "description": "Do NOT bump the pnpm `packageManager` pin in ui/ and docs-site/ (measured 2026-09-25: #602, #581). pnpm 12 records its own binaries under packageManagerDependencies in pnpm-lock.yaml, so a packageManager bump needs a lockfile regeneration; the self-hosted bot bumps package.json without one, and every such PR fails --frozen-lockfile in `ui tests`, `ui vendored-asset drift` and the docs-site build. Bump pnpm manually (`pnpm self-update` / edit the pin, then `pnpm install --lockfile-only` in both dirs) until the bot regenerates the lockfile for this depType.",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchDepTypes": [
+        "packageManager"
+      ],
+      "matchDepNames": [
+        "pnpm"
+      ],
+      "enabled": false
     }
-  ]
+  ],
+  "lockFileMaintenance": {
+    "enabled": false,
+    "description": "Disabled 2026-09-25 (measured on #597): the self-hosted bot regenerates ui/ and docs-site/ pnpm-lock.yaml with a pnpm older than the packageManager pin, which drops the packageManagerDependencies block pnpm 12 records, so the pinned pnpm fails --frozen-lockfile (ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE) on every maintenance PR. Re-enable once the bot honours packageManager (fix belongs in selfhosted-cluster); until then maintenance is a manual `rm pnpm-lock.yaml && pnpm install --lockfile-only` in each dir."
+  }
 }
