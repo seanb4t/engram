@@ -1013,3 +1013,49 @@ func TestSearchRankHookFromEnv(t *testing.T) {
 		}
 	})
 }
+
+// TestSearchRerankAudit pins the #618 resolver: "true" turns the audit on,
+// "false"/empty/garbage keep it off (Config.Validate rejects garbage before
+// production ever reaches here), and the startup disclosure is a Warn line
+// that says whether anything will actually be audited.
+func TestSearchRerankAudit(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{{"true", true}, {"1", true}, {"false", false}, {"", false}, {"yes please", false}} {
+		cfg := &config.Config{}
+		cfg.Search.RerankAudit = tc.value
+		if got := searchRerankAudit(cfg); got != tc.want {
+			t.Errorf("searchRerankAudit(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+
+	for _, tc := range []struct {
+		name        string
+		hookEnabled bool
+		wantSub     string
+	}{
+		{"with hook", true, "audit capture enabled"},
+		{"without hook", false, "nothing is audited"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			logSearchRerankAuditEnabled(tc.hookEnabled)
+
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &rec); err != nil {
+				t.Fatalf("unmarshal log line %q: %v", buf.String(), err)
+			}
+			if rec["level"] != "WARN" {
+				t.Errorf("level = %v, want WARN", rec["level"])
+			}
+			if msg, _ := rec["msg"].(string); !strings.Contains(msg, tc.wantSub) {
+				t.Errorf("msg = %q, want substring %q", msg, tc.wantSub)
+			}
+		})
+	}
+}

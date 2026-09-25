@@ -1178,6 +1178,10 @@ type SearchOptions struct {
 	// configured; forwarded by SearchReranked only — Store.Search itself
 	// never reads it.
 	RankHook RankHook
+	// RankAudit is ENGRAM_SEARCH_RERANK_AUDIT (#618): when true and RankHook
+	// ran, SearchReranked also logs the query and the pool's ids/ranks/
+	// scores for offline grading. Read by SearchReranked only.
+	RankAudit bool
 }
 
 // Search returns the k nearest readable memories to vec within scope.
@@ -1357,7 +1361,12 @@ func (s *Store) SearchReranked(ctx context.Context, scope string, subj Subject, 
 	if err != nil {
 		return nil, err
 	}
-	return RankWithHook(ctx, query, hits, int(k), opts.RankHook), nil
+	ranked, rep := rankWithReport(ctx, query, hits, int(k), opts.RankHook)
+	rep.stamp(trace.SpanFromContext(ctx))
+	if opts.RankAudit {
+		rep.audit(ctx, "search_memory", query, ownerOf(subj))
+	}
+	return ranked, nil
 }
 
 // SearchDiscovery runs a top-k vector search constrained to discovery records.
@@ -1461,8 +1470,9 @@ func (s *Store) SearchDiscovery(ctx context.Context, scope, kind string, subj Su
 // SearchDiscovery directly and never reaches this method.
 //
 // k == 0 is rejected with ErrInvalidArgument, mirroring SearchReranked's own
-// guard: callers must pass their already-defaulted k.
-func (s *Store) SearchDiscoveryReranked(ctx context.Context, scope, kind string, subj Subject, query string, vec []float32, k uint64, hook RankHook) ([]Memory, error) {
+// guard: callers must pass their already-defaulted k. audit mirrors
+// SearchOptions.RankAudit (#618).
+func (s *Store) SearchDiscoveryReranked(ctx context.Context, scope, kind string, subj Subject, query string, vec []float32, k uint64, hook RankHook, audit bool) ([]Memory, error) {
 	if k == 0 {
 		return nil, fmt.Errorf("%w: SearchDiscoveryReranked requires k > 0 (caller must apply its default before calling)", ErrInvalidArgument)
 	}
@@ -1473,7 +1483,12 @@ func (s *Store) SearchDiscoveryReranked(ctx context.Context, scope, kind string,
 	if err != nil {
 		return nil, err
 	}
-	ranked := applyRankHook(ctx, query, hits, hook)
+	ranked, rep := applyRankHook(ctx, query, hits, hook)
+	rep.k = int(k)
+	rep.stamp(trace.SpanFromContext(ctx))
+	if audit {
+		rep.audit(ctx, "search_discovery", query, ownerOf(subj))
+	}
 	if k >= uint64(len(ranked)) {
 		return ranked, nil
 	}

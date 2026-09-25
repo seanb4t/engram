@@ -330,11 +330,20 @@ tasks:
           echo "chart:validate: ENGRAM_SEARCH_RERANK_TIMEOUT must NOT render when memory.search.rerankTimeout is unset"
           exit 1
         fi
+        if echo "$SEARCH_JEV_NO_PROVIDER_RENDER" | grep -q 'ENGRAM_SEARCH_RERANK_AUDIT'; then
+          echo "chart:validate: ENGRAM_SEARCH_RERANK_AUDIT must NOT render when memory.search.rerankAudit is unset"
+          exit 1
+        fi
         SEARCH_JEV_FULL_RENDER=$(helm template charts/engram \
           --set memory.search.ranker=jev \
           --set memory.search.rerankTimeout=1500ms \
+          --set memory.search.rerankAudit=true \
           --set memory.decisions.provider=jev \
           --set memory.decisions.baseURL=https://openrouter.example/api)
+        if ! echo "$SEARCH_JEV_FULL_RENDER" | grep -q 'name: ENGRAM_SEARCH_RERANK_AUDIT, value: "true"'; then
+          echo "chart:validate: memory.search.rerankAudit=true must emit ENGRAM_SEARCH_RERANK_AUDIT"
+          exit 1
+        fi
         if ! echo "$SEARCH_JEV_FULL_RENDER" | grep -q 'name: ENGRAM_SEARCH_RANKER, value: "jev"'; then
           echo "chart:validate: memory.search.ranker=jev must emit ENGRAM_SEARCH_RANKER alongside memory.decisions.provider"
           exit 1
@@ -371,8 +380,11 @@ tasks:
         # stays byte-identical to the pre-phase render. Re-pinned 2026-09-24
         # for the ranker-gated ENGRAM_SEARCH_RANKER / ENGRAM_SEARCH_RERANK_TIMEOUT
         # rows (D-10): the default render omits both, and the rest of the
-        # block stays byte-identical to the pre-phase render.
-        EXPECTED_CHECKSUM="e42446d1d749690366becdd9d02300250d549f66b36225fc6debab11bf5767ed"
+        # block stays byte-identical to the pre-phase render. Re-pinned
+        # 2026-09-25 for the with-guarded ENGRAM_SEARCH_RERANK_AUDIT row
+        # (GH-618): the default render still omits every ENGRAM_SEARCH_* var
+        # and the rest of the block is byte-identical.
+        EXPECTED_CHECKSUM="dfd9b5ce9b8981774e3eaf611f20a4f413bfa5439a68ff27bbc1943a24206fb7"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

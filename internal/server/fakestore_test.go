@@ -530,7 +530,7 @@ func (s *spyStore) SearchDiscovery(_ context.Context, scope, kind string, subj s
 // (when non-nil) as a no-op scoring pass and truncates to k, enough for
 // tests that only need to prove delegation (which method was called, with
 // which scope/args), never a second ranking implementation.
-func (s *spyStore) SearchDiscoveryReranked(_ context.Context, scope, kind string, subj store.Subject, _ string, _ []float32, k uint64, _ store.RankHook) ([]store.Memory, error) {
+func (s *spyStore) SearchDiscoveryReranked(_ context.Context, scope, kind string, subj store.Subject, _ string, _ []float32, k uint64, _ store.RankHook, _ bool) ([]store.Memory, error) {
 	s.mu.Lock()
 	owner := ownerOfSubject(subj)
 	s.record("SearchDiscoveryReranked", owner, scope)

@@ -155,6 +155,7 @@ memory:
   search:
     ranker: lexical # ENGRAM_SEARCH_RANKER; "lexical" (default) or "jev"
     rerankTimeout: "" # ENGRAM_SEARCH_RERANK_TIMEOUT; empty means the binary default of 2s. One attempt, no retry — on timeout or error the search falls back to lexical order.
+    rerankAudit: "" # ENGRAM_SEARCH_RERANK_AUDIT; "true" logs every reranked search's QUERY TEXT and candidate ids (never content) for offline grading. Time-box it — see the configure guide's "Telemetry" subsection. Empty means off.
   qdrant:
     collection: "memory"
   oidc:

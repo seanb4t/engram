@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -162,6 +163,36 @@ func searchRerankTimeout(cfg *config.Config) time.Duration {
 		return 2 * time.Second
 	}
 	return d
+}
+
+// searchRerankAudit parses ENGRAM_SEARCH_RERANK_AUDIT (#618), defaulting to
+// false on empty/invalid — Config.Validate already rejects a non-boolean, so
+// the warn branch only fires on an out-of-band call that bypassed it.
+func searchRerankAudit(cfg *config.Config) bool {
+	b, err := strconv.ParseBool(cfg.Search.RerankAudit)
+	if err != nil {
+		if cfg.Search.RerankAudit != "" {
+			slog.Warn("ENGRAM_SEARCH_RERANK_AUDIT is set but not a boolean; audit capture stays off",
+				"value", cfg.Search.RerankAudit)
+		}
+		return false
+	}
+	return b
+}
+
+// logSearchRerankAuditEnabled is the loud startup disclosure for the audit
+// capture (#618): unlike every other engram telemetry surface, each
+// reranked search will now log its query text and candidate ids. Warn
+// level on purpose — it is the auth-disabled pattern: an operator opted in,
+// and the log should keep saying so. Without a rank hook the flag does
+// nothing, and the line says that instead.
+func logSearchRerankAuditEnabled(hookEnabled bool) {
+	if !hookEnabled {
+		slog.Warn("ENGRAM_SEARCH_RERANK_AUDIT is true but ENGRAM_SEARCH_RANKER is not jev; nothing is reranked, so nothing is audited")
+		return
+	}
+	slog.Warn("search rerank audit capture enabled: every reranked search logs its query text and candidate ids (never content) at info level",
+		"log_msg", "search rerank audit")
 }
 
 // searchDeciderFromConfig builds a SECOND, dedicated Jev client for the

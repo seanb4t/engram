@@ -104,6 +104,10 @@ type deps struct {
 	// its only production source (buildDepsFromEnv); a zero-value &deps{}
 	// test literal keeps today's order, byte-identically.
 	rankHook store.RankHook
+	// rankAudit is ENGRAM_SEARCH_RERANK_AUDIT (#618): when true, every
+	// reranked search also logs its query text and candidate ids for an
+	// offline grading pass. Off by default; meaningless without rankHook.
+	rankAudit bool
 }
 
 // memoryWriteCaps holds the always-enforced memory content/tags write
@@ -349,6 +353,10 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if hook != nil {
 		logSearchRankerEnabled(cfg)
 	}
+	audit := searchRerankAudit(cfg)
+	if audit {
+		logSearchRerankAuditEnabled(hook != nil)
+	}
 	return &deps{
 		st:               st,
 		em:               em,
@@ -360,6 +368,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		writeCaps:        memoryWriteCapsFromConfig(cfg),
 		decider:          dec,
 		rankHook:         hook,
+		rankAudit:        audit,
 	}, nil
 }
 
@@ -1932,6 +1941,7 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 		IncludeSuperseded: req.IncludeSuperseded,
 		IncludeScheduled:  req.IncludeScheduled,
 		RankHook:          d.rankHook,
+		RankAudit:         d.rankAudit,
 	})
 }
 
@@ -2106,7 +2116,7 @@ func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryA
 	if d.rankHook == nil {
 		return d.st.SearchDiscovery(ctx, scope, a.Kind, c.Subj, vec, a.K)
 	}
-	return d.st.SearchDiscoveryReranked(ctx, scope, a.Kind, c.Subj, a.Query, vec, a.K, d.rankHook)
+	return d.st.SearchDiscoveryReranked(ctx, scope, a.Kind, c.Subj, a.Query, vec, a.K, d.rankHook, d.rankAudit)
 }
 
 // updateMemory applies a partial update to one record by id or short id.

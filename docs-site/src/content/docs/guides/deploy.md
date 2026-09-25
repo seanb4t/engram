@@ -42,6 +42,7 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 | `memory.decisions.concurrency` | `ENGRAM_DECISIONS_CONCURRENCY` | Cap on concurrent decision calls per batch (empty → binary default `4`) |
 | `memory.search.ranker` | `ENGRAM_SEARCH_RANKER` | Search ranker; `lexical` (default; renders no variable) or `jev` (opt-in reranking of `search_memory` and `search_discovery` by the decision provider, adding a per-hit `relevance`; requires `memory.decisions.provider`) |
 | `memory.search.rerankTimeout` | `ENGRAM_SEARCH_RERANK_TIMEOUT` | Per-search rerank call timeout, one attempt and no retry (empty → binary default `2s`) |
+| `memory.search.rerankAudit` | `ENGRAM_SEARCH_RERANK_AUDIT` | `"true"` logs every reranked search's query text and candidate ids (never content) for offline grading; empty renders no variable (off). Only rendered with `ranker: jev` |
 
 `ENGRAM_QDRANT_ADDR` is set automatically by the chart to the in-cluster Qdrant service address and does not need a Helm value.
 

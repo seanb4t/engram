@@ -14,13 +14,36 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
+
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/verdict"
 )
+
+var (
+	spanRecorderOnce sync.Once
+	spanRecorder     *tracetest.SpanRecorder
+)
+
+// withSpanRecorder installs a process-wide recorder once (OTel's global
+// delegate upgrades only once — see store's instrument_test.go for why a
+// per-test swap would not work) and returns it; a test snapshots
+// len(sr.Ended()) before its call and reads only the spans after it.
+func withSpanRecorder(t *testing.T) *tracetest.SpanRecorder {
+	t.Helper()
+	spanRecorderOnce.Do(func() {
+		spanRecorder = tracetest.NewSpanRecorder()
+		otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder)))
+	})
+	return spanRecorder
+}
 
 // repeatToBytes returns unit repeated enough times that the result's UTF-8
 // byte length is the largest multiple of len(unit) not exceeding
@@ -626,11 +649,34 @@ func TestHookFailureLogIsContentFree(t *testing.T) {
 			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 			t.Cleanup(func() { slog.SetDefault(prev) })
 
+			sr := withSpanRecorder(t)
+			before := len(sr.Ended())
+			ctx, span := otel.Tracer("relevance-test").Start(context.Background(), "test.ambient")
+
 			dec := &countingDecider{resp: tc.resp, err: tc.decideErr}
 			hook := Hook(dec, DefaultBudget())
-			_, err := hook(context.Background(), query, hits)
+			_, err := hook(ctx, query, hits)
+			span.End()
 			if err == nil {
 				t.Fatal("hook err = nil, want non-nil")
+			}
+
+			var gotClass string
+			for _, sp := range sr.Ended()[before:] {
+				if sp.Name() != "test.ambient" {
+					continue
+				}
+				for _, kv := range sp.Attributes() {
+					if string(kv.Key) == store.AttrRerankFallbackClass {
+						gotClass = kv.Value.AsString()
+					}
+					if strings.Contains(kv.Value.String(), sentinel) {
+						t.Errorf("span attribute %s contains sentinel", kv.Key)
+					}
+				}
+			}
+			if gotClass != tc.wantClass {
+				t.Errorf("span %s = %q, want %q", store.AttrRerankFallbackClass, gotClass, tc.wantClass)
 			}
 
 			out := buf.String()

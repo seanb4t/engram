@@ -51,8 +51,10 @@ spans; `decide` already carries cost/latency.
 structured log line per reranked search:
 
 - `query` (text), `owner`, `k`, `outcome`
-- per candidate over the full CandidateK pool: `id`, `lexical_rank`,
-  `jev_rank`, `cosine` (Qdrant score), `relevance`
+- per candidate over the full CandidateK pool: `id`, `before_rank`,
+  `after_rank` (1-based; "before" is lexical order for `search_memory`,
+  vector order for `search_discovery` — hence not "lexical_rank"),
+  `cosine` (Qdrant score), `relevance` (absent on fallback)
 - **ids only, never content or summaries** — grading fetches content via
   `get_memory`. Decided over "plus summaries" (privacy footprint, 100-candidate
   lines) and over "top-k ids only" (loses relevance and the beyond-k pool, so

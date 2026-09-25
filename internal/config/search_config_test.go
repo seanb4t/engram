@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// searchField is one of the two ENGRAM_SEARCH_* registry rows (D-01, D-09).
+// searchField is one of the three ENGRAM_SEARCH_* registry rows (D-01, D-09, #618).
 type searchField struct {
 	key string
 	env string
@@ -16,11 +16,12 @@ type searchField struct {
 	get func(*Config) string
 }
 
-// searchFields is the two-key table TestSearchRegistryEntries's subtests
+// searchFields is the three-key table TestSearchRegistryEntries's subtests
 // drive, mirroring decisionsFields' shape.
 var searchFields = []searchField{
 	{"search.ranker", "ENGRAM_SEARCH_RANKER", "lexical", func(c *Config) string { return c.Search.Ranker }},
 	{"search.rerank_timeout", "ENGRAM_SEARCH_RERANK_TIMEOUT", "2s", func(c *Config) string { return c.Search.RerankTimeout }},
+	{"search.rerank_audit", "ENGRAM_SEARCH_RERANK_AUDIT", "false", func(c *Config) string { return c.Search.RerankAudit }},
 }
 
 // TestSearchRegistryEntries mirrors TestDecisionsRegistryEntries: exactly one
@@ -58,6 +59,7 @@ func TestSearchRegistryEntries(t *testing.T) {
 		t.Setenv("ENGRAM_QDRANT_ADDR", "localhost:6334")
 		t.Setenv("ENGRAM_SEARCH_RANKER", "jev")
 		t.Setenv("ENGRAM_SEARCH_RERANK_TIMEOUT", "999ms")
+		t.Setenv("ENGRAM_SEARCH_RERANK_AUDIT", "true")
 		cfg, err := Load(nil)
 		if err != nil {
 			t.Fatalf("Load: %v", err)
@@ -67,6 +69,9 @@ func TestSearchRegistryEntries(t *testing.T) {
 		}
 		if got := cfg.Search.RerankTimeout; got != "999ms" {
 			t.Errorf("Search.RerankTimeout = %q, want %q", got, "999ms")
+		}
+		if got := cfg.Search.RerankAudit; got != "true" {
+			t.Errorf("Search.RerankAudit = %q, want %q", got, "true")
 		}
 	})
 
@@ -95,7 +100,7 @@ func TestSearchConfigValidate(t *testing.T) {
 	t.Run("empty and lexical ranker validate with no provider", func(t *testing.T) {
 		for _, ranker := range []string{"", "lexical"} {
 			c := validConfig()
-			c.Search = SearchConfig{Ranker: ranker, RerankTimeout: "soon"}
+			c.Search = SearchConfig{Ranker: ranker, RerankTimeout: "soon", RerankAudit: "false"}
 			if err := c.Validate(); err != nil {
 				t.Errorf("ranker=%q: Validate() = %v, want nil (rerank_timeout gated on ranker=jev)", ranker, err)
 			}
@@ -104,9 +109,21 @@ func TestSearchConfigValidate(t *testing.T) {
 
 	t.Run("jev with provider and base URL validates", func(t *testing.T) {
 		c := decisionsJevEnabled()
-		c.Search = SearchConfig{Ranker: "jev", RerankTimeout: "2s"}
+		c.Search = SearchConfig{Ranker: "jev", RerankTimeout: "2s", RerankAudit: "true"}
 		if err := c.Validate(); err != nil {
 			t.Fatalf("Validate() = %v, want nil", err)
+		}
+	})
+
+	t.Run("non-boolean rerank_audit fails even with the ranker off", func(t *testing.T) {
+		c := validConfig()
+		c.Search = SearchConfig{Ranker: "lexical", RerankTimeout: "2s", RerankAudit: "yes please"}
+		err := c.Validate()
+		if err == nil {
+			t.Fatal("Validate() = nil, want error naming ENGRAM_SEARCH_RERANK_AUDIT")
+		}
+		if !strings.Contains(err.Error(), "ENGRAM_SEARCH_RERANK_AUDIT") {
+			t.Errorf("Validate() error = %q, want substring ENGRAM_SEARCH_RERANK_AUDIT", err)
 		}
 	})
 
@@ -114,7 +131,7 @@ func TestSearchConfigValidate(t *testing.T) {
 	for _, r := range badRankers {
 		t.Run("bad ranker "+r, func(t *testing.T) {
 			c := validConfig()
-			c.Search = SearchConfig{Ranker: r}
+			c.Search = SearchConfig{Ranker: r, RerankAudit: "false"}
 			err := c.Validate()
 			if err == nil {
 				t.Fatalf("Validate() = nil, want error naming ENGRAM_SEARCH_RANKER")
@@ -127,7 +144,7 @@ func TestSearchConfigValidate(t *testing.T) {
 
 	t.Run("jev ranker without provider fails naming both vars", func(t *testing.T) {
 		c := validConfig()
-		c.Search = SearchConfig{Ranker: "jev", RerankTimeout: "2s"}
+		c.Search = SearchConfig{Ranker: "jev", RerankTimeout: "2s", RerankAudit: "false"}
 		err := c.Validate()
 		if err == nil {
 			t.Fatal("Validate() = nil, want error naming both ENGRAM_SEARCH_RANKER and ENGRAM_DECISIONS_PROVIDER")
@@ -143,7 +160,7 @@ func TestSearchConfigValidate(t *testing.T) {
 	for _, tm := range badTimeouts {
 		t.Run("jev with bad rerank_timeout "+tm, func(t *testing.T) {
 			c := decisionsJevEnabled()
-			c.Search = SearchConfig{Ranker: "jev", RerankTimeout: tm}
+			c.Search = SearchConfig{Ranker: "jev", RerankTimeout: tm, RerankAudit: "false"}
 			err := c.Validate()
 			if err == nil {
 				t.Fatalf("Validate() = nil, want error naming ENGRAM_SEARCH_RERANK_TIMEOUT")
@@ -156,7 +173,7 @@ func TestSearchConfigValidate(t *testing.T) {
 
 	t.Run("jev with rerank_timeout 150ms validates", func(t *testing.T) {
 		c := decisionsJevEnabled()
-		c.Search = SearchConfig{Ranker: "jev", RerankTimeout: "150ms"}
+		c.Search = SearchConfig{Ranker: "jev", RerankTimeout: "150ms", RerankAudit: "false"}
 		if err := c.Validate(); err != nil {
 			t.Fatalf("Validate() = %v, want nil", err)
 		}

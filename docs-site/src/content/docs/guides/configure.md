@@ -248,8 +248,38 @@ ranker is `jev`.
 |---------------------|------|---------|-------------|
 | `ENGRAM_SEARCH_RANKER` | — | `lexical` | Search-path reranker; empty or `lexical` keeps today's ranking, `jev` reorders by relevance (requires `ENGRAM_DECISIONS_PROVIDER`) |
 | `ENGRAM_SEARCH_RERANK_TIMEOUT` | — | `2s` | Per-search decision call timeout; dedicated to the search path (never shared with `ENGRAM_DECISIONS_TIMEOUT`). Must be strictly positive when the ranker is `jev` |
+| `ENGRAM_SEARCH_RERANK_AUDIT` | — | `false` | Opt-in audit capture: every reranked search logs its **query text** and candidate ids/ranks/scores (never content) for offline grading. See **Telemetry** below before enabling |
 
-Source: `internal/config` (registry) + `internal/server/decider.go` (`searchDeciderFromConfig`, `searchRankHook`) + `internal/decide/jev` (`WithNoRetry`).
+Source: `internal/config` (registry) + `internal/server/decider.go` (`searchDeciderFromConfig`, `searchRankHook`, `searchRerankAudit`) + `internal/decide/jev` (`WithNoRetry`).
+
+### Telemetry
+
+Two layers let an operator judge whether reranking is earning its cost.
+
+**Always on.** Whenever a rank hook ran, the search's own span (`tool/search_memory`,
+`tool/search_discovery`, or the Connect RPC span) carries `engram.rerank.*` attributes
+next to the `decide` child span's cost and latency. None of them carries the query,
+a record id, or record content; when the ranker is off none of them is present.
+
+| Attribute | Type | Meaning |
+|-----------|------|---------|
+| `engram.rerank.outcome` | string | `applied` (scores reordered the pool), `fallback` (hook failed or scores rejected; the pre-hook order shipped), `skipped` (empty pool, hook never called) |
+| `engram.rerank.fallback_class` | string | Why it fell back: the hook's own class word (`timeout`, `unavailable`, `rate_limited`, `auth`, `context_too_large`, `malformed_response`, `state_budget`, `no_candidates`, …) or the store's `rejected_scores` / `no_scores` |
+| `engram.rerank.top1_changed` | bool | The first hit the caller received differs from the pre-hook order's first hit (`applied` only) |
+| `engram.rerank.moved` | int | Positions within the caller's `k` whose id differs from the pre-hook order (`applied` only) |
+| `engram.rerank.promoted` | int | Ids within the caller's `k` that the pre-hook order had beyond `k` — what the candidate over-fetch bought (`applied` only) |
+| `engram.rerank.relevance_max` | float | Highest `relevance` returned; a value near zero across a search means nothing returned answered the query (`applied` only) |
+
+**Opt-in audit capture.** `ENGRAM_SEARCH_RERANK_AUDIT=true` additionally emits one
+`search rerank audit` info line per reranked search carrying `surface`, `query`
+(the text — this is the one place engram deliberately logs it), `owner`, `k`, `pool`,
+`outcome`, and `candidates`: a JSON array over the whole candidate pool of
+`{id, before_rank, after_rank, cosine, relevance}` (ranks 1-based; `before_rank`
+is the lexical order for `search_memory` and the vector order for
+`search_discovery`; `relevance` is absent on fallback). Record content, summaries
+and tags never appear — a grader fetches them by id via `get_memory`. It is meant
+to be turned on for a bounded window, graded offline, and turned off; startup
+logs a warning while it is on. It has no effect unless the ranker is `jev`.
 
 ## OIDC / Auth
 

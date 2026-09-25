@@ -40,7 +40,7 @@ type memStore interface {
 	OwnedOrAbsent(ctx context.Context, id string, subj store.Subject) error
 	ResolvePointID(ctx context.Context, idOrShort string) (string, error)
 	SearchDiscovery(ctx context.Context, scope, kind string, subj store.Subject, vec []float32, k uint64) ([]store.Memory, error)
-	SearchDiscoveryReranked(ctx context.Context, scope, kind string, subj store.Subject, query string, vec []float32, k uint64, hook store.RankHook) ([]store.Memory, error)
+	SearchDiscoveryReranked(ctx context.Context, scope, kind string, subj store.Subject, query string, vec []float32, k uint64, hook store.RankHook, audit bool) ([]store.Memory, error)
 	SearchReranked(ctx context.Context, scope string, subj store.Subject, query string, vec []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error)
 	SetVisibility(ctx context.Context, id string, subj store.Subject, shared bool) error
 	Supersede(ctx context.Context, newMem store.Memory, vec []float32, targets []string, subj store.Subject) error
