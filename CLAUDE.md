@@ -8,24 +8,6 @@
 AI assistant routing for the `engram` repo: a self-hosted, correctable,
 OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
-## Layout
-
-| Path | Responsibility |
-|------|----------------|
-| `cmd/engram/` | cobra CLI: `root`, `serve`, `version` + client-tier commands reaching a running server over Connect (`get`, `search`, `list`, `store`, `migration-status`) + operator-tier commands acting on Qdrant directly (`reindex` embedder migration — see docs-site `guides/reindex`; `migrate` (`status`, `revert`) schema-version sweep — see docs-site `guides/migrate`; `migrate-remap-owner` (alias: `migrate-set-owner`, deprecated); `prune-expired`; `summarize-missing`; `backfill-short-ids` (deprecated, use `migrate`); `spine-review` (`scan`, `verify`, `consolidate` — attaches advisory relation verdicts when `ENGRAM_DECISIONS_PROVIDER` is set, `--no-verdicts` skips, requires `--scope` or `--all-scopes`; `purge`, `archive`, `restore`)) (entrypoint only) |
-| `internal/server/` | MCP tool registration + handlers (`Register`, `EnvOr`) |
-| `internal/store/` | Qdrant-backed memory store |
-| `internal/embed/` | embedder (OpenAI-compatible) |
-| `internal/decide/` | provider-neutral typed-decision contract (`Decider`, System One questions/answers, named errors); `internal/decide/jev` is the Jev backend over OpenRouter's Decisions API, off unless `ENGRAM_DECISIONS_PROVIDER` is set |
-| `internal/verdict/` | advisory relation-verdict contract shared by `spine-review consolidate` and the curation eval — five-option relation question (`duplicate`/`contradicts`/`updates`/`related`/`unrelated`), `same_subject`, per-record `State`, result mapping with `needs_review`; built over `internal/decide` |
-| `internal/relevance/` | the search-path relevance question set shared by the server's rank hook and the retrieval eval (one noul question per candidate, budgeted `verdict.State` per candidate, response mapping), built over `internal/decide`; the store composes it through `store.RankHook` |
-| `internal/curationeval/` | gated labeled-pair eval of the relation verdicts (`task eval:curation`, `ENGRAM_CURATION_EVAL`), blind-labeled synthetic corpus plus an optional private local pair file |
-| `internal/auth/` | OIDC bearer-token verifier (go-oidc + go-sdk auth middleware) |
-| `internal/config/` | koanf config loader + field registry (single source of truth for ENGRAM_ vars) |
-| `charts/engram/` | Helm chart (server + Qdrant), generic/parameterized |
-| `proto/engram/v1/` | protobuf schema (`EngramService` v1: 5 read + 6 write RPCs) — source of truth for codegen |
-| `gen/` | committed buf-generated code (connect-go stubs in `gen/go/`, protobuf-es types in `gen/ts/`) |
-
 ## Conventions
 
 - **VCS:** git. Branch + PR; never push to `main` directly (protect-main ruleset). Planning/workflow via GSD (`.planning/`, `/gsd-*`).
