@@ -1,6 +1,6 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "engram",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Self-hosted, correctable, OAuth-secured memory for coding agents: session-start recall, curation discipline, and a two-tier per-workspace memory scope. Register the engram MCP server with /engram-setup."
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.21.0](https://github.com/seanb4t/engram/compare/v0.20.0...v0.21.0) (2026-09-25)
+
+
+### Features
+
+* **search:** rerank span attributes and opt-in audit capture ([#619](https://github.com/seanb4t/engram/issues/619)) ([bd73c18](https://github.com/seanb4t/engram/commit/bd73c184808aeefd23693ab10a5efc4e953afcdb))
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#622](https://github.com/seanb4t/engram/issues/622)) ([f0ef957](https://github.com/seanb4t/engram/commit/f0ef957d9550e4f28adb1f27dfef1ceaa6cd0984))
+
 ## [0.20.0](https://github.com/seanb4t/engram/compare/v0.19.0...v0.20.0) (2026-09-24)
 
 
