@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 2
 current_phase_name: Recall-First Search
 status: executing
-stopped_at: Completed 02-06-PLAN.md
-last_updated: "2026-09-26T20:31:37.589Z"
+stopped_at: Completed 02-07-PLAN.md
+last_updated: "2026-09-26T21:31:11.501Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 2 execution started
-state_head: d6f7755d3c5d8600b742c34d81806ec0e4200e4b
+state_head: 9da2783c8dd67a6cafe755807cab5caae84ebbfb
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 9
+  completed_plans: 10
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 ## Current Position
 
 Phase: 2 (Recall-First Search) — EXECUTING
-Plan: 6 of 10
+Plan: 7 of 10
 Status: Ready to execute
 Last activity: 2026-09-26 — Phase 2 execution started
 
@@ -441,6 +441,8 @@ milestone needs in working memory.
 - [Phase 02]: Popover portal disabled (portalProps={ disabled: true }) on HeaderSearch's dropdown; bits-ui Command.Root's item registry is DOM-scoped to its own ref, so the default body-portal made arrow-key/Enter selection silently no-op — Rendering inline keeps Floating UI's fixed-position placement correct while making dropdown items visible to Command.Root's getValidItems() DOM query
 - [Phase 02]: applyChips (params.ts) includes all category chips, known and unknown, in the derived request/params; the known-only filter for the live header-search request stays local to HeaderSearch's own effectiveCategories — The codec is a mechanical chip-to-params mapping; known-only is a search-request business rule scoped to Task 2's action text
 - [Phase 2]: 02-06: Pitfall A resolved via a capture-phase role-rewrite action on an ancestor of the virtual-list viewport, pre-empting its native Home/End/Arrow scroll handling — The library's viewport hardcodes role=region with no override prop; listening on the SAME element would run after the library's own listener (registration order), so the action listens on an ANCESTOR in the capture phase instead
+- [Phase 2]: 02-07: DetailPane's sticky-head short_id copy button keeps a lowercase aria-label 'copy short_id' (matching existing icon-button convention), distinct from Metadata's Title-Case 'Copy id'/'Copy short_id' text buttons -- avoids an ambiguous case-insensitive role-name match across the two controls.
+- [Phase 2]: 02-07: requestMakePrivate has no confirmation dialog (unlike requestShare) -- narrowing visibility is a reduction of exposure, not an irreversible-feeling action, per the plan's own action text.
 
 ### Pending Todos
 
@@ -537,8 +539,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T20:31:37.318Z
-Stopped at: Completed 02-06-PLAN.md
+Last session: 2026-09-26T21:31:11.474Z
+Stopped at: Completed 02-07-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -749,6 +751,7 @@ Resume file: None
 | Phase 02 P02 | 20min | 2 tasks | 10 files |
 | Phase 02 P04 | 40min | 3 tasks | 12 files |
 | Phase 2 P06 | 70min | 3 tasks | 7 files |
+| Phase 02 P07 | 40min | 3 tasks | 6 files |
 
 ## Operator Next Steps
 
