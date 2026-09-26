@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 2
 current_phase_name: Recall-First Search
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-09-26T18:13:10.905Z"
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-09-26T18:33:41.153Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 2 execution started
-state_head: 5ad3a07259e0c44009f69627058ebebc2761ac7e
+state_head: 26b0e4d54cc5802437698e1cac3c9be6f971fea5
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 5
+  completed_plans: 6
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 ## Current Position
 
 Phase: 2 (Recall-First Search) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-09-26 — Phase 2 execution started
 
@@ -435,6 +435,8 @@ milestone needs in working memory.
 - [Phase 1]: RelatedMemories' full 4-edge contract (types for tag/citation evidence included) landed in Task 1's tracer commit alongside the vector edge and recall-gate widening, so the gate suite is never red between commits
 - [Phase 1]: STORE-02 complete: RelatedMemories' rarity-weighted tag edges (D-07) and shared-citation edges (D-08) merge into the same one-entry-per-candidate contract 01-03 established
 - [Phase 02]: Task 1 decision: option-a — one message RecallGateHidden{total,archived,superseded,expired,scheduled}, fields recall_gate_hidden (Search=5, List=8), MCP key recall_gate_hidden — total counts distinct hidden records so a multi-state record is never double-counted in the header; per-state fields still say which states are hidden
+- [Phase 2]: installDisplayShortcuts defaults notify to svelte-sonner's toast so +layout.svelte calls it with just (window)
+- [Phase 2]: The u scaling unit is calc(1rem / 13), equivalent to calc(var(ui-font) / 13) once html font-size is var(ui-font); matches the plan's artifact contract verbatim
 
 ### Pending Todos
 
@@ -531,8 +533,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T18:13:10.877Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-09-26T18:33:30.382Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -739,6 +741,7 @@ Resume file: None
 | Phase 01 P03 | 34min | 2 tasks | 3 files |
 | Phase 01 P04 | 42min | 2 tasks | 3 files |
 | Phase 02 P01 | 38min | 3 tasks | 12 files |
+| Phase 2 P3 | 27min | 3 tasks | 31 files |
 
 ## Operator Next Steps
 
