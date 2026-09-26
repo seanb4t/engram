@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 2
 current_phase_name: Recall-First Search
 status: executing
-stopped_at: Completed 02-07-PLAN.md
-last_updated: "2026-09-26T21:31:11.501Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-09-26T22:07:20.450Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 2 execution started
-state_head: 9da2783c8dd67a6cafe755807cab5caae84ebbfb
+state_head: b7d7fbdbf16bf29a2a1e28b6d5ed097499c605a1
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 ## Current Position
 
 Phase: 2 (Recall-First Search) — EXECUTING
-Plan: 7 of 10
+Plan: 8 of 10
 Status: Ready to execute
 Last activity: 2026-09-26 — Phase 2 execution started
 
@@ -443,6 +443,8 @@ milestone needs in working memory.
 - [Phase 2]: 02-06: Pitfall A resolved via a capture-phase role-rewrite action on an ancestor of the virtual-list viewport, pre-empting its native Home/End/Arrow scroll handling — The library's viewport hardcodes role=region with no override prop; listening on the SAME element would run after the library's own listener (registration order), so the action listens on an ANCESTOR in the capture phase instead
 - [Phase 2]: 02-07: DetailPane's sticky-head short_id copy button keeps a lowercase aria-label 'copy short_id' (matching existing icon-button convention), distinct from Metadata's Title-Case 'Copy id'/'Copy short_id' text buttons -- avoids an ambiguous case-insensitive role-name match across the two controls.
 - [Phase 2]: 02-07: requestMakePrivate has no confirmation dialog (unlike requestShare) -- narrowing visibility is a reduction of exposure, not an irreversible-feeling action, per the plan's own action text.
+- [Phase 2]: 02-05: shouldFilter=false + app-owned matchesQuery substring filtering, not Command's own fuzzy scoring -- bits-ui 2.18.1's default shouldFilter=true drives a DOM-reparenting sort pass that fights Svelte 5 reactive DOM ownership once a forceMount group exists, silently emptying Dialog.Content on the first keystroke with zero console errors
+- [Phase 2]: 02-05: Command.Dialog portals content to document.body by default (unlike HeaderSearch's inline Popover) -- browser tests must query document.body, not screen.container, for DOM-order/full-page-text assertions
 
 ### Pending Todos
 
@@ -539,8 +541,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T21:31:11.474Z
-Stopped at: Completed 02-07-PLAN.md
+Last session: 2026-09-26T22:07:20.422Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -752,6 +754,7 @@ Resume file: None
 | Phase 02 P04 | 40min | 3 tasks | 12 files |
 | Phase 2 P06 | 70min | 3 tasks | 7 files |
 | Phase 02 P07 | 40min | 3 tasks | 6 files |
+| Phase 02 P05 | 35min | 2 tasks | 5 files |
 
 ## Operator Next Steps
 
