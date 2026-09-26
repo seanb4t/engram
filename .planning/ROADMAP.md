@@ -443,13 +443,13 @@ they searched.
   6. A user can narrow results by category/tags/time window/derived state/scope as removable, URL-persisted filter chips, and pick a scope from an autocomplete combobox showing each scope's readable-record count
   7. The project-local `engram-console-conventions` and `engram-connect-client` skills exist and this phase's UI-SPEC cites them
 
-**Plans:** 10 plans
+**Plans:** 1/10 plans executed
 **UI hint**: yes
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — recall-gate hidden count on Connect and MCP: a wire-shape decision gate, then the list and search lanes computed once in the shared core with the caller's Subject (D-01–D-03; ENTRY-03)
+- [x] 02-01-PLAN.md — recall-gate hidden count on Connect and MCP: a wire-shape decision gate, then the list and search lanes computed once in the shared core with the caller's Subject (D-01–D-03; ENTRY-03)
 - [ ] 02-03-PLAN.md — design foundations: site-wide text size (store, anti-flash, ⌘+/⌘-/⌘0, Aa popover), new tokens, fixed-px sweep (D-13; ROW-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*

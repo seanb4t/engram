@@ -190,3 +190,9 @@ None - no external service configuration required.
 ---
 *Phase: 02-recall-first-search*
 *Completed: 2026-09-26*
+
+## Self-Check: PASSED
+
+- Created files exist: `internal/server/hiddencount.go`, `internal/server/hiddencount_test.go`, `.planning/phases/02-recall-first-search/02-01-SUMMARY.md`
+- Commits exist: `15649a96` (Task 2), `c917df49` (Task 3), `5ad3a072` (SUMMARY)
+- Plan-level `<verification>` re-run: `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/ ./internal/store/ -count=1` — ok; `task proto:lint` — clean; `go tool buf breaking --against '.git#branch=main'` — clean; `gofmt -l .` — clean; `task license:check` — clean; `golangci-lint run ./internal/server/...` — 0 issues
