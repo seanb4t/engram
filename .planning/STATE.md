@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 2
 current_phase_name: Recall-First Search
 status: executing
-stopped_at: Completed 02-05-PLAN.md
-last_updated: "2026-09-26T22:07:20.450Z"
+stopped_at: Completed 02-08-PLAN.md
+last_updated: "2026-09-26T22:50:57.575Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 2 execution started
-state_head: b7d7fbdbf16bf29a2a1e28b6d5ed097499c605a1
+state_head: ca4beac76d292435d4a7f28525b6de537bbf4496
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 ## Current Position
 
 Phase: 2 (Recall-First Search) — EXECUTING
-Plan: 8 of 10
+Plan: 9 of 10
 Status: Ready to execute
 Last activity: 2026-09-26 — Phase 2 execution started
 
@@ -445,6 +445,9 @@ milestone needs in working memory.
 - [Phase 2]: 02-07: requestMakePrivate has no confirmation dialog (unlike requestShare) -- narrowing visibility is a reduction of exposure, not an irreversible-feeling action, per the plan's own action text.
 - [Phase 2]: 02-05: shouldFilter=false + app-owned matchesQuery substring filtering, not Command's own fuzzy scoring -- bits-ui 2.18.1's default shouldFilter=true drives a DOM-reparenting sort pass that fights Svelte 5 reactive DOM ownership once a forceMount group exists, silently emptying Dialog.Content on the first keystroke with zero console errors
 - [Phase 2]: 02-05: Command.Dialog portals content to document.body by default (unlike HeaderSearch's inline Popover) -- browser tests must query document.body, not screen.container, for DOM-order/full-page-text assertions
+- [Phase 2]: 02-08: WriteSurfaces moved outside RecallSplit's list snippet to a stable toolbar row — RecallSplit's narrow/wide layout switch recreates snippet content, which was silently destroying WriteSurfaces (and its bind:this) the first time the post-mount width measurement crossed the narrow breakpoint
+- [Phase 2]: 02-08: facet-strip URL state (scope/tags/categories) is synthesized as OperatorChip objects and placed ahead of the query box's own inline chips before calling params.ts's applyChips, so typing plain text never wipes out FacetStrip's selections
+- [Phase 2]: 02-08: ScopeCombobox uses shouldFilter={false} plus manual substring filtering over the complete loaded ListScopes list, avoiding the bits-ui 2.18.1/Svelte 5 default-filter content-emptying gotcha already hit in plan 02-05
 
 ### Pending Todos
 
@@ -541,8 +544,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T22:07:20.422Z
-Stopped at: Completed 02-05-PLAN.md
+Last session: 2026-09-26T22:50:57.546Z
+Stopped at: Completed 02-08-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -755,6 +758,7 @@ Resume file: None
 | Phase 2 P06 | 70min | 3 tasks | 7 files |
 | Phase 02 P07 | 40min | 3 tasks | 6 files |
 | Phase 02 P05 | 35min | 2 tasks | 5 files |
+| Phase 2 P08 | 130min | 3 tasks | 10 files |
 
 ## Operator Next Steps
 

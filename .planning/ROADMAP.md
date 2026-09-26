@@ -443,7 +443,7 @@ they searched.
   6. A user can narrow results by category/tags/time window/derived state/scope as removable, URL-persisted filter chips, and pick a scope from an autocomplete combobox showing each scope's readable-record count
   7. The project-local `engram-console-conventions` and `engram-connect-client` skills exist and this phase's UI-SPEC cites them
 
-**Plans:** 7/10 plans executed
+**Plans:** 8/10 plans executed
 **UI hint**: yes
 
 Plans:
@@ -462,7 +462,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 02-05-PLAN.md — ⌘K command menu with an unfiltered search hand-off; the lying palette deleted (D-11; ENTRY-01, ENTRY-04)
-- [ ] 02-08-PLAN.md — /search rebuilt: race-safe URL-driven queries, honest header, facet chips and scope combobox (D-01, D-05, D-06; ENTRY-01–ENTRY-03, ENTRY-06, ROW-04–ROW-06)
+- [x] 02-08-PLAN.md — /search rebuilt: race-safe URL-driven queries, honest header, facet chips and scope combobox (D-01, D-05, D-06; ENTRY-01–ENTRY-03, ENTRY-06, ROW-04–ROW-06)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
