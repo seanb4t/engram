@@ -1,7 +1,10 @@
 <script lang="ts">
   import type { Memory } from '$lib/gen/engram_pb';
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
+  import { toast } from 'svelte-sonner';
+  import { Kbd } from '$lib/components/ui/kbd';
   import ResultRow from './ResultRow.svelte';
+  import ResultHoverCard from './ResultHoverCard.svelte';
 
   let {
     memories,
@@ -42,7 +45,137 @@
   // so resolution (2) (inner-wrapper listbox) was not needed.
   let list: ReturnType<typeof SvelteVirtualList> | undefined = $state();
   let viewportEl: HTMLElement | null = $state(null);
+  let wrapperEl: HTMLElement | null = $state(null);
   let listFocused = $state(false);
+
+  // ROW-02: the hover card's own state, kept SEPARATE from activeIndex/
+  // activeId (Pitfall 4) — a mouse resting on a different row than the
+  // keyboard-active one must never mutate aria-activedescendant, and moving
+  // the keyboard selection must never be gated on pointer position.
+  let cardOpen = $state(false);
+  let cardMemory = $state<Memory | undefined>(undefined);
+  let cardAnchor = $state<HTMLElement | null>(null);
+  let cardRef = $state<HTMLElement | null>(null);
+  let hoverRowId: string | undefined;
+  let openTimer: ReturnType<typeof setTimeout> | undefined;
+  let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function clearOpenTimer() {
+    if (openTimer !== undefined) {
+      clearTimeout(openTimer);
+      openTimer = undefined;
+    }
+  }
+  function clearCloseTimer() {
+    if (closeTimer !== undefined) {
+      clearTimeout(closeTimer);
+      closeTimer = undefined;
+    }
+  }
+
+  function closeCard() {
+    clearOpenTimer();
+    clearCloseTimer();
+    cardOpen = false;
+  }
+
+  // Never for the row already open in the pane (ROW-02) — redundant with the
+  // pane's own content, and the pane already owns keyboard focus intent.
+  function openCardFor(m: Memory, anchorEl: HTMLElement) {
+    if (m.id === openId) {
+      closeCard();
+      return;
+    }
+    cardMemory = m;
+    cardAnchor = anchorEl;
+    cardOpen = true;
+  }
+
+  function scheduleCloseCard() {
+    clearCloseTimer();
+    closeTimer = setTimeout(() => {
+      closeTimer = undefined;
+      closeCard();
+    }, 120);
+  }
+
+  // Pointer hover tracks by mousemove, NOT mouseenter, per D-07/ROW-02 — a
+  // mouseenter fires once per row-enter and would miss the case of the
+  // pointer resting still while the row underneath it changes via keyboard
+  // scroll; mousemove keeps re-asserting hover intent on real pointer motion.
+  function handleRowMouseMove(m: Memory, rowEl: HTMLElement) {
+    if (hoverRowId === m.id) return;
+    hoverRowId = m.id;
+    clearCloseTimer();
+    clearOpenTimer();
+    openTimer = setTimeout(() => {
+      openTimer = undefined;
+      if (hoverRowId === m.id) openCardFor(m, rowEl);
+    }, 250);
+  }
+
+  function handleRowMouseLeave(m: Memory) {
+    if (hoverRowId !== m.id) return;
+    hoverRowId = undefined;
+    clearOpenTimer();
+    scheduleCloseCard();
+  }
+
+  // openId changing means the pane just opened/switched/closed — the hover
+  // card must not linger over stale state either way.
+  $effect(() => {
+    void openId;
+    closeCard();
+  });
+
+  // Hides on viewport scroll (a still card anchored to a row that just
+  // scrolled out from under it reads as broken) and on a text-size change
+  // (the anchor's on-screen geometry just changed under it).
+  $effect(() => {
+    if (!viewportEl) return;
+    const vp = viewportEl;
+    function onScroll() {
+      closeCard();
+    }
+    vp.addEventListener('scroll', onScroll);
+    return () => vp.removeEventListener('scroll', onScroll);
+  });
+  $effect(() => {
+    function onTextSize() {
+      closeCard();
+    }
+    window.addEventListener('engram:textsize', onTextSize);
+    return () => window.removeEventListener('engram:textsize', onTextSize);
+  });
+
+  // The pointer can travel INTO the card within a 120ms grace — cleared the
+  // instant it actually arrives there, closed on the same delayed schedule
+  // as leaving a row if it does not.
+  $effect(() => {
+    if (!cardRef) return;
+    const el = cardRef;
+    function onEnter() {
+      clearCloseTimer();
+    }
+    function onLeave() {
+      scheduleCloseCard();
+    }
+    el.addEventListener('mousemove', onEnter);
+    el.addEventListener('mouseleave', onLeave);
+    return () => {
+      el.removeEventListener('mousemove', onEnter);
+      el.removeEventListener('mouseleave', onLeave);
+    };
+  });
+
+  async function copyToClipboard(text: string, message: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(message);
+    } catch {
+      toast.error('copy failed');
+    }
+  }
 
   // Active row tracked BY ID, not index — this is what lets a memories-array
   // change (re-query, re-sort-free re-render) keep the same row active when
@@ -108,6 +241,19 @@
       await list.scroll({ index: clamped, align: 'nearest', smoothScroll: false });
     }
     activeId = memories[clamped]?.id;
+
+    // ROW-02: keyboard movement opens the hover card INSTANTLY for the new
+    // active row (no 250ms pointer delay) — overriding any pending
+    // pointer-driven timer, since the keyboard just asserted a new intent.
+    hoverRowId = activeId;
+    clearOpenTimer();
+    clearCloseTimer();
+    const m = memories[clamped];
+    if (m) {
+      const rowEl = wrapperEl?.querySelector<HTMLElement>(`#opt-${CSS.escape(m.id)}`) ?? null;
+      if (rowEl) openCardFor(m, rowEl);
+      else closeCard();
+    }
   }
 
   function handleListboxKey(key: string) {
@@ -133,8 +279,41 @@
         break;
       }
       case 'Escape':
-        onescape?.();
+        // D-17/foundations.md Esc layering: close the topmost layer only.
+        // The hover card sits above the pane in z-order, so it closes first;
+        // onescape (the host's own "close the pane" handler) fires only on a
+        // SECOND Esc once no card is open.
+        if (cardOpen) {
+          closeCard();
+        } else {
+          onescape?.();
+        }
         break;
+      case 'e': {
+        const m = memories[current];
+        if (m && m.category !== 'rule' && m.category !== 'discovery') onedit?.(m.id);
+        break;
+      }
+      case 's': {
+        const m = memories[current];
+        if (m && m.category !== 'rule') onvisibility?.(m);
+        break;
+      }
+      case '#': {
+        const m = memories[current];
+        if (m) ondelete?.(m.id);
+        break;
+      }
+      case 'c': {
+        const m = memories[current];
+        if (m) void copyToClipboard(m.shortId, 'copied short_id');
+        break;
+      }
+      case 'C': {
+        const m = memories[current];
+        if (m) void copyToClipboard(m.id, 'copied id');
+        break;
+      }
     }
   }
 
@@ -148,7 +327,17 @@
   // disagree about whether a rel column exists at all.
   const showRel = $derived(memories.some((m) => m.relevance !== undefined));
 
-  const HANDLED_KEYS = new Set(['j', 'k', 'ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter']);
+  const NAV_KEYS = new Set(['j', 'k', 'ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter']);
+  // D-16: no binding for supersede or archive — reserved, not bound, until
+  // their RPCs land (Phase 3).
+  const ROW_ACTION_KEYS = new Set(['e', 's', '#', 'c', 'C']);
+  const HANDLED_KEYS = new Set([...NAV_KEYS, ...ROW_ACTION_KEYS, 'Escape']);
+
+  function isTypingTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
 
   // Svelte action: resolves Pitfall A and owns the listbox keydown model.
   // Attached to the WRAPPER (an ancestor of the library's own viewport
@@ -197,6 +386,11 @@
     function onKeydown(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (!HANDLED_KEYS.has(event.key)) return;
+      // D-17: row-action keys are ignored while a text field has focus, so
+      // typing in a search box (or any input) never fires a row action.
+      // Navigation keys are unaffected — j/k/Home/End/Enter never had this
+      // restriction and nothing in this plan asks for one.
+      if (ROW_ACTION_KEYS.has(event.key) && isTypingTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       current.onKey(event.key);
@@ -239,6 +433,7 @@
     <div
       class="results-listbox-wrapper"
       class:busy
+      bind:this={wrapperEl}
       use:listboxViewport={{ label, onKey: handleListboxKey }}
     >
       <SvelteVirtualList
@@ -263,6 +458,8 @@
             id={`opt-${m.id}`}
             aria-selected={index === activeIndex}
             onclick={() => selectRow(m.id)}
+            onmousemove={(e) => handleRowMouseMove(m, e.currentTarget as HTMLElement)}
+            onmouseleave={() => handleRowMouseLeave(m)}
           >
             <ResultRow
               memory={m}
@@ -277,6 +474,14 @@
       </SvelteVirtualList>
     </div>
   </div>
+  <div class="results-legend">
+    <Kbd>j</Kbd><Kbd>k</Kbd> move · <Kbd>↵</Kbd> open / close · <Kbd>esc</Kbd> close · <Kbd>e</Kbd> edit ·
+    <Kbd>s</Kbd> share · <Kbd>#</Kbd> delete · <Kbd>c</Kbd> copy short_id · <Kbd>⇧C</Kbd> copy id
+  </div>
+{/if}
+
+{#if cardOpen && cardMemory && cardAnchor}
+  <ResultHoverCard memory={cardMemory} anchor={cardAnchor} bind:open={cardOpen} bind:cardRef />
 {/if}
 
 <style>
@@ -288,6 +493,17 @@
        container's inline size, not the viewport's. */
     container-type: inline-size;
     container-name: list;
+  }
+  .results-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    padding: calc(6 * var(--u)) calc(14 * var(--u));
+    font-size: calc(11 * var(--u));
+    color: var(--text-faint);
+    border-top: 1px solid var(--border-subtle);
+    flex: none;
   }
   .results-listbox-wrapper {
     height: 100%;

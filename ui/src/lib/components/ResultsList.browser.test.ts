@@ -3,7 +3,7 @@
 // design tokens are otherwise invalid/no-op in this cascade.
 import '../../app.css';
 import { render } from 'vitest-browser-svelte';
-import { userEvent } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
@@ -29,6 +29,12 @@ function makeMemories(count: number): Memory[] {
 }
 
 const THOUSAND = makeMemories(1000);
+
+const HOVER_CARD_SELECTOR = '[data-slot="hover-card-content"]';
+
+function fireKey(el: Element, key: string, opts: Partial<KeyboardEventInit> = {}) {
+  el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
+}
 
 describe('ResultsList', () => {
   it('renders a real WAI-ARIA listbox: one focusable option-bearing container, no role=region left', async () => {
@@ -136,5 +142,204 @@ describe('ResultsList', () => {
     await screen.rerender({ memories: withRel, label: 'Search results', onopen });
     const relCols = screen.container.querySelectorAll('.rel');
     expect(relCols.length).toBe(withRel.length);
+  });
+
+  it('pointer hover (mousemove) opens the card after ~250ms without moving aria-activedescendant', async () => {
+    const onopen = vi.fn();
+    const five = makeMemories(5);
+    const screen = await render(ResultsList, { memories: five, label: 'Search results', onopen });
+    // Isolated mounts have no ancestor providing a real height (only
+    // +layout.svelte's flex chain does that), so height:100% collapses to 0
+    // and the legend line visually overlaps the (zero-height) list, blocking
+    // Playwright's real pointer hover. Give the mount a real box, matching
+    // what the shipped app's flex chain provides.
+    screen.container.style.height = '600px';
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0000');
+
+    const row3 = screen.container.querySelector('#opt-m0003') as HTMLElement;
+    await page.elementLocator(row3).hover();
+
+    // Not yet — well before the 250ms open delay.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(document.querySelector(HOVER_CARD_SELECTOR)).toBeNull();
+
+    await expect
+      .poll(() => document.querySelector(HOVER_CARD_SELECTOR) !== null, { timeout: 800 })
+      .toBe(true);
+    // The hover card never mutates keyboard selection state (Pitfall 4).
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0000');
+  });
+
+  it('keyboard movement opens the card instantly for the new active row; document focus stays on the listbox', async () => {
+    const onopen = vi.fn();
+    const five = makeMemories(5);
+    const screen = await render(ResultsList, { memories: five, label: 'Search results', onopen });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+
+    await userEvent.keyboard('j');
+    await expect.poll(() => document.querySelector(HOVER_CARD_SELECTOR) !== null).toBe(true);
+    expect(document.activeElement).toBe(listbox.element());
+  });
+
+  it('the hover card shows short_id, full scope, every state word and every tag', async () => {
+    const onopen = vi.fn();
+    const mem = create(MemorySchema, {
+      id: 'x1',
+      category: 'convention',
+      summary: 'a record with state and tags',
+      scope: 'repo:acme/engram',
+      shortId: 'abcdefghij',
+      tags: ['alpha', 'beta', 'gamma'],
+      archivedAt: timestampFromDate(new Date('2030-01-01T00:00:00Z')),
+      supersededBy: 'succ'
+    });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await userEvent.keyboard('{End}'); // keyboard-follow: opens the card instantly, even for a single-item list
+
+    await expect.poll(() => document.querySelector(HOVER_CARD_SELECTOR) !== null).toBe(true);
+    const card = document.querySelector(HOVER_CARD_SELECTOR) as HTMLElement;
+    expect(card.textContent).toContain('abcdefghij');
+    expect(card.textContent).toContain('repo:acme/engram');
+    expect(card.textContent).toContain('archived');
+    expect(card.textContent).toContain('superseded');
+    for (const tag of ['alpha', 'beta', 'gamma']) {
+      expect(card.textContent).toContain(tag);
+    }
+  });
+
+  it('no card shows for the row already open in the pane', async () => {
+    const onopen = vi.fn();
+    const mem = create(MemorySchema, { id: 'x2', category: 'convention', summary: 'x', scope: 's', shortId: 'sid0000001' });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen, openId: 'x2' });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await userEvent.keyboard('{End}');
+    expect(document.querySelector(HOVER_CARD_SELECTOR)).toBeNull();
+  });
+
+  it('Esc closes an open card without calling onescape; a second Esc calls onescape', async () => {
+    const onopen = vi.fn();
+    const onescape = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen, onescape });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await userEvent.keyboard('{End}');
+    await expect.poll(() => document.querySelector(HOVER_CARD_SELECTOR) !== null).toBe(true);
+
+    await userEvent.keyboard('{Escape}');
+    expect(onescape).not.toHaveBeenCalled();
+    await expect.poll(() => document.querySelector(HOVER_CARD_SELECTOR) === null).toBe(true);
+
+    await userEvent.keyboard('{Escape}');
+    expect(onescape).toHaveBeenCalledTimes(1);
+  });
+
+  it('row-action keys call the matching host callback on the active row', async () => {
+    const onopen = vi.fn();
+    const onedit = vi.fn();
+    const onvisibility = vi.fn();
+    const ondelete = vi.fn();
+    const mem = create(MemorySchema, { id: 'y1', category: 'convention', summary: 'x', scope: 's', shortId: 'sid0000002' });
+    const screen = await render(ResultsList, {
+      memories: [mem],
+      label: 'Search results',
+      onopen,
+      onedit,
+      onvisibility,
+      ondelete
+    });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+
+    await userEvent.keyboard('e');
+    expect(onedit).toHaveBeenCalledWith('y1');
+
+    await userEvent.keyboard('s');
+    expect(onvisibility).toHaveBeenCalledWith(mem);
+
+    await userEvent.keyboard('#');
+    expect(ondelete).toHaveBeenCalledWith('y1');
+    // '#' only ever calls the host's request — never an RPC of its own.
+  });
+
+  it('c copies the short_id and Shift+C copies the full id, both via the clipboard', async () => {
+    const onopen = vi.fn();
+    const mem = create(MemorySchema, { id: 'z1', category: 'convention', summary: 'x', scope: 's', shortId: 'sid0000003' });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    const writeSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+
+    fireKey(listbox.element(), 'c');
+    await expect.poll(() => writeSpy.mock.calls.length).toBe(1);
+    expect(writeSpy).toHaveBeenLastCalledWith('sid0000003');
+
+    fireKey(listbox.element(), 'C', { shiftKey: true });
+    await expect.poll(() => writeSpy.mock.calls.length).toBe(2);
+    expect(writeSpy).toHaveBeenLastCalledWith('z1');
+
+    // Pressing c twice copies the same short_id twice (idempotent).
+    fireKey(listbox.element(), 'c');
+    await expect.poll(() => writeSpy.mock.calls.length).toBe(3);
+    expect(writeSpy).toHaveBeenLastCalledWith('sid0000003');
+
+    writeSpy.mockRestore();
+  });
+
+  it('Meta+c and a row key typed into a focused input inside the wrapper do nothing', async () => {
+    const onopen = vi.fn();
+    const mem = create(MemorySchema, { id: 'w1', category: 'convention', summary: 'x', scope: 's', shortId: 'sid0000004' });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    const writeSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+
+    fireKey(listbox.element(), 'c', { metaKey: true });
+    expect(writeSpy).not.toHaveBeenCalled();
+
+    const wrapper = screen.container.querySelector('.results-listbox-wrapper') as HTMLElement;
+    const input = document.createElement('input');
+    wrapper.appendChild(input);
+    input.focus();
+    fireKey(input, 'c');
+    expect(writeSpy).not.toHaveBeenCalled();
+
+    input.remove();
+    writeSpy.mockRestore();
+  });
+
+  it('e/s do nothing for a rule record; e also does nothing for a discovery record', async () => {
+    const onopen = vi.fn();
+    const onedit = vi.fn();
+    const onvisibility = vi.fn();
+    const rule = create(MemorySchema, { id: 'r1', category: 'rule', summary: 'x', scope: 's' });
+    const screen = await render(ResultsList, { memories: [rule], label: 'Search results', onopen, onedit, onvisibility });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+
+    await userEvent.keyboard('e');
+    expect(onedit).not.toHaveBeenCalled();
+    await userEvent.keyboard('s');
+    expect(onvisibility).not.toHaveBeenCalled();
+
+    const discovery = create(MemorySchema, { id: 'd1', category: 'discovery', summary: 'x', scope: 's' });
+    await screen.rerender({ memories: [discovery], label: 'Search results', onopen, onedit, onvisibility });
+    await userEvent.keyboard('e');
+    expect(onedit).not.toHaveBeenCalled();
+  });
+
+  it('the legend shows Kbd hints for j, k, enter, esc, e, s, #, c and shift-C', async () => {
+    const onopen = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen });
+    const legend = screen.container.querySelector('.results-legend') as HTMLElement;
+    const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C']);
   });
 });
