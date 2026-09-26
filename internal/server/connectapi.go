@@ -320,12 +320,13 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	// byte-identical on the wire while keeping this handler free of any
 	// reference to the deprecated field (staticcheck SA1019).
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
-		Memories:        shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
-		Total:           res.Total,
-		NextPageToken:   res.NextToken,
-		SearchedScopes:  cov.Scopes,
-		ScopesTruncated: cov.Truncated,
-		ScopesUnknown:   cov.Unknown,
+		Memories:         shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
+		Total:            res.Total,
+		NextPageToken:    res.NextToken,
+		SearchedScopes:   cov.Scopes,
+		ScopesTruncated:  cov.Truncated,
+		ScopesUnknown:    cov.Unknown,
+		RecallGateHidden: res.Hidden.toProto(),
 	}), nil
 }
 

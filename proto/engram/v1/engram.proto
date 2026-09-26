@@ -134,6 +134,35 @@ message ListMemoriesResponse {
   // scopes_truncated is absent/false. Present only on a cross-spine
   // response; never true alongside a populated searched_scopes.
   bool scopes_unknown = 7;
+  // recall_gate_hidden is the per-state count of records the recall gate hid
+  // from this response's page window that would otherwise have appeared
+  // (D-01/D-02, phase 02-recall-first-search plan 02-01). The window is the
+  // SAME page request (limit, offset or page_token, every filter) re-run
+  // with the recall gate lifted, bounded by the page limit. total counts
+  // distinct hidden records; each per-state field counts records carrying
+  // that state — a record with several states counts once in each, so the
+  // per-state fields may sum to more than total. Counts only states this
+  // request itself gated (include_archived/include_superseded/
+  // include_scheduled false). ABSENT when the comparison could not be
+  // computed (the underlying store call failed); PRESENT with every field
+  // zero when nothing was hidden. Introduced by milestone 2026-09-25.01
+  // Phase 2 D-01/D-02.
+  RecallGateHidden recall_gate_hidden = 8;
+}
+
+// RecallGateHidden is the per-state count of records the recall gate hid
+// from a search/list response that would otherwise have appeared
+// (D-01/D-02, phase 02-recall-first-search plan 02-01). Reused verbatim on
+// both SearchMemoriesResponse and ListMemoriesResponse — one message, two
+// independent field-number sequences (buf breaking: breaking.use: [FILE]).
+// Counts only, never ids or content: computed under the caller's own read
+// predicate, so a caller learns nothing about records they cannot read.
+message RecallGateHidden {
+  uint64 total = 1;
+  uint64 archived = 2;
+  uint64 superseded = 3;
+  uint64 expired = 4;
+  uint64 scheduled = 5;
 }
 
 message SearchMemoriesRequest {
@@ -184,6 +213,12 @@ message SearchMemoriesResponse {
   // semantics, sibling field number scheme (next free number in THIS
   // message, not shared with ListMemoriesResponse's field 7).
   bool scopes_unknown = 4;
+  // recall_gate_hidden — see ListMemoriesResponse.recall_gate_hidden;
+  // identical semantics, sibling field number scheme (next free number in
+  // THIS message, not shared with ListMemoriesResponse's field 8). Here the
+  // window is the same vector query at the same k with the recall gate
+  // lifted, bounded by k.
+  RecallGateHidden recall_gate_hidden = 5;
 }
 
 message GetMemoryRequest { string id = 1; }

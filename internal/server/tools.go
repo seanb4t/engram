@@ -1759,6 +1759,12 @@ type coreListResult struct {
 	Memories  []store.Memory
 	Total     uint64
 	NextToken string
+	// Hidden is the recall-gate hidden count (D-01/D-02/D-03, phase
+	// 02-recall-first-search plan 02-01), computed once here so both the
+	// Connect and MCP lanes read the same value. nil means the comparison
+	// call failed (degrade, never fabricate zeros) — see
+	// (*deps).listRecallHidden.
+	Hidden *recallHidden
 }
 
 // coreSearchRequest is the transport-neutral search request: a SUPERSET
@@ -1843,7 +1849,7 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 	if err != nil {
 		return coreListResult{}, err
 	}
-	ms, total, next, err := d.st.List(ctx, scope, c.Subj, store.ListOptions{
+	opts := store.ListOptions{
 		Limit:             req.Limit,
 		Offset:            req.Offset,
 		Categories:        req.Categories,
@@ -1857,11 +1863,17 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 		IncludeSuperseded: req.IncludeSuperseded,
 		IncludeScheduled:  req.IncludeScheduled,
 		Full:              req.Full,
-	})
+	}
+	ms, total, next, err := d.st.List(ctx, scope, c.Subj, opts)
 	if err != nil {
 		return coreListResult{}, err
 	}
-	return coreListResult{Memories: ms, Total: total, NextToken: next}, nil
+	return coreListResult{
+		Memories:  ms,
+		Total:     total,
+		NextToken: next,
+		Hidden:    d.listRecallHidden(ctx, c, scope, opts),
+	}, nil
 }
 
 func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs) ([]store.Memory, error) {
@@ -2914,7 +2926,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			mems := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
-			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, cov)
+			result := withRecallHidden(recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, cov), res.Hidden)
 			return nil, result, nil
 		})
 

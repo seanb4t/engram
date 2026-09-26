@@ -723,8 +723,22 @@ type ListMemoriesResponse struct {
 	// scopes_truncated is absent/false. Present only on a cross-spine
 	// response; never true alongside a populated searched_scopes.
 	ScopesUnknown bool `protobuf:"varint,7,opt,name=scopes_unknown,json=scopesUnknown,proto3" json:"scopes_unknown,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// recall_gate_hidden is the per-state count of records the recall gate hid
+	// from this response's page window that would otherwise have appeared
+	// (D-01/D-02, phase 02-recall-first-search plan 02-01). The window is the
+	// SAME page request (limit, offset or page_token, every filter) re-run
+	// with the recall gate lifted, bounded by the page limit. total counts
+	// distinct hidden records; each per-state field counts records carrying
+	// that state — a record with several states counts once in each, so the
+	// per-state fields may sum to more than total. Counts only states this
+	// request itself gated (include_archived/include_superseded/
+	// include_scheduled false). ABSENT when the comparison could not be
+	// computed (the underlying store call failed); PRESENT with every field
+	// zero when nothing was hidden. Introduced by milestone 2026-09-25.01
+	// Phase 2 D-01/D-02.
+	RecallGateHidden *RecallGateHidden `protobuf:"bytes,8,opt,name=recall_gate_hidden,json=recallGateHidden,proto3" json:"recall_gate_hidden,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ListMemoriesResponse) Reset() {
@@ -807,6 +821,96 @@ func (x *ListMemoriesResponse) GetScopesUnknown() bool {
 	return false
 }
 
+func (x *ListMemoriesResponse) GetRecallGateHidden() *RecallGateHidden {
+	if x != nil {
+		return x.RecallGateHidden
+	}
+	return nil
+}
+
+// RecallGateHidden is the per-state count of records the recall gate hid
+// from a search/list response that would otherwise have appeared
+// (D-01/D-02, phase 02-recall-first-search plan 02-01). Reused verbatim on
+// both SearchMemoriesResponse and ListMemoriesResponse — one message, two
+// independent field-number sequences (buf breaking: breaking.use: [FILE]).
+// Counts only, never ids or content: computed under the caller's own read
+// predicate, so a caller learns nothing about records they cannot read.
+type RecallGateHidden struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Total         uint64                 `protobuf:"varint,1,opt,name=total,proto3" json:"total,omitempty"`
+	Archived      uint64                 `protobuf:"varint,2,opt,name=archived,proto3" json:"archived,omitempty"`
+	Superseded    uint64                 `protobuf:"varint,3,opt,name=superseded,proto3" json:"superseded,omitempty"`
+	Expired       uint64                 `protobuf:"varint,4,opt,name=expired,proto3" json:"expired,omitempty"`
+	Scheduled     uint64                 `protobuf:"varint,5,opt,name=scheduled,proto3" json:"scheduled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecallGateHidden) Reset() {
+	*x = RecallGateHidden{}
+	mi := &file_engram_v1_engram_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecallGateHidden) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecallGateHidden) ProtoMessage() {}
+
+func (x *RecallGateHidden) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecallGateHidden.ProtoReflect.Descriptor instead.
+func (*RecallGateHidden) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *RecallGateHidden) GetTotal() uint64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *RecallGateHidden) GetArchived() uint64 {
+	if x != nil {
+		return x.Archived
+	}
+	return 0
+}
+
+func (x *RecallGateHidden) GetSuperseded() uint64 {
+	if x != nil {
+		return x.Superseded
+	}
+	return 0
+}
+
+func (x *RecallGateHidden) GetExpired() uint64 {
+	if x != nil {
+		return x.Expired
+	}
+	return 0
+}
+
+func (x *RecallGateHidden) GetScheduled() uint64 {
+	if x != nil {
+		return x.Scheduled
+	}
+	return 0
+}
+
 type SearchMemoriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
@@ -846,7 +950,7 @@ type SearchMemoriesRequest struct {
 
 func (x *SearchMemoriesRequest) Reset() {
 	*x = SearchMemoriesRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[6]
+	mi := &file_engram_v1_engram_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -858,7 +962,7 @@ func (x *SearchMemoriesRequest) String() string {
 func (*SearchMemoriesRequest) ProtoMessage() {}
 
 func (x *SearchMemoriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[6]
+	mi := &file_engram_v1_engram_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -871,7 +975,7 @@ func (x *SearchMemoriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchMemoriesRequest.ProtoReflect.Descriptor instead.
 func (*SearchMemoriesRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{6}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SearchMemoriesRequest) GetQuery() string {
@@ -974,13 +1078,19 @@ type SearchMemoriesResponse struct {
 	// semantics, sibling field number scheme (next free number in THIS
 	// message, not shared with ListMemoriesResponse's field 7).
 	ScopesUnknown bool `protobuf:"varint,4,opt,name=scopes_unknown,json=scopesUnknown,proto3" json:"scopes_unknown,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// recall_gate_hidden — see ListMemoriesResponse.recall_gate_hidden;
+	// identical semantics, sibling field number scheme (next free number in
+	// THIS message, not shared with ListMemoriesResponse's field 8). Here the
+	// window is the same vector query at the same k with the recall gate
+	// lifted, bounded by k.
+	RecallGateHidden *RecallGateHidden `protobuf:"bytes,5,opt,name=recall_gate_hidden,json=recallGateHidden,proto3" json:"recall_gate_hidden,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SearchMemoriesResponse) Reset() {
 	*x = SearchMemoriesResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[7]
+	mi := &file_engram_v1_engram_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -992,7 +1102,7 @@ func (x *SearchMemoriesResponse) String() string {
 func (*SearchMemoriesResponse) ProtoMessage() {}
 
 func (x *SearchMemoriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[7]
+	mi := &file_engram_v1_engram_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1005,7 +1115,7 @@ func (x *SearchMemoriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchMemoriesResponse.ProtoReflect.Descriptor instead.
 func (*SearchMemoriesResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{7}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SearchMemoriesResponse) GetMemories() []*Memory {
@@ -1036,6 +1146,13 @@ func (x *SearchMemoriesResponse) GetScopesUnknown() bool {
 	return false
 }
 
+func (x *SearchMemoriesResponse) GetRecallGateHidden() *RecallGateHidden {
+	if x != nil {
+		return x.RecallGateHidden
+	}
+	return nil
+}
+
 type GetMemoryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -1045,7 +1162,7 @@ type GetMemoryRequest struct {
 
 func (x *GetMemoryRequest) Reset() {
 	*x = GetMemoryRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[8]
+	mi := &file_engram_v1_engram_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1057,7 +1174,7 @@ func (x *GetMemoryRequest) String() string {
 func (*GetMemoryRequest) ProtoMessage() {}
 
 func (x *GetMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[8]
+	mi := &file_engram_v1_engram_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1070,7 +1187,7 @@ func (x *GetMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMemoryRequest.ProtoReflect.Descriptor instead.
 func (*GetMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{8}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetMemoryRequest) GetId() string {
@@ -1089,7 +1206,7 @@ type GetMemoryResponse struct {
 
 func (x *GetMemoryResponse) Reset() {
 	*x = GetMemoryResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[9]
+	mi := &file_engram_v1_engram_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1101,7 +1218,7 @@ func (x *GetMemoryResponse) String() string {
 func (*GetMemoryResponse) ProtoMessage() {}
 
 func (x *GetMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[9]
+	mi := &file_engram_v1_engram_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1114,7 +1231,7 @@ func (x *GetMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMemoryResponse.ProtoReflect.Descriptor instead.
 func (*GetMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{9}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetMemoryResponse) GetMemory() *Memory {
@@ -1135,7 +1252,7 @@ type SearchDiscoveriesRequest struct {
 
 func (x *SearchDiscoveriesRequest) Reset() {
 	*x = SearchDiscoveriesRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[10]
+	mi := &file_engram_v1_engram_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1147,7 +1264,7 @@ func (x *SearchDiscoveriesRequest) String() string {
 func (*SearchDiscoveriesRequest) ProtoMessage() {}
 
 func (x *SearchDiscoveriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[10]
+	mi := &file_engram_v1_engram_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1160,7 +1277,7 @@ func (x *SearchDiscoveriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchDiscoveriesRequest.ProtoReflect.Descriptor instead.
 func (*SearchDiscoveriesRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{10}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SearchDiscoveriesRequest) GetQuery() string {
@@ -1193,7 +1310,7 @@ type SearchDiscoveriesResponse struct {
 
 func (x *SearchDiscoveriesResponse) Reset() {
 	*x = SearchDiscoveriesResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[11]
+	mi := &file_engram_v1_engram_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1205,7 +1322,7 @@ func (x *SearchDiscoveriesResponse) String() string {
 func (*SearchDiscoveriesResponse) ProtoMessage() {}
 
 func (x *SearchDiscoveriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[11]
+	mi := &file_engram_v1_engram_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1218,7 +1335,7 @@ func (x *SearchDiscoveriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchDiscoveriesResponse.ProtoReflect.Descriptor instead.
 func (*SearchDiscoveriesResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{11}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SearchDiscoveriesResponse) GetDiscoveries() []*Memory {
@@ -1240,7 +1357,7 @@ type SchemaVersionBucket struct {
 
 func (x *SchemaVersionBucket) Reset() {
 	*x = SchemaVersionBucket{}
-	mi := &file_engram_v1_engram_proto_msgTypes[12]
+	mi := &file_engram_v1_engram_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1252,7 +1369,7 @@ func (x *SchemaVersionBucket) String() string {
 func (*SchemaVersionBucket) ProtoMessage() {}
 
 func (x *SchemaVersionBucket) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[12]
+	mi := &file_engram_v1_engram_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1265,7 +1382,7 @@ func (x *SchemaVersionBucket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SchemaVersionBucket.ProtoReflect.Descriptor instead.
 func (*SchemaVersionBucket) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{12}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SchemaVersionBucket) GetVersion() int32 {
@@ -1292,7 +1409,7 @@ type MigrateStatusRequest struct {
 
 func (x *MigrateStatusRequest) Reset() {
 	*x = MigrateStatusRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[13]
+	mi := &file_engram_v1_engram_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1304,7 +1421,7 @@ func (x *MigrateStatusRequest) String() string {
 func (*MigrateStatusRequest) ProtoMessage() {}
 
 func (x *MigrateStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[13]
+	mi := &file_engram_v1_engram_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1317,7 +1434,7 @@ func (x *MigrateStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrateStatusRequest.ProtoReflect.Descriptor instead.
 func (*MigrateStatusRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{13}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{14}
 }
 
 // MigrateStatusResponse mirrors internal/store.MigrateStatusResult plus one
@@ -1339,7 +1456,7 @@ type MigrateStatusResponse struct {
 
 func (x *MigrateStatusResponse) Reset() {
 	*x = MigrateStatusResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[14]
+	mi := &file_engram_v1_engram_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1351,7 +1468,7 @@ func (x *MigrateStatusResponse) String() string {
 func (*MigrateStatusResponse) ProtoMessage() {}
 
 func (x *MigrateStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[14]
+	mi := &file_engram_v1_engram_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1364,7 +1481,7 @@ func (x *MigrateStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrateStatusResponse.ProtoReflect.Descriptor instead.
 func (*MigrateStatusResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{14}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *MigrateStatusResponse) GetBuckets() []*SchemaVersionBucket {
@@ -1434,7 +1551,7 @@ type StoreMemoryRequest struct {
 
 func (x *StoreMemoryRequest) Reset() {
 	*x = StoreMemoryRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[15]
+	mi := &file_engram_v1_engram_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1446,7 +1563,7 @@ func (x *StoreMemoryRequest) String() string {
 func (*StoreMemoryRequest) ProtoMessage() {}
 
 func (x *StoreMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[15]
+	mi := &file_engram_v1_engram_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1459,7 +1576,7 @@ func (x *StoreMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreMemoryRequest.ProtoReflect.Descriptor instead.
 func (*StoreMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{15}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *StoreMemoryRequest) GetContent() string {
@@ -1542,7 +1659,7 @@ type StoreMemoryResponse struct {
 
 func (x *StoreMemoryResponse) Reset() {
 	*x = StoreMemoryResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[16]
+	mi := &file_engram_v1_engram_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1554,7 +1671,7 @@ func (x *StoreMemoryResponse) String() string {
 func (*StoreMemoryResponse) ProtoMessage() {}
 
 func (x *StoreMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[16]
+	mi := &file_engram_v1_engram_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1567,7 +1684,7 @@ func (x *StoreMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreMemoryResponse.ProtoReflect.Descriptor instead.
 func (*StoreMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{16}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *StoreMemoryResponse) GetId() string {
@@ -1598,7 +1715,7 @@ type Citation struct {
 
 func (x *Citation) Reset() {
 	*x = Citation{}
-	mi := &file_engram_v1_engram_proto_msgTypes[17]
+	mi := &file_engram_v1_engram_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1610,7 +1727,7 @@ func (x *Citation) String() string {
 func (*Citation) ProtoMessage() {}
 
 func (x *Citation) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[17]
+	mi := &file_engram_v1_engram_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1623,7 +1740,7 @@ func (x *Citation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Citation.ProtoReflect.Descriptor instead.
 func (*Citation) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{17}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Citation) GetKind() string {
@@ -1676,7 +1793,7 @@ type StoreDiscoveryRequest struct {
 
 func (x *StoreDiscoveryRequest) Reset() {
 	*x = StoreDiscoveryRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[18]
+	mi := &file_engram_v1_engram_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1688,7 +1805,7 @@ func (x *StoreDiscoveryRequest) String() string {
 func (*StoreDiscoveryRequest) ProtoMessage() {}
 
 func (x *StoreDiscoveryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[18]
+	mi := &file_engram_v1_engram_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1701,7 +1818,7 @@ func (x *StoreDiscoveryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreDiscoveryRequest.ProtoReflect.Descriptor instead.
 func (*StoreDiscoveryRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{18}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *StoreDiscoveryRequest) GetContent() string {
@@ -1763,7 +1880,7 @@ type StoreDiscoveryResponse struct {
 
 func (x *StoreDiscoveryResponse) Reset() {
 	*x = StoreDiscoveryResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[19]
+	mi := &file_engram_v1_engram_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1775,7 +1892,7 @@ func (x *StoreDiscoveryResponse) String() string {
 func (*StoreDiscoveryResponse) ProtoMessage() {}
 
 func (x *StoreDiscoveryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[19]
+	mi := &file_engram_v1_engram_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1788,7 +1905,7 @@ func (x *StoreDiscoveryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreDiscoveryResponse.ProtoReflect.Descriptor instead.
 func (*StoreDiscoveryResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{19}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *StoreDiscoveryResponse) GetId() string {
@@ -1833,7 +1950,7 @@ type UpdateMemoryRequest struct {
 
 func (x *UpdateMemoryRequest) Reset() {
 	*x = UpdateMemoryRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[20]
+	mi := &file_engram_v1_engram_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1845,7 +1962,7 @@ func (x *UpdateMemoryRequest) String() string {
 func (*UpdateMemoryRequest) ProtoMessage() {}
 
 func (x *UpdateMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[20]
+	mi := &file_engram_v1_engram_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1858,7 +1975,7 @@ func (x *UpdateMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMemoryRequest.ProtoReflect.Descriptor instead.
 func (*UpdateMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{20}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UpdateMemoryRequest) GetId() string {
@@ -1913,7 +2030,7 @@ type UpdateMemoryResponse struct {
 
 func (x *UpdateMemoryResponse) Reset() {
 	*x = UpdateMemoryResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[21]
+	mi := &file_engram_v1_engram_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1925,7 +2042,7 @@ func (x *UpdateMemoryResponse) String() string {
 func (*UpdateMemoryResponse) ProtoMessage() {}
 
 func (x *UpdateMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[21]
+	mi := &file_engram_v1_engram_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1938,7 +2055,7 @@ func (x *UpdateMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMemoryResponse.ProtoReflect.Descriptor instead.
 func (*UpdateMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{21}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *UpdateMemoryResponse) GetId() string {
@@ -1964,7 +2081,7 @@ type DeleteMemoryRequest struct {
 
 func (x *DeleteMemoryRequest) Reset() {
 	*x = DeleteMemoryRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[22]
+	mi := &file_engram_v1_engram_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1976,7 +2093,7 @@ func (x *DeleteMemoryRequest) String() string {
 func (*DeleteMemoryRequest) ProtoMessage() {}
 
 func (x *DeleteMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[22]
+	mi := &file_engram_v1_engram_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2106,7 @@ func (x *DeleteMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMemoryRequest.ProtoReflect.Descriptor instead.
 func (*DeleteMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{22}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DeleteMemoryRequest) GetId() string {
@@ -2007,7 +2124,7 @@ type DeleteMemoryResponse struct {
 
 func (x *DeleteMemoryResponse) Reset() {
 	*x = DeleteMemoryResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[23]
+	mi := &file_engram_v1_engram_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2019,7 +2136,7 @@ func (x *DeleteMemoryResponse) String() string {
 func (*DeleteMemoryResponse) ProtoMessage() {}
 
 func (x *DeleteMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[23]
+	mi := &file_engram_v1_engram_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2032,7 +2149,7 @@ func (x *DeleteMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMemoryResponse.ProtoReflect.Descriptor instead.
 func (*DeleteMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{23}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{24}
 }
 
 type SetVisibilityRequest struct {
@@ -2045,7 +2162,7 @@ type SetVisibilityRequest struct {
 
 func (x *SetVisibilityRequest) Reset() {
 	*x = SetVisibilityRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[24]
+	mi := &file_engram_v1_engram_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2057,7 +2174,7 @@ func (x *SetVisibilityRequest) String() string {
 func (*SetVisibilityRequest) ProtoMessage() {}
 
 func (x *SetVisibilityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[24]
+	mi := &file_engram_v1_engram_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2070,7 +2187,7 @@ func (x *SetVisibilityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVisibilityRequest.ProtoReflect.Descriptor instead.
 func (*SetVisibilityRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{24}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *SetVisibilityRequest) GetId() string {
@@ -2097,7 +2214,7 @@ type SetVisibilityResponse struct {
 
 func (x *SetVisibilityResponse) Reset() {
 	*x = SetVisibilityResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[25]
+	mi := &file_engram_v1_engram_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2109,7 +2226,7 @@ func (x *SetVisibilityResponse) String() string {
 func (*SetVisibilityResponse) ProtoMessage() {}
 
 func (x *SetVisibilityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[25]
+	mi := &file_engram_v1_engram_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2122,7 +2239,7 @@ func (x *SetVisibilityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVisibilityResponse.ProtoReflect.Descriptor instead.
 func (*SetVisibilityResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{25}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SetVisibilityResponse) GetId() string {
@@ -2175,7 +2292,7 @@ type ScheduleMemoryRequest struct {
 
 func (x *ScheduleMemoryRequest) Reset() {
 	*x = ScheduleMemoryRequest{}
-	mi := &file_engram_v1_engram_proto_msgTypes[26]
+	mi := &file_engram_v1_engram_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2187,7 +2304,7 @@ func (x *ScheduleMemoryRequest) String() string {
 func (*ScheduleMemoryRequest) ProtoMessage() {}
 
 func (x *ScheduleMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[26]
+	mi := &file_engram_v1_engram_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2200,7 +2317,7 @@ func (x *ScheduleMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScheduleMemoryRequest.ProtoReflect.Descriptor instead.
 func (*ScheduleMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{26}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ScheduleMemoryRequest) GetContent() string {
@@ -2297,7 +2414,7 @@ type ScheduleMemoryResponse struct {
 
 func (x *ScheduleMemoryResponse) Reset() {
 	*x = ScheduleMemoryResponse{}
-	mi := &file_engram_v1_engram_proto_msgTypes[27]
+	mi := &file_engram_v1_engram_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2309,7 +2426,7 @@ func (x *ScheduleMemoryResponse) String() string {
 func (*ScheduleMemoryResponse) ProtoMessage() {}
 
 func (x *ScheduleMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_engram_v1_engram_proto_msgTypes[27]
+	mi := &file_engram_v1_engram_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2322,7 +2439,7 @@ func (x *ScheduleMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScheduleMemoryResponse.ProtoReflect.Descriptor instead.
 func (*ScheduleMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_engram_v1_engram_proto_rawDescGZIP(), []int{27}
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ScheduleMemoryResponse) GetId() string {
@@ -2420,7 +2537,7 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"crossSpine\x12)\n" +
 	"\x10include_archived\x18\r \x01(\bR\x0fincludeArchived\x12-\n" +
 	"\x12include_superseded\x18\x0e \x01(\bR\x11includeSuperseded\x12+\n" +
-	"\x11include_scheduled\x18\x0f \x01(\bR\x10includeScheduled\"\xa4\x02\n" +
+	"\x11include_scheduled\x18\x0f \x01(\bR\x10includeScheduled\"\xef\x02\n" +
 	"\x14ListMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x04R\x05total\x12$\n" +
@@ -2428,7 +2545,16 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x0fnext_page_token\x18\x04 \x01(\tR\rnextPageToken\x12'\n" +
 	"\x0fsearched_scopes\x18\x05 \x03(\tR\x0esearchedScopes\x12)\n" +
 	"\x10scopes_truncated\x18\x06 \x01(\bR\x0fscopesTruncated\x12%\n" +
-	"\x0escopes_unknown\x18\a \x01(\bR\rscopesUnknown\"\x8d\x03\n" +
+	"\x0escopes_unknown\x18\a \x01(\bR\rscopesUnknown\x12I\n" +
+	"\x12recall_gate_hidden\x18\b \x01(\v2\x1b.engram.v1.RecallGateHiddenR\x10recallGateHidden\"\x9c\x01\n" +
+	"\x10RecallGateHidden\x12\x14\n" +
+	"\x05total\x18\x01 \x01(\x04R\x05total\x12\x1a\n" +
+	"\barchived\x18\x02 \x01(\x04R\barchived\x12\x1e\n" +
+	"\n" +
+	"superseded\x18\x03 \x01(\x04R\n" +
+	"superseded\x12\x18\n" +
+	"\aexpired\x18\x04 \x01(\x04R\aexpired\x12\x1c\n" +
+	"\tscheduled\x18\x05 \x01(\x04R\tscheduled\"\x8d\x03\n" +
 	"\x15SearchMemoriesRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\f\n" +
@@ -2445,12 +2571,13 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x10include_archived\x18\n" +
 	" \x01(\bR\x0fincludeArchived\x12-\n" +
 	"\x12include_superseded\x18\v \x01(\bR\x11includeSuperseded\x12+\n" +
-	"\x11include_scheduled\x18\f \x01(\bR\x10includeScheduled\"\xc2\x01\n" +
+	"\x11include_scheduled\x18\f \x01(\bR\x10includeScheduled\"\x8d\x02\n" +
 	"\x16SearchMemoriesResponse\x12-\n" +
 	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12'\n" +
 	"\x0fsearched_scopes\x18\x02 \x03(\tR\x0esearchedScopes\x12)\n" +
 	"\x10scopes_truncated\x18\x03 \x01(\bR\x0fscopesTruncated\x12%\n" +
-	"\x0escopes_unknown\x18\x04 \x01(\bR\rscopesUnknown\"\"\n" +
+	"\x0escopes_unknown\x18\x04 \x01(\bR\rscopesUnknown\x12I\n" +
+	"\x12recall_gate_hidden\x18\x05 \x01(\v2\x1b.engram.v1.RecallGateHiddenR\x10recallGateHidden\"\"\n" +
 	"\x10GetMemoryRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\">\n" +
 	"\x11GetMemoryResponse\x12)\n" +
@@ -2588,7 +2715,7 @@ func file_engram_v1_engram_proto_rawDescGZIP() []byte {
 }
 
 var file_engram_v1_engram_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_engram_v1_engram_proto_goTypes = []any{
 	(Visibility)(0),                   // 0: engram.v1.Visibility
 	(*Memory)(nil),                    // 1: engram.v1.Memory
@@ -2597,80 +2724,83 @@ var file_engram_v1_engram_proto_goTypes = []any{
 	(*ListScopesResponse)(nil),        // 4: engram.v1.ListScopesResponse
 	(*ListMemoriesRequest)(nil),       // 5: engram.v1.ListMemoriesRequest
 	(*ListMemoriesResponse)(nil),      // 6: engram.v1.ListMemoriesResponse
-	(*SearchMemoriesRequest)(nil),     // 7: engram.v1.SearchMemoriesRequest
-	(*SearchMemoriesResponse)(nil),    // 8: engram.v1.SearchMemoriesResponse
-	(*GetMemoryRequest)(nil),          // 9: engram.v1.GetMemoryRequest
-	(*GetMemoryResponse)(nil),         // 10: engram.v1.GetMemoryResponse
-	(*SearchDiscoveriesRequest)(nil),  // 11: engram.v1.SearchDiscoveriesRequest
-	(*SearchDiscoveriesResponse)(nil), // 12: engram.v1.SearchDiscoveriesResponse
-	(*SchemaVersionBucket)(nil),       // 13: engram.v1.SchemaVersionBucket
-	(*MigrateStatusRequest)(nil),      // 14: engram.v1.MigrateStatusRequest
-	(*MigrateStatusResponse)(nil),     // 15: engram.v1.MigrateStatusResponse
-	(*StoreMemoryRequest)(nil),        // 16: engram.v1.StoreMemoryRequest
-	(*StoreMemoryResponse)(nil),       // 17: engram.v1.StoreMemoryResponse
-	(*Citation)(nil),                  // 18: engram.v1.Citation
-	(*StoreDiscoveryRequest)(nil),     // 19: engram.v1.StoreDiscoveryRequest
-	(*StoreDiscoveryResponse)(nil),    // 20: engram.v1.StoreDiscoveryResponse
-	(*UpdateMemoryRequest)(nil),       // 21: engram.v1.UpdateMemoryRequest
-	(*UpdateMemoryResponse)(nil),      // 22: engram.v1.UpdateMemoryResponse
-	(*DeleteMemoryRequest)(nil),       // 23: engram.v1.DeleteMemoryRequest
-	(*DeleteMemoryResponse)(nil),      // 24: engram.v1.DeleteMemoryResponse
-	(*SetVisibilityRequest)(nil),      // 25: engram.v1.SetVisibilityRequest
-	(*SetVisibilityResponse)(nil),     // 26: engram.v1.SetVisibilityResponse
-	(*ScheduleMemoryRequest)(nil),     // 27: engram.v1.ScheduleMemoryRequest
-	(*ScheduleMemoryResponse)(nil),    // 28: engram.v1.ScheduleMemoryResponse
-	(*timestamppb.Timestamp)(nil),     // 29: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),     // 30: google.protobuf.FieldMask
+	(*RecallGateHidden)(nil),          // 7: engram.v1.RecallGateHidden
+	(*SearchMemoriesRequest)(nil),     // 8: engram.v1.SearchMemoriesRequest
+	(*SearchMemoriesResponse)(nil),    // 9: engram.v1.SearchMemoriesResponse
+	(*GetMemoryRequest)(nil),          // 10: engram.v1.GetMemoryRequest
+	(*GetMemoryResponse)(nil),         // 11: engram.v1.GetMemoryResponse
+	(*SearchDiscoveriesRequest)(nil),  // 12: engram.v1.SearchDiscoveriesRequest
+	(*SearchDiscoveriesResponse)(nil), // 13: engram.v1.SearchDiscoveriesResponse
+	(*SchemaVersionBucket)(nil),       // 14: engram.v1.SchemaVersionBucket
+	(*MigrateStatusRequest)(nil),      // 15: engram.v1.MigrateStatusRequest
+	(*MigrateStatusResponse)(nil),     // 16: engram.v1.MigrateStatusResponse
+	(*StoreMemoryRequest)(nil),        // 17: engram.v1.StoreMemoryRequest
+	(*StoreMemoryResponse)(nil),       // 18: engram.v1.StoreMemoryResponse
+	(*Citation)(nil),                  // 19: engram.v1.Citation
+	(*StoreDiscoveryRequest)(nil),     // 20: engram.v1.StoreDiscoveryRequest
+	(*StoreDiscoveryResponse)(nil),    // 21: engram.v1.StoreDiscoveryResponse
+	(*UpdateMemoryRequest)(nil),       // 22: engram.v1.UpdateMemoryRequest
+	(*UpdateMemoryResponse)(nil),      // 23: engram.v1.UpdateMemoryResponse
+	(*DeleteMemoryRequest)(nil),       // 24: engram.v1.DeleteMemoryRequest
+	(*DeleteMemoryResponse)(nil),      // 25: engram.v1.DeleteMemoryResponse
+	(*SetVisibilityRequest)(nil),      // 26: engram.v1.SetVisibilityRequest
+	(*SetVisibilityResponse)(nil),     // 27: engram.v1.SetVisibilityResponse
+	(*ScheduleMemoryRequest)(nil),     // 28: engram.v1.ScheduleMemoryRequest
+	(*ScheduleMemoryResponse)(nil),    // 29: engram.v1.ScheduleMemoryResponse
+	(*timestamppb.Timestamp)(nil),     // 30: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),     // 31: google.protobuf.FieldMask
 }
 var file_engram_v1_engram_proto_depIdxs = []int32{
-	29, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
-	29, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
-	18, // 2: engram.v1.Memory.citations:type_name -> engram.v1.Citation
-	29, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
-	29, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
-	29, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
-	29, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
+	30, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
+	30, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
+	19, // 2: engram.v1.Memory.citations:type_name -> engram.v1.Citation
+	30, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
+	30, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
+	30, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
+	30, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
 	2,  // 7: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
 	1,  // 8: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
-	1,  // 9: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
-	1,  // 10: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
-	1,  // 11: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
-	13, // 12: engram.v1.MigrateStatusResponse.buckets:type_name -> engram.v1.SchemaVersionBucket
-	13, // 13: engram.v1.MigrateStatusResponse.future:type_name -> engram.v1.SchemaVersionBucket
-	18, // 14: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
-	30, // 15: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
-	0,  // 16: engram.v1.SetVisibilityRequest.visibility:type_name -> engram.v1.Visibility
-	29, // 17: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
-	29, // 18: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
-	3,  // 19: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
-	5,  // 20: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
-	7,  // 21: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
-	9,  // 22: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
-	11, // 23: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
-	14, // 24: engram.v1.EngramService.MigrateStatus:input_type -> engram.v1.MigrateStatusRequest
-	16, // 25: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
-	19, // 26: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
-	21, // 27: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
-	23, // 28: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
-	25, // 29: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
-	27, // 30: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
-	4,  // 31: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
-	6,  // 32: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
-	8,  // 33: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
-	10, // 34: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
-	12, // 35: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
-	15, // 36: engram.v1.EngramService.MigrateStatus:output_type -> engram.v1.MigrateStatusResponse
-	17, // 37: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
-	20, // 38: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
-	22, // 39: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
-	24, // 40: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
-	26, // 41: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
-	28, // 42: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
-	31, // [31:43] is the sub-list for method output_type
-	19, // [19:31] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	7,  // 9: engram.v1.ListMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
+	1,  // 10: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
+	7,  // 11: engram.v1.SearchMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
+	1,  // 12: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
+	1,  // 13: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
+	14, // 14: engram.v1.MigrateStatusResponse.buckets:type_name -> engram.v1.SchemaVersionBucket
+	14, // 15: engram.v1.MigrateStatusResponse.future:type_name -> engram.v1.SchemaVersionBucket
+	19, // 16: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
+	31, // 17: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
+	0,  // 18: engram.v1.SetVisibilityRequest.visibility:type_name -> engram.v1.Visibility
+	30, // 19: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
+	30, // 20: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
+	3,  // 21: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
+	5,  // 22: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
+	8,  // 23: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
+	10, // 24: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
+	12, // 25: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
+	15, // 26: engram.v1.EngramService.MigrateStatus:input_type -> engram.v1.MigrateStatusRequest
+	17, // 27: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
+	20, // 28: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
+	22, // 29: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
+	24, // 30: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
+	26, // 31: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
+	28, // 32: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
+	4,  // 33: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
+	6,  // 34: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
+	9,  // 35: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
+	11, // 36: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
+	13, // 37: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
+	16, // 38: engram.v1.EngramService.MigrateStatus:output_type -> engram.v1.MigrateStatusResponse
+	18, // 39: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
+	21, // 40: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
+	23, // 41: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
+	25, // 42: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
+	27, // 43: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
+	29, // 44: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
+	33, // [33:45] is the sub-list for method output_type
+	21, // [21:33] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_engram_v1_engram_proto_init() }
@@ -2685,7 +2815,7 @@ func file_engram_v1_engram_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_engram_v1_engram_proto_rawDesc), len(file_engram_v1_engram_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   28,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
