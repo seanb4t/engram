@@ -3,10 +3,11 @@
 
 // This file proves ROADMAP success criterion 4: schema_version never appears
 // in any Qdrant recall or authz filter condition transmitted by Search,
-// SearchReranked, SearchDiscovery, List, ListScheduled or ListScopes.
+// SearchReranked, SearchDiscovery, List, ListScheduled, ListScopes, or (as
+// of plan 01-02) ListTags.
 //
 // THE AUTHORITATIVE PROOF is TestSchemaVersionNeverGatesRecall (Task 3): a
-// gRPC unary interceptor captures the *qdrant.Filter objects the six
+// gRPC unary interceptor captures the *qdrant.Filter objects the seven
 // caller-facing recall entry points actually TRANSMIT to a real Qdrant, and
 // a recursive walker (Task 1, walkFilterKeys) proves schema_version is
 // absent from every one of them. This is evidence, not inference: the
@@ -15,8 +16,8 @@
 //
 // TestRecallEmissionSetIsCompleteAndClassified (Task 2) is a SECONDARY,
 // static layer: a go/ast derivation of every place internal/store transmits
-// a Query/QueryBatch/Scroll/ScrollAndOffset/Count call, closed over a
-// same-package call graph from the six recall entry points, with every
+// a Query/QueryBatch/Scroll/ScrollAndOffset/Count/Facet call, closed over a
+// same-package call graph from the seven recall entry points, with every
 // emission site landing in exactly one of three explicitly justified
 // categories. Its job is to catch TOMORROW'S new write path — not today's,
 // which Task 3 already proves directly — and it is stated at exactly the
@@ -30,10 +31,10 @@
 //     justification. The failure mode is an active, reviewable
 //     misclassification, never silence.
 //  2. The method vocabulary ({Query, QueryBatch, Scroll, ScrollAndOffset,
-//     Count}) is a MAINTAINED LIST, and the classification CANNOT backstop
-//     it: an emission behind an unenumerated method name produces no
-//     subject at all, reaches none of the three lists, and causes no set
-//     difference. ScrollAndOffset was exactly this case until this
+//     Count, Facet}) is a MAINTAINED LIST, and the classification CANNOT
+//     backstop it: an emission behind an unenumerated method name produces
+//     no subject at all, reaches none of the three lists, and causes no set
+//     difference. ScrollAndOffset was exactly this case until a prior
 //     revision — see prove-RED direction B below, the regression guard
 //     that proves the widening actually took effect.
 //  3. No type identity: go/ast alone cannot verify a matched selector call
@@ -337,9 +338,13 @@ var recallEmissionMethods = map[string]bool{
 	"Scroll":          true,
 	"ScrollAndOffset": true,
 	"Count":           true,
+	// The filtered Facet in Store.facetTags (ListTags, plan 01-02) is a
+	// recall emission; Store.MigrateStatus's unfiltered Facet stays
+	// operator-tier (see its operatorMigrationEmitters row below).
+	"Facet": true,
 }
 
-// recallEntryPointSeeds is the six caller-facing recall entry points this
+// recallEntryPointSeeds is the seven caller-facing recall entry points this
 // whole gate is anchored on — declared ONCE, here, and shared with
 // TestSchemaVersionNeverGatesRecall's invocation table (Task 3) via each
 // row's entryPoint field. The classification-coverage linkage subtest below
@@ -352,6 +357,10 @@ var recallEmissionMethods = map[string]bool{
 // D-16's operator-tier exclusion rationale does not reach it — a
 // schema_version condition here would narrow what a user can see, exactly
 // what criterion 4 forbids.
+//
+// ListTags is IN (plan 01-02) for the identical reason: Phase 3 serves it
+// through BOTH Connect and MCP (RPC-04), so the operator-tier exclusion
+// rationale does not reach it either.
 var recallEntryPointSeeds = []string{
 	"Store.Search",
 	"Store.SearchReranked", // delegates to Store.Search; builds no filter of its own — see the subset assertion below
@@ -359,6 +368,7 @@ var recallEntryPointSeeds = []string{
 	"Store.List",
 	"Store.ListScheduled",
 	"Store.ListScopes",
+	"Store.ListTags",
 }
 
 // buildSamePackageCallGraph walks every non-test .go file matching
@@ -479,7 +489,7 @@ type recallEmissionClassification struct {
 	justification string
 }
 
-// recallTransmitters — reachable from recallEntryPointSeeds, six entries.
+// recallTransmitters — reachable from recallEntryPointSeeds, seven entries.
 // Re-derived at revision time against current source (line numbers below
 // are as-observed, not the plan's — enclosing FUNCTION NAME is this gate's
 // identity key, never a line number, since lines shift on every edit).
@@ -507,6 +517,10 @@ var recallTransmitters = []recallEmissionClassification{
 	{
 		enclosingFunc: "Store.ListScopes",
 		justification: "Emits Scroll (store.go:1616), its own transmission. Serves ListScopes — exposed to callers through BOTH Connect (internal/server/connectapi.go) and MCP (internal/server/tools.go), so D-16's operator-tier exclusion rationale does not reach it.",
+	},
+	{
+		enclosingFunc: "Store.facetTags",
+		justification: "Emits Facet (listtags.go), its own transmission — the package's ONLY filtered Facet call. Reachable from the Store.ListTags seed (Store.ListTags itself emits nothing directly, so it gets no row of its own). Serves ListTags, exposed to callers through BOTH Connect and MCP once Phase 3 lands (RPC-04), so D-16's operator-tier exclusion rationale does not reach it either. The filter it carries is recallVisibleFilter's composition: ownerScopeFilter plus the three recall-gate conditions.",
 	},
 }
 
@@ -551,7 +565,7 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.MigrateStatus",
-		justification: "Emits Count (internal/store/migrate_status.go, twice: an IsEmpty(schema_version) exact Count for the absent/legacy bucket, and an unfiltered exact Count for the whole-collection total). D-16 operator diagnostic behind `engram migrate status`; same Phase 3 rationale as Store.CountOwnerless — the histogram must be able to count by schema_version presence/absence to report the migration backlog's shape. Never reachable from any recallEntryPointSeeds member.",
+		justification: "Emits Count (internal/store/migrate_status.go, twice: an IsEmpty(schema_version) exact Count for the absent/legacy bucket, and an unfiltered exact Count for the whole-collection total) AND an unfiltered Facet (the schema_version version-distribution histogram) — now that plan 01-02 adds Facet to the scanned vocabulary, this site is classified too. D-16 operator diagnostic behind `engram migrate status`; same Phase 3 rationale as Store.CountOwnerless — the histogram must be able to count/facet by schema_version presence/absence to report the migration backlog's shape. Never reachable from any recallEntryPointSeeds member.",
 	},
 	{
 		enclosingFunc: "Store.revertWithSteps",
@@ -790,7 +804,7 @@ func TestRecallEmissionSetIsCompleteAndClassified(t *testing.T) {
 }
 
 // ============================================================================
-// Task 3: walk the filter actually transmitted to Qdrant by all six recall
+// Task 3: walk the filter actually transmitted to Qdrant by all seven recall
 // entry points
 // ============================================================================
 
@@ -832,8 +846,8 @@ func (c *recallCapture) snapshot() []capturedFilter {
 
 // filterCarryingRequest is implemented by any top-level gRPC request type
 // that carries a *qdrant.Filter directly (QueryPoints, ScrollPoints,
-// CountPoints, and several types this codebase never sends, e.g.
-// SearchPoints/RecommendPoints/DiscoverPoints). It is used ONLY by the
+// CountPoints, FacetCounts, and several types this codebase never sends,
+// e.g. SearchPoints/RecommendPoints/DiscoverPoints). It is used ONLY by the
 // interceptor's default branch to detect an unrecognized filter-carrying
 // request rather than silently dropping it — QueryBatchPoints (used by the
 // operator-tier Store.NearDuplicates, never a recall entry point) does NOT
@@ -853,7 +867,7 @@ type filterCarryingRequest interface {
 //
 // THIS JOIN IS NOT INDEPENDENT CORROBORATION (cycle-2 actionable #9):
 // recallTransmitters is itself derived from the same {Query, QueryBatch,
-// Scroll, ScrollAndOffset, Count} method vocabulary this type switch
+// Scroll, ScrollAndOffset, Count, Facet} method vocabulary this type switch
 // encodes, so the "interceptor recognized types cover every
 // recallTransmitters emission method" subtest below is a CONSISTENCY check
 // between two views of one enumeration — it cannot reveal an RPC family
@@ -869,6 +883,7 @@ var recognizedFilterCarryingRequestMethods = map[string]bool{
 	"Query":  true, // *qdrant.QueryPoints
 	"Scroll": true, // *qdrant.ScrollPoints (also covers ScrollAndOffset — see grpcMethodForEmission)
 	"Count":  true, // *qdrant.CountPoints
+	"Facet":  true, // *qdrant.FacetCounts
 }
 
 // grpcMethodForEmission maps an internal/store call-site method name (as
@@ -882,10 +897,10 @@ func grpcMethodForEmission(callSiteMethod string) string {
 }
 
 // recallCaptureInterceptor returns a grpc.UnaryClientInterceptor that
-// type-switches req over the three recognized filter-carrying request
+// type-switches req over the four recognized filter-carrying request
 // types, records the *qdrant.Filter (possibly nil) plus a normalized method
 // name into capture, and fails the test loudly via t.Fatalf if req carries
-// a *qdrant.Filter (per filterCarryingRequest) but is not one of the three
+// a *qdrant.Filter (per filterCarryingRequest) but is not one of the four
 // recognized types — never dropping an unrecognized filter-carrying
 // request silently.
 func recallCaptureInterceptor(t *testing.T, capture *recallCapture) grpc.UnaryClientInterceptor {
@@ -897,6 +912,8 @@ func recallCaptureInterceptor(t *testing.T, capture *recallCapture) grpc.UnaryCl
 			capture.record("Scroll", r.GetFilter())
 		case *qdrant.CountPoints:
 			capture.record("Count", r.GetFilter())
+		case *qdrant.FacetCounts:
+			capture.record("Facet", r.GetFilter())
 		default:
 			if fc, ok := req.(filterCarryingRequest); ok && fc.GetFilter() != nil {
 				t.Fatalf("recallCaptureInterceptor: gRPC method %s (request type %T) carries a *qdrant.Filter but is not in the interceptor's recognized set — widen recognizedFilterCarryingRequestMethods and this type switch", method, req)
@@ -964,7 +981,7 @@ type recallInvocationRow struct {
 	invoke        func(t *testing.T, ctx context.Context, s *Store)
 }
 
-// recallInvocationRows enumerates all FOURTEEN rows explicitly (seven
+// recallInvocationRows enumerates all SIXTEEN rows explicitly (eight
 // invocation shapes crossed with two representative subjects), rather than
 // computing the cross product in code, so a reader can count them.
 var recallInvocationRows = []recallInvocationRow{
@@ -1114,11 +1131,31 @@ var recallInvocationRows = []recallInvocationRow{
 			}
 		},
 	},
+	{
+		name: "ListTags/anonymous", entryPoint: "Store.ListTags",
+		expectCount: 1, expectMethods: []string{"Facet"},
+		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+			t.Helper()
+			if _, _, err := s.ListTags(ctx, recallGateAnonymousSubject, recallGateScope, 0); err != nil {
+				t.Fatalf("ListTags(anonymous): %v", err)
+			}
+		},
+	},
+	{
+		name: "ListTags/owner", entryPoint: "Store.ListTags",
+		expectCount: 1, expectMethods: []string{"Facet"},
+		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+			t.Helper()
+			if _, _, err := s.ListTags(ctx, recallGateOwnerSubject, recallGateScope, 0); err != nil {
+				t.Fatalf("ListTags(owner): %v", err)
+			}
+		},
+	},
 }
 
 // TestSchemaVersionNeverGatesRecall is criterion 4's AUTHORITATIVE proof
 // (see this file's package doc comment): schema_version is absent from
-// every *qdrant.Filter the six caller-facing recall entry points actually
+// every *qdrant.Filter the seven caller-facing recall entry points actually
 // TRANSMIT to a real Qdrant, under two representative subjects, with
 // per-row exact capture counts and gRPC method multisets derived from
 // source.
