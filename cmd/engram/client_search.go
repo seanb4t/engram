@@ -82,6 +82,9 @@ var searchCmd = &cobra.Command{
 			if err := renderCoverageFooter(cmd.OutOrStdout(), searchCrossSpine, resp.Msg.GetSearchedScopes(), resp.Msg.GetScopesTruncated(), resp.Msg.GetScopesUnknown()); err != nil {
 				return err
 			}
+			if err := renderRecallHiddenFooter(cmd.OutOrStdout(), resp.Msg.GetRecallGateHidden()); err != nil {
+				return err
+			}
 			// The migration advisory is the least-related fact on screen,
 			// so it reads last. A failed lookup never fails the command
 			// (07-06, T-07-19): migrationFooterCounts derives its own
