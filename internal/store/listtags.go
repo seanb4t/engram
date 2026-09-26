@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
-// Per-tag counts for the caller's recall-visible records (STORE-03), built on
-// one filtered Qdrant Facet over the tags payload key — the first Facet call
-// in this package to carry a Filter, unlike Store.MigrateStatus's
-// deliberately unfiltered version-distribution histogram
-// (internal/store/migrate_status.go).
 package store
 
 import (
