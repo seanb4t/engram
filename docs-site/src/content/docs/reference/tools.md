@@ -169,6 +169,17 @@ call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is absent
 (never an empty list, which would read as "searched nothing"), and
 `scopes_truncated` is absent/false.
 
+The response also carries `recall_gate_hidden` — `{total, archived,
+superseded, expired, scheduled}` counts of records the recall gate hid from
+this same query at this same `k`, with the gate lifted, counting only states
+this call did not already include. Present on a scope-confined call and a
+cross-spine call alike (unlike `searched_scopes`, it is not gated on
+`cross_spine`). Absent when the count could not be computed; all-zero when
+nothing was hidden. A record hidden for more than one reason counts once in
+`total` and once per state it carries, so the per-state fields can sum to
+more than `total`. There is no argument to include hidden records in this
+result set — fetch a specific one by id with `get_memory`.
+
 With [`ENGRAM_SEARCH_RANKER=jev`](/guides/configure/#search-reranking-jev)
 enabled, results are instead reordered by the typed-decision provider's
 probability that each record answers the query — lexical order first, then a
@@ -216,6 +227,17 @@ If the coverage enumeration itself fails after results were already found,
 the call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is
 absent (never an empty list, which would read as "searched nothing"), and
 `scopes_truncated` is absent/false.
+
+The response also carries `recall_gate_hidden` — `{total, archived,
+superseded, expired, scheduled}` counts of records the recall gate hid from
+this same page (same `limit`, `cursor`/`offset`, and every filter), with the
+gate lifted, counting only states this call did not already include. Present
+on a scope-confined call and a cross-spine call alike. Absent when the count
+could not be computed; all-zero when nothing was hidden. A record hidden for
+more than one reason counts once in `total` and once per state it carries,
+so the per-state fields can sum to more than `total`. There is no argument
+to include hidden records in this page — fetch a specific one by id with
+`get_memory`.
 
 Pass an explicit `limit` on a cross-spine list. The underlying total becomes
 an exact count across every readable scope rather than one scope (visible as

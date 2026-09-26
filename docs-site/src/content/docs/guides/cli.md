@@ -126,6 +126,21 @@ capability existed. The JSON lane already carried `searched_scopes` and
 `scopes_truncated` on every response before this release, now joined by
 `scopes_unknown`, and is unaffected by this change beyond that addition.
 
+Text-mode output for both commands also appends a recall-gate hidden-count
+footer, after the coverage footer, whenever the response reports hidden
+records:
+
+```text
+recall_gate_hidden: 5  archived: 2  superseded: 2  expired: 1  scheduled: 1
+```
+
+This one prints on **any** `engram search`/`engram list` text call, not only
+`--cross-spine` — a scope-confined call can hide records too. It prints
+nothing when no records were hidden or the count is unavailable, and the
+JSON lane carries `recall_gate_hidden` under the same name (`{total,
+archived, superseded, expired, scheduled}`), so this addition needs no
+separate rendering code there.
+
 When the server runs the Jev reranker (`ENGRAM_SEARCH_RANKER=jev`, see
 [Search reranking (Jev)](/guides/configure/#search-reranking-jev)),
 `engram search` text output gains a RELEVANCE column and JSON output gains a

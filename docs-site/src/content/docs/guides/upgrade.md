@@ -503,6 +503,25 @@ enforce: a sweep requires an explicit `--scope` or `--all-scopes` (#508).
 **Who should act:** anyone who scripted `spine-review consolidate` without a
 scope flag. Add `--scope <scope>` or `--all-scopes`.
 
+### 20. Recall responses report what the recall gate hid
+
+`SearchMemories`/`search_memory` and `ListMemories`/`list_memory` now carry an
+additive `recall_gate_hidden` field/key: `{total, archived, superseded,
+expired, scheduled}` counts of records the recall gate hid from that same
+response's window (the same top-k for search, the same page for list),
+counting only the states the call did not already request. `engram search`
+and `engram list` text output prints a matching footer line —
+`recall_gate_hidden: 5  archived: 2  superseded: 2  expired: 1  scheduled: 1`
+— whenever a response reports hidden records, on any scope mode; the field
+is absent when the count could not be computed and all-zero when nothing was
+hidden. See the [tools reference](/reference/tools/#search_memory) and the
+[CLI guide's output contract](/guides/cli/#output-contract) for the full
+shape.
+
+**Who should act:** nobody — additive. No existing field, argument, or
+response shape changed; a caller that does not read `recall_gate_hidden`
+sees no difference.
+
 ---
 
 ## v0.7.10 — Recall returns summaries by default

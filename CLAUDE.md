@@ -127,6 +127,13 @@ scope the caller can read, with the response reporting `searched_scopes` and
 were already found, `scopes_unknown` (the call still succeeds; `searched_scopes`
 is then absent rather than an empty list); the `engram search`/`engram list`
 CLI verbs reach the same capability and report the same three fields.
+`search_memory` and `list_memory` results (and Connect `SearchMemories`/`ListMemories`,
+`engram search`/`engram list`) also carry `recall_gate_hidden` — `{total, archived,
+superseded, expired, scheduled}` counts of records the recall gate hid from the
+returned window (the same top-k for search, the same page for list), counting only
+states the request did not include; a record with several states counts once in
+`total` and once per state; absent when the count could not be computed; counts
+only, never ids — the recall gate itself and the MCP input schemas are unchanged.
 Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
 migrate-remap-owner --from-missing --to <owner>` (the `migrate-set-owner` command
