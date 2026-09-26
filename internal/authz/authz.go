@@ -15,17 +15,21 @@ type PDP struct {
 	policies *cedar.PolicySet
 }
 
-// Action is the engram authorization verb vocabulary. The full verb list
-// ships from day one (D-05) so later ABAC phases add policies, never actions.
+// Action is the engram authorization verb vocabulary. Later ABAC phases add
+// policies, never actions — a new verb is added only when a record operation
+// needs its own policy lever. ActionArchive (milestone 2026-09-25.01, D-01)
+// gates both archive and restore of archived_at, distinct from ActionWrite so
+// a future write-narrowing policy cannot silently narrow archive too.
 type Action string
 
-// The five engram authorization actions.
+// The six engram authorization actions.
 const (
 	ActionRead     Action = "read"
 	ActionWrite    Action = "write"
 	ActionDelete   Action = "delete"
 	ActionShare    Action = "share"
 	ActionSchedule Action = "schedule"
+	ActionArchive  Action = "archive"
 )
 
 // Bucket names an enumerable candidate set the store's bulk recall paths

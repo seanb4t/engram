@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/seanb4t/engram/internal/authz"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
 
@@ -798,12 +799,21 @@ func (s *Store) Archive(ctx context.Context, id string) (res ArchiveResult, err 
 		}
 		return ArchiveResult{ID: id}, gerr
 	}
+	return s.archiveResolved(ctx, id, cur)
+}
+
+// archiveResolved is the shared archive core: it assumes cur is the record as
+// read under s.locker.Lock(ctx, id) — by Archive's own Get above, or by
+// ArchiveAs's getWritable — so the already-archived check and the SetPayload
+// write sit in one lock window (CR-04). Never call this without holding that
+// lock first; it performs no locking or existence check of its own.
+func (s *Store) archiveResolved(ctx context.Context, id string, cur Memory) (ArchiveResult, error) {
 	if cur.ArchivedAt != nil {
 		return ArchiveResult{ID: id, Outcome: ArchiveOutcomeAlready}, nil
 	}
 
 	now := s.now()
-	if _, err = s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+	if _, err := s.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
 		CollectionName: s.collection, Wait: qdrant.PtrOf(true),
 		Payload:        qdrant.NewValueMap(map[string]any{"archived_at": now.Unix()}),
 		PointsSelector: qdrant.NewPointsSelectorIDs([]*qdrant.PointId{qdrant.NewID(id)}),
@@ -811,6 +821,48 @@ func (s *Store) Archive(ctx context.Context, id string) (res ArchiveResult, err 
 		return ArchiveResult{ID: id}, err
 	}
 	return ArchiveResult{ID: id, Outcome: ArchiveOutcomeChanged}, nil
+}
+
+// ArchiveAs is the owner-gated sibling of Archive for Phase 3's caller-facing
+// lanes (the ArchiveMemory RPC, the archive_memory MCP tool): owner-only via
+// getWritable with ActionArchive (D-01, D-02). A shared record the caller can
+// read, a record owned by someone else, a nil Subject, and a nonexistent id
+// all return the SAME ErrNotFound and Outcome ArchiveOutcomeNotFound (D-04,
+// DEC-xa6) — never a distinguishable "forbidden" error. Rules are NOT
+// special-cased: the owner may archive a rule (D-03); rule-immutability
+// rejections for other verbs live in internal/server, not here. id must
+// already be canonical — callers resolve short ids via ResolvePointID first;
+// this method never calls it. Archive stays the subject-less operator-tier
+// verb `engram spine-review archive` uses (SC2).
+func (s *Store) ArchiveAs(ctx context.Context, id string, subj Subject) (res ArchiveResult, err error) {
+	ctx, span := tracer.Start(ctx, "store.ArchiveAs",
+		trace.WithAttributes(attribute.String("engram.id", id), attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "ArchiveAs", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.String("engram.archive.outcome", string(res.Outcome)))
+		}
+	}()
+
+	unlock, lerr := s.locker.Lock(ctx, id)
+	if lerr != nil {
+		return ArchiveResult{ID: id}, lerr
+	}
+	defer unlock()
+
+	cur, gerr := s.getWritable(ctx, id, subj, authz.ActionArchive)
+	if gerr != nil {
+		if errors.Is(gerr, ErrNotFound) {
+			return ArchiveResult{ID: id, Outcome: ArchiveOutcomeNotFound}, gerr
+		}
+		return ArchiveResult{ID: id}, gerr
+	}
+	return s.archiveResolved(ctx, id, cur)
 }
 
 // Restore reverses Archive: it deletes the archived_at key outright (never a
