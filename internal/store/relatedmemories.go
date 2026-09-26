@@ -130,6 +130,14 @@ type relatedCandidate struct {
 	edge RelatedEdge
 }
 
+// relatedBeforeFetchHook is a test-only seam: nil in production. When set,
+// assembleRelated calls it with the gated candidate ids after every
+// sub-query has returned and before the payload fetch, so the
+// candidate-disappears-between-query-and-fetch window is addressable
+// deterministically from a test. Must never be set outside a test — mirrors
+// store.go's updateAfterReadHook.
+var relatedBeforeFetchHook func(ids []string)
+
 // relatedEdgeRank fixes the canonical admission/sort order (D-06, D-12):
 // supersession, citation, tag, vector. An unrecognized type sorts last.
 func relatedEdgeRank(t RelatedEdgeType) int {
@@ -618,6 +626,9 @@ func (s *Store) assembleRelated(ctx context.Context, f *qdrant.Filter, anchorID 
 		}
 	}
 
+	if relatedBeforeFetchHook != nil {
+		relatedBeforeFetchHook(ids)
+	}
 	fetched, err := s.fetchPayloadsByID(ctx, f, s.summaryView(), ids)
 	if err != nil {
 		return nil, false, err
