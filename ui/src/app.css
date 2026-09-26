@@ -3,6 +3,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --ui-font: 15px;
+  --u: calc(1rem / 13);
   --background: #ffffff; --foreground: #1f2328;
   --card: #ffffff; --card-foreground: #1f2328;
   --popover: #ffffff; --popover-foreground: #1f2328;
@@ -49,6 +51,8 @@
   --radius-lg: var(--radius);
 }
 
-body { background: var(--background); color: var(--foreground); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 13px; }
+html { font-size: var(--ui-font); }
+
+body { background: var(--background); color: var(--foreground); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 1rem; }
 
 .cat-dot { width: 8px; height: 8px; border-radius: 9999px; flex: none; }

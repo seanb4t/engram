@@ -1,5 +1,6 @@
 <script lang="ts">
   import '../app.css';
+  import { onMount } from 'svelte';
   import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/svelte-query';
   import { ModeWatcher } from 'mode-watcher';
   import { beforeNavigate, goto } from '$app/navigation';
@@ -7,9 +8,23 @@
   import { errorBanner, handleQueryError, clearError } from '$lib/errors';
   import { Toaster } from '$lib/components/ui/sonner';
   import { Button } from '$lib/components/ui/button';
+  import { display, readTextSize, installDisplayShortcuts } from '$lib/display.svelte';
   import AppShell from '$lib/components/AppShell.svelte';
   import CommandPalette from '$lib/components/CommandPalette.svelte';
   let { children } = $props();
+
+  // D-13: apply the persisted text-size preference (the anti-flash script in
+  // app.html already set --ui-font before first paint; this syncs the store
+  // so the Display popover reflects it) and install the console-wide
+  // ⌘+/⌘-/⌘0 shortcuts.
+  onMount(() => {
+    try {
+      display.size = readTextSize(localStorage);
+    } catch {
+      // best-effort, mirrors readTextSize's own fallback to the default.
+    }
+    return installDisplayShortcuts(window);
+  });
 
   // PRESERVE: the root queryClient, delegating all query errors to the
   // shared handleQueryError (auth redirect, then silent-query opt-out, then

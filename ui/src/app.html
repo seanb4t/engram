@@ -16,6 +16,20 @@
         if (dark) document.documentElement.classList.add('dark');
       } catch {}
     </script>
+    <script>
+      // engram:text-size anti-flash
+      // Applies the persisted console text-size preference (D-13) before
+      // first paint. Dependency-free by design (this script cannot import
+      // ui/src/lib/display.svelte.ts) -- keep its clamp behaviour in sync
+      // with that module by hand: integer, round, 12-16, else 15.
+      let size = 15;
+      try {
+        const v = parseInt(localStorage.getItem('engram.console.textSize'), 10);
+        size = Number.isFinite(v) ? Math.min(16, Math.max(12, Math.round(v))) : 15;
+      } catch {}
+      document.documentElement.style.setProperty('--ui-font', size + 'px');
+      document.documentElement.dataset.textSize = String(size);
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover"><div>%sveltekit.body%</div></body>
