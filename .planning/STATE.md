@@ -4,17 +4,17 @@ milestone: 2026-09-25.01
 milestone_name: Console Overhaul
 current_phase: 2
 current_phase_name: Recall-First Search
-status: executing
-stopped_at: Completed 02-08-PLAN.md
-last_updated: "2026-09-26T23:26:11.724Z"
+status: verifying
+stopped_at: Completed 02-10-PLAN.md
+last_updated: "2026-09-26T23:51:47.342Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 2 execution started
-state_head: ea0fb5613d9aa12e97ec3019a6f8665a548d39a1
+state_head: feac3db614cdbc3654ec08a506454217ce63788a
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 14
   percent: 29
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 
 Phase: 2 (Recall-First Search) — EXECUTING
 Plan: 10 of 10
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-26 — Phase 2 execution started
 
 ## Deferred Items
@@ -448,6 +448,8 @@ milestone needs in working memory.
 - [Phase 2]: 02-08: WriteSurfaces moved outside RecallSplit's list snippet to a stable toolbar row — RecallSplit's narrow/wide layout switch recreates snippet content, which was silently destroying WriteSurfaces (and its bind:this) the first time the post-mount width measurement crossed the narrow breakpoint
 - [Phase 2]: 02-08: facet-strip URL state (scope/tags/categories) is synthesized as OperatorChip objects and placed ahead of the query box's own inline chips before calling params.ts's applyChips, so typing plain text never wipes out FacetStrip's selections
 - [Phase 2]: 02-08: ScopeCombobox uses shouldFilter={false} plus manual substring filtering over the complete loaded ListScopes list, avoiding the bits-ui 2.18.1/Svelte 5 default-filter content-emptying gotcha already hit in plan 02-05
+- [Phase 02-recall-first-search]: WriteSurfaces relocated outside RecallSplit's snippets on /observe (mirrors plan 02-09's /search pitfall fix) to avoid destroying its bind:this reference and one-shot resume-restore across the narrow/wide layout switch.
+- [Phase 02-recall-first-search]: Phase 2 closes with two project-local skills (engram-console-conventions, engram-connect-client) routed from CLAUDE.md, grounded in shipped code and cited by both this phase's UI-SPEC and later UI phases (3-5).
 
 ### Pending Todos
 
@@ -544,8 +546,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T22:50:57.546Z
-Stopped at: Completed 02-08-PLAN.md
+Last session: 2026-09-26T23:51:47.307Z
+Stopped at: Completed 02-10-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -760,6 +762,7 @@ Resume file: None
 | Phase 02 P05 | 35min | 2 tasks | 5 files |
 | Phase 2 P08 | 130min | 3 tasks | 10 files |
 | Phase 02 P09 | 35 min | 3 tasks | 7 files |
+| Phase 02-recall-first-search P10 | 23min | 3 tasks | 7 files |
 
 ## Operator Next Steps
 

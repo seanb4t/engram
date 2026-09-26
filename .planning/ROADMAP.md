@@ -443,7 +443,7 @@ they searched.
   6. A user can narrow results by category/tags/time window/derived state/scope as removable, URL-persisted filter chips, and pick a scope from an autocomplete combobox showing each scope's readable-record count
   7. The project-local `engram-console-conventions` and `engram-connect-client` skills exist and this phase's UI-SPEC cites them
 
-**Plans:** 9/10 plans executed
+**Plans:** 10/10 plans executed
 **UI hint**: yes
 
 Plans:
@@ -470,7 +470,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 02-10-PLAN.md — / and /observe on the shared list and pane, the two project-local skills, vendored SPA and phase gates (D-10, D-12; DSYS-01, DSYS-02, ROW-01, ROW-07)
+- [x] 02-10-PLAN.md — / and /observe on the shared list and pane, the two project-local skills, vendored SPA and phase gates (D-10, D-12; DSYS-01, DSYS-02, ROW-01, ROW-07)
 
 ### Phase 3: Curation RPCs & MCP Tools
 
