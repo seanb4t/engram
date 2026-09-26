@@ -282,6 +282,39 @@ describe('WriteSurfaces — SC3 inline delete/share terminal-auth retention (Cod
   );
 });
 
+describe('WriteSurfaces — requestMakePrivate(memory, kind): D-15 reverse of Share', () => {
+  it('invokes set-visibility(PRIVATE) for a SHARED record, with no ShareWarningInline banner', async () => {
+    const screen = await renderWS({ kind: 'memory', scope: 'repo:x' });
+    await screen.component.requestMakePrivate(fakeMemory({ id: 'm5', visibility: 'shared' }), 'memory');
+    expect(setMemoryVisibilityMutateSpy).toHaveBeenCalledTimes(1);
+    expect(setMemoryVisibilityMutateSpy.mock.calls[0][0]).toEqual({ id: 'm5', visibility: 'private' });
+    await expect.element(screen.getByText(/sharing makes this readable/)).not.toBeInTheDocument();
+  });
+
+  it('is a no-op for an ALREADY-PRIVATE record -- no RPC', async () => {
+    const screen = await renderWS({ kind: 'memory', scope: 'repo:x' });
+    await screen.component.requestMakePrivate(fakeMemory({ id: 'm6', visibility: 'private' }), 'memory');
+    expect(setMemoryVisibilityMutateSpy).not.toHaveBeenCalled();
+  });
+
+  it('routes to the discovery visibility mutation for kind=discovery', async () => {
+    const screen = await renderWS({ kind: 'discovery', scope: 'discovery:repo:x' });
+    await screen.component.requestMakePrivate(fakeMemory({ id: 'd2', visibility: 'shared' }), 'discovery');
+    expect(setDiscoveryVisibilityMutateSpy).toHaveBeenCalledTimes(1);
+    expect(setDiscoveryVisibilityMutateSpy.mock.calls[0][0]).toEqual({ id: 'd2', visibility: 'private' });
+    expect(setMemoryVisibilityMutateSpy).not.toHaveBeenCalled();
+  });
+
+  it('a terminal Unauthenticated/PermissionDenied surfaces a sign-in toast (no dialog to keep open -- direct mutation)', async () => {
+    setMemoryVisibilityMutateSpy.mockImplementation((_vars, opts) => {
+      opts.onError(new ConnectError('session expired', Code.Unauthenticated));
+    });
+    const screen = await renderWS({ kind: 'memory', scope: 'repo:x' });
+    await screen.component.requestMakePrivate(fakeMemory({ id: 'm7', visibility: 'shared' }), 'memory');
+    expect(setMemoryVisibilityMutateSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('WriteSurfaces — discovery kind', () => {
   it('renders "New discovery" + DiscoveryFormSheet on click, and exposes no functional openEdit path (D-04)', async () => {
     const screen = await renderWS({ kind: 'discovery', scope: 'discovery:repo:x' });

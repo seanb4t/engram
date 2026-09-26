@@ -126,6 +126,32 @@
     shareTarget = { id: memory.id, kind: targetKind };
   }
 
+  // D-15 (Phase 2): the reverse of Share for the detail pane and the `s`
+  // row key -- private is a reduction of exposure, so unlike requestShare
+  // there is no confirmation banner, just a direct mutation. No-op when the
+  // record is already private (double no-op layer, same shape as
+  // requestShare's already-shared no-op). MemoryFormSheet's read-only shared
+  // control (D-07, one-way share) is intentionally UNCHANGED by this --
+  // that surface still never lets an edit-mode form unshare a record; this
+  // is a separate, narrower reversal scoped to the detail pane only.
+  export function requestMakePrivate(memory: Memory, targetKind: 'memory' | 'discovery'): void {
+    if (normalizeVisibility(memory.visibility) === 'private') return;
+    const mutation = targetKind === 'memory' ? setMemoryVisibilityMutation : setDiscoveryVisibilityMutation;
+    mutation.mutate(
+      { id: memory.id, visibility: 'private' },
+      {
+        onError: (err: unknown) => {
+          const ce = err instanceof ConnectError ? err : ConnectError.from(err);
+          if (ce.code === Code.Unauthenticated || ce.code === Code.PermissionDenied) {
+            toast.error('Sign in again to change visibility', {
+              action: { label: 'Sign in', onClick: redirectToLogin }
+            });
+          }
+        }
+      }
+    );
+  }
+
   // Re-auth resume consumption (Codex round-3 HIGH): reopens the correct
   // sheet and passes the restored values in as PROPS -- WriteSurfaces never
   // peeks/deletes the envelope itself, the route is the sole owner (Task

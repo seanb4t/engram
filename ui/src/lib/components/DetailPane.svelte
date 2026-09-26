@@ -6,13 +6,17 @@
   import { Button } from '$lib/components/ui/button';
   import { Separator } from '$lib/components/ui/separator';
   import { Skeleton } from '$lib/components/ui/skeleton';
+  import * as Tooltip from '$lib/components/ui/tooltip';
   import { toast } from 'svelte-sonner';
   import { relativeTime, fullTimestamp } from '$lib/time';
   import { memoryStateWords } from '$lib/memorystate';
   import { renderMarkdown } from '$lib/markdown';
   import { stripCategoryPrefix } from '$lib/summary';
+  import { normalizeVisibility } from '$lib/mutations/memory';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import XIcon from '@lucide/svelte/icons/x';
+
+  const CURATION_TOOLTIP = 'Arrives with curation — Phase 4';
 
   // D-14/ROW-07: the record view is stacked sections in a fixed order — no
   // tabs. MemoryDetail.svelte (tabs) stays untouched and keeps serving
@@ -45,6 +49,14 @@
     onvisibility?: (memory: Memory) => void;
     ondelete?: (id: string) => void;
   } = $props();
+
+  // D-15/D-16 rule fence (mechanical, not "parent omits callbacks"): a rule
+  // record never shows Edit or Share/Make private (delete only); a discovery
+  // record (kind non-empty -- discovery-only field, empty on plain memories)
+  // never shows Edit.
+  const isRule = $derived(memory?.category === 'rule');
+  const isDiscovery = $derived(!!memory?.kind);
+  const isShared = $derived(memory ? normalizeVisibility(memory.visibility) === 'shared' : false);
 
   const notFound = $derived(error instanceof ConnectError && error.code === Code.NotFound);
   const errorCodeName = $derived(error instanceof ConnectError ? Code[error.code] : undefined);
@@ -118,7 +130,45 @@
         </div>
       {/if}
       <h2 class="d-title">{title}</h2>
-      <div class="d-actions"><!-- Task 2 fills this in with inline action buttons (D-15/D-16). --></div>
+      <div class="d-actions">
+        {#if !isRule && !isDiscovery}
+          <Button variant="outline" size="sm" onclick={() => onedit?.(memory!.id)}>Edit</Button>
+        {/if}
+
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -- a wrapping focus target for a disabled button's tooltip is the standard accessible pattern; the real disabled <button> inside stays inert. -->
+                <span {...props} tabindex="0" class="d-tooltip-wrap">
+                  <Button variant="outline" size="sm" disabled>Supersede…</Button>
+                </span>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content>{CURATION_TOOLTIP}</Tooltip.Content>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -- see the Supersede trigger above. -->
+                <span {...props} tabindex="0" class="d-tooltip-wrap">
+                  <Button variant="outline" size="sm" disabled>{memory.archivedAt ? 'Restore' : 'Archive'}</Button>
+                </span>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content>{CURATION_TOOLTIP}</Tooltip.Content>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+
+        {#if !isRule}
+          <Button variant="outline" size="sm" onclick={() => onvisibility?.(memory!)}>{isShared ? 'Make private' : 'Share'}</Button>
+        {/if}
+
+        <Button variant="destructive" size="sm" onclick={() => ondelete?.(memory!.id)}>Delete</Button>
+      </div>
 
       {#if hasState}
         <Separator />
@@ -319,6 +369,12 @@
     display: flex;
     gap: calc(6 * var(--u));
     flex-wrap: wrap;
+  }
+  .d-tooltip-wrap {
+    display: inline-flex;
+  }
+  .d-tooltip-wrap:focus-visible {
+    outline: none;
   }
 
   .d-sec h3,

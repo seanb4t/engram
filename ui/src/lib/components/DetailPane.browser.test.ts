@@ -199,3 +199,126 @@ describe('DetailPane', () => {
     expect(onclose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('DetailPane — inline actions (D-15, D-16)', () => {
+  const privateGotcha = create(MemorySchema, {
+    id: 'private-gotcha-0001',
+    shortId: 'PRIVGOT001',
+    content: 'a private gotcha',
+    category: 'gotcha',
+    scope: 'repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'private'
+  });
+  const archivedDecision = create(MemorySchema, {
+    id: 'archived-decision-0001',
+    shortId: 'ARCHDEC001',
+    content: 'an archived decision',
+    category: 'decision',
+    scope: 'repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'private',
+    archivedAt: timestampFromDate(NOW)
+  });
+  const sharedDecision = create(MemorySchema, {
+    id: 'shared-decision-0001',
+    shortId: 'SHRDEC0001',
+    content: 'a shared decision',
+    category: 'decision',
+    scope: 'repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'shared'
+  });
+  const ruleRecord = create(MemorySchema, {
+    id: 'rule-record-0001',
+    shortId: 'RULEREC001',
+    content: 'a normative rule',
+    category: 'rule',
+    scope: 'rule:repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'private'
+  });
+  const discoveryRecord = create(MemorySchema, {
+    id: 'discovery-record-0001',
+    shortId: 'DISCREC001',
+    content: 'a discovery map',
+    category: 'gotcha',
+    kind: 'map',
+    scope: 'discovery:repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'private'
+  });
+
+  it('a private gotcha shows Edit, disabled Supersede/Archive with the Phase 4 tooltip, Share and Delete', async () => {
+    const onedit = vi.fn();
+    const ondelete = vi.fn();
+    const onvisibility = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: privateGotcha,
+      loading: false,
+      error: null,
+      requestedId: privateGotcha.id,
+      onedit,
+      ondelete,
+      onvisibility
+    });
+
+    await expect.element(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    const supersede = screen.getByRole('button', { name: 'Supersede…' });
+    await expect.element(supersede).toBeDisabled();
+    const archive = screen.getByRole('button', { name: 'Archive' });
+    await expect.element(archive).toBeDisabled();
+    await expect.element(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+
+    // Focusing the disabled button's focusable wrapper surfaces the tooltip.
+    const supersedeWrap = screen.container.querySelectorAll('.d-tooltip-wrap')[0] as HTMLElement;
+    supersedeWrap.focus();
+    await expect.element(screen.getByText('Arrives with curation — Phase 4').first()).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Edit' }).click();
+    expect(onedit).toHaveBeenCalledWith(privateGotcha.id);
+    await screen.getByRole('button', { name: 'Delete' }).click();
+    expect(ondelete).toHaveBeenCalledWith(privateGotcha.id);
+    await screen.getByRole('button', { name: 'Share' }).click();
+    expect(onvisibility).toHaveBeenCalledWith(privateGotcha);
+  });
+
+  it('an archived record reads "Restore" on the disabled archive/restore button', async () => {
+    const screen = await render(DetailPane, { memory: archivedDecision, loading: false, error: null, requestedId: archivedDecision.id });
+    await expect.element(screen.getByRole('button', { name: 'Restore' })).toBeDisabled();
+    await expect.element(screen.getByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+  });
+
+  it('a shared record shows "Make private" and clicking it calls onvisibility(memory)', async () => {
+    const onvisibility = vi.fn();
+    const screen = await render(DetailPane, { memory: sharedDecision, loading: false, error: null, requestedId: sharedDecision.id, onvisibility });
+    await screen.getByRole('button', { name: 'Make private' }).click();
+    expect(onvisibility).toHaveBeenCalledWith(sharedDecision);
+    await expect.element(screen.getByRole('button', { name: 'Share' })).not.toBeInTheDocument();
+  });
+
+  it('a rule record shows no Edit and no Share/Make private (delete only)', async () => {
+    const screen = await render(DetailPane, { memory: ruleRecord, loading: false, error: null, requestedId: ruleRecord.id });
+    await expect.element(screen.getByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Share' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Make private' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+  });
+
+  it('a discovery record shows no Edit', async () => {
+    const screen = await render(DetailPane, { memory: discoveryRecord, loading: false, error: null, requestedId: discoveryRecord.id });
+    await expect.element(screen.getByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+  });
+});
