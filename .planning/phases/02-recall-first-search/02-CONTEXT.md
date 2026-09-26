@@ -41,7 +41,10 @@ no new mutating procedure. Supersede, Archive/Restore, ListTags, RelatedMemories
   `list_memory` results, and the `engram search` / `engram list` CLI output, following the
   `searched_scopes` / `scopes_truncated` / `scopes_unknown` precedent. The MCP↔Connect parity and
   cross-spine coverage tests stay symmetric. CLAUDE.md's memory contract and the docs-site
-  reference get the new field.
+  reference get the new field. This is an output-only count: it does NOT add the
+  `include_archived/superseded/scheduled` inputs to MCP and does not relax the MCP recall gate —
+  the 2026-08-20 decision `fenpnam8ah` (MCP input schemas unchanged, agent recall zero-junk)
+  still holds. No record content or id is exposed through the count.
 - **D-04:** An **ambiguous short_id** (GetMemory → `failed_precondition`, legacy data) shows an
   honest warning-tone message only: `short_id <x> is ambiguous — paste the full id to be exact`.
   No candidate list, no server change.
@@ -109,7 +112,10 @@ no new mutating procedure. Supersede, Archive/Restore, ListTags, RelatedMemories
 - Rejections render the server envelope `field=<f> hint=<code>: <text>` with fix rows.
 - "The entry point must not lie" (memory `st74vdk0gh`); `shouldFilter={false}` on the palette.
 - State chips in canonical order archived › superseded › expired › scheduled, dim only past
-  states, collapse to `first +N`.
+  states, collapse to `first +N`. Note: this **replaces**, for the fixed-height dense row, the
+  2026-08-20 rule (`cb5dajw7qp`) that the state meta line wraps and never truncates (which also
+  rejected a `+N` indicator). The sketch winners (`6akjphx3k7`) fixed row height, so the row shows
+  `first +N` and the hover card and detail pane always show every state word in full.
 - Authz lives only in `internal/store`; zero new Go dependencies.
 
 ### Claude's Discretion
