@@ -339,6 +339,105 @@ func (s *Store) relatedTagEdges(ctx context.Context, f *qdrant.Filter, anchor Me
 	return out, nil
 }
 
+// relatedCitationCap is the number of citation neighbours RelatedMemories
+// keeps (D-08's top-N by shared-citation count; D-12's roughly-8 per-type
+// cap).
+const relatedCitationCap = 8
+
+// relatedCitationProbeCap is the most distinct anchor kind+ref pairs
+// relatedCitationEdges probes — one Scroll per pair. A record may carry up
+// to 50 citations, so this also bounds the sub-query fan-out (D-12).
+const relatedCitationProbeCap = 16
+
+// relatedCitationScanPerRef is the number of ids-only hits read per citation
+// probe.
+const relatedCitationScanPerRef = 64
+
+// relatedTotalCeiling stays comfortably above the sum of every per-type cap
+// (D-12): if a future cap change ever let the non-vector caps alone reach
+// the ceiling, only the vector edge — the one type the caller's k widens —
+// could still be truncated, and this fails to compile as the first signal.
+const _ = uint(relatedTotalCeiling - relatedSupersessionCap - relatedCitationCap - relatedTagCap - 1)
+
+// relatedCitationEdges implements D-08: shared-citation edges over the
+// caller's readable, recall-visible set (f). A shared citation means the
+// same kind AND ref within ONE citation object — matched with a nested
+// filter so kind from one citation and ref from another citation on the
+// same record can never combine into a false match — regardless of locator,
+// pin, or excerpt. Distinct (kind, ref) pairs are probed in the anchor's own
+// citation order, capped at relatedCitationProbeCap pairs of
+// relatedCitationScanPerRef ids each; candidates are ranked by how many of
+// the anchor's citations they share and capped at relatedCitationCap.
+func (s *Store) relatedCitationEdges(ctx context.Context, f *qdrant.Filter, anchor Memory) ([]relatedCandidate, error) {
+	type pair struct{ kind, ref string }
+	seen := make(map[pair]bool, len(anchor.Citations))
+	var pairs []pair
+	for _, c := range anchor.Citations {
+		if c.Kind == "" || c.Ref == "" {
+			continue
+		}
+		p := pair{kind: c.Kind, ref: c.Ref}
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		pairs = append(pairs, p)
+		if len(pairs) >= relatedCitationProbeCap {
+			break
+		}
+	}
+	if len(pairs) == 0 {
+		return nil, nil
+	}
+
+	type citationAccumulator struct {
+		refs []CitationRef
+	}
+	byID := make(map[string]*citationAccumulator)
+	var order []string
+	for _, p := range pairs {
+		pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+			CollectionName: s.collection,
+			Filter: edgeFilter(f, anchor.ID, qdrant.NewNestedFilter("citations", &qdrant.Filter{
+				Must: []*qdrant.Condition{qdrant.NewMatch("kind", p.kind), qdrant.NewMatch("ref", p.ref)},
+			})),
+			Limit:       qdrant.PtrOf(uint32(relatedCitationScanPerRef)),
+			WithPayload: qdrant.NewWithPayload(false),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, pt := range pts {
+			id := pt.Id.GetUuid()
+			acc, ok := byID[id]
+			if !ok {
+				acc = &citationAccumulator{}
+				byID[id] = acc
+				order = append(order, id)
+			}
+			acc.refs = append(acc.refs, CitationRef{Kind: p.kind, Ref: p.ref})
+		}
+	}
+
+	out := make([]relatedCandidate, 0, len(order))
+	for _, id := range order {
+		out = append(out, relatedCandidate{
+			id:   id,
+			edge: RelatedEdge{Type: RelatedEdgeCitation, SharedCitations: byID[id].refs},
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if len(out[i].edge.SharedCitations) != len(out[j].edge.SharedCitations) {
+			return len(out[i].edge.SharedCitations) > len(out[j].edge.SharedCitations)
+		}
+		return out[i].id < out[j].id
+	})
+	if len(out) > relatedCitationCap {
+		out = out[:relatedCitationCap]
+	}
+	return out, nil
+}
+
 // dedupSortedExcluding returns the distinct ids in ids that are not already
 // in visited, sorted ascending — the shared "next level" builder for
 // relatedSupersessionChain's backward breadth-first walk (D-09's
@@ -629,6 +728,10 @@ func (s *Store) RelatedMemories(ctx context.Context, id string, subj Subject, k 
 	if err != nil {
 		return RelatedResult{}, err
 	}
+	citations, err := s.relatedCitationEdges(ctx, f, anchor)
+	if err != nil {
+		return RelatedResult{}, err
+	}
 	tags, err := s.relatedTagEdges(ctx, f, anchor)
 	if err != nil {
 		return RelatedResult{}, err
@@ -637,7 +740,7 @@ func (s *Store) RelatedMemories(ctx context.Context, id string, subj Subject, k 
 	if err != nil {
 		return RelatedResult{}, err
 	}
-	related, truncated, err := s.assembleRelated(ctx, f, anchor.ID, chain, tags, vector)
+	related, truncated, err := s.assembleRelated(ctx, f, anchor.ID, chain, citations, tags, vector)
 	if err != nil {
 		return RelatedResult{}, err
 	}

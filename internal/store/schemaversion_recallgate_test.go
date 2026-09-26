@@ -533,6 +533,10 @@ var recallTransmitters = []recallEmissionClassification{
 		justification: "Emits Count (the visible-set size n, plus an exact df fallback Count when a rare anchor tag is missing from a truncated facet) and Scroll (one ids-only probe per rare anchor tag) — all under recallVisibleFilter (D-07, D-10, D-11). Reachable from the Store.RelatedMemories seed (Store.RelatedMemories and Store.assembleRelated emit nothing scanned directly, so neither gets a row of its own). Its rarity weights read Store.facetTags above.",
 	},
 	{
+		enclosingFunc: "Store.relatedCitationEdges",
+		justification: "Emits Scroll (relatedmemories.go), its own transmission — one ids-only probe per distinct anchor kind+ref pair, matched via a nested citations filter under edgeFilter over recallVisibleFilter (D-08, D-10, D-11). Reachable from the Store.RelatedMemories seed (Store.RelatedMemories and Store.assembleRelated emit nothing scanned directly, so neither gets a row of its own).",
+	},
+	{
 		enclosingFunc: "Store.relatedVectorEdges",
 		justification: "Emits Query (relatedmemories.go), its own transmission — the query-by-id vector sub-query under edgeFilter over recallVisibleFilter (D-10, D-11). Reachable from the Store.RelatedMemories seed (Store.RelatedMemories and Store.assembleRelated emit nothing scanned directly, so neither gets a row of its own). Its candidates' payloads arrive through Store.fetchPayloadBatch above under the same filter.",
 	},
@@ -990,33 +994,59 @@ var recallGateOwnerSubject = Authenticated("schemaversion-recallgate-owner")
 const recallGateRelatedScope = "schemaversion:project:recallgate-related"
 
 // Fixed ids seedRecallGateRelatedFixtures upserts — one anchor/neighbour
-// pair per representative subject, so the RelatedMemories rows below always
-// resolve to a live, readable anchor with exactly one live neighbour.
+// pair plus two filler records per representative subject, so the
+// RelatedMemories rows below always resolve to a live, readable anchor with
+// exactly one live neighbour, a probed tag, and a probed citation.
 const (
 	recallGateRelatedAnonAnchorID     = "5c411000-0000-0000-0000-000000000001"
 	recallGateRelatedAnonNeighbourID  = "5c411000-0000-0000-0000-000000000002"
+	recallGateRelatedAnonFiller1ID    = "5c411000-0000-0000-0000-000000000005"
+	recallGateRelatedAnonFiller2ID    = "5c411000-0000-0000-0000-000000000006"
 	recallGateRelatedOwnerAnchorID    = "5c411000-0000-0000-0000-000000000003"
 	recallGateRelatedOwnerNeighbourID = "5c411000-0000-0000-0000-000000000004"
+	recallGateRelatedOwnerFiller1ID   = "5c411000-0000-0000-0000-000000000007"
+	recallGateRelatedOwnerFiller2ID   = "5c411000-0000-0000-0000-000000000008"
 )
 
+// recallGateRelatedTag and recallGateRelatedCitation are the tag and
+// citation seedRecallGateRelatedFixtures gives each subject's anchor and
+// neighbour: shared by exactly those two of the subject's four records
+// (n=4, df=2 per subject), so 2*df <= n and the tag is probed rather than
+// treated as ubiquitous (D-07) — the RelatedMemories rows below rely on
+// this exact shape to derive their capture expectations.
+const recallGateRelatedTag = "recallgate-related-tag"
+
+var recallGateRelatedCitation = []Citation{{Kind: "file", Ref: "internal/store/recallgate-related.go"}}
+
 // seedRecallGateRelatedFixtures upserts, in recallGateRelatedScope, an
-// ownerless anchor and neighbour (for the RelatedMemories/anonymous row)
-// plus an anchor and neighbour owned by recallGateOwnerSubject.Owner() (for
-// the RelatedMemories/owner row). Every record carries a Summary (so
-// assembleRelated's no-summary backfill issues no extra Scroll), no tags, no
-// citations, and no supersession links — each subject can see only its own
-// two records.
+// ownerless anchor/neighbour pair plus two ownerless filler records (for the
+// RelatedMemories/anonymous row) and an anchor/neighbour pair plus two
+// filler records owned by recallGateOwnerSubject.Owner() (for the
+// RelatedMemories/owner row). Every record carries a Summary (so
+// assembleRelated's no-summary backfill issues no extra Scroll); the anchor
+// and neighbour additionally carry recallGateRelatedTag and
+// recallGateRelatedCitation (plan 01-04: the tag and citation edges' live
+// capture), while the two filler records per subject carry neither — this
+// is what makes n=4/df=2 per subject and keeps the tag out of the
+// ubiquitous zone. No record carries a supersession link. Each subject can
+// see only its own four records.
 func seedRecallGateRelatedFixtures(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 	fixtures := []struct {
-		id     string
-		owner  string
-		vector []float32
+		id       string
+		owner    string
+		vector   []float32
+		tagged   bool
+		Citation []Citation
 	}{
-		{recallGateRelatedAnonAnchorID, "", []float32{0.9, 0.1, 0.1}},
-		{recallGateRelatedAnonNeighbourID, "", []float32{0.8, 0.2, 0.1}},
-		{recallGateRelatedOwnerAnchorID, recallGateOwnerSubject.Owner(), []float32{0.1, 0.9, 0.1}},
-		{recallGateRelatedOwnerNeighbourID, recallGateOwnerSubject.Owner(), []float32{0.1, 0.8, 0.2}},
+		{recallGateRelatedAnonAnchorID, "", []float32{0.9, 0.1, 0.1}, true, recallGateRelatedCitation},
+		{recallGateRelatedAnonNeighbourID, "", []float32{0.8, 0.2, 0.1}, true, recallGateRelatedCitation},
+		{recallGateRelatedAnonFiller1ID, "", []float32{0.1, 0.9, 0.9}, false, nil},
+		{recallGateRelatedAnonFiller2ID, "", []float32{0.9, 0.9, 0.1}, false, nil},
+		{recallGateRelatedOwnerAnchorID, recallGateOwnerSubject.Owner(), []float32{0.1, 0.9, 0.1}, true, recallGateRelatedCitation},
+		{recallGateRelatedOwnerNeighbourID, recallGateOwnerSubject.Owner(), []float32{0.1, 0.8, 0.2}, true, recallGateRelatedCitation},
+		{recallGateRelatedOwnerFiller1ID, recallGateOwnerSubject.Owner(), []float32{0.9, 0.1, 0.9}, false, nil},
+		{recallGateRelatedOwnerFiller2ID, recallGateOwnerSubject.Owner(), []float32{0.9, 0.9, 0.9}, false, nil},
 	}
 	for _, fx := range fixtures {
 		m := Memory{
@@ -1024,6 +1054,10 @@ func seedRecallGateRelatedFixtures(ctx context.Context, t *testing.T, s *Store) 
 			Scope:   recallGateRelatedScope,
 			Owner:   fx.owner,
 			Summary: "recall gate related fixture",
+		}
+		if fx.tagged {
+			m.Tags = []string{recallGateRelatedTag}
+			m.Citations = fx.Citation
 		}
 		if err := s.Upsert(ctx, m, fx.vector); err != nil {
 			t.Fatalf("seed related fixture %s: %v", fx.id, err)
@@ -1214,8 +1248,13 @@ var recallInvocationRows = []recallInvocationRow{
 		},
 	},
 	{
+		// Visible-set Count (relatedTagEdges), the facet (relatedTagEdges,
+		// via Store.facetTags — the tag is in the facet, so no fallback
+		// Count), the tag probe Scroll, the citation probe Scroll
+		// (relatedCitationEdges), the vector Query, and one payload-fetch
+		// Scroll batch (Store.fetchPayloadBatch) — six captures total.
 		name: "RelatedMemories/anonymous", entryPoint: "Store.RelatedMemories",
-		expectCount: 2, expectMethods: []string{"Query", "Scroll"},
+		expectCount: 6, expectMethods: []string{"Count", "Facet", "Query", "Scroll", "Scroll", "Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
 			if _, err := s.RelatedMemories(ctx, recallGateRelatedAnonAnchorID, recallGateAnonymousSubject, 0); err != nil {
@@ -1224,8 +1263,10 @@ var recallInvocationRows = []recallInvocationRow{
 		},
 	},
 	{
+		// Same capture shape as the anonymous row above — the owner subject's
+		// fixtures are the identical n=4/df=2 shape.
 		name: "RelatedMemories/owner", entryPoint: "Store.RelatedMemories",
-		expectCount: 2, expectMethods: []string{"Query", "Scroll"},
+		expectCount: 6, expectMethods: []string{"Count", "Facet", "Query", "Scroll", "Scroll", "Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
 			if _, err := s.RelatedMemories(ctx, recallGateRelatedOwnerAnchorID, recallGateOwnerSubject, 0); err != nil {
