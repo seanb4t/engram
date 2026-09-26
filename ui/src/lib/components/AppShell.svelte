@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import BrandMark from './BrandMark.svelte';
   import MigrationBanner from './MigrationBanner.svelte';
+  import DisplayPopover from './DisplayPopover.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Kbd } from '$lib/components/ui/kbd';
   import EyeIcon from '@lucide/svelte/icons/eye';
@@ -25,6 +26,7 @@
     <Button variant="outline" aria-label="search" class="flex-1 justify-start text-muted-foreground" onclick={() => oncommand?.()}>
       <SearchIcon data-icon="inline-start" /> search memories… <Kbd class="ml-auto">⌘K</Kbd>
     </Button>
+    <DisplayPopover />
     <Button variant="outline" size="sm" aria-label="toggle theme" onclick={cycleTheme}><SunMoonIcon data-icon="inline-start" /></Button>
   </header>
   <MigrationBanner />
