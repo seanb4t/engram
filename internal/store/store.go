@@ -654,6 +654,12 @@ func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) e
 // that holds that line: an index that exists makes it easier for a future
 // filter to reach for the field, which is precisely why that gate — not
 // inconvenience — is the guard.
+//
+// tags is a keyword index (D-16, plan 01-02): Qdrant's Facet requires a
+// payload index on the key it aggregates, and this index is what makes
+// Store.ListTags' filtered Facet (internal/store/listtags.go) possible. It
+// reaches an existing collection through this same idempotent,
+// AlreadyExists-tolerant loop on the next boot — no separate backfill step.
 func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 	type idx struct {
 		field  string
@@ -667,6 +673,7 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 		{"created_at", qdrant.FieldType_FieldTypeDatetime, nil},
 		{"short_id", qdrant.FieldType_FieldTypeKeyword, nil},
 		{schemaVersionKey, qdrant.FieldType_FieldTypeInteger, nil},
+		{"tags", qdrant.FieldType_FieldTypeKeyword, nil},
 	}
 	for _, ix := range idxs {
 		req := &qdrant.CreateFieldIndexCollection{
