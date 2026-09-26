@@ -1,18 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 01-store-prerequisites
 source: [01-VERIFICATION.md]
 started: 2026-09-26T04:26:29Z
-updated: 2026-09-26T05:18:18Z
+updated: 2026-09-26T11:34:49Z
 ---
 
 ## Current Test
 
-number: 4
-name: 01-03's judgment-tier prohibition: edge types are never folded into one comparable score or re-ranked across types
-expected: |
-  RelatedEdge keeps per-type evidence fields only; assembleRelated admits by fixed relatedEdgeRank order, never a blended score
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -30,14 +26,14 @@ result: pass — automated: TestRelatedMemoriesCandidateVanishesBeforeFetch (com
 
 ### 4. 01-03's judgment-tier prohibition: edge types are never folded into one comparable score or re-ranked across types
 expected: RelatedEdge keeps per-type evidence fields only; assembleRelated admits by fixed relatedEdgeRank order, never a blended score
-result: [pending]
+result: pass — explicit human sign-off (Sean, 2026-09-26); behavioral evidence TestRelatedMemoriesAdmitsByTypeNotScore (commit 14c7aa5e)
 
 ## Summary
 
 total: 4
-passed: 3
+passed: 4
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
