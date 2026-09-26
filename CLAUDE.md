@@ -68,6 +68,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
   histogram.
 - **Not used here:** viper, cocogitto.
 - **Spike findings for engram** (implementation patterns, constraints, gotchas) → `Skill("spike-findings-engram")`
+- **Sketch findings for engram** (console design decisions, CSS patterns, visual direction) → `Skill("sketch-findings-engram")`
 
 ## Memory contract (stable)
 

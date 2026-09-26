@@ -1,0 +1,1098 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>003 · Curation dialogs</title>
+<link id="theme-link" rel="stylesheet" href="../themes/default.css">
+<script src="../themes/display.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--color-bg);color:var(--color-text);font:13px/1.45 var(--font-sans);padding-top:70px;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+.mono{font-family:var(--font-mono)}
+.dim{color:var(--color-text-muted)}
+.faint{color:var(--color-text-faint)}
+kbd{font-family:var(--font-mono);font-size:var(--text-2xs);line-height:calc(14*var(--u));border:1px solid var(--color-border);border-bottom-width:2px;border-radius:calc(3*var(--u));padding:0 calc(4*var(--u));color:var(--color-text-muted);background:var(--color-surface);display:inline-block}
+svg.i{width:calc(13*var(--u));height:calc(13*var(--u));flex:none;vertical-align:-2px}
+
+/* ---------- tab bar + scenario bar ---------- */
+#variant-nav{position:fixed;top:0;left:0;right:0;height:38px;z-index:9998;background:var(--color-surface);border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:4px;padding:0 12px;overflow-x:auto;white-space:nowrap}
+#variant-nav .ttl{font-weight:600;margin-right:10px;color:var(--color-text-muted);font-size:var(--text-xs)}
+.variant-tab{background:none;border:1px solid transparent;border-radius:var(--radius-sm);padding:3px 10px;color:var(--color-text-muted);cursor:pointer;transition:all .15s ease;font-size:var(--text-sm)}
+.variant-tab:hover{background:var(--color-hover);color:var(--color-text)}
+.variant-tab.active{background:var(--color-primary-soft);color:var(--color-text);border-color:var(--color-primary)}
+#scenario{position:fixed;top:38px;left:0;right:0;height:32px;z-index:9997;background:var(--color-bg);border-bottom:1px solid var(--color-border-subtle);display:flex;align-items:center;gap:10px;padding:0 12px;font-size:var(--text-xs);color:var(--color-text-muted);overflow-x:auto;white-space:nowrap}
+.seg{display:inline-flex;border:1px solid var(--color-border);border-radius:var(--radius-sm);overflow:hidden;flex:none}
+.seg button{background:none;border:0;padding:2px 8px;cursor:pointer;color:var(--color-text-muted);transition:all .15s ease;font-size:var(--text-xs)}
+.seg button+button{border-left:1px solid var(--color-border)}
+.seg button:hover{background:var(--color-hover);color:var(--color-text)}
+.seg button.on{background:var(--color-primary-soft);color:var(--color-text)}
+.sep{width:1px;height:16px;background:var(--color-border);flex:none}
+
+/* ---------- viewport frame ---------- */
+#frame{position:relative;margin:0 auto;height:calc(100vh - 70px - 40px);max-width:100%;transform:translateZ(0);overflow:hidden;container-type:inline-size;container-name:frame;transition:max-width .15s ease}
+#frame.constrained{border-left:1px solid var(--color-border);border-right:1px solid var(--color-border)}
+.variant{position:absolute;inset:0;display:none}
+.variant.active{display:block}
+.stage{position:absolute;inset:0;overflow:auto;padding:calc(16*var(--u)) calc(16*var(--u)) calc(72*var(--u));transition:right .15s ease}
+.vhead{display:flex;align-items:baseline;gap:calc(10*var(--u));margin:0 0 calc(10*var(--u));flex-wrap:wrap}
+.vhead h2{font-size:var(--text-lg);margin:0;font-weight:600}
+.vhead p{margin:0;color:var(--color-text-muted);font-size:var(--text-xs)}
+
+/* ---------- buttons ---------- */
+.btn{height:calc(26*var(--u));padding:0 calc(10*var(--u));border:1px solid var(--color-border);background:var(--color-surface);border-radius:var(--radius-sm);cursor:pointer;transition:all .15s ease;display:inline-flex;align-items:center;gap:calc(6*var(--u));white-space:nowrap;font-size:var(--text-sm)}
+.btn:hover:not(:disabled){background:var(--color-hover);border-color:var(--color-text-faint)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-bg);font-weight:500}
+.btn.primary:hover:not(:disabled){background:var(--color-primary-hover);border-color:var(--color-primary-hover)}
+.btn.warnish{color:var(--color-danger);border-color:color-mix(in srgb,var(--color-danger) 45%,var(--color-border))}
+.btn.warnish:hover:not(:disabled){background:color-mix(in srgb,var(--color-danger) 12%,transparent)}
+.btn.sm{height:calc(22*var(--u));padding:0 calc(8*var(--u));font-size:var(--text-xs)}
+.btn.ghost{background:none;border-color:transparent}
+.btn.ghost:hover:not(:disabled){background:var(--color-hover);border-color:transparent}
+.link{background:none;border:0;padding:0;color:var(--color-primary);cursor:pointer;text-decoration:underline;text-underline-offset:2px;text-decoration-color:transparent;transition:all .15s ease;font-size:inherit}
+.link:hover{text-decoration-color:currentColor}
+.x{background:none;border:0;color:var(--color-text-faint);cursor:pointer;width:calc(22*var(--u));height:calc(22*var(--u));border-radius:var(--radius-sm);display:inline-flex;align-items:center;justify-content:center;transition:all .15s ease;flex:none;font-size:calc(15*var(--u));line-height:1}
+.x:hover{background:var(--color-hover);color:var(--color-text)}
+
+/* ---------- list ---------- */
+.list-top{display:flex;align-items:center;gap:calc(10*var(--u));height:calc(34*var(--u));padding:0 calc(10*var(--u));border:1px solid var(--color-border);border-bottom:0;border-radius:var(--radius-md) var(--radius-md) 0 0;background:var(--color-surface);font-size:var(--text-xs);color:var(--color-text-muted)}
+.list-top .ttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list-top .ttl b{color:var(--color-text);font-weight:600}
+.list-top.bulk{background:var(--color-primary-soft);border-color:var(--color-primary)}
+.list-top.bulk .ttl b{color:var(--color-text)}
+.tog{display:inline-flex;align-items:center;gap:calc(5*var(--u));cursor:pointer;user-select:none;flex:none;padding:2px calc(6*var(--u));border-radius:var(--radius-sm);transition:all .15s ease}
+.tog:hover{background:var(--color-hover);color:var(--color-text)}
+.tog input{width:calc(13*var(--u));height:calc(13*var(--u));accent-color:var(--color-primary);margin:0}
+.count{font-family:var(--font-mono);font-size:var(--text-2xs);background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-full);padding:0 calc(5*var(--u))}
+.list{border:1px solid var(--color-border);border-radius:0 0 var(--radius-md) var(--radius-md);background:var(--color-surface)}
+.row:last-child{border-radius:0 0 var(--radius-md) var(--radius-md)}
+.row{position:relative;display:grid;grid-template-columns:calc(16*var(--u)) calc(92*var(--u)) calc(80*var(--u)) minmax(0,1fr) auto auto calc(38*var(--u));align-items:center;gap:calc(10*var(--u));height:var(--row-h);padding:0 calc(10*var(--u));border-bottom:1px solid var(--color-border-subtle);cursor:default;transition:background .15s ease, opacity .15s ease;font-size:var(--text-sm)}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--color-hover)}
+.row.sel{background:var(--color-selected)}
+.row.intarget{background:var(--color-primary-soft);box-shadow:inset 2px 0 0 var(--color-primary)}
+.row.focus::before{content:'';position:absolute;left:0;top:calc(3*var(--u));bottom:calc(3*var(--u));width:2px;border-radius:2px;background:var(--color-primary)}
+.row.dimrow .sumt,.row.dimrow .sid{color:var(--color-text-faint)}
+.row.dimrow .sumt{text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--color-text-faint) 50%,transparent)}
+.row.flash{animation:flash 1.6s ease}
+.row.leaving{opacity:0;transform:translateX(calc(12*var(--u)));transition:all .15s ease}
+@keyframes flash{0%,30%{background:var(--color-primary-soft)}100%{background:transparent}}
+.chk input{width:calc(13*var(--u));height:calc(13*var(--u));margin:0;accent-color:var(--color-primary);cursor:pointer;opacity:.35;transition:opacity .15s ease}
+.row:hover .chk input,.row.sel .chk input,.row.intarget .chk input,.list.has-sel .chk input{opacity:1}
+.cat{display:inline-flex;align-items:center;gap:calc(6*var(--u));font-size:var(--text-xs);color:var(--c);min-width:0}
+.cat i{width:calc(7*var(--u));height:calc(7*var(--u));border-radius:2px;background:var(--c);flex:none}
+.cat em{font-style:normal;overflow:hidden;text-overflow:ellipsis}
+.sid{font-size:var(--text-xs);color:var(--color-text-muted)}
+.sum{display:flex;align-items:center;gap:calc(6*var(--u));min-width:0;white-space:nowrap;overflow:hidden}
+.sumt{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tag{font-size:var(--text-2xs);color:var(--color-text-faint);flex:none}
+.tag::before{content:'#'}
+.words{display:flex;gap:calc(4*var(--u))}
+.sw{font-size:var(--text-2xs);font-family:var(--font-mono);padding:0 calc(5*var(--u));border-radius:calc(3*var(--u));border:1px solid var(--color-border);color:var(--color-text-muted);line-height:calc(16*var(--u))}
+.sw-superseded{color:var(--color-primary);border-color:color-mix(in srgb,var(--color-primary) 45%,var(--color-border))}
+.sw-expired{color:var(--color-warning);border-color:color-mix(in srgb,var(--color-warning) 45%,var(--color-border))}
+.meta{display:flex;gap:calc(6*var(--u));align-items:center;font-size:var(--text-2xs);color:var(--color-text-faint)}
+.own{border:1px dashed var(--color-border);border-radius:calc(3*var(--u));padding:0 calc(4*var(--u));line-height:calc(15*var(--u))}
+.date{font-size:var(--text-2xs);color:var(--color-text-faint);text-align:right}
+.acts{position:absolute;right:calc(6*var(--u));top:50%;transform:translateY(-50%);display:flex;gap:calc(4*var(--u));align-items:center;opacity:0;pointer-events:none;transition:opacity .15s ease;padding-left:calc(24*var(--u))}
+.acts{background:linear-gradient(90deg,transparent,var(--color-surface) calc(20*var(--u)))}
+.row:hover .acts{background:linear-gradient(90deg,transparent,var(--color-hover) calc(20*var(--u)))}
+.row.sel .acts{background:linear-gradient(90deg,transparent,var(--color-selected) calc(20*var(--u)))}
+.row:hover .acts,.row.focus .acts,.row.menu-open .acts{opacity:1;pointer-events:auto}
+.ib{height:calc(20*var(--u));padding:0 calc(7*var(--u));border:1px solid var(--color-border);background:var(--color-surface);border-radius:var(--radius-sm);cursor:pointer;font-size:var(--text-2xs);color:var(--color-text-muted);transition:all .15s ease;white-space:nowrap}
+.ib:hover{color:var(--color-text);border-color:var(--color-text-faint);background:var(--color-surface-2)}
+.kh{display:flex;gap:calc(3*var(--u));align-items:center;font-size:var(--text-2xs);color:var(--color-text-faint);margin-right:calc(4*var(--u))}
+@container frame (max-width: 700px){
+  .row{grid-template-columns:calc(16*var(--u)) calc(10*var(--u)) calc(76*var(--u)) minmax(0,1fr) auto 0 0;gap:calc(8*var(--u))}
+  .cat em,.tag,.meta,.date,.kh{display:none}
+}
+
+/* ---------- menu (C) ---------- */
+.menu{position:absolute;right:calc(6*var(--u));top:calc(26*var(--u));z-index:20;min-width:calc(210*var(--u));background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:calc(4*var(--u));animation:pop .15s ease}
+.menu button{display:flex;width:100%;align-items:center;justify-content:space-between;gap:calc(12*var(--u));background:none;border:0;padding:calc(5*var(--u)) calc(8*var(--u));border-radius:var(--radius-sm);cursor:pointer;font-size:var(--text-sm);text-align:left;transition:all .15s ease}
+.menu button:hover:not(:disabled){background:var(--color-hover)}
+.menu button:disabled{opacity:.45;cursor:not-allowed}
+.menu hr{border:0;border-top:1px solid var(--color-border);margin:calc(4*var(--u)) 0}
+.menu .why{font-size:var(--text-2xs);color:var(--color-text-faint);padding:0 calc(8*var(--u)) calc(4*var(--u))}
+@keyframes pop{from{opacity:0;transform:translateY(calc(-4*var(--u)))}to{opacity:1;transform:none}}
+
+/* ---------- targets / form ---------- */
+.lbl{font-size:var(--text-2xs);text-transform:uppercase;letter-spacing:.04em;color:var(--color-text-faint);display:flex;justify-content:space-between;gap:calc(8*var(--u));margin-bottom:calc(4*var(--u))}
+.tchip{border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface);padding:calc(6*var(--u)) calc(6*var(--u)) calc(6*var(--u)) calc(8*var(--u));margin-bottom:calc(6*var(--u));transition:all .15s ease}
+.tchip:hover{border-color:var(--color-text-faint)}
+.tchip.bad{border-color:color-mix(in srgb,var(--color-danger) 55%,var(--color-border));background:color-mix(in srgb,var(--color-danger) 7%,var(--color-surface))}
+.tchip-top{display:flex;align-items:center;gap:calc(6*var(--u));min-width:0}
+.tchip .tsum{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;font-size:var(--text-sm)}
+.tissue{margin-top:calc(3*var(--u));font-size:var(--text-xs);color:var(--color-danger);padding-left:calc(13*var(--u))}
+.tissue .code{font-family:var(--font-mono);font-size:var(--text-2xs);border:1px solid currentColor;border-radius:calc(3*var(--u));padding:0 calc(4*var(--u));margin-right:calc(4*var(--u))}
+.tok{margin-top:2px;font-size:var(--text-2xs);color:var(--color-text-faint);padding-left:calc(13*var(--u))}
+.dot{width:calc(7*var(--u));height:calc(7*var(--u));border-radius:2px;background:var(--c);flex:none;display:inline-block}
+.add-t{display:flex;gap:calc(6*var(--u));align-items:center}
+.add-t input{flex:1}
+input.in,select.in,textarea.in{width:100%;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:calc(4*var(--u)) calc(8*var(--u));height:calc(28*var(--u));transition:all .15s ease;font-size:var(--text-sm)}
+textarea.in{height:auto;resize:vertical;line-height:1.45;padding:calc(6*var(--u)) calc(8*var(--u))}
+.in:hover{border-color:var(--color-text-faint)}
+.in:focus{outline:none;border-color:var(--color-primary);box-shadow:0 0 0 calc(3*var(--u)) var(--color-primary-soft)}
+.fld{display:block;margin-bottom:calc(10*var(--u))}
+.fld.err .in{border-color:var(--color-danger);box-shadow:0 0 0 calc(3*var(--u)) color-mix(in srgb,var(--color-danger) 15%,transparent)}
+.ferr{display:block;font-size:var(--text-2xs);color:var(--color-danger);font-family:var(--font-mono);margin-top:calc(3*var(--u));min-height:0}
+.ferr:empty{display:none}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:calc(10*var(--u))}
+.cnt.over{color:var(--color-danger)}
+.prefill{font-size:var(--text-xs);color:var(--color-text-muted);margin:-2px 0 calc(8*var(--u));display:flex;gap:calc(6*var(--u));flex-wrap:wrap}
+.warnline{font-size:var(--text-xs);color:var(--color-warning);margin:0 0 calc(8*var(--u))}
+.gate{font-size:var(--text-xs);color:var(--color-danger)}
+.gate.okg{color:var(--color-text-faint)}
+
+/* ---------- status / envelope ---------- */
+.status{border-radius:var(--radius-md);padding:calc(8*var(--u)) calc(10*var(--u));font-size:var(--text-xs);display:flex;flex-direction:column;gap:calc(6*var(--u));border:1px solid var(--color-border);background:var(--color-surface-2)}
+.status.loading{flex-direction:row;align-items:center;color:var(--color-text-muted)}
+.status.err{border-color:color-mix(in srgb,var(--color-danger) 55%,var(--color-border));background:color-mix(in srgb,var(--color-danger) 8%,var(--color-surface))}
+.status.warn{border-color:color-mix(in srgb,var(--color-warning) 55%,var(--color-border));background:color-mix(in srgb,var(--color-warning) 8%,var(--color-surface))}
+.status .row-b{display:flex;gap:calc(8*var(--u));align-items:center;flex-wrap:wrap}
+.env-k{display:flex;gap:calc(4*var(--u));flex-wrap:wrap}
+.pill{font-family:var(--font-mono);font-size:var(--text-2xs);border:1px solid var(--color-border);background:var(--color-bg);border-radius:calc(3*var(--u));padding:0 calc(5*var(--u));line-height:calc(16*var(--u))}
+.pill.k{color:var(--color-danger);border-color:color-mix(in srgb,var(--color-danger) 45%,var(--color-border))}
+.env-raw{display:block;font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint);word-break:break-all}
+.spin{width:calc(12*var(--u));height:calc(12*var(--u));border:2px solid var(--color-border);border-top-color:var(--color-primary);border-radius:50%;animation:spin .7s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.okicon{color:var(--color-success)}
+
+/* ---------- chains ---------- */
+.cnode{display:inline-flex;align-items:center;gap:calc(6*var(--u));height:calc(24*var(--u));padding:0 calc(8*var(--u));border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface);max-width:calc(260*var(--u));cursor:pointer;transition:all .15s ease;font-size:var(--text-xs);min-width:0}
+.cnode:hover{border-color:var(--color-text-faint);background:var(--color-hover)}
+.cnode .csum{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--color-text-muted)}
+.cnode.hl{border-color:var(--color-primary);box-shadow:0 0 0 2px var(--color-primary-soft)}
+.cnode.new{border-style:dashed;border-color:var(--color-primary)}
+.cnode.bad{border-color:var(--color-danger)}
+.cnode.bad .csum{text-decoration:line-through}
+.chain-cols{display:flex;align-items:stretch;gap:calc(6*var(--u));overflow-x:auto;padding-bottom:2px}
+.ccol{display:flex;flex-direction:column;gap:calc(4*var(--u));justify-content:center;flex:none;max-width:calc(280*var(--u))}
+.ccol .cnode{max-width:calc(280*var(--u))}
+.cnode>*{flex:none}
+.cnode .csum{flex:0 1 auto}
+.ccol-h{font-size:var(--text-2xs);color:var(--color-text-faint);font-family:var(--font-mono)}
+.carrow{display:flex;align-items:center;color:var(--color-text-faint);font-size:var(--text-xs);flex:none;padding:calc(14*var(--u)) 2px 0}
+.tl{position:relative}
+.tl-item{position:relative;display:flex;align-items:center;gap:calc(8*var(--u));padding:calc(3*var(--u)) 0 calc(3*var(--u)) calc(var(--d) * calc(18*var(--u)) + calc(18*var(--u)));min-width:0}
+.tl-item::before{content:'';position:absolute;left:calc(var(--d) * calc(18*var(--u)) + calc(4*var(--u)));top:0;bottom:0;width:1px;background:var(--color-border)}
+.tl-item:first-child::before{top:50%}
+.tl-item:last-child::before{bottom:50%}
+.tl-dot{position:absolute;left:calc(var(--d) * calc(18*var(--u)));width:calc(9*var(--u));height:calc(9*var(--u));border-radius:50%;border:2px solid var(--c);background:var(--color-surface)}
+.tl-item.head .tl-dot{background:var(--c)}
+.tl-d{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint);width:calc(34*var(--u));flex:none}
+.crumbs{display:flex;flex-direction:column;gap:calc(4*var(--u));min-width:0}
+.crumb{display:flex;align-items:center;gap:calc(4*var(--u));flex-wrap:wrap;min-width:0}
+.crumb .sepc{color:var(--color-text-faint);font-size:var(--text-xs)}
+.crumb .cnode{max-width:calc(220*var(--u))}
+.crumb .cnode .sw{display:none}
+.legend{font-size:var(--text-2xs);color:var(--color-text-faint);margin-top:calc(6*var(--u))}
+
+/* ---------- A: dialog ---------- */
+.scrim{position:absolute;inset:0;z-index:40;background:color-mix(in srgb,var(--color-bg) 70%,transparent);display:flex;align-items:center;justify-content:center;padding:calc(16*var(--u));opacity:0;transition:opacity .15s ease}
+.scrim.open{opacity:1}
+.dialog{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:100%;max-height:100%;display:flex;flex-direction:column;transform:translateY(calc(6*var(--u))) scale(.985);transition:transform .15s ease;overflow:hidden}
+.scrim.open .dialog{transform:none}
+.dialog.lg{max-width:calc(920*var(--u))}
+.dialog.sm{max-width:calc(440*var(--u))}
+.dialog.md{max-width:calc(640*var(--u))}
+.dlg-h{display:flex;align-items:flex-start;gap:calc(10*var(--u));padding:calc(12*var(--u)) calc(14*var(--u));border-bottom:1px solid var(--color-border)}
+.dlg-h>div{flex:1;min-width:0}
+.dlg-h b{font-size:var(--text-base)}
+.dlg-h .dim{font-size:var(--text-xs);margin-top:2px}
+.dlg-b{padding:calc(12*var(--u)) calc(14*var(--u));overflow:auto;flex:1;min-height:0}
+.dlg-b.two{display:grid;grid-template-columns:minmax(0,calc(300*var(--u))) minmax(0,1fr);gap:calc(16*var(--u))}
+.dlg-chain{padding:calc(10*var(--u)) calc(14*var(--u));border-top:1px solid var(--color-border);background:var(--color-bg)}
+.dlg-f{display:flex;align-items:center;gap:calc(8*var(--u));padding:calc(10*var(--u)) calc(14*var(--u));border-top:1px solid var(--color-border);flex-wrap:wrap}
+.dlg-f .grow{flex:1;min-width:0}
+.dlg-status{padding:0 calc(14*var(--u)) calc(10*var(--u))}
+.mini{display:flex;flex-direction:column;gap:calc(4*var(--u));margin:calc(8*var(--u)) 0}
+@container frame (max-width: 700px){.dlg-b.two{grid-template-columns:1fr}}
+
+/* ---------- B: sheet ---------- */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:calc(440*var(--u));max-width:100%;z-index:40;background:var(--color-surface);border-left:1px solid var(--color-border);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .15s ease}
+.sheet.open{transform:none}
+.sh-h{display:flex;align-items:center;gap:calc(8*var(--u));padding:calc(10*var(--u)) calc(12*var(--u));border-bottom:1px solid var(--color-border);min-height:calc(44*var(--u))}
+.sh-h .t{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh-b{flex:1;overflow:auto;padding:calc(12*var(--u));min-height:0}
+.sh-f{border-top:1px solid var(--color-border);padding:calc(10*var(--u)) calc(12*var(--u));display:flex;flex-direction:column;gap:calc(8*var(--u))}
+.sh-f .btns{display:flex;gap:calc(8*var(--u));align-items:center;flex-wrap:wrap}
+.sh-f .btns .grow{flex:1}
+.stepper{display:flex;gap:calc(6*var(--u));margin-bottom:calc(12*var(--u))}
+.step{flex:1;font-size:var(--text-xs);color:var(--color-text-faint);border-top:2px solid var(--color-border);padding-top:calc(4*var(--u));transition:all .15s ease}
+.step.on{color:var(--color-text);border-color:var(--color-primary)}
+.step.done{color:var(--color-text-muted);border-color:color-mix(in srgb,var(--color-primary) 50%,var(--color-border))}
+.d-sum{font-size:var(--text-base);font-weight:500;margin-bottom:calc(6*var(--u))}
+.d-content{font-size:var(--text-sm);color:var(--color-text-muted);white-space:pre-wrap;margin-bottom:calc(12*var(--u))}
+.kv{display:grid;grid-template-columns:calc(96*var(--u)) 1fr;gap:calc(3*var(--u)) calc(10*var(--u));font-size:var(--text-xs);margin:0 0 calc(12*var(--u))}
+.kv dt{color:var(--color-text-faint)}
+.kv dd{margin:0;font-family:var(--font-mono);font-size:var(--text-2xs);word-break:break-all;align-self:center}
+.sec{border-top:1px solid var(--color-border);padding-top:calc(10*var(--u));margin-top:calc(10*var(--u))}
+.banner{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:calc(8*var(--u)) calc(10*var(--u));font-size:var(--text-xs);display:flex;align-items:center;gap:calc(8*var(--u));background:var(--color-surface-2);margin-bottom:calc(10*var(--u))}
+.banner .grow{flex:1}
+.confirm{border:1px solid color-mix(in srgb,var(--color-danger) 40%,var(--color-border));border-radius:var(--radius-md);padding:calc(8*var(--u)) calc(10*var(--u));font-size:var(--text-xs)}
+@container frame (min-width: 900px){.variant.sheet-open .stage{right:calc(440*var(--u))}}
+
+/* ---------- C: inline editor + toasts ---------- */
+.inline-ed{border-top:1px solid var(--color-primary);border-bottom:1px solid var(--color-primary);background:var(--color-bg);padding:calc(10*var(--u)) calc(12*var(--u)) calc(10*var(--u)) calc(36*var(--u));animation:grow .15s ease}
+@keyframes grow{from{opacity:0;transform:translateY(calc(-4*var(--u)))}to{opacity:1;transform:none}}
+.ie-h{display:flex;align-items:center;gap:calc(10*var(--u));margin-bottom:calc(8*var(--u));flex-wrap:wrap}
+.ie-h b{font-size:var(--text-sm)}
+.ie-h .grow{flex:1}
+.ie-targets{display:flex;gap:calc(6*var(--u));flex-wrap:wrap;margin-bottom:calc(8*var(--u))}
+.tpill{display:inline-flex;align-items:center;gap:calc(5*var(--u));height:calc(22*var(--u));padding:0 calc(4*var(--u)) 0 calc(7*var(--u));border:1px solid var(--color-border);border-radius:var(--radius-full);font-size:var(--text-xs);background:var(--color-surface);transition:all .15s ease}
+.tpill.bad{border-color:var(--color-danger);color:var(--color-danger)}
+.tpill .x{width:calc(16*var(--u));height:calc(16*var(--u));font-size:calc(12*var(--u))}
+.ie-form{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 calc(10*var(--u))}
+.ie-form .span3{grid-column:1/-1}
+.ie-f{display:flex;align-items:center;gap:calc(8*var(--u));flex-wrap:wrap}
+.ie-f .grow{flex:1;min-width:0}
+.inline-ed.done{display:flex;align-items:center;gap:calc(10*var(--u));flex-wrap:wrap;padding:calc(8*var(--u)) calc(12*var(--u)) calc(8*var(--u)) calc(36*var(--u));border-color:var(--color-success)}
+@container frame (max-width: 700px){.ie-form{grid-template-columns:1fr}.inline-ed{padding-left:calc(12*var(--u))}}
+.toasts{position:absolute;left:calc(16*var(--u));bottom:calc(16*var(--u));z-index:50;display:flex;flex-direction:column;gap:calc(8*var(--u));width:min(calc(400*var(--u)),calc(100% - calc(32*var(--u))));pointer-events:none}
+.toast{pointer-events:auto;position:relative;overflow:hidden;background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);padding:calc(9*var(--u)) calc(10*var(--u)) calc(9*var(--u)) calc(12*var(--u));display:flex;gap:calc(10*var(--u));align-items:flex-start;font-size:var(--text-sm);animation:tin .15s ease}
+.toast.out{opacity:0;transform:translateY(calc(6*var(--u)));transition:all .15s ease}
+.toast .tb{flex:1;min-width:0}
+.toast .tt{font-weight:500}
+.toast .td{font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px}
+.toast.err{border-color:color-mix(in srgb,var(--color-danger) 55%,var(--color-border))}
+.toast.warn{border-color:color-mix(in srgb,var(--color-warning) 55%,var(--color-border))}
+.toast .ta{display:flex;gap:calc(6*var(--u));flex:none;align-items:center}
+.toast .bar{position:absolute;left:0;bottom:0;height:2px;background:var(--color-primary);animation:bar linear forwards}
+@keyframes tin{from{opacity:0;transform:translateY(calc(8*var(--u)))}to{opacity:1;transform:none}}
+@keyframes bar{from{width:100%}to{width:0}}
+
+/* ---------- peek popover ---------- */
+#peek{position:absolute;z-index:60;width:calc(340*var(--u));max-width:calc(100% - calc(24*var(--u)));background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);padding:calc(10*var(--u)) calc(12*var(--u));font-size:var(--text-xs);display:none;animation:pop .15s ease}
+#peek.open{display:block}
+#peek .ph{display:flex;align-items:center;gap:calc(6*var(--u));margin-bottom:calc(6*var(--u))}
+#peek .pc{color:var(--color-text-muted);white-space:pre-wrap;margin:calc(6*var(--u)) 0}
+#peek .pf{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint)}
+
+/* ---------- console-wide text size ----------
+   --ui-font (12–16px, default 15) is set on <html> by themes/display.js and shared by every console page.
+   --u = --ui-font/13, so every size written calc(N*var(--u)) resolves to N px at 13px.
+   .scaled marks the product surface; sketch chrome stays at --u:1px. */
+:root{--u:1px}
+.scaled{--u:calc(var(--ui-font) / 13);--text-2xs:calc(11*var(--u));--text-xs:calc(12*var(--u));--text-sm:var(--ui-font);--text-base:calc(14*var(--u));--text-lg:calc(16*var(--u));--text-xl:calc(18*var(--u));--text-2xl:calc(22*var(--u));--row-h:calc(28*var(--u));font-size:var(--text-sm)}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:calc(24*var(--u));height:calc(24*var(--u));border:0;border-radius:var(--radius-sm);background:transparent;color:var(--color-text-muted);cursor:pointer;transition:all .15s ease;flex:none}
+.icon-btn:hover{background:var(--color-hover);color:var(--color-text)}
+.aa{width:auto;padding:0 calc(6*var(--u));font-size:var(--text-xs);font-weight:600;letter-spacing:.02em;border:1px solid transparent}
+.aa[aria-expanded=true]{background:var(--color-primary-soft);color:var(--color-text);border-color:color-mix(in srgb,var(--color-primary) 45%,transparent)}
+.avatar{flex:none;display:inline-flex;align-items:center;justify-content:center;width:calc(24*var(--u));height:calc(24*var(--u));border-radius:50%;background:var(--color-surface-2);border:1px solid var(--color-border);font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-muted)}
+
+/* Display popover (fixed px on purpose: the control does not resize itself; only its preview does) */
+.dpop{position:fixed;z-index:70;width:320px;background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:10px 12px 12px;font-family:var(--font-sans);font-size:12px;line-height:1.4;color:var(--color-text-muted);display:flex;flex-direction:column;gap:8px}
+.dpop[hidden]{display:none}
+.dpop h3{margin:0;font-size:13px;font-weight:600;color:var(--color-text)}
+.dpop .lbl{display:flex;justify-content:space-between;align-items:baseline;margin:0;gap:0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)}
+.dpop .lbl .mono{font-family:var(--font-mono);text-transform:none;letter-spacing:0;color:var(--color-text)}
+.ts-seg{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden}
+.ts-seg button{background:transparent;border:0;border-right:1px solid var(--color-border);height:28px;font-family:var(--font-mono);color:var(--color-text-muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:baseline;justify-content:center;gap:1px;padding-top:6px}
+.ts-seg button:last-child{border-right:0}
+.ts-seg button:hover{background:var(--color-hover);color:var(--color-text)}
+.ts-seg button[aria-checked=true]{background:var(--color-primary-soft);color:var(--color-text);box-shadow:inset 0 -2px 0 var(--color-primary)}
+.ts-seg button:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}
+.ts-seg small{font-size:9px;color:var(--color-text-faint)}
+.dpop .keys{font-size:11px;color:var(--color-text-faint);display:flex;gap:8px;flex-wrap:wrap}
+.pv{background:var(--color-bg);border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);overflow:hidden}
+.pv-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;column-gap:calc(8*var(--u));align-items:center;height:var(--row-h);padding:0 calc(10*var(--u));color:var(--color-text)}
+.pv .cat{display:inline-flex;align-items:center;gap:calc(6*var(--u));color:var(--c);font-size:var(--text-2xs);white-space:nowrap}
+.pv .cat i{flex:none;width:calc(7*var(--u));height:calc(7*var(--u));border-radius:2px;background:var(--c)}
+.pv .sum{display:block;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--color-text)}
+.pv .sum code{font-family:var(--font-mono);font-size:.92em;color:var(--color-text);background:var(--color-surface-2);border:0;padding:0 3px;border-radius:3px}
+.pv .age{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint);text-align:right}
+.pv .num{width:auto;font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-muted)}
+.vhead .aa{margin-left:auto;align-self:center}
+.vhead .avatar{align-self:center}
+/* text-size toast (same look as sketches 001/002; C's undo toasts are a separate design) */
+.ttoast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,8px);z-index:9997;background:var(--color-surface-2);color:var(--color-text);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:calc(6*var(--u)) calc(12*var(--u));font-size:var(--text-xs);opacity:0;transition:opacity .15s ease,transform .15s ease;pointer-events:none}
+.ttoast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- sketch toolbar (hardcoded dark, not part of the design) ---------- */
+#sketch-tools{position:fixed;bottom:12px;right:12px;z-index:9999;font:12px/1.2 system-ui,sans-serif;background:rgba(0,0,0,.72);color:#fff;padding:6px 8px;border-radius:8px;opacity:.45;transition:opacity .15s ease;display:flex;gap:8px;align-items:center}
+#sketch-tools:hover{opacity:1}
+#sketch-tools select,#sketch-tools button{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:2px 6px;font:inherit;cursor:pointer;transition:all .15s ease}
+#sketch-tools button:hover{background:rgba(255,255,255,.2)}
+#sketch-tools button.on{background:rgba(255,255,255,.3);border-color:rgba(255,255,255,.6)}
+#sketch-tools option{color:#000}
+#sketch-tools .g{display:flex;gap:2px}
+#anno-tip{position:fixed;z-index:10000;pointer-events:none;background:rgba(0,0,0,.85);color:#fff;font:11px/1.35 ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;display:none;white-space:pre;max-width:360px}
+.anno-hl{outline:1px dashed #ff4fd8 !important;outline-offset:-1px}
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="ttl">003 curation-dialogs</span>
+  <button class="variant-tab active" data-v="a" onclick="showVariant('a', this)">A: Modal dialog ★ Selected</button>
+  <button class="variant-tab" data-v="b" onclick="showVariant('b', this)">B: Side sheet</button>
+  <button class="variant-tab" data-v="c" onclick="showVariant('c', this)">C: Inline + undo toast</button>
+</div>
+
+<div id="scenario">
+  <span>Next call returns</span>
+  <span class="seg" id="mode-seg">
+    <button class="on" data-mode="success">success</button>
+    <button data-mode="validation">validation error</button>
+    <button data-mode="rejection">server rejection</button>
+    <button data-mode="reauth">re-auth required</button>
+  </span>
+  <span class="sep"></span>
+  <button class="btn sm ghost" id="reset-btn" title="each tab also starts from the same seed">reset data</button>
+  <span class="sep"></span>
+  <span><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>x</kbd> select · <kbd>s</kbd> supersede · <kbd>e</kbd> archive · <kbd>u</kbd> restore · <kbd>h</kbd> hidden · <kbd>esc</kbd> close · <kbd>⌘↵</kbd> submit</span>
+</div>
+
+<div id="frame" class="scaled">
+  <div id="variant-a" class="variant active"><div class="stage" id="a-stage"></div><div id="a-overlay"></div></div>
+  <div id="variant-b" class="variant"><div class="stage" id="b-stage"></div><div id="b-overlay"></div></div>
+  <div id="variant-c" class="variant"><div class="stage" id="c-stage"></div><div class="toasts" id="c-toasts"></div></div>
+  <div id="peek"></div>
+</div>
+<datalist id="dl-sids"></datalist>
+<div class="ttoast scaled" id="ts-toast"></div>
+<div class="dpop" id="display-pop" role="dialog" aria-label="Display" hidden>
+  <h3>Display</h3>
+  <div class="lbl"><span id="ts-lbl">Text size</span><span class="mono" id="ts-val">15px</span></div>
+  <div class="ts-seg" id="ts-seg" role="radiogroup" aria-labelledby="ts-lbl">
+    <button role="radio" data-ts="12">12<small>px</small></button><button role="radio" data-ts="13">13<small>px</small></button><button role="radio" data-ts="14">14<small>px</small></button><button role="radio" data-ts="15">15<small>px</small></button><button role="radio" data-ts="16">16<small>px</small></button>
+  </div>
+  <div class="keys" id="ts-keys"></div>
+  <div class="lbl"><span>Preview</span><span>saved per viewer</span></div>
+  <div class="pv scaled" id="ts-preview"><div class="pv-row"><span class="cat" style="--c:var(--cat-gotcha)"><i></i>gotcha</span><span class="sum">gofmt drift is NOT caught by <code>golangci-lint</code></span><span class="age">12d</span><span class="score"><span class="num">0.81</span></span></div></div>
+  <div class="keys">Applies to every console page, not just this list.</div>
+</div>
+
+<div id="sketch-tools">
+  <select id="theme-sel" title="theme">
+    <option value="default">default (dark)</option>
+    <option value="light">light</option>
+  </select>
+  <span class="g" id="vp-g">
+    <button data-vp="375">375</button><button data-vp="768">768</button><button data-vp="1280">1280</button><button data-vp="full" class="on">full</button>
+  </span>
+  <button id="anno-btn" title="hover elements to inspect">annotate</button>
+</div>
+<div id="anno-tip"></div>
+
+<script>
+/* ================= data ================= */
+const ME = 'sean';
+const REPO = 'repo:github.com/seanb4t/engram';
+const NOW0 = Date.parse('2026-09-26T12:00:00Z');
+let CLOCK = 0;
+const nowISO = () => new Date(NOW0 + (++CLOCK) * 60000).toISOString();
+const CATS = ['decision','gotcha','convention','preference','discovery'];
+const EXAMPLE = {
+  summary: 'DECIDED: Jev rerank telemetry is two-tier — query logged only behind ENGRAM_SEARCH_RERANK_AUDIT',
+  content: 'Reverses "log the query always". The default tier logs per-hit relevance and decision latency only. The raw query text is logged solely when ENGRAM_SEARCH_RERANK_AUDIT=true, because agents paste secrets into queries. Applies to search_memory and search_discovery reranking.',
+  tags: 'jev, telemetry, privacy', category: 'decision'
+};
+function seed(){
+  const R = (n, o) => Object.assign({ id: `0192f3a1-7c4e-7b1a-9d2e-00000000${String(n).padStart(4,'0')}`, scope: REPO, owner: ME, visibility: 'private', tags: [], superseded_by: null, archived_at: null }, o);
+  return [
+    R(1, { short_id:'y0bzh06c11', category:'decision', summary:'Rerank telemetry logs the query always', content:'Every search_memory call with ENGRAM_SEARCH_RANKER=jev logs the raw query text alongside per-hit relevance, so reordering can be debugged after the fact.', tags:['jev','telemetry'], created_at:'2026-08-14T10:02:00Z' }),
+    R(2, { short_id:'k3m9q2x7aa', category:'decision', summary:'Rerank telemetry: log query text on every Jev call', content:'Replaces 1% sampling: log the query text on every reranked call and drop the relevance histogram.', tags:['jev','telemetry','search'], created_at:'2026-09-02T16:40:00Z' }),
+    R(3, { short_id:'9f2hc8wz1p', category:'gotcha', summary:'Qdrant keyword index on tags must exist before a tags filter', content:'A tags pre-filter without a keyword payload index on `tags` falls back to a full scan. EnsureCollection creates the index before the first write.', tags:['qdrant','tags'], created_at:'2026-07-21T09:15:00Z' }),
+    R(4, { short_id:'t7vd0m3nqe', category:'convention', summary:'short_id is 10-char Crockford base32, accepted anywhere an id is', content:'Server-minted; legacy records gain one via engram backfill-short-ids.', tags:['ids'], visibility:'shared', created_at:'2026-06-30T13:00:00Z' }),
+    R(5, { short_id:'p1xw8r5jbk', category:'decision', summary:'Summaries fill async — never on the synchronous write path', content:'A bounded worker pool fills auto-summaries after store_memory returns. A write succeeds once persisted even if the summarizer is down.', tags:['summary'], owner:'priya', visibility:'shared', created_at:'2026-08-29T11:20:00Z' }),
+    R(6, { short_id:'st74vdk0gh', category:'rule', summary:'NEVER apply a payload migration automatically — preview by default, mutate only under --apply', content:'No migration applies on startup or on failure. Startup runs a read-only MigrateStatus probe only.', scope:'rule:repo:github.com/seanb4t/engram', tags:['migrate'], visibility:'shared', created_at:'2026-05-11T08:00:00Z' }),
+    R(7, { short_id:'b4n6yq0c2d', category:'preference', summary:'Prefer update_memory for refinement; supersede only for reversals', content:'Refinements keep the record; reversals keep history via supersede_memory.', tags:['curation'], created_at:'2026-09-10T15:05:00Z' }),
+    R(8, { short_id:'h8r2kz5m0v', category:'decision', summary:'Rerank telemetry samples 1% of queries', content:'Sample 1% of reranked queries into the telemetry log with a relevance histogram.', tags:['jev','telemetry'], superseded_by:'0192f3a1-7c4e-7b1a-9d2e-000000000002', created_at:'2026-07-03T10:00:00Z' }),
+    R(9, { short_id:'c6e1wa9f3t', category:'discovery', summary:'map: internal/migrate — ordered registry of additive steps', content:'Each step declares reversibility; engram migrate sweeps them. Cites internal/migrate/registry.go.', scope:'discovery:repo:github.com/seanb4t/engram', tags:['migrate','map'], created_at:'2026-09-18T17:30:00Z' }),
+    R(10,{ short_id:'m2q5tj8x4r', category:'gotcha', summary:'koanf strips the ENGRAM_ prefix before key mapping', content:'Env ENGRAM_OIDC_ISSUER maps to oidc.issuer; the prefix is gone by the time the transform runs.', tags:['config'], archived_at:'2026-09-20T08:11:00Z', not_after:'2026-09-01T00:00:00Z', created_at:'2026-04-02T12:00:00Z' }),
+    R(11,{ short_id:'w9e3rb7n5k', category:'decision', summary:'Cut v0.14 only after the console overhaul ships', content:'Hold the release until phase 01.1 sketches land.', tags:['release'], not_before:'2026-10-15T00:00:00Z', created_at:'2026-09-24T09:00:00Z' }),
+  ];
+}
+let DB = seed();
+
+/* ================= helpers ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const bytes = s => new TextEncoder().encode(s).length;
+const byId = id => DB.find(r => r.id === id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const fmtDate = iso => iso.slice(5, 10);
+const shortScope = s => s.replace('github.com/seanb4t/', '');
+const dot = r => `<span class="dot" style="--c:var(--cat-${r.category})"></span>`;
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const ICON = {
+  check: '<svg class="i okicon" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  chain: '<svg class="i" viewBox="0 0 16 16"><path d="M6.5 9.5l3-3M5.5 7L4 8.5a2.5 2.5 0 003.5 3.5L9 10.5M10.5 9L12 7.5A2.5 2.5 0 008.5 4L7 5.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+};
+function genSid(){ const a = '0123456789abcdefghjkmnpqrstvwxyz'; let s = ''; for (let i = 0; i < 10; i++) s += a[Math.floor(Math.random() * 32)]; return s; }
+
+// State words: archived › superseded › expired › scheduled (expired suppresses scheduled)
+function stateWords(r){
+  const w = [], now = NOW0 + CLOCK * 60000;
+  if (r.archived_at) w.push('archived');
+  if (r.superseded_by) w.push('superseded');
+  const expired = r.not_after && now >= Date.parse(r.not_after);
+  const scheduled = r.not_before && now < Date.parse(r.not_before);
+  if (expired) w.push('expired'); else if (scheduled) w.push('scheduled');
+  return w;
+}
+const wordsHTML = r => stateWords(r).map(x => `<span class="sw sw-${x}">${x}</span>`).join('');
+
+function headOf(r){ let x = r; const seen = new Set(); while (x && x.superseded_by && !seen.has(x.id)) { seen.add(x.id); x = byId(x.superseded_by) || x; } return x; }
+const predsOf = id => DB.filter(r => r.superseded_by === id);
+const inChain = r => !!r.superseded_by || predsOf(r.id).length > 0;
+function depthBelowHead(r){ let d = 0, x = r; while (x.superseded_by) { d++; x = byId(x.superseded_by); } return d; }
+
+// Supersede target issues, in the server's evaluation order: access, rule, already superseded
+function supIssue(r){
+  if (r.owner !== ME) return { code: 'not-owned', text: `shared by ${r.owner} — readable, but only the owner can supersede` };
+  if (r.category === 'rule') return { code: 'rule', text: 'rules cannot be superseded — delete it instead' };
+  if (r.superseded_by) { const h = headOf(r); return { code: 'already-superseded', text: `not the live head — current head is ${h.short_id}`, head: h }; }
+  return null;
+}
+const arcIssue = r => r.owner !== ME ? { code: 'not-owned', text: `shared by ${r.owner} — archive is owner-only` } : null;
+
+/* chain model */
+function tree(node, depth = 0, seen = new Set()){
+  const preds = node.virtual ? node.preds.map(byId) : predsOf(node.id);
+  seen.add(node.id);
+  return { node, depth, kids: preds.filter(p => p && !seen.has(p.id)).map(p => tree(p, depth + 1, seen)) };
+}
+function levels(t){ const L = []; (function walk(n){ (L[n.depth] = L[n.depth] || []).push(n); n.kids.forEach(walk); })(t); return L; }
+function paths(t){ const out = []; (function walk(n, acc){ const a = [n.node, ...acc]; if (!n.kids.length) out.push(a); else n.kids.forEach(k => walk(k, a)); })(t, []); return out; }
+function flat(t){ const out = []; (function walk(n){ out.push(n); n.kids.forEach(walk); })(t); return out; }
+function virtualHead(s){ return { virtual: true, id: '__new', short_id: '(new)', category: s.form.category, summary: s.form.summary || '(no summary)', preds: s.targets.slice() }; }
+
+function cnode(n, o = {}){
+  const r = n; const cls = ['cnode', o.hl === r.id && 'hl', r.virtual && 'new', o.bad && o.bad.has(r.id) && 'bad', o.isNew === r.id && 'hl'].filter(Boolean).join(' ');
+  return `<span class="${cls}" ${r.virtual ? '' : `data-sact="peek" data-id="${r.id}"`} title="${esc(r.summary)}">${dot(r)}<span class="mono">${r.short_id}</span><span class="csum">${esc(r.summary)}</span>${r.virtual ? '' : wordsHTML(r)}</span>`;
+}
+function badSet(s){ const b = new Set(); s.targets.forEach(id => { if (supIssue(byId(id))) b.add(id); }); return b; }
+
+// A: columns, oldest left → head right
+function chainColumns(t, o = {}){
+  const L = levels(t); let h = '<div class="chain-cols">';
+  for (let d = L.length - 1; d >= 0; d--) {
+    h += `<div class="ccol"><span class="ccol-h">${d === 0 ? 'head · d0' : 'd' + d}</span>${L[d].map(n => cnode(n.node, o)).join('')}</div>`;
+    if (d > 0) h += '<span class="carrow">→</span>';
+  }
+  return h + '</div><div class="legend">← predecessors (superseded, hidden from recall) · arrows read "superseded by" · head is the live record</div>';
+}
+// B: vertical timeline, head on top
+function chainTimeline(t, o = {}){
+  return '<div class="tl">' + flat(t).map(n => `<div class="tl-item ${n.depth === 0 ? 'head' : ''}" style="--d:${n.depth};--c:var(--cat-${n.node.category})"><span class="tl-dot"></span><span class="tl-d">${n.depth === 0 ? 'head' : 'd' + n.depth}</span>${cnode(n.node, o)}</div>`).join('') + '</div><div class="legend">each level down is an older predecessor; indentation = depth below the head</div>';
+}
+// C: breadcrumb per lineage path
+function chainCrumbs(t, o = {}){
+  return '<div class="crumbs">' + paths(t).map(p => `<div class="crumb">${p.map((n, i) => (i ? '<span class="sepc">›</span>' : '') + cnode(n, o)).join('')}</div>`).join('') + '</div>';
+}
+
+/* ================= fake backend ================= */
+let MODE = 'success';
+function fakeCall(kind, ctx, force){
+  const m = force || MODE;
+  return new Promise(res => setTimeout(() => {
+    if (m === 'success') return res({ ok: true });
+    if (m === 'validation') return res(kind === 'supersede'
+      ? { ok: false, kind: 'validation', field: 'summary', env: `field=summary hint=too_long: summary must be at most 512 bytes (got ${Math.max(601, bytes(ctx.form.summary))})` }
+      : { ok: false, kind: 'validation', field: 'ids', env: `field=ids hint=format: id "${ctx.sids[0].slice(0, 9)}" is not a UUID or a 10-char short id` });
+    if (m === 'rejection') {
+      if (kind === 'supersede') { const t = ctx.sids[ctx.sids.length - 1]; return res({ ok: false, kind: 'rejection', env: `target is already superseded: ${t}`, targets: [t], note: 'Another session superseded this target after you opened the editor. Supersede its current head instead. Nothing was written.' }); }
+      return res({ ok: false, kind: 'rejection', env: `not found: ${ctx.sids[0]}`, targets: [ctx.sids[0]], note: 'Not found, not owned and ambiguous short id are one rejection by design. Nothing was changed.' });
+    }
+    return res({ ok: false, kind: 'reauth', env: 'unauthenticated: bearer token expired at 11:58:02Z' });
+  }, 700));
+}
+function envHTML(res){
+  let m = res.env.match(/^field=(\S+) hint=(\S+): (.*)$/);
+  if (m) return `<div class="env-k"><span class="pill k">field=${esc(m[1])}</span><span class="pill k">hint=${esc(m[2])}</span></div><div>${esc(m[3])}</div><code class="env-raw">${esc(res.env)}</code>`;
+  m = res.env.match(/^([^:]+): (.*)$/);
+  return `<div class="env-k"><span class="pill k">${esc(m[1])}</span>${m[2].split(', ').map(x => `<span class="pill">${esc(x)}</span>`).join('')}</div>${res.note ? `<div>${esc(res.note)}</div>` : ''}<code class="env-raw">${esc(res.env)}</code>`;
+}
+function statusHTML(s, kind){
+  if (s.status === 'loading') return `<div class="status loading"><span class="spin"></span>${esc(s.loadingText || 'Calling…')}</div>`;
+  if (s.status === 'reauthing') return `<div class="status loading"><span class="spin"></span>Re-authenticating via OIDC… your ${kind === 'sup' ? 'draft' : 'selection'} is kept</div>`;
+  if (s.status === 'error') {
+    if (s.res.kind === 'reauth') return `<div class="status warn"><div><b>Session expired.</b> Nothing was written; your ${kind === 'sup' ? 'draft' : 'selection'} is kept.</div><code class="env-raw">${esc(s.res.env)}</code><div class="row-b"><button class="btn sm primary" data-sact="reauth" data-kind="${kind}">Re-authenticate &amp; retry</button></div></div>`;
+    return `<div class="status err"><b>${s.res.kind === 'validation' ? 'Rejected — fix the named field and resend' : 'Server rejected the call — nothing was written'}</b>${envHTML(s.res)}</div>`;
+  }
+  return '';
+}
+
+/* ================= mutations ================= */
+function applySupersede(ids, f){
+  const sid = genSid();
+  const rec = { id: '0192f3a1-new0-7000-8000-' + sid, short_id: sid, category: f.category, summary: f.summary.trim(), content: f.content.trim(), scope: f.scope, tags: f.tags.split(',').map(t => t.trim()).filter(Boolean), owner: ME, visibility: 'private', superseded_by: null, archived_at: null, created_at: nowISO(), supersedes: ids.slice() };
+  DB.push(rec); ids.forEach(id => byId(id).superseded_by = rec.id); return rec;
+}
+function applyArchive(ids, op){
+  const done = [], already = [];
+  ids.forEach(id => { const r = byId(id);
+    if (op === 'archive') { if (r.archived_at) already.push(r); else { r.archived_at = nowISO(); done.push(r); } }
+    else { if (!r.archived_at) already.push(r); else { r.archived_at = null; done.push(r); } } });
+  return { done, already };
+}
+
+/* ================= per-variant state ================= */
+const VS = {};
+const SESS = { a: null, b: null, c: null };   // supersede sessions
+const ARC = { a: null, b: null };              // archive sessions (C is instant)
+function resetState(){
+  ['a','b','c'].forEach(v => VS[v] = { focus: 0, sel: new Set(), showHidden: false, flash: new Set(), modal: null, sheet: null, menu: null, opened: false });
+  SESS.a = SESS.b = SESS.c = null; ARC.a = ARC.b = null;
+}
+resetState();
+let CUR = 'a';
+
+function listRows(v){ const st = VS[v]; return DB.filter(r => st.showHidden || !stateWords(r).length).sort((a, b) => b.created_at.localeCompare(a.created_at)); }
+function flash(v, ids){ const st = VS[v]; ids.forEach(id => st.flash.add(id)); setTimeout(() => ids.forEach(id => st.flash.delete(id)), 1700); }
+
+function newSession(ids){
+  const recs = ids.map(byId).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const src = recs[0];
+  return { targets: ids.slice(), prefillSid: src.short_id, status: 'idle', res: null, errField: null, result: null, step: 1, rejected: [],
+    form: { summary: src.summary, content: src.content, category: CATS.includes(src.category) ? src.category : 'decision', tags: src.tags.join(', '), scope: src.scope.startsWith('rule:') ? REPO : src.scope } };
+}
+function gateReason(s){
+  if (!s.targets.length) return 'Add at least one target';
+  const bad = s.targets.filter(id => supIssue(byId(id))).length;
+  if (bad) return `Remove ${plural(bad, 'invalid target')} — an invalid set rejects the whole call`;
+  if (!s.form.content.trim()) return 'content is required';
+  return '';
+}
+function targetsGate(s){
+  if (!s.targets.length) return 'Pick at least one target';
+  const bad = s.targets.filter(id => supIssue(byId(id))).length;
+  return bad ? `Remove ${plural(bad, 'invalid target')} to continue` : '';
+}
+
+/* ================= shared fragments ================= */
+function targetsHTML(s){
+  return s.targets.map(id => { const r = byId(id), iss = supIssue(r), rej = s.rejected.includes(r.short_id);
+    return `<div class="tchip ${iss || rej ? 'bad' : ''}"><div class="tchip-top">${dot(r)}<span class="mono sid">${r.short_id}</span><span class="tsum" title="${esc(r.summary)}">${esc(r.summary)}</span><button class="x" data-sact="rm-target" data-id="${id}" title="Remove target">×</button></div>`
+      + (iss ? `<div class="tissue"><span class="code">${iss.code}</span>${esc(iss.text)}${iss.head && !s.targets.includes(iss.head.id) && !supIssue(iss.head) ? ` · <button class="link" data-sact="swap-head" data-id="${id}">use head ${iss.head.short_id}</button>` : ''}</div>` : '')
+      + (rej ? `<div class="tissue"><span class="code">server</span>already superseded by another session</div>` : '')
+      + (!iss && !rej ? `<div class="tok">${fmtDate(r.created_at)} · ${shortScope(r.scope)}${inChain(r) ? ` · has ${predsOf(r.id).length} predecessor(s)` : ''}</div>` : '')
+      + '</div>'; }).join('') || '<div class="dim" style="font-size:var(--text-xs);padding:6px 0">No targets yet.</div>';
+}
+function addTargetHTML(){ return `<div class="add-t"><input class="in mono" list="dl-sids" placeholder="add target by short_id…" data-sact-input="add-target"></div>`; }
+function formHTML(s, compact){
+  const f = s.form, e = s.errField, b = bytes(f.summary);
+  const scopes = [...new Set([REPO, ...s.targets.map(id => byId(id).scope).filter(x => !x.startsWith('rule:'))])];
+  const spans = new Set(s.targets.map(id => byId(id).scope)).size;
+  const cat = `<label class="fld"><span class="lbl">category</span><select class="in" data-f="category">${CATS.map(c => `<option ${c === f.category ? 'selected' : ''}>${c}</option>`).join('')}</select></label>`;
+  const scope = `<label class="fld"><span class="lbl">scope</span><select class="in mono" data-f="scope">${scopes.map(x => `<option value="${x}" ${x === f.scope ? 'selected' : ''}>${shortScope(x)}</option>`).join('')}</select></label>`;
+  const tags = `<label class="fld"><span class="lbl">tags</span><input class="in" data-f="tags" value="${esc(f.tags)}"></label>`;
+  const summary = `<label class="fld ${e === 'summary' ? 'err' : ''} ${compact ? 'span3' : ''}"><span class="lbl">summary <span class="cnt mono ${b > 512 ? 'over' : ''}" data-count>${b}/512 B</span></span><input class="in" data-f="summary" value="${esc(f.summary)}"><span class="ferr" data-ferr="summary">${e === 'summary' ? 'field=summary hint=too_long' : ''}</span></label>`;
+  const content = `<label class="fld ${compact ? 'span3' : ''}"><span class="lbl">content</span><textarea class="in" data-f="content" rows="${compact ? 3 : 5}">${esc(f.content)}</textarea><span class="ferr" data-ferr="content"></span></label>`;
+  const pre = `<div class="prefill ${compact ? 'span3' : ''}">Prefilled from newest predecessor <span class="mono">${s.prefillSid}</span> · <button class="link" data-sact="fill-example">write the example correction</button></div>`;
+  const warn = spans > 1 ? `<div class="warnline ${compact ? 'span3' : ''}">Targets span ${spans} scopes — the new record lands in one.</div>` : '';
+  return compact ? pre + warn + summary + content + cat + scope + tags : pre + warn + summary + content + `<div class="frow">${cat}${scope}</div>` + tags;
+}
+function gateHTML(s){ const g = gateReason(s); return `<span class="gate ${g ? '' : 'okg'}" data-gate>${g ? esc(g) : 'Additive: predecessors get superseded_by, nothing is deleted'}</span>`; }
+function supBtn(s, label){ const n = s.targets.length; return `<button class="btn primary" data-sact="submit-sup" data-submit ${gateReason(s) || s.status === 'loading' || s.status === 'reauthing' ? 'disabled' : ''}>${label || `Supersede ${n} → 1`}</button>`; }
+
+/* live refresh of form-dependent bits without re-rendering inputs */
+function refreshLive(v){
+  const s = SESS[v]; if (!s) return; const root = $('#variant-' + v);
+  const b = bytes(s.form.summary); $$('[data-count]', root).forEach(el => { el.textContent = `${b}/512 B`; el.classList.toggle('over', b > 512); });
+  $$('[data-gate]', root).forEach(el => { const g = gateReason(s); el.textContent = g || 'Additive: predecessors get superseded_by, nothing is deleted'; el.classList.toggle('okg', !g); });
+  $$('[data-submit]', root).forEach(el => el.disabled = !!gateReason(s));
+  $$('[data-chain]', root).forEach(el => el.innerHTML = previewChain(v, s));
+}
+function previewChain(v, s){
+  const t = tree(virtualHead(s)), o = { bad: badSet(s) };
+  return v === 'a' ? chainColumns(t, o) : v === 'b' ? chainTimeline(t, o) : chainCrumbs(t, o);
+}
+function resultChain(v, rec, hl){
+  const t = tree(headOf(rec)), o = { hl: hl || rec.id };
+  return v === 'a' ? chainColumns(t, o) : v === 'b' ? chainTimeline(t, o) : chainCrumbs(t, o);
+}
+
+/* ================= list ================= */
+function listHTML(v){
+  const st = VS[v], rows = listRows(v), hiddenN = DB.filter(r => stateWords(r).length).length;
+  const s = SESS[v];
+  const targetMode = v === 'b' && s && s.status !== 'success' && s.step === 1;
+  const inSess = s && s.status !== 'success' ? new Set(s.targets) : new Set();
+  if (st.focus >= rows.length) st.focus = rows.length - 1;
+  const selN = st.sel.size;
+  let top;
+  if (targetMode) top = `<div class="list-top bulk"><span class="ttl"><b>Picking targets</b> — click rows to add or remove (${s.targets.length} picked)</span></div>`;
+  else if (v === 'b' && s && s.status !== 'success') top = `<div class="list-top bulk"><span class="ttl"><b>Writing the correction</b> for ${plural(s.targets.length, 'target')} — go back a step to change them</span></div>`;
+  else if (selN) top = `<div class="list-top bulk"><span class="ttl"><b>${selN} selected</b></span><button class="btn sm" data-sact="bulk-sup">Supersede ${selN} into one… <kbd>s</kbd></button><button class="btn sm" data-sact="bulk-arc">Archive <kbd>e</kbd></button><button class="btn sm" data-sact="bulk-res">Restore <kbd>u</kbd></button><button class="link" data-sact="clear-sel">clear</button></div>`;
+  else top = `<div class="list-top"><span class="ttl"><b>Recall</b> · <span class="mono">repo:engram</span> · ${rows.length} shown${st.showHidden ? ' incl. hidden' : ''}</span><label class="tog"><input type="checkbox" data-sact="toggle-hidden" ${st.showHidden ? 'checked' : ''}> show hidden <span class="count">${hiddenN}</span></label></div>`;
+  let body = '';
+  const anchor = v === 'c' && s ? cAnchor(rows, s) : null;
+  rows.forEach((r, i) => { body += rowHTML(v, r, i, inSess, targetMode); if (anchor === r.id) body += cEditorHTML(); });
+  if (v === 'c' && s && anchor === null) body = cEditorHTML() + body;
+  return top + `<div class="list ${selN || targetMode ? 'has-sel' : ''}">${body || '<div class="dim" style="padding:12px">Nothing in recall. Toggle show hidden.</div>'}</div>`;
+}
+function rowHTML(v, r, i, inSess, targetMode){
+  const st = VS[v], w = stateWords(r), mine = r.owner === ME;
+  const checked = targetMode ? inSess.has(r.id) : st.sel.has(r.id);
+  const cls = ['row', !targetMode && st.sel.has(r.id) && 'sel', i === st.focus && 'focus', w.length && 'dimrow', st.flash.has(r.id) && 'flash', inSess.has(r.id) && 'intarget', st.menu === r.id && 'menu-open'].filter(Boolean).join(' ');
+  return `<div class="${cls}" data-id="${r.id}" data-i="${i}">
+    <span class="chk"><input type="checkbox" data-sact="sel" data-id="${r.id}" ${checked ? 'checked' : ''} tabindex="-1"></span>
+    <span class="cat" style="--c:var(--cat-${r.category})"><i></i><em>${r.category}</em></span>
+    <span class="mono sid">${r.short_id}</span>
+    <span class="sum"><span class="sumt">${esc(r.summary)}</span>${r.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</span>
+    <span class="words">${wordsHTML(r)}</span>
+    <span class="meta">${!mine ? `<span class="own" title="${r.owner}'s shared record — read-only for you">${r.owner}</span>` : ''}${r.visibility === 'shared' && mine ? '<span>shared</span>' : ''}${inChain(r) ? `<span title="in a supersession chain">${ICON.chain}</span>` : ''}</span>
+    <span class="mono date">${fmtDate(r.created_at)}</span>
+    <span class="acts">${targetMode ? '' : actsHTML(v, r)}</span>
+    ${st.menu === r.id ? menuHTML(r) : ''}
+  </div>`;
+}
+function actsHTML(v, r){
+  const arc = r.archived_at ? `<button class="ib" data-sact="res" data-id="${r.id}">Restore</button>` : `<button class="ib" data-sact="arc" data-id="${r.id}">Archive</button>`;
+  if (v === 'a') return `<button class="ib" data-sact="sup" data-id="${r.id}">Supersede</button>${arc}${inChain(r) ? `<button class="ib" data-sact="chain" data-id="${r.id}">Chain</button>` : ''}`;
+  if (v === 'b') return `<button class="ib" data-sact="sup" data-id="${r.id}">Supersede</button>${arc}<button class="ib" data-sact="open" data-id="${r.id}">Open ›</button>`;
+  return `<span class="kh"><kbd>s</kbd><kbd>${r.archived_at ? 'u' : 'e'}</kbd></span><button class="ib" data-sact="menu" data-id="${r.id}" title="Actions">•••</button>`;
+}
+
+/* ================= Variant A: modal dialog ================= */
+function renderA(){
+  const st = VS.a; $('#a-stage').innerHTML = `<div class="vhead"><h2>Modal dialog</h2><p>Supersede opens a centred dialog (targets | correcting record | live chain). Archive/Restore = small confirm. shadcn-svelte Dialog.</p><button class="icon-btn aa" data-act="display" aria-haspopup="dialog" aria-expanded="${!document.getElementById('display-pop').hidden}" aria-controls="display-pop" title="Display: text size">Aa</button><span class="avatar" title="Account menu (not sketched)">sb</span></div>` + listHTML('a');
+  const ov = $('#a-overlay');
+  if (!st.modal) { ov.innerHTML = ''; st.opened = false; return; }
+  let inner = '';
+  if (st.modal === 'sup') inner = dlgSupersede();
+  else if (st.modal === 'arc') inner = dlgArchive();
+  else if (st.modal === 'chain') inner = dlgChain();
+  ov.innerHTML = `<div class="scrim ${st.opened ? 'open' : ''}">${inner}</div>`;
+  if (!st.opened) { st.opened = true; requestAnimationFrame(() => requestAnimationFrame(() => { const sc = $('.scrim', ov); sc && sc.classList.add('open'); })); }
+}
+function dlgSupersede(){
+  const s = SESS.a;
+  if (s.status === 'success') { const rec = s.result, n = rec.supersedes.length;
+    return `<div class="dialog md" role="dialog"><div class="dlg-h"><div><b>${ICON.check} Superseded ${plural(n, 'record')} → <span class="mono">${rec.short_id}</span></b><div class="dim">Stored <span class="mono">${rec.short_id}</span> and stamped <span class="mono">superseded_by</span> on ${rec.supersedes.map(id => `<span class="mono">${byId(id).short_id}</span>`).join(', ')}. They drop out of recall but stay fetchable by id.</div></div><button class="x" data-sact="close">×</button></div>
+      <div class="dlg-b"><div class="lbl">Resulting chain</div>${resultChain('a', rec)}
+      <div class="status" style="margin-top:12px"><div><b>No undo.</b> Supersession is additive history, not an edit. To change it, supersede <span class="mono">${rec.short_id}</span> again.</div></div></div>
+      <div class="dlg-f"><span class="grow"></span><button class="btn" data-sact="view-superseded">View superseded (${n})</button><button class="btn" data-sact="peek" data-id="${rec.id}">Open ${rec.short_id}</button><button class="btn primary" data-sact="close">Done</button></div></div>`; }
+  return `<div class="dialog lg" role="dialog"><div class="dlg-h"><div><b>Supersede ${plural(s.targets.length, 'record')} into one</b><div class="dim">Stores a new correcting record and stamps <span class="mono">superseded_by</span> on every predecessor. Additive — nothing is deleted.</div></div><button class="x" data-sact="close">×</button></div>
+    <div class="dlg-b two"><div><div class="lbl">Predecessors <span class="mono">${s.targets.length}</span></div>${targetsHTML(s)}${addTargetHTML()}</div>
+    <div><div class="lbl">Correcting record</div>${formHTML(s)}</div></div>
+    <div class="dlg-chain"><div class="lbl">Chain preview <span>live</span></div><div data-chain>${previewChain('a', s)}</div></div>
+    ${s.status !== 'idle' ? `<div class="dlg-status" style="padding-top:10px">${statusHTML(s, 'sup')}</div>` : ''}
+    <div class="dlg-f"><span class="grow">${gateHTML(s)}</span><span class="faint" style="font-size:var(--text-2xs)"><kbd>⌘↵</kbd></span><button class="btn" data-sact="close">Cancel</button>${supBtn(s)}</div></div>`;
+}
+function dlgArchive(){
+  const s = ARC.a, verb = s.op === 'archive' ? 'Archive' : 'Restore';
+  if (s.status === 'success') { const { done, already } = s.result, past = s.op === 'archive' ? 'archived' : 'restored';
+    return `<div class="dialog sm" role="dialog"><div class="dlg-h"><div><b>${ICON.check} ${done.length ? `${plural(done.length, 'record')} ${past}` : 'No change'}</b><div class="dim">${already.length ? `${already.map(r => r.short_id).join(', ')} ${s.op === 'archive' ? 'already archived' : 'not archived'} — idempotent, no change.` : (s.op === 'archive' ? 'Hidden from recall; get_memory still returns them.' : 'Back in recall.')}</div></div><button class="x" data-sact="close">×</button></div>
+      <div class="dlg-b"><div class="mini">${done.map(r => `<div class="tchip-top">${dot(r)}<span class="mono sid">${r.short_id}</span><span class="tsum">${esc(r.summary)}</span>${wordsHTML(r)}</div>`).join('')}</div></div>
+      <div class="dlg-f"><span class="grow"></span>${done.length ? `<button class="btn" data-sact="undo-arc">Undo — ${s.op === 'archive' ? 'restore' : 'archive'} ${done.length}</button>` : ''}<button class="btn primary" data-sact="close">Done</button></div></div>`; }
+  const bad = s.ids.filter(id => arcIssue(byId(id))).length;
+  return `<div class="dialog sm" role="dialog"><div class="dlg-h"><div><b>${verb} ${plural(s.ids.length, 'record')}?</b><div class="dim">${s.op === 'archive' ? 'Stamps archived_at. Drops out of search, list, discovery and scheduled recall; still fetchable by id. Reversible — Restore clears it.' : 'Clears archived_at. The record returns to normal recall.'}</div></div><button class="x" data-sact="close">×</button></div>
+    <div class="dlg-b">${s.ids.map(id => { const r = byId(id), iss = arcIssue(r); return `<div class="tchip ${iss ? 'bad' : ''}"><div class="tchip-top">${dot(r)}<span class="mono sid">${r.short_id}</span><span class="tsum">${esc(r.summary)}</span>${wordsHTML(r)}${s.ids.length > 1 || iss ? `<button class="x" data-sact="rm-arc" data-id="${id}">×</button>` : ''}</div>${iss ? `<div class="tissue"><span class="code">${iss.code}</span>${esc(iss.text)}</div>` : r.category === 'rule' ? '<div class="tok">rule — owners may archive rules (they cannot be superseded)</div>' : ''}</div>`; }).join('')}
+    ${s.status !== 'confirm' ? statusHTML(s, 'arc') : ''}</div>
+    <div class="dlg-f"><span class="grow gate">${bad ? `Remove ${plural(bad, 'record')} you don't own` : ''}</span><button class="btn" data-sact="close">Cancel</button><button class="btn ${s.op === 'archive' ? 'warnish' : 'primary'}" data-sact="confirm-arc" ${bad || !s.ids.length || s.status === 'loading' || s.status === 'reauthing' ? 'disabled' : ''}>${verb}${s.ids.length > 1 ? ' ' + s.ids.length : ''}</button></div></div>`;
+}
+function dlgChain(){
+  const r = byId(VS.a.chainId), h = headOf(r), succ = r.superseded_by ? byId(r.superseded_by) : null, preds = predsOf(r.id);
+  return `<div class="dialog md" role="dialog"><div class="dlg-h"><div><b>Chain · <span class="mono">${r.short_id}</span></b><div class="dim">depth d${depthBelowHead(r)} below head <span class="mono">${h.short_id}</span> · ${preds.length} direct predecessor(s) · successor ${succ ? `<span class="mono">${succ.short_id}</span>` : 'none (live head)'}</div></div><button class="x" data-sact="close">×</button></div>
+    <div class="dlg-b">${chainColumns(tree(h), { hl: r.id })}<div class="legend">click any node to fetch it by id — superseded records stay fetchable</div></div>
+    <div class="dlg-f"><span class="grow"></span>${!supIssue(h) ? `<button class="btn" data-sact="sup" data-id="${h.id}">Supersede head…</button>` : ''}<button class="btn primary" data-sact="close">Close</button></div></div>`;
+}
+function actA(act, id){
+  const st = VS.a;
+  const pick = id => st.sel.size && st.sel.has(id) ? [...st.sel] : [id];
+  switch (act) {
+    case 'sup': SESS.a = newSession(pick(id)); st.modal = 'sup'; if (st.opened) { st.opened = true; } break;
+    case 'bulk-sup': SESS.a = newSession([...st.sel]); st.modal = 'sup'; break;
+    case 'arc': case 'res': ARC.a = { op: act === 'arc' ? 'archive' : 'restore', ids: pick(id), status: 'confirm' }; st.modal = 'arc'; break;
+    case 'bulk-arc': case 'bulk-res': ARC.a = { op: act === 'bulk-arc' ? 'archive' : 'restore', ids: [...st.sel], status: 'confirm' }; st.modal = 'arc'; break;
+    case 'chain': st.chainId = id; st.modal = 'chain'; break;
+    case 'rm-arc': ARC.a.ids = ARC.a.ids.filter(x => x !== id); if (!ARC.a.ids.length) return closeTop('a'); break;
+    case 'confirm-arc': doArchive('a'); return;
+    case 'undo-arc': { const s = ARC.a; ARC.a = { op: s.op === 'archive' ? 'restore' : 'archive', ids: s.result.done.map(r => r.id), status: 'confirm' }; doArchive('a'); return; }
+    default: return false;
+  }
+  R('a');
+}
+
+/* ================= Variant B: side sheet ================= */
+function renderB(){
+  const st = VS.b;
+  $('#variant-b').classList.toggle('sheet-open', !!st.sheet);
+  $('#b-stage').innerHTML = `<div class="vhead"><h2>Side sheet</h2><p>Actions open a right sheet; the list stays visible and doubles as the target picker. Supersede is 2 steps; chain = vertical timeline.</p></div>` + listHTML('b');
+  const ov = $('#b-overlay');
+  if (!st.sheet) { ov.innerHTML = ''; st.opened = false; return; }
+  const sh = st.sheet.type === 'detail' ? sheetDetail() : st.sheet.type === 'sup' ? sheetSup() : sheetBulkArc();
+  ov.innerHTML = `<div class="sheet ${st.opened ? 'open' : ''}" role="dialog">${sh}</div>`;
+  if (!st.opened) { st.opened = true; requestAnimationFrame(() => requestAnimationFrame(() => { const el = $('.sheet', ov); el && el.classList.add('open'); })); }
+}
+function sheetDetail(){
+  const r = byId(VS.b.sheet.id), mine = r.owner === ME, s = ARC.b && ARC.b.ids[0] === r.id ? ARC.b : null;
+  const si = supIssue(r);
+  let arcBlock = '';
+  if (s && s.status === 'confirm' && !mine) arcBlock = `<div class="tissue" style="padding:0"><span class="code">not-owned</span>shared by ${r.owner} — archive is owner-only</div>`;
+  else if (s && s.status === 'confirm') arcBlock = `<div class="confirm"><b>${s.op === 'archive' ? 'Archive' : 'Restore'} <span class="mono">${r.short_id}</span>?</b><div class="dim" style="margin:4px 0 8px">${s.op === 'archive' ? 'Drops out of recall; get_memory still returns it. Restore any time from here.' : 'Clears archived_at; the record returns to recall.'}</div><div class="sh-f" style="padding:0;border:0;flex-direction:row"><button class="btn sm" data-sact="cancel-arc">Cancel</button><button class="btn sm ${s.op === 'archive' ? 'warnish' : 'primary'}" data-sact="confirm-arc">${s.op === 'archive' ? 'Archive' : 'Restore'}</button></div></div>`;
+  else if (s && s.status !== 'success') arcBlock = statusHTML(s, 'arc');
+  const banner = r.archived_at ? `<div class="banner"><span class="grow">${s && s.status === 'success' && s.result.done.length ? ICON.check + ' ' : ''}Archived <span class="mono">${r.archived_at.slice(0, 16).replace('T', ' ')}</span> — hidden from recall, fetchable by id.</span>${mine ? '<button class="btn sm" data-sact="res" data-id="' + r.id + '">Restore</button>' : ''}</div>`
+    : (s && s.status === 'success' && s.op === 'restore' ? `<div class="banner"><span class="grow">${ICON.check} Restored — back in recall.</span><button class="btn sm" data-sact="arc" data-id="${r.id}">Archive again</button></div>` : '')
+    + (s && s.status === 'success' && s.result.already.length ? `<div class="banner"><span class="grow">${s.op === 'archive' ? 'Already archived' : 'Not archived'} — idempotent, no change.</span></div>` : '');
+  return `<div class="sh-h">${dot(r)}<span class="mono sid">${r.short_id}</span><span class="t">${r.category}</span>${wordsHTML(r)}<button class="x" data-sact="close">×</button></div>
+    <div class="sh-b">${banner}<div class="d-sum">${esc(r.summary)}</div><div class="d-content">${esc(r.content)}</div>
+      <dl class="kv"><dt>scope</dt><dd>${esc(r.scope)}</dd><dt>owner</dt><dd>${r.owner}${mine ? ' (you)' : ''}</dd><dt>visibility</dt><dd>${r.visibility}</dd><dt>tags</dt><dd>${r.tags.join(', ') || '—'}</dd><dt>created_at</dt><dd>${r.created_at}</dd><dt>superseded_by</dt><dd>${r.superseded_by ? `<button class="link mono" data-sact="open" data-id="${r.superseded_by}">${byId(r.superseded_by).short_id}</button>` : '—'}</dd><dt>archived_at</dt><dd>${r.archived_at || '—'}</dd><dt>id</dt><dd>${r.id}</dd></dl>
+      ${inChain(r) ? `<div class="sec"><div class="lbl">Supersession chain <span>d${depthBelowHead(r)}</span></div>${chainTimeline(tree(headOf(r)), { hl: r.id })}</div>` : ''}
+      ${arcBlock ? `<div class="sec">${arcBlock}</div>` : ''}
+    </div>
+    <div class="sh-f">${!mine ? `<div class="gate">Owner-only actions — this is ${r.owner}'s shared record.</div>` : si ? `<div class="gate okg">${si.code === 'rule' ? 'Rules cannot be superseded — archive or delete instead.' : `Not the live head — supersede <button class="link mono" data-sact="open" data-id="${si.head.id}">${si.head.short_id}</button> instead.`}</div>` : ''}
+      <div class="btns"><button class="btn" data-sact="sup" data-id="${r.id}" ${si ? 'disabled' : ''}>Supersede…</button>${r.archived_at ? `<button class="btn" data-sact="res" data-id="${r.id}" ${!mine ? 'disabled' : ''}>Restore</button>` : `<button class="btn warnish" data-sact="arc" data-id="${r.id}" ${!mine ? 'disabled' : ''}>Archive</button>`}<span class="grow"></span><span class="faint" style="font-size:var(--text-2xs)"><kbd>esc</kbd> close</span></div></div>`;
+}
+function sheetSup(){
+  const s = SESS.b;
+  const stepper = n => `<div class="stepper"><div class="step ${n === 1 ? 'on' : 'done'}">1 · Pick targets</div><div class="step ${n === 2 ? 'on' : n > 2 ? 'done' : ''}">2 · Write correction</div><div class="step ${n === 3 ? 'on' : ''}">Done</div></div>`;
+  if (s.status === 'success') { const rec = s.result, n = rec.supersedes.length;
+    return `<div class="sh-h">${ICON.check}<span class="t">Superseded ${n} → <span class="mono">${rec.short_id}</span></span><button class="x" data-sact="close">×</button></div>
+      <div class="sh-b">${stepper(3)}<div class="dim" style="font-size:var(--text-xs);margin-bottom:10px">Predecessors are now hidden from recall but fetchable by id. No undo — to change it, supersede <span class="mono">${rec.short_id}</span> again.</div><div class="lbl">Resulting chain</div>${resultChain('b', rec)}</div>
+      <div class="sh-f"><div class="btns"><button class="btn" data-sact="view-superseded">View superseded (${n})</button><button class="btn" data-sact="open" data-id="${rec.id}">Open ${rec.short_id}</button><span class="grow"></span><button class="btn primary" data-sact="close">Done</button></div></div>`; }
+  if (s.step === 1) { const g = targetsGate(s);
+    return `<div class="sh-h"><span class="t">Supersede · pick targets</span><button class="x" data-sact="close">×</button></div>
+      <div class="sh-b">${stepper(1)}<div class="dim" style="font-size:var(--text-xs);margin-bottom:10px">Click rows in the list to add or remove. Pick records that state the same fact — they merge into one correcting record.</div><div class="lbl">Targets <span class="mono">${s.targets.length}</span></div>${targetsHTML(s)}${addTargetHTML()}</div>
+      <div class="sh-f"><span class="gate ${g ? '' : 'okg'}">${g || 'Targets look valid'}</span><div class="btns"><button class="btn" data-sact="close">Cancel</button><span class="grow"></span><button class="btn primary" data-sact="next-step" ${g ? 'disabled' : ''}>Next: write correction →</button></div></div>`; }
+  return `<div class="sh-h"><button class="x" data-sact="prev-step" title="Back">‹</button><span class="t">Supersede ${plural(s.targets.length, 'record')} · correction</span><button class="x" data-sact="close">×</button></div>
+    <div class="sh-b">${stepper(2)}<div class="lbl">Correcting record</div>${formHTML(s)}<div class="sec"><div class="lbl">Resulting chain <span>preview</span></div><div data-chain>${previewChain('b', s)}</div></div></div>
+    <div class="sh-f">${s.status !== 'idle' ? statusHTML(s, 'sup') : ''}${gateHTML(s)}<div class="btns"><button class="btn" data-sact="prev-step">← Back</button><span class="grow"></span><span class="faint" style="font-size:var(--text-2xs)"><kbd>⌘↵</kbd></span>${supBtn(s)}</div></div>`;
+}
+function sheetBulkArc(){
+  const s = ARC.b, verb = s.op === 'archive' ? 'Archive' : 'Restore';
+  const bad = s.ids.filter(id => arcIssue(byId(id))).length;
+  if (s.status === 'success') { const { done, already } = s.result;
+    return `<div class="sh-h">${ICON.check}<span class="t">${done.length} ${s.op === 'archive' ? 'archived' : 'restored'}</span><button class="x" data-sact="close">×</button></div>
+      <div class="sh-b">${already.length ? `<div class="banner">${already.map(r => r.short_id).join(', ')} ${s.op === 'archive' ? 'already archived' : 'not archived'} — no change.</div>` : ''}${done.map(r => `<div class="tchip"><div class="tchip-top">${dot(r)}<span class="mono sid">${r.short_id}</span><span class="tsum">${esc(r.summary)}</span>${wordsHTML(r)}</div></div>`).join('')}</div>
+      <div class="sh-f"><div class="btns">${done.length ? `<button class="btn" data-sact="undo-arc">Undo — ${s.op === 'archive' ? 'restore' : 'archive'} ${done.length}</button>` : ''}<span class="grow"></span><button class="btn primary" data-sact="close">Done</button></div></div>`; }
+  return `<div class="sh-h"><span class="t">${verb} ${plural(s.ids.length, 'record')}</span><button class="x" data-sact="close">×</button></div>
+    <div class="sh-b"><div class="dim" style="font-size:var(--text-xs);margin-bottom:10px">${s.op === 'archive' ? 'Stamps archived_at. Hidden from recall, fetchable by id, reversible.' : 'Clears archived_at; records return to recall.'}</div>${s.ids.map(id => { const r = byId(id), iss = arcIssue(r); return `<div class="tchip ${iss ? 'bad' : ''}"><div class="tchip-top">${dot(r)}<span class="mono sid">${r.short_id}</span><span class="tsum">${esc(r.summary)}</span>${wordsHTML(r)}<button class="x" data-sact="rm-arc" data-id="${id}">×</button></div>${iss ? `<div class="tissue"><span class="code">${iss.code}</span>${esc(iss.text)}</div>` : ''}</div>`; }).join('')}${s.status !== 'confirm' ? statusHTML(s, 'arc') : ''}</div>
+    <div class="sh-f">${bad ? `<span class="gate">Remove ${plural(bad, 'record')} you don't own</span>` : ''}<div class="btns"><button class="btn" data-sact="close">Cancel</button><span class="grow"></span><button class="btn ${s.op === 'archive' ? 'warnish' : 'primary'}" data-sact="confirm-arc" ${bad || !s.ids.length || s.status === 'loading' ? 'disabled' : ''}>${verb} ${s.ids.length}</button></div></div>`;
+}
+function actB(act, id){
+  const st = VS.b;
+  switch (act) {
+    case 'open': st.sheet = { type: 'detail', id }; ARC.b = null; SESS.b = null; st.sel.clear(); { const i = listRows('b').findIndex(r => r.id === id); if (i >= 0) st.focus = i; } break;
+    case 'sup': SESS.b = newSession(st.sel.size && st.sel.has(id) ? [...st.sel] : [id]); st.sheet = { type: 'sup' }; st.sel = new Set(SESS.b.targets); break;
+    case 'bulk-sup': SESS.b = newSession([...st.sel]); st.sheet = { type: 'sup' }; break;
+    case 'arc': st.sheet = { type: 'detail', id }; SESS.b = null; ARC.b = { op: 'archive', ids: [id], status: 'confirm' }; break;
+    case 'res': st.sheet = { type: 'detail', id }; SESS.b = null; ARC.b = { op: 'restore', ids: [id], status: 'confirm' }; if (byId(id).owner === ME) { doArchive('b'); return; } break;
+    case 'bulk-arc': case 'bulk-res': st.sheet = { type: 'bulk' }; ARC.b = { op: act === 'bulk-arc' ? 'archive' : 'restore', ids: [...st.sel], status: 'confirm' }; break;
+    case 'cancel-arc': ARC.b = null; break;
+    case 'confirm-arc': doArchive('b'); return;
+    case 'undo-arc': { const s = ARC.b; ARC.b = { op: s.op === 'archive' ? 'restore' : 'archive', ids: s.result.done.map(r => r.id), status: 'confirm' }; doArchive('b'); return; }
+    case 'rm-arc': ARC.b.ids = ARC.b.ids.filter(x => x !== id); break;
+    case 'next-step': SESS.b.step = 2; st.sel.clear(); break;
+    case 'prev-step': SESS.b.step = 1; SESS.b.status = 'idle'; st.sel = new Set(SESS.b.targets); break;
+    default: return false;
+  }
+  R('b');
+}
+
+/* ================= Variant C: inline + undo toast ================= */
+function cAnchor(rows, s){
+  if (s.status === 'success') { const i = rows.findIndex(r => r.id === s.result.id); return i >= 0 ? s.result.id : null; }
+  let last = null; rows.forEach(r => { if (s.targets.includes(r.id)) last = r.id; }); return last;
+}
+function cEditorHTML(){
+  const s = SESS.c;
+  if (s.status === 'success') { const rec = s.result, n = rec.supersedes.length;
+    return `<div class="inline-ed done">${ICON.check}<span>Superseded ${n} into <span class="mono">${rec.short_id}</span></span><div style="flex:1;min-width:200px">${resultChain('c', rec)}</div><button class="btn sm" data-sact="view-superseded">View superseded (${n})</button><button class="x" data-sact="close" title="Dismiss">×</button></div>`; }
+  return `<div class="inline-ed">
+    <div class="ie-h"><b>Supersede ${s.targets.length} → 1</b><div class="grow" data-chain>${previewChain('c', s)}</div><span class="faint" style="font-size:var(--text-2xs)"><kbd>⌘↵</kbd> supersede · <kbd>esc</kbd> cancel</span></div>
+    <div class="ie-targets">${s.targets.map(id => { const r = byId(id), iss = supIssue(r), rej = s.rejected.includes(r.short_id); return `<span class="tpill ${iss || rej ? 'bad' : ''}" title="${esc(iss ? iss.text : r.summary)}">${dot(r)}<span class="mono">${r.short_id}</span>${iss ? `<span style="font-size:var(--text-2xs)">${iss.code}</span>${iss.head && !s.targets.includes(iss.head.id) && !supIssue(iss.head) ? `<button class="link" data-sact="swap-head" data-id="${id}" style="font-size:var(--text-2xs)">→ ${iss.head.short_id}</button>` : ''}` : ''}${rej ? '<span style="font-size:var(--text-2xs)">raced</span>' : ''}<button class="x" data-sact="rm-target" data-id="${id}">×</button></span>`; }).join('')}<span class="faint" style="font-size:var(--text-2xs);align-self:center"><kbd>x</kbd> on a row adds/removes</span></div>
+    <div class="ie-form">${formHTML(s, true)}</div>
+    ${s.status !== 'idle' ? `<div style="margin-bottom:8px">${statusHTML(s, 'sup')}</div>` : ''}
+    <div class="ie-f"><span class="grow">${gateHTML(s)}</span><button class="btn sm" data-sact="close">Cancel</button>${supBtn(s)}</div></div>`;
+}
+function menuHTML(r){
+  const si = supIssue(r), ai = arcIssue(r);
+  return `<div class="menu" role="menu">
+    <button data-sact="sup" data-id="${r.id}" ${si ? 'disabled' : ''}><span>Supersede…</span><kbd>s</kbd></button>${si ? `<div class="why">${esc(si.text)}</div>` : ''}
+    ${r.archived_at ? `<button data-sact="res" data-id="${r.id}" ${ai ? 'disabled' : ''}><span>Restore</span><kbd>u</kbd></button>` : `<button data-sact="arc" data-id="${r.id}" ${ai ? 'disabled' : ''}><span>Archive</span><kbd>e</kbd></button>`}${ai ? `<div class="why">${esc(ai.text)}</div>` : ''}
+    <hr><button data-sact="peek" data-id="${r.id}"><span>Get by id</span><kbd>↵</kbd></button><button data-sact="copy" data-id="${r.id}"><span>Copy short_id</span><kbd>c</kbd></button></div>`;
+}
+function renderC(){
+  $('#c-stage').innerHTML = `<div class="vhead"><h2>Inline + undo toast</h2><p>No confirms: <kbd>e</kbd>/<kbd>u</kbd> archive/restore instantly with an undo toast. Supersede expands an inline editor under the rows; chain = breadcrumb.</p></div>` + listHTML('c');
+}
+let TID = 0;
+function toast(t){
+  const id = ++TID, box = $('#c-toasts'); const el = document.createElement('div');
+  el.className = 'toast ' + (t.kind || ''); el.dataset.tid = id;
+  el.innerHTML = `${t.kind === 'ok' ? ICON.check : ''}<div class="tb"><div class="tt">${t.title}</div>${t.body ? `<div class="td">${t.body}</div>` : ''}</div><div class="ta">${(t.actions || []).map((a, i) => `<button class="btn sm" data-ta="${i}">${a.label}</button>`).join('')}<button class="x" data-ta="x">×</button></div>${t.ttl ? `<div class="bar" style="animation-duration:${t.ttl}ms"></div>` : ''}`;
+  const kill = () => { el.classList.add('out'); setTimeout(() => el.remove(), 160); };
+  el.addEventListener('click', e => { const b = e.target.closest('[data-ta]'); if (!b) return; if (b.dataset.ta !== 'x') t.actions[+b.dataset.ta].fn(); kill(); });
+  box.appendChild(el); while (box.children.length > 4) box.firstChild.remove();
+  if (t.ttl) setTimeout(kill, t.ttl);
+}
+async function quickArchive(ids, op, force){
+  const recs = ids.map(byId);
+  const foreign = recs.filter(r => r.owner !== ME);
+  if (foreign.length) toast({ kind: 'err', title: `Owner-only: ${foreign.map(r => r.short_id).join(', ')}`, body: `shared by ${foreign[0].owner} — you can read it, not ${op} it`, ttl: 5000 });
+  const mine = recs.filter(r => r.owner === ME); if (!mine.length) return;
+  const already = mine.filter(r => op === 'archive' ? r.archived_at : !r.archived_at);
+  const todo = mine.filter(r => !already.includes(r));
+  if (!todo.length) { await sleep(250); toast({ kind: 'info', title: `${already.map(r => r.short_id).join(', ')} ${op === 'archive' ? 'already archived' : 'is not archived'}`, body: 'idempotent — no change', ttl: 3500 }); return; }
+  // optimistic: animate rows out, apply, then confirm with the server
+  todo.forEach(r => { const el = $(`#c-stage .row[data-id="${r.id}"]`); if (el && !VS.c.showHidden && op === 'archive') el.classList.add('leaving'); });
+  await sleep(150);
+  const prev = todo.map(r => [r, r.archived_at]);
+  applyArchive(todo.map(r => r.id), op); VS.c.sel.clear(); R('c');
+  const res = await fakeCall('archive', { sids: todo.map(r => r.short_id) }, force);
+  const sids = todo.map(r => r.short_id).join(', ');
+  if (res.ok) {
+    const undoOp = op === 'archive' ? 'restore' : 'archive';
+    toast({ kind: 'ok', title: `${op === 'archive' ? 'Archived' : 'Restored'} ${todo.length === 1 ? sids : plural(todo.length, 'record')}`, body: (op === 'archive' ? 'hidden from recall · fetchable by id' : 'back in recall') + (already.length ? ` · ${already.length} already ${op === 'archive' ? 'archived' : 'live'}` : ''), ttl: 6000,
+      actions: [{ label: `Undo <kbd>⌘Z</kbd>`, fn: () => quickArchive(todo.map(r => r.id), undoOp, 'success') }] });
+    LAST_UNDO = () => quickArchive(todo.map(r => r.id), undoOp, 'success');
+    return;
+  }
+  prev.forEach(([r, a]) => r.archived_at = a); flash('c', todo.map(r => r.id)); R('c');
+  if (res.kind === 'reauth') toast({ kind: 'warn', title: `Session expired — ${op} not saved`, body: `${sids} put back. <code class="env-raw">${esc(res.env)}</code>`, actions: [{ label: 'Re-authenticate', fn: async () => { toast({ kind: 'info', title: 'Re-authenticating…', ttl: 900 }); await sleep(900); quickArchive(todo.map(r => r.id), op, 'success'); } }] });
+  else toast({ kind: 'err', title: `${op === 'archive' ? 'Archive' : 'Restore'} rejected — ${sids} put back`, body: `<div class="status err" style="margin-top:4px">${envHTML(res)}</div>` });
+}
+let LAST_UNDO = null;
+function actC(act, id){
+  const st = VS.c;
+  const pick = id => st.sel.size && (!id || st.sel.has(id)) ? [...st.sel] : [id];
+  switch (act) {
+    case 'menu': st.menu = st.menu === id ? null : id; break;
+    case 'sup': st.menu = null; SESS.c = newSession(pick(id)); st.sel.clear(); break;
+    case 'bulk-sup': SESS.c = newSession([...st.sel]); st.sel.clear(); break;
+    case 'arc': st.menu = null; quickArchive(pick(id), 'archive'); return;
+    case 'res': st.menu = null; quickArchive(pick(id), 'restore'); return;
+    case 'bulk-arc': quickArchive([...st.sel], 'archive'); return;
+    case 'bulk-res': quickArchive([...st.sel], 'restore'); return;
+    case 'copy': st.menu = null; toast({ kind: 'info', title: `Copied ${byId(id).short_id}`, ttl: 1800 }); break;
+    default: return false;
+  }
+  R('c');
+}
+
+/* ================= shared actions ================= */
+const R = v => (v === 'a' ? renderA : v === 'b' ? renderB : renderC)();
+async function doSupersede(v, force){
+  const s = SESS[v]; if (!s || gateReason(s)) return;
+  s.status = 'loading'; s.loadingText = `supersede_memory · ${plural(s.targets.length, 'target')}…`; s.res = null; s.errField = null; s.rejected = []; R(v);
+  const sids = s.targets.map(id => byId(id).short_id);
+  const res = await fakeCall('supersede', { form: s.form, sids }, force);
+  if (SESS[v] !== s) return;
+  if (res.ok) {
+    s.result = applySupersede(s.targets, s.form); s.status = 'success';
+    VS[v].sel.clear(); flash(v, [s.result.id]); buildDatalist();
+    if (v === 'c') toast({ kind: 'ok', title: `Superseded ${s.targets.length} → ${s.result.short_id}`, body: 'no undo — supersession is additive history; supersede again to change it', ttl: 6000, actions: [{ label: 'View superseded', fn: () => viewSuperseded('c') }] });
+  } else { s.status = 'error'; s.res = res; s.errField = res.field || null; s.rejected = res.targets || []; }
+  R(v);
+}
+async function doArchive(v, force){
+  const s = ARC[v]; s.status = 'loading'; s.loadingText = `spine-review ${s.op} · ${plural(s.ids.length, 'record')}…`; R(v);
+  const res = await fakeCall('archive', { sids: s.ids.map(id => byId(id).short_id) }, force);
+  if (ARC[v] !== s) return;
+  if (res.ok) { s.result = applyArchive(s.ids, s.op); s.status = 'success'; VS[v].sel.clear(); flash(v, s.ids); }
+  else { s.status = 'error'; s.res = res; }
+  R(v);
+}
+async function doReauth(v, kind){
+  const s = kind === 'arc' ? ARC[v] : SESS[v]; s.status = 'reauthing'; R(v);
+  await sleep(900);
+  kind === 'arc' ? doArchive(v, 'success') : doSupersede(v, 'success');
+}
+function viewSuperseded(v){
+  const s = SESS[v]; if (!s || !s.result) return; const rec = s.result, st = VS[v];
+  st.showHidden = true; flash(v, [...rec.supersedes, rec.id]);
+  if (v === 'a') { st.modal = null; SESS.a = null; }
+  if (v === 'b') { st.sheet = { type: 'detail', id: rec.id }; SESS.b = null; }
+  if (v === 'c') { /* keep the result strip; list now includes hidden rows */ }
+  R(v);
+  const first = $(`#${v}-stage .row[data-id="${rec.supersedes[0]}"]`); first && first.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+function closeTop(v){
+  const st = VS[v]; hidePeek();
+  if (v === 'a' && st.modal) { const sc = $('#a-overlay .scrim'); sc && sc.classList.remove('open'); setTimeout(() => { st.modal = null; SESS.a = null; ARC.a = null; R('a'); }, 150); return true; }
+  if (v === 'b' && st.sheet) { const sh = $('#b-overlay .sheet'); sh && sh.classList.remove('open'); setTimeout(() => { st.sheet = null; SESS.b = null; ARC.b = null; st.sel.clear(); R('b'); }, 150); return true; }
+  if (v === 'c') { if (st.menu) { st.menu = null; R('c'); return true; } if (SESS.c) { SESS.c = null; R('c'); return true; } }
+  if (st.sel.size) { st.sel.clear(); R(v); return true; }
+  return false;
+}
+function handleAct(v, act, id, el){
+  const st = VS[v];
+  switch (act) {
+    case 'sel': {
+      const s = SESS[v];
+      if (v === 'b' && s && s.step === 1 && s.status !== 'success') { toggleTarget(v, id); return; }
+      if (v === 'b' && s && s.status !== 'success') { R(v); return; }
+      if (v === 'c' && s && s.status !== 'success') { toggleTarget(v, id); return; }
+      st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id); R(v); return; }
+    case 'toggle-hidden': st.showHidden = !st.showHidden; R(v); return;
+    case 'clear-sel': st.sel.clear(); R(v); return;
+    case 'rm-target': toggleTarget(v, id); return;
+    case 'swap-head': { const s = SESS[v], h = headOf(byId(id)); s.targets = s.targets.map(x => x === id ? h.id : x); if (v === 'b') st.sel = new Set(s.targets); R(v); return; }
+    case 'fill-example': { const s = SESS[v]; Object.assign(s.form, EXAMPLE); s.errField = null; R(v); return; }
+    case 'submit-sup': doSupersede(v); return;
+    case 'close': closeTop(v); return;
+    case 'reauth': doReauth(v, el.dataset.kind); return;
+    case 'view-superseded': viewSuperseded(v); return;
+    case 'peek': peek(id, el); return;
+  }
+  const r = v === 'a' ? actA(act, id) : v === 'b' ? actB(act, id) : actC(act, id);
+  return r;
+}
+function toggleTarget(v, id){
+  const s = SESS[v]; if (!s) return;
+  s.targets = s.targets.includes(id) ? s.targets.filter(x => x !== id) : [...s.targets, id];
+  s.rejected = []; if (s.status === 'error') { s.status = 'idle'; s.res = null; }
+  if (v === 'b') VS.b.sel = new Set(s.targets);
+  if (v === 'c' && !s.targets.length) SESS.c = null;
+  R(v);
+}
+function rowClick(v, id, e){
+  const st = VS[v], rows = listRows(v); st.focus = rows.findIndex(r => r.id === id);
+  const s = SESS[v];
+  if (v === 'b') { if (s && s.step === 1 && s.status !== 'success') return toggleTarget('b', id); if (s && s.status !== 'success') { const el = $(`#b-stage .row[data-id="${id}"] .sid`); return el && peek(id, el); } return handleAct('b', 'open', id); }
+  if (v === 'c' && s && s.status !== 'success') return toggleTarget('c', id);
+  if (v === 'c' && st.menu) st.menu = null;
+  st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id);
+  R(v);
+}
+
+/* ================= peek (get_memory by id) ================= */
+function peek(id, anchor){
+  const r = byId(id), p = $('#peek'), fr = $('#frame').getBoundingClientRect(), a = anchor.getBoundingClientRect();
+  p.innerHTML = `<div class="ph">${dot(r)}<span class="mono sid">${r.short_id}</span><b style="flex:1">${r.category}</b>${wordsHTML(r)}<button class="x" onclick="hidePeek()">×</button></div><div>${esc(r.summary)}</div><div class="pc">${esc(r.content)}</div><div class="pf">get_memory ${r.short_id} · fetch-by-id ignores the recall gate${r.superseded_by ? ` · superseded_by ${byId(r.superseded_by).short_id}` : ''}${r.archived_at ? ` · archived_at ${r.archived_at.slice(0, 10)}` : ''}</div>`;
+  p.classList.add('open');
+  const w = Math.min(p.offsetWidth, fr.width - 24); let left = a.left - fr.left; if (left + w > fr.width - 12) left = fr.width - 12 - w; left = Math.max(12, left);
+  let top = a.bottom - fr.top + 6; if (top + p.offsetHeight > fr.height - 12) top = Math.max(12, a.top - fr.top - p.offsetHeight - 6);
+  p.style.left = left + 'px'; p.style.top = top + 'px';
+}
+function hidePeek(){ $('#peek').classList.remove('open'); }
+
+/* ================= wiring ================= */
+['a','b','c'].forEach(v => {
+  const root = $('#variant-' + v);
+  root.addEventListener('click', e => {
+    if (e.target.classList.contains('scrim')) { closeTop(v); return; }
+    const a = e.target.closest('[data-sact]');
+    if (a && root.contains(a)) { if (a.tagName !== 'INPUT') e.preventDefault(); e.stopPropagation(); handleAct(v, a.dataset.sact, a.dataset.id, a); return; }
+    if (e.target.closest('.toasts, .dialog, .sheet, .inline-ed, .menu, input, select, textarea, button, label')) return;
+    const row = e.target.closest('.row'); if (row) rowClick(v, row.dataset.id, e);
+  });
+  root.addEventListener('input', e => {
+    const f = e.target.dataset.f; if (!f || !SESS[v]) return;
+    SESS[v].form[f] = e.target.value;
+    if (f === 'summary' && SESS[v].errField === 'summary' && bytes(e.target.value) <= 512) { SESS[v].errField = null; e.target.closest('.fld').classList.remove('err'); const fe = e.target.closest('.fld').querySelector('.ferr'); if (fe) fe.textContent = ''; }
+    refreshLive(v);
+  });
+  root.addEventListener('change', e => {
+    if (e.target.dataset.f && SESS[v]) { SESS[v].form[e.target.dataset.f] = e.target.value; refreshLive(v); }
+    if (e.target.dataset.sactInput === 'add-target') {
+      const q = e.target.value.trim().toLowerCase(), r = DB.find(x => x.short_id === q) || DB.find(x => q && x.short_id.startsWith(q));
+      if (r && !SESS[v].targets.includes(r.id)) toggleTarget(v, r.id); else e.target.value = '';
+    }
+  });
+  root.addEventListener('focusout', e => {
+    if (e.target.dataset.f === 'content') { const fe = e.target.closest('.fld').querySelector('.ferr'); const empty = !e.target.value.trim(); fe.textContent = empty ? 'field=content hint=required: content must not be empty' : ''; e.target.closest('.fld').classList.toggle('err', empty); }
+  });
+});
+document.addEventListener('click', e => { if (!e.target.closest('#peek') && !e.target.closest('[data-sact="peek"]')) hidePeek(); });
+
+function showVariant(id, btn){
+  if (id !== CUR) { DB = seed(); CLOCK = 0; resetState(); LAST_UNDO = null; $('#c-toasts').innerHTML = ''; buildDatalist(); }
+  CUR = id; hidePeek();
+  $$('.variant').forEach(v => v.classList.remove('active'));
+  $$('.variant-tab').forEach(t => t.classList.remove('active'));
+  $('#variant-' + id).classList.add('active');
+  (btn || (typeof event !== 'undefined' && event && event.target) || $(`.variant-tab[data-v="${id}"]`)).classList.add('active');
+  R(id);
+}
+
+document.addEventListener('keydown', e => {
+  const v = CUR, st = VS[v];
+  const typing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
+  if (e.key === 'Escape' && !dpop.hidden) { e.preventDefault(); closeDisplay(true); return; }
+  if (e.target.closest && e.target.closest('#display-pop')) return;
+  if (e.key === 'Escape') { if (typing) e.target.blur(); closeTop(v); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { if (SESS[v] && SESS[v].status !== 'success' && !(v === 'b' && SESS.b.step === 1)) { e.preventDefault(); doSupersede(v); } return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && v === 'c' && LAST_UNDO && !typing) { e.preventDefault(); const f = LAST_UNDO; LAST_UNDO = null; f(); return; }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (v === 'a' && st.modal) return;
+  const rows = listRows(v); if (!rows.length) return;
+  const cur = rows[Math.max(0, st.focus)];
+  const keys = { j: 1, ArrowDown: 1, k: -1, ArrowUp: -1 };
+  if (e.key in keys) { e.preventDefault(); st.focus = Math.max(0, Math.min(rows.length - 1, st.focus + keys[e.key])); R(v); const el = $(`#${v}-stage .row.focus`); el && el.scrollIntoView({ block: 'nearest' }); return; }
+  if (v === 'b' && SESS.b && SESS.b.status !== 'success' && !['x','h'].includes(e.key)) return;
+  switch (e.key) {
+    case 'x': handleAct(v, 'sel', cur.id); break;
+    case 'h': st.showHidden = !st.showHidden; R(v); break;
+    case 's': if (!(v === 'b' && SESS.b)) handleAct(v, st.sel.size ? 'bulk-sup' : 'sup', cur.id); break;
+    case 'e': handleAct(v, st.sel.size ? 'bulk-arc' : 'arc', cur.id); break;
+    case 'u': handleAct(v, st.sel.size ? 'bulk-res' : 'res', cur.id); break;
+    case 'Enter': e.preventDefault(); if (v === 'a') { inChain(cur) ? handleAct('a', 'chain', cur.id) : handleAct('a', 'sup', cur.id); } else if (v === 'b') handleAct('b', 'open', cur.id); else { const el = $(`#c-stage .row.focus .sid`); el && peek(cur.id, el); } break;
+    case 'c': if (v === 'c') handleAct('c', 'copy', cur.id); break;
+    default: return;
+  }
+  e.preventDefault();
+});
+
+// scenario + reset
+$('#mode-seg').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (!b) return; MODE = b.dataset.mode; $$('#mode-seg button').forEach(x => x.classList.toggle('on', x === b)); });
+$('#reset-btn').addEventListener('click', () => { DB = seed(); CLOCK = 0; resetState(); $('#c-toasts').innerHTML = ''; buildDatalist(); ['a','b','c'].forEach(R); });
+function buildDatalist(){ $('#dl-sids').innerHTML = DB.map(r => `<option value="${r.short_id}">${esc(r.summary)}</option>`).join(''); }
+
+/* ================= sketch toolbar ================= */
+$('#theme-sel').addEventListener('change', e => { $('#theme-link').href = '../themes/' + e.target.value + '.css'; });
+$('#vp-g').addEventListener('click', e => { const b = e.target.closest('[data-vp]'); if (!b) return; const f = $('#frame'); f.style.maxWidth = b.dataset.vp === 'full' ? '100%' : b.dataset.vp + 'px'; f.classList.toggle('constrained', b.dataset.vp !== 'full'); $$('#vp-g button').forEach(x => x.classList.toggle('on', x === b)); });
+let ANNO = false, annoEl = null;
+const rgbHex = c => { const m = c.match(/\d+(\.\d+)?/g); if (!m || (m[3] !== undefined && +m[3] === 0)) return 'transparent'; return '#' + m.slice(0, 3).map(x => (+x).toString(16).padStart(2, '0')).join('') + (m[3] !== undefined && +m[3] < 1 ? ` @${(+m[3]).toFixed(2)}` : ''); };
+$('#anno-btn').addEventListener('click', e => { ANNO = !ANNO; e.target.classList.toggle('on', ANNO); if (!ANNO) { $('#anno-tip').style.display = 'none'; annoEl && annoEl.classList.remove('anno-hl'); } });
+document.addEventListener('mousemove', e => {
+  if (!ANNO) return; const t = e.target; if (t.closest('#sketch-tools') || t.id === 'anno-tip') return;
+  if (annoEl !== t) { annoEl && annoEl.classList.remove('anno-hl'); annoEl = t; t.classList.add('anno-hl'); }
+  const cs = getComputedStyle(t), rc = t.getBoundingClientRect(), tip = $('#anno-tip');
+  tip.textContent = `${t.tagName.toLowerCase()}${t.className && typeof t.className === 'string' ? '.' + t.className.replace('anno-hl', '').trim().split(/\s+/).filter(Boolean).join('.') : ''}\n${Math.round(rc.width)}×${Math.round(rc.height)}  font ${cs.fontSize}/${cs.lineHeight} ${cs.fontWeight}\ncolor ${rgbHex(cs.color)}  bg ${rgbHex(cs.backgroundColor)}\npadding ${cs.padding}  radius ${cs.borderRadius}`;
+  tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 14, innerWidth - 370) + 'px'; tip.style.top = Math.min(e.clientY + 14, innerHeight - 80) + 'px';
+});
+
+/* ---------------- Display popover: console-wide text size ----------------
+   themes/display.js owns the value, its persistence, cross-page/tab sync and the global
+   ⌘+ / ⌘- / ⌘0 shortcuts; this only renders and sets it (same popover as sketch 001 B′). */
+const DISP=window.EngramDisplay;
+const MOD=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent)?'⌘':'Ctrl';
+const dpop=document.getElementById('display-pop'), tsSeg=document.getElementById('ts-seg');
+let textSize=DISP.get();
+document.getElementById('ts-keys').innerHTML=`<span><kbd>${MOD}</kbd><kbd>+</kbd> larger</span><span><kbd>${MOD}</kbd><kbd>−</kbd> smaller</span><span><kbd>${MOD}</kbd><kbd>0</kbd> reset to ${DISP.DEFAULT}</span>`;
+function paintTextSize(){
+  document.getElementById('ts-val').textContent=textSize+'px';
+  tsSeg.querySelectorAll('button').forEach(b=>{const on=+b.dataset.ts===textSize;b.setAttribute('aria-checked',on);b.tabIndex=on?0:-1});
+}
+window.addEventListener('engram:textsize',e=>{
+  const n=e.detail.size, changed=n!==textSize; textSize=n; paintTextSize();
+  const btn=document.querySelector('.aa[aria-expanded=true]'); if(btn&&!dpop.hidden) placeDisplay(btn);
+  TS_TOAST(`Text size ${n}px${changed?'':n===DISP.MAX?' (max)':n===DISP.MIN?' (min)':''}`);
+});
+function placeDisplay(btn){
+  const r=btn.getBoundingClientRect();
+  dpop.style.left=Math.max(8,Math.min(r.right-dpop.offsetWidth,innerWidth-dpop.offsetWidth-8))+'px'; dpop.style.top=(r.bottom+6)+'px';
+}
+function openDisplay(btn){
+  dpop.hidden=false; placeDisplay(btn); btn.setAttribute('aria-expanded','true');
+  (tsSeg.querySelector('[aria-checked=true]')||tsSeg.firstElementChild).focus();
+}
+function closeDisplay(refocus){
+  if(dpop.hidden) return; dpop.hidden=true;
+  const btn=document.querySelector('.aa[aria-expanded=true]'); if(btn){ btn.setAttribute('aria-expanded','false'); if(refocus) btn.focus(); }
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act=display]'); if(b) dpop.hidden?openDisplay(b):closeDisplay(true)});
+tsSeg.addEventListener('click',e=>{const b=e.target.closest('button');if(b){DISP.set(+b.dataset.ts);b.focus()}});
+tsSeg.addEventListener('keydown',e=>{
+  const d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1}[e.key]; if(!d) return;
+  e.preventDefault(); e.stopPropagation(); DISP.step(d); tsSeg.querySelector('[aria-checked=true]').focus();
+});
+document.addEventListener('mousedown',e=>{ if(!e.target.closest('#display-pop')&&!e.target.closest('[data-act=display]')) closeDisplay(false) });
+paintTextSize();
+function TS_TOAST(html){ const t = document.getElementById('ts-toast'); t.innerHTML = html; t.classList.add('show'); clearTimeout(TS_TOAST._t); TS_TOAST._t = setTimeout(() => t.classList.remove('show'), 1800); }
+
+buildDatalist();
+['a','b','c'].forEach(R);
+</script>
+</body>
+</html>
