@@ -206,3 +206,7 @@ None - no external service configuration required.
 
 *Phase: 01-store-prerequisites*
 *Completed: 2026-09-26*
+
+## Self-Check: PASSED
+
+All created files verified present on disk (`internal/store/listtags.go`, `internal/store/listtags_test.go`, this SUMMARY.md); all five task/deviation commit hashes (`393f2f2e`, `afaf2593`, `32c2fa8b`, `4577e910`) plus this SUMMARY's own commit (`f2de54b7`) verified present in `git log`.
