@@ -3,14 +3,13 @@
   import { onMount } from 'svelte';
   import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/svelte-query';
   import { ModeWatcher } from 'mode-watcher';
-  import { beforeNavigate, goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import { beforeNavigate } from '$app/navigation';
   import { errorBanner, handleQueryError, clearError } from '$lib/errors';
   import { Toaster } from '$lib/components/ui/sonner';
   import { Button } from '$lib/components/ui/button';
   import { display, readTextSize, installDisplayShortcuts } from '$lib/display.svelte';
   import AppShell from '$lib/components/AppShell.svelte';
-  import CommandPalette from '$lib/components/CommandPalette.svelte';
+  import CommandMenu from '$lib/components/CommandMenu.svelte';
   let { children } = $props();
 
   // D-13: apply the persisted text-size preference (the anti-flash script in
@@ -53,5 +52,5 @@
     </div>
   {/if}
   <AppShell oncommand={() => (cmdOpen = true)}>{@render children()}</AppShell>
-  <CommandPalette bind:open={cmdOpen} onsearch={(q) => goto(`${base}/search?q=${encodeURIComponent(q)}`)} onnavigate={(href) => goto(href)} />
+  <CommandMenu bind:open={cmdOpen} />
 </QueryClientProvider>
