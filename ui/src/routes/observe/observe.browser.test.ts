@@ -1,4 +1,5 @@
 import { render } from 'vitest-browser-svelte';
+import { userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/svelte-query';
@@ -97,19 +98,75 @@ beforeEach(() => {
 });
 
 describe('observe route — onedit fetches the FULL record (Codex round-2 HIGH)', () => {
-  it("onedit(id) on a row triggers openEdit's GetMemory fetch, never a summary-shaped prefill", async () => {
+  it("pressing 'e' on the active row triggers openEdit's GetMemory fetch, never a summary-shaped prefill", async () => {
     pageState.url = new URL('http://localhost/observe?scope=repo:x');
     const rowMemory = fakeMemory({ id: 'r1', content: '', summary: 'row summary (content cleared)', scope: 'repo:x' });
     listMemoriesSpy.mockResolvedValue({ memories: [rowMemory], total: 1n, approximate: false });
     getMemorySpy.mockResolvedValue({ memory: fakeMemory({ id: 'r1', content: 'the real full body', scope: 'repo:x' }) });
 
     const screen = await renderObserve();
-    await screen.getByRole('button', { name: 'row actions' }).click();
-    await screen.getByRole('menuitem', { name: 'Edit' }).click();
+    await expect.element(screen.getByText('row summary (content cleared)')).toBeInTheDocument();
+    const listbox = screen.getByRole('listbox', { name: 'Memories in repo:x' });
+    listbox.element().focus();
+    await userEvent.keyboard('e');
 
     await expect.element(screen.getByRole('dialog')).toBeInTheDocument();
     expect(getMemorySpy).toHaveBeenCalledWith({ id: 'r1' });
     await expect.element(screen.getByLabelText('content')).toHaveValue('the real full body');
+  });
+});
+
+// D-12: /observe adopts the shared ResultsList/RecallSplit/DetailPane set.
+describe('observe route — shared list and pane (D-12)', () => {
+  it('shows a "select a scope" guidance when no scope is chosen', async () => {
+    pageState.url = new URL('http://localhost/observe');
+    const screen = await renderObserve();
+    await expect.element(screen.getByText('select a scope')).toBeInTheDocument();
+  });
+
+  it('renders a listbox named "Memories in <scope>" with ResultsList rows', async () => {
+    pageState.url = new URL('http://localhost/observe?scope=repo:x');
+    listMemoriesSpy.mockResolvedValue({
+      memories: [fakeMemory({ id: 'r1', summary: 'first row', scope: 'repo:x' }), fakeMemory({ id: 'r2', summary: 'second row', scope: 'repo:x' })],
+      total: 2n,
+      approximate: false
+    });
+
+    const screen = await renderObserve();
+    const listbox = screen.getByRole('listbox', { name: 'Memories in repo:x' });
+    await expect.element(listbox).toBeInTheDocument();
+    await expect.element(screen.getByText('first row')).toBeInTheDocument();
+    await expect.element(screen.getByText('second row')).toBeInTheDocument();
+  });
+
+  it('clicking a row sets sel and opens the DetailPane', async () => {
+    pageState.url = new URL('http://localhost/observe?scope=repo:x');
+    const rowMemory = fakeMemory({ id: 'r1', summary: 'toggle me', scope: 'repo:x' });
+    listMemoriesSpy.mockResolvedValue({ memories: [rowMemory], total: 1n, approximate: false });
+    getMemorySpy.mockResolvedValue({ memory: rowMemory });
+
+    const screen = await renderObserve();
+    await expect.element(screen.getByText('toggle me')).toBeInTheDocument();
+
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.poll(() => gotoSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(gotoSpy.mock.calls.at(-1)?.[0]).toContain('sel=r1');
+  });
+
+  it('clicking the already-open row clears sel', async () => {
+    pageState.url = new URL('http://localhost/observe?scope=repo:x&sel=r1');
+    const rowMemory = fakeMemory({ id: 'r1', summary: 'toggle me again', scope: 'repo:x' });
+    listMemoriesSpy.mockResolvedValue({ memories: [rowMemory], total: 1n, approximate: false });
+    getMemorySpy.mockResolvedValue({ memory: rowMemory });
+
+    const screen = await renderObserve();
+    const listbox = screen.getByRole('listbox', { name: 'Memories in repo:x' });
+    await expect.element(listbox.getByText('toggle me again')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('[aria-label="Memory detail"]') !== null).toBe(true);
+
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.poll(() => gotoSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(gotoSpy.mock.calls.at(-1)?.[0]).not.toContain('sel=');
   });
 });
 
@@ -206,16 +263,18 @@ describe('observe route — deleting the selected record never flashes a NotFoun
 
     const screen = await render(DeleteBannerHarness, { client: qc });
 
-    // Detail pane resolved: the record-actions menu is available.
-    await expect.element(screen.getByRole('button', { name: 'record actions' })).toBeInTheDocument();
+    // Detail pane resolved (its title renders the FETCHED record's own
+    // summary, "a summary" -- the fakeMemory default, distinct from the
+    // list row's own "row summary" -- and the Delete button is available.
+    await expect.element(screen.getByRole('heading', { name: 'a summary' })).toBeInTheDocument();
     expect(getMemorySpy).toHaveBeenCalledTimes(1);
 
-    await screen.getByRole('button', { name: 'record actions' }).click();
-    await screen.getByRole('menuitem', { name: 'Delete' }).click();
-
-    // Confirm dialog is host-authoritative; confirm the delete.
-    await expect.element(screen.getByText('Delete this memory?')).toBeInTheDocument();
     await screen.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    // Confirm dialog is host-authoritative; confirm the delete (scoped to the
+    // dialog since DetailPane's own trigger is also named exactly "Delete").
+    await expect.element(screen.getByText('Delete this memory?')).toBeInTheDocument();
+    await screen.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
 
     // Delete succeeded: the deleted id is relayed up (ondeleted -> navigate).
     await expect.poll(() => deleteMemorySpy.mock.calls.length).toBe(1);

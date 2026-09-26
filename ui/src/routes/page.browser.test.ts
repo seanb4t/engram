@@ -1,9 +1,24 @@
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { create } from '@bufbuild/protobuf';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import { persistResume, RESUME_KEY } from '$lib/resume';
 import { listMemoriesKey, PAGE_LIMIT } from '$lib/queries';
 import RootPage from './+page.svelte';
+
+function fakeMemory(overrides: Partial<{ id: string; summary: string }> = {}): Memory {
+  return create(MemorySchema, {
+    id: 'm1',
+    content: '',
+    scope: 'repo:x',
+    category: 'convention',
+    tags: [],
+    summary: 'a recent memory',
+    visibility: 'private',
+    ...overrides
+  });
+}
 
 const { gotoSpy, listScopesSpy, listMemoriesSpy } = vi.hoisted(() => ({
   gotoSpy: vi.fn(),
@@ -128,5 +143,45 @@ describe('/ui/ root — Recent memories cross-spine feed (#500)', () => {
     expect(key[3]).toBe('');
     expect(key[9]).toBe(true);
     expect(key).toEqual(listMemoriesKey('', [], '', PAGE_LIMIT, 0, false, false, false, true));
+  });
+});
+
+// D-10: / adopts the shared ResultsList for its recent feed instead of the
+// tabbed MemoryList/MemoryRow markup.
+describe('/ui/ root — recent feed on the shared ResultsList (D-10)', () => {
+  it('shows the heading "engram — operator console" and "loading scopes…" while scopes load', async () => {
+    listScopesSpy.mockReturnValue(new Promise(() => {})); // never resolves -- scopes stay loading
+    const screen = await renderRoot();
+    await expect.element(screen.getByRole('heading', { name: 'engram — operator console' })).toBeInTheDocument();
+    await expect.element(screen.getByText('loading scopes…')).toBeInTheDocument();
+  });
+
+  it('renders a listbox named "Recent memories" with one option per returned memory', async () => {
+    listMemoriesSpy.mockResolvedValue({
+      memories: [fakeMemory({ id: 'm1', summary: 'first recent' }), fakeMemory({ id: 'm2', summary: 'second recent' })],
+      total: 2n,
+      approximate: false
+    });
+
+    const screen = await renderRoot();
+    const listbox = screen.getByRole('listbox', { name: 'Recent memories' });
+    await expect.element(listbox).toBeInTheDocument();
+    await expect.element(screen.getByText('first recent')).toBeInTheDocument();
+    await expect.element(screen.getByText('second recent')).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('[role="option"]').length).toBe(2);
+  });
+
+  it('activating a row navigates to /ui/observe?sel=<id>', async () => {
+    listMemoriesSpy.mockResolvedValue({
+      memories: [fakeMemory({ id: 'm-open', summary: 'open me' })],
+      total: 1n,
+      approximate: false
+    });
+
+    const screen = await renderRoot();
+    await expect.element(screen.getByText('open me')).toBeInTheDocument();
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.poll(() => gotoSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/observe?sel=m-open');
   });
 });

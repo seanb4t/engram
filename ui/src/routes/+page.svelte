@@ -6,7 +6,7 @@
   import { engram } from '$lib/client';
   import { PAGE_LIMIT, listMemoriesKey } from '$lib/queries';
   import { peekResume, consumeResume, normalizeReturnPath, isAllowedDestination } from '$lib/resume';
-  import MemoryList from '$lib/components/MemoryList.svelte';
+  import ResultsList from '$lib/components/ResultsList.svelte';
   import ScopeChip from '$lib/components/ScopeChip.svelte';
   import { Button } from '$lib/components/ui/button';
   // svelte-query v6: options wrapped in a function; results are runes objects read directly (no $).
@@ -41,16 +41,20 @@
   });
 </script>
 
-<div class="p-4">
+<div class="p-4 h-full min-h-0 flex flex-col">
   <h1 class="mb-3 text-primary">engram — operator console</h1>
   {#if scopesQ.isLoading}
     <div class="text-muted-foreground">loading scopes…</div>
   {:else if scopesQ.error}
     <div class="text-cat-gotcha">failed to load scopes</div>
   {:else}
-    <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(215px,1fr))">
+    <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(calc(215*var(--u)),1fr))">
       {#each scopesQ.data?.scopes ?? [] as s (s.scope)}
-        <Button variant="surface" class="relative text-left p-3 h-auto block overflow-hidden" onclick={() => goto(`${base}/observe?scope=${encodeURIComponent(s.scope)}`)}>
+        <Button
+          variant="surface"
+          class="relative text-left p-3 h-auto block overflow-hidden bg-[var(--surface-2)] border border-[var(--border-subtle,var(--border))]"
+          onclick={() => goto(`${base}/observe?scope=${encodeURIComponent(s.scope)}`)}
+        >
           <span class="absolute left-0 top-0 bottom-0 w-[calc(3*var(--u))] bg-primary"></span>
           <ScopeChip scope={s.scope} mode="stacked" />
           <div class="text-primary text-[calc(24*var(--u))] tabular-nums mt-1">{s.count}</div>
@@ -61,13 +65,17 @@
   {/if}
 
   <div class="mt-4 text-[calc(10*var(--u))] uppercase text-muted-foreground">Recent memories</div>
-  <MemoryList
-    memories={recentQ.data?.memories ?? []}
-    total={recentQ.data?.total ?? 0n}
-    approximate={recentQ.data?.approximate ?? false}
-    loading={recentQ.isLoading}
-    error={recentQ.error}
-    selectedId=""
-    onselect={openRecord}
-  />
+  <div class="flex-1 min-h-0 mt-2">
+    {#if recentQ.error}
+      <div class="text-cat-gotcha">Could not load recent memories</div>
+    {:else}
+      <ResultsList
+        memories={recentQ.data?.memories ?? []}
+        mode="unranked"
+        label="Recent memories"
+        loading={recentQ.isLoading}
+        onopen={openRecord}
+      />
+    {/if}
+  </div>
 </div>
