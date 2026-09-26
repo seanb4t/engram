@@ -1,0 +1,27 @@
+# Paths Octopus Review skips for review and indexing. Syntax: .gitignore.
+# Octopus reads this file from the PR base commit, so a change here takes
+# effect only after it merges to main. Lockfiles and *.pb.go are already on
+# Octopus's built-in generated list and need no entry here.
+
+# GSD planning artifacts
+/.planning/
+
+# Built SvelteKit bundle; the source is ui/.
+/internal/webauth/static/
+
+# Generated protobuf/Connect code (source: proto/) and the subtrees that
+# `task proto:gen` vendors into the UI. ui/src/lib/gen/engram_pb.ts is a
+# hand-authored barrel and stays reviewed. The built-in list matches *.pb.go
+# but not *.connect.go or *_pb.ts.
+/gen/
+/ui/src/lib/gen/engram/
+/ui/src/lib/gen/buf/
+
+# Verbatim copies of .planning/ sketch and spike sources packaged into skills
+/.claude/skills/*/sources/
+
+# Golden files the tests write
+*.golden
+
+# Brand image drafts; a deleted or renamed binary has no patch and fails coverage
+/brand/exploration/
