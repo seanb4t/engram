@@ -5,6 +5,7 @@
   import BrandMark from './BrandMark.svelte';
   import MigrationBanner from './MigrationBanner.svelte';
   import DisplayPopover from './DisplayPopover.svelte';
+  import HeaderSearch from './HeaderSearch.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Kbd } from '$lib/components/ui/kbd';
   import EyeIcon from '@lucide/svelte/icons/eye';
@@ -23,8 +24,11 @@
 <div class="h-dvh flex flex-col overflow-hidden bg-background text-foreground">
   <header class="flex items-center gap-3 px-3 py-2 border-b border-border">
     <BrandMark />
-    <Button variant="outline" aria-label="search" class="flex-1 justify-start text-muted-foreground" onclick={() => oncommand?.()}>
-      <SearchIcon data-icon="inline-start" /> search memories… <Kbd class="ml-auto">⌘K</Kbd>
+    <div class="flex flex-1 justify-center">
+      <HeaderSearch />
+    </div>
+    <Button variant="outline" size="sm" aria-label="Open command menu (⌘K)" onclick={() => oncommand?.()}>
+      <Kbd>⌘K</Kbd>
     </Button>
     <DisplayPopover />
     <Button variant="outline" size="sm" aria-label="toggle theme" onclick={cycleTheme}><SunMoonIcon data-icon="inline-start" /></Button>
