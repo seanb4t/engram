@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 1
 current_phase_name: Store Prerequisites
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-09-26T02:42:55.955Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-09-26T03:04:39.321Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 1 execution started
-state_head: b9286c9291c1bf8ae540ad0ddc811c3fd823488a
+state_head: 180d2a955aa6f2ab5a530acfe8a64d93fe74913e
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-25 after opening milestone 2026-09-25
 ## Current Position
 
 Phase: 1 (Store Prerequisites) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-25 — Phase 1 execution started
 
@@ -430,6 +430,8 @@ milestone needs in working memory.
 - [Phase 5]: D-06: guides/cli.md operator-command list names migrate/migrate status/migrate revert (linked to /guides/migrate/) and setup, gated by TestCLIGuideOperatorCommandsListsEveryOperatorCommand deriving the required set from operatorCommands()
 - [Phase 1]: D-01..D-05 (Phase 1, 01-01): ActionArchive gates both ArchiveAs/RestoreAs via lock-then-getWritable-then-shared-core; no nil-means-operator sentinel; rules are not special-cased; shared-non-owned and nonexistent ids are indistinguishable; TestArchiveAsOwnerGate landed as the phase's tracer-first test
 - [Phase 1]: 01-01 deviation: retargeted internal/store/schemaversion_stamp_gate_test.go's partialWriteClassification entry from Store.Archive to Store.archiveResolved after the archiveResolved extraction moved the SetPayload call site's enclosing function name
+- [Phase 1]: 01-02: recallVisibleFilter/facetTags built as new shared primitives beyond D-13..D-16's two named methods, so plan 01-04's RelatedMemories rarity weighting (D-07) reuses the same filtered Facet call site
+- [Phase 1]: 01-02: all four recall-gate vocabulary lists widened for the filtered Facet (D-15 named two; RESEARCH.md Pitfall 1 caught the other two: recallEmissionMethods and recallEntryPointSeeds/recallTransmitters)
 
 ### Pending Todos
 
@@ -526,8 +528,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T02:38:58.291Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-09-26T03:04:39.302Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -730,6 +732,7 @@ Resume file: None
 | Phase 05 P04 | 15min | 1 tasks | 1 files |
 | Phase 05 P05 | 20min | 1 tasks | 2 files |
 | Phase 01 P01 | 51min | 2 tasks | 6 files |
+| Phase 01 P02 | 23min | 3 tasks | 4 files |
 
 ## Operator Next Steps
 
