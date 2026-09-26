@@ -443,7 +443,7 @@ they searched.
   6. A user can narrow results by category/tags/time window/derived state/scope as removable, URL-persisted filter chips, and pick a scope from an autocomplete combobox showing each scope's readable-record count
   7. The project-local `engram-console-conventions` and `engram-connect-client` skills exist and this phase's UI-SPEC cites them
 
-**Plans:** 8/10 plans executed
+**Plans:** 9/10 plans executed
 **UI hint**: yes
 
 Plans:
@@ -466,7 +466,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 02-09-PLAN.md — /search empty and failure states, Show more k escalation, operator-only unranked listing (D-04, D-08, D-09; ENTRY-03, ENTRY-05, ROW-01)
+- [x] 02-09-PLAN.md — /search empty and failure states, Show more k escalation, operator-only unranked listing (D-04, D-08, D-09; ENTRY-03, ENTRY-05, ROW-01)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
