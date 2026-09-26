@@ -526,7 +526,11 @@ var recallTransmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.facetTags",
-		justification: "Emits Facet (listtags.go), its own transmission — the package's ONLY filtered Facet call. Reachable from the Store.ListTags seed (Store.ListTags itself emits nothing directly, so it gets no row of its own). Serves ListTags, exposed to callers through BOTH Connect and MCP once Phase 3 lands (RPC-04), so D-16's operator-tier exclusion rationale does not reach it either. The filter it carries is recallVisibleFilter's composition: ownerScopeFilter plus the three recall-gate conditions.",
+		justification: "Emits Facet (listtags.go), its own transmission — the package's ONLY filtered Facet call. Reachable from both the Store.ListTags seed (Store.ListTags itself emits nothing directly, so it gets no row of its own) and, as of plan 01-04, the Store.RelatedMemories seed via Store.relatedTagEdges' rarity-weight lookup (D-07). Serves ListTags (exposed through BOTH Connect and MCP once Phase 3 lands, RPC-04) AND RelatedMemories' shared-tag edges — both read the same numbers from this one helper, so D-16's operator-tier exclusion rationale does not reach either. The filter it carries is recallVisibleFilter's composition: ownerScopeFilter plus the three recall-gate conditions.",
+	},
+	{
+		enclosingFunc: "Store.relatedTagEdges",
+		justification: "Emits Count (the visible-set size n, plus an exact df fallback Count when a rare anchor tag is missing from a truncated facet) and Scroll (one ids-only probe per rare anchor tag) — all under recallVisibleFilter (D-07, D-10, D-11). Reachable from the Store.RelatedMemories seed (Store.RelatedMemories and Store.assembleRelated emit nothing scanned directly, so neither gets a row of its own). Its rarity weights read Store.facetTags above.",
 	},
 	{
 		enclosingFunc: "Store.relatedVectorEdges",

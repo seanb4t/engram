@@ -19,6 +19,7 @@ package store
 import (
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"time"
 
@@ -172,6 +173,171 @@ const relatedSupersessionDepth = 8
 // (64) so only the vector edge — the one edge type the caller's k widens —
 // can ever reach that ceiling.
 const relatedSupersessionCap = 16
+
+// relatedTagCap is the number of tag neighbours RelatedMemories keeps
+// (D-07's top-N by rarity weight; D-12's roughly-8 per-type cap, together
+// with relatedCitationCap and relatedSupersessionCap kept below
+// relatedTotalCeiling).
+const relatedTagCap = 8
+
+// relatedTagProbeCap is the most of the anchor's rarest (highest-weight)
+// tags relatedTagEdges probes — one Scroll per probed tag, so this also
+// bounds the sub-query fan-out (D-12).
+const relatedTagProbeCap = 16
+
+// relatedTagScanPerTag is the number of ids-only hits read per tag probe.
+const relatedTagScanPerTag = 64
+
+// relatedTagFacetLimit is the facet bound relatedTagEdges reads rarity
+// weights through (D-07) — the same facetTags call ListTags uses. A package
+// var, not a const, only so a test can force the truncated-facet path
+// (D-07's completeness requirement: an anchor tag missing from a truncated
+// facet still gets its exact df from a fallback Count).
+var relatedTagFacetLimit uint64 = MaxRecallLimit
+
+// relatedTagProbe is one of the anchor's tags queued for a Scroll probe,
+// paired with its already-computed rarity weight.
+type relatedTagProbe struct {
+	tag    string
+	weight float64
+}
+
+// relatedTagEdges implements D-07: rarity-weighted shared-tag edges over the
+// caller's readable, recall-visible set (f — the same recallVisibleFilter
+// ListTags and facetTags read through). n is an exact Count over f; df for
+// each of the anchor's tags comes from the SAME filtered facetTags call
+// ListTags uses, falling back to an exact Count only when the facet
+// truncated below that tag (more == true) — df is never estimated. A tag
+// carried by more than half the visible set (2*df > n) is ubiquitous and
+// contributes no weight and no edge (the "everything is tagged engram"
+// failure this decision exists to prevent). The remaining tags are probed
+// rarest-first, capped at relatedTagProbeCap probes of relatedTagScanPerTag
+// ids each; candidates are ranked by the summed weight of every tag they
+// share with the anchor and capped at relatedTagCap.
+func (s *Store) relatedTagEdges(ctx context.Context, f *qdrant.Filter, anchor Memory) ([]relatedCandidate, error) {
+	seen := make(map[string]bool, len(anchor.Tags))
+	var tags []string
+	for _, tag := range anchor.Tags {
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		tags = append(tags, tag)
+	}
+	if len(tags) == 0 {
+		return nil, nil
+	}
+
+	n, err := s.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: s.collection,
+		Filter:         f,
+		Exact:          qdrant.PtrOf(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, nil
+	}
+
+	facetCounts, more, err := s.facetTags(ctx, f, relatedTagFacetLimit)
+	if err != nil {
+		return nil, err
+	}
+	df := make(map[string]uint64, len(facetCounts))
+	for _, c := range facetCounts {
+		df[c.Tag] = c.Count
+	}
+
+	var probes []relatedTagProbe
+	for _, tag := range tags {
+		d, ok := df[tag]
+		if !ok {
+			if !more {
+				continue
+			}
+			exact, err := s.client.Count(ctx, &qdrant.CountPoints{
+				CollectionName: s.collection,
+				Filter: &qdrant.Filter{
+					Must: []*qdrant.Condition{qdrant.NewFilterAsCondition(f), qdrant.NewMatch("tags", tag)},
+				},
+				Exact: qdrant.PtrOf(true),
+			})
+			if err != nil {
+				return nil, err
+			}
+			d = exact
+		}
+		if d == 0 || 2*d > n {
+			continue
+		}
+		probes = append(probes, relatedTagProbe{tag: tag, weight: math.Log(float64(n) / float64(d))})
+	}
+
+	sort.Slice(probes, func(i, j int) bool {
+		if probes[i].weight != probes[j].weight {
+			return probes[i].weight > probes[j].weight
+		}
+		return probes[i].tag < probes[j].tag
+	})
+	if len(probes) > relatedTagProbeCap {
+		probes = probes[:relatedTagProbeCap]
+	}
+
+	type tagAccumulator struct {
+		tags   []WeightedTag
+		weight float64
+	}
+	byID := make(map[string]*tagAccumulator)
+	var order []string
+	for _, probe := range probes {
+		pts, err := s.client.Scroll(ctx, &qdrant.ScrollPoints{
+			CollectionName: s.collection,
+			Filter:         edgeFilter(f, anchor.ID, qdrant.NewMatch("tags", probe.tag)),
+			Limit:          qdrant.PtrOf(uint32(relatedTagScanPerTag)),
+			WithPayload:    qdrant.NewWithPayload(false),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, pt := range pts {
+			id := pt.Id.GetUuid()
+			acc, ok := byID[id]
+			if !ok {
+				acc = &tagAccumulator{}
+				byID[id] = acc
+				order = append(order, id)
+			}
+			acc.tags = append(acc.tags, WeightedTag{Tag: probe.tag, Weight: probe.weight})
+			acc.weight += probe.weight
+		}
+	}
+
+	out := make([]relatedCandidate, 0, len(order))
+	for _, id := range order {
+		acc := byID[id]
+		sort.SliceStable(acc.tags, func(i, j int) bool {
+			if acc.tags[i].Weight != acc.tags[j].Weight {
+				return acc.tags[i].Weight > acc.tags[j].Weight
+			}
+			return acc.tags[i].Tag < acc.tags[j].Tag
+		})
+		out = append(out, relatedCandidate{
+			id:   id,
+			edge: RelatedEdge{Type: RelatedEdgeTag, SharedTags: acc.tags, TagWeight: acc.weight},
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].edge.TagWeight != out[j].edge.TagWeight {
+			return out[i].edge.TagWeight > out[j].edge.TagWeight
+		}
+		return out[i].id < out[j].id
+	})
+	if len(out) > relatedTagCap {
+		out = out[:relatedTagCap]
+	}
+	return out, nil
+}
 
 // dedupSortedExcluding returns the distinct ids in ids that are not already
 // in visited, sorted ascending — the shared "next level" builder for
@@ -463,11 +629,15 @@ func (s *Store) RelatedMemories(ctx context.Context, id string, subj Subject, k 
 	if err != nil {
 		return RelatedResult{}, err
 	}
+	tags, err := s.relatedTagEdges(ctx, f, anchor)
+	if err != nil {
+		return RelatedResult{}, err
+	}
 	vector, err := s.relatedVectorEdges(ctx, f, anchor.ID, k)
 	if err != nil {
 		return RelatedResult{}, err
 	}
-	related, truncated, err := s.assembleRelated(ctx, f, anchor.ID, chain, vector)
+	related, truncated, err := s.assembleRelated(ctx, f, anchor.ID, chain, tags, vector)
 	if err != nil {
 		return RelatedResult{}, err
 	}
