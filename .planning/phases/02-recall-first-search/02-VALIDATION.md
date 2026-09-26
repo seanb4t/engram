@@ -42,18 +42,18 @@ Filled in by the planner and executor; task IDs follow `2-{plan}-{task}`.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 2-xx-xx | xx | 1 | ENTRY-01 / ENTRY-02 | — | N/A | unit | `pnpm --dir ui vitest run --project node src/lib/search/classify.test.ts` | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 1 | ENTRY-03 | — | N/A | unit | `pnpm --dir ui vitest run --project node src/lib/search/recall-header.test.ts` | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 1 | ENTRY-05 | — | N/A | unit | `pnpm --dir ui vitest run --project node src/lib/errors/connect-error.test.ts` | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 1 | D-01..D-03 | T-2-01 | Ungated comparison keeps owner/scope authz; only recall-gate Include* flags lifted | Go unit + parity | `go test ./internal/server/... -run HiddenCount` | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 2 | ENTRY-04 | — | N/A | browser | `pnpm --dir ui vitest run --project browser src/lib/components/HeaderSearch.browser.test.ts` | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 2 | ENTRY-06 | — | N/A | unit + browser | stale-response race test (two overlapping queries → final state = later query) | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 2 | ROW-01..ROW-03 | — | N/A | browser | `pnpm --dir ui vitest run --project browser src/lib/components/ResultsList.browser.test.ts` | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 2 | ROW-04 | — | N/A | browser | `pnpm --dir ui vitest run --project browser src/lib/components/ResultRow.browser.test.ts` | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 2 | ROW-05 | — | N/A | unit | URL parse/encode round-trip tests for the new facet fields | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 2 | ROW-06 | — | N/A | browser | `ScopeCombobox.browser.test.ts` | ❌ W0 | ⬜ pending |
-| 2-xx-xx | xx | 2 | ROW-07 | — | N/A | browser | `DetailPane.browser.test.ts` | Partial (`MemoryDetail.browser.test.ts`) | ⬜ pending |
-| 2-xx-xx | xx | 1 | DSYS-01 / DSYS-02 | — | N/A | doc check | `test -f .claude/skills/engram-console-conventions/SKILL.md && test -f .claude/skills/engram-connect-client/SKILL.md` | ❌ W0 | ⬜ pending |
+| 2-04-01 | 04 | 2 | ENTRY-01 / ENTRY-02 | — | N/A | unit | `pnpm --dir ui vitest run --project node src/lib/search/classify.test.ts` | ❌ W0 | ⬜ pending |
+| 2-08-01 | 08 | 3 | ENTRY-03 | — | N/A | unit | `pnpm --dir ui vitest run --project node src/lib/search/recall-header.test.ts` | ❌ W0 | ⬜ pending |
+| 2-04-02 | 04 | 2 | ENTRY-05 | — | N/A | unit | `pnpm --dir ui vitest run --project node src/lib/errors/connect-error.test.ts` | ❌ W0 | ⬜ pending |
+| 2-01-02, 2-01-03 | 01 | 1 | D-01..D-03 | T-02-01 | Ungated comparison keeps owner/scope authz; only recall-gate Include* flags lifted | Go unit + parity | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/server/ -run RecallHidden -count=1` | ❌ W0 | ⬜ pending |
+| 2-04-01 | 04 | 2 | ENTRY-04 | — | N/A | browser | `pnpm --dir ui vitest run --project browser src/lib/components/HeaderSearch.browser.test.ts` | ❌ W0 | ⬜ pending |
+| 2-08-01 | 08 | 3 | ENTRY-06 | — | N/A | unit + browser | stale-response race test (two overlapping queries → final state = later query) | ❌ W0 | ⬜ pending |
+| 2-06-01, 2-06-03 | 06 | 2 | ROW-01..ROW-03 | — | N/A | browser | `pnpm --dir ui vitest run --project browser src/lib/components/ResultsList.browser.test.ts` | ❌ W0 | ⬜ pending |
+| 2-06-02 | 06 | 2 | ROW-04 | — | N/A | browser | `pnpm --dir ui vitest run --project browser src/lib/components/ResultRow.browser.test.ts` | ❌ W0 | ⬜ pending |
+| 2-04-03, 2-08-03 | 04, 08 | 2, 3 | ROW-05 | — | N/A | unit | URL parse/encode round-trip tests for the new facet fields | ❌ W0 | ⬜ pending |
+| 2-08-03 | 08 | 3 | ROW-06 | — | N/A | browser | `ScopeCombobox.browser.test.ts` | ❌ W0 | ⬜ pending |
+| 2-07-01 | 07 | 2 | ROW-07 | — | N/A | browser | `DetailPane.browser.test.ts` | Partial (`MemoryDetail.browser.test.ts`) | ⬜ pending |
+| 2-10-02 | 10 | 5 | DSYS-01 / DSYS-02 | — | N/A | doc check | `test -f .claude/skills/engram-console-conventions/SKILL.md && test -f .claude/skills/engram-connect-client/SKILL.md` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
