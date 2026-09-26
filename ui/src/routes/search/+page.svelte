@@ -30,6 +30,7 @@
     type ResolutionInput
   } from '$lib/search/recall-header';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
+  import FacetStrip from '$lib/components/FacetStrip.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
@@ -153,11 +154,30 @@
     return memories.find((m) => m.id === effectiveSel) ?? detailQ.data?.memory;
   });
 
-  // ROW-05/Task 3: a category filter's unfiltered total ("N hits of M") is
-  // undefined until Task 3 wires the second, categories-stripped query that
-  // supplies it — a clean seam, not a stub, since rankedHeaderParts already
-  // omits the "of N" clause whenever this is undefined or equals `hits`.
-  const hitsWithoutCategory = $derived<number | undefined>(undefined);
+  // ROW-05: the category filter's unfiltered total ("N hits of M"). When no
+  // category filter is active, `searchQ` already ran with `categories: []`
+  // (the same key this query would build), so counts come straight from its
+  // own hits and this second query stays disabled — no redundant fetch.
+  const categoryCountsQ = createQuery(() => ({
+    queryKey: searchMemoriesKey({ ...effective, categories: [] }, true),
+    queryFn: ({ signal }) => engram.searchMemories(searchMemoriesRequest({ ...effective, categories: [] }, true), { signal }),
+    enabled: classified.kind === 'text' && effective.categories.length > 0,
+    placeholderData: keepPreviousData,
+    meta: { silent: true }
+  }));
+
+  const categoryCounts = $derived.by((): Record<string, number> | undefined => {
+    if (classified.kind !== 'text') return undefined;
+    const source = effective.categories.length > 0 ? categoryCountsQ.data?.memories : searchQ.data?.memories;
+    if (!source) return undefined;
+    const counts: Record<string, number> = {};
+    for (const m of source) counts[m.category] = (counts[m.category] ?? 0) + 1;
+    return counts;
+  });
+
+  const hitsWithoutCategory = $derived(
+    effective.categories.length > 0 ? categoryCountsQ.data?.memories.length : undefined
+  );
 
   // D-06: derived client-side by grouping the returned hits by scope, every
   // searched_scopes entry listed (zeros included) in server order; a scoped
@@ -227,6 +247,14 @@
       placeholder="Search, paste an id, scope: #tag is:"
     />
   </div>
+  <FacetStrip
+    params={effective}
+    {categoryCounts}
+    scopes={scopesQ.data}
+    scopesLoading={scopesQ.isLoading}
+    scopesError={scopesQ.error}
+    onchange={(partial) => navigate({ ...partial, sel: '' })}
+  />
   <ResultsHeader parts={headerParts} {scopeHits} k={effective.k} busy={headerBusy} />
   <!-- WriteSurfaces lives in a STABLE location outside RecallSplit: that
        component switches its narrow/wide layout branch based on a

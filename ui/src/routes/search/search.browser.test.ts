@@ -2,7 +2,7 @@ import { render } from 'vitest-browser-svelte';
 import { userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { create } from '@bufbuild/protobuf';
+import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import { persistResume } from '$lib/resume';
 import SearchPage from './+page.svelte';
@@ -58,7 +58,7 @@ function renderSearch() {
   return render(SearchPage, {}, { wrapper: QueryClientProvider, wrapperProps: { client: qc } });
 }
 
-function makeMemory(overrides: Partial<Memory> = {}): Memory {
+function makeMemory(overrides: MessageInitShape<typeof MemorySchema> = {}): Memory {
   return create(MemorySchema, {
     id: 'm-default',
     category: 'convention',
@@ -237,6 +237,57 @@ describe('search route — row-action keys', () => {
     await userEvent.keyboard('e');
 
     await expect.poll(() => getMemorySpy.mock.calls.some((c) => c[0]?.id === 'm-edit')).toBe(true);
+  });
+});
+
+describe('search route — facet chips round-trip through the URL (ROW-05)', () => {
+  it('loads facet params from the URL and sends them on the SearchMemories request', async () => {
+    pageState.url.href = 'http://localhost/search?q=x&cat=gotcha&tag=ci&inc=superseded&after=2026-01-01T00%3A00%3A00Z';
+
+    await renderSearch();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const [req] = searchMemoriesSpy.mock.calls[0];
+    expect(req.categories).toEqual(['gotcha']);
+    expect(req.tags).toEqual(['ci']);
+    expect(req.includeSuperseded).toBe(true);
+    expect(req.createdAfter).toBe('2026-01-01T00:00:00Z');
+  });
+
+  it('toggling a facet chip rewrites the URL through encodeSearchParams', async () => {
+    pageState.url.href = 'http://localhost/search?q=x';
+    searchMemoriesSpy.mockResolvedValue(emptySearchResult());
+
+    const screen = await renderSearch();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+
+    await screen.getByRole('button', { name: /gotcha/ }).click();
+    await expect.poll(() => pageState.url.searchParams.get('cat')).toBe('gotcha');
+  });
+
+  it('with a category filter active, a second SearchMemories call without categories supplies "N hits of M"', async () => {
+    pageState.url.href = 'http://localhost/search?q=x&cat=gotcha';
+    searchMemoriesSpy.mockImplementation((req: { categories: string[] }) => {
+      if (req.categories.length > 0) {
+        return Promise.resolve({
+          memories: [makeMemory({ id: 'm-a', summary: 'a', category: 'gotcha' })],
+          searchedScopes: ['repo:test'],
+          scopesTruncated: false,
+          scopesUnknown: false
+        });
+      }
+      return Promise.resolve({
+        memories: [
+          makeMemory({ id: 'm-a', summary: 'a', category: 'gotcha' }),
+          makeMemory({ id: 'm-b', summary: 'b', category: 'convention' })
+        ],
+        searchedScopes: ['repo:test'],
+        scopesTruncated: false,
+        scopesUnknown: false
+      });
+    });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByText(/1 hit of 2/)).toBeInTheDocument();
   });
 });
 
