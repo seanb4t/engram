@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 8
+open_count: 9
 waived_count: 0
 fixed_count: 7
-total_count: 15
-last_updated: 2026-09-24T01:24:44.462Z
+total_count: 16
+last_updated: 2026-09-26T19:26:17.906Z
 ---
 
 # Broken Windows Ledger
@@ -30,6 +30,7 @@ last_updated: 2026-09-24T01:24:44.462Z
 | 13 | 06 | deviation | internal/store/redevidence_harness_test.go |  | TestRedEvidencePatchesAreLive hit Go's default 601s per-package timeout twice during plan 06-01's task gate (environmental: 54-patch sequential subprocess harness + heavy concurrent unrelated machine load; zero internal/store files touched by 06-01) | open |  | 2026-09-20T22:46:26.903Z |  |
 | 14 | 06 | deviation | internal/store |  | Local full-package internal/store run is not reliably green on a loaded dev machine: at load ~290 the Qdrant TESTCONTAINER died mid-run with 'connection refused / code = Unavailable' (TestSummarizeMissingBoundedOverGRPCLimit), the exact symptom of #497 — yet it passes in 6.35s in isolation, so it is environmental, not a code defect. Distinct from #497/#498, which fixed the CI path (one shared services: container replacing four testcontainers on a 2-vCPU runner); the local testcontainer path was never covered by that fix, and this milestone's fixtures made the run long enough (669s) to expose it. Also exceeds Go's 600s default package timeout locally; needs -timeout 180m. | open |  | 2026-09-21T02:31:58.567Z |  |
 | 15 | 3 | lint-warning | cmd/engram/operator_view_test.go | 441 | Pre-existing raw 'go vet' finding (struct field B repeats json tag) in a deliberate nolint:govet adjacency-edge probe; golangci-lint (the project's real gate) already suppresses it. Out of scope for plan 03-01 (file not in files_modified). | open |  | 2026-09-24T01:24:44.462Z |  |
+| 16 | 2 | deviation | ui/src/lib/components/HeaderSearch.svelte |  | Tab does not cycle dropdown sections (Task 3 action text calls for it); deferred as a follow-up, not implemented | open |  | 2026-09-26T19:26:17.906Z |  |
 
 ````json
 [
@@ -216,6 +217,19 @@ last_updated: 2026-09-24T01:24:44.462Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-24T01:24:44.462Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 16,
+    "kind": "deviation",
+    "phase": "2",
+    "file": "ui/src/lib/components/HeaderSearch.svelte",
+    "line": null,
+    "description": "Tab does not cycle dropdown sections (Task 3 action text calls for it); deferred as a follow-up, not implemented",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-26T19:26:17.906Z",
     "resolved_at": null,
     "milestone": null
   }

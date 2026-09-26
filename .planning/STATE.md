@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 2
 current_phase_name: Recall-First Search
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-09-26T18:44:27.015Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-09-26T19:26:46.116Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 2 execution started
-state_head: 7c7718a9452e132c6b83747517c2168a59dba0e2
+state_head: 12ab1fcca702fe2578175504f6300f1eb6d6c3a8
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 7
+  completed_plans: 8
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 ## Current Position
 
 Phase: 2 (Recall-First Search) — EXECUTING
-Plan: 4 of 10
+Plan: 5 of 10
 Status: Ready to execute
 Last activity: 2026-09-26 — Phase 2 execution started
 
@@ -438,6 +438,8 @@ milestone needs in working memory.
 - [Phase 2]: installDisplayShortcuts defaults notify to svelte-sonner's toast so +layout.svelte calls it with just (window)
 - [Phase 2]: The u scaling unit is calc(1rem / 13), equivalent to calc(var(ui-font) / 13) once html font-size is var(ui-font); matches the plan's artifact contract verbatim
 - [Phase 2]: 02-02: Used 02-01's shipped names verbatim (RecallGateHidden{Total,Archived,Superseded,Expired,Scheduled}, field/key recall_gate_hidden) for the CLI footer and docs — no new naming decision required.
+- [Phase 02]: Popover portal disabled (portalProps={ disabled: true }) on HeaderSearch's dropdown; bits-ui Command.Root's item registry is DOM-scoped to its own ref, so the default body-portal made arrow-key/Enter selection silently no-op — Rendering inline keeps Floating UI's fixed-position placement correct while making dropdown items visible to Command.Root's getValidItems() DOM query
+- [Phase 02]: applyChips (params.ts) includes all category chips, known and unknown, in the derived request/params; the known-only filter for the live header-search request stays local to HeaderSearch's own effectiveCategories — The codec is a mechanical chip-to-params mapping; known-only is a search-request business rule scoped to Task 2's action text
 
 ### Pending Todos
 
@@ -534,8 +536,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T18:44:26.988Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-09-26T19:26:46.089Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -744,6 +746,7 @@ Resume file: None
 | Phase 02 P01 | 38min | 3 tasks | 12 files |
 | Phase 2 P3 | 27min | 3 tasks | 31 files |
 | Phase 02 P02 | 20min | 2 tasks | 10 files |
+| Phase 02 P04 | 40min | 3 tasks | 12 files |
 
 ## Operator Next Steps
 
