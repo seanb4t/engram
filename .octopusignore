@@ -9,10 +9,13 @@
 # Built SvelteKit bundle; the source is ui/.
 /internal/webauth/static/
 
-# Generated protobuf/Connect code (source: proto/) and its vendored copy in the
-# UI. The built-in list matches *.pb.go but not *.connect.go or *_pb.ts.
+# Generated protobuf/Connect code (source: proto/) and the subtrees that
+# `task proto:gen` vendors into the UI. ui/src/lib/gen/engram_pb.ts is a
+# hand-authored barrel and stays reviewed. The built-in list matches *.pb.go
+# but not *.connect.go or *_pb.ts.
 /gen/
-/ui/src/lib/gen/
+/ui/src/lib/gen/engram/
+/ui/src/lib/gen/buf/
 
 # Verbatim copies of .planning/ sketch and spike sources packaged into skills
 /.claude/skills/*/sources/
