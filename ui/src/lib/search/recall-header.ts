@@ -147,3 +147,24 @@ export function headerText(parts: HeaderPart[]): string {
 export function loadingLine(query: string, scopeCount: number): string {
   return `Searching ${scopeCount} ${plural(scopeCount, 'scope', 'scopes')} for ${query}…`;
 }
+
+// ENTRY-03's empty-state heading: names the query and exactly what was
+// searched (cross-spine vs a bounded scope count), plus the hidden-by-gate
+// clause only when something was actually hidden — never a bare "no
+// results" (recall-surface.md "Empty and error states say what happened").
+export interface EmptyHeadingInput {
+  query: string;
+  crossSpine: boolean;
+  scopesSearched: number;
+  hidden?: HiddenCounts;
+}
+
+export function emptyHeading(input: EmptyHeadingInput): string {
+  const base = input.crossSpine
+    ? `No memories match ${input.query} in any scope you can read`
+    : `No memories match ${input.query} in the ${input.scopesSearched} ${plural(input.scopesSearched, 'scope', 'scopes')} searched`;
+  if (input.hidden && input.hidden.total > 0) {
+    return `${base} · ${input.hidden.total} hidden by recall gate`;
+  }
+  return base;
+}

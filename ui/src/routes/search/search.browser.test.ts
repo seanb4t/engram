@@ -3,6 +3,7 @@ import { userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
+import { ConnectError, Code } from '@connectrpc/connect';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import { persistResume } from '$lib/resume';
 import SearchPage from './+page.svelte';
@@ -288,6 +289,115 @@ describe('search route — facet chips round-trip through the URL (ROW-05)', () 
 
     const screen = await renderSearch();
     await expect.element(screen.getByText(/1 hit of 2/)).toBeInTheDocument();
+  });
+});
+
+describe('search route — honest empty state (ENTRY-03)', () => {
+  it('cross-spine zero hits names the query, offers fix rows for hidden/category state, and never flashes "no matches" while in flight', async () => {
+    pageState.url.href = 'http://localhost/search?q=zzz&cat=gotcha';
+    let resolveSearch!: (v: unknown) => void;
+    const pending = new Promise((resolve) => {
+      resolveSearch = resolve;
+    });
+    searchMemoriesSpy.mockReturnValue(pending);
+
+    const screen = await renderSearch();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    await expect.element(screen.getByText('No memories match', { exact: false })).not.toBeInTheDocument();
+
+    resolveSearch({
+      memories: [],
+      searchedScopes: ['repo:a', 'repo:b'],
+      scopesTruncated: false,
+      scopesUnknown: false,
+      recallGateHidden: { total: 1n, archived: 0n, superseded: 1n, expired: 0n, scheduled: 0n }
+    });
+
+    await expect.element(screen.getByText('No memories match zzz in any scope you can read · 1 hidden by recall gate')).toBeInTheDocument();
+    await expect.element(screen.getByText(/no matches/i)).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Include superseded' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Clear the category filter' })).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Include superseded' }).click();
+    await expect.poll(() => pageState.url.searchParams.getAll('inc')).toEqual(['superseded']);
+  });
+
+  it('a scoped zero-hit response offers "Search every readable scope", which removes scope and restores cross-spine', async () => {
+    pageState.url.href = 'http://localhost/search?q=zzz&scope=repo%3Ax';
+    searchMemoriesSpy.mockResolvedValue({
+      memories: [],
+      searchedScopes: ['repo:x'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByText('No memories match zzz in the 1 scope searched')).toBeInTheDocument();
+    await screen.getByRole('button', { name: 'Search every readable scope' }).click();
+
+    await expect.poll(() => pageState.url.searchParams.get('scope')).toBe(null);
+    await expect.poll(() => pageState.url.searchParams.get('xs')).toBe(null);
+  });
+});
+
+describe('search route — honest failure states (ENTRY-05)', () => {
+  it('a rejected request renders the real envelope and its fix row; clicking it restores cross-spine', async () => {
+    pageState.url.href = 'http://localhost/search?q=x&scope=repo%3Ax';
+    searchMemoriesSpy.mockRejectedValue(
+      new ConnectError('field=scope,cross_spine hint=conditional_required: scope is required unless cross_spine is true', Code.FailedPrecondition)
+    );
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByText('Server rejected the request')).toBeInTheDocument();
+    await expect
+      .element(screen.getByText('field=scope,cross_spine hint=conditional_required: scope is required unless cross_spine is true', { exact: false }))
+      .toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Re-enable cross-spine' })).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Re-enable cross-spine' }).click();
+    await expect.poll(() => pageState.url.searchParams.get('scope')).toBe(null);
+    await expect.poll(() => pageState.url.searchParams.get('xs')).toBe(null);
+  });
+
+  it('an opaque failure says nothing was searched, offers Retry and Copy error, and shows no empty heading', async () => {
+    pageState.url.href = 'http://localhost/search?q=x';
+    searchMemoriesSpy.mockRejectedValue(new ConnectError('backend unreachable', Code.Unavailable));
+    const writeSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+
+    const screen = await renderSearch();
+    await expect
+      .element(screen.getByText('Search failed — nothing was searched. search_memory returned code=Unavailable'))
+      .toBeInTheDocument();
+    await expect.element(screen.getByText('Nothing was searched, so this is not an empty result')).toBeInTheDocument();
+    await expect.element(screen.getByText('No memories match', { exact: false })).not.toBeInTheDocument();
+
+    searchMemoriesSpy.mockClear();
+    await screen.getByRole('button', { name: 'Retry' }).click();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+
+    await screen.getByRole('button', { name: 'Copy error' }).click();
+    await expect.poll(() => writeSpy.mock.calls.at(-1)?.[0]).toBe('backend unreachable');
+  });
+
+  it('an ambiguous short_id renders the D-04 warning line', async () => {
+    pageState.url.href = 'http://localhost/search?q=k3m9p2qr7a';
+    getMemorySpy.mockRejectedValue(new ConnectError('ambiguous short id: k3m9p2qr7a', Code.FailedPrecondition));
+
+    const screen = await renderSearch();
+    await expect
+      .element(screen.getByText('short_id k3m9p2qr7a is ambiguous — paste the full id to be exact'))
+      .toBeInTheDocument();
+  });
+
+  it('a UUID with NotFound renders the not-found line', async () => {
+    const uuid = '753aba22-1111-2222-3333-444455556666';
+    pageState.url.href = `http://localhost/search?q=${uuid}`;
+    getMemorySpy.mockRejectedValue(new ConnectError('not found', Code.NotFound));
+
+    const screen = await renderSearch();
+    await expect
+      .element(screen.getByText('No memory with that id that you can read · not-found and not-yours look the same by design'))
+      .toBeInTheDocument();
   });
 });
 

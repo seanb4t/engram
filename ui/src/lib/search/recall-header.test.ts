@@ -7,6 +7,7 @@ import {
   plural,
   loadingLine,
   resolutionLine,
+  emptyHeading,
   type HiddenCounts
 } from './recall-header';
 
@@ -108,6 +109,36 @@ describe('recall-header', () => {
   it('resolutionLine describes a short_id-shaped miss re-searched as text, never a silent reinterpretation', () => {
     expect(resolutionLine({ kind: 'short_id_miss', q: 'k3m9p2qr7a' })).toBe(
       'No short_id attachment. Searched it as text instead: k3m9p2qr7a'
+    );
+  });
+});
+
+describe('emptyHeading', () => {
+  it('cross-spine with nothing hidden names every readable scope, no hidden clause', () => {
+    const hidden: HiddenCounts = { total: 0, archived: 0, superseded: 0, expired: 0, scheduled: 0 };
+    expect(emptyHeading({ query: 'zzz', crossSpine: true, scopesSearched: 0, hidden })).toBe(
+      'No memories match zzz in any scope you can read'
+    );
+  });
+
+  it('scoped with a single searched scope and a hidden count appends the hidden clause', () => {
+    const hidden: HiddenCounts = { total: 2, archived: 1, superseded: 1, expired: 0, scheduled: 0 };
+    expect(emptyHeading({ query: 'zzz', crossSpine: false, scopesSearched: 1, hidden })).toBe(
+      'No memories match zzz in the 1 scope searched · 2 hidden by recall gate'
+    );
+  });
+
+  it('agrees in plural for multiple searched scopes', () => {
+    const hidden: HiddenCounts = { total: 2, archived: 1, superseded: 1, expired: 0, scheduled: 0 };
+    expect(emptyHeading({ query: 'zzz', crossSpine: false, scopesSearched: 3, hidden })).toBe(
+      'No memories match zzz in the 3 scopes searched · 2 hidden by recall gate'
+    );
+  });
+
+  it('omits the hidden clause when nothing was hidden', () => {
+    const hidden: HiddenCounts = { total: 0, archived: 0, superseded: 0, expired: 0, scheduled: 0 };
+    expect(emptyHeading({ query: 'zzz', crossSpine: false, scopesSearched: 3, hidden })).toBe(
+      'No memories match zzz in the 3 scopes searched'
     );
   });
 });

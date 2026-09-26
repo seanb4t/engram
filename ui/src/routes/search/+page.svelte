@@ -12,22 +12,27 @@
   import { engram } from '$lib/client';
   import { peekResume, consumeResume } from '$lib/resume';
   import { normalizeVisibility } from '$lib/mutations/memory';
+  import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import {
     parseSearchParams,
     encodeSearchParams,
     searchMemoriesKey,
     searchMemoriesRequest,
     applyChips,
+    K_STEPS,
+    DEFAULT_K,
     type SearchParams
   } from '$lib/search/params';
   import { classifyInput, type OperatorChip } from '$lib/search/classify';
   import {
     rankedHeaderParts,
+    emptyHeading,
     hiddenFromProto,
     loadingLine,
     resolutionLine,
     type HeaderPart,
-    type ResolutionInput
+    type ResolutionInput,
+    type HiddenCounts
   } from '$lib/search/recall-header';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import FacetStrip from '$lib/components/FacetStrip.svelte';
@@ -35,6 +40,7 @@
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
   import WriteSurfaces from '$lib/components/WriteSurfaces.svelte';
+  import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
 
   const params = $derived(parseSearchParams(page.url.searchParams));
   const classified = $derived(classifyInput(params.q));
@@ -79,6 +85,12 @@
     }, 160);
   }
 
+  // ENTRY-05 fix row "without-full": a page-local override, not a URL param
+  // (retrying without full content is a one-off mitigation for a
+  // response_too_large rejection, not a durable preference worth persisting
+  // or sharing via a link).
+  let fullOverride = $state(true);
+
   const idToFetch = $derived(
     classified.kind === 'id' ? classified.id : classified.kind === 'short_id' ? classified.shortId : ''
   );
@@ -97,23 +109,24 @@
       : ''
   );
   const fallbackQ = createQuery(() => ({
-    queryKey: searchMemoriesKey({ ...effective, q: shortIdMissText }, true),
-    queryFn: ({ signal }) => engram.searchMemories(searchMemoriesRequest({ ...effective, q: shortIdMissText }, true), { signal }),
+    queryKey: searchMemoriesKey({ ...effective, q: shortIdMissText }, fullOverride),
+    queryFn: ({ signal }) =>
+      engram.searchMemories(searchMemoriesRequest({ ...effective, q: shortIdMissText }, fullOverride), { signal }),
     enabled: !!shortIdMissText,
     placeholderData: keepPreviousData,
     meta: { silent: true }
   }));
 
   const searchQ = createQuery(() => ({
-    queryKey: searchMemoriesKey(effective, true),
-    queryFn: ({ signal }) => engram.searchMemories(searchMemoriesRequest(effective, true), { signal }),
+    queryKey: searchMemoriesKey(effective, fullOverride),
+    queryFn: ({ signal }) => engram.searchMemories(searchMemoriesRequest(effective, fullOverride), { signal }),
     enabled: classified.kind === 'text',
     placeholderData: keepPreviousData,
     meta: { silent: true }
   }));
 
   // Unranked (operator-only) listing arrives with plan 02-09 (D-09) — this
-  // plan resolves id/short_id/text only.
+  // task resolves id/short_id/text only.
   const scopesQ = createQuery(() => ({
     queryKey: ['listScopes'],
     queryFn: ({ signal }) => engram.listScopes({}, { signal }),
@@ -159,8 +172,9 @@
   // (the same key this query would build), so counts come straight from its
   // own hits and this second query stays disabled — no redundant fetch.
   const categoryCountsQ = createQuery(() => ({
-    queryKey: searchMemoriesKey({ ...effective, categories: [] }, true),
-    queryFn: ({ signal }) => engram.searchMemories(searchMemoriesRequest({ ...effective, categories: [] }, true), { signal }),
+    queryKey: searchMemoriesKey({ ...effective, categories: [] }, fullOverride),
+    queryFn: ({ signal }) =>
+      engram.searchMemories(searchMemoriesRequest({ ...effective, categories: [] }, fullOverride), { signal }),
     enabled: classified.kind === 'text' && effective.categories.length > 0,
     placeholderData: keepPreviousData,
     meta: { silent: true }
@@ -229,6 +243,140 @@
 
   const headerBusy = $derived(searchQ.isFetching && searchQ.isPlaceholderData);
 
+  // ENTRY-03/ENTRY-05: one honest-state pipeline that every classification
+  // outcome feeds — the empty check requires isSuccess && !isFetching
+  // (Pitfall 3: never flash to empty mid-flight), and an error always wins
+  // over an empty read since a rejected/opaque query is never truly "zero
+  // hits".
+  const activeResult = $derived.by(():
+    | {
+        error: unknown;
+        isSuccess: boolean;
+        isFetching: boolean;
+        count: number;
+        scopeCount: number;
+        hidden?: HiddenCounts;
+        refetch: () => void;
+      }
+    | undefined => {
+    if (classified.kind === 'text') {
+      return {
+        error: searchQ.error,
+        isSuccess: searchQ.isSuccess,
+        isFetching: searchQ.isFetching,
+        count: searchQ.data?.memories.length ?? 0,
+        scopeCount: effective.scope ? 1 : (searchQ.data?.searchedScopes?.length ?? 0),
+        hidden: hiddenFromProto(searchQ.data?.recallGateHidden),
+        refetch: () => searchQ.refetch()
+      };
+    }
+    if (classified.kind === 'id' || classified.kind === 'short_id') {
+      if (shortIdMissText) {
+        return {
+          error: fallbackQ.error,
+          isSuccess: fallbackQ.isSuccess,
+          isFetching: fallbackQ.isFetching,
+          count: fallbackQ.data?.memories.length ?? 0,
+          scopeCount: effective.scope ? 1 : (fallbackQ.data?.searchedScopes?.length ?? 0),
+          hidden: hiddenFromProto(fallbackQ.data?.recallGateHidden),
+          refetch: () => fallbackQ.refetch()
+        };
+      }
+      // A GetMemory lookup has no "empty success" concept — isSuccess stays
+      // false here so a found record never routes through the empty branch.
+      return {
+        error: idQ.error,
+        isSuccess: false,
+        isFetching: idQ.isFetching,
+        count: 0,
+        scopeCount: 0,
+        hidden: undefined,
+        refetch: () => idQ.refetch()
+      };
+    }
+    return undefined;
+  });
+
+  const parsedError = $derived(activeResult?.error ? parseConnectError(activeResult.error) : undefined);
+
+  const isEmpty = $derived(
+    !!activeResult && !parsedError && activeResult.isSuccess && !activeResult.isFetching && activeResult.count === 0
+  );
+
+  const emptyHeadingText = $derived.by(() => {
+    if (!isEmpty || !activeResult) return '';
+    return emptyHeading({
+      query: effective.q,
+      crossSpine: effective.crossSpine,
+      scopesSearched: activeResult.scopeCount,
+      hidden: activeResult.hidden
+    });
+  });
+
+  const emptyFixes = $derived.by((): { id: string; label: string }[] => {
+    if (!isEmpty || !activeResult) return [];
+    const fixes: { id: string; label: string }[] = [];
+    if (effective.scope) fixes.push({ id: 'search-all-scopes', label: 'Search every readable scope' });
+    const h = activeResult.hidden;
+    if (h?.archived) fixes.push({ id: 'include-archived', label: 'Include archived' });
+    if (h?.superseded) fixes.push({ id: 'include-superseded', label: 'Include superseded' });
+    if ((h?.scheduled ?? 0) > 0 || (h?.expired ?? 0) > 0) {
+      fixes.push({ id: 'include-scheduled', label: 'Include scheduled' });
+    }
+    if (effective.categories.length > 0) fixes.push({ id: 'clear-category', label: 'Clear the category filter' });
+    return fixes;
+  });
+
+  const recallState = $derived.by((): RecallStateInput | undefined => {
+    if (parsedError) return { kind: 'error', parsed: parsedError, fixes: fixRowsFor(parsedError) };
+    if (isEmpty) return { kind: 'empty', heading: emptyHeadingText, fixes: emptyFixes };
+    return undefined;
+  });
+
+  function onRecallFix(id: string) {
+    switch (id) {
+      case 'search-all-scopes':
+        navigate({ scope: '', crossSpine: true });
+        return;
+      case 'include-archived':
+        navigate({ includeArchived: true });
+        return;
+      case 'include-superseded':
+        navigate({ includeSuperseded: true });
+        return;
+      case 'include-scheduled':
+        navigate({ includeScheduled: true });
+        return;
+      case 'clear-category':
+        navigate({ categories: [] });
+        return;
+      case 'enable-cross-spine':
+        navigate({ crossSpine: true, scope: '' });
+        return;
+      case 'pick-scope':
+        (document.querySelector('.scope-combobox-trigger') as HTMLButtonElement | null)?.click();
+        return;
+      case 'lower-k': {
+        const idx = K_STEPS.indexOf(effective.k);
+        navigate({ k: idx > 0 ? K_STEPS[idx - 1] : DEFAULT_K });
+        return;
+      }
+      case 'without-full':
+        fullOverride = false;
+        return;
+      case 'clear-created':
+        navigate({ createdAfter: '', createdBefore: '' });
+        return;
+      case 'retry':
+        activeResult?.refetch();
+        return;
+    }
+  }
+
+  function onRecallRetry() {
+    activeResult?.refetch();
+  }
+
   let writeSurfaces: ReturnType<typeof WriteSurfaces> | undefined = $state();
 
   onMount(() => {
@@ -278,22 +426,26 @@
   <div class="search-body">
     <RecallSplit open={!!effectiveSel} onclose={() => navigate({ sel: '' })} autoSaveId="engram-search-split">
       {#snippet list()}
-        <ResultsList
-          {memories}
-          mode="ranked"
-          label="Search results"
-          openId={effectiveSel}
-          loading={searchQ.isLoading && !searchQ.data}
-          busy={searchQ.isFetching && searchQ.isPlaceholderData}
-          onopen={(id) => navigate({ sel: params.sel === id ? '' : id })}
-          onescape={() => navigate({ sel: '' })}
-          onedit={(id) => writeSurfaces?.openEdit(id)}
-          onvisibility={(m) =>
-            normalizeVisibility(m.visibility) === 'shared'
-              ? writeSurfaces?.requestMakePrivate(m, 'memory')
-              : writeSurfaces?.requestShare(m, 'memory')}
-          ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
-        />
+        {#if recallState}
+          <RecallState state={recallState} onfix={onRecallFix} onretry={onRecallRetry} />
+        {:else}
+          <ResultsList
+            {memories}
+            mode="ranked"
+            label="Search results"
+            openId={effectiveSel}
+            loading={searchQ.isLoading && !searchQ.data}
+            busy={searchQ.isFetching && searchQ.isPlaceholderData}
+            onopen={(id) => navigate({ sel: params.sel === id ? '' : id })}
+            onescape={() => navigate({ sel: '' })}
+            onedit={(id) => writeSurfaces?.openEdit(id)}
+            onvisibility={(m) =>
+              normalizeVisibility(m.visibility) === 'shared'
+                ? writeSurfaces?.requestMakePrivate(m, 'memory')
+                : writeSurfaces?.requestShare(m, 'memory')}
+            ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
+          />
+        {/if}
       {/snippet}
       {#snippet detail()}
         <DetailPane
