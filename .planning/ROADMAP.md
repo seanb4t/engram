@@ -371,7 +371,7 @@ place a newcomer can learn the store — on the existing stack (Svelte 5, Svelte
 1.7, bits-ui, Tailwind 4, TanStack Query 6), with the missing Connect RPCs added rather than linked
 out to the CLI.
 
-- [ ] **Phase 1: Store Prerequisites** - Authz-gated Archive/Restore, RelatedMemories, and ListTags land in `internal/store`, no proto or UI yet
+- [x] **Phase 1: Store Prerequisites** - Authz-gated Archive/Restore, RelatedMemories, and ListTags land in `internal/store`, no proto or UI yet (completed 2026-09-26)
 - [ ] **Phase 01.1: Console Sketches (INSERTED)** - Throwaway HTML sketches of the console surfaces to pick a visual direction before any UI-SPEC
 - [ ] **Phase 2: Recall-First Search** - Honest id/short_id/text resolution, server-driven command palette, dense virtualized results row with facets and score/relevance
 - [ ] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided
@@ -393,7 +393,7 @@ built on top of them.
   3. `Store.RelatedMemories(subj, id)` returns supersession, shared-tag, shared-citation, and vector-neighbour edges with the caller's read predicate composed into the Qdrant filter (never post-filtered in a handler), a bounded edge count, and a documented rule for a candidate reachable by more than one edge type
   4. `Store.ListTags(subj, scope)` returns facet counts over a new `tags` payload index under the caller's read filter, and the recall-gate test allowlist recognizes a filtered `Facet` call
 
-**Plans:** 4/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -619,7 +619,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 3. Curation Verdicts | 2026-09-22.01 | 8/8 | Complete | 2026-09-24 |
 | 4. Jev Reranker & Per-Hit Relevance Signal | 2026-09-22.01 | 8/8 | Complete | 2026-09-24 |
 | 5. Operator Correctness | 2026-09-22.01 | 5/5 | Complete | 2026-09-24 |
-| 1. Store Prerequisites | 2026-09-25.01 | 3/3 | Not started | - |
+| 1. Store Prerequisites | 2026-09-25.01 | 4/4 | Complete | 2026-09-26 |
 | 01.1. Console Sketches (INSERTED) | 2026-09-25.01 | 0/0 | Not started | - |
 | 2. Recall-First Search | 2026-09-25.01 | 15/15 | Not started | - |
 | 3. Curation RPCs & MCP Tools | 2026-09-25.01 | 6/6 | Not started | - |

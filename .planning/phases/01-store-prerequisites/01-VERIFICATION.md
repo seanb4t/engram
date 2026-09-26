@@ -1,9 +1,10 @@
 ---
 phase: 01-store-prerequisites
 verified: 2026-09-26T01:20:00Z
-status: human_needed
+status: passed
 score: 18/18 must-haves verified
 covered_files:
+
   - ".planning/REQUIREMENTS.md"
   - ".planning/phases/01-store-prerequisites/01-01-PLAN.md"
   - ".planning/phases/01-store-prerequisites/01-01-SUMMARY.md"
@@ -25,6 +26,7 @@ covered_files:
   - "internal/store/schemaversion_recallgate_test.go"
   - "internal/store/spine.go"
   - "internal/store/store.go"
+
 covered_digest: "v1:sha256:8378b8f9b1dfa440aa45f9ac450faa5bd6384573dc62f923397f8cefa0d04e03"
 behavior_unverified: 0
 overrides_applied: 0
@@ -40,6 +42,7 @@ re_verification:
   regressions: []
 behavior_unverified_items: []
 human_verification:
+
   - test: "01-03's judgment-tier prohibition — no blended cross-type score"
     expected: "Per-type evidence fields only; admission and sort order strictly by relatedEdgeRank (fixed type order), never a blended score."
     why_human: "The plan's own frontmatter marks this prohibition verification: judgment (not test-backed). A new behavioral test (TestRelatedMemoriesAdmitsByTypeNotScore, commit 14c7aa5e) now demonstrates this directly and passes live against real Qdrant with -race, and this verifier independently re-ran it and confirmed the admission-order code path (assembleRelated is called with citations, tags, vector in that literal order, matching relatedEdgeRank's canonical order) — but per the judgment-tier prohibition policy, a judgment-tier item is never auto-resolved by test evidence; it requires an explicit human sign-off rather than resting on an LLM-judge verdict (mine or the executor's) alone."

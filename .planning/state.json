@@ -321,12 +321,12 @@
     {
       "number": "1",
       "name": "Store Prerequisites",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "01.1",
       "name": "Console Sketches (INSERTED)",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "2",
@@ -356,8 +356,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 1 of 7 · 0% · ready to verify"
+    "label": "Advance to the next step (plan phase 01.1)",
+    "reason": "Phase 01.1 of 7 — needs a plan"
   },
-  "updated_at": "2026-09-26T04:02:39.633Z"
+  "updated_at": "2026-09-26T11:42:25.591Z"
 }
