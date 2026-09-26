@@ -469,6 +469,43 @@ func (s *spyStore) MintShortID(_ context.Context, seen map[string]struct{}) (str
 	return "", errors.New("spyStore: could not mint a unique short id")
 }
 
+// Search mirrors SearchReranked's filtering exactly (scope/readableBy/
+// categories/tags/window, CreatedAt-desc sort, truncate to k) — this fake
+// has no separate vector-vs-rerank distinction, so it records "Search"
+// instead of "SearchReranked" and otherwise behaves identically, enough to
+// prove which method a call site invoked without reimplementing Qdrant's
+// own ranking semantics.
+func (s *spyStore) Search(_ context.Context, scope string, subj store.Subject, _ []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := ownerOfSubject(subj)
+	s.record("Search", owner, scope)
+	var matched []store.Memory
+	for _, m := range s.records {
+		if m.Scope != scope || !readableBy(m, owner) {
+			continue
+		}
+		if len(opts.Categories) > 0 && !slices.Contains(opts.Categories, m.Category) {
+			continue
+		}
+		if !hasAllTags(m.Tags, opts.Tags) {
+			continue
+		}
+		if !opts.CreatedAfter.IsZero() && m.CreatedAt.Before(opts.CreatedAfter) {
+			continue
+		}
+		if !opts.CreatedBefore.IsZero() && !m.CreatedAt.Before(opts.CreatedBefore) {
+			continue
+		}
+		matched = append(matched, m)
+	}
+	sort.Slice(matched, func(i, j int) bool { return matched[i].CreatedAt.After(matched[j].CreatedAt) })
+	if uint64(len(matched)) > k {
+		matched = matched[:k]
+	}
+	return matched, nil
+}
+
 func (s *spyStore) SearchReranked(_ context.Context, scope string, subj store.Subject, _ string, _ []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -187,7 +187,10 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// field — true only when a cross-spine call's coverage enumeration
 	// (ListScopes) itself failed after hits were already produced; field
 	// count bumped from 6 to 7 accordingly.
-	assertFields(t, fd, "ListMemoriesResponse", 7, map[protoreflect.FieldNumber]fieldSpec{
+	// phase 02-recall-first-search plan 02-01 (D-01/D-02): recall_gate_hidden
+	// (field 8) is a further additive field reporting the recall-gate hidden
+	// count for this page; field count bumped from 7 to 8 accordingly.
+	assertFields(t, fd, "ListMemoriesResponse", 8, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "total", kind: protoreflect.Uint64Kind},
 		3: {name: "approximate", kind: protoreflect.BoolKind},
@@ -195,6 +198,7 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		5: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},
 		6: {name: "scopes_truncated", kind: protoreflect.BoolKind},
 		7: {name: "scopes_unknown", kind: protoreflect.BoolKind},
+		8: {name: "recall_gate_hidden", kind: protoreflect.MessageKind, msgType: "engram.v1.RecallGateHidden"},
 	})
 	// phase 07 plan 03 (D-01/D-02): include_archived/include_superseded/
 	// include_scheduled (fields 10-12) mirror ListMemoriesRequest's opt-in
@@ -203,11 +207,15 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	// phase 06 (D-01/D-04): scopes_unknown (field 4) mirrors
 	// ListMemoriesResponse.scopes_unknown above; field count bumped from 3
 	// to 4 accordingly.
-	assertFields(t, fd, "SearchMemoriesResponse", 4, map[protoreflect.FieldNumber]fieldSpec{
+	// phase 02-recall-first-search plan 02-01 (D-01/D-02): recall_gate_hidden
+	// (field 5) mirrors ListMemoriesResponse.recall_gate_hidden above; field
+	// count bumped from 4 to 5 accordingly.
+	assertFields(t, fd, "SearchMemoriesResponse", 5, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "memories", kind: protoreflect.MessageKind, repeated: true, msgType: "engram.v1.Memory"},
 		2: {name: "searched_scopes", kind: protoreflect.StringKind, repeated: true},
 		3: {name: "scopes_truncated", kind: protoreflect.BoolKind},
 		4: {name: "scopes_unknown", kind: protoreflect.BoolKind},
+		5: {name: "recall_gate_hidden", kind: protoreflect.MessageKind, msgType: "engram.v1.RecallGateHidden"},
 	})
 	assertFields(t, fd, "GetMemoryRequest", 1, map[protoreflect.FieldNumber]fieldSpec{
 		1: {name: "id", kind: protoreflect.StringKind},

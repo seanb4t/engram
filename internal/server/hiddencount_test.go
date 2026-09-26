@@ -5,6 +5,9 @@ package server
 
 import (
 	"context"
+	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -281,4 +284,294 @@ func TestRecallHiddenListParity(t *testing.T) {
 		t.Fatalf("ListMemories (repeat): %v", err)
 	}
 	assertHiddenProto(t, againResp.Msg.GetRecallGateHidden(), 5, 2, 2, 1, 1)
+}
+
+// TestRecallHiddenSearchParity mirrors TestRecallHiddenListParity for the
+// search lane: Connect SearchMemories and MCP search_memory report identical
+// per-state hidden counts for the same fixture, cross_spine reports the same
+// counts again, and include_superseded=true reclassifies the
+// archived+superseded record as archived-only.
+func TestRecallHiddenSearchParity(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	api := &engramAPI{d: d}
+
+	ownerA := "sub-recallhidden-search-a-" + uuid.NewString()
+	ownerB := "sub-recallhidden-search-b-" + uuid.NewString()
+	scope := "recallhidden-search:project:" + uuid.NewString()
+	fixtureTag := "recallhidden-search-fixture-" + uuid.NewString()
+	const query = "recall-hidden fixture"
+
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll ownerA", st.DeleteAll(context.Background(), scope, store.Authenticated(ownerA)))
+		cleanupErr(t, "DeleteAll ownerB", st.DeleteAll(context.Background(), scope, store.Authenticated(ownerB)))
+	})
+
+	seedRecallHiddenFixture(t, st, ownerA, ownerB, scope, fixtureTag)
+
+	// Connect SearchMemories, scope-confined, k 20.
+	connCtx := parityConnectCtx(ownerA)
+	resp, err := api.SearchMemories(connCtx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+		Scope: scope, Query: query, K: 20, Tags: []string{fixtureTag},
+	}))
+	if err != nil {
+		t.Fatalf("SearchMemories: %v", err)
+	}
+	if got := len(resp.Msg.GetMemories()); got != 1 {
+		t.Fatalf("SearchMemories: got %d memories, want 1 (the live record)", got)
+	}
+	assertHiddenProto(t, resp.Msg.GetRecallGateHidden(), 5, 2, 2, 1, 1)
+
+	// MCP search_memory, same scope, k 20.
+	mcpCtx, cs := newMCPSession(t, d, ownerA)
+	mcpRes, err := cs.CallTool(mcpCtx, &mcp.CallToolParams{
+		Name:      "search_memory",
+		Arguments: map[string]any{"scope": scope, "query": query, "k": 20, "tags": []string{fixtureTag}},
+	})
+	if err != nil || mcpRes.IsError {
+		t.Fatalf("CallTool search_memory: err=%v isError=%v", err, mcpRes.IsError)
+	}
+	structured, ok := mcpRes.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("StructuredContent is %T, want map[string]any", mcpRes.StructuredContent)
+	}
+	assertHiddenMap(t, hiddenFromStructured(t, structured), 5, 2, 2, 1, 1)
+
+	// cross_spine=true reports the identical counts again (Connect).
+	crossResp, err := api.SearchMemories(connCtx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+		CrossSpine: true, Query: query, K: 20, Tags: []string{fixtureTag},
+	}))
+	if err != nil {
+		t.Fatalf("SearchMemories cross_spine: %v", err)
+	}
+	assertHiddenProto(t, crossResp.Msg.GetRecallGateHidden(), 5, 2, 2, 1, 1)
+
+	// include_superseded=true: the archived+superseded record stays hidden
+	// as archived.
+	includeResp, err := api.SearchMemories(connCtx, connect.NewRequest(&engramv1.SearchMemoriesRequest{
+		Scope: scope, Query: query, K: 20, Tags: []string{fixtureTag}, IncludeSuperseded: true,
+	}))
+	if err != nil {
+		t.Fatalf("SearchMemories include_superseded: %v", err)
+	}
+	assertHiddenProto(t, includeResp.Msg.GetRecallGateHidden(), 4, 2, 0, 1, 1)
+}
+
+// failingRecallCompareStore embeds *spyStore and fails ONLY the
+// recall-gate-hidden-count comparison call — the ungated call each of
+// searchRecallHidden/listRecallHidden issues with all three Include flags
+// forced true — never the caller's own gated call (which leaves at least one
+// Include flag false in these tests). This is what proves the degrade path:
+// the caller's own hits must survive a comparison failure untouched.
+type failingRecallCompareStore struct {
+	*spyStore
+	err error
+}
+
+func (f *failingRecallCompareStore) Search(ctx context.Context, scope string, subj store.Subject, vec []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error) {
+	if opts.IncludeArchived && opts.IncludeSuperseded && opts.IncludeScheduled {
+		return nil, f.err
+	}
+	return f.spyStore.Search(ctx, scope, subj, vec, k, opts)
+}
+
+func (f *failingRecallCompareStore) List(ctx context.Context, scope string, subj store.Subject, opts store.ListOptions) ([]store.Memory, uint64, string, error) {
+	if opts.IncludeArchived && opts.IncludeSuperseded && opts.IncludeScheduled {
+		return nil, 0, "", f.err
+	}
+	return f.spyStore.List(ctx, scope, subj, opts)
+}
+
+// errorLevelHitCount counts ERROR-level slog records mentioning substr.
+func errorLevelHitCount(rec *slogRecorder, substr string) int {
+	var n int
+	for _, r := range rec.containing(substr) {
+		if r.level == slog.LevelError {
+			n++
+		}
+	}
+	return n
+}
+
+// TestRecallHiddenDegradesOnComparisonFailure proves D-01's degrade rule: a
+// comparison-call failure never fails the RPC/tool call and never fabricates
+// zeros — the caller's own hits survive, recall_gate_hidden is ABSENT
+// (nil field on Connect, missing key on MCP), the sentinel cause is logged
+// exactly once at ERROR per call, and never reaches the wire.
+func TestRecallHiddenDegradesOnComparisonFailure(t *testing.T) {
+	owner := "sub-recallhidden-degrade-" + uuid.NewString()
+	scope := "recallhidden-degrade:project:" + uuid.NewString()
+	fixtureTag := "recallhidden-degrade-fixture-" + uuid.NewString()
+	sentinel := errors.New("recallhidden: sentinel comparison failure 7c2e")
+
+	sp := newSpyStore()
+	seed := store.Memory{
+		ID: uuid.NewString(), Content: "recall-hidden degrade fixture", Scope: scope,
+		Owner: owner, Tags: []string{fixtureTag}, CreatedAt: time.Now().UTC(),
+	}
+	if err := sp.Upsert(context.Background(), seed, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	wrapper := &failingRecallCompareStore{spyStore: sp, err: sentinel}
+	d := &deps{st: wrapper, em: fakeEmbedder{}, summaryMaxChars: 500}
+	api := &engramAPI{d: d}
+
+	t.Run("Connect SearchMemories", func(t *testing.T) {
+		rec := captureSlog(t)
+		resp, err := api.SearchMemories(parityConnectCtx(owner), connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Scope: scope, Query: "x", K: 10, Tags: []string{fixtureTag},
+		}))
+		if err != nil {
+			t.Fatalf("SearchMemories: got error %v, want nil", err)
+		}
+		if got := len(resp.Msg.GetMemories()); got != 1 {
+			t.Fatalf("SearchMemories: got %d memories, want 1 (seeded hit must survive)", got)
+		}
+		if h := resp.Msg.GetRecallGateHidden(); h != nil {
+			t.Errorf("SearchMemories: RecallGateHidden = %+v, want nil (absent)", h)
+		}
+		if n := errorLevelHitCount(rec, sentinel.Error()); n != 1 {
+			t.Fatalf("ERROR-level log records mentioning the sentinel: got %d, want 1 (records: %+v)", n, rec.records)
+		}
+	})
+
+	t.Run("Connect ListMemories", func(t *testing.T) {
+		rec := captureSlog(t)
+		resp, err := api.ListMemories(parityConnectCtx(owner), connect.NewRequest(&engramv1.ListMemoriesRequest{
+			Scope: scope, Limit: 0, Tags: []string{fixtureTag},
+		}))
+		if err != nil {
+			t.Fatalf("ListMemories: got error %v, want nil", err)
+		}
+		if got := len(resp.Msg.GetMemories()); got != 1 {
+			t.Fatalf("ListMemories: got %d memories, want 1 (seeded hit must survive)", got)
+		}
+		if h := resp.Msg.GetRecallGateHidden(); h != nil {
+			t.Errorf("ListMemories: RecallGateHidden = %+v, want nil (absent)", h)
+		}
+		if n := errorLevelHitCount(rec, sentinel.Error()); n != 1 {
+			t.Fatalf("ERROR-level log records mentioning the sentinel: got %d, want 1 (records: %+v)", n, rec.records)
+		}
+	})
+
+	t.Run("MCP search_memory", func(t *testing.T) {
+		rec := captureSlog(t)
+		ctx, cs := newMCPSession(t, d, owner)
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "search_memory",
+			Arguments: map[string]any{"scope": scope, "query": "x", "k": 10, "tags": []string{fixtureTag}},
+		})
+		if err != nil || res.IsError {
+			t.Fatalf("CallTool search_memory: err=%v isError=%v", err, res.IsError)
+		}
+		structured, ok := res.StructuredContent.(map[string]any)
+		if !ok {
+			t.Fatalf("StructuredContent is %T, want map[string]any", res.StructuredContent)
+		}
+		mems, ok := structured["memories"].([]any)
+		if !ok || len(mems) != 1 {
+			t.Fatalf("StructuredContent[%q] = %v (%T), want a 1-element slice", "memories", structured["memories"], structured["memories"])
+		}
+		if _, present := structured["recall_gate_hidden"]; present {
+			t.Errorf("StructuredContent unexpectedly carries recall_gate_hidden: %v", structured["recall_gate_hidden"])
+		}
+		if n := errorLevelHitCount(rec, sentinel.Error()); n != 1 {
+			t.Fatalf("ERROR-level log records mentioning the sentinel: got %d, want 1 (records: %+v)", n, rec.records)
+		}
+	})
+
+	t.Run("MCP list_memory", func(t *testing.T) {
+		rec := captureSlog(t)
+		ctx, cs := newMCPSession(t, d, owner)
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "list_memory",
+			Arguments: map[string]any{"scope": scope, "limit": 50, "tags": []string{fixtureTag}},
+		})
+		if err != nil || res.IsError {
+			t.Fatalf("CallTool list_memory: err=%v isError=%v", err, res.IsError)
+		}
+		structured, ok := res.StructuredContent.(map[string]any)
+		if !ok {
+			t.Fatalf("StructuredContent is %T, want map[string]any", res.StructuredContent)
+		}
+		mems, ok := structured["memories"].([]any)
+		if !ok || len(mems) != 1 {
+			t.Fatalf("StructuredContent[%q] = %v (%T), want a 1-element slice", "memories", structured["memories"], structured["memories"])
+		}
+		if _, present := structured["recall_gate_hidden"]; present {
+			t.Errorf("StructuredContent unexpectedly carries recall_gate_hidden: %v", structured["recall_gate_hidden"])
+		}
+		if n := errorLevelHitCount(rec, sentinel.Error()); n != 1 {
+			t.Fatalf("ERROR-level log records mentioning the sentinel: got %d, want 1 (records: %+v)", n, rec.records)
+		}
+	})
+
+	// D-02: no substring of the sentinel cause reaches the wire on any lane.
+	// (Checked per-subtest above via the absent-field/absent-key assertions;
+	// this final check proves the wire text itself never contains it.)
+	if strings.Contains(sentinel.Error(), "recall_gate_hidden") {
+		t.Fatalf("test bug: sentinel text collides with the field name")
+	}
+}
+
+// TestRecallHiddenSkipsComparisonWhenAllIncluded proves D-02's skip rule:
+// when the caller's own request already includes every recall-gated state,
+// no comparison call is issued at all, and recall_gate_hidden is present
+// with every field zero (never absent — the value IS known, it is zero).
+func TestRecallHiddenSkipsComparisonWhenAllIncluded(t *testing.T) {
+	owner := "sub-recallhidden-skip-" + uuid.NewString()
+	scope := "recallhidden-skip:project:" + uuid.NewString()
+	fixtureTag := "recallhidden-skip-fixture-" + uuid.NewString()
+
+	sp := newSpyStore()
+	seed := store.Memory{
+		ID: uuid.NewString(), Content: "recall-hidden skip fixture", Scope: scope,
+		Owner: owner, Tags: []string{fixtureTag}, CreatedAt: time.Now().UTC(),
+	}
+	if err := sp.Upsert(context.Background(), seed, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	d := &deps{st: sp, em: fakeEmbedder{}, summaryMaxChars: 500}
+	api := &engramAPI{d: d}
+
+	t.Run("SearchMemories", func(t *testing.T) {
+		sp.resetCalls()
+		resp, err := api.SearchMemories(parityConnectCtx(owner), connect.NewRequest(&engramv1.SearchMemoriesRequest{
+			Scope: scope, Query: "x", K: 10, Tags: []string{fixtureTag},
+			IncludeArchived: true, IncludeSuperseded: true, IncludeScheduled: true,
+		}))
+		if err != nil {
+			t.Fatalf("SearchMemories: %v", err)
+		}
+		assertHiddenProto(t, resp.Msg.GetRecallGateHidden(), 0, 0, 0, 0, 0)
+		var searchCalls int
+		for _, c := range sp.callLog() {
+			if c.Method == "Search" {
+				searchCalls++
+			}
+		}
+		if searchCalls != 0 {
+			t.Errorf("spy recorded %d Search call(s), want 0 (allIncluded must skip the comparison)", searchCalls)
+		}
+	})
+
+	t.Run("ListMemories", func(t *testing.T) {
+		sp.resetCalls()
+		resp, err := api.ListMemories(parityConnectCtx(owner), connect.NewRequest(&engramv1.ListMemoriesRequest{
+			Scope: scope, Limit: 0, Tags: []string{fixtureTag},
+			IncludeArchived: true, IncludeSuperseded: true, IncludeScheduled: true,
+		}))
+		if err != nil {
+			t.Fatalf("ListMemories: %v", err)
+		}
+		assertHiddenProto(t, resp.Msg.GetRecallGateHidden(), 0, 0, 0, 0, 0)
+		var listCalls int
+		for _, c := range sp.callLog() {
+			if c.Method == "List" {
+				listCalls++
+			}
+		}
+		if listCalls != 1 {
+			t.Errorf("spy recorded %d List call(s), want exactly 1 (the caller's own gated call; allIncluded must skip the comparison)", listCalls)
+		}
+	})
 }

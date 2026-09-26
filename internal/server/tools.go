@@ -1800,6 +1800,17 @@ type coreSearchRequest struct {
 	IncludeScheduled  bool
 }
 
+// coreSearchResult is the typed search result: raw []store.Memory (no
+// MCP/Connect-specific shaping) plus Hidden, the recall-gate hidden count
+// (D-01/D-02/D-03, phase 02-recall-first-search plan 02-01) computed once
+// here so both the Connect and MCP lanes read the same value. nil means the
+// comparison call failed (degrade, never fabricate zeros) — see
+// (*deps).searchRecallHidden.
+type coreSearchResult struct {
+	Memories []store.Memory
+	Hidden   *recallHidden
+}
+
 // rejectOverMaximumCount is the published wire-boundary rejection for D-10: a
 // recall count (a list `limit` or a search `k`) above store.MaxRecallLimit is
 // refused by NAME, before any downstream work — scope resolution, the embed
@@ -1926,25 +1937,25 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 // scope means "everything readable" at the store layer, this is the last
 // chokepoint before a caller could reach that widened filter by forgetting
 // the guard.
-func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest) ([]store.Memory, error) {
+func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest) (coreSearchResult, error) {
 	// D-06a: searchArgs.Query carries omitempty now; this is the sole
 	// remaining guard, shared by both lanes (MCP search_memory and Connect
 	// SearchMemories both build coreSearchRequest before calling here).
 	if req.Query == "" {
-		return nil, argErrf(classMalformed, HintRequired, "query", "query is required")
+		return coreSearchResult{}, argErrf(classMalformed, HintRequired, "query", "query is required")
 	}
 	if err := rejectOverMaximumCount("k", req.K); err != nil {
-		return nil, err
+		return coreSearchResult{}, err
 	}
 	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
 	if err != nil {
-		return nil, err
+		return coreSearchResult{}, err
 	}
 	vec, err := d.em.EmbedQuery(ctx, req.Query)
 	if err != nil {
-		return nil, err
+		return coreSearchResult{}, err
 	}
-	return d.st.SearchReranked(ctx, scope, c.Subj, req.Query, vec, req.K, store.SearchOptions{
+	opts := store.SearchOptions{
 		Tags:              req.Tags,
 		Categories:        req.Categories,
 		CreatedAfter:      req.CreatedAfter,
@@ -1954,7 +1965,15 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 		IncludeScheduled:  req.IncludeScheduled,
 		RankHook:          d.rankHook,
 		RankAudit:         d.rankAudit,
-	})
+	}
+	ms, err := d.st.SearchReranked(ctx, scope, c.Subj, req.Query, vec, req.K, opts)
+	if err != nil {
+		return coreSearchResult{}, err
+	}
+	return coreSearchResult{
+		Memories: ms,
+		Hidden:   d.searchRecallHidden(ctx, c, scope, vec, req.K, opts),
+	}, nil
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -2858,7 +2877,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 				// mirrors deps.searchDiscovery's identical discipline (D-02).
 				slog.InfoContext(ctx, "search_memory: cross_spine=true; ignoring supplied scope")
 			}
-			ms, err := d.searchMemory(ctx, c, coreSearchRequest{
+			res, err := d.searchMemory(ctx, c, coreSearchRequest{
 				Scope: a.Scope, Query: a.Query, K: k, Tags: a.Tags, Categories: a.Categories,
 				CreatedAfter: after, CreatedBefore: before, CrossSpine: a.CrossSpine,
 			})
@@ -2868,8 +2887,8 @@ func registerTools(s *mcp.Server, d *deps) error {
 			cov := d.searchedScopes(ctx, c, a.CrossSpine)
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
-			hits := shapeRecall(ms, a.Full, d.summaryMaxChars)
-			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, cov)
+			hits := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
+			result := withRecallHidden(recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, cov), res.Hidden)
 			return nil, result, nil
 		})
 

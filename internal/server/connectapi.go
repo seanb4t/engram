@@ -361,7 +361,7 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if _, err := effectiveSearchScope(req.Msg.Scope, req.Msg.CrossSpine); err != nil {
 		return nil, connectError(ctx, err)
 	}
-	ms, err := a.d.searchMemory(ctx, c, coreSearchRequest{
+	res, err := a.d.searchMemory(ctx, c, coreSearchRequest{
 		Scope: req.Msg.Scope, Query: req.Msg.Query, K: k, Tags: req.Msg.Tags,
 		CreatedAfter: after, CreatedBefore: before, Categories: req.Msg.Categories,
 		CrossSpine:        req.Msg.CrossSpine,
@@ -375,14 +375,15 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	// Same helper the MCP closures use — see the identical note on
 	// ListMemories; the zero-value scopeCoverage on a scope-confined call
 	// serializes as absent with no explicit omission branch needed (D-14),
-	// and carries no error (D-06) so ms (already computed above) is never
-	// discarded here.
+	// and carries no error (D-06) so res.Memories (already computed above) is
+	// never discarded here.
 	cov := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
 	return connect.NewResponse(&engramv1.SearchMemoriesResponse{
-		Memories:        shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
-		SearchedScopes:  cov.Scopes,
-		ScopesTruncated: cov.Truncated,
-		ScopesUnknown:   cov.Unknown,
+		Memories:         shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
+		SearchedScopes:   cov.Scopes,
+		ScopesTruncated:  cov.Truncated,
+		ScopesUnknown:    cov.Unknown,
+		RecallGateHidden: res.Hidden.toProto(),
 	}), nil
 }
 

@@ -37,6 +37,14 @@ import (
 	"github.com/seanb4t/engram/internal/telemetry"
 )
 
+// hitsOf adapts deps.searchMemory's coreSearchResult return (D-01/D-02/D-03,
+// phase 02-recall-first-search plan 02-01) back to the plain
+// ([]store.Memory, error) shape most existing tests assert on — they care
+// about the hits, not the recall-gate hidden count.
+func hitsOf(res coreSearchResult, err error) ([]store.Memory, error) {
+	return res.Memories, err
+}
+
 // TestToolArgSchemasDoNotPanic exercises jsonschema schema generation for every
 // tool's argument type via mcp.AddTool — the exact path that panicked at startup
 // in v0.4.2 ("tag must not begin with 'WORD='") because no test covered the
@@ -797,7 +805,7 @@ func TestSearchListMemoryCompactViewOmitsCitations(t *testing.T) {
 		return ""
 	}
 
-	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "citation-carrying record", K: 10})
+	hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "citation-carrying record", K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -1642,7 +1650,7 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	anonCaller := callerFor(ctx, t)
 
 	// searchMemory with anonymous context must return ownerless, not shared.
-	hits, err := d.searchMemory(ctx, anonCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10})
+	hits, err := hitsOf(d.searchMemory(ctx, anonCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -1965,7 +1973,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	c := callerFor(ctx, t)
 
 	// Single tag: both alpha-carrying records, never the untagged one — on both handlers.
-	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}})
+	hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}}))
 	if err != nil {
 		t.Fatalf("searchMemory alpha: %v", err)
 	}
@@ -1981,7 +1989,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// AND of two tags: only the record carrying both; the alpha-only record is excluded.
-	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}})
+	hits, err = hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}}))
 	if err != nil {
 		t.Fatalf("searchMemory AND: %v", err)
 	}
@@ -1990,7 +1998,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// Omitted tags: passthrough returns all three — on both handlers.
-	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10})
+	hits, err = hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory passthrough: %v", err)
 	}
@@ -2051,7 +2059,7 @@ func TestSearchMemoryCategoriesArg(t *testing.T) {
 	}
 
 	// Single category: only the decision record, never preference or gotcha.
-	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision"}})
+	hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision"}}))
 	if err != nil {
 		t.Fatalf("searchMemory decision: %v", err)
 	}
@@ -2060,7 +2068,7 @@ func TestSearchMemoryCategoriesArg(t *testing.T) {
 	}
 
 	// OR of two categories: decision and gotcha, never preference.
-	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"}})
+	hits, err = hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"}}))
 	if err != nil {
 		t.Fatalf("searchMemory decision+gotcha: %v", err)
 	}
@@ -2126,9 +2134,9 @@ func TestSearchMemoryCrossSpineIsolation(t *testing.T) {
 
 	// 1. Cross-spine spans scopes: A's cross-spine hits include A's records
 	// from BOTH scopes, and the set of distinct Scope values has >1 member.
-	hits, err := d.searchMemory(ctxA, callerA, coreSearchRequest{
+	hits, err := hitsOf(d.searchMemory(ctxA, callerA, coreSearchRequest{
 		Query: "x", Scope: "", CrossSpine: true, K: 10, Tags: []string{fixtureTag},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("cross-spine searchMemory: %v", err)
 	}
@@ -2160,9 +2168,9 @@ func TestSearchMemoryCrossSpineIsolation(t *testing.T) {
 
 	// 3. Scope-confined is unchanged: naming scopeShared with no CrossSpine
 	// returns only that scope's hits; A's scopeAOnly record is absent.
-	scoped, err := d.searchMemory(ctxA, callerA, coreSearchRequest{
+	scoped, err := hitsOf(d.searchMemory(ctxA, callerA, coreSearchRequest{
 		Query: "x", Scope: scopeShared, CrossSpine: false, K: 10, Tags: []string{fixtureTag},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("scope-confined searchMemory: %v", err)
 	}
@@ -2317,9 +2325,9 @@ func TestCrossSpineResultScope(t *testing.T) {
 	ctxO := authedContext(t, owner)
 	c := callerFor(ctxO, t)
 
-	ms, err := d.searchMemory(ctxO, c, coreSearchRequest{
+	ms, err := hitsOf(d.searchMemory(ctxO, c, coreSearchRequest{
 		Query: "x", Scope: "", CrossSpine: true, K: 10, Tags: []string{fixtureTag},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("cross-spine searchMemory: %v", err)
 	}
@@ -2532,7 +2540,7 @@ func TestCategoriesArgEdges(t *testing.T) {
 	c := callerFor(ctx, t)
 
 	searchIDsErr := func(cats []string) ([]string, error) {
-		hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: cats})
+		hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: cats}))
 		if err != nil {
 			return nil, err
 		}
@@ -2784,7 +2792,7 @@ func TestSupersedeMemory(t *testing.T) {
 	}
 
 	// The target must be absent from search_memory.
-	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "original content", K: 10})
+	hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "original content", K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -5054,7 +5062,7 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 	bCaller := callerFor(bctx, t)
 
 	// searchMemory: B sees A's shared, not A's private.
-	hits, err := d.searchMemory(bctx, bCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10})
+	hits, err := hitsOf(d.searchMemory(bctx, bCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -5349,7 +5357,7 @@ func TestBuildDepsFromEnvRankerDefaultIsInert(t *testing.T) {
 	}
 	t.Cleanup(func() { cleanupErr(t, "Delete "+m.ID, d.st.Delete(ctx, m.ID, subj)) })
 
-	hits, err := d.searchMemory(ctx, caller{Subj: subj}, coreSearchRequest{Scope: scope, Query: "default ranker stays inert", K: 5})
+	hits, err := hitsOf(d.searchMemory(ctx, caller{Subj: subj}, coreSearchRequest{Scope: scope, Query: "default ranker stays inert", K: 5}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}

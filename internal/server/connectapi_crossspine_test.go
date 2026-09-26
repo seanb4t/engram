@@ -213,9 +213,9 @@ func TestSearchMemoriesConnectCrossSpine(t *testing.T) {
 		// explicitly so the two lanes are compared over the same result
 		// window, not two different defaults.
 		const k = 10
-		mcpHits, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
+		mcpHits, err := hitsOf(d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
 			Query: "x", Scope: "", CrossSpine: true, K: k, Tags: []string{fixtureTag},
-		})
+		}))
 		if err != nil {
 			t.Fatalf("MCP searchMemory cross-spine: %v", err)
 		}

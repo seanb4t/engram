@@ -39,6 +39,13 @@ type memStore interface {
 	MintShortID(ctx context.Context, seen map[string]struct{}) (string, error)
 	OwnedOrAbsent(ctx context.Context, id string, subj store.Subject) error
 	ResolvePointID(ctx context.Context, idOrShort string) (string, error)
+	// Search is the plain vector-order read (D-02, phase 02-recall-first-search
+	// plan 02-01) — used ONLY for the recall-gate hidden-count comparison
+	// (hiddencount.go's searchRecallHidden), never as a substitute for the
+	// caller's own ranked results. Never SearchReranked: a second rerank pass
+	// for a count that only needs ids and state fields would double the Jev
+	// decision cost and audit volume.
+	Search(ctx context.Context, scope string, subj store.Subject, vec []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error)
 	SearchDiscovery(ctx context.Context, scope, kind string, subj store.Subject, vec []float32, k uint64) ([]store.Memory, error)
 	SearchDiscoveryReranked(ctx context.Context, scope, kind string, subj store.Subject, query string, vec []float32, k uint64, hook store.RankHook, audit bool) ([]store.Memory, error)
 	SearchReranked(ctx context.Context, scope string, subj store.Subject, query string, vec []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error)

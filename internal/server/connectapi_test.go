@@ -427,10 +427,10 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 		// deps.searchMemory now returns typed []store.Memory directly (the
 		// recallView shaping moved into the MCP tool closure, which this
 		// direct-call parity test bypasses).
-		out, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
+		out, err := hitsOf(d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
 			Scope: a.Scope, Query: a.Query, K: a.K, Tags: a.Tags,
 			CreatedAfter: after, CreatedBefore: before,
-		})
+		}))
 		if err != nil {
 			t.Fatalf("MCP searchMemory: %v", err)
 		}
@@ -509,7 +509,7 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 		}
 
 		bMcpCtx := authedContext(t, "actor-B")
-		mcpOut, err := d.searchMemory(bMcpCtx, callerFor(bMcpCtx, t), coreSearchRequest{Query: query, Scope: scope, K: 4})
+		mcpOut, err := hitsOf(d.searchMemory(bMcpCtx, callerFor(bMcpCtx, t), coreSearchRequest{Query: query, Scope: scope, K: 4}))
 		if err != nil {
 			t.Fatalf("MCP searchMemory(actor-B): %v", err)
 		}
@@ -577,7 +577,7 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 		noHookIDs := connectIDs(&engramv1.SearchMemoriesRequest{Query: query, Scope: scope, K: 4})
 
 		withRankHook(t, newScriptedRankHook(nil, nil))
-		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4})
+		mcpOut, err := hitsOf(d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4}))
 		if err != nil {
 			t.Fatalf("MCP searchMemory: %v", err)
 		}
@@ -624,7 +624,7 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 			return nil, errors.New("boom: scripted rank hook failure")
 		})
 		withRankHook(t, errHook)
-		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4})
+		mcpOut, err := hitsOf(d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4}))
 		if err != nil {
 			t.Fatalf("MCP searchMemory: %v", err)
 		}
@@ -654,7 +654,7 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 
 	t.Run("jev hook with cross_spine", func(t *testing.T) {
 		withRankHook(t, newScriptedRankHook(nil, nil))
-		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Query: query, K: 4, CrossSpine: true})
+		mcpOut, err := hitsOf(d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Query: query, K: 4, CrossSpine: true}))
 		if err != nil {
 			t.Fatalf("MCP cross_spine searchMemory: %v", err)
 		}
@@ -699,7 +699,7 @@ func TestRerankParityMCPAndConnect(t *testing.T) {
 		var seen []string
 		withRankHook(t, newScriptedRankHook(&seen, map[string]float64{recBPrivate.ID: 1.0}))
 
-		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4})
+		mcpOut, err := hitsOf(d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{Scope: scope, Query: query, K: 4}))
 		if err != nil {
 			t.Fatalf("MCP searchMemory: %v", err)
 		}
@@ -1480,9 +1480,9 @@ func TestMCPConnectCategoryFilterParity(t *testing.T) {
 	actx := withConnectTokenInfo(ctx, &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": "actor-A"}})
 
 	t.Run("search", func(t *testing.T) {
-		mcpOut, err := d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
+		mcpOut, err := hitsOf(d.searchMemory(mcpCtx, mcpCaller, coreSearchRequest{
 			Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"},
-		})
+		}))
 		if err != nil {
 			t.Fatalf("MCP searchMemory: %v", err)
 		}

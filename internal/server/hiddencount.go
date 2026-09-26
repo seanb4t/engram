@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
-// Package server: this file implements the recall-gate hidden count (D-01,
-// D-02, D-03 — phase 02-recall-first-search plan 02-01). SearchMemories/
-// search_memory and ListMemories/list_memory each report how many records
-// the recall gate hid from the window they returned, split per state
-// (archived/superseded/expired/scheduled), computed ONCE in this file and
-// shared by both the Connect and MCP lanes so neither can drift from the
-// other (D-03).
+package server
+
+// This file implements the recall-gate hidden count (D-01, D-02, D-03 —
+// phase 02-recall-first-search plan 02-01). SearchMemories/search_memory and
+// ListMemories/list_memory each report how many records the recall gate hid
+// from the window they returned, split per state (archived/superseded/
+// expired/scheduled), computed ONCE in this file and shared by both the
+// Connect and MCP lanes so neither can drift from the other (D-03).
 //
 // The comparison call is a SECOND, unmodified Store.List/Store.Search call
 // with the caller's own Subject and resolved scope, and every Include* flag
@@ -16,7 +17,6 @@
 // uses plain Store.Search, never Store.SearchReranked: a second rerank
 // would double the Jev decision cost and audit volume for a count that
 // needs only ids and state fields, not a re-ranked order.
-package server
 
 import (
 	"context"
@@ -147,6 +147,50 @@ func (d *deps) listRecallHidden(ctx context.Context, c caller, scope string, opt
 		return nil
 	}
 	h := countRecallHidden(items, g, time.Now().UTC())
+	return &h
+}
+
+// searchRecallHidden computes the recall-gate hidden count for a search
+// call: when every state is already included (g.allIncluded), no comparison
+// call is issued and the count is present with every field zero (D-02).
+// Otherwise it builds a NEW store.SearchOptions carrying only Tags,
+// Categories, CreatedAfter, CreatedBefore, and the three Include flags
+// forced true — RankHook and RankAudit are left unset and Full is false,
+// since the comparison needs only ids and state fields, never a re-ranked
+// order or the full content projection — and calls d.st.Search (never
+// d.st.SearchReranked: a second rerank pass would double the Jev decision
+// cost and audit volume for a count that does not need a ranked order) with
+// the caller's own Subject and the resolved scope, at the SAME k, so the
+// authz predicate applies identically to both the gated and ungated calls.
+//
+// A comparison failure degrades to nil (never fabricated zeros): the
+// underlying error is logged once, server-side, at ERROR, and never reaches
+// the caller — mirroring (*deps).listRecallHidden's degrade-not-abort
+// design.
+func (d *deps) searchRecallHidden(ctx context.Context, c caller, scope string, vec []float32, k uint64, opts store.SearchOptions) *recallHidden {
+	g := recallGateFlags{
+		IncludeArchived:   opts.IncludeArchived,
+		IncludeSuperseded: opts.IncludeSuperseded,
+		IncludeScheduled:  opts.IncludeScheduled,
+	}
+	if g.allIncluded() {
+		return &recallHidden{}
+	}
+	ungated := store.SearchOptions{
+		Tags:              opts.Tags,
+		Categories:        opts.Categories,
+		CreatedAfter:      opts.CreatedAfter,
+		CreatedBefore:     opts.CreatedBefore,
+		IncludeArchived:   true,
+		IncludeSuperseded: true,
+		IncludeScheduled:  true,
+	}
+	out, err := d.st.Search(ctx, scope, c.Subj, vec, k, ungated)
+	if err != nil {
+		slog.ErrorContext(ctx, "recall gate hidden count: comparison Search failed", "error", err)
+		return nil
+	}
+	h := countRecallHidden(out, g, time.Now().UTC())
 	return &h
 }
 
