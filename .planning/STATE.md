@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 1
 current_phase_name: Store Prerequisites
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-09-26T03:04:39.321Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-09-26T03:40:50.353Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 1 execution started
-state_head: 180d2a955aa6f2ab5a530acfe8a64d93fe74913e
+state_head: 7e190baf29e3b0124a9bf00ab718b9366f2ec322
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-25 after opening milestone 2026-09-25
 ## Current Position
 
 Phase: 1 (Store Prerequisites) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-25 — Phase 1 execution started
 
@@ -432,6 +432,7 @@ milestone needs in working memory.
 - [Phase 1]: 01-01 deviation: retargeted internal/store/schemaversion_stamp_gate_test.go's partialWriteClassification entry from Store.Archive to Store.archiveResolved after the archiveResolved extraction moved the SetPayload call site's enclosing function name
 - [Phase 1]: 01-02: recallVisibleFilter/facetTags built as new shared primitives beyond D-13..D-16's two named methods, so plan 01-04's RelatedMemories rarity weighting (D-07) reuses the same filtered Facet call site
 - [Phase 1]: 01-02: all four recall-gate vocabulary lists widened for the filtered Facet (D-15 named two; RESEARCH.md Pitfall 1 caught the other two: recallEmissionMethods and recallEntryPointSeeds/recallTransmitters)
+- [Phase 1]: RelatedMemories' full 4-edge contract (types for tag/citation evidence included) landed in Task 1's tracer commit alongside the vector edge and recall-gate widening, so the gate suite is never red between commits
 
 ### Pending Todos
 
@@ -528,8 +529,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T03:04:39.302Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-09-26T03:40:50.335Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -733,6 +734,7 @@ Resume file: None
 | Phase 05 P05 | 20min | 1 tasks | 2 files |
 | Phase 01 P01 | 51min | 2 tasks | 6 files |
 | Phase 01 P02 | 23min | 3 tasks | 4 files |
+| Phase 01 P03 | 34min | 2 tasks | 3 files |
 
 ## Operator Next Steps
 

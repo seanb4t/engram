@@ -393,7 +393,7 @@ built on top of them.
   3. `Store.RelatedMemories(subj, id)` returns supersession, shared-tag, shared-citation, and vector-neighbour edges with the caller's read predicate composed into the Qdrant filter (never post-filtered in a handler), a bounded edge count, and a documented rule for a candidate reachable by more than one edge type
   4. `Store.ListTags(subj, scope)` returns facet counts over a new `tags` payload index under the caller's read filter, and the recall-gate test allowlist recognizes a filtered `Facet` call
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -406,7 +406,7 @@ Plans:
 
 **Wave 3**
 
-- [ ] 01-03-PLAN.md — `Store.RelatedMemories` contract, anchor rule, read-filtered query-by-id vector edge, two-phase fetch, ceiling-aware merge and supersession walk; seeded into the recall gate (D-06, D-09–D-12; STORE-02)
+- [x] 01-03-PLAN.md — `Store.RelatedMemories` contract, anchor rule, read-filtered query-by-id vector edge, two-phase fetch, ceiling-aware merge and supersession walk; seeded into the recall gate (D-06, D-09–D-12; STORE-02)
 
 **Wave 4**
 
