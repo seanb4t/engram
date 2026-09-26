@@ -185,6 +185,7 @@ _Tasks 2 and 3 carried `tdd="true"`; test files and implementation were authored
 ## Issues Encountered
 
 - One full-suite run (`pnpm test`) showed a single unrelated flake in `ScopesSidebar.browser.test.ts` (a Playwright pointer-interception timeout against a leftover floating-content wrapper), which did not reproduce on immediate re-runs (two subsequent full runs: 399/399 and 399/399) or when paired directly with this plan's own test files. Treated as transient CI/host-load flakiness, not a regression — no fix applied, nothing to defer.
+- `gsd_run query requirements.mark-complete ROW-02 ROW-03` reported `not_found` for both — every row in `.planning/REQUIREMENTS.md`'s traceability table (this whole milestone, not just this plan) was seeded `Mapped` at milestone creation, a Status value the verb's Pending/Gaps-Found→Complete transition does not recognize. Confirmed pre-existing and milestone-wide (Phase 1's already-shipped `STORE-01` is still an unchecked `Mapped` row too), not something this plan introduced or should hand-fix in a tool-owned file. Logged to `.planning/phases/02-recall-first-search/deferred-items.md` and `.planning/WINDOWS.md` (entry 17) rather than papered over.
 
 ## User Setup Required
 
