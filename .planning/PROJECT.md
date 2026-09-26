@@ -647,6 +647,9 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **OPS-03** — `ParsePlanKeyLinks` skips fieldless key_links items, while the satisfiability scanner still reads the raw items so malformed entries stay reported (#502) — 2026-09-22.01 Phase 5
 - ✓ **OPS-04** — `TestMigrateBelowCursorInsertConverges` covers a record inserted mid-sweep below the migrate cursor, asserting convergence on a later pass with no production change (#501) — 2026-09-22.01 Phase 5
 - ✓ **OPS-05** — `guides/cli.md` §Operator commands lists `migrate` (with `status`/`revert`) and `setup`, gated by a docs test derived from the live `operatorCommands()` tree (#503) — 2026-09-22.01 Phase 5
+- ✓ **STORE-01** — owner-gated `Store.ArchiveAs`/`RestoreAs` on a distinct Cedar `ActionArchive` via `getWritable`, sharing the subject-less core so `spine-review archive`/`restore` is unchanged; concurrent calls serialize under the per-id lock — 2026-09-25.01 Phase 1
+- ✓ **STORE-02** — `Store.RelatedMemories` returns supersession, citation, rarity-weighted tag and read-filtered vector edges, one entry per candidate, admitted by fixed type order (never a blended score), capped at 64 — 2026-09-25.01 Phase 1
+- ✓ **STORE-03** — `Store.ListTags` returns exact recall-visible facet counts over a new `tags` keyword index under the caller's read filter, limit + `more`; the recall gate recognizes filtered `Facet` in all four lists — 2026-09-25.01 Phase 1
 
 ### Active
 
@@ -1092,4 +1095,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-25 after opening milestone 2026-09-25.01 Console Overhaul*
+*Last updated: 2026-09-26 after 2026-09-25.01 Phase 1*

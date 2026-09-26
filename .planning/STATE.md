@@ -22,10 +22,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-25 after opening milestone 2026-09-25.01 — Console Overhaul)
+See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 1 — Store Prerequisites
+**Current focus:** Phase 01.1 — Console Sketches
 
 ## Current Position
 
@@ -507,7 +507,7 @@ Both prior entries were delivered and had simply never been closed out:
 - **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
 - **[Phase 4] (2026-09-22.01):** `phase.complete 4` mis-targeted a shipped v0.12.x ROADMAP progress row a fourth time (`yzmfesbsg0`) — hand-corrected; hand-verify again after the Phase 5 call. It again left `progress.completed_phases` at 3 (percent 60), fixed by hand to 4 (80) in the transition. Phase 4's code changes (`internal/store/store.go`, `internal/store/rerank.go`, `internal/server/tools.go`) re-staled earlier phases' VERIFICATION.md fingerprints: `isPhaseComplete` now reads Phases 1, 2 and 3 as `stale` (Phase 4 `passed`), which is why `roadmap.analyze` reports them `partial` — re-verify every stale phase (`/gsd-verify-work 01`/`02`/`03`) before the milestone audit. engram record `xhg7dgmqx4` notes the cross-phase key-link drift.
 - **[Phase 5] (2026-09-22.01):** `phase.complete 5` mis-targeted a shipped v0.12.x ROADMAP progress row a fifth time (`yzmfesbsg0`) — hand-corrected, and the Phase 5 row set to 5/5 Complete; it again left `progress.completed_phases` at 4 (percent 80), fixed by hand to 5 (100). Phases 1–4 VERIFICATION.md fingerprints now read `stale` (Phase 5 `passed`) — re-verify each before the milestone audit.
-- requirements.mark-complete could not flip STORE-01 to Complete: the installed gsd-tools verb only accepts a traceability Status of 'Pending'/'Gaps Found' as forward-transitionable, but this project's REQUIREMENTS.md has used 'Mapped' as its pre-complete status since project bootstrap (d2120f09) across every prior milestone (archived milestones show it did reach 'Complete' historically). Checkbox flip was also rolled back by the tool's own divergence-prevention gate. Not hand-edited per planning-artifacts.md (never invent/bypass structure in a tool-owned generated file) — STORE-01's completion is recorded in 01-01-SUMMARY.md's requirements-completed field. Needs an upstream gsd-tools fix or a documented project convention decision.
+- [Phase 1] requirements.mark-complete could not flip STORE-01..03 to Complete: the installed gsd-tools verb only accepts a traceability Status of 'Pending'/'Gaps Found' as forward-transitionable, but this project's REQUIREMENTS.md has used 'Mapped' as its pre-complete status since project bootstrap (d2120f09) across every prior milestone (archived milestones show it did reach 'Complete' historically). Checkbox flip was also rolled back by the tool's own divergence-prevention gate. Not hand-edited per planning-artifacts.md (never invent/bypass structure in a tool-owned generated file) — STORE-01's completion is recorded in 01-01-SUMMARY.md's requirements-completed field. Needs an upstream gsd-tools fix or a documented project convention decision.
 
 ### Quick Tasks Completed
 
