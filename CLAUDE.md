@@ -69,6 +69,8 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 - **Not used here:** viper, cocogitto.
 - **Spike findings for engram** (implementation patterns, constraints, gotchas) → `Skill("spike-findings-engram")`
 - **Sketch findings for engram** (console design decisions, CSS patterns, visual direction) → `Skill("sketch-findings-engram")`
+- **Console conventions for engram** (tokens, state words, classifier, honest feedback, keyboard) → `Skill("engram-console-conventions")`
+- **SPA ↔ Connect client for engram** (clients, CSRF, query keys, resume, per-RPC contract) → `Skill("engram-connect-client")`
 
 ## Memory contract (stable)
 
