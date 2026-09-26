@@ -51,16 +51,16 @@
     <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(215px,1fr))">
       {#each scopesQ.data?.scopes ?? [] as s (s.scope)}
         <Button variant="surface" class="relative text-left p-3 h-auto block overflow-hidden" onclick={() => goto(`${base}/observe?scope=${encodeURIComponent(s.scope)}`)}>
-          <span class="absolute left-0 top-0 bottom-0 w-[3px] bg-primary"></span>
+          <span class="absolute left-0 top-0 bottom-0 w-[calc(3*var(--u))] bg-primary"></span>
           <ScopeChip scope={s.scope} mode="stacked" />
-          <div class="text-primary text-[24px] tabular-nums mt-1">{s.count}</div>
+          <div class="text-primary text-[calc(24*var(--u))] tabular-nums mt-1">{s.count}</div>
         </Button>
       {/each}
     </div>
     {#if scopesQ.data?.approximate}<div class="text-muted-foreground">counts approximate (scanCap)</div>{/if}
   {/if}
 
-  <div class="mt-4 text-[10px] uppercase text-muted-foreground">Recent memories</div>
+  <div class="mt-4 text-[calc(10*var(--u))] uppercase text-muted-foreground">Recent memories</div>
   <MemoryList
     memories={recentQ.data?.memories ?? []}
     total={recentQ.data?.total ?? 0n}

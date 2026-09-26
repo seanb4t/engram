@@ -32,7 +32,7 @@
   }
 </script>
 
-<div role="alert" class="flex flex-col gap-2 p-3 text-cat-gotcha bg-card border border-cat-gotcha rounded text-[12px]">
+<div role="alert" class="flex flex-col gap-2 p-3 text-cat-gotcha bg-card border border-cat-gotcha rounded text-[calc(12*var(--u))]">
   <span>sharing makes this readable by every authenticated caller. you can stop sharing later, but you can't retract what's already been read.</span>
   {#if authFailure}
     <div class="flex flex-col gap-2">

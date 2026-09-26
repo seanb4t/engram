@@ -30,8 +30,8 @@
   }
 </script>
 
-<div class="w-[240px] shrink-0 border-r border-border p-3 flex flex-col gap-1 overflow-y-auto">
-  <div class="text-[10px] uppercase text-muted-foreground">Scopes</div>
+<div class="w-[calc(240*var(--u))] shrink-0 border-r border-border p-3 flex flex-col gap-1 overflow-y-auto">
+  <div class="text-[calc(10*var(--u))] uppercase text-muted-foreground">Scopes</div>
   {#if error}
     <div data-testid="scopes-error" class="text-cat-gotcha py-1 text-sm">failed to load scopes</div>
   {:else if loading}
@@ -43,15 +43,15 @@
       </Button>
     {/each}
   {/if}
-  <div class="mt-3 text-[10px] uppercase text-muted-foreground">Filters</div>
+  <div class="mt-3 text-[calc(10*var(--u))] uppercase text-muted-foreground">Filters</div>
   {#each allCats as c (c)}
     <label class="flex items-center gap-2 text-sm" style="color:var(--cat-{c})">
       <Checkbox checked={categories.includes(c)} onCheckedChange={() => toggleCat(c)} aria-label={c} />{c}
     </label>
   {/each}
-  <div class="mt-2 text-[10px] uppercase text-muted-foreground">visibility</div>
+  <div class="mt-2 text-[calc(10*var(--u))] uppercase text-muted-foreground">visibility</div>
   <Select value={visibility} options={visOptions} ariaLabel="visibility" onValueChange={(v) => onfilter(categories, v as Visibility)} />
-  <div class="mt-2 text-[10px] uppercase text-muted-foreground">state</div>
+  <div class="mt-2 text-[calc(10*var(--u))] uppercase text-muted-foreground">state</div>
   <label class="flex items-center gap-2 text-sm">
     <Checkbox checked={includeArchived} onCheckedChange={() => toggleInclude('archived')} aria-label="include archived" />include archived
   </label>

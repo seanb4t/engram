@@ -31,13 +31,13 @@
   </header>
   <MigrationBanner />
   <div class="flex flex-1 min-h-0">
-    <nav class="flex flex-col gap-1 p-2 border-r border-border w-[64px] items-center">
+    <nav class="flex flex-col gap-1 p-2 border-r border-border w-[calc(64*var(--u))] items-center">
       {#each nav as n (n.href)}
         {@const active = page.url.pathname.startsWith(n.href)}
         <a href={n.href} aria-label={n.label}
-           class={'relative flex flex-col items-center gap-1 p-2 rounded text-[10px] ' +
+           class={'relative flex flex-col items-center gap-1 p-2 rounded text-[calc(10*var(--u))] ' +
              (active ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
-          {#if active}<span class="absolute left-0 top-1/4 bottom-1/4 w-[3px] rounded bg-primary"></span>{/if}
+          {#if active}<span class="absolute left-0 top-1/4 bottom-1/4 w-[calc(3*var(--u))] rounded bg-primary"></span>{/if}
           <n.icon data-icon="inline-start" />{n.label}
         </a>
       {/each}

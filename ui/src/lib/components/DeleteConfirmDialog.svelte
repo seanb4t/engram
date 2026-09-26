@@ -69,7 +69,7 @@
       <Dialog.Description>{copy[kind].body}</Dialog.Description>
     </Dialog.Header>
     {#if authFailure}
-      <div role="alert" class="flex flex-col gap-2 text-cat-gotcha text-[12px]">
+      <div role="alert" class="flex flex-col gap-2 text-cat-gotcha text-[calc(12*var(--u))]">
         <span>write failed — session expired. re-authenticate to continue.</span>
         <Button variant="outline" size="sm" class="self-start" onclick={() => onreauth?.()}>Re-authenticate</Button>
       </div>

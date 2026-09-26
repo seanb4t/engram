@@ -21,5 +21,5 @@
   {#each memories as m (m.id)}
     <MemoryRow memory={m} selected={m.id === selectedId} {showScope} {onselect} {onedit} {ondelete} {onshare} />
   {/each}
-  <div class="px-3 py-2 text-center text-muted-foreground text-[11px]">{memories.length} of {total}{approximate ? ' (approximate)' : ''}</div>
+  <div class="px-3 py-2 text-center text-muted-foreground text-[calc(11*var(--u))]">{memories.length} of {total}{approximate ? ' (approximate)' : ''}</div>
 {/if}

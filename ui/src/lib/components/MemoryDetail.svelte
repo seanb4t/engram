@@ -64,7 +64,7 @@
   }
 </script>
 
-<div class="w-[360px] shrink-0 border-l border-border flex flex-col min-h-0">
+<div class="w-[calc(360*var(--u))] shrink-0 border-l border-border flex flex-col min-h-0">
   {#if loading}
     <div class="p-3 text-muted-foreground">loading…</div>
   {:else if notFound}
@@ -76,8 +76,8 @@
   {:else}
     <div class="flex items-center gap-2 p-3 border-b border-border">
       <span class="cat-dot" style="background:var(--cat-{memory.category})"></span>
-      <Badge variant="outline" class="text-[10px] uppercase" style="color:var(--cat-{memory.category})">{memory.category}</Badge>
-      {#if created}<span class="text-[11px] text-muted-foreground" title={fullTimestamp(created)}>{relativeTime(created)}</span>{/if}
+      <Badge variant="outline" class="text-[calc(10*var(--u))] uppercase" style="color:var(--cat-{memory.category})">{memory.category}</Badge>
+      {#if created}<span class="text-[calc(11*var(--u))] text-muted-foreground" title={fullTimestamp(created)}>{relativeTime(created)}</span>{/if}
       <Button variant="outline" size="sm" class="ml-auto" aria-label="copy content" onclick={copy}><CopyIcon data-icon="inline-start" /> copy</Button>
       {#if showMenu}
         <DropdownMenu.Root>
@@ -112,38 +112,38 @@
       <Tabs.Content value="summary" class="p-3 min-h-0">
         {#if hasSummary}
           <div class="flex items-center justify-between mb-2">
-            <span class="text-[9.5px] uppercase tracking-wide text-muted-foreground font-semibold">Summary</span>
+            <span class="text-[calc(9.5*var(--u))] uppercase tracking-wide text-muted-foreground font-semibold">Summary</span>
             {#if memory.summarySource === 'auto'}
-              <span class="inline-flex items-center gap-1 text-[10px] text-primary border border-primary/45 rounded-full px-2 py-0.5 bg-primary/10">✦ auto</span>
+              <span class="inline-flex items-center gap-1 text-[calc(10*var(--u))] text-primary border border-primary/45 rounded-full px-2 py-0.5 bg-primary/10">✦ auto</span>
             {:else if memory.summarySource === 'client'}
-              <span class="inline-flex items-center text-[10px] text-muted-foreground border border-border rounded-full px-2 py-0.5">authored</span>
+              <span class="inline-flex items-center text-[calc(10*var(--u))] text-muted-foreground border border-border rounded-full px-2 py-0.5">authored</span>
             {/if}
           </div>
-          <div class="text-[13.5px] leading-relaxed">{memory.summary}</div>
+          <div class="text-[calc(13.5*var(--u))] leading-relaxed">{memory.summary}</div>
         {:else}
-          <div class="text-[12px] text-muted-foreground">No summary — see Content.</div>
+          <div class="text-[calc(12*var(--u))] text-muted-foreground">No summary — see Content.</div>
         {/if}
       </Tabs.Content>
 
       <Tabs.Content value="content" class="min-h-0 flex flex-col">
-        <ScrollArea class="flex-1 min-h-0"><div class="markdown-body p-3 text-[13px] leading-relaxed">{@html bodyHtml}</div></ScrollArea>
+        <ScrollArea class="flex-1 min-h-0"><div class="markdown-body p-3 text-[calc(13*var(--u))] leading-relaxed">{@html bodyHtml}</div></ScrollArea>
       </Tabs.Content>
 
       <Tabs.Content value="meta" class="p-3 flex flex-col gap-2 min-h-0">
-        <div class="text-[11.5px] font-mono break-all" title={memory.scope}>{memory.scope}</div>
-        <div class="flex gap-1.5 flex-wrap text-[10.5px]">
+        <div class="text-[calc(11.5*var(--u))] font-mono break-all" title={memory.scope}>{memory.scope}</div>
+        <div class="flex gap-1.5 flex-wrap text-[calc(10.5*var(--u))]">
           <span class="border border-border rounded px-1.5 py-0.5"><span class="text-muted-foreground">by</span> {memory.actor}</span>
           <span class="border border-border rounded px-1.5 py-0.5"><span class="text-muted-foreground">src</span> {memory.source}</span>
           <span class="border border-border rounded px-1.5 py-0.5"><span class="text-muted-foreground">vis</span> {memory.visibility}</span>
           <span class="border border-border rounded px-1.5 py-0.5"><span class="text-muted-foreground">schema</span> v{memory.schemaVersion ?? 0}</span>
         </div>
         <div class="flex gap-1.5 flex-wrap">
-          {#each memory.tags as t (t)}<span class="px-1.5 rounded bg-muted font-mono text-[10.5px]">{t}</span>{/each}
+          {#each memory.tags as t (t)}<span class="px-1.5 rounded bg-muted font-mono text-[calc(10.5*var(--u))]">{t}</span>{/each}
         </div>
         {#if hasState}
           <div>
-            <div class="text-[9.5px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">State</div>
-            <div class="flex flex-col gap-1 text-[12px]">
+            <div class="text-[calc(9.5*var(--u))] uppercase tracking-wide text-muted-foreground font-semibold mb-1">State</div>
+            <div class="flex flex-col gap-1 text-[calc(12*var(--u))]">
               {#if memory.archivedAt}
                 <div>archived {fullTimestamp(timestampDate(memory.archivedAt))}</div>
               {/if}
@@ -185,15 +185,15 @@
   .markdown-body :global(h2),
   .markdown-body :global(h3),
   .markdown-body :global(h4) { font-weight: 650; margin: 0.9em 0 0.4em; }
-  .markdown-body :global(h3) { font-size: 13px; }
+  .markdown-body :global(h3) { font-size: calc(13 * var(--u)); }
   .markdown-body :global(p) { margin: 0 0 0.7em; }
   .markdown-body :global(ul),
   .markdown-body :global(ol) { margin: 0 0 0.7em; padding-left: 1.3em; }
   .markdown-body :global(li) { margin: 0.2em 0; }
   .markdown-body :global(strong) { font-weight: 650; color: var(--foreground); }
-  .markdown-body :global(code) { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; background: var(--accent); border-radius: 4px; padding: 1px 5px; }
+  .markdown-body :global(code) { font-family: ui-monospace, Menlo, monospace; font-size: calc(11.5 * var(--u)); background: var(--accent); border-radius: 4px; padding: 1px 5px; }
   .markdown-body :global(pre) { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 11px; overflow: auto; margin: 0 0 0.7em; }
-  .markdown-body :global(pre code) { background: none; padding: 0; font-size: 11.5px; line-height: 1.5; }
+  .markdown-body :global(pre code) { background: none; padding: 0; font-size: calc(11.5 * var(--u)); line-height: 1.5; }
   .markdown-body :global(a) { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
   .markdown-body :global(blockquote) { border-left: 3px solid var(--border); margin: 0 0 0.7em; padding-left: 0.8em; color: var(--muted-foreground); }
 </style>

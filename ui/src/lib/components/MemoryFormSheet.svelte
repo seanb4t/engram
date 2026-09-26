@@ -271,25 +271,25 @@
     </Sheet.Header>
     <div class="flex-1 flex flex-col gap-3 px-4 overflow-y-auto min-h-0">
       <div class="flex flex-col gap-1">
-        <label for="mfs-content" class="text-[10.5px] uppercase text-muted-foreground">content</label>
+        <label for="mfs-content" class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">content</label>
         <Textarea id="mfs-content" bind:value={content} placeholder="write the memory…" rows={6} />
-        {#if contentError}<span class="text-[11px] text-cat-gotcha">{contentError}</span>{/if}
+        {#if contentError}<span class="text-[calc(11*var(--u))] text-cat-gotcha">{contentError}</span>{/if}
       </div>
 
       <div class="flex flex-col gap-1">
-        <span id="mfs-scope-label" class="text-[10.5px] uppercase text-muted-foreground">scope</span>
+        <span id="mfs-scope-label" class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">scope</span>
         {#if isEdit}
-          <div class="text-[12px] font-mono text-muted-foreground" data-testid="scope-readonly">{scopeVal}</div>
+          <div class="text-[calc(12*var(--u))] font-mono text-muted-foreground" data-testid="scope-readonly">{scopeVal}</div>
         {:else}
           <Input aria-labelledby="mfs-scope-label" bind:value={scopeVal} placeholder="repo:..." />
-          {#if scopeError}<span class="text-[11px] text-cat-gotcha">{scopeError}</span>{/if}
+          {#if scopeError}<span class="text-[calc(11*var(--u))] text-cat-gotcha">{scopeError}</span>{/if}
         {/if}
       </div>
 
       <div class="flex flex-col gap-1">
-        <span class="text-[10.5px] uppercase text-muted-foreground">category</span>
+        <span class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">category</span>
         {#if isEdit}
-          <div class="text-[12px] text-muted-foreground" data-testid="category-readonly">{category}</div>
+          <div class="text-[calc(12*var(--u))] text-muted-foreground" data-testid="category-readonly">{category}</div>
         {:else}
           <Select
             value={category}
@@ -301,10 +301,10 @@
       </div>
 
       <div class="flex flex-col gap-1">
-        <span class="text-[10.5px] uppercase text-muted-foreground">tags</span>
+        <span class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">tags</span>
         <div class="flex flex-wrap gap-1.5 items-center">
           {#each tags as t (t)}
-            <Badge variant="outline" class="bg-muted font-mono text-[10.5px] gap-1">
+            <Badge variant="outline" class="bg-muted font-mono text-[calc(10.5*var(--u))] gap-1">
               {t}
               <button type="button" aria-label={`remove tag ${t}`} onclick={() => removeTag(t)}>×</button>
             </Badge>
@@ -320,9 +320,9 @@
       </div>
 
       <div class="flex flex-col gap-1">
-        <span class="text-[10.5px] uppercase text-muted-foreground">visibility</span>
+        <span class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">visibility</span>
         {#if isEditSharedReadOnly}
-          <div class="text-[12px] text-muted-foreground" data-testid="visibility-readonly">shared</div>
+          <div class="text-[calc(12*var(--u))] text-muted-foreground" data-testid="visibility-readonly">shared</div>
         {:else}
           <Select
             value={visibility}
@@ -340,13 +340,13 @@
       </div>
 
       <div class="flex flex-col gap-1">
-        <label for="mfs-summary" class="text-[10.5px] uppercase text-muted-foreground">summary (optional)</label>
+        <label for="mfs-summary" class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">summary (optional)</label>
         <Textarea id="mfs-summary" bind:value={summary} rows={2} />
       </div>
 
       {#if !isEdit}
         <div class="flex flex-col gap-2 border-t border-border pt-2">
-          <label class="flex items-center gap-2 text-[12px]">
+          <label class="flex items-center gap-2 text-[calc(12*var(--u))]">
             <Checkbox
               checked={scheduleEnabled}
               onCheckedChange={(v) => (scheduleEnabled = v === true)}
@@ -356,27 +356,27 @@
           </label>
           {#if scheduleEnabled}
             <div class="flex flex-col gap-2">
-              <label class="flex flex-col gap-1 text-[11px] text-muted-foreground" for="mfs-not-before">
+              <label class="flex flex-col gap-1 text-[calc(11*var(--u))] text-muted-foreground" for="mfs-not-before">
                 not before
                 <Input id="mfs-not-before" type="datetime-local" bind:value={notBefore} />
               </label>
-              <label class="flex flex-col gap-1 text-[11px] text-muted-foreground" for="mfs-not-after">
+              <label class="flex flex-col gap-1 text-[calc(11*var(--u))] text-muted-foreground" for="mfs-not-after">
                 not after
                 <Input id="mfs-not-after" type="datetime-local" bind:value={notAfter} />
               </label>
-              {#if scheduleError}<span class="text-[11px] text-cat-gotcha">{scheduleError}</span>{/if}
+              {#if scheduleError}<span class="text-[calc(11*var(--u))] text-cat-gotcha">{scheduleError}</span>{/if}
             </div>
           {/if}
         </div>
       {/if}
 
       {#if hardAuthFailure}
-        <div role="alert" class="flex flex-col gap-2 p-3 text-cat-gotcha bg-card border border-cat-gotcha rounded text-[12px]">
+        <div role="alert" class="flex flex-col gap-2 p-3 text-cat-gotcha bg-card border border-cat-gotcha rounded text-[calc(12*var(--u))]">
           <span>write failed — session expired. re-authenticate to continue.</span>
           <Button variant="outline" size="sm" class="self-start" onclick={handleReauthenticate}>Re-authenticate</Button>
         </div>
       {:else if genericError}
-        <div role="alert" class="text-cat-gotcha text-[12px]">{genericError}</div>
+        <div role="alert" class="text-cat-gotcha text-[calc(12*var(--u))]">{genericError}</div>
       {/if}
     </div>
 

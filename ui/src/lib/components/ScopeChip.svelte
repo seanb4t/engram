@@ -16,18 +16,18 @@
 <HoverCard.Root>
   <HoverCard.Trigger>
     <span class="inline-flex items-center gap-2 min-w-0" title={p.full}>
-      <Badge variant="outline" class="shrink-0 text-[10px] uppercase {catClass[p.type]}">{p.type || 'scope'}</Badge>
+      <Badge variant="outline" class="shrink-0 text-[calc(10*var(--u))] uppercase {catClass[p.type]}">{p.type || 'scope'}</Badge>
       {#if mode === 'stacked'}
         <span class="flex flex-col min-w-0">
-          <span class="truncate font-mono text-[13px]">{p.name}</span>
-          {#if p.org}<span class="truncate font-mono text-[10px] text-muted-foreground opacity-70">{p.org}</span>{/if}
+          <span class="truncate font-mono text-[calc(13*var(--u))]">{p.name}</span>
+          {#if p.org}<span class="truncate font-mono text-[calc(10*var(--u))] text-muted-foreground opacity-70">{p.org}</span>{/if}
         </span>
       {:else}
-        <span class="truncate font-mono text-[12px]">
-          {#if p.org}<span class="text-muted-foreground opacity-60 text-[11px]">{p.org}/</span>{/if}{p.name}
+        <span class="truncate font-mono text-[calc(12*var(--u))]">
+          {#if p.org}<span class="text-muted-foreground opacity-60 text-[calc(11*var(--u))]">{p.org}/</span>{/if}{p.name}
         </span>
       {/if}
-      {#if count !== undefined}<span class="ml-auto shrink-0 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] tabular-nums">{count}</span>{/if}
+      {#if count !== undefined}<span class="ml-auto shrink-0 rounded-full border border-border bg-card px-2 py-0.5 text-[calc(11*var(--u))] tabular-nums">{count}</span>{/if}
     </span>
   </HoverCard.Trigger>
   <HoverCard.Content>
