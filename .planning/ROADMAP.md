@@ -443,7 +443,7 @@ they searched.
   6. A user can narrow results by category/tags/time window/derived state/scope as removable, URL-persisted filter chips, and pick a scope from an autocomplete combobox showing each scope's readable-record count
   7. The project-local `engram-console-conventions` and `engram-connect-client` skills exist and this phase's UI-SPEC cites them
 
-**Plans:** 2/10 plans executed
+**Plans:** 3/10 plans executed
 **UI hint**: yes
 
 Plans:
@@ -454,7 +454,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — CLI hidden-count footer and the docs/tool descriptions that make it correct-by-reading (D-03; ENTRY-03)
+- [x] 02-02-PLAN.md — CLI hidden-count footer and the docs/tool descriptions that make it correct-by-reading (D-03; ENTRY-03)
 - [ ] 02-04-PLAN.md — header search: shared classifier, server-driven dropdown, honest states, /search URL codec and hand-off (D-04, D-10, D-11; ENTRY-01, ENTRY-02, ENTRY-04–ENTRY-06)
 - [ ] 02-06-PLAN.md — virtualized WAI-ARIA results listbox, dense row grid, hover card and row keys (D-05, D-07, D-16, D-17; ROW-01–ROW-04)
 - [ ] 02-07-PLAN.md — stacked-section detail pane, inline actions and make-private, resizable recall split (D-14–D-16; ROW-07)

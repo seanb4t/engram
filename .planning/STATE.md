@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 2
 current_phase_name: Recall-First Search
 status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-09-26T18:33:41.153Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-09-26T18:44:27.015Z"
 last_activity: 2026-09-26
 last_activity_desc: Phase 2 execution started
-state_head: 26b0e4d54cc5802437698e1cac3c9be6f971fea5
+state_head: 7c7718a9452e132c6b83747517c2168a59dba0e2
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 14
-  completed_plans: 6
+  completed_plans: 7
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 ## Current Position
 
 Phase: 2 (Recall-First Search) — EXECUTING
-Plan: 3 of 10
+Plan: 4 of 10
 Status: Ready to execute
 Last activity: 2026-09-26 — Phase 2 execution started
 
@@ -437,6 +437,7 @@ milestone needs in working memory.
 - [Phase 02]: Task 1 decision: option-a — one message RecallGateHidden{total,archived,superseded,expired,scheduled}, fields recall_gate_hidden (Search=5, List=8), MCP key recall_gate_hidden — total counts distinct hidden records so a multi-state record is never double-counted in the header; per-state fields still say which states are hidden
 - [Phase 2]: installDisplayShortcuts defaults notify to svelte-sonner's toast so +layout.svelte calls it with just (window)
 - [Phase 2]: The u scaling unit is calc(1rem / 13), equivalent to calc(var(ui-font) / 13) once html font-size is var(ui-font); matches the plan's artifact contract verbatim
+- [Phase 2]: 02-02: Used 02-01's shipped names verbatim (RecallGateHidden{Total,Archived,Superseded,Expired,Scheduled}, field/key recall_gate_hidden) for the CLI footer and docs — no new naming decision required.
 
 ### Pending Todos
 
@@ -533,8 +534,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-26T18:33:30.382Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-09-26T18:44:26.988Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -742,6 +743,7 @@ Resume file: None
 | Phase 01 P04 | 42min | 2 tasks | 3 files |
 | Phase 02 P01 | 38min | 3 tasks | 12 files |
 | Phase 2 P3 | 27min | 3 tasks | 31 files |
+| Phase 02 P02 | 20min | 2 tasks | 10 files |
 
 ## Operator Next Steps
 
