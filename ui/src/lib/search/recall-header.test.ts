@@ -8,6 +8,7 @@ import {
   loadingLine,
   resolutionLine,
   emptyHeading,
+  listingHeaderParts,
   type HiddenCounts
 } from './recall-header';
 
@@ -140,5 +141,29 @@ describe('emptyHeading', () => {
     expect(emptyHeading({ query: 'zzz', crossSpine: false, scopesSearched: 3, hidden })).toBe(
       'No memories match zzz in the 3 scopes searched'
     );
+  });
+});
+
+describe('listingHeaderParts', () => {
+  it('sums hidden counts across every loaded page and titles the tooltip', () => {
+    const pages: HiddenCounts[] = [
+      { total: 1, archived: 1, superseded: 0, expired: 0, scheduled: 0 },
+      { total: 2, archived: 0, superseded: 2, expired: 0, scheduled: 0 }
+    ];
+    const parts = listingHeaderParts({ total: 40, scopes: 3, hiddenPages: pages });
+    expect(headerText(parts)).toBe('Latest 40 memories across 3 scopes · unranked (list — no score) · 3 hidden by recall gate');
+    const hiddenPart = parts.find((p) => p.kind === 'hidden');
+    expect(hiddenPart?.title).toContain('counted within each loaded page');
+  });
+
+  it('reports the hidden count unavailable when any loaded page lacks it', () => {
+    const pages: (HiddenCounts | undefined)[] = [{ total: 1, archived: 1, superseded: 0, expired: 0, scheduled: 0 }, undefined];
+    const parts = listingHeaderParts({ total: 40, scopes: 3, hiddenPages: pages });
+    expect(headerText(parts)).toBe('Latest 40 memories across 3 scopes · unranked (list — no score) · hidden count unavailable');
+  });
+
+  it('agrees in singular for exactly one memory and one scope, omitting the hidden clause when no pages are loaded', () => {
+    const parts = listingHeaderParts({ total: 1, scopes: 1, hiddenPages: [] });
+    expect(headerText(parts)).toBe('Latest 1 memory across 1 scope · unranked (list — no score)');
   });
 });

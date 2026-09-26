@@ -168,3 +168,32 @@ export function emptyHeading(input: EmptyHeadingInput): string {
   }
   return base;
 }
+
+// D-09's unranked listing header: "Latest N memories across M scopes ·
+// unranked (list — no score)" plus a hidden clause summed across every
+// loaded page (D-02 list-mode display) — 'hidden count unavailable' when any
+// loaded page's count could not be computed, since summing past an unknown
+// value would silently understate it.
+export interface ListingHeaderInput {
+  total: number;
+  scopes: number;
+  hiddenPages: (HiddenCounts | undefined)[];
+}
+
+export function listingHeaderParts(input: ListingHeaderInput): HeaderPart[] {
+  const parts: HeaderPart[] = [];
+  parts.push({ kind: 'count', text: `Latest ${input.total} ${plural(input.total, 'memory', 'memories')}` });
+  parts.push({ kind: 'scopes', text: `across ${input.scopes} ${plural(input.scopes, 'scope', 'scopes')}` });
+  parts.push({ kind: 'ranking', text: '· unranked (list — no score)' });
+
+  if (input.hiddenPages.some((p) => p === undefined)) {
+    parts.push({ kind: 'hidden', text: '· hidden count unavailable' });
+  } else {
+    const sum = input.hiddenPages.reduce((acc, p) => acc + (p?.total ?? 0), 0);
+    if (sum > 0) {
+      parts.push({ kind: 'hidden', text: `· ${sum} hidden by recall gate`, title: 'counted within each loaded page' });
+    }
+  }
+
+  return parts;
+}

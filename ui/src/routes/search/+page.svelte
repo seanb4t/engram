@@ -8,7 +8,7 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { ConnectError, Code } from '@connectrpc/connect';
-  import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+  import { createQuery, createInfiniteQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
   import { peekResume, consumeResume } from '$lib/resume';
   import { normalizeVisibility } from '$lib/mutations/memory';
@@ -20,6 +20,8 @@
     searchMemoriesRequest,
     applyChips,
     nextK,
+    listMemoriesCursorKey,
+    listMemoriesRequest,
     K_STEPS,
     DEFAULT_K,
     type SearchParams
@@ -27,6 +29,7 @@
   import { classifyInput, type OperatorChip } from '$lib/search/classify';
   import {
     rankedHeaderParts,
+    listingHeaderParts,
     emptyHeading,
     hiddenFromProto,
     loadingLine,
@@ -127,13 +130,35 @@
     meta: { silent: true }
   }));
 
-  // Unranked (operator-only) listing arrives with plan 02-09 (D-09) — this
-  // task resolves id/short_id/text only.
   const scopesQ = createQuery(() => ({
     queryKey: ['listScopes'],
     queryFn: ({ signal }) => engram.listScopes({}, { signal }),
     meta: { silent: true }
   }));
+
+  // D-09: operator-only input (no free text — e.g. `scope:x #tag is:gotcha`)
+  // is an unranked ListMemories cursor listing that infinite-scrolls, never a
+  // SearchMemories call.
+  const listQ = createInfiniteQuery(() => ({
+    queryKey: listMemoriesCursorKey(effective),
+    queryFn: ({ pageParam, signal }) => engram.listMemories(listMemoriesRequest(effective, pageParam as string), { signal }),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.nextPageToken || undefined,
+    enabled: classified.kind === 'operators',
+    meta: { silent: true }
+  }));
+
+  const listMemories = $derived(listQ.data?.pages.flatMap((p) => p.memories) ?? []);
+  const listHiddenPages = $derived(listQ.data?.pages.map((p) => hiddenFromProto(p.recallGateHidden)) ?? []);
+  const listScopeCount = $derived.by(() => {
+    const first = listQ.data?.pages[0];
+    if (!first) return 0;
+    return effective.scope ? 1 : (first.searchedScopes?.length ?? 0);
+  });
+  // isFetchingNextPage is excluded so appending a page never dims the whole
+  // list — only the initial load and a param-driven refetch do (Pitfall 3).
+  const listBusy = $derived(listQ.isFetching && !listQ.isFetchingNextPage && !!listQ.data);
+  const listLoading = $derived(listQ.isLoading && !listQ.data);
 
   const memories = $derived.by(() => {
     if (classified.kind === 'id' || classified.kind === 'short_id') {
@@ -141,6 +166,7 @@
       return idQ.data?.memory ? [idQ.data.memory] : [];
     }
     if (classified.kind === 'text') return searchQ.data?.memories ?? [];
+    if (classified.kind === 'operators') return listMemories;
     return [];
   });
 
@@ -240,10 +266,16 @@
         scopesUnknown: searchQ.data.scopesUnknown
       });
     }
+    if (classified.kind === 'operators') {
+      if (!listQ.data) return [];
+      return listingHeaderParts({ total: listMemories.length, scopes: listScopeCount, hiddenPages: listHiddenPages });
+    }
     return [];
   });
 
-  const headerBusy = $derived(searchQ.isFetching && searchQ.isPlaceholderData);
+  const headerBusy = $derived(
+    classified.kind === 'operators' ? listBusy : searchQ.isFetching && searchQ.isPlaceholderData
+  );
 
   // ENTRY-03/ENTRY-05: one honest-state pipeline that every classification
   // outcome feeds — the empty check requires isSuccess && !isFetching
@@ -270,6 +302,17 @@
         scopeCount: effective.scope ? 1 : (searchQ.data?.searchedScopes?.length ?? 0),
         hidden: hiddenFromProto(searchQ.data?.recallGateHidden),
         refetch: () => searchQ.refetch()
+      };
+    }
+    if (classified.kind === 'operators') {
+      return {
+        error: listQ.error,
+        isSuccess: listQ.isSuccess,
+        isFetching: listQ.isFetching && !listQ.isFetchingNextPage,
+        count: listMemories.length,
+        scopeCount: listScopeCount,
+        hidden: listHiddenPages[0],
+        refetch: () => listQ.refetch()
       };
     }
     if (classified.kind === 'id' || classified.kind === 'short_id') {
@@ -433,11 +476,13 @@
         {:else}
           <ResultsList
             {memories}
-            mode="ranked"
+            mode={classified.kind === 'operators' ? 'unranked' : 'ranked'}
             label="Search results"
             openId={effectiveSel}
-            loading={searchQ.isLoading && !searchQ.data}
-            busy={searchQ.isFetching && searchQ.isPlaceholderData}
+            loading={classified.kind === 'operators' ? listLoading : searchQ.isLoading && !searchQ.data}
+            busy={classified.kind === 'operators' ? listBusy : searchQ.isFetching && searchQ.isPlaceholderData}
+            hasMore={classified.kind === 'operators' ? listQ.hasNextPage : false}
+            onloadmore={classified.kind === 'operators' ? () => listQ.fetchNextPage() : undefined}
             onopen={(id) => navigate({ sel: params.sel === id ? '' : id })}
             onescape={() => navigate({ sel: '' })}
             onedit={(id) => writeSurfaces?.openEdit(id)}

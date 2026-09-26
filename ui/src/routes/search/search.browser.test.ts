@@ -13,7 +13,7 @@ import SearchPage from './+page.svelte';
 // above — is not yet bound when a synchronous factory would run. A dynamic
 // `import()` inside the (awaited) factory sidesteps that ordering: it is a
 // genuine async operation, resolved after linking, not a static binding.
-const { gotoSpy, pageState, searchMemoriesSpy, getMemorySpy, listScopesSpy, consumeResumeSpy } = await vi.hoisted(async () => {
+const { gotoSpy, pageState, searchMemoriesSpy, getMemorySpy, listScopesSpy, listMemoriesSpy, consumeResumeSpy } = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/search');
   const pageState = { url };
@@ -27,6 +27,7 @@ const { gotoSpy, pageState, searchMemoriesSpy, getMemorySpy, listScopesSpy, cons
     searchMemoriesSpy: vi.fn(),
     getMemorySpy: vi.fn(),
     listScopesSpy: vi.fn(),
+    listMemoriesSpy: vi.fn(),
     consumeResumeSpy: vi.fn()
   };
 });
@@ -39,7 +40,13 @@ vi.mock('$lib/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('$lib/client')>();
   return {
     ...actual,
-    engram: { ...actual.engram, searchMemories: searchMemoriesSpy, getMemory: getMemorySpy, listScopes: listScopesSpy }
+    engram: {
+      ...actual.engram,
+      searchMemories: searchMemoriesSpy,
+      getMemory: getMemorySpy,
+      listScopes: listScopesSpy,
+      listMemories: listMemoriesSpy
+    }
   };
 });
 
@@ -79,11 +86,16 @@ function emptySearchResult() {
   return { memories: [], searchedScopes: [], scopesTruncated: false, scopesUnknown: false };
 }
 
+function emptyListResult() {
+  return { memories: [], total: 0n, nextPageToken: '', searchedScopes: [], scopesTruncated: false, scopesUnknown: false };
+}
+
 beforeEach(() => {
   gotoSpy.mockClear();
   searchMemoriesSpy.mockReset().mockResolvedValue(emptySearchResult());
   getMemorySpy.mockReset();
   listScopesSpy.mockReset().mockResolvedValue({ scopes: [], approximate: false });
+  listMemoriesSpy.mockReset().mockResolvedValue(emptyListResult());
   consumeResumeSpy.mockReset();
   sessionStorage.clear();
   pageState.url.href = 'http://localhost/search';
@@ -433,6 +445,61 @@ describe('search route — Show more escalates k through the URL (D-08)', () => 
     const screen = await renderSearch();
     await expect.element(screen.getByText('hit 0')).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
+  });
+});
+
+describe('search route — operator-only input lists memories unranked with infinite scroll (D-09)', () => {
+  it('runs ListMemories with the parsed operators, never SearchMemories, and shows the unranked header', async () => {
+    pageState.url.href = `http://localhost/search?q=${encodeURIComponent('scope:repo:engram #ci')}`;
+    listMemoriesSpy.mockResolvedValue({
+      memories: [makeMemory({ id: 'm-1', summary: 'listed one', scope: 'repo:engram', tags: ['ci'] })],
+      total: 1n,
+      nextPageToken: '',
+      searchedScopes: [],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByText('listed one')).toBeInTheDocument();
+    expect(searchMemoriesSpy).not.toHaveBeenCalled();
+    expect(listMemoriesSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: 'repo:engram', tags: ['ci'], cursorMode: true, limit: 50n, pageToken: '' }),
+      expect.objectContaining({ signal: expect.anything() })
+    );
+    await expect.element(screen.getByText(/unranked \(list — no score\)/)).toBeInTheDocument();
+  });
+
+  it('appends a second page when nextPageToken is set, and stops once it is empty', async () => {
+    pageState.url.href = `http://localhost/search?q=${encodeURIComponent('is:gotcha')}`;
+    listMemoriesSpy
+      .mockResolvedValueOnce({
+        memories: [makeMemory({ id: 'm-1', summary: 'page one hit', category: 'gotcha' })],
+        total: 2n,
+        nextPageToken: 't2',
+        searchedScopes: ['repo:test'],
+        scopesTruncated: false,
+        scopesUnknown: false
+      })
+      .mockResolvedValueOnce({
+        memories: [makeMemory({ id: 'm-2', summary: 'page two hit', category: 'gotcha' })],
+        total: 2n,
+        nextPageToken: '',
+        searchedScopes: ['repo:test'],
+        scopesTruncated: false,
+        scopesUnknown: false
+      });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByText('page one hit')).toBeInTheDocument();
+
+    await expect.poll(() => listMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(listMemoriesSpy.mock.calls[1][0].pageToken).toBe('t2');
+    await expect.element(screen.getByText('page two hit')).toBeInTheDocument();
+
+    const callCountAfterSecondPage = listMemoriesSpy.mock.calls.length;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(listMemoriesSpy.mock.calls.length).toBe(callCountAfterSecondPage);
   });
 });
 
