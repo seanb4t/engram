@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,6 +15,13 @@ import (
 
 	"github.com/qdrant/go-client/qdrant"
 )
+
+// tagRarityID builds a deterministic, valid-UUID-shaped id for the tag-edge
+// tests below — a shared helper so each test's fixture only has to think in
+// terms of small integer indices.
+func tagRarityID(prefix string, n int) string {
+	return fmt.Sprintf("%s0000-0000-0000-0000-%012x", prefix, n)
+}
 
 // TestRelatedMemoriesVectorEdge is the phase's tracer test (STORE-02, SC3,
 // D-10, D-12): the anchor's read-filtered query-by-id vector neighbourhood,
@@ -659,4 +667,211 @@ func TestRelatedMemoriesEntryShape(t *testing.T) {
 	if neighbourEntry.Memory.Content != "raw content for backfill" {
 		t.Fatalf("neighbour entry Content = %q, want %q (no-summary backfill)", neighbourEntry.Memory.Content, "raw content for backfill")
 	}
+}
+
+// tagEdgeOf returns the tag-type RelatedEdge for id in res, if any.
+func tagEdgeOf(res RelatedResult, id string) (RelatedEdge, bool) {
+	for _, r := range res.Related {
+		if r.Memory.ID != id {
+			continue
+		}
+		for _, e := range r.Edges {
+			if e.Type == RelatedEdgeTag {
+				return e, true
+			}
+		}
+	}
+	return RelatedEdge{}, false
+}
+
+// tagEdgeOrder returns, in res.Related's own order, the ids of every entry
+// carrying a tag-type edge.
+func tagEdgeOrder(res RelatedResult) []string {
+	var ids []string
+	for _, r := range res.Related {
+		for _, e := range r.Edges {
+			if e.Type == RelatedEdgeTag {
+				ids = append(ids, r.Memory.ID)
+				break
+			}
+		}
+	}
+	return ids
+}
+
+// assertWeightClose fails t unless got is within 1e-9 of want — floats are
+// never compared with exact equality (per this plan's executor notes).
+func assertWeightClose(t *testing.T, label string, got, want float64) {
+	t.Helper()
+	if diff := got - want; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("%s = %v, want %v (within 1e-9)", label, got, want)
+	}
+}
+
+// TestRelatedMemoriesTagEdgeRarity is the tracer test for D-07: shared-tag
+// edges carry exact rarity weights (ln(n/df)) drawn from the caller's
+// readable, recall-visible set; a tag carried by more than half that set
+// (here, "common") contributes zero weight and no edge; and the df implied
+// by a weight matches ListTags' own count for the same tag.
+func TestRelatedMemoriesTagEdgeRarity(t *testing.T) {
+	s := newSpineTestStore(t, "related_tag_rarity")
+	ctx := context.Background()
+	scope := "related:project:tag-rarity"
+	ownerA := Authenticated("related-owner-a")
+	id := func(n int) string { return tagRarityID("1a1a", n) }
+
+	anchorID, aID, bID, cID, dID, eID := id(0), id(1), id(2), id(3), id(4), id(5)
+
+	seedSpineMemoryVector(t, s, Memory{ID: anchorID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "anchor", Tags: []string{"t1", "t2", "common"}}, []float32{1, 0, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: aID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "a", Tags: []string{"t1"}}, []float32{0.9, 0.1, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: bID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "b", Tags: []string{"t2"}}, []float32{0, 0.9, 0.1})
+	seedSpineMemoryVector(t, s, Memory{ID: cID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "c", Tags: []string{"t1", "t2"}}, []float32{0, 0, 1})
+	seedSpineMemoryVector(t, s, Memory{ID: dID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "d", Tags: []string{"t2"}}, []float32{0, 1, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: eID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "e", Tags: []string{"common"}}, []float32{1, 1, 0})
+	fIDs := make([]string, 5)
+	for i := 0; i < 5; i++ {
+		fIDs[i] = id(6 + i)
+		seedSpineMemoryVector(t, s, Memory{ID: fIDs[i], Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("f%d", i), Tags: []string{"common"}}, []float32{0.5, 0.5, 0.5})
+	}
+
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories: %v", err)
+	}
+
+	wantOrder := []string{cID, aID, bID, dID}
+	if gotOrder := tagEdgeOrder(res); !reflect.DeepEqual(gotOrder, wantOrder) {
+		t.Fatalf("tag edge order = %v, want %v (%+v)", gotOrder, wantOrder, res.Related)
+	}
+
+	cEdge, ok := tagEdgeOf(res, cID)
+	if !ok {
+		t.Fatalf("C has no tag edge: %+v", res.Related)
+	}
+	assertWeightClose(t, "C.TagWeight", cEdge.TagWeight, math.Log(11.0/3.0)+math.Log(11.0/4.0))
+
+	aEdge, ok := tagEdgeOf(res, aID)
+	if !ok {
+		t.Fatalf("A has no tag edge: %+v", res.Related)
+	}
+	assertWeightClose(t, "A.TagWeight", aEdge.TagWeight, math.Log(11.0/3.0))
+
+	for _, r := range res.Related {
+		for _, e := range r.Edges {
+			for _, st := range e.SharedTags {
+				if st.Tag == "common" {
+					t.Fatalf("%s SharedTags contains %q, an ubiquitous tag that must contribute no weight: %+v", r.Memory.ID, st.Tag, e)
+				}
+			}
+		}
+	}
+	for _, missing := range append([]string{eID}, fIDs...) {
+		if _, ok := tagEdgeOf(res, missing); ok {
+			t.Fatalf("%s has a tag edge, want none (only carries the ubiquitous 'common' tag)", missing)
+		}
+	}
+
+	tagCounts, _, err := s.ListTags(ctx, ownerA, "", 0)
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	dfByTag := map[string]uint64{}
+	for _, tc := range tagCounts {
+		dfByTag[tc.Tag] = tc.Count
+	}
+	if dfByTag["t1"] != 3 {
+		t.Fatalf("ListTags df(t1) = %d, want 3", dfByTag["t1"])
+	}
+	if dfByTag["t2"] != 4 {
+		t.Fatalf("ListTags df(t2) = %d, want 4", dfByTag["t2"])
+	}
+}
+
+// TestRelatedMemoriesTagEdgeCap pins D-07/D-12's boundary and precision
+// edges: exactly relatedTagCap (8) tag neighbours come back, chosen as the
+// lowest ids among equal-weight candidates.
+func TestRelatedMemoriesTagEdgeCap(t *testing.T) {
+	s := newSpineTestStore(t, "related_tag_cap")
+	ctx := context.Background()
+	scope := "related:project:tag-cap"
+	ownerA := Authenticated("related-owner-a")
+	id := func(n int) string { return tagRarityID("1b1b", n) }
+
+	anchorID := id(0)
+	seedSpineMemoryVector(t, s, Memory{ID: anchorID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "anchor", Tags: []string{"rare-cap"}}, []float32{1, 0, 0})
+
+	candidateIDs := make([]string, 10)
+	for i := 0; i < 10; i++ {
+		candidateIDs[i] = id(1 + i)
+		seedSpineMemoryVector(t, s, Memory{ID: candidateIDs[i], Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("c%d", i), Tags: []string{"rare-cap"}}, []float32{float32(i) * 0.01, 1 - float32(i)*0.01, 0})
+	}
+	for i := 0; i < 12; i++ {
+		fID := id(11 + i)
+		seedSpineMemoryVector(t, s, Memory{ID: fID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("filler%d", i)}, []float32{0, 0, 1})
+	}
+
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories: %v", err)
+	}
+
+	gotOrder := tagEdgeOrder(res)
+	if len(gotOrder) != 8 {
+		t.Fatalf("len(tag edges) = %d, want 8: %v", len(gotOrder), gotOrder)
+	}
+	wantOrder := append([]string(nil), candidateIDs[:8]...)
+	if !reflect.DeepEqual(gotOrder, wantOrder) {
+		t.Fatalf("tag edge order = %v, want %v (the 8 lowest candidate ids, ascending)", gotOrder, wantOrder)
+	}
+}
+
+// TestRelatedMemoriesTagWeightBeyondFacetLimit pins D-07's completeness
+// requirement: when relatedTagFacetLimit truncates the facet below the
+// anchor's own tag, the missing tag's df still comes from an exact
+// fallback Count, never an estimate.
+func TestRelatedMemoriesTagWeightBeyondFacetLimit(t *testing.T) {
+	orig := relatedTagFacetLimit
+	relatedTagFacetLimit = 1
+	t.Cleanup(func() { relatedTagFacetLimit = orig })
+
+	s := newSpineTestStore(t, "related_tag_facet_limit")
+	ctx := context.Background()
+	scope := "related:project:tag-facet-limit"
+	ownerA := Authenticated("related-owner-a")
+	id := func(n int) string { return tagRarityID("1c1c", n) }
+
+	anchorID := id(0)
+	seedSpineMemoryVector(t, s, Memory{ID: anchorID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "anchor", Tags: []string{"often", "seldom"}}, []float32{1, 0, 0})
+
+	for i := 0; i < 4; i++ {
+		oID := id(1 + i)
+		seedSpineMemoryVector(t, s, Memory{ID: oID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("often%d", i), Tags: []string{"often"}}, []float32{0.5, 0.5, 0})
+	}
+	sID := id(5)
+	seedSpineMemoryVector(t, s, Memory{ID: sID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "seldom-sharer", Tags: []string{"seldom"}}, []float32{0, 1, 0})
+	for i := 0; i < 4; i++ {
+		fID := id(6 + i)
+		seedSpineMemoryVector(t, s, Memory{ID: fID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("filler%d", i)}, []float32{0, 0, 1})
+	}
+
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories: %v", err)
+	}
+
+	sEdge, ok := tagEdgeOf(res, sID)
+	if !ok {
+		t.Fatalf("seldom-sharer has no tag edge: %+v", res.Related)
+	}
+	found := false
+	for _, wt := range sEdge.SharedTags {
+		if wt.Tag == "seldom" {
+			found = true
+			assertWeightClose(t, "seldom weight", wt.Weight, math.Log(10.0/2.0))
+		}
+	}
+	if !found {
+		t.Fatalf("seldom-sharer's SharedTags = %+v, want a 'seldom' entry", sEdge.SharedTags)
+	}
+	assertWeightClose(t, "seldom-sharer.TagWeight", sEdge.TagWeight, math.Log(10.0/2.0))
 }
