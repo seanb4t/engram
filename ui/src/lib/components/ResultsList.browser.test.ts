@@ -1,3 +1,7 @@
+// See ResultRow.browser.test.ts for why this import is required: isolated
+// component mounts never pull in +layout.svelte's app.css, so --u and the
+// design tokens are otherwise invalid/no-op in this cascade.
+import '../../app.css';
 import { render } from 'vitest-browser-svelte';
 import { userEvent } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
@@ -96,5 +100,41 @@ describe('ResultsList', () => {
     const onopen = vi.fn();
     const screen = await render(ResultsList, { memories: [], label: 'Search results', onopen });
     await expect.element(screen.getByRole('listbox', { name: 'Search results' })).not.toBeInTheDocument();
+  });
+
+  it('loading with no memories renders skeleton rows and no listbox', async () => {
+    const onopen = vi.fn();
+    const screen = await render(ResultsList, { memories: [], label: 'Search results', onopen, loading: true });
+    await expect.element(screen.getByTestId('results-loading')).toBeInTheDocument();
+    await expect.element(screen.getByRole('listbox', { name: 'Search results' })).not.toBeInTheDocument();
+  });
+
+  it('busy with memories keeps the rows rendered, dims them, and shows a progress bar', async () => {
+    const onopen = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen, busy: true });
+    await expect.element(screen.getByRole('listbox', { name: 'Search results' })).toBeInTheDocument();
+    await expect.element(screen.getByTestId('results-loadbar')).toBeInTheDocument();
+    const wrapper = screen.container.querySelector('.results-listbox-wrapper');
+    expect(wrapper?.classList.contains('busy')).toBe(true);
+  });
+
+  it('rel column appears list-wide only when at least one hit carries relevance', async () => {
+    const onopen = vi.fn();
+    const noRel = makeMemories(3);
+    const screen = await render(ResultsList, { memories: noRel, label: 'Search results', onopen });
+    expect(screen.container.querySelectorAll('.rel').length).toBe(0);
+
+    const withRel = makeMemories(3);
+    withRel[0] = create(MemorySchema, {
+      id: withRel[0].id,
+      category: withRel[0].category,
+      summary: withRel[0].summary,
+      scope: withRel[0].scope,
+      relevance: 0.5
+    });
+    await screen.rerender({ memories: withRel, label: 'Search results', onopen });
+    const relCols = screen.container.querySelectorAll('.rel');
+    expect(relCols.length).toBe(withRel.length);
   });
 });

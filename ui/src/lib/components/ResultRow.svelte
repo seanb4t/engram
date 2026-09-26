@@ -1,10 +1,14 @@
 <script lang="ts">
   import type { Memory } from '$lib/gen/engram_pb';
   import { stripCategoryPrefix } from '$lib/summary';
+  import { relativeTime } from '$lib/time';
+  import { timestampDate } from '@bufbuild/protobuf/wkt';
+  import { memoryStateWords, isPastState, type RecordStateWord } from '$lib/memorystate';
+  import ScopeChip from './ScopeChip.svelte';
 
-  // Minimal Task 1 shape: fixed-height single-line row with a category dot
-  // and the ellipsized summary. Task 2 fills in the full dense grid (state
-  // chips, tags, scope, age, score, rel) on top of this same fixed height.
+  // ROW-01/ROW-04/D-05: the full dense one-line row grid — category, summary
+  // (inline code, ellipsized), state chips (first +N), tags (first two +N),
+  // scope, age, score (always) and rel (only when the reranker ran).
   let {
     memory,
     mode = 'ranked',
@@ -22,32 +26,327 @@
   } = $props();
 
   const summary = $derived(stripCategoryPrefix(memory.summary, memory.category));
+
+  // Backtick spans become <code> from TEXT NODES only — never a raw-HTML
+  // insertion directive (T-02-16).
+  type SummaryPart = { code: boolean; text: string };
+  function splitInlineCode(text: string): SummaryPart[] {
+    const parts: SummaryPart[] = [];
+    const re = /`([^`]+)`/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text))) {
+      if (match.index > lastIndex) parts.push({ code: false, text: text.slice(lastIndex, match.index) });
+      parts.push({ code: true, text: match[1] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length || parts.length === 0) parts.push({ code: false, text: text.slice(lastIndex) });
+    return parts;
+  }
+  const summaryParts = $derived(splitInlineCode(summary));
+
+  const stateWords = $derived(memoryStateWords(memory));
+  const dimmed = $derived(isPastState(stateWords));
+
+  function stateClass(word: RecordStateWord): string {
+    if (word === 'expired') return 'expired';
+    if (word === 'scheduled') return 'scheduled';
+    return '';
+  }
+
+  // Tags: first two, then a "+N" overflow marker.
+  const shownTags = $derived(memory.tags.slice(0, 2));
+  const tagOverflow = $derived(Math.max(0, memory.tags.length - 2));
+
+  const when = $derived(memory.createdAt ? relativeTime(timestampDate(memory.createdAt)) : '');
+
+  // ROW-04/D-05: score always renders; the bar uses the UNROUNDED score,
+  // clamped 0-100. rel only renders when the caller says the reranker ran
+  // AND this specific hit carries a relevance value (0 is a real value,
+  // never hidden — only `undefined` means "not present").
+  const scoreDisplay = $derived(mode === 'unranked' ? '—' : memory.score.toFixed(2));
+  const scoreBarPct = $derived(Math.min(100, Math.max(0, memory.score * 100)));
+  const relDisplay = $derived(
+    showRel && memory.relevance !== undefined ? `rel ${memory.relevance.toFixed(2)}` : ''
+  );
+
+  // State chips first-try to fit inside a bounded budget (independent of the
+  // row's own container-query column drops); collapse to `first +N` on
+  // overflow, per foundations.md's fitStates note. Re-measured on resize of
+  // that bounded box and on a text-size change (both change --u, and hence
+  // the box's own pixel width).
+  let statesEl: HTMLElement | undefined = $state();
+  let statesCollapsed = $state(false);
+
+  function measureStatesOverflow() {
+    if (!statesEl) return;
+    if (stateWords.length <= 1) {
+      statesCollapsed = false;
+      return;
+    }
+    if (!statesCollapsed && statesEl.scrollWidth > statesEl.clientWidth + 1) {
+      statesCollapsed = true;
+    }
+  }
+
+  $effect(() => {
+    // Reset per state-word-set change (e.g. a different memory mounted at
+    // this DOM position) so a shorter set is never left stuck collapsed.
+    void stateWords;
+    statesCollapsed = false;
+  });
+
+  $effect(() => {
+    if (!statesEl) return;
+    const ro = new ResizeObserver(() => measureStatesOverflow());
+    ro.observe(statesEl);
+    measureStatesOverflow();
+    function onTextSize() {
+      measureStatesOverflow();
+    }
+    window.addEventListener('engram:textsize', onTextSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('engram:textsize', onTextSize);
+    };
+  });
+
+  const stateTitle = $derived(stateWords.join(' · '));
 </script>
 
-<div class="result-row-line" style="--c:var(--cat-{memory.category})">
-  <span class="cat-dot" aria-hidden="true" style="background:var(--c)"></span>
-  <span class="sum">{summary}</span>
+<div
+  class="result-row-line"
+  class:show-rel={showRel}
+  class:active-row={active}
+  class:opened-row={opened}
+  class:list-focused={listFocused}
+  style="--c:var(--cat-{memory.category})"
+  title={opened ? 'Open in the detail pane: click or press ↵ again to close' : undefined}
+>
+  <span class="cat" class:dim={dimmed}>
+    <i class="cat-dot" aria-hidden="true" style="background:var(--c)"></i>
+    <span class="cat-word">{memory.category}</span>
+  </span>
+  <span class="sum" class:dim={dimmed}>
+    {#each summaryParts as part, i (i)}{#if part.code}<code>{part.text}</code>{:else}{part.text}{/if}{/each}
+  </span>
+  <span class="states" bind:this={statesEl} class:collapsed={statesCollapsed} title={statesCollapsed ? stateTitle : undefined}>
+    {#if statesCollapsed}
+      <span class="st {stateClass(stateWords[0])}">{stateWords[0]}</span>
+      <span class="st more">+{stateWords.length - 1}</span>
+    {:else}
+      {#each stateWords as w (w)}<span class="st {stateClass(w)}">{w}</span>{/each}
+    {/if}
+  </span>
+  <span class="tags" class:dim={dimmed}>
+    {#each shownTags as t (t)}<span class="tag">{t}</span>{/each}
+    {#if tagOverflow > 0}<span class="tag more">+{tagOverflow}</span>{/if}
+  </span>
+  <span class="scope" class:dim={dimmed}>
+    {#if memory.scope}<ScopeChip scope={memory.scope} />{/if}
+  </span>
+  <span class="age">{when}</span>
+  <span class="score">
+    <span class="num">{scoreDisplay}</span>
+    {#if mode !== 'unranked'}
+      <span class="bar"><b style="width:{scoreBarPct}%"></b></span>
+    {/if}
+  </span>
+  {#if showRel}
+    <span class="rel">{relDisplay}</span>
+  {/if}
 </div>
 
 <style>
   .result-row-line {
+    --cols: calc(96 * var(--u)) minmax(0, 1fr) auto calc(172 * var(--u)) calc(132 * var(--u)) calc(34 * var(--u)) calc(
+        70 * var(--u)
+      );
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: var(--cols);
     align-items: center;
-    column-gap: calc(6 * var(--u));
+    column-gap: calc(10 * var(--u));
     height: calc(28 * var(--u));
     padding: 0 calc(12 * var(--u)) 0 calc(14 * var(--u));
+  }
+  .result-row-line.show-rel {
+    grid-template-columns: var(--cols) calc(56 * var(--u));
+  }
+  .result-row-line.active-row {
+    background: var(--selected);
+  }
+  .result-row-line.opened-row {
+    background: color-mix(in srgb, var(--primary) 10%, var(--selected));
+    box-shadow: inset calc(3 * var(--u)) 0 0 var(--primary);
+  }
+
+  .cat {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(6 * var(--u));
+    min-width: 0;
+    font-size: calc(11 * var(--u));
+    font-weight: 500;
+    color: var(--c);
   }
   .cat-dot {
     width: calc(6 * var(--u));
     height: calc(6 * var(--u));
     border-radius: 999px;
     flex: none;
+    display: inline-block;
   }
+  .cat-word {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cat.dim {
+    opacity: 0.5;
+  }
+
   .sum {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: calc(13 * var(--u));
+    min-width: 0;
+  }
+  .sum.dim {
+    opacity: 0.5;
+  }
+  .sum code {
+    font-family: var(--font-mono, monospace);
+    font-size: calc(12 * var(--u));
+    background: var(--surface-2);
+    border-radius: calc(3 * var(--u));
+    padding: 0 calc(3 * var(--u));
+  }
+
+  .states {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(3 * var(--u));
+    min-width: 0;
+    max-width: calc(96 * var(--u));
+    overflow: hidden;
+  }
+  .st {
+    flex: none;
+    white-space: nowrap;
+    font-family: var(--font-mono, monospace);
+    font-size: calc(10 * var(--u));
+    padding: 0 calc(5 * var(--u));
+    border: 1px solid var(--border);
+    border-radius: calc(3 * var(--u));
+    color: var(--text-faint);
+  }
+  .states.collapsed > .st:first-child {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .st.expired {
+    color: var(--warning);
+    border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+  }
+  .st.scheduled {
+    color: var(--primary);
+    border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  }
+  .st.more {
+    color: var(--text-faint);
+  }
+
+  .tags {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    min-width: 0;
+    overflow: hidden;
+  }
+  .tags.dim {
+    opacity: 0.5;
+  }
+  .tag {
+    flex: none;
+    font-family: var(--font-mono, monospace);
+    font-size: calc(10.5 * var(--u));
+    background: var(--muted);
+    border-radius: calc(3 * var(--u));
+    padding: 0 calc(4 * var(--u));
+  }
+  .tag.more {
+    background: none;
+    color: var(--text-faint);
+  }
+
+  .scope {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .scope.dim {
+    opacity: 0.5;
+  }
+
+  .age {
+    font-family: var(--font-mono, monospace);
+    font-size: calc(11 * var(--u));
+    color: var(--text-faint);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .score {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: calc(6 * var(--u));
+  }
+  .score .num {
+    font-family: var(--font-mono, monospace);
+    font-size: calc(12 * var(--u));
+    color: var(--muted-foreground);
+  }
+  .score .bar {
+    width: calc(28 * var(--u));
+    height: calc(3 * var(--u));
+    border-radius: 2px;
+    background: var(--border-subtle);
+    overflow: hidden;
+  }
+  .score .bar b {
+    display: block;
+    height: 100%;
+    background: var(--primary);
+  }
+
+  .rel {
+    font-family: var(--font-mono, monospace);
+    font-size: calc(11 * var(--u));
+    color: var(--text-faint);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* Column drop-out by LIST width (container query on the ancestor named
+     "list", set on ResultsList's wrapper) — states/score/rel always stay. */
+  @container list (max-width: 860px) {
+    .tags {
+      display: none;
+    }
+  }
+  @container list (max-width: 560px) {
+    .tags,
+    .scope {
+      display: none;
+    }
+    .cat-word {
+      display: none;
+    }
+    .score .bar {
+      display: none;
+    }
   }
 </style>
