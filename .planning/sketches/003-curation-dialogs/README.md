@@ -24,6 +24,8 @@ Use the "Next call returns" bar to choose success, validation error, server reje
 - **B: Side sheet** — a right sheet keeps the list visible. In step 1 the list itself picks the targets; step 2 writes the correction. The chain is a vertical timeline. Archive confirms inside the sheet, and Restore sits in the archived banner with no confirm.
 - **C: Inline + undo toast** — `e`/`u` or the row menu archive or restore instantly. The change is optimistic: a toast offers Undo (and `⌘Z`), and a failure puts the row back. Supersede expands an inline editor under the rows, with the chain as a breadcrumb per lineage path.
 
+Text size follows the console-wide display preference (12–16px, default 15, shared across all pages via themes/display.js).
+
 ## What to Look For
 
 1. **Ceremony vs. risk.** Supersede cannot be undone: it is additive history, and the only fix is to supersede again. Archive is always reversible. Check whether A's confirm on a reversible archive feels like friction next to C's undo toast, and whether C's inline supersede feels too light for a change with no undo.

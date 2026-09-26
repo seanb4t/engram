@@ -28,6 +28,8 @@ Use the bottom-left panel for the test inputs, the server state cycler (live / l
 - **B: Top-bar inline search**: the box lives in the app header and results drop down under it; for free text, the default Enter action opens the full `/search` page with the query applied.
 - **C: Full-page takeover**: `/` turns the page into a search surface with a large input, chips, a result list and a right-side preview; Esc restores the previous page and its scroll position.
 
+Text size follows the console-wide display preference (12–16px, default 15, shared across all pages via themes/display.js).
+
 ## What to Look For
 
 1. **Id resolution honesty.** Try `753aba22-61d0-493c-81a1-ee00c0b1852c` (it resolves to a *superseded* record, which search hides but fetch-by-id shows), `y0bzh06c11` (1 memory), `k3m9p2qr7a` (ambiguous: 2 memories are shown, with a "paste the full id" hint) and a word like `attachment` (it looks like a short_id, has no match, and the status line says it was searched as text instead). Which variant makes the "interpreted as" chip easiest to see before you press Enter?
