@@ -1002,7 +1002,7 @@ const (
 // assembleRelated's no-summary backfill issues no extra Scroll), no tags, no
 // citations, and no supersession links — each subject can see only its own
 // two records.
-func seedRecallGateRelatedFixtures(t *testing.T, ctx context.Context, s *Store) {
+func seedRecallGateRelatedFixtures(ctx context.Context, t *testing.T, s *Store) {
 	t.Helper()
 	fixtures := []struct {
 		id     string
@@ -1250,7 +1250,7 @@ func TestSchemaVersionNeverGatesRecall(t *testing.T) {
 	if err := s.EnsureCollection(ctx, uint64(len(recallGateVector))); err != nil {
 		t.Fatalf("EnsureCollection: %v", err)
 	}
-	seedRecallGateRelatedFixtures(t, ctx, s)
+	seedRecallGateRelatedFixtures(ctx, t, s)
 
 	t.Run("interceptor recognized types cover every recallTransmitters emission method", func(t *testing.T) {
 		fset := token.NewFileSet()
