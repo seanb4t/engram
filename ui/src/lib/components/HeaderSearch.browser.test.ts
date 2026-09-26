@@ -1,10 +1,12 @@
 import { render } from 'vitest-browser-svelte';
+import { userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
+import { headerSearch, handoffToHeaderSearch } from '$lib/search/header-search.svelte';
 import HeaderSearch from './HeaderSearch.svelte';
 
 const { gotoSpy, searchMemoriesSpy, getMemorySpy, listScopesSpy, listMemoriesSpy } = vi.hoisted(() => ({
@@ -57,6 +59,10 @@ beforeEach(() => {
   getMemorySpy.mockReset();
   listScopesSpy.mockReset().mockResolvedValue({ scopes: [], approximate: false });
   listMemoriesSpy.mockReset().mockResolvedValue({ memories: [], total: 0n });
+  // headerSearch is a module-level singleton (the ⌘K hand-off point, D-11) —
+  // reset it so one test's typed text never leaks into the next.
+  headerSearch.text = '';
+  headerSearch.focusSeq = 0;
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 
@@ -274,5 +280,81 @@ describe('HeaderSearch', () => {
     await expect
       .element(screen.getByText('discovery:* not included (separate lane: search_discovery)'))
       .toBeInTheDocument();
+  });
+
+  it('Enter on the top row hands the classified query and chips to /search through the codec, and clears the input', async () => {
+    searchMemoriesSpy.mockResolvedValue({ memories: [] });
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    await input.fill('gofmt #ci');
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBe(1);
+
+    await userEvent.keyboard('{Enter}');
+
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?q=gofmt&tag=ci');
+    await expect.element(input).toHaveValue('');
+  });
+
+  it('Enter on a memory row hands the same params plus sel to /search (D-10)', async () => {
+    searchMemoriesSpy.mockResolvedValue({ memories: [fakeMemory({ id: 'm42' })] });
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    await input.fill('gofmt');
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBe(1);
+    await expect
+      .element(screen.getByRole('option', { name: /a summary about github/ }).first())
+      .toBeInTheDocument();
+
+    await userEvent.keyboard('{ArrowDown}');
+    await userEvent.keyboard('{Enter}');
+
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?q=gofmt&sel=m42');
+  });
+
+  it('"/" focuses the header search from anywhere that is not a text field', async () => {
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    await userEvent.keyboard('/');
+
+    await expect.element(input).toHaveFocus();
+  });
+
+  it('typing "/" inside another text field does not steal focus from it', async () => {
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    const other = document.createElement('input');
+    document.body.appendChild(other);
+    try {
+      other.focus();
+      other.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true }));
+      await expect.element(input).not.toHaveFocus();
+    } finally {
+      document.body.removeChild(other);
+    }
+  });
+
+  it('handoffToHeaderSearch puts text in the input, focuses it and opens the dropdown', async () => {
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+
+    handoffToHeaderSearch('github');
+
+    await expect.element(input).toHaveValue('github');
+    await expect.element(input).toHaveFocus();
+    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).toBeInTheDocument();
+  });
+
+  it('Esc closes the dropdown and blurs the input', async () => {
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    await input.click();
+    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).toBeInTheDocument();
+
+    await userEvent.keyboard('{Escape}');
+
+    await expect.element(input).not.toHaveFocus();
+    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).not.toBeInTheDocument();
   });
 });

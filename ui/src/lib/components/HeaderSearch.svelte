@@ -16,6 +16,8 @@
   import { classifyInput, KNOWN_CATEGORIES, type OperatorChip } from '$lib/search/classify';
   import { relativeTime } from '$lib/time';
   import { parseConnectError, fixRowsFor, type FixRow } from '$lib/errors/connect-error';
+  import { defaultSearchParams, encodeSearchParams, applyChips } from '$lib/search/params';
+  import { headerSearch } from '$lib/search/header-search.svelte';
 
   type ScopeChipT = Extract<OperatorChip, { kind: 'scope' }>;
   type TagChipT = Extract<OperatorChip, { kind: 'tag' }>;
@@ -30,22 +32,53 @@
   // runs, and the dropdown is server-driven (ENTRY-01/02/04) — never a
   // client-filtered palette (see recall-surface.md "What to Avoid").
 
-  let text = $state('');
   let debouncedText = $state('');
   let open = $state(false);
   let inputWrapperEl = $state<HTMLElement | null>(null);
+  let inputEl = $state<HTMLInputElement | null>(null);
   let crossSpineOff = $state(false);
   let sourceOpen = $state(false);
 
-  // 70ms debounce (ENTRY-06): re-derive debouncedText from text after the
-  // caller stops typing; the effect's own cleanup cancels a stale timer.
+  // 70ms debounce (ENTRY-06): re-derive debouncedText from headerSearch.text
+  // after the caller stops typing; the effect's own cleanup cancels a stale
+  // timer. headerSearch.text (not a local $state) is the ONE hand-off point
+  // the ⌘K command menu (Phase 3, 02-05) writes through (D-11).
   $effect(() => {
-    const current = text;
+    const current = headerSearch.text;
     const timer = setTimeout(() => {
       debouncedText = current;
     }, 70);
     return () => clearTimeout(timer);
   });
+
+  // handoffToHeaderSearch/focusHeaderSearch bump focusSeq; react by opening
+  // the dropdown and focusing the input. Skip the effect's own first run so
+  // mounting the component does not steal focus unprompted.
+  let sawFirstFocusSeq = false;
+  $effect(() => {
+    headerSearch.focusSeq;
+    if (!sawFirstFocusSeq) {
+      sawFirstFocusSeq = true;
+      return;
+    }
+    open = true;
+    inputEl?.focus();
+  });
+
+  function onGlobalKeydown(e: KeyboardEvent) {
+    const target = e.target as HTMLElement | null;
+    const tag = target?.tagName;
+    const isEditable =
+      tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable === true;
+    if (e.key === '/' && !isEditable && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      open = true;
+      inputEl?.focus();
+    } else if (e.key === 'Escape' && open) {
+      open = false;
+      inputEl?.blur();
+    }
+  }
 
   const classified = $derived(classifyInput(debouncedText));
   const queryText = $derived(classified.kind === 'text' ? classified.text : '');
@@ -217,23 +250,32 @@
       : commandItems
   );
 
+  // Enter on the top row hands the classified query and chips to /search
+  // through the one shared codec (D-10, ENTRY-06).
   function runTopSearch() {
     if (classified.kind !== 'text') return;
-    goto(`${base}/search?q=${encodeURIComponent(classified.text)}`);
-    text = '';
+    const params = applyChips({ ...defaultSearchParams(), q: classified.text }, activeChips);
+    goto(`${base}/search?${encodeSearchParams(params)}`);
+    headerSearch.text = '';
     debouncedText = '';
     open = false;
   }
 
   function runTopList() {
-    goto(`${base}/search?q=${encodeURIComponent(debouncedText)}`);
-    text = '';
+    const params = applyChips({ ...defaultSearchParams() }, activeChips);
+    goto(`${base}/search?${encodeSearchParams(params)}`);
+    headerSearch.text = '';
     debouncedText = '';
     open = false;
   }
 
+  // A memory row carries the same params as the top row plus `sel`; an
+  // id/short_id row's `q` is the raw pasted input (no chips to apply).
   function openMemory(id: string) {
-    goto(`${base}/search?sel=${encodeURIComponent(id)}`);
+    const q = classified.kind === 'text' ? classified.text : debouncedText;
+    const params = applyChips({ ...defaultSearchParams(), q, sel: id }, activeChips);
+    goto(`${base}/search?${encodeSearchParams(params)}`);
+    headerSearch.text = '';
     open = false;
   }
 
@@ -254,7 +296,7 @@
           : chip.kind === 'category'
             ? [new RegExp(`^is:${escapeReg(chip.value)}$`)]
             : [new RegExp(`^${escapeReg(chip.raw)}$`)];
-    text = text
+    headerSearch.text = headerSearch.text
       .split(/\s+/)
       .filter((t) => !patterns.some((re) => re.test(t)))
       .join(' ');
@@ -265,10 +307,11 @@
   }
 
   function completeToken(newToken: string) {
-    const tokens = text.trim().length ? text.trim().split(/\s+/) : [];
+    const raw = headerSearch.text.trim();
+    const tokens = raw.length ? raw.split(/\s+/) : [];
     if (pendingChip && tokens.length > 0) tokens[tokens.length - 1] = newToken;
     else tokens.push(newToken);
-    text = `${tokens.join(' ')} `;
+    headerSearch.text = `${tokens.join(' ')} `;
   }
 
   function applyFixRow(row: FixRow) {
@@ -277,7 +320,7 @@
         crossSpineOff = false;
         break;
       case 'pick-scope':
-        text = text.trim() ? `${text.trim()} scope:` : 'scope:';
+        headerSearch.text = headerSearch.text.trim() ? `${headerSearch.text.trim()} scope:` : 'scope:';
         break;
       case 'lower-k':
       case 'without-full':
@@ -289,6 +332,8 @@
   }
 </script>
 
+<svelte:window onkeydown={onGlobalKeydown} />
+
 <div class="hd-search relative mx-auto w-full max-w-[calc(560*var(--u))]">
   <CommandPrimitive.Root shouldFilter={false} class="contents">
     <div
@@ -297,7 +342,8 @@
     >
       <SearchIcon class="size-4 shrink-0 opacity-50" />
       <CommandPrimitive.Input
-        bind:value={text}
+        bind:value={headerSearch.text}
+        bind:ref={inputEl}
         aria-label="Search memories"
         placeholder="Search, paste an id, scope: #tag is:"
         class="flex-1 bg-transparent text-sm outline-none"
@@ -310,6 +356,8 @@
         customAnchor={inputWrapperEl}
         class="w-[var(--bits-popover-anchor-width)] max-h-[calc(540*var(--u))] overflow-hidden p-0"
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        portalProps={{ disabled: true }}
       >
         {#if classified.kind === 'text' || classified.kind === 'operators'}
           <div
