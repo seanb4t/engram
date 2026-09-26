@@ -231,30 +231,61 @@ Results-header wording (not a "CTA" but load-bearing copy, quoted verbatim from
 
 ## UI Considerations
 
-Applicable state considerations resolved: 15 covered, 2 backstop, 1 unresolved.
+Probe: `ui-consideration-probe` over 9 authored elements (E1–E9), --auto. 47 applicable considerations: 32 resolved (explicit), 15 resolved (backstop), 0 unresolved. Empty/error copy lives in the Copywriting Contract; rows here reference it rather than restating it.
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | Results row list (`/search`, `/`, `/observe`) | ✅ covered | Empty-state heading/body fully specified above (ENTRY-03); never a bare "no matches" — names query + scope coverage. |
-| empty | Header search dropdown | ✅ covered | `No memories match {query} in any scope you can read` plus a `Search discoveries for …` command row; the Memories/Scopes/Tags sections simply omit themselves when empty, the Commands section is always present (static nav). |
-| empty | ⌘K command menu | ✅ covered | Never truly empty — items are static nav plus the always-present unfiltered hand-off row (D-11); there is no server round trip that could return zero. |
-| loading | Results row list / header dropdown | ✅ covered | `Searching {N} scopes for {query}…` header text; stale-while-loading keeps previous results at ~55% opacity with a 2px indeterminate progress bar and a "previous results ·" prefix — never a flash to empty or a spinner replacing content (`foundations.md`). |
-| loading | First page load (no previous results yet) | ✅ covered | Skeleton rows shaped like the real grid columns, shown only on first load, never on re-query. |
-| error | Results row list / header dropdown | ✅ covered | Three distinct error copy shapes (generic failure, rejected envelope, ambiguous short_id) specified in the Copywriting Contract, each visually distinct (Pitfall C: same Connect code, different message grammar — classifier reads `.rawMessage`, not `.code` alone). |
-| error | Detail pane (fetch-by-id failure) | ✅ covered | `No memory with id {id} that you can read · not-found and not-yours look the same by design` (existing DEC-xa6 behavior, carried forward, not new copy this phase). |
-| populated | Results row list at typical volume (~30 visible, up to 1000 rows) | ✅ covered | Fixed-height dense rows via `@humanspeak/svelte-virtual-list`; ROW-01's "smooth at 1000 rows" claim is the phase's virtualization-spike acceptance bar. |
-| populated | Header dropdown sections at typical volume | ✅ covered | Memories capped at 5 (`N more on /search`); Scopes/Tags/Categories from live counts; sections reorder while completing an operator token (`scope:`/`#`/`is:`). |
-| partial | Search hit missing `relevance` (reranker did not run) | ✅ covered | ROW-04: no fabricated relevance shown; `rel` column simply absent for that response, header says `· ranked by cosine` instead of `· reranked by jev` (D-05). Score and relevance are never blended into one number. |
-| partial | Detail pane fields that don't apply to a given record (no supersession, no schedule window, no citations) | 🧪 backstop | Each Metadata field is present-if-applicable per the existing `Memory` proto shape; no explicit per-field "N/A" copy is specified by the sketch. Verification: a test asserting the pane renders without error for a record missing every optional field (bare record) is the backstop; absent that test, `insufficient_spec → human_needed` at verify time rather than a silent pass. |
-| overflow | Row grid columns at narrow list width | ✅ covered | Container-query drop-out, not viewport: tags hide below ~860px list width; scope hides and category collapses to a dot below ~560px; score/`rel`/state chips always stay (`recall-surface.md` CSS Patterns). |
-| overflow | State-word chips | ✅ covered | Collapse to `first +N` (never wrap, never overflow) with the full list always in the tooltip; JS re-runs the fit check on resize and on text-size change (`foundations.md`). |
-| overflow | Tag chips in a row | ✅ covered | First two tags + `+N` chip, full tag set only in the hover card and detail pane. |
-| overflow | Facet strip | ✅ covered | Single horizontally-scrollable line (`scroll-area`), not a wrapping flex — zero-count category chips render at 45% opacity rather than being hidden. |
-| zero-one-many | Results header hit/scope counts | ✅ covered (default) | Singular/plural agreement is a researcher default (not explicit in the sketch) — see Copywriting Contract's "Zero/one/many" row. Flag for the checker: this is the one place this phase adds wording the sketch did not literally provide. |
-| long-text | Row summary | ✅ covered | Ellipsized, inline `code` spans allowed, never wraps (fixed row height is the hard constraint). |
-| long-text | Hover-card content preview | ✅ covered | Line-clamped to 6 lines (`-webkit-line-clamp: 6`), `white-space: pre-line`. |
-| long-text | Scope names in the combobox / scope chip | 🧪 backstop | The sketch shows short scope names throughout; no explicit truncation rule is given for a scope string long enough to overflow the combobox row or the scope chip. Verification: a visual/backstop test with a synthetically long scope name (e.g. `repo:very-long-organization-name/very-long-repository-name`) is required before this can move to `covered`; until then treat standard `text-overflow: ellipsis` within the chip's existing max-width as the assumption. |
-| unresolved | Header search input itself, at very narrow viewports (<620px, per `recall-surface.md`) | ⚠ unresolved | The sketch specifies the header wraps and the search goes full width below 620px, but does not specify whether the Aa button and avatar also reflow or are dropped/collapsed into a menu at that width. Planner: treat as an explicit assumption (keep both visible, let the header wrap to two lines) unless UAT surfaces a real conflict. |
+Elements: E1 Results row list on /search, / and /observe · E2 Header search input with anchored dropdown · E3 Cmd-K command menu · E4 Facet strip · E5 Scope combobox · E6 Hover card overlay · E7 Detail pane · E8 Honest results header · E9 Aa text-size popover
+
+| Element | Category | Status | Truth |
+|---------|----------|--------|-------|
+| E1 | empty | resolved (explicit) | An empty result names the query and scope coverage ("No memories match {query} in any scope you can read" / "… in the N scopes searched · N hidden by recall gate") with one-click fix rows (search every readable scope, include archived, clear category filter); never a bare "no matches". |
+| E1 | loading | resolved (explicit) | While re-querying, previous rows stay visible at ~55% opacity with a 2px indeterminate progress bar (keepPreviousData); skeleton rows shaped like the grid appear only on first load, never on re-query. |
+| E1 | error | resolved (explicit) | A failed search shows "Search failed — nothing was searched" with the raw error (request id), Retry and Copy error; a rejected request shows the `field=<f> hint=<code>: <text>` envelope with fix rows; never an empty list. |
+| E1 | populated | resolved (explicit) | Rows are fixed-height one-line (28px at 13px, scaled by the text-size preference), about 30 visible on a laptop screen, and the list stays virtualized and scrollable at 1000 rows. |
+| E1 | partial | resolved (explicit) | A hit without `relevance` renders no rel value and the header reads "· ranked by cosine"; unranked listings render score as "—"; score and relevance are never blended. |
+| E1 | overflow | resolved (explicit) | Columns drop by list container width: tags hide below ~860px, scope hides and category collapses to a dot below ~560px; score, rel and state chips always stay; state chips collapse to `first +N` and tags to first two + `+N`. |
+| E1 | zero-one-many | resolved (explicit) | The results header agrees in number ("1 hit" / "12 hits", "1 scope" / "3 scopes"); a single hit renders as one row with the same layout as many. |
+| E1 | long-text | resolved (explicit) | Row summaries are single-line ellipsized (inline code allowed) and never change row height. |
+| E2 | empty | resolved (explicit) | An empty header query shows only the Commands section; a query with no memory hits shows "No memories match {query} in any scope you can read" plus a "Search discoveries for …" row. |
+| E2 | loading | resolved (explicit) | While a debounced query is in flight the dropdown keeps previous results prefixed "previous results ·" with a progress bar; a stale response never overwrites a newer query (per-query AbortSignal). |
+| E2 | error | resolved (explicit) | A rejected search shows "Server rejected the request" with the `field=/hint=` envelope in mono and selectable fix rows; an ambiguous short_id shows "short_id {x} is ambiguous — paste the full id to be exact" in warning tone; UUID not found shows "No memory with id … that you can read". |
+| E2 | populated | resolved (explicit) | Dropdown sections render in order: top "Search all memories for …  N hits  ↵ /search" row, Memories (max 5, then "N more on /search"), Scopes, Categories, Commands; sections reorder while completing scope:/#/is: tokens. |
+| E2 | partial | resolved (explicit) | An unfinished operator renders as a dashed pending chip; an unknown scope or category renders as a danger chip; removing cross-spine leaves a dashed "+ cross-spine" ghost chip. |
+| E2 | overflow | resolved (backstop) | `{ statement: "Header search input with anchored dropdown: undefined", verification: backstop }` |
+| E2 | zero-one-many | resolved (explicit) | The status line agrees in number for hits and scopes. |
+| E2 | long-text | resolved (explicit) | The input scrolls horizontally; interpreted-as chips wrap onto the chip row and each chip ellipsizes its token. |
+| E3 | empty | resolved (explicit) | The Cmd-K menu is never empty: any typed text that filters out every static item still shows the unfiltered "Search memories for \"…\" ↵" hand-off row (or "Open record …" for a UUID/short_id). |
+| E3 | loading | resolved (explicit) | Cmd-K makes no server call and never shows a loading state. |
+| E3 | error | resolved (explicit) | Cmd-K makes no server call, so it has no network error state; the hand-off delegates any error to the header search. |
+| E3 | populated | resolved (explicit) | Cmd-K lists navigation and action items grouped by section, filtered client-side against static labels, with the hand-off row last. |
+| E3 | partial | resolved (backstop) | `{ statement: "Cmd-K command menu: undefined", verification: backstop }` |
+| E3 | overflow | resolved (backstop) | `{ statement: "Cmd-K command menu: undefined", verification: backstop }` |
+| E3 | zero-one-many | resolved (backstop) | `{ statement: "Cmd-K command menu: undefined", verification: backstop }` |
+| E3 | long-text | resolved (backstop) | `{ statement: "Cmd-K command menu: undefined", verification: backstop }` |
+| E4 | loading | resolved (explicit) | Facet counts keep their previous values while a re-query is in flight. |
+| E4 | error | resolved (backstop) | `{ statement: "Facet strip: undefined", verification: backstop }` |
+| E4 | overflow | resolved (explicit) | The facet strip is a single horizontally scrollable line; zero-count category chips render at 45% opacity instead of being hidden. |
+| E4 | long-text | resolved (backstop) | `{ statement: "Facet strip: undefined", verification: backstop }` |
+| E5 | empty | resolved (explicit) | A scope filter with no matching scope shows "No scope matches {text}". |
+| E5 | loading | resolved (backstop) | `{ statement: "Scope combobox: undefined", verification: backstop }` |
+| E5 | error | resolved (backstop) | `{ statement: "Scope combobox: undefined", verification: backstop }` |
+| E5 | populated | resolved (explicit) | Each combobox entry shows the scope name and its readable-record count from ListScopes; when ListScopes reports approximate, counts render with a "~" prefix. |
+| E5 | partial | resolved (backstop) | `{ statement: "Scope combobox: undefined", verification: backstop }` |
+| E5 | overflow | resolved (backstop) | `{ statement: "Scope combobox: undefined", verification: backstop }` |
+| E5 | zero-one-many | resolved (backstop) | `{ statement: "Scope combobox: undefined", verification: backstop }` |
+| E5 | long-text | resolved (backstop) | `{ statement: "Scope combobox: undefined", verification: backstop }` |
+| E6 | overflow | resolved (explicit) | The hover card is ~480px wide, clamped to the viewport, flips above the row when it would overflow below, and shows content line-clamped to 6 lines. |
+| E6 | long-text | resolved (explicit) | Hover-card content preview is line-clamped to 6 lines with pre-line whitespace; the full tag set wraps inside the card. |
+| E7 | loading | resolved (explicit) | A record opened by id that is not yet loaded shows a skeleton in the pane body while the head shows the short_id. |
+| E7 | error | resolved (explicit) | A pane fetch that fails shows "No memory with id {id} that you can read · not-found and not-yours look the same by design". |
+| E7 | overflow | resolved (explicit) | The pane body scrolls vertically under a sticky head; the pane clamps between 280px and 72% of the body, below 760px it becomes a full overlay. |
+| E7 | long-text | resolved (backstop) | `{ statement: "Detail pane: undefined", verification: backstop }` |
+| E8 | overflow | resolved (explicit) | The results header is one line, ellipsized; the "N scopes" button expands the full searched_scopes list below it. |
+| E8 | long-text | resolved (explicit) | A long query in the results header is ellipsized in the mono code span; the full query is in its title tooltip. |
+| E9 | loading | resolved (explicit) | The text-size preference applies synchronously from local persistence before first paint; there is no loading state. |
+| E9 | error | resolved (explicit) | If persistence is unavailable the preference falls back to 15px for the session without an error message. |
+| E9 | long-text | resolved (backstop) | `{ statement: "Aa text-size popover: undefined", verification: backstop }` |
+
+Carried-forward planner assumption (from the UI researcher, not a probe category): below 620px the header wraps to two lines and keeps both the Aa button and the avatar visible.
 
 ---
 
