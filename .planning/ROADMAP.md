@@ -393,12 +393,12 @@ built on top of them.
   3. `Store.RelatedMemories(subj, id)` returns supersession, shared-tag, shared-citation, and vector-neighbour edges with the caller's read predicate composed into the Qdrant filter (never post-filtered in a handler), a bounded edge count, and a documented rule for a candidate reachable by more than one edge type
   4. `Store.ListTags(subj, scope)` returns facet counts over a new `tags` payload index under the caller's read filter, and the recall-gate test allowlist recognizes a filtered `Facet` call
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — the phase's first test (authz-in-store archive gate), then `authz.ActionArchive` and owner-gated `Store.ArchiveAs`/`RestoreAs` sharing the subject-less core; policy corpus widened; CLI path unchanged (D-01–D-05; STORE-01)
+- [x] 01-01-PLAN.md — the phase's first test (authz-in-store archive gate), then `authz.ActionArchive` and owner-gated `Store.ArchiveAs`/`RestoreAs` sharing the subject-less core; policy corpus widened; CLI path unchanged (D-01–D-05; STORE-01)
 
 **Wave 2**
 
