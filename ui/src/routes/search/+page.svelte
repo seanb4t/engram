@@ -21,7 +21,14 @@
     type SearchParams
   } from '$lib/search/params';
   import { classifyInput, type OperatorChip } from '$lib/search/classify';
-  import { rankedHeaderParts, hiddenFromProto, loadingLine, type HeaderPart } from '$lib/search/recall-header';
+  import {
+    rankedHeaderParts,
+    hiddenFromProto,
+    loadingLine,
+    resolutionLine,
+    type HeaderPart,
+    type ResolutionInput
+  } from '$lib/search/recall-header';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';
   import RecallSplit from '$lib/components/RecallSplit.svelte';
@@ -146,14 +153,37 @@
     return memories.find((m) => m.id === effectiveSel) ?? detailQ.data?.memory;
   });
 
+  // ROW-05/Task 3: a category filter's unfiltered total ("N hits of M") is
+  // undefined until Task 3 wires the second, categories-stripped query that
+  // supplies it — a clean seam, not a stub, since rankedHeaderParts already
+  // omits the "of N" clause whenever this is undefined or equals `hits`.
+  const hitsWithoutCategory = $derived<number | undefined>(undefined);
+
+  // D-06: derived client-side by grouping the returned hits by scope, every
+  // searched_scopes entry listed (zeros included) in server order; a scoped
+  // (non-cross-spine) search has exactly the one scope it searched.
+  const scopeHits = $derived.by(() => {
+    if (classified.kind !== 'text' || !searchQ.data) return undefined;
+    const counts = new Map<string, number>();
+    for (const m of searchQ.data.memories) counts.set(m.scope, (counts.get(m.scope) ?? 0) + 1);
+    if (effective.scope) {
+      return [{ scope: effective.scope, hits: counts.get(effective.scope) ?? 0, searched: true }];
+    }
+    return (searchQ.data.searchedScopes ?? []).map((s) => ({ scope: s, hits: counts.get(s) ?? 0, searched: true }));
+  });
+
   const headerParts = $derived.by((): HeaderPart[] => {
     if (classified.kind === 'id' || classified.kind === 'short_id') {
       if (shortIdMissText) {
-        return [{ kind: 'text', text: `No short_id attachment. Searched it as text instead: ${shortIdMissText}` }];
+        return [{ kind: 'text', text: resolutionLine({ kind: 'short_id_miss', q: shortIdMissText }) }];
       }
       if (idQ.data?.memory) {
-        const label = classified.kind === 'id' ? `id ${classified.id}` : `short_id ${classified.shortId}`;
-        return [{ kind: 'text', text: `Resolved ${label} → 1 memory` }];
+        const m = idQ.data.memory;
+        const resolution: ResolutionInput =
+          classified.kind === 'id'
+            ? { kind: 'id', id: classified.id, supersededBy: m.supersededBy || undefined }
+            : { kind: 'short_id', shortId: classified.shortId };
+        return [{ kind: 'text', text: resolutionLine(resolution) }];
       }
       return [];
     }
@@ -165,10 +195,13 @@
       }
       return rankedHeaderParts({
         hits: searchQ.data.memories.length,
+        hitsWithoutCategory,
         scopeCount: effective.scope ? 1 : (searchQ.data.searchedScopes?.length ?? 0),
         query: effective.q,
         reranked: searchQ.data.memories.some((m) => m.relevance !== undefined),
-        hidden: hiddenFromProto(searchQ.data.recallGateHidden)
+        hidden: hiddenFromProto(searchQ.data.recallGateHidden),
+        scopesTruncated: searchQ.data.scopesTruncated,
+        scopesUnknown: searchQ.data.scopesUnknown
       });
     }
     return [];
@@ -194,7 +227,7 @@
       placeholder="Search, paste an id, scope: #tag is:"
     />
   </div>
-  <ResultsHeader parts={headerParts} k={effective.k} busy={headerBusy} />
+  <ResultsHeader parts={headerParts} {scopeHits} k={effective.k} busy={headerBusy} />
   <!-- WriteSurfaces lives in a STABLE location outside RecallSplit: that
        component switches its narrow/wide layout branch based on a
        ResizeObserver measurement that settles a tick after mount, and both

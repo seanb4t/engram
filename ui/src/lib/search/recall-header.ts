@@ -58,19 +58,37 @@ export function hiddenTooltip(h: HiddenCounts): string {
 
 export interface RankedHeaderInput {
   hits: number;
+  // The unfiltered hit count — present only when a category filter is
+  // active and actually narrows the total (ROW-05: "12 hits of 20").
+  hitsWithoutCategory?: number;
   scopeCount: number;
   query: string;
   reranked: boolean;
   hidden?: HiddenCounts;
+  // D-06: verbatim, never inferred. scopesTruncated means the searched_scopes
+  // LIST was cut at its ceiling; scopesUnknown means coverage could not be
+  // listed at all (the scopes clause itself then reads "every readable
+  // scope" rather than a count it cannot back).
+  scopesTruncated?: boolean;
+  scopesUnknown?: boolean;
 }
 
 // The ranked happy-path clauses, in the fixed ENTRY-03 order: hits · scopes ·
-// query · ranking · hidden. (Task 2 extends this with "of N", coverage
-// clauses and id/short_id resolution lines.)
+// query · ranking · hidden · coverage.
 export function rankedHeaderParts(input: RankedHeaderInput): HeaderPart[] {
   const parts: HeaderPart[] = [];
-  parts.push({ kind: 'count', text: `${input.hits} ${plural(input.hits, 'hit', 'hits')}` });
-  parts.push({ kind: 'scopes', text: `across ${input.scopeCount} ${plural(input.scopeCount, 'scope', 'scopes')}` });
+  const hitsWord = plural(input.hits, 'hit', 'hits');
+  const countText =
+    input.hitsWithoutCategory !== undefined && input.hitsWithoutCategory !== input.hits
+      ? `${input.hits} ${hitsWord} of ${input.hitsWithoutCategory}`
+      : `${input.hits} ${hitsWord}`;
+  parts.push({ kind: 'count', text: countText });
+
+  const scopesText = input.scopesUnknown
+    ? 'across every readable scope'
+    : `across ${input.scopeCount} ${plural(input.scopeCount, 'scope', 'scopes')}`;
+  parts.push({ kind: 'scopes', text: scopesText });
+
   parts.push({ kind: 'query', text: `for ${input.query}`, title: input.query });
   parts.push({ kind: 'ranking', text: input.reranked ? '· reranked by jev' : '· ranked by cosine' });
   if (input.hidden === undefined) {
@@ -82,7 +100,40 @@ export function rankedHeaderParts(input: RankedHeaderInput): HeaderPart[] {
       title: hiddenTooltip(input.hidden)
     });
   }
+
+  if (input.scopesTruncated) {
+    parts.push({ kind: 'coverage', text: '· scopes_truncated: scope list incomplete' });
+  }
+  if (input.scopesUnknown) {
+    parts.push({ kind: 'coverage', text: '· scopes_unknown: scope coverage could not be listed' });
+  }
+
   return parts;
+}
+
+// The honest id/short_id outcome line (ENTRY-03/"Honest id outcomes").
+// `id`'s `supersededBy` note only fires when the resolved record IS
+// superseded — a pure successor with no predecessor of its own carries no
+// such note.
+export type ResolutionInput =
+  | { kind: 'id'; id: string; supersededBy?: string }
+  | { kind: 'short_id'; shortId: string }
+  | { kind: 'short_id_miss'; q: string };
+
+export function resolutionLine(input: ResolutionInput): string {
+  switch (input.kind) {
+    case 'id': {
+      let line = `Resolved id ${input.id} → 1 memory`;
+      if (input.supersededBy) {
+        line += ` · this record is superseded → ${input.supersededBy}; hidden from search, fetchable by id`;
+      }
+      return line;
+    }
+    case 'short_id':
+      return `Resolved short_id ${input.shortId} → 1 memory`;
+    case 'short_id_miss':
+      return `No short_id attachment. Searched it as text instead: ${input.q}`;
+  }
 }
 
 // A plain-text rendering of a part list — used by tests and anywhere a flat
