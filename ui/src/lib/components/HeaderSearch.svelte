@@ -13,8 +13,18 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { engram } from '$lib/client';
-  import { classifyInput } from '$lib/search/classify';
+  import { classifyInput, KNOWN_CATEGORIES, type OperatorChip } from '$lib/search/classify';
   import { relativeTime } from '$lib/time';
+  import { parseConnectError, fixRowsFor, type FixRow } from '$lib/errors/connect-error';
+
+  type ScopeChipT = Extract<OperatorChip, { kind: 'scope' }>;
+  type TagChipT = Extract<OperatorChip, { kind: 'tag' }>;
+  type CategoryChipT = Extract<OperatorChip, { kind: 'category' }>;
+  type PendingChipT = Extract<OperatorChip, { kind: 'pending' }>;
+  const isScopeChip = (c: OperatorChip): c is ScopeChipT => c.kind === 'scope';
+  const isTagChip = (c: OperatorChip): c is TagChipT => c.kind === 'tag';
+  const isCategoryChip = (c: OperatorChip): c is CategoryChipT => c.kind === 'category';
+  const isPendingChip = (c: OperatorChip): c is PendingChipT => c.kind === 'pending';
 
   // The header search box (D-11): one shared classifier decides which RPC
   // runs, and the dropdown is server-driven (ENTRY-01/02/04) — never a
@@ -24,6 +34,8 @@
   let debouncedText = $state('');
   let open = $state(false);
   let inputWrapperEl = $state<HTMLElement | null>(null);
+  let crossSpineOff = $state(false);
+  let sourceOpen = $state(false);
 
   // 70ms debounce (ENTRY-06): re-derive debouncedText from text after the
   // caller stops typing; the effect's own cleanup cancels a stale timer.
@@ -41,14 +53,57 @@
     classified.kind === 'id' ? classified.id : classified.kind === 'short_id' ? classified.shortId : ''
   );
 
+  // Chips (ENTRY-02, D-04 carried-forward "never silently reinterpret" rule).
+  const activeChips = $derived(
+    classified.kind === 'text' || classified.kind === 'operators' ? classified.chips : []
+  );
+  const scopeChip = $derived(activeChips.find(isScopeChip));
+  const tagChips = $derived(activeChips.filter(isTagChip));
+  const categoryChips = $derived(activeChips.filter(isCategoryChip));
+  const pendingChip = $derived(activeChips.find(isPendingChip));
+
+  // A scope chip forces crossSpine off (last scope chip wins if more than
+  // one is present); otherwise crossSpine follows the user's own toggle.
+  const effectiveScope = $derived(scopeChip ? scopeChip.value : '');
+  const effectiveCrossSpine = $derived(effectiveScope ? false : !crossSpineOff);
+  const effectiveTags = $derived(tagChips.map((c) => c.value));
+  const effectiveCategories = $derived(categoryChips.filter((c) => c.known).map((c) => c.value));
+
   const searchQuery = createQuery(() => ({
-    queryKey: ['headerSearch', queryText, '', true, [], []],
+    queryKey: ['headerSearch', queryText, effectiveScope, effectiveCrossSpine, effectiveTags, effectiveCategories],
     queryFn: ({ signal }) =>
       engram.searchMemories(
-        { query: queryText, scope: '', crossSpine: true, tags: [], categories: [], k: 50n, full: false },
+        {
+          query: queryText,
+          scope: effectiveScope,
+          crossSpine: effectiveCrossSpine,
+          tags: effectiveTags,
+          categories: effectiveCategories,
+          k: 50n,
+          full: false
+        },
         { signal }
       ),
     enabled: classified.kind === 'text',
+    placeholderData: keepPreviousData,
+    meta: { silent: true }
+  }));
+
+  const listQuery = createQuery(() => ({
+    queryKey: ['headerSearchList', effectiveScope, effectiveCrossSpine, effectiveTags, effectiveCategories],
+    queryFn: ({ signal }) =>
+      engram.listMemories(
+        {
+          scope: effectiveScope,
+          crossSpine: effectiveCrossSpine,
+          tags: effectiveTags,
+          categories: effectiveCategories,
+          limit: 5n,
+          cursorMode: true
+        },
+        { signal }
+      ),
+    enabled: classified.kind === 'operators',
     placeholderData: keepPreviousData,
     meta: { silent: true }
   }));
@@ -60,12 +115,96 @@
     meta: { silent: true }
   }));
 
+  const getError = $derived(getQuery.error ? parseConnectError(getQuery.error) : null);
+  const searchError = $derived(searchQuery.error ? parseConnectError(searchQuery.error) : null);
+
+  // A short_id-shaped input GetMemory reports not-found is re-searched as
+  // text — never a silent reinterpretation (carried-forward rule).
+  const shortIdFallbackText = $derived(
+    classified.kind === 'short_id' && getError?.kind === 'not-found' ? classified.shortId : ''
+  );
+
+  const fallbackSearchQuery = createQuery(() => ({
+    queryKey: ['headerSearchFallback', shortIdFallbackText],
+    queryFn: ({ signal }) =>
+      engram.searchMemories(
+        { query: shortIdFallbackText, scope: '', crossSpine: true, tags: [], categories: [], k: 50n, full: false },
+        { signal }
+      ),
+    enabled: !!shortIdFallbackText,
+    meta: { silent: true }
+  }));
+
   const hitCount = $derived(searchQuery.data?.memories.length ?? 0);
   const memories = $derived(
-    searchQuery.data?.memories ?? (getQuery.data?.memory ? [getQuery.data.memory] : [])
+    classified.kind === 'operators'
+      ? (listQuery.data?.memories ?? [])
+      : shortIdFallbackText
+        ? (fallbackSearchQuery.data?.memories ?? [])
+        : (searchQuery.data?.memories ?? (getQuery.data?.memory ? [getQuery.data.memory] : []))
   );
   const shownMemories = $derived(memories.slice(0, 5));
   const moreCount = $derived(Math.max(0, memories.length - 5));
+
+  // Honest status line (D-01..D-06): hit/scope coverage, recall-gate hidden
+  // count, previous-results-while-refetching, and a per-scope source button.
+  const searchedScopesCount = $derived(searchQuery.data?.searchedScopes?.length ?? null);
+  const hiddenNote = $derived.by(() => {
+    const h = searchQuery.data?.recallGateHidden;
+    if (!h || h.total === 0n) return '';
+    const parts: [bigint, string][] = [
+      [h.archived, 'archived'],
+      [h.superseded, 'superseded'],
+      [h.expired, 'expired'],
+      [h.scheduled, 'scheduled']
+    ];
+    const nonzero = parts.filter(([n]) => n > 0n);
+    if (nonzero.length === 1) {
+      const [n, word] = nonzero[0];
+      return `+${h.total} ${word} ${n === 1n ? 'match' : 'matches'} hidden by the recall gate (fetch by id)`;
+    }
+    return `+${h.total} matches hidden by the recall gate`;
+  });
+  const sourceLabel = $derived(
+    `SearchMemories · ${effectiveScope ? `scope ${effectiveScope}` : 'cross_spine'} · ${searchedScopesCount ?? 0} scopes searched`
+  );
+  const perScopeCoverage = $derived.by(() => {
+    const scopes = searchQuery.data?.searchedScopes ?? [];
+    const counts = new Map<string, number>();
+    for (const m of searchQuery.data?.memories ?? []) counts.set(m.scope, (counts.get(m.scope) ?? 0) + 1);
+    return scopes.map((s) => ({ scope: s, count: counts.get(s) ?? 0 }));
+  });
+
+  // Scope/category token completion (moves the relevant group to the top
+  // while a `scope:`/`in:`/`is:` token is unfinished — ENTRY-04 "populated").
+  const scopePrefixInProgress = $derived.by(() => {
+    if (!pendingChip) return null;
+    if (pendingChip.raw.startsWith('scope:')) return pendingChip.raw.slice('scope:'.length);
+    if (pendingChip.raw.startsWith('in:')) return pendingChip.raw.slice('in:'.length);
+    return null;
+  });
+  const categoryPrefixInProgress = $derived.by(() => {
+    if (!pendingChip) return null;
+    if (pendingChip.raw.startsWith('is:')) return pendingChip.raw.slice('is:'.length);
+    return null;
+  });
+
+  const listScopesQuery = createQuery(() => ({
+    queryKey: ['listScopes'],
+    queryFn: ({ signal }) => engram.listScopes({}, { signal }),
+    enabled: classified.kind === 'text' || classified.kind === 'operators',
+    meta: { silent: true }
+  }));
+
+  const filteredScopes = $derived.by(() => {
+    const all = listScopesQuery.data?.scopes ?? [];
+    if (scopePrefixInProgress === null) return all.slice(0, 8);
+    return all.filter((s) => s.scope.toLowerCase().includes(scopePrefixInProgress.toLowerCase()));
+  });
+  const filteredCategories = $derived.by(() => {
+    if (categoryPrefixInProgress === null) return KNOWN_CATEGORIES;
+    return KNOWN_CATEGORIES.filter((c) => c.toLowerCase().includes(categoryPrefixInProgress.toLowerCase()));
+  });
 
   const commandItems = [
     { label: 'Observe', href: `${base}/observe`, icon: EyeIcon },
@@ -86,6 +225,13 @@
     open = false;
   }
 
+  function runTopList() {
+    goto(`${base}/search?q=${encodeURIComponent(debouncedText)}`);
+    text = '';
+    debouncedText = '';
+    open = false;
+  }
+
   function openMemory(id: string) {
     goto(`${base}/search?sel=${encodeURIComponent(id)}`);
     open = false;
@@ -94,6 +240,52 @@
   function goCommand(href: string) {
     goto(href);
     open = false;
+  }
+
+  // Removing a chip's token from the raw input. Scope/tag/category tokens
+  // are reconstructed from their canonical prefix; a chip's own `✕` removes
+  // exactly its own token, never the others.
+  function removeChip(chip: OperatorChip) {
+    const patterns: RegExp[] =
+      chip.kind === 'scope'
+        ? [new RegExp(`^(scope|in):${escapeReg(chip.value)}$`)]
+        : chip.kind === 'tag'
+          ? [new RegExp(`^(#|tag:)${escapeReg(chip.value)}$`)]
+          : chip.kind === 'category'
+            ? [new RegExp(`^is:${escapeReg(chip.value)}$`)]
+            : [new RegExp(`^${escapeReg(chip.raw)}$`)];
+    text = text
+      .split(/\s+/)
+      .filter((t) => !patterns.some((re) => re.test(t)))
+      .join(' ');
+  }
+
+  function escapeReg(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function completeToken(newToken: string) {
+    const tokens = text.trim().length ? text.trim().split(/\s+/) : [];
+    if (pendingChip && tokens.length > 0) tokens[tokens.length - 1] = newToken;
+    else tokens.push(newToken);
+    text = `${tokens.join(' ')} `;
+  }
+
+  function applyFixRow(row: FixRow) {
+    switch (row.id) {
+      case 'enable-cross-spine':
+        crossSpineOff = false;
+        break;
+      case 'pick-scope':
+        text = text.trim() ? `${text.trim()} scope:` : 'scope:';
+        break;
+      case 'lower-k':
+      case 'without-full':
+      case 'clear-created':
+      case 'retry':
+        searchQuery.refetch();
+        break;
+    }
   }
 </script>
 
@@ -119,20 +311,139 @@
         class="w-[var(--bits-popover-anchor-width)] max-h-[calc(540*var(--u))] overflow-hidden p-0"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
+        {#if classified.kind === 'text' || classified.kind === 'operators'}
+          <div
+            class="chips flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5 text-xs"
+            data-testid="header-search-chips"
+          >
+            <span class="text-muted-foreground">interpreted as</span>
+            {#if classified.kind === 'text'}
+              <span class="chip rounded-full border border-primary bg-primary/10 px-2 py-0.5">
+                text &quot;{classified.text}&quot;
+              </span>
+            {/if}
+            {#each activeChips as chip}
+              {#if chip.kind === 'scope'}
+                <span class="chip rounded-full border border-border px-2 py-0.5">
+                  scope:{chip.value}
+                  <button type="button" aria-label={`remove scope:${chip.value}`} onclick={() => removeChip(chip)}>✕</button>
+                </span>
+              {:else if chip.kind === 'tag'}
+                <span class="chip rounded-full border border-border px-2 py-0.5">
+                  #{chip.value}
+                  <button type="button" aria-label={`remove #${chip.value}`} onclick={() => removeChip(chip)}>✕</button>
+                </span>
+              {:else if chip.kind === 'category'}
+                <span
+                  data-chip="category"
+                  data-known={String(chip.known)}
+                  class={'chip rounded-full border px-2 py-0.5 ' +
+                    (chip.known ? 'border-border' : 'border-destructive text-destructive')}
+                >
+                  is:{chip.value}
+                  <button type="button" aria-label={`remove is:${chip.value}`} onclick={() => removeChip(chip)}>✕</button>
+                </span>
+              {:else}
+                <span class="chip rounded-full border border-dashed border-border px-2 py-0.5 text-muted-foreground">
+                  {chip.raw}
+                </span>
+              {/if}
+            {/each}
+            {#if !effectiveScope}
+              {#if !crossSpineOff}
+                <span class="chip rounded-full border border-border px-2 py-0.5">
+                  cross-spine
+                  <button type="button" aria-label="remove cross-spine" onclick={() => (crossSpineOff = true)}>✕</button>
+                </span>
+              {:else}
+                <button
+                  type="button"
+                  class="chip rounded-full border border-dashed border-border px-2 py-0.5 text-muted-foreground"
+                  onclick={() => (crossSpineOff = false)}
+                >
+                  + cross-spine
+                </button>
+              {/if}
+            {/if}
+          </div>
+        {/if}
+
         <Command.List class="max-h-[calc(540*var(--u))]">
           {#if classified.kind === 'text'}
+            {#if searchError?.kind === 'rejected'}
+              <div class="px-2 py-1.5 text-sm">
+                <p>Server rejected the request</p>
+                <pre class="whitespace-pre-wrap rounded border border-destructive bg-card p-1.5 font-mono text-xs text-destructive">field={searchError.fields.join(',')} hint={searchError.hint}: {searchError.detail}</pre>
+              </div>
+              <Command.Group heading="Fix it">
+                {#each fixRowsFor(searchError) as row (row.id)}
+                  <Command.Item value={`fix-${row.id}`} onSelect={() => applyFixRow(row)}>{row.label}</Command.Item>
+                {/each}
+              </Command.Group>
+            {:else if searchError?.kind === 'opaque'}
+              <div class="px-2 py-1.5 text-sm">
+                <p>Search failed — nothing was searched. search_memory returned code={searchError.codeName}</p>
+                <p class="text-xs text-muted-foreground">{searchError.detail}</p>
+              </div>
+              <Command.Item value="fix-retry" onSelect={() => searchQuery.refetch()}>Retry</Command.Item>
+            {:else}
+              <Command.Group heading="Results">
+                <Command.Item value="__search-all__" onSelect={runTopSearch}>
+                  Search all memories for &quot;{classified.text}&quot; &nbsp; {hitCount} hits &nbsp;
+                  <Kbd>↵</Kbd> /search
+                </Command.Item>
+              </Command.Group>
+            {/if}
+          {/if}
+
+          {#if classified.kind === 'operators'}
             <Command.Group heading="Results">
-              <Command.Item value="__search-all__" onSelect={runTopSearch}>
-                Search all memories for &quot;{classified.text}&quot; &nbsp; {hitCount} hits &nbsp;
+              <Command.Item value="__list-all__" onSelect={runTopList}>
+                List memories matching {debouncedText} &nbsp; {listQuery.data?.total ?? 0n} total &nbsp;
                 <Kbd>↵</Kbd> /search
               </Command.Item>
             </Command.Group>
+          {/if}
+
+          {#if classified.kind === 'id' && getError?.kind === 'not-found'}
+            <div class="px-2 py-1.5 text-sm text-muted-foreground">
+              No memory with id {idToFetch} that you can read · not-found and not-yours look the same by design
+            </div>
+          {/if}
+
+          {#if classified.kind === 'short_id' && getError?.kind === 'ambiguous-short-id'}
+            <div class="px-2 py-1.5 text-sm text-amber-600 dark:text-amber-400">
+              short_id {getError.shortId} is ambiguous — paste the full id to be exact
+            </div>
+          {/if}
+
+          {#if shortIdFallbackText}
+            <div class="px-2 py-1.5 text-xs text-muted-foreground">
+              No short_id attachment. Searched it as text instead: {shortIdFallbackText}
+            </div>
           {/if}
 
           {#if (classified.kind === 'id' || classified.kind === 'short_id') && getQuery.data?.memory}
             <div class="px-2 py-1.5 text-xs text-muted-foreground">
               Resolved id {idToFetch.slice(0, 8)}… → 1 memory
             </div>
+          {/if}
+
+          {#if scopePrefixInProgress !== null}
+            <Command.Group heading="Scopes">
+              {#each filteredScopes as s (s.scope)}
+                <Command.Item value={`scope-${s.scope}`} onSelect={() => completeToken(`scope:${s.scope}`)}>
+                  <ScopeChip scope={s.scope} count={Number(s.count)} />
+                </Command.Item>
+              {/each}
+            </Command.Group>
+          {/if}
+          {#if categoryPrefixInProgress !== null}
+            <Command.Group heading="Categories">
+              {#each filteredCategories as c (c)}
+                <Command.Item value={`is-${c}`} onSelect={() => completeToken(`is:${c}`)}>is:{c}</Command.Item>
+              {/each}
+            </Command.Group>
           {/if}
 
           {#if shownMemories.length > 0}
@@ -151,13 +462,30 @@
                 <div class="px-2 py-1.5 text-xs text-muted-foreground">{moreCount} more on /search</div>
               {/if}
             </Command.Group>
-          {:else if classified.kind === 'text' && searchQuery.isSuccess}
+          {:else if classified.kind === 'text' && searchQuery.isSuccess && !searchError}
             <div class="px-2 py-1.5 text-sm text-muted-foreground">
               No memories match {classified.text} in any scope you can read
             </div>
             <Command.Item value="__search-discoveries__" onSelect={() => goCommand(`${base}/discovery`)}>
               Search discoveries for {classified.text}
             </Command.Item>
+          {/if}
+
+          {#if scopePrefixInProgress === null}
+            <Command.Group heading="Scopes">
+              {#each filteredScopes as s (s.scope)}
+                <Command.Item value={`scope-${s.scope}`} onSelect={() => completeToken(`scope:${s.scope}`)}>
+                  <ScopeChip scope={s.scope} count={Number(s.count)} />
+                </Command.Item>
+              {/each}
+            </Command.Group>
+          {/if}
+          {#if categoryPrefixInProgress === null}
+            <Command.Group heading="Categories">
+              {#each filteredCategories as c (c)}
+                <Command.Item value={`is-${c}`} onSelect={() => completeToken(`is:${c}`)}>is:{c}</Command.Item>
+              {/each}
+            </Command.Group>
           {/if}
 
           <Command.Group heading="Commands">
@@ -169,6 +497,43 @@
             {/each}
           </Command.Group>
         </Command.List>
+
+        {#if classified.kind === 'text' && searchQuery.isSuccess && !searchError}
+          <div
+            class="status flex items-center justify-between gap-2 border-t border-border px-2 py-1.5 text-xs"
+            data-testid="header-search-status"
+          >
+            <span>
+              {#if searchQuery.isFetching && searchQuery.isPlaceholderData}
+                <span class="text-muted-foreground">previous results · </span>
+              {/if}
+              <strong>{hitCount}</strong>
+              {hitCount === 1 ? 'hit' : 'hits'}
+              {#if searchedScopesCount !== null}
+                across <strong>{searchedScopesCount}</strong>
+                {searchedScopesCount === 1 ? 'scope' : 'scopes'}
+              {/if}
+              {#if hiddenNote}
+                · {hiddenNote}
+              {/if}
+            </span>
+            <button
+              type="button"
+              class="shrink-0 whitespace-nowrap text-muted-foreground"
+              onclick={() => (sourceOpen = !sourceOpen)}
+            >
+              {sourceLabel}
+            </button>
+          </div>
+          {#if sourceOpen}
+            <div class="px-2 py-1.5 text-xs">
+              {#each perScopeCoverage as row (row.scope)}
+                <div>{row.count > 0 ? '✓' : '·'} {row.scope} &nbsp; {row.count} {row.count === 1 ? 'hit' : 'hits'}</div>
+              {/each}
+              <div>discovery:* not included (separate lane: search_discovery)</div>
+            </div>
+          {/if}
+        {/if}
       </Popover.Content>
     </Popover.Root>
   </CommandPrimitive.Root>
