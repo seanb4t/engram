@@ -40,16 +40,19 @@ created: "2026-09-25"
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 01-xx | TBD | TBD | STORE-01 | T-01 access control | Non-owner archive/restore of a readable shared record returns ErrNotFound, record unchanged | integration | `go test ./internal/store/... -run TestArchiveAsOwnerGate -v` | ❌ W0 | ⬜ pending |
-| 01-xx | TBD | TBD | STORE-01 | T-01 access control | ActionArchive denied for shared non-owned resource at Cedar corpus level | unit | `go test ./internal/authz/... -run TestPolicyCorpus_SharedReadOnly -v` | ✅ widen | ⬜ pending |
-| 01-xx | TBD | TBD | STORE-01 | — | CLI spine-review archive/restore unchanged | compile + existing | `go build ./... && go test ./cmd/engram/... -count=1` | ✅ | ⬜ pending |
-| 01-xx | TBD | TBD | STORE-02 | T-01 info disclosure | RelatedMemories never returns an unreadable candidate; read predicate composed into every sub-query | integration | `go test ./internal/store/... -run TestRelatedMemories -v` | ❌ W0 | ⬜ pending |
-| 01-xx | TBD | TBD | STORE-03 | T-01 info disclosure | ListTags counts only caller-readable, recall-visible records | integration | `go test ./internal/store/... -run TestListTags -v` | ❌ W0 | ⬜ pending |
-| 01-xx | TBD | TBD | STORE-03 | — | Recall-gate static scan + interceptor recognize filtered Facet | unit/AST + integration | `go test ./internal/store/... -run 'TestRecallEmissionSetIsCompleteAndClassified|TestSchemaVersionNeverGatesRecall' -v` | ✅ widen | ⬜ pending |
+| 01-01-01 | 01 | 1 | STORE-01 | T-01 access control | Owner can archive; non-owner of a readable shared record gets ErrNotFound, record unchanged | integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestArchiveAsOwnerGate$' -count=1 -v` | ❌ W0 (tracer creates) | ⬜ pending |
+| 01-01-02 | 01 | 1 | STORE-01 | T-01 access control | RestoreAs gated identically; ActionArchive denied for shared non-owned at Cedar corpus level; CLI path unchanged | integration + unit | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^Test(ArchiveAs\|RestoreAs)' -count=1 -v` · `go test ./internal/authz/ -run '^TestPolicyCorpus' -count=1` · `go test ./cmd/engram/ -run '^Test(Archive\|SpineReviewArchive\|SpineReviewRestore)' -count=1` | ✅ widen / ❌ W0 | ⬜ pending |
+| 01-02-01 | 02 | 2 | STORE-03 | — | tags keyword index created idempotently; ListTags counts owner's tags | integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^(TestListTagsCountsOwnedTags\|TestEnsureIndexesCreatesTagsIndex)$' -count=1 -v` | ❌ W0 | ⬜ pending |
+| 01-02-02 | 02 | 2 | STORE-03 | T-01 info disclosure | Counts only caller-readable, recall-visible records; limit + more | integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestListTags' -count=1 -v` | ❌ W0 | ⬜ pending |
+| 01-02-03 | 02 | 2 | STORE-03 | — | Recall-gate static scan + interceptor recognize filtered Facet (all four lists) | unit/AST + integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^(TestRecallEmissionSetIsCompleteAndClassified\|TestSchemaVersionNeverGatesRecall)$' -count=1 -v` | ✅ widen | ⬜ pending |
+| 01-03-01 | 03 | 3 | STORE-02 | T-01 info disclosure | Vector edge query-by-id under caller read filter; seeded into recall gate | integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^(TestRelatedMemoriesVectorEdge\|TestRelatedMemoriesAnchorAccess)$' -count=1 -v` | ❌ W0 | ⬜ pending |
+| 01-03-02 | 03 | 3 | STORE-02 | T-01 info disclosure | Supersession walk; one entry per candidate; bounds; determinism | integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestRelatedMemories' -count=1 -v` | ❌ W0 | ⬜ pending |
+| 01-04-01 | 04 | 4 | STORE-02 | T-01 info disclosure | Rarity-weighted shared-tag edges from caller-visible facet | integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ -run '^TestRelatedMemories' -count=1 -v` | ❌ W0 | ⬜ pending |
+| 01-04-02 | 04 | 4 | STORE-02 | T-01 info disclosure | Shared-citation edges (kind+ref); gate walks every edge filter live | integration | `ENGRAM_REQUIRE_QDRANT=1 go test ./internal/store/ ./internal/authz/ ./cmd/engram/ -count=1` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
-*Planner fills Task IDs / Plan / Wave; executor updates Status.*
+*Executor updates Status; exact PASS-count assertions live in each PLAN.md `<verify>`.*
 
 ---
 

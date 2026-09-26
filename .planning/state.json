@@ -324,6 +324,11 @@
       "status": "in_progress"
     },
     {
+      "number": "01.1",
+      "name": "Console Sketches (INSERTED)",
+      "status": "pending"
+    },
+    {
       "number": "2",
       "name": "Recall-First Search",
       "status": "pending"
@@ -351,8 +356,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 1)",
-    "reason": "Phase 1 of 6 — needs a plan"
+    "label": "Advance to the next step",
+    "reason": "Phase 1 of 7 · 0% · executing"
   },
-  "updated_at": "2026-09-25T23:17:43.563Z"
+  "updated_at": "2026-09-26T01:51:50.128Z"
 }

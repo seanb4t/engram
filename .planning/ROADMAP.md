@@ -393,7 +393,24 @@ built on top of them.
   3. `Store.RelatedMemories(subj, id)` returns supersession, shared-tag, shared-citation, and vector-neighbour edges with the caller's read predicate composed into the Qdrant filter (never post-filtered in a handler), a bounded edge count, and a documented rule for a candidate reachable by more than one edge type
   4. `Store.ListTags(subj, scope)` returns facet counts over a new `tags` payload index under the caller's read filter, and the recall-gate test allowlist recognizes a filtered `Facet` call
 
-**Plans:** 0/? plans (not yet planned)
+**Plans:** 4 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 01-01-PLAN.md — the phase's first test (authz-in-store archive gate), then `authz.ActionArchive` and owner-gated `Store.ArchiveAs`/`RestoreAs` sharing the subject-less core; policy corpus widened; CLI path unchanged (D-01–D-05; STORE-01)
+
+**Wave 2**
+
+- [ ] 01-02-PLAN.md — `tags` keyword index, `recallVisibleFilter`, the one filtered-Facet helper `facetTags`, and `Store.ListTags` with exact recall-visible counts, limit and `more`; the recall gate widened in all four lists (D-13–D-16; STORE-03)
+
+**Wave 3**
+
+- [ ] 01-03-PLAN.md — `Store.RelatedMemories` contract, anchor rule, read-filtered query-by-id vector edge, two-phase fetch, ceiling-aware merge and supersession walk; seeded into the recall gate (D-06, D-09–D-12; STORE-02)
+
+**Wave 4**
+
+- [ ] 01-04-PLAN.md — rarity-weighted shared-tag edges from ListTags' facet and shared-citation edges on kind+ref, merged one entry per candidate; the recall gate walks every edge filter live (D-06–D-08, D-10–D-12; STORE-02)
 
 ### Phase 01.1: Console Sketches (INSERTED)
 
