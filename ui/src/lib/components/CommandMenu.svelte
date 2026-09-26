@@ -3,6 +3,10 @@
   import { Kbd } from '$lib/components/ui/kbd';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
+  import { page } from '$app/state';
+  import { useQueryClient } from '@tanstack/svelte-query';
+  import { setMode, mode } from 'mode-watcher';
+  import { toast } from 'svelte-sonner';
   import HouseIcon from '@lucide/svelte/icons/house';
   import EyeIcon from '@lucide/svelte/icons/eye';
   import SearchIcon from '@lucide/svelte/icons/search';
@@ -10,6 +14,8 @@
   import { classifyInput } from '$lib/search/classify';
   import { handoffToHeaderSearch } from '$lib/search/header-search.svelte';
   import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
+  import { stepTextSize, resetTextSize } from '$lib/display.svelte';
+  import type { Memory } from '$lib/gen/engram_pb';
 
   // D-11: ⌘K is a command menu of static actions (navigation, display,
   // theme, copy-id) filtered client-side against their own labels -- honest,
@@ -42,6 +48,72 @@
 
   function goNav(href: string) {
     goto(href);
+    open = false;
+  }
+
+  // Display group (static, filtered like everything else): text size and
+  // theme. Mirrors the ⌘+/⌘-/⌘0 shortcuts' own toast wording (D-13).
+  function notifyTextSize(result: { size: number; atMin: boolean; atMax: boolean }) {
+    const suffix = result.atMax ? ' (max)' : result.atMin ? ' (min)' : '';
+    toast(`Text size ${result.size}px${suffix}`);
+  }
+
+  function selectLargerText() {
+    notifyTextSize(stepTextSize(1));
+    open = false;
+  }
+
+  function selectSmallerText() {
+    notifyTextSize(stepTextSize(-1));
+    open = false;
+  }
+
+  function selectResetTextSize() {
+    notifyTextSize(resetTextSize());
+    open = false;
+  }
+
+  function selectToggleTheme() {
+    setMode(mode.current === 'dark' ? 'light' : 'dark');
+    open = false;
+  }
+
+  const displayItems: { label: string; shortcut?: string; onSelect: () => void }[] = [
+    { label: 'Larger text', shortcut: '⌘=', onSelect: selectLargerText },
+    { label: 'Smaller text', shortcut: '⌘-', onSelect: selectSmallerText },
+    { label: 'Reset text size', shortcut: '⌘0', onSelect: selectResetTextSize },
+    { label: 'Toggle theme', onSelect: selectToggleTheme }
+  ];
+  const visibleDisplayItems = $derived(displayItems.filter((item) => matchesQuery(item.label)));
+
+  // Record group: copy the currently-open record's id/short_id (only present
+  // when a record is selected via ?sel=, matching the same query-cache key
+  // MemoryDetail/DetailPane already populate).
+  const queryClient = useQueryClient();
+  const sel = $derived(page.url.searchParams.get('sel') ?? '');
+  const selMemory = $derived(sel ? queryClient.getQueryData<{ memory?: Memory }>(['getMemory', sel])?.memory : undefined);
+  const recordItems = $derived.by(() => {
+    if (!sel) return [] as { label: string; onSelect: () => void }[];
+    const items: { label: string; onSelect: () => void }[] = [
+      { label: `Copy full id ${sel.slice(0, 8)}…`, onSelect: () => copyText(sel) }
+    ];
+    if (selMemory?.shortId) {
+      const shortId = selMemory.shortId;
+      items.push({ label: `Copy short_id ${shortId}`, onSelect: () => copyText(shortId) });
+    }
+    return items;
+  });
+  const visibleRecordItems = $derived(recordItems.filter((item) => matchesQuery(item.label)));
+
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('copied');
+    } catch {
+      // clipboard write can reject (denied permission, insecure context, lost
+      // focus) -- surface it so the item never appears to silently do nothing.
+      toast.error('copy failed');
+    }
     open = false;
   }
 
@@ -78,6 +150,25 @@
         </Command.Item>
       {/each}
     </Command.Group>
+
+    {#if visibleDisplayItems.length > 0}
+      <Command.Group heading="Display">
+        {#each visibleDisplayItems as item (item.label)}
+          <Command.Item value={item.label} onSelect={item.onSelect}>
+            {item.label}
+            {#if item.shortcut}<Command.Shortcut>{item.shortcut}</Command.Shortcut>{/if}
+          </Command.Item>
+        {/each}
+      </Command.Group>
+    {/if}
+
+    {#if visibleRecordItems.length > 0}
+      <Command.Group heading="Record">
+        {#each visibleRecordItems as item (item.label)}
+          <Command.Item value={item.label} onSelect={item.onSelect}>{item.label}</Command.Item>
+        {/each}
+      </Command.Group>
+    {/if}
 
     {#if q.trim()}
       <Command.Group forceMount>
