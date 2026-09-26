@@ -875,3 +875,367 @@ func TestRelatedMemoriesTagWeightBeyondFacetLimit(t *testing.T) {
 	}
 	assertWeightClose(t, "seldom-sharer.TagWeight", sEdge.TagWeight, math.Log(10.0/2.0))
 }
+
+// citationEdgeOf returns the citation-type RelatedEdge for id in res, if any.
+func citationEdgeOf(res RelatedResult, id string) (RelatedEdge, bool) {
+	for _, r := range res.Related {
+		if r.Memory.ID != id {
+			continue
+		}
+		for _, e := range r.Edges {
+			if e.Type == RelatedEdgeCitation {
+				return e, true
+			}
+		}
+	}
+	return RelatedEdge{}, false
+}
+
+// citationEdgeOrder returns, in res.Related's own order, the ids of every
+// entry carrying a citation-type edge.
+func citationEdgeOrder(res RelatedResult) []string {
+	var ids []string
+	for _, r := range res.Related {
+		for _, e := range r.Edges {
+			if e.Type == RelatedEdgeCitation {
+				ids = append(ids, r.Memory.ID)
+				break
+			}
+		}
+	}
+	return ids
+}
+
+// TestRelatedMemoriesCitationEdge pins D-08's boundary: a shared citation is
+// the same kind AND ref within one citation object, regardless of locator,
+// pin, or excerpt; the same ref under a different kind is not a match; and
+// exactly relatedCitationCap (8) citation neighbours come back at the cap.
+func TestRelatedMemoriesCitationEdge(t *testing.T) {
+	s := newSpineTestStore(t, "related_citation_edge")
+	ctx := context.Background()
+	scope := "related:project:citation-edge"
+	ownerA := Authenticated("related-owner-a")
+	id := func(n int) string { return tagRarityID("2a2a", n) }
+
+	anchorID, c1ID, c2ID, c3ID := id(0), id(1), id(2), id(3)
+
+	anchor := Memory{
+		ID: anchorID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "anchor",
+		Citations: []Citation{
+			{Kind: "file", Ref: "internal/x/a.go", Locator: "1-10", Pin: "abc"},
+			{Kind: "url", Ref: "https://example.test/doc"},
+		},
+	}
+	seedSpineMemoryVector(t, s, anchor, []float32{1, 0, 0})
+
+	c1 := Memory{
+		ID: c1ID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "c1",
+		Citations: []Citation{{Kind: "file", Ref: "internal/x/a.go", Locator: "50-60", Pin: "zzz", Excerpt: "other"}},
+	}
+	seedSpineMemoryVector(t, s, c1, []float32{0, 1, 0})
+
+	c2 := Memory{
+		ID: c2ID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "c2",
+		Citations: []Citation{{Kind: "commit", Ref: "internal/x/a.go"}},
+	}
+	seedSpineMemoryVector(t, s, c2, []float32{0, 0, 1})
+
+	c3 := Memory{
+		ID: c3ID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "c3",
+		Citations: []Citation{
+			{Kind: "file", Ref: "internal/x/a.go"},
+			{Kind: "url", Ref: "https://example.test/doc"},
+		},
+	}
+	seedSpineMemoryVector(t, s, c3, []float32{0.5, 0.5, 0})
+
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories: %v", err)
+	}
+
+	wantOrder := []string{c3ID, c1ID}
+	if gotOrder := citationEdgeOrder(res); !reflect.DeepEqual(gotOrder, wantOrder) {
+		t.Fatalf("citation edge order = %v, want %v (%+v)", gotOrder, wantOrder, res.Related)
+	}
+	if _, ok := citationEdgeOf(res, c2ID); ok {
+		t.Fatalf("c2 has a citation edge, want none (same ref, different kind)")
+	}
+
+	c1Edge, ok := citationEdgeOf(res, c1ID)
+	if !ok {
+		t.Fatalf("c1 has no citation edge: %+v", res.Related)
+	}
+	wantC1 := []CitationRef{{Kind: "file", Ref: "internal/x/a.go"}}
+	if !reflect.DeepEqual(c1Edge.SharedCitations, wantC1) {
+		t.Fatalf("c1.SharedCitations = %+v, want %+v", c1Edge.SharedCitations, wantC1)
+	}
+
+	c3Edge, ok := citationEdgeOf(res, c3ID)
+	if !ok {
+		t.Fatalf("c3 has no citation edge: %+v", res.Related)
+	}
+	if len(c3Edge.SharedCitations) != 2 {
+		t.Fatalf("c3.SharedCitations = %+v, want 2 entries", c3Edge.SharedCitations)
+	}
+
+	t.Run("cap", func(t *testing.T) {
+		s2 := newSpineTestStore(t, "related_citation_edge_cap")
+		scope2 := "related:project:citation-edge-cap"
+		id2 := func(n int) string { return tagRarityID("2b2b", n) }
+		anchorID2 := id2(0)
+		seedSpineMemoryVector(t, s2, Memory{
+			ID: anchorID2, Scope: scope2, Owner: "related-owner-a", Category: "note", Summary: "anchor",
+			Citations: []Citation{{Kind: "file", Ref: "cap.go"}},
+		}, []float32{1, 0, 0})
+
+		candidateIDs := make([]string, 10)
+		for i := 0; i < 10; i++ {
+			candidateIDs[i] = id2(1 + i)
+			seedSpineMemoryVector(t, s2, Memory{
+				ID: candidateIDs[i], Scope: scope2, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("c%d", i),
+				Citations: []Citation{{Kind: "file", Ref: "cap.go"}},
+			}, []float32{float32(i) * 0.01, 1 - float32(i)*0.01, 0})
+		}
+
+		res2, err := s2.RelatedMemories(ctx, anchorID2, ownerA, 0)
+		if err != nil {
+			t.Fatalf("RelatedMemories: %v", err)
+		}
+		gotOrder := citationEdgeOrder(res2)
+		if len(gotOrder) != 8 {
+			t.Fatalf("len(citation edges) = %d, want 8: %v", len(gotOrder), gotOrder)
+		}
+		wantOrder := append([]string(nil), candidateIDs[:8]...)
+		if !reflect.DeepEqual(gotOrder, wantOrder) {
+			t.Fatalf("citation edge order = %v, want %v (the 8 lowest ids, ascending)", gotOrder, wantOrder)
+		}
+	})
+}
+
+// TestRelatedMemoriesMultiEdgeEntry pins D-06: a candidate reached by
+// citation, tag, AND vector edges is ONE entry, with Edges in canonical
+// order (citation, tag, vector) each carrying non-empty/non-zero evidence.
+func TestRelatedMemoriesMultiEdgeEntry(t *testing.T) {
+	s := newSpineTestStore(t, "related_multi_edge_entry")
+	ctx := context.Background()
+	scope := "related:project:multi-edge"
+	ownerA := Authenticated("related-owner-a")
+	id := func(n int) string { return tagRarityID("4a4a", n) }
+
+	anchorID, mID := id(0), id(1)
+	anchor := Memory{
+		ID: anchorID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "anchor",
+		Tags: []string{"rare-multi"}, Citations: []Citation{{Kind: "file", Ref: "multi.go"}},
+	}
+	seedSpineMemoryVector(t, s, anchor, []float32{1, 0, 0})
+
+	m := Memory{
+		ID: mID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "m",
+		Tags: []string{"rare-multi"}, Citations: []Citation{{Kind: "file", Ref: "multi.go"}},
+	}
+	seedSpineMemoryVector(t, s, m, []float32{0.99, 0.01, 0}) // near the anchor's vector
+
+	for i := 0; i < 3; i++ {
+		fID := id(2 + i)
+		seedSpineMemoryVector(t, s, Memory{ID: fID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("filler%d", i)}, []float32{0, 1, 0})
+	}
+
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories: %v", err)
+	}
+
+	var mEntries []RelatedMemory
+	for _, r := range res.Related {
+		if r.Memory.ID == mID {
+			mEntries = append(mEntries, r)
+		}
+	}
+	if len(mEntries) != 1 {
+		t.Fatalf("M appears %d times in Related, want exactly 1: %+v", len(mEntries), mEntries)
+	}
+	mEntry := mEntries[0]
+	wantTypes := []RelatedEdgeType{RelatedEdgeCitation, RelatedEdgeTag, RelatedEdgeVector}
+	gotTypes := make([]RelatedEdgeType, len(mEntry.Edges))
+	for i, e := range mEntry.Edges {
+		gotTypes[i] = e.Type
+	}
+	if !reflect.DeepEqual(gotTypes, wantTypes) {
+		t.Fatalf("M.Edges types = %v, want %v (%+v)", gotTypes, wantTypes, mEntry.Edges)
+	}
+	if len(mEntry.Edges[0].SharedCitations) == 0 {
+		t.Fatalf("M's citation edge has no SharedCitations: %+v", mEntry.Edges[0])
+	}
+	if len(mEntry.Edges[1].SharedTags) == 0 || mEntry.Edges[1].TagWeight <= 0 {
+		t.Fatalf("M's tag edge = %+v, want non-empty SharedTags and TagWeight > 0", mEntry.Edges[1])
+	}
+	if mEntry.Edges[2].Score <= 0 {
+		t.Fatalf("M's vector edge Score = %v, want > 0", mEntry.Edges[2].Score)
+	}
+}
+
+// TestRelatedMemoriesTagAndCitationEdgesFollowGates pins D-10/D-11 for the
+// new edge types: archived, superseded, expired, scheduled, and b-private
+// carriers of the anchor's rare tag and citation never surface at all; a
+// b-shared carrier surfaces with BOTH edges for an authenticated caller and
+// is invisible to an anonymous caller querying an ownerless anchor; and the
+// rare tag's weight is computed over only the live readable carriers.
+func TestRelatedMemoriesTagAndCitationEdgesFollowGates(t *testing.T) {
+	s := newSpineTestStore(t, "related_gates_tag_citation")
+	ctx := context.Background()
+	scope := "related:project:gates-tag-citation"
+	ownerA := Authenticated("related-owner-a")
+	now := time.Now().UTC()
+	past := now.Add(-time.Hour)
+	future := now.Add(time.Hour)
+	archivedAt := now
+	id := func(n int) string { return tagRarityID("5a5a", n) }
+
+	anchorID := id(0)
+	archivedID := id(1)
+	supersededID := id(2)
+	expiredID := id(3)
+	scheduledID := id(4)
+	bPrivateID := id(5)
+	bSharedID := id(6)
+	filler1ID := id(7)
+	filler2ID := id(8)
+	unrelatedSuccessor := id(9)
+
+	tag := "rare-gate"
+	citation := []Citation{{Kind: "file", Ref: "gate.go"}}
+
+	seedSpineMemoryVector(t, s, Memory{ID: anchorID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "anchor", Tags: []string{tag}, Citations: citation}, []float32{1, 0, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: archivedID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "archived", Tags: []string{tag}, Citations: citation, ArchivedAt: &archivedAt}, []float32{1, 0, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: supersededID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "superseded", Tags: []string{tag}, Citations: citation, SupersededBy: &unrelatedSuccessor}, []float32{1, 0, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: expiredID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "expired", Tags: []string{tag}, Citations: citation, NotAfter: &past}, []float32{1, 0, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: scheduledID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "scheduled", Tags: []string{tag}, Citations: citation, NotBefore: &future}, []float32{1, 0, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: bPrivateID, Scope: scope, Owner: "related-owner-b", Category: "note", Summary: "b-private", Tags: []string{tag}, Citations: citation}, []float32{1, 0, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: bSharedID, Scope: scope, Owner: "related-owner-b", Visibility: "shared", Category: "note", Summary: "b-shared", Tags: []string{tag}, Citations: citation}, []float32{1, 0, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: filler1ID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "filler1"}, []float32{0, 1, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: filler2ID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "filler2"}, []float32{0, 0, 1})
+
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories: %v", err)
+	}
+	for _, gatedID := range []string{archivedID, supersededID, expiredID, scheduledID, bPrivateID} {
+		for _, r := range res.Related {
+			if r.Memory.ID == gatedID {
+				t.Fatalf("%s appears in Related, want absent entirely (soft-hidden or unreadable): %+v", gatedID, r)
+			}
+		}
+	}
+
+	bSharedTagEdge, ok := tagEdgeOf(res, bSharedID)
+	if !ok {
+		t.Fatalf("b-shared has no tag edge: %+v", res.Related)
+	}
+	bSharedCitationEdge, ok := citationEdgeOf(res, bSharedID)
+	if !ok {
+		t.Fatalf("b-shared has no citation edge: %+v", res.Related)
+	}
+	if len(bSharedCitationEdge.SharedCitations) == 0 {
+		t.Fatalf("b-shared citation edge has no SharedCitations: %+v", bSharedCitationEdge)
+	}
+	// a's visible set: anchor, b-shared, filler1, filler2 (n=4); the tag is
+	// carried by anchor and b-shared only (df=2, live readable carriers
+	// only) — 2*2 <= 4, so it is not ubiquitous.
+	assertWeightClose(t, "b-shared.TagWeight", bSharedTagEdge.TagWeight, math.Log(4.0/2.0))
+
+	// Anonymous perspective on an ownerless anchor: the b-shared carrier of
+	// the SAME rare tag/citation must be invisible (shared records require
+	// an authenticated reader).
+	anon := Anonymous()
+	idAnon := func(n int) string { return tagRarityID("5b5b", n) }
+	anchorAnonID := idAnon(0)
+	bSharedAnonID := idAnon(1)
+	fillerAnon1ID := idAnon(2)
+	fillerAnon2ID := idAnon(3)
+	anonTag := "rare-gate-anon"
+	anonCitation := []Citation{{Kind: "file", Ref: "gate-anon.go"}}
+
+	seedSpineMemoryVector(t, s, Memory{ID: anchorAnonID, Scope: scope, Owner: "", Category: "note", Summary: "anchor-anon", Tags: []string{anonTag}, Citations: anonCitation}, []float32{0, 0, 1})
+	seedSpineMemoryVector(t, s, Memory{ID: bSharedAnonID, Scope: scope, Owner: "related-owner-b", Visibility: "shared", Category: "note", Summary: "b-shared-anon", Tags: []string{anonTag}, Citations: anonCitation}, []float32{0, 0, 1})
+	seedSpineMemoryVector(t, s, Memory{ID: fillerAnon1ID, Scope: scope, Owner: "", Category: "note", Summary: "filler-anon1"}, []float32{0, 1, 0})
+	seedSpineMemoryVector(t, s, Memory{ID: fillerAnon2ID, Scope: scope, Owner: "", Category: "note", Summary: "filler-anon2"}, []float32{1, 0, 0})
+
+	resAnon, err := s.RelatedMemories(ctx, anchorAnonID, anon, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories(anon): %v", err)
+	}
+	for _, r := range resAnon.Related {
+		if r.Memory.ID == bSharedAnonID {
+			t.Fatalf("b-shared-anon appears in Related(anon), want absent (shared record invisible to anonymous): %+v", r)
+		}
+	}
+}
+
+// TestRelatedMemoriesAllEdgesDeterministic pins the idempotency edge across
+// ALL four edge types at once: two consecutive calls over unchanged data
+// (supersession, citation, tag, and vector edges all present) are deep-equal.
+func TestRelatedMemoriesAllEdgesDeterministic(t *testing.T) {
+	s := newSpineTestStore(t, "related_all_edges_deterministic")
+	ctx := context.Background()
+	scope := "related:project:all-edges-deterministic"
+	ownerA := Authenticated("related-owner-a")
+	id := func(n int) string { return tagRarityID("6a6a", n) }
+
+	anchorID, succID, mID := id(0), id(1), id(2)
+
+	anchor := Memory{
+		ID: anchorID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "anchor",
+		Tags: []string{"rare-det"}, Citations: []Citation{{Kind: "file", Ref: "det.go"}},
+		SupersededBy: qdrant.PtrOf(succID),
+	}
+	seedSpineMemoryVector(t, s, anchor, []float32{1, 0, 0})
+
+	succ := Memory{
+		ID: succID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "succ",
+		Supersedes: []string{anchorID},
+	}
+	seedSpineMemoryVector(t, s, succ, []float32{0, 1, 0})
+
+	m := Memory{
+		ID: mID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "m",
+		Tags: []string{"rare-det"}, Citations: []Citation{{Kind: "file", Ref: "det.go"}},
+	}
+	seedSpineMemoryVector(t, s, m, []float32{0.9, 0.1, 0})
+
+	for i := 0; i < 3; i++ {
+		fID := id(3 + i)
+		seedSpineMemoryVector(t, s, Memory{ID: fID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("filler%d", i)}, []float32{0, 0, 1})
+	}
+
+	res1, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories (1st call): %v", err)
+	}
+	res2, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	if err != nil {
+		t.Fatalf("RelatedMemories (2nd call): %v", err)
+	}
+	if !reflect.DeepEqual(res1, res2) {
+		t.Fatalf("two consecutive calls returned different results:\n1st: %+v\n2nd: %+v", res1, res2)
+	}
+
+	var sawSupersession, sawCitation, sawTag, sawVector bool
+	for _, r := range res1.Related {
+		for _, e := range r.Edges {
+			switch e.Type {
+			case RelatedEdgeSupersession:
+				sawSupersession = true
+			case RelatedEdgeCitation:
+				sawCitation = true
+			case RelatedEdgeTag:
+				sawTag = true
+			case RelatedEdgeVector:
+				sawVector = true
+			}
+		}
+	}
+	if !sawSupersession || !sawCitation || !sawTag || !sawVector {
+		t.Fatalf("fixture did not exercise all four edge types: supersession=%v citation=%v tag=%v vector=%v (%+v)", sawSupersession, sawCitation, sawTag, sawVector, res1.Related)
+	}
+}
