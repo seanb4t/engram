@@ -3,11 +3,11 @@
 
 // This file proves ROADMAP success criterion 4: schema_version never appears
 // in any Qdrant recall or authz filter condition transmitted by Search,
-// SearchReranked, SearchDiscovery, List, ListScheduled, ListScopes, or (as
-// of plan 01-02) ListTags.
+// SearchReranked, SearchDiscovery, List, ListScheduled, ListScopes, (as
+// of plan 01-02) ListTags, or (as of plan 01-03) RelatedMemories.
 //
 // THE AUTHORITATIVE PROOF is TestSchemaVersionNeverGatesRecall (Task 3): a
-// gRPC unary interceptor captures the *qdrant.Filter objects the seven
+// gRPC unary interceptor captures the *qdrant.Filter objects the eight
 // caller-facing recall entry points actually TRANSMIT to a real Qdrant, and
 // a recursive walker (Task 1, walkFilterKeys) proves schema_version is
 // absent from every one of them. This is evidence, not inference: the
@@ -17,7 +17,7 @@
 // TestRecallEmissionSetIsCompleteAndClassified (Task 2) is a SECONDARY,
 // static layer: a go/ast derivation of every place internal/store transmits
 // a Query/QueryBatch/Scroll/ScrollAndOffset/Count/Facet call, closed over a
-// same-package call graph from the seven recall entry points, with every
+// same-package call graph from the eight recall entry points, with every
 // emission site landing in exactly one of three explicitly justified
 // categories. Its job is to catch TOMORROW'S new write path — not today's,
 // which Task 3 already proves directly — and it is stated at exactly the
@@ -344,7 +344,7 @@ var recallEmissionMethods = map[string]bool{
 	"Facet": true,
 }
 
-// recallEntryPointSeeds is the seven caller-facing recall entry points this
+// recallEntryPointSeeds is the eight caller-facing recall entry points this
 // whole gate is anchored on — declared ONCE, here, and shared with
 // TestSchemaVersionNeverGatesRecall's invocation table (Task 3) via each
 // row's entryPoint field. The classification-coverage linkage subtest below
@@ -361,6 +361,11 @@ var recallEmissionMethods = map[string]bool{
 // ListTags is IN (plan 01-02) for the identical reason: Phase 3 serves it
 // through BOTH Connect and MCP (RPC-04), so the operator-tier exclusion
 // rationale does not reach it either.
+//
+// RelatedMemories is IN (plan 01-03): Phase 3 serves it through both Connect
+// and MCP (RPC-04), and D-10 composes the caller's read predicate into every
+// sub-query it issues, so a schema_version condition there would narrow a
+// caller's own neighbourhood — exactly what criterion 4 forbids.
 var recallEntryPointSeeds = []string{
 	"Store.Search",
 	"Store.SearchReranked", // delegates to Store.Search; builds no filter of its own — see the subset assertion below
@@ -369,6 +374,7 @@ var recallEntryPointSeeds = []string{
 	"Store.ListScheduled",
 	"Store.ListScopes",
 	"Store.ListTags",
+	"Store.RelatedMemories",
 }
 
 // buildSamePackageCallGraph walks every non-test .go file matching
@@ -489,7 +495,7 @@ type recallEmissionClassification struct {
 	justification string
 }
 
-// recallTransmitters — reachable from recallEntryPointSeeds, seven entries.
+// recallTransmitters — reachable from recallEntryPointSeeds, eight entries.
 // Re-derived at revision time against current source (line numbers below
 // are as-observed, not the plan's — enclosing FUNCTION NAME is this gate's
 // identity key, never a line number, since lines shift on every edit).
@@ -521,6 +527,10 @@ var recallTransmitters = []recallEmissionClassification{
 	{
 		enclosingFunc: "Store.facetTags",
 		justification: "Emits Facet (listtags.go), its own transmission — the package's ONLY filtered Facet call. Reachable from the Store.ListTags seed (Store.ListTags itself emits nothing directly, so it gets no row of its own). Serves ListTags, exposed to callers through BOTH Connect and MCP once Phase 3 lands (RPC-04), so D-16's operator-tier exclusion rationale does not reach it either. The filter it carries is recallVisibleFilter's composition: ownerScopeFilter plus the three recall-gate conditions.",
+	},
+	{
+		enclosingFunc: "Store.relatedVectorEdges",
+		justification: "Emits Query (relatedmemories.go), its own transmission — the query-by-id vector sub-query under edgeFilter over recallVisibleFilter (D-10, D-11). Reachable from the Store.RelatedMemories seed (Store.RelatedMemories and Store.assembleRelated emit nothing scanned directly, so neither gets a row of its own). Its candidates' payloads arrive through Store.fetchPayloadBatch above under the same filter.",
 	},
 }
 
@@ -804,7 +814,7 @@ func TestRecallEmissionSetIsCompleteAndClassified(t *testing.T) {
 }
 
 // ============================================================================
-// Task 3: walk the filter actually transmitted to Qdrant by all seven recall
+// Task 3: walk the filter actually transmitted to Qdrant by all eight recall
 // entry points
 // ============================================================================
 
@@ -969,6 +979,54 @@ var recallGateListCursorOptions = ListOptions{
 var recallGateAnonymousSubject = Anonymous()
 var recallGateOwnerSubject = Authenticated("schemaversion-recallgate-owner")
 
+// recallGateRelatedScope is the scope seedRecallGateRelatedFixtures seeds
+// into — a scope no other recall-gate row reads, with no tag or category any
+// Search/List row filters on, so every pre-existing row's exact capture
+// count stays unchanged by these fixtures' presence.
+const recallGateRelatedScope = "schemaversion:project:recallgate-related"
+
+// Fixed ids seedRecallGateRelatedFixtures upserts — one anchor/neighbour
+// pair per representative subject, so the RelatedMemories rows below always
+// resolve to a live, readable anchor with exactly one live neighbour.
+const (
+	recallGateRelatedAnonAnchorID     = "5c411000-0000-0000-0000-000000000001"
+	recallGateRelatedAnonNeighbourID  = "5c411000-0000-0000-0000-000000000002"
+	recallGateRelatedOwnerAnchorID    = "5c411000-0000-0000-0000-000000000003"
+	recallGateRelatedOwnerNeighbourID = "5c411000-0000-0000-0000-000000000004"
+)
+
+// seedRecallGateRelatedFixtures upserts, in recallGateRelatedScope, an
+// ownerless anchor and neighbour (for the RelatedMemories/anonymous row)
+// plus an anchor and neighbour owned by recallGateOwnerSubject.Owner() (for
+// the RelatedMemories/owner row). Every record carries a Summary (so
+// assembleRelated's no-summary backfill issues no extra Scroll), no tags, no
+// citations, and no supersession links — each subject can see only its own
+// two records.
+func seedRecallGateRelatedFixtures(t *testing.T, ctx context.Context, s *Store) {
+	t.Helper()
+	fixtures := []struct {
+		id     string
+		owner  string
+		vector []float32
+	}{
+		{recallGateRelatedAnonAnchorID, "", []float32{0.9, 0.1, 0.1}},
+		{recallGateRelatedAnonNeighbourID, "", []float32{0.8, 0.2, 0.1}},
+		{recallGateRelatedOwnerAnchorID, recallGateOwnerSubject.Owner(), []float32{0.1, 0.9, 0.1}},
+		{recallGateRelatedOwnerNeighbourID, recallGateOwnerSubject.Owner(), []float32{0.1, 0.8, 0.2}},
+	}
+	for _, fx := range fixtures {
+		m := Memory{
+			ID:      fx.id,
+			Scope:   recallGateRelatedScope,
+			Owner:   fx.owner,
+			Summary: "recall gate related fixture",
+		}
+		if err := s.Upsert(ctx, m, fx.vector); err != nil {
+			t.Fatalf("seed related fixture %s: %v", fx.id, err)
+		}
+	}
+}
+
 // recallInvocationRow is one row of the invocation table: an entry point
 // (from recallEntryPointSeeds), a declared EXACT expected capture count and
 // gRPC method multiset (both derived from source, never a minimum or a
@@ -981,7 +1039,7 @@ type recallInvocationRow struct {
 	invoke        func(t *testing.T, ctx context.Context, s *Store)
 }
 
-// recallInvocationRows enumerates all SIXTEEN rows explicitly (eight
+// recallInvocationRows enumerates all EIGHTEEN rows explicitly (nine
 // invocation shapes crossed with two representative subjects), rather than
 // computing the cross product in code, so a reader can count them.
 var recallInvocationRows = []recallInvocationRow{
@@ -1151,11 +1209,31 @@ var recallInvocationRows = []recallInvocationRow{
 			}
 		},
 	},
+	{
+		name: "RelatedMemories/anonymous", entryPoint: "Store.RelatedMemories",
+		expectCount: 2, expectMethods: []string{"Query", "Scroll"},
+		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+			t.Helper()
+			if _, err := s.RelatedMemories(ctx, recallGateRelatedAnonAnchorID, recallGateAnonymousSubject, 0); err != nil {
+				t.Fatalf("RelatedMemories(anonymous): %v", err)
+			}
+		},
+	},
+	{
+		name: "RelatedMemories/owner", entryPoint: "Store.RelatedMemories",
+		expectCount: 2, expectMethods: []string{"Query", "Scroll"},
+		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+			t.Helper()
+			if _, err := s.RelatedMemories(ctx, recallGateRelatedOwnerAnchorID, recallGateOwnerSubject, 0); err != nil {
+				t.Fatalf("RelatedMemories(owner): %v", err)
+			}
+		},
+	},
 }
 
 // TestSchemaVersionNeverGatesRecall is criterion 4's AUTHORITATIVE proof
 // (see this file's package doc comment): schema_version is absent from
-// every *qdrant.Filter the seven caller-facing recall entry points actually
+// every *qdrant.Filter the eight caller-facing recall entry points actually
 // TRANSMIT to a real Qdrant, under two representative subjects, with
 // per-row exact capture counts and gRPC method multisets derived from
 // source.
@@ -1172,6 +1250,7 @@ func TestSchemaVersionNeverGatesRecall(t *testing.T) {
 	if err := s.EnsureCollection(ctx, uint64(len(recallGateVector))); err != nil {
 		t.Fatalf("EnsureCollection: %v", err)
 	}
+	seedRecallGateRelatedFixtures(t, ctx, s)
 
 	t.Run("interceptor recognized types cover every recallTransmitters emission method", func(t *testing.T) {
 		fset := token.NewFileSet()
