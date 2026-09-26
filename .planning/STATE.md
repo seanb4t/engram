@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 1
 current_phase_name: Store Prerequisites
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-09-26T01:51:49.795Z"
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-09-26T02:42:55.955Z"
 last_activity: 2026-09-25
-last_activity_desc: Roadmap created for 2026-09-25.01
-state_head: 16f44eda8e302431713fb52aeb7636e83e72e72e
+last_activity_desc: Phase 1 execution started
+state_head: b9286c9291c1bf8ae540ad0ddc811c3fd823488a
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-25 after opening milestone 2026-09-25.01 — Console Overhaul)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone
+**Current focus:** Phase 1 — Store Prerequisites
 
 ## Current Position
 
-Phase: 1 (Store Prerequisites) — READY TO EXECUTE
-Plan: —
+Phase: 1 (Store Prerequisites) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-09-25 — Roadmap created for 2026-09-25.01
+Last activity: 2026-09-25 — Phase 1 execution started
 
 ## Deferred Items
 
@@ -428,6 +428,8 @@ milestone needs in working memory.
 - [Phase 5]: The RED-exposed empty-nested-object defect (whitespace-only line) is fixed at the same branch the pin test covers, matching the existing empty-array zero-rows precedent.
 - [Phase 5]: D-04 (05-03): ParsePlanKeyLinks skips fieldless key_links items; ScanPlansWithStats reads a new unexported parsePlanKeyLinkItems directly so the satisfiability gate keeps reporting fieldless/prose entries as ShapeMalformed (#502's flush()-drop fix was not used, would reopen the no-op-gate hole)
 - [Phase 5]: D-06: guides/cli.md operator-command list names migrate/migrate status/migrate revert (linked to /guides/migrate/) and setup, gated by TestCLIGuideOperatorCommandsListsEveryOperatorCommand deriving the required set from operatorCommands()
+- [Phase 1]: D-01..D-05 (Phase 1, 01-01): ActionArchive gates both ArchiveAs/RestoreAs via lock-then-getWritable-then-shared-core; no nil-means-operator sentinel; rules are not special-cased; shared-non-owned and nonexistent ids are indistinguishable; TestArchiveAsOwnerGate landed as the phase's tracer-first test
+- [Phase 1]: 01-01 deviation: retargeted internal/store/schemaversion_stamp_gate_test.go's partialWriteClassification entry from Store.Archive to Store.archiveResolved after the archiveResolved extraction moved the SetPayload call site's enclosing function name
 
 ### Pending Todos
 
@@ -498,9 +500,10 @@ Both prior entries were delivered and had simply never been closed out:
   progress row instead of the active milestone's "2. Decision Interface & Jev Backend" row
   (`yzmfesbsg0`, known bug) — hand-corrected for Phase 2; keep hand-verifying the table after the
   Phase 3–5 `phase.complete` calls. It also left STATE.md `progress.completed_phases` at 1, fixed by hand to 2.
-- **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — none remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
+- **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
 - **[Phase 4] (2026-09-22.01):** `phase.complete 4` mis-targeted a shipped v0.12.x ROADMAP progress row a fourth time (`yzmfesbsg0`) — hand-corrected; hand-verify again after the Phase 5 call. It again left `progress.completed_phases` at 3 (percent 60), fixed by hand to 4 (80) in the transition. Phase 4's code changes (`internal/store/store.go`, `internal/store/rerank.go`, `internal/server/tools.go`) re-staled earlier phases' VERIFICATION.md fingerprints: `isPhaseComplete` now reads Phases 1, 2 and 3 as `stale` (Phase 4 `passed`), which is why `roadmap.analyze` reports them `partial` — re-verify every stale phase (`/gsd-verify-work 01`/`02`/`03`) before the milestone audit. engram record `xhg7dgmqx4` notes the cross-phase key-link drift.
 - **[Phase 5] (2026-09-22.01):** `phase.complete 5` mis-targeted a shipped v0.12.x ROADMAP progress row a fifth time (`yzmfesbsg0`) — hand-corrected, and the Phase 5 row set to 5/5 Complete; it again left `progress.completed_phases` at 4 (percent 80), fixed by hand to 5 (100). Phases 1–4 VERIFICATION.md fingerprints now read `stale` (Phase 5 `passed`) — re-verify each before the milestone audit.
+- requirements.mark-complete could not flip STORE-01 to Complete: the installed gsd-tools verb only accepts a traceability Status of 'Pending'/'Gaps Found' as forward-transitionable, but this project's REQUIREMENTS.md has used 'Mapped' as its pre-complete status since project bootstrap (d2120f09) across every prior milestone (archived milestones show it did reach 'Complete' historically). Checkbox flip was also rolled back by the tool's own divergence-prevention gate. Not hand-edited per planning-artifacts.md (never invent/bypass structure in a tool-owned generated file) — STORE-01's completion is recorded in 01-01-SUMMARY.md's requirements-completed field. Needs an upstream gsd-tools fix or a documented project convention decision.
 
 ### Quick Tasks Completed
 
@@ -523,9 +526,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-25T23:08:18.554Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-store-prerequisites/01-CONTEXT.md
+Last session: 2026-09-26T02:38:58.291Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -726,6 +729,7 @@ Resume file: .planning/phases/01-store-prerequisites/01-CONTEXT.md
 | Phase 05 P03 | 6min | 1 tasks | 2 files |
 | Phase 05 P04 | 15min | 1 tasks | 1 files |
 | Phase 05 P05 | 20min | 1 tasks | 2 files |
+| Phase 01 P01 | 51min | 2 tasks | 6 files |
 
 ## Operator Next Steps
 
