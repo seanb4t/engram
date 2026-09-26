@@ -447,15 +447,29 @@ they searched.
 **UI hint**: yes
 
 Plans:
+**Wave 1**
+
 - [ ] 02-01-PLAN.md — recall-gate hidden count on Connect and MCP: a wire-shape decision gate, then the list and search lanes computed once in the shared core with the caller's Subject (D-01–D-03; ENTRY-03)
-- [ ] 02-02-PLAN.md — CLI hidden-count footer and the docs/tool descriptions that make it correct-by-reading (D-03; ENTRY-03)
 - [ ] 02-03-PLAN.md — design foundations: site-wide text size (store, anti-flash, ⌘+/⌘-/⌘0, Aa popover), new tokens, fixed-px sweep (D-13; ROW-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — CLI hidden-count footer and the docs/tool descriptions that make it correct-by-reading (D-03; ENTRY-03)
 - [ ] 02-04-PLAN.md — header search: shared classifier, server-driven dropdown, honest states, /search URL codec and hand-off (D-04, D-10, D-11; ENTRY-01, ENTRY-02, ENTRY-04–ENTRY-06)
-- [ ] 02-05-PLAN.md — ⌘K command menu with an unfiltered search hand-off; the lying palette deleted (D-11; ENTRY-01, ENTRY-04)
 - [ ] 02-06-PLAN.md — virtualized WAI-ARIA results listbox, dense row grid, hover card and row keys (D-05, D-07, D-16, D-17; ROW-01–ROW-04)
 - [ ] 02-07-PLAN.md — stacked-section detail pane, inline actions and make-private, resizable recall split (D-14–D-16; ROW-07)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-05-PLAN.md — ⌘K command menu with an unfiltered search hand-off; the lying palette deleted (D-11; ENTRY-01, ENTRY-04)
 - [ ] 02-08-PLAN.md — /search rebuilt: race-safe URL-driven queries, honest header, facet chips and scope combobox (D-01, D-05, D-06; ENTRY-01–ENTRY-03, ENTRY-06, ROW-04–ROW-06)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 02-09-PLAN.md — /search empty and failure states, Show more k escalation, operator-only unranked listing (D-04, D-08, D-09; ENTRY-03, ENTRY-05, ROW-01)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 02-10-PLAN.md — / and /observe on the shared list and pane, the two project-local skills, vendored SPA and phase gates (D-10, D-12; DSYS-01, DSYS-02, ROW-01, ROW-07)
 
 ### Phase 3: Curation RPCs & MCP Tools
