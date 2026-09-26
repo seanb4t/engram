@@ -13,10 +13,12 @@
 // Plan 01-03 lands the contract, anchor resolution, the vector edge, and the
 // supersession chain (D-06, D-09, D-10, D-11 chain-side, D-12). Plan 01-04
 // adds the tag and citation edges (D-07, D-08) into this same contract.
+
 package store
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -157,6 +159,104 @@ const relatedVectorDefaultK = 8
 // the one edge type the caller's k widens — can ever reach it, and no edge
 // type crowds another out of the result.
 const relatedTotalCeiling = 64
+
+// relatedSupersessionDepth is the per-direction hop cap on the supersession
+// walk (D-09): at most this many hops following superseded_by forward
+// (toward the live head), and, independently, at most this many hops
+// following supersedes backward (toward predecessors).
+const relatedSupersessionDepth = 8
+
+// relatedSupersessionCap is the total member cap across BOTH directions of
+// the supersession walk (D-09) — two directions of the depth-8 walk. Kept,
+// together with plan 01-04's tag and citation caps, below relatedTotalCeiling
+// (64) so only the vector edge — the one edge type the caller's k widens —
+// can ever reach that ceiling.
+const relatedSupersessionCap = 16
+
+// dedupSortedExcluding returns the distinct ids in ids that are not already
+// in visited, sorted ascending — the shared "next level" builder for
+// relatedSupersessionChain's backward breadth-first walk (D-09's
+// sorted-ascending-per-level order, a Claude's-discretion flagged
+// assumption).
+func dedupSortedExcluding(ids []string, visited map[string]bool) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if visited[id] || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// relatedSupersessionChain walks anchor's supersession chain in both
+// directions (D-09) — superseded_by forward to the live head, supersedes
+// backward breadth-first through predecessors, never a full component
+// traversal. Each hop is one GetReadable, which is NOT recall-gated, so a
+// soft-hidden member (archived, superseded, expired, or not-yet-active
+// scheduled) still appears (D-11's chain-side rule). A member the caller
+// cannot read, or that no longer exists, ends that branch silently: it is
+// never returned and its own supersession pointers are never followed, so
+// an unreadable member's chain structure never leaks. visited guards
+// against corrupt cycles across both directions and against the anchor
+// itself. Bounded to at most relatedSupersessionDepth hops per direction and
+// relatedSupersessionCap members total.
+func (s *Store) relatedSupersessionChain(ctx context.Context, anchor Memory, subj Subject) ([]RelatedMemory, error) {
+	visited := map[string]bool{anchor.ID: true}
+	var out []RelatedMemory
+
+	cur := anchor
+	for depth := 1; depth <= relatedSupersessionDepth && cur.SupersededBy != nil && len(out) < relatedSupersessionCap; depth++ {
+		next := *cur.SupersededBy
+		if visited[next] {
+			break
+		}
+		visited[next] = true
+		m, err := s.GetReadable(ctx, next, subj)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				break
+			}
+			return nil, err
+		}
+		out = append(out, RelatedMemory{
+			Memory: summaryShape(m),
+			Edges:  []RelatedEdge{{Type: RelatedEdgeSupersession, Direction: SupersessionSuccessor, Depth: depth}},
+		})
+		cur = m
+	}
+
+	level := dedupSortedExcluding(anchor.Supersedes, visited)
+	for depth := 1; depth <= relatedSupersessionDepth && len(level) > 0; depth++ {
+		var next []string
+		for _, id := range level {
+			if len(out) >= relatedSupersessionCap {
+				return out, nil
+			}
+			if visited[id] {
+				continue
+			}
+			visited[id] = true
+			m, err := s.GetReadable(ctx, id, subj)
+			if err != nil {
+				if errors.Is(err, ErrNotFound) {
+					continue
+				}
+				return nil, err
+			}
+			out = append(out, RelatedMemory{
+				Memory: summaryShape(m),
+				Edges:  []RelatedEdge{{Type: RelatedEdgeSupersession, Direction: SupersessionPredecessor, Depth: depth}},
+			})
+			next = append(next, m.Supersedes...)
+		}
+		level = dedupSortedExcluding(next, visited)
+	}
+	return out, nil
+}
 
 // edgeFilter returns a NEW filter (f is never mutated, mirroring
 // searchfetch.go's includeIDs) whose Must wraps f as a single nested
@@ -359,11 +459,15 @@ func (s *Store) RelatedMemories(ctx context.Context, id string, subj Subject, k 
 		return RelatedResult{}, err
 	}
 	f := s.recallVisibleFilter(ctx, "", subj)
+	chain, err := s.relatedSupersessionChain(ctx, anchor, subj)
+	if err != nil {
+		return RelatedResult{}, err
+	}
 	vector, err := s.relatedVectorEdges(ctx, f, anchor.ID, k)
 	if err != nil {
 		return RelatedResult{}, err
 	}
-	related, truncated, err := s.assembleRelated(ctx, f, anchor.ID, nil, vector)
+	related, truncated, err := s.assembleRelated(ctx, f, anchor.ID, chain, vector)
 	if err != nil {
 		return RelatedResult{}, err
 	}
