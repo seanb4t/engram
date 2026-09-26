@@ -128,6 +128,56 @@ export function searchMemoriesRequest(p: SearchParams, full: boolean) {
   };
 }
 
+// D-08: Show more escalates k through K_STEPS; undefined once already at the
+// ceiling (1000), which the caller uses to decide whether to render the row.
+export function nextK(k: number): number | undefined {
+  const idx = K_STEPS.indexOf(k);
+  if (idx === -1 || idx === K_STEPS.length - 1) return undefined;
+  return K_STEPS[idx + 1];
+}
+
+// D-09: the cursor-mode key for operator-only ListMemories infinite scroll.
+// Shape mirrors ui/src/lib/queries.ts's listMemoriesKey (same leading RPC
+// name and index-3 visibility slot the existing mutations' invalidation
+// reads) but marks cursor mode explicitly ('cursor' at the offset slot, 50 at
+// the limit slot) so it can never collide with an offset-mode key.
+export function listMemoriesCursorKey(p: SearchParams) {
+  return [
+    'listMemories',
+    p.scope,
+    [...p.categories].sort(),
+    '',
+    50,
+    'cursor',
+    p.includeArchived,
+    p.includeSuperseded,
+    p.includeScheduled,
+    !p.scope && p.crossSpine,
+    [...p.tags].sort(),
+    p.createdAfter,
+    p.createdBefore
+  ];
+}
+
+export function listMemoriesRequest(p: SearchParams, pageToken: string) {
+  return {
+    scope: p.scope,
+    // Never both: a non-empty scope always forces crossSpine false.
+    crossSpine: !p.scope && p.crossSpine,
+    limit: 50n,
+    cursorMode: true,
+    pageToken,
+    tags: p.tags,
+    categories: p.categories,
+    full: true,
+    createdAfter: p.createdAfter,
+    createdBefore: p.createdBefore,
+    includeArchived: p.includeArchived,
+    includeSuperseded: p.includeSuperseded,
+    includeScheduled: p.includeScheduled
+  };
+}
+
 // Derives params from a COMPLETE chip set (classify.ts re-parses the raw
 // input on every keystroke, so chips always represent the current whole
 // state — this replaces rather than merges). Multiple scope chips: the last

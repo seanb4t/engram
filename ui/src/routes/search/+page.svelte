@@ -19,6 +19,7 @@
     searchMemoriesKey,
     searchMemoriesRequest,
     applyChips,
+    nextK,
     K_STEPS,
     DEFAULT_K,
     type SearchParams
@@ -41,6 +42,7 @@
   import DetailPane from '$lib/components/DetailPane.svelte';
   import WriteSurfaces from '$lib/components/WriteSurfaces.svelte';
   import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
+  import { Button } from '$lib/components/ui/button';
 
   const params = $derived(parseSearchParams(page.url.searchParams));
   const classified = $derived(classifyInput(params.q));
@@ -445,6 +447,11 @@
                 : writeSurfaces?.requestShare(m, 'memory')}
             ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
           />
+          {#if classified.kind === 'text' && memories.length === effective.k && nextK(effective.k) !== undefined}
+            <div class="show-more-row">
+              <Button variant="outline" size="sm" onclick={() => navigate({ k: nextK(effective.k) })}>Show more</Button>
+            </div>
+          {/if}
         {/if}
       {/snippet}
       {#snippet detail()}
@@ -506,5 +513,11 @@
   .search-body {
     flex: 1;
     min-height: 0;
+  }
+  .show-more-row {
+    display: flex;
+    justify-content: center;
+    padding: calc(10 * var(--u)) 0;
+    flex: none;
   }
 </style>

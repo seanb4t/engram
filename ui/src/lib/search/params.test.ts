@@ -6,6 +6,9 @@ import {
   searchMemoriesKey,
   searchMemoriesRequest,
   applyChips,
+  nextK,
+  listMemoriesCursorKey,
+  listMemoriesRequest,
   DEFAULT_K,
   type SearchParams
 } from './params';
@@ -158,5 +161,57 @@ describe('applyChips', () => {
     const result = applyChips(defaultSearchParams(), []);
     expect(result.scope).toBe('');
     expect(result.crossSpine).toBe(true);
+  });
+});
+
+describe('nextK', () => {
+  it('escalates through K_STEPS and returns undefined at the ceiling', () => {
+    expect(nextK(50)).toBe(100);
+    expect(nextK(100)).toBe(250);
+    expect(nextK(250)).toBe(1000);
+    expect(nextK(1000)).toBeUndefined();
+  });
+
+  it('returns undefined for a value outside K_STEPS', () => {
+    expect(nextK(77)).toBeUndefined();
+  });
+});
+
+describe('listMemoriesCursorKey', () => {
+  it('starts with listMemories and has an empty visibility slot at index 3', () => {
+    const key = listMemoriesCursorKey(defaultSearchParams());
+    expect(key[0]).toBe('listMemories');
+    expect(key[3]).toBe('');
+  });
+
+  it('is equal for chip-order permutations (categories/tags sorted)', () => {
+    const a = { ...defaultSearchParams(), categories: ['a', 'b'], tags: ['x', 'y'] };
+    const b = { ...defaultSearchParams(), categories: ['b', 'a'], tags: ['y', 'x'] };
+    expect(listMemoriesCursorKey(a)).toEqual(listMemoriesCursorKey(b));
+  });
+
+  it('never carries a non-empty scope together with crossSpine true', () => {
+    const withScope = listMemoriesCursorKey({ ...defaultSearchParams(), scope: 'repo:x', crossSpine: true });
+    // crossSpine slot is index 9
+    expect(withScope[9]).toBe(false);
+  });
+});
+
+describe('listMemoriesRequest', () => {
+  it('sets cursorMode true, limit 50n, and passes pageToken through', () => {
+    const req = listMemoriesRequest(defaultSearchParams(), 't2');
+    expect(req.cursorMode).toBe(true);
+    expect(req.limit).toBe(50n);
+    expect(req.pageToken).toBe('t2');
+  });
+
+  it('sends crossSpine true when no scope is set, never with a scope', () => {
+    const noScope = listMemoriesRequest({ ...defaultSearchParams(), crossSpine: true }, '');
+    expect(noScope.scope).toBe('');
+    expect(noScope.crossSpine).toBe(true);
+
+    const withScope = listMemoriesRequest({ ...defaultSearchParams(), scope: 'repo:x', crossSpine: true }, '');
+    expect(withScope.scope).toBe('repo:x');
+    expect(withScope.crossSpine).toBe(false);
   });
 });

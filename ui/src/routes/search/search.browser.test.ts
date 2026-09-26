@@ -401,6 +401,41 @@ describe('search route — honest failure states (ENTRY-05)', () => {
   });
 });
 
+describe('search route — Show more escalates k through the URL (D-08)', () => {
+  it('shows "Show more" at exactly k results and navigates to the next K_STEPS value on click', async () => {
+    pageState.url.href = 'http://localhost/search?q=x';
+    const fifty = Array.from({ length: 50 }, (_, i) => makeMemory({ id: `m-${i}`, summary: `hit ${i}` }));
+    searchMemoriesSpy.mockResolvedValue({ memories: fifty, searchedScopes: ['repo:test'], scopesTruncated: false, scopesUnknown: false });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Show more' }).click();
+    await expect.poll(() => pageState.url.searchParams.get('k')).toBe('100');
+    await expect.poll(() => searchMemoriesSpy.mock.calls.some((c) => c[0].k === 100n)).toBe(true);
+  });
+
+  it('shows no "Show more" when hits are below k', async () => {
+    pageState.url.href = 'http://localhost/search?q=x';
+    const thirtySeven = Array.from({ length: 37 }, (_, i) => makeMemory({ id: `m-${i}`, summary: `hit ${i}` }));
+    searchMemoriesSpy.mockResolvedValue({ memories: thirtySeven, searchedScopes: ['repo:test'], scopesTruncated: false, scopesUnknown: false });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByText('hit 0')).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
+  });
+
+  it('shows no "Show more" at the k=1000 ceiling', async () => {
+    pageState.url.href = 'http://localhost/search?q=x&k=1000';
+    const thousand = Array.from({ length: 1000 }, (_, i) => makeMemory({ id: `m-${i}`, summary: `hit ${i}` }));
+    searchMemoriesSpy.mockResolvedValue({ memories: thousand, searchedScopes: ['repo:test'], scopesTruncated: false, scopesUnknown: false });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByText('hit 0')).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
+  });
+});
+
 // Search-create recovery (Codex round-3 MEDIUM): the prior suite never
 // covered a seeded create-mode envelope landing on the search route.
 describe('search route — re-auth landing recovery', () => {
