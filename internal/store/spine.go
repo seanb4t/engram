@@ -913,6 +913,15 @@ func (s *Store) Restore(ctx context.Context, id string) (res ArchiveResult, err 
 		}
 		return ArchiveResult{ID: id}, gerr
 	}
+	return s.restoreResolved(ctx, id, cur)
+}
+
+// restoreResolved is Restore's shared core, mirroring archiveResolved: cur
+// MUST be the record as read under s.locker.Lock(ctx, id) — by Restore's own
+// Get above, or by RestoreAs's getWritable — so the never-archived check and
+// the DeletePayload write sit in one lock window (CR-04). Never call this
+// without holding that lock first.
+func (s *Store) restoreResolved(ctx context.Context, id string, cur Memory) (ArchiveResult, error) {
 	if cur.ArchivedAt == nil {
 		return ArchiveResult{ID: id, Outcome: ArchiveOutcomeAlready}, nil
 	}
@@ -921,10 +930,50 @@ func (s *Store) Restore(ctx context.Context, id string) (res ArchiveResult, err 
 	if del == nil {
 		del = s.defaultDeletePayloadKeys
 	}
-	if err = del(ctx, id, []string{"archived_at"}); err != nil {
+	if err := del(ctx, id, []string{"archived_at"}); err != nil {
 		return ArchiveResult{ID: id}, err
 	}
 	return ArchiveResult{ID: id, Outcome: ArchiveOutcomeChanged}, nil
+}
+
+// RestoreAs is the owner-gated sibling of Restore, mirroring ArchiveAs
+// exactly: it gates on the SAME authz.ActionArchive ArchiveAs uses (D-01 —
+// one action for both directions), locking first, then running getWritable
+// inside the lock, then the shared restoreResolved core. A shared record the
+// caller can read, a record owned by someone else, a nil Subject, and a
+// nonexistent id all return the SAME ErrNotFound and Outcome
+// ArchiveOutcomeNotFound (D-04, DEC-xa6). Rules are NOT special-cased (D-03).
+// id must already be canonical. Restore stays the subject-less operator-tier
+// verb `engram spine-review restore` uses (SC2).
+func (s *Store) RestoreAs(ctx context.Context, id string, subj Subject) (res ArchiveResult, err error) {
+	ctx, span := tracer.Start(ctx, "store.RestoreAs",
+		trace.WithAttributes(attribute.String("engram.id", id), attribute.String("engram.owner", ownerOf(subj))))
+	defer span.End()
+	start := time.Now()
+	defer func() {
+		telemetry.RecordStoreOp(ctx, "RestoreAs", start, err)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetAttributes(attribute.String("engram.archive.outcome", string(res.Outcome)))
+		}
+	}()
+
+	unlock, lerr := s.locker.Lock(ctx, id)
+	if lerr != nil {
+		return ArchiveResult{ID: id}, lerr
+	}
+	defer unlock()
+
+	cur, gerr := s.getWritable(ctx, id, subj, authz.ActionArchive)
+	if gerr != nil {
+		if errors.Is(gerr, ErrNotFound) {
+			return ArchiveResult{ID: id, Outcome: ArchiveOutcomeNotFound}, gerr
+		}
+		return ArchiveResult{ID: id}, gerr
+	}
+	return s.restoreResolved(ctx, id, cur)
 }
 
 // PurgeClass enumerates purge's structural eligibility classes -- D-10's

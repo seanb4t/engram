@@ -64,6 +64,12 @@
           "principalTypes": ["Principal"],
           "resourceTypes": ["Memory", "OwnRecords", "SharedRecords"]
         }
+      },
+      "archive": {
+        "appliesTo": {
+          "principalTypes": ["Principal"],
+          "resourceTypes": ["Memory", "OwnRecords", "SharedRecords"]
+        }
       }
     }
   }
