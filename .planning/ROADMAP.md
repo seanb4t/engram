@@ -372,7 +372,7 @@ place a newcomer can learn the store — on the existing stack (Svelte 5, Svelte
 out to the CLI.
 
 - [x] **Phase 1: Store Prerequisites** - Authz-gated Archive/Restore, RelatedMemories, and ListTags land in `internal/store`, no proto or UI yet (completed 2026-09-26)
-- [ ] **Phase 01.1: Console Sketches (INSERTED)** - Throwaway HTML sketches of the console surfaces to pick a visual direction before any UI-SPEC
+- [x] **Phase 01.1: Console Sketches (INSERTED)** - Throwaway HTML sketches of the console surfaces to pick a visual direction before any UI-SPEC (completed 2026-09-26)
 - [ ] **Phase 2: Recall-First Search** - Honest id/short_id/text resolution, server-driven command palette, dense virtualized results row with facets and score/relevance
 - [ ] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided
 - [ ] **Phase 4: Curation Surfaces** - Supersede, archive/restore, rules, and scheduled views for operators, with resume-envelope coverage, an a11y audit, and an e2e round trip
@@ -420,7 +420,7 @@ tag cloud — pick a visual direction, and wrap it up (`/gsd-sketch --wrap-up`) 
 phases' UI-SPECs build on. Design exploration only: no production code.
 **Requirements**: None (design input for the UI-SPECs of Phases 2, 4, 5, 6)
 **Depends on:** Nothing (runs any time before Phase 2's discussion)
-**Plans:** 0 plans
+**Plans:** 0/0 plans complete
 
 Plans:
 
@@ -620,7 +620,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 4. Jev Reranker & Per-Hit Relevance Signal | 2026-09-22.01 | 8/8 | Complete | 2026-09-24 |
 | 5. Operator Correctness | 2026-09-22.01 | 5/5 | Complete | 2026-09-24 |
 | 1. Store Prerequisites | 2026-09-25.01 | 4/4 | Complete | 2026-09-26 |
-| 01.1. Console Sketches (INSERTED) | 2026-09-25.01 | 0/0 | Not started | - |
+| 01.1. Console Sketches (INSERTED) | 2026-09-25.01 | 0/0 | Complete    | 2026-09-26 |
 | 2. Recall-First Search | 2026-09-25.01 | 15/15 | Not started | - |
 | 3. Curation RPCs & MCP Tools | 2026-09-25.01 | 6/6 | Not started | - |
 | 4. Curation Surfaces | 2026-09-25.01 | 7/7 | Not started | - |
