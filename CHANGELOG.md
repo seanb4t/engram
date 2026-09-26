@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/seanb4t/engram/compare/v0.21.0...v0.21.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **deps:** update github.com/chromedp/cdproto digest to a19bff2 ([#625](https://github.com/seanb4t/engram/issues/625)) ([5e3f041](https://github.com/seanb4t/engram/commit/5e3f041e4981402f4b05a2af4cca565f030e70c9))
+
 ## [0.21.0](https://github.com/seanb4t/engram/compare/v0.20.0...v0.21.0) (2026-09-25)
 
 
