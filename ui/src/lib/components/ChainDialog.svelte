@@ -151,11 +151,12 @@
                       {:else if peekQuery.isError}
                         <span>Could not load this record</span>
                       {:else if peekQuery.data?.memory}
+                        {@const peeked = peekQuery.data.memory}
                         <span class="mono">
-                          get_memory {peekQuery.data.memory.shortId} · fetch-by-id ignores the recall gate · superseded_by {peekQuery
-                            .data.memory.supersededBy || '—'}
+                          get_memory {peeked.shortId} · fetch-by-id ignores the recall gate · superseded_by {peeked.supersededBy ||
+                            '—'}
                         </span>
-                        <p class="chain-peek-summary">{peekQuery.data.memory.summary}</p>
+                        <p class="chain-peek-summary">{peeked.summary}</p>
                       {/if}
                     </div>
                   {/if}
