@@ -103,11 +103,11 @@ export type ResumeDraft = ResumeEnvelope extends infer E
 // double-prefix to `/ui/ui/...`.
 const BASE_PREFIX = '/ui';
 
-// D-14: `/observe` is removed from this list in the same change that deletes
-// the route -- a stale envelope pointing at it now fails
-// isAllowedDestination and is discarded, landing the operator on `/` through
-// the existing rejection path, not a broken redirect. D-16 adds `/rules` and
-// `/scheduled` as new resume destinations.
+// D-14: the deleted Observe route is removed from this list in the same
+// change that deletes the route -- a stale envelope pointing at it now
+// fails isAllowedDestination and is discarded, landing the operator on `/`
+// through the existing rejection path, not a broken redirect. D-16 adds
+// `/rules` and `/scheduled` as new resume destinations.
 const ALLOWED_DESTINATIONS = ['/search', '/discovery', '/rules', '/scheduled'] as const;
 
 export function normalizeReturnPath(returnPath: string): string {

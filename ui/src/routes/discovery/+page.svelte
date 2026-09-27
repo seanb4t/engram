@@ -11,8 +11,8 @@
   import WriteSurfaces from '$lib/components/WriteSurfaces.svelte';
   import * as Resizable from '$lib/components/ui/resizable';
   const sel = $derived(page.url.searchParams.get('sel') ?? '');
-  // Never seed a discovery create scope from a raw memory/observe scope
-  // (grok MEDIUM) -- only carry the ?scope param through when it's already
+  // Never seed a discovery create scope from a raw memory scope (grok
+  // MEDIUM) -- only carry the ?scope param through when it's already
   // discovery:-prefixed, else leave it empty for manual entry.
   const createScope = $derived.by(() => {
     const sc = page.url.searchParams.get('scope') ?? '';
@@ -36,9 +36,10 @@
   // wired below (discovery has no edit surface).
   let writeSurfaces: ReturnType<typeof WriteSurfaces> | undefined = $state();
 
-  // Re-auth landing recovery -- see observe/+page.svelte for the full
-  // rationale; consumeResume() fires only via WriteSurfaces'
-  // onresumeapplied passthrough, never here directly.
+  // Re-auth landing recovery -- see $lib/resume.ts for the full rationale
+  // (the route/host is the sole owner of peekResume/consumeResume, a form
+  // only ever calls persistResume); consumeResume() fires only via
+  // WriteSurfaces' onresumeapplied passthrough, never here directly.
   onMount(() => {
     const env = peekResume();
     if (env && env.kind === 'discovery') writeSurfaces?.reopenFromResume(env);

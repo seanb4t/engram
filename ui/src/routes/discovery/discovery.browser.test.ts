@@ -89,7 +89,7 @@ describe('discovery route — re-auth landing recovery', () => {
 
   it('does not reopen anything for a memory-kind envelope (kind mismatch)', async () => {
     persistResume({
-      returnPath: '/observe',
+      returnPath: '/search',
       kind: 'memory',
       mode: 'create',
       recordId: null,

@@ -47,8 +47,8 @@ const testFixtureOwner = "console-e2e-owner@example.com"
 // fixtureScope is the scope the seed record is written under: the scope the
 // root route's Recent memories panel must render the record in via its
 // cross-spine feed, and the scope this test also navigates the browser to
-// via /ui/observe?scope= to prove the scoped round trip. It is shared across
-// the write and both navigations so none of the three ever drift apart.
+// via /ui/search?q=scope: to prove the scoped round trip. It is shared
+// across the write and both navigations so none of the three ever drift apart.
 const fixtureScope = "repo:e2e-console-roundtrip"
 
 // consoleAssetPathPrefix is the served path prefix for every immutable SPA
@@ -365,9 +365,10 @@ func rootRoutePollExpr(marker string) string {
 //     empty scope WITHOUT cross_spine and was rejected invalid_argument by
 //     design, per D-04's "never infer cross_spine from an empty scope"
 //     rule), and renders the seeded record's marker.
-//  2. /ui/observe?scope=<fixtureScope> — the SAME link the root route's own
-//     scope tile navigates to on click — proves the scoped round trip
-//     through that link by rendering the seeded record's marker again.
+//  2. /ui/search?q=scope:<fixtureScope> — the SAME link the root route's own
+//     scope tile navigates to on click (D-14: /observe is gone, redundant
+//     since Phase 2) — proves the scoped round trip through that link by
+//     rendering the seeded record's marker again.
 func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
 	fixture := startConsoleServer(t)
@@ -435,10 +436,10 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 		t.Fatalf("root route body contains %q: %q", "failed to load", rootRouteBody)
 	}
 
-	observeURL := fixture.srv.baseURL() + "/ui/observe?scope=" + url.QueryEscape(fixtureScope)
+	scopeURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("scope:"+fixtureScope)
 	var rendered bool
 	renderErr := chromedp.Run(runCtx,
-		chromedp.Navigate(observeURL),
+		chromedp.Navigate(scopeURL),
 		chromedp.Poll(markerPollExpr(marker), &rendered,
 			chromedp.WithPollingTimeout(45*time.Second),
 			chromedp.WithPollingInterval(200*time.Millisecond),

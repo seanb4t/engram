@@ -200,9 +200,10 @@ describe('/ui/ root — recent feed on the shared ResultsList (D-10)', () => {
     expect(screen.container.querySelectorAll('[role="option"]').length).toBe(2);
   });
 
-  it('activating a row navigates to /ui/observe?sel=<id>', async () => {
+  it('activating a row navigates to /ui/search?q=<uuid> (D-14: /observe is gone, id resolves via GetMemory, ENTRY-01)', async () => {
+    const id = '11111111-2222-3333-4444-555555555555';
     listMemoriesSpy.mockResolvedValue({
-      memories: [fakeMemory({ id: 'm-open', summary: 'open me' })],
+      memories: [fakeMemory({ id, summary: 'open me' })],
       total: 1n,
       approximate: false
     });
@@ -211,6 +212,21 @@ describe('/ui/ root — recent feed on the shared ResultsList (D-10)', () => {
     await expect.element(screen.getByText('open me')).toBeInTheDocument();
     (screen.container.querySelector('[role="option"]') as HTMLElement).click();
     await expect.poll(() => gotoSpy.mock.calls.length).toBeGreaterThan(0);
-    expect(gotoSpy).toHaveBeenCalledWith('/ui/observe?sel=m-open');
+    expect(gotoSpy).toHaveBeenCalledWith(`/ui/search?q=${id}`);
+  });
+});
+
+// D-14: a scope tile lands on /search with a `scope:<x>` operator-token
+// query instead of the deleted /observe?scope=<x>.
+describe('/ui/ root — scope tile navigates to /search?q=scope:<scope> (D-14)', () => {
+  it('navigates to the encoded scope: query on tile click', async () => {
+    listScopesSpy.mockResolvedValue({ scopes: [{ scope: 'repo:x', count: 3 }], approximate: false });
+
+    const screen = await renderRoot();
+    const tile = screen.container.querySelector('button');
+    await expect.element(screen.getByText('3')).toBeInTheDocument();
+    (tile as HTMLElement).click();
+    await expect.poll(() => gotoSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?q=scope%3Arepo%3Ax');
   });
 });
