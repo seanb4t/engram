@@ -4,6 +4,8 @@
   // (scheduled | expired | all), across every scope, each row showing its
   // window and when it reveals/expired. Cursor infinite scroll only, never
   // numbered pages (D-13's own rule).
+  import { onMount } from 'svelte';
+  import { toast } from 'svelte-sonner';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
@@ -12,12 +14,16 @@
   import { parseScheduledParams, encodeScheduledParams, type ScheduledParams, type ScheduledState } from '$lib/search/scheduled-params';
   import { scheduledHeaderParts, scheduledEmptyHeading, type HeaderPart } from '$lib/search/recall-header';
   import { windowRange, windowPhrase } from '$lib/time';
+  import { memoryStateWords } from '$lib/memorystate';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
+  import { peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
+  import { registerCurationHost } from '$lib/curation/host.svelte.ts';
   import type { Memory } from '$lib/gen/engram_pb';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
+  import CurationSurfaces from '$lib/components/CurationSurfaces.svelte';
   import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
   import * as Tabs from '$lib/components/ui/tabs';
   import { Button } from '$lib/components/ui/button';
@@ -103,6 +109,37 @@
     if (!effectiveSel) return undefined;
     return rows.find((m) => m.id === effectiveSel) ?? detailQ.data?.memory;
   });
+
+  // D-13's archive-on-expired rule (CUR-04/CUR-05, D-16): archive is the
+  // only curation action /scheduled ever offers, and only for a row whose
+  // window has already lapsed.
+  const isExpired = (m: Memory) => memoryStateWords(m).includes('expired');
+
+  let selectedIds = $state<string[]>([]);
+  let curation: ReturnType<typeof CurationSurfaces> | undefined = $state();
+
+  // Keeps the ids whose row is expired, in `rows` list order (never `ids`
+  // order) -- a request whose targets include no expired row opens nothing
+  // and says so instead.
+  function archiveExpired(ids: string[]) {
+    const kept = rows.filter((m) => ids.includes(m.id) && isExpired(m)).map((m) => m.id);
+    if (kept.length === 0) {
+      toast('Archive applies to expired rows only');
+      return;
+    }
+    curation?.openArchive(kept);
+  }
+
+  onMount(() => {
+    const env = peekResume();
+    if (env && env.kind === 'archive') curation?.reopenFromResume(env);
+    return registerCurationHost({
+      actionsFor: (m) => (isExpired(m) ? ['archive'] : []),
+      run: (action, ids) => {
+        if (action === 'archive') archiveExpired(ids);
+      }
+    });
+  });
 </script>
 
 <div class="scheduled-page">
@@ -116,7 +153,31 @@
       </Tabs.List>
     </Tabs.Root>
   </div>
-  <ResultsHeader parts={headerParts} k={0} busy={listBusy} />
+  <ResultsHeader
+    parts={headerParts}
+    k={0}
+    busy={listBusy}
+    selection={{
+      count: selectedIds.length,
+      onarchive: () => archiveExpired(selectedIds),
+      onclear: () => (selectedIds = [])
+    }}
+  />
+  <!-- CurationSurfaces lives in a STABLE location outside RecallSplit --
+       that component switches its narrow/wide layout branch via a
+       ResizeObserver measurement that settles a tick after mount, and both
+       branches independently render the list snippet; mounting it inside
+       either branch would tear down and recreate it (losing bind:this and
+       the one-shot onMount resume-restore above) the first time the
+       measured width crosses the narrow breakpoint. -->
+  <div class="scheduled-toolbar">
+    <CurationSurfaces
+      bind:this={curation}
+      returnPath={normalizeReturnPath(page.url.pathname + page.url.search)}
+      onchanged={() => (selectedIds = [])}
+      onresumeapplied={consumeResume}
+    />
+  </div>
   <div class="scheduled-body">
     <RecallSplit open={!!effectiveSel} onclose={closeSel} autoSaveId="engram-scheduled-split">
       {#snippet list()}
@@ -134,6 +195,11 @@
             onloadmore={() => listQ.fetchNextPage()}
             onopen={toggleOpen}
             onescape={closeSel}
+            selectable
+            bind:selectedIds
+            selectionKey={params.state}
+            rowActions={(m) => (isExpired(m) ? ['archive'] : [])}
+            onarchive={archiveExpired}
           >
             {#snippet rowTrailing(m: Memory)}
               <span class="win" title={windowRange(m)}>
@@ -167,6 +233,7 @@
           {inResults}
           onclose={closeSel}
           onselect={(id) => navigate({ sel: id })}
+          onarchive={selectedMemory && isExpired(selectedMemory) ? (id) => archiveExpired([id]) : undefined}
         />
       {/snippet}
     </RecallSplit>
@@ -191,6 +258,14 @@
   .scheduled-title {
     font-size: calc(15 * var(--u));
     font-weight: 600;
+  }
+  .scheduled-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: calc(6 * var(--u)) calc(12 * var(--u));
+    border-bottom: 1px solid var(--border-subtle, var(--border));
+    flex: none;
   }
   .scheduled-body {
     flex: 1;
