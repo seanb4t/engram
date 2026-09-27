@@ -82,6 +82,14 @@ For each candidate pair, fetch each record's full content with
 `mcp__engram__get_memory` — fetch-by-id is not recall-gated, so a
 superseded or windowed record is still readable this way.
 
+`related_memories` can supply a record's neighbourhood — its supersession
+chain, shared tags, shared citations — on demand, useful extra context for
+either an identity verdict here or a staleness judgement below (`##
+Judging staleness`). This skill does not call it itself (`## Tools this
+skill may call` names the six it does); reach for it via `curating-memory`
+if a judgement needs it, and the same propose-then-consent discipline (`##
+Proposing a mutation`) still governs anything it surfaces.
+
 ## Identity verdicts
 
 Judge every candidate pair into exactly one of three verdicts:

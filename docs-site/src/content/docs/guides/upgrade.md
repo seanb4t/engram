@@ -39,6 +39,7 @@ one predictable, migration-safe contract.
 | treat a cross-spine `search`/`list` failure as "no results", or branch on its error to detect a coverage-enumeration problem | §17 |
 | rely on `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` meaning no request deadline at all | §18 |
 | script `spine-review consolidate` without `--scope` or `--all-scopes` | §19 |
+| script `list_rules`/`ListRules` with no `scopes` expecting a rejection, or pattern-match `list_scheduled`/`ListScheduled`'s missing-scope hint as `required` rather than `conditional_required` | §21 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -521,6 +522,39 @@ shape.
 **Who should act:** nobody — additive. No existing field, argument, or
 response shape changed; a caller that does not read `recall_gate_hidden`
 sees no difference.
+
+### 21. Curation tools and RPCs (milestone 2026-09-25.01 Phase 3)
+
+Four new MCP tools — [`archive_memory`](/reference/tools/#archive_memory),
+[`restore_memory`](/reference/tools/#restore_memory),
+[`related_memories`](/reference/tools/#related_memories),
+[`list_tags`](/reference/tools/#list_tags) — and seven new Connect RPCs
+(`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`, `ListRules`,
+`ListScheduled`, `RelatedMemories`, `ListTags`) land on the server. Both are
+purely **additive**.
+
+Two existing tools change observable behavior:
+
+- [`list_rules`](/reference/tools/#list_rules)/`ListRules` with an empty (or
+  omitted) `scopes` **now succeeds**, returning every readable `rule:*`
+  scope's rules in one cross-scope read (up to 1000 rules in total). It used
+  to reject with `field=scopes hint=required`.
+- [`list_scheduled`](/reference/tools/#list_scheduled)/`ListScheduled`
+  without a `scope` and without `cross_spine` now rejects with
+  `hint=conditional_required` (naming both `scope` and `cross_spine`)
+  instead of `hint=required` — the same conditional-scope shape
+  `search_memory`/`list_memory` already use.
+
+`supersede_memory`/`SupersedeMemory` also gains `validate_only` (preview a
+merge without writing), and `list_scheduled`/`ListScheduled` gains
+`cross_spine` and cursor paging — both additive.
+
+**Who should act:** anyone who scripted `list_rules`/`ListRules` expecting an
+empty `scopes` to reject, or who pattern-matched `list_scheduled`/
+`ListScheduled`'s missing-scope rejection on `hint=required` rather than
+branching on `field`/`hint` generically. Client-tier CLI verbs for the new
+capabilities (`engram related`, `engram tags`, archive/restore over Connect)
+are tracked separately as [issue #630](https://github.com/seanb4t/engram/issues/630).
 
 ---
 

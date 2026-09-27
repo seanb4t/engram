@@ -1,6 +1,6 @@
 ---
 name: engram-connect-client
-description: The engram console's Connect-web client contract — the read vs CSRF-write client split, TanStack Query key conventions, the CSRF double-submit contract, the re-auth resume envelope, query discipline (AbortSignal, keepPreviousData, meta.silent), and a per-RPC request/response table for SearchMemories, ListMemories, GetMemory, and ListScopes. Load before writing any ui/ code that calls the server.
+description: The engram console's Connect-web client contract — the read vs CSRF-write client split, TanStack Query key conventions, the CSRF double-submit contract, the re-auth resume envelope, query discipline (AbortSignal, keepPreviousData, meta.silent), and a per-RPC request/response table for SearchMemories, ListMemories, GetMemory, ListScopes, and the milestone 2026-09-25.01 Phase 3 curation RPCs (SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags). Load before writing any ui/ code that calls the server.
 ---
 
 # engram SPA ↔ Connect Client Contract
@@ -140,3 +140,31 @@ rule. `WriteSurfaces.openEdit(id)` always calls `GetMemory` before opening the e
 when a summary-shaped row/search-hit `Memory` is already in hand — a list/search row's `content`
 is cleared server-side (`full: false` shape) and would silently overwrite the real body with
 empty content on Save if used to prefill the form directly.
+
+## Per-RPC contract (curation RPCs, milestone 2026-09-25.01 Phase 3)
+
+Seven curation RPCs join `EngramService`. The three writes route through `engramWrite` exactly
+like every other mutation (CSRF double-submit applies, `validate_only` included since it is
+still a call on a write Procedure); the four reads route through `engram` like every other
+query.
+
+| RPC | Client | Request fields (camelCase, as generated) | Response fields | Query-key prefix |
+|---|---|---|---|---|
+| `SupersedeMemory` | `engramWrite` | `content, scope, source, category, tags, repo, workspace, worktree, baseDir, summary, citations, supersedes, idempotencyKey, validateOnly` | `id, shortId, validated, supersedes, targets` (`id`/`shortId` set on a real call; `validated`/`supersedes`/`targets` set only when `validateOnly` was true) | n/a (write) |
+| `ArchiveMemory` | `engramWrite` | `ids` | `results[]` (`ArchiveResult`: `requested, id, outcome`) | n/a (write) |
+| `RestoreMemory` | `engramWrite` | `ids` | `results[]` (`ArchiveResult`, same shape) | n/a (write) |
+| `ListRules` | `engram` | `scopes, tags, full` (`scopes` empty = every readable `rule:*` scope, one cross-scope read) | `rules[], advisory, searchedScopes[], scopesTruncated, scopesUnknown` (the coverage triple present only on the all-scopes read) | `'listRules'` |
+| `ListScheduled` | `engram` | `scope, state, limit, createdAfter, createdBefore, crossSpine, pageToken` | `memories[], nextPageToken, searchedScopes[], scopesTruncated, scopesUnknown` (coverage triple present only when `crossSpine`) | `'listScheduled'` |
+| `RelatedMemories` | `engram` | `id, k, full` | `anchor, related[]` (`RelatedMemory`: `memory, edges[]`), `truncated` | `'relatedMemories'` |
+| `ListTags` | `engram` | `scope, limit` (`scope` empty = every readable scope) | `tags[]` (`TagCount`: `tag, count`), `more` | `'listTags'` |
+
+`RelatedEdge.evidence` is a **discriminated union** (`{ case, value }`, connect-es's oneof
+shape) keyed by `RelatedEdge.type` (`vector | tag | citation | supersession`) — read `case`
+before touching `value`, never assume which arm is populated from `type` alone without also
+checking `case` matches (defensive; the server always keeps them in lockstep, D-12).
+
+After a successful `ArchiveMemory`, `RestoreMemory`, or `SupersedeMemory` call, invalidate the
+`'searchMemories'`, `'listMemories'`, `'getMemory'`, `'listScheduled'`, `'relatedMemories'`, and
+`'listTags'` query-key prefixes — any of the three writes can change what those six read
+queries would return (an archived/restored/superseded record's recall visibility, its
+neighbourhood, or its tag counts).

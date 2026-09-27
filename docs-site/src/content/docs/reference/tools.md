@@ -29,6 +29,8 @@ records created.
 | `list_rules` | List the complete rule set for one or more scopes |
 | `archive_memory` | Retire a memory you own without deleting it (reversible) |
 | `restore_memory` | Reverse an `archive_memory` call |
+| `related_memories` | On-demand neighbourhood: supersession, shared tags, shared citations, vector similarity |
+| `list_tags` | Exact tag counts for a scope, for tag reuse before `store_memory` |
 
 **`actor` and `owner` are always server-set.** They come from the validated OIDC
 token and are never accepted as client input.
@@ -332,6 +334,7 @@ Takes the full `store_memory` field set for the **new, correcting** record, plus
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `supersedes` | array of string | yes | One or more ids — each a full UUID or a `short_id` — of the memories this new record corrects. A one-element array is the ordinary single-target case. |
+| `validate_only` | bool | no | Run the full preflight (ownership, single-live-head, rule rejection, ambiguous short_id) without writing anything; returns the resolved targets, or the exact rejection a real call would produce. Optional — useful before a multi-target merge, not a routine extra round trip. Never consults `idempotency_key`. |
 
 There is no maximum target count — the set is unbounded. Duplicate targets — the
 same id given twice, or two spellings of the same record (a short id and its
@@ -406,7 +409,10 @@ still in flight.
   target — delete the rule instead (same restriction as
   [`set_visibility`](#set_visibility)).
 
-Returns the new record's `id` and `short_id`.
+Returns the new record's `id` and `short_id`. With `validate_only=true`,
+returns `{ validated: true, supersedes: [...], targets: [...] }` instead —
+the resolved target ids and no `id`/`short_id`, because nothing was written —
+or the same rejection a real call over the same inputs would produce.
 
 ---
 
@@ -602,6 +608,60 @@ Omitting `scopes` additionally carries `searched_scopes`/`scopes_truncated`
 (or `scopes_unknown`) naming ONLY the rule scopes covered — never a non-rule
 scope the caller can also read — see `list_memory` above for the shared
 three-state coverage semantics.
+
+---
+
+## related_memories
+
+Return one record's neighbourhood: its supersession chain, records sharing a
+citation, records sharing a rarity-weighted tag, and its nearest vector
+neighbours — each edge carrying evidence typed to how it was found. Call this
+**only on demand**: curating (dedup before a store, finding what a correction
+should supersede) or an explicit user ask. Never call it at session start,
+and never as an automatic follow-up to a search — the same on-demand framing
+[`search_discovery`](#search_discovery) already uses.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `id` | string | yes | The UUID **or `short_id`** of the anchor memory |
+| `k` | uint64 | no | Widens only the vector-neighbour cap; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
+| `full` | bool | no | Return full `content` on the anchor and every neighbour instead of compact summaries (default `false`) |
+
+Returns `{ "anchor": {...}, "related": [{ "memory": {...}, "edges": [...] }], "truncated": bool }`.
+Each edge is a flat object drawn only from `{type, score, shared_tags,
+tag_weight, shared_citations, direction, depth}` — `type` is one of
+`supersession`, `citation`, `tag`, or `vector`; `score` (vector), `shared_tags`
++ `tag_weight` (tag), `shared_citations` (citation), and `direction` +
+`depth` (supersession) are populated only for their own edge type. A record
+may appear once per edge type that connects it to the anchor.
+
+Isolation is unconditional: another actor's private record never appears,
+even one sharing the anchor's tag or citation; an anchor you cannot read
+returns `not_found` echoing only your own input. The result is returned as
+structured content and, per MCP 2026-07-28, also as the same JSON in a text
+block.
+
+---
+
+## list_tags
+
+Return exact, recall-visible tag counts for a scope, or (scope omitted) every
+scope the caller can read. Use it before [`store_memory`](#store_memory) to
+reuse an existing tag rather than invent a near-duplicate, and to choose a
+`tags` filter for [`search_memory`](#search_memory)/[`list_memory`](#list_memory).
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `scope` | string | no | Scope to count tags in; omit for every readable scope |
+| `limit` | uint64 | no | Maximum distinct tags to return; 0 resolves to this tool's default, 100; values above 1000 (the maximum) are rejected (`field=limit hint=out_of_range`) |
+
+Returns `{ "tags": [{ "tag": "...", "count": N }], "more": bool }`, sorted by
+count descending. Counts cover recall-visible records only — an archived,
+superseded, expired, or scheduled record's tags are not counted. There is
+**no server-side prefix filter**: `more: true` means the top-N list is
+truncated, not that no more tags exist; filter the returned list yourself if
+you need a narrower match. The result is returned as structured content and,
+per MCP 2026-07-28, also as the same JSON in a text block.
 
 ---
 
