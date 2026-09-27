@@ -488,7 +488,7 @@ a known pattern.
   3. An invalid `SupersedeMemory` target set is rejected with every offending target named
   4. All proto changes are additive (`buf breaking` green), `gen/go`, `gen/ts`, and `ui/src/lib/gen` are regenerated and committed, the vendored SPA passes the `ui-drift` gate, and each RPC carries its blast-radius annotations and self-describe catalog entry
 
-**Plans:** 3/7 plans executed
+**Plans:** 4/7 plans executed
 
 Plans:
 **Wave 1**
@@ -505,7 +505,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 03-04-PLAN.md — ListRules on Connect and the empty-scopes all-rules read on both lanes with rule-scope coverage (D-10, D-19, D-20; RPC-03, RPC-05, RPC-06)
+- [x] 03-04-PLAN.md — ListRules on Connect and the empty-scopes all-rules read on both lanes with rule-scope coverage (D-10, D-19, D-20; RPC-03, RPC-05, RPC-06)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
