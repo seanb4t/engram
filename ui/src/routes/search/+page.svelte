@@ -12,6 +12,8 @@
   import { engram } from '$lib/client';
   import { peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
   import { normalizeVisibility } from '$lib/mutations/memory';
+  import { flashRows } from '$lib/curation/flash.svelte.ts';
+  import { registerCurationHost, defaultActionsFor } from '$lib/curation/host.svelte.ts';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import {
     parseSearchParams,
@@ -474,9 +476,31 @@
   // ResultsHeader's bulk bar (Task 3) share it.
   let selectedIds = $state<string[]>([]);
 
+  // E4: while a curation commit is in flight, disable the bulk bar's verb
+  // buttons -- CurationSurfaces fires this around every archive/restore/
+  // supersede COMMIT (never the supersede validate_only preview).
+  let curationBusy = $state(false);
+
   onMount(() => {
     const env = peekResume();
     if (env && env.kind === 'memory') writeSurfaces?.reopenFromResume(env);
+    else if (env && (env.kind === 'supersede' || env.kind === 'archive')) curation?.reopenFromResume(env);
+
+    // Phase 2 D-11: registers /search as the active curation host for ⌘K's
+    // record-group actions -- unregistered on teardown so a stale
+    // registration can never survive a route switch.
+    const unregister = registerCurationHost({
+      actionsFor: defaultActionsFor,
+      run: (action, ids) =>
+        action === 'supersede'
+          ? curation?.openSupersede(ids)
+          : action === 'archive'
+            ? curation?.openArchive(ids)
+            : action === 'restore'
+              ? curation?.openRestore(ids)
+              : curation?.openChain(ids[0])
+    });
+    return unregister;
   });
 </script>
 
@@ -506,6 +530,8 @@
     busy={headerBusy}
     selection={{
       count: selectedIds.length,
+      busy: curationBusy,
+      onsupersede: () => curation?.openSupersede(selectedIds),
       onarchive: () => curation?.openArchive(selectedIds),
       onrestore: () => curation?.openRestore(selectedIds),
       onclear: () => (selectedIds = [])
@@ -533,6 +559,13 @@
       bind:this={curation}
       returnPath={normalizeReturnPath(page.url.pathname + page.url.search)}
       onchanged={() => (selectedIds = [])}
+      onviewsuperseded={(ids) => {
+        navigate({ includeSuperseded: true });
+        flashRows(ids);
+      }}
+      onopenrecord={(id) => navigate({ sel: id })}
+      onresumeapplied={consumeResume}
+      onbusychange={(b) => (curationBusy = b)}
     />
   </div>
   <div class="search-body">
@@ -561,8 +594,10 @@
             selectable
             bind:selectedIds
             selectionKey={encodeSearchParams({ ...params, k: DEFAULT_K, sel: '' })}
+            onsupersede={(ids) => curation?.openSupersede(ids)}
             onarchive={(ids) => curation?.openArchive(ids)}
             onrestore={(ids) => curation?.openRestore(ids)}
+            onchain={(id) => curation?.openChain(id)}
           />
           {#if classified.kind === 'text' && memories.length === effective.k && nextK(effective.k) !== undefined}
             <div class="show-more-row">
@@ -587,8 +622,10 @@
               ? writeSurfaces?.requestMakePrivate(m, 'memory')
               : writeSurfaces?.requestShare(m, 'memory')}
           ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
+          onsupersede={(id) => curation?.openSupersede([id])}
           onarchive={(id) => curation?.openArchive([id])}
           onrestore={(id) => curation?.openRestore([id])}
+          onchain={(id) => curation?.openChain(id)}
         />
       {/snippet}
     </RecallSplit>

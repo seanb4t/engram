@@ -22,6 +22,7 @@
   import { headIdFrom } from '$lib/curation/chain';
   import ArchiveConfirmDialog from './ArchiveConfirmDialog.svelte';
   import SupersedeDialog from './SupersedeDialog.svelte';
+  import ChainDialog from './ChainDialog.svelte';
 
   // CurationSurfaces is the route-level curation write host (mirrors
   // WriteSurfaces): it owns the archive/restore confirm dialog's open state,
@@ -32,16 +33,22 @@
     onchanged,
     onresumeapplied,
     onviewsuperseded,
-    onopenrecord
+    onopenrecord,
+    onbusychange
   }: {
     returnPath: string;
     onchanged?: (e: { kind: 'archive' | 'restore' | 'supersede'; ids: string[]; newId?: string }) => void;
     onresumeapplied?: () => void;
-    // Forwarded straight through to SupersedeDialog's success-footer actions
-    // (the route, plan 04-08, supplies these -- e.g. opening the Chain
-    // dialog on the superseded set, or selecting the new record).
+    // The route (plan 04-08) supplies these -- e.g. turning on the
+    // include-superseded facet, or selecting the new record. CurationSurfaces
+    // wraps them to close the supersede dialog first (D-07's own success
+    // footer contract), then forwards to the route.
     onviewsuperseded?: (ids: string[]) => void;
     onopenrecord?: (id: string) => void;
+    // Fired around every archive/restore/supersede COMMIT call (never the
+    // supersede validate_only preview) -- lets the route disable the bulk
+    // bar's verb buttons while a curation write is in flight (E4).
+    onbusychange?: (busy: boolean) => void;
   } = $props();
 
   const queryClient = useQueryClient();
@@ -153,6 +160,7 @@
   // already be live when it renders).
   async function onsubmit(ids: string[]): Promise<ArchiveSubmitOutcome> {
     const mutation = archiveMode === 'archive' ? archiveMutation : restoreMutation;
+    onbusychange?.(true);
     try {
       const resp = await mutation.mutateAsync({ ids });
       const changed = changedIds(resp.results);
@@ -161,6 +169,8 @@
       return { kind: 'ok', results: resp.results };
     } catch (err) {
       return mapMutationError(err);
+    } finally {
+      onbusychange?.(false);
     }
   }
 
@@ -177,6 +187,7 @@
     const inverseMutation = inverseMode === 'archive' ? archiveMutation : restoreMutation;
     archiveMode = inverseMode;
     archivePending = true;
+    onbusychange?.(true);
     try {
       const resp = await inverseMutation.mutateAsync({ ids });
       const changed = changedIds(resp.results);
@@ -187,6 +198,7 @@
       archiveOutcome = mapMutationError(err);
     } finally {
       archivePending = false;
+      onbusychange?.(false);
     }
   }
 
@@ -322,10 +334,15 @@
   // useArchiveMemory); this wrapper adds the parts that need component-level
   // props -- the row flash and the route's onchanged notification.
   async function supersedeOnsubmit(draft: SupersedeDraft): Promise<SupersedeMemoryResponse> {
-    const resp = await supersedeMutation.mutateAsync(draft);
-    flashRows([...draft.targets, resp.id]);
-    onchanged?.({ kind: 'supersede', ids: draft.targets, newId: resp.id });
-    return resp;
+    onbusychange?.(true);
+    try {
+      const resp = await supersedeMutation.mutateAsync(draft);
+      flashRows([...draft.targets, resp.id]);
+      onchanged?.({ kind: 'supersede', ids: draft.targets, newId: resp.id });
+      return resp;
+    } finally {
+      onbusychange?.(false);
+    }
   }
 
   function supersedeOncancel(): void {
@@ -334,6 +351,33 @@
 
   function supersedeOndone(): void {
     supersedeOpen = false;
+  }
+
+  // D-07 success-footer contract: both actions leave supersede-review mode,
+  // so CurationSurfaces closes its own dialog state before forwarding to the
+  // route's handler (navigate/flash for View superseded, sel-navigate for
+  // Open) -- SupersedeDialog itself never sets `open`, per its
+  // host-authoritative pattern.
+  function handleViewSuperseded(ids: string[]): void {
+    supersedeOpen = false;
+    onviewsuperseded?.(ids);
+  }
+
+  function handleOpenRecord(id: string): void {
+    supersedeOpen = false;
+    onopenrecord?.(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chain dialog (D-06)
+  // ---------------------------------------------------------------------------
+
+  let chainOpen = $state(false);
+  let chainAnchor = $state('');
+
+  export function openChain(id: string): void {
+    chainAnchor = id;
+    chainOpen = true;
   }
 
   // D-15: persists a v2 supersede resume envelope (targets in chip order,
@@ -415,6 +459,16 @@
   oncancel={supersedeOncancel}
   ondone={supersedeOndone}
   onreauth={handleSupersedeReauth}
-  {onviewsuperseded}
-  {onopenrecord}
+  onviewsuperseded={handleViewSuperseded}
+  onopenrecord={handleOpenRecord}
+/>
+
+<ChainDialog
+  bind:open={chainOpen}
+  anchorId={chainAnchor}
+  onsupersedehead={(id) => {
+    chainOpen = false;
+    openSupersede([id]);
+  }}
+  oncancel={() => (chainOpen = false)}
 />
