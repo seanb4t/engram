@@ -233,8 +233,10 @@
     border-color: var(--primary);
     background: var(--primary-soft, color-mix(in srgb, var(--primary) 16%, transparent));
   }
+  /* DSYS-03/D-17: opacity-dimmed text on --surface-2 fell below 4.5:1;
+     --muted-foreground is the same fix ResultRow's dim cells use. */
   .facet-chip-zero {
-    opacity: 0.45;
+    color: var(--muted-foreground);
   }
   .facet-chip-removable button {
     background: none;

@@ -131,10 +131,16 @@
   .ra-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: calc(3 * var(--u));
     background: none;
     border: none;
     padding: calc(2 * var(--u)) calc(5 * var(--u));
+    /* DSYS-03/D-17, WCAG 2.2 SC 2.5.8 (target size): the padded/font-scaled
+       box alone falls under 24 CSS px at the smallest text-size preference
+       (12px baseline) -- max() keeps the --u scaling everywhere else in
+       this console while guaranteeing the 24px floor regardless of size. */
+    min-height: max(calc(24 * var(--u)), 24px);
     border-radius: calc(3 * var(--u));
     font-size: calc(11 * var(--u));
     color: var(--muted-foreground);

@@ -42,7 +42,11 @@
     bind:ref={cardRef}
   >
     <div class="hc-head">
-      <span class="hc-cat" style="color:var(--cat-{memory.category})">{memory.category}</span>
+      <!-- DSYS-03/D-17: raw category hues fail 4.5:1 against the card's own
+           --surface-2 background for several categories (verified by
+           surfaces.browser.test.ts) -- --muted-foreground passes in both
+           themes; the category name text still identifies the category. -->
+      <span class="hc-cat">{memory.category}</span>
       <span class="hc-short-id">{memory.shortId}</span>
     </div>
     <div class="hc-scope">{memory.scope}</div>
@@ -91,6 +95,7 @@
   .hc-cat {
     font-weight: 600;
     text-transform: uppercase;
+    color: var(--muted-foreground);
   }
   .hc-short-id {
     font-family: var(--font-mono, monospace);
