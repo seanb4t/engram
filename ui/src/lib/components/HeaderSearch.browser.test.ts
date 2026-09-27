@@ -74,9 +74,11 @@ describe('HeaderSearch', () => {
     await expect.element(input).toBeInTheDocument();
     await input.click();
 
-    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Rules', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Scheduled', exact: true })).toBeInTheDocument();
     await expect.element(screen.getByRole('option', { name: 'Search', exact: true })).toBeInTheDocument();
     await expect.element(screen.getByRole('option', { name: 'Discovery', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).not.toBeInTheDocument();
     expect(searchMemoriesSpy).not.toHaveBeenCalled();
     expect(getMemorySpy).not.toHaveBeenCalled();
   });
@@ -361,19 +363,19 @@ describe('HeaderSearch', () => {
 
     await expect.element(input).toHaveValue('github');
     await expect.element(input).toHaveFocus();
-    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Rules', exact: true })).toBeInTheDocument();
   });
 
   it('Esc closes the dropdown and blurs the input', async () => {
     const screen = await renderHeaderSearch();
     const input = screen.getByRole('combobox', { name: 'Search memories' });
     await input.click();
-    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Rules', exact: true })).toBeInTheDocument();
 
     await userEvent.keyboard('{Escape}');
 
     await expect.element(input).not.toHaveFocus();
-    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Rules', exact: true })).not.toBeInTheDocument();
   });
 });
 

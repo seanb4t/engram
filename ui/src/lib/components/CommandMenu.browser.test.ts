@@ -12,7 +12,7 @@ const { gotoSpy, searchMemoriesSpy, getMemorySpy, setModeSpy, pageState } = vi.h
   searchMemoriesSpy: vi.fn(),
   getMemorySpy: vi.fn(),
   setModeSpy: vi.fn(),
-  pageState: { url: new URL('http://localhost/ui/observe') }
+  pageState: { url: new URL('http://localhost/ui/search') }
 }));
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
@@ -58,7 +58,7 @@ beforeEach(() => {
   searchMemoriesSpy.mockReset();
   getMemorySpy.mockReset();
   setModeSpy.mockReset();
-  pageState.url = new URL('http://localhost/ui/observe');
+  pageState.url = new URL('http://localhost/ui/search');
   headerSearch.text = '';
   headerSearch.focusSeq = 0;
   document.documentElement.style.setProperty('--ui-font', `${DEFAULT_TEXT_SIZE}px`);
@@ -69,9 +69,11 @@ describe('CommandMenu', () => {
   it('shows every navigation item and no hand-off row for an empty input, and makes no RPC', async () => {
     const screen = await renderMenu();
     await expect.element(screen.getByRole('option', { name: 'Home', exact: true })).toBeInTheDocument();
-    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Rules', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Scheduled', exact: true })).toBeInTheDocument();
     await expect.element(screen.getByRole('option', { name: 'Search', exact: true })).toBeInTheDocument();
     await expect.element(screen.getByRole('option', { name: 'Discovery', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).not.toBeInTheDocument();
     expect(document.body.textContent).not.toContain('no matches');
     expect(searchMemoriesSpy).not.toHaveBeenCalled();
     expect(getMemorySpy).not.toHaveBeenCalled();
@@ -103,12 +105,12 @@ describe('CommandMenu', () => {
 
   it('filters navigation items by the typed term and still ends with the hand-off row', async () => {
     const screen = await renderMenu();
-    await screen.getByRole('combobox', { name: 'Command menu' }).fill('obs');
+    await screen.getByRole('combobox', { name: 'Command menu' }).fill('rul');
 
-    await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Rules', exact: true })).toBeInTheDocument();
     await expect.element(screen.getByRole('option', { name: 'Discovery', exact: true })).not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole('option', { name: /search memories for "obs"/i }))
+      .element(screen.getByRole('option', { name: /search memories for "rul"/i }))
       .toBeInTheDocument();
   });
 
