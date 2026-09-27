@@ -130,7 +130,7 @@
   <span class="sum" class:dim={dimmed}>
     {#each summaryParts as part, i (i)}{#if part.code}<code>{part.text}</code>{:else}{part.text}{/if}{/each}
   </span>
-  <span class="states" bind:this={statesEl} class:collapsed={statesCollapsed} title={statesCollapsed ? stateTitle : undefined}>
+  <span class="states" bind:this={statesEl} class:collapsed={statesCollapsed} class:single={stateWords.length === 1} title={statesCollapsed ? stateTitle : undefined}>
     {#if statesCollapsed}
       <span class="st {stateClass(stateWords[0])}">{stateWords[0]}</span>
       <span class="st more">+{stateWords.length - 1}</span>
@@ -158,10 +158,15 @@
 </div>
 
 <style>
+  /* The column template is ONE variable (--cols) that each @container list
+     band below swaps (recall-surface.md). The summary keeps a floor
+     (--sum-min, relative to the list width so it can always be met) and the
+     optional tracks (state chips, tags, scope) are sized minmax(0, …), so
+     they yield before the summary does; age, score and rel keep fixed tracks. */
   .result-row-line {
-    --cols: calc(96 * var(--u)) minmax(0, 1fr) auto calc(172 * var(--u)) calc(132 * var(--u)) calc(34 * var(--u)) calc(
-        70 * var(--u)
-      );
+    --sum-min: min(calc(120 * var(--u)), 20cqi);
+    --cols: calc(96 * var(--u)) minmax(var(--sum-min), 1fr) auto minmax(0, calc(172 * var(--u)))
+      minmax(0, calc(132 * var(--u))) calc(34 * var(--u)) calc(70 * var(--u));
     display: grid;
     grid-template-columns: var(--cols);
     align-items: center;
@@ -241,7 +246,11 @@
     border-radius: calc(3 * var(--u));
     color: var(--text-faint);
   }
-  .states.collapsed > .st:first-child {
+  /* A lone chip cannot collapse to "first +N"; when the row is so tight that
+     the state track yields below the chip's width, ellipsize it rather than
+     hard-clip it. */
+  .states.collapsed > .st:first-child,
+  .states.single > .st {
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -331,13 +340,23 @@
   }
 
   /* Column drop-out by LIST width (container query on the ancestor named
-     "list", set on ResultsList's wrapper) — states/score/rel always stay. */
+     "list", set on ResultsList's wrapper) — states/score/rel always stay.
+     Each band drops the hidden cells' tracks from --cols, not just the cells:
+     a hidden cell leaves no grid item, so a stale track would both starve the
+     summary and shift age/score one track left. */
   @container list (max-width: 860px) {
+    .result-row-line {
+      --cols: calc(96 * var(--u)) minmax(var(--sum-min), 1fr) auto minmax(0, calc(132 * var(--u)))
+        calc(34 * var(--u)) calc(70 * var(--u));
+    }
     .tags {
       display: none;
     }
   }
   @container list (max-width: 560px) {
+    .result-row-line {
+      --cols: calc(6 * var(--u)) minmax(var(--sum-min), 1fr) auto calc(34 * var(--u)) calc(40 * var(--u));
+    }
     .tags,
     .scope {
       display: none;

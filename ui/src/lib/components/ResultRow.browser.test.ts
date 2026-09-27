@@ -143,6 +143,55 @@ describe('ResultRow', () => {
     expect(longHeight).toBe(shortHeight);
   });
 
+  // UI-REVIEW BLOCKER: the column drop-outs must shrink the grid, not just
+  // hide cells — at every list width the summary stays readable and the
+  // score / rel / state chips stay fully inside the row (no horizontal
+  // overflow). Worst case: rel on, a state chip, tags and a scope.
+  describe.each([
+    { font: '15px', label: 'default text size' },
+    { font: '16px', label: 'largest text size' }
+  ])('column drop-out by list width ($label)', ({ font }) => {
+    const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    it.each([1000, 861, 800, 561, 520, 390])('at a %ipx list the summary keeps usable width and score/rel/states fit', async (width) => {
+      document.documentElement.style.setProperty('--ui-font', font);
+      try {
+        const mem = create(MemorySchema, {
+          id: `w-${width}`,
+          summary: 'release-please drives SemVer tags; the milestone label is CalVer and never feeds it',
+          category: 'convention',
+          tags: ['release', 'ops', 'config'],
+          scope: 'repo:seanb4t/engram',
+          score: 0.81,
+          relevance: 0.77,
+          supersededBy: 'successor',
+          createdAt: timestampFromDate(now)
+        });
+        const screen = await render(ResultRow, { memory: mem, mode: 'ranked', showRel: true });
+        Object.assign(screen.container.style, { width: `${width}px`, containerType: 'inline-size', containerName: 'list' });
+        await nextFrame();
+
+        const q = (sel: string) => screen.container.querySelector(sel) as HTMLElement;
+        const row = q('.result-row-line');
+        const rowBox = row.getBoundingClientRect();
+        const inside = (el: HTMLElement) => {
+          const b = el.getBoundingClientRect();
+          return b.width > 0 && b.left >= rowBox.left - 0.5 && b.right <= rowBox.right + 0.5;
+        };
+
+        expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1);
+        expect(q('.sum').getBoundingClientRect().width).toBeGreaterThanOrEqual(width >= 800 ? 130 : 70);
+        expect(inside(q('.score'))).toBe(true);
+        expect(inside(q('.score .num'))).toBe(true);
+        expect(inside(q('.rel'))).toBe(true);
+        expect(inside(q('.states .st'))).toBe(true);
+        expect(inside(q('.age'))).toBe(true);
+      } finally {
+        document.documentElement.style.removeProperty('--ui-font');
+      }
+    });
+  });
+
   it("category 'gotcha' shows the word colored by --cat-gotcha", async () => {
     const mem = create(MemorySchema, { id: '14', summary: 'x', category: 'gotcha' });
     const screen = await render(ResultRow, { memory: mem });
