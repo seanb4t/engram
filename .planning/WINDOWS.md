@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 13
+open_count: 14
 waived_count: 0
 fixed_count: 7
-total_count: 20
-last_updated: 2026-09-27T14:15:14.028Z
+total_count: 21
+last_updated: 2026-09-27T15:02:29.671Z
 ---
 
 # Broken Windows Ledger
@@ -35,6 +35,7 @@ last_updated: 2026-09-27T14:15:14.028Z
 | 18 | 03 | deviation | .planning/phases/03-curation-rpcs-mcp-tools/03-04-PLAN.md | 65 | Pre-existing key_links escaping-shape finding in a sibling plan (03-04), predates 03-01 execution; deferred, see deferred-items.md | open |  | 2026-09-27T06:50:17.582Z |  |
 | 19 | 03 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete cannot flip any ID (RPC-01..06 included) because the Traceability table's Status column reads 'Mapped' instead of 'Pending'/'Gaps Found' — milestone-wide, pre-existing since 2026-09-25; see phase 03 deferred-items.md | open |  | 2026-09-27T11:01:45.242Z |  |
 | 20 | 04 | stub | ui/src/lib/components/CurationSurfaces.svelte |  | onreauth(ids) parameter accepted but unused; calls redirectToLogin() only. Plan 04-06 adds the v2 resume-envelope persist before this redirect, consuming ids. | open |  | 2026-09-27T14:15:14.028Z |  |
+| 21 | 04 | stub | ui/src/lib/components/CurationSurfaces.svelte |  | resolveRecordsKeepAll's placeholder chip for a resume-envelope target GetMemory cannot resolve renders as a plain chip (summary text 'not found: {id}') rather than SupersedeDialog's styled server-rejection issue treatment -- visible and never dropped, but cosmetically un-flagged | open |  | 2026-09-27T15:02:29.671Z |  |
 
 ````json
 [
@@ -286,6 +287,19 @@ last_updated: 2026-09-27T14:15:14.028Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-27T14:15:14.028Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 21,
+    "kind": "stub",
+    "phase": "04",
+    "file": "ui/src/lib/components/CurationSurfaces.svelte",
+    "line": null,
+    "description": "resolveRecordsKeepAll's placeholder chip for a resume-envelope target GetMemory cannot resolve renders as a plain chip (summary text 'not found: {id}') rather than SupersedeDialog's styled server-rejection issue treatment -- visible and never dropped, but cosmetically un-flagged",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-27T15:02:29.671Z",
     "resolved_at": null,
     "milestone": null
   }
