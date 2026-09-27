@@ -336,7 +336,7 @@
     {
       "number": "3",
       "name": "Curation RPCs & MCP Tools",
-      "status": "in_progress"
+      "status": "pending"
     },
     {
       "number": "4",
@@ -357,7 +357,7 @@
   "next": {
     "command": "/gsd:progress --next",
     "label": "Advance to the next step",
-    "reason": "Phase 3 of 7 · 14% · executing"
+    "reason": "Phase 03 of 7 · 29% · executing"
   },
-  "updated_at": "2026-09-27T04:16:13.943Z"
+  "updated_at": "2026-09-27T06:53:40.183Z"
 }

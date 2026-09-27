@@ -488,12 +488,12 @@ a known pattern.
   3. An invalid `SupersedeMemory` target set is rejected with every offending target named
   4. All proto changes are additive (`buf breaking` green), `gen/go`, `gen/ts`, and `ui/src/lib/gen` are regenerated and committed, the vendored SPA passes the `ui-drift` gate, and each RPC carries its blast-radius annotations and self-describe catalog entry
 
-**Plans:** 7 plans
+**Plans:** 1/7 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — wire-contract decision gate for the phase, then ArchiveMemory/RestoreMemory on Connect behind CSRF (first test) and archive_memory/restore_memory MCP tools with owner-gate proofs on both lanes (D-06, D-07, D-15–D-17, D-20, D-23, D-26; RPC-02, RPC-05, RPC-06)
+- [x] 03-01-PLAN.md — wire-contract decision gate for the phase, then ArchiveMemory/RestoreMemory on Connect behind CSRF (first test) and archive_memory/restore_memory MCP tools with owner-gate proofs on both lanes (D-06, D-07, D-15–D-17, D-20, D-23, D-26; RPC-02, RPC-05, RPC-06)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

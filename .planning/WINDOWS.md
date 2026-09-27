@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 10
+open_count: 11
 waived_count: 0
 fixed_count: 7
-total_count: 17
-last_updated: 2026-09-26T20:44:01.413Z
+total_count: 18
+last_updated: 2026-09-27T06:50:17.582Z
 ---
 
 # Broken Windows Ledger
@@ -32,6 +32,7 @@ last_updated: 2026-09-26T20:44:01.413Z
 | 15 | 3 | lint-warning | cmd/engram/operator_view_test.go | 441 | Pre-existing raw 'go vet' finding (struct field B repeats json tag) in a deliberate nolint:govet adjacency-edge probe; golangci-lint (the project's real gate) already suppresses it. Out of scope for plan 03-01 (file not in files_modified). | open |  | 2026-09-24T01:24:44.462Z |  |
 | 16 | 2 | deviation | ui/src/lib/components/HeaderSearch.svelte |  | Tab does not cycle dropdown sections (Task 3 action text calls for it); deferred as a follow-up, not implemented | open |  | 2026-09-26T19:26:17.906Z |  |
 | 17 | 2 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete cannot flip ROW-02/ROW-03 (or any requirement this milestone) — every traceability row was seeded 'Mapped' at milestone creation, a Status value the verb does not recognize as a flippable FROM-state; milestone-wide and pre-existing (STORE-01/Phase1 is still unchecked too), not caused by this plan | open |  | 2026-09-26T20:44:01.413Z |  |
+| 18 | 03 | deviation | .planning/phases/03-curation-rpcs-mcp-tools/03-04-PLAN.md | 65 | Pre-existing key_links escaping-shape finding in a sibling plan (03-04), predates 03-01 execution; deferred, see deferred-items.md | open |  | 2026-09-27T06:50:17.582Z |  |
 
 ````json
 [
@@ -244,6 +245,19 @@ last_updated: 2026-09-26T20:44:01.413Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-26T20:44:01.413Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 18,
+    "kind": "deviation",
+    "phase": "03",
+    "file": ".planning/phases/03-curation-rpcs-mcp-tools/03-04-PLAN.md",
+    "line": 65,
+    "description": "Pre-existing key_links escaping-shape finding in a sibling plan (03-04), predates 03-01 execution; deferred, see deferred-items.md",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-27T06:50:17.582Z",
     "resolved_at": null,
     "milestone": null
   }

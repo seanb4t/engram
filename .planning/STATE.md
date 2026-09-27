@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: 2026-09-25.01
 milestone_name: Console Overhaul
-current_phase: 3
+current_phase: 03
 current_phase_name: Curation RPCs & MCP Tools
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-09-27T04:16:13.537Z"
-last_activity: 2026-09-26
-last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 29e2bc6f95a12c98e1f4bac84e77f586bcb7926c
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-09-27T06:54:38.063Z"
+last_activity: 2026-09-27
+last_activity_desc: Phase 03 execution started
+state_head: fdcba249a2d31c9c50fc8e1eb06f94a2bfe32cf2
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 21
-  completed_plans: 14
-  percent: 14
+  completed_plans: 15
+  percent: 29
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 2)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 3 — Curation RPCs & MCP Tools
+**Current focus:** Phase 03 — Curation RPCs & MCP Tools
 
 ## Current Position
 
-Phase: 3 (Curation RPCs & MCP Tools) — READY TO EXECUTE
-Plan: Not started
+Phase: 03 (Curation RPCs & MCP Tools) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-09-26 - Completed quick task 260926-st6: Fix Phase 2 UI-REVIEW result-row grid blocker and facet-strip scroll cue
+Last activity: 2026-09-27 — Phase 03 execution started
 
 ## Deferred Items
 
@@ -450,6 +450,9 @@ milestone needs in working memory.
 - [Phase 2]: 02-08: ScopeCombobox uses shouldFilter={false} plus manual substring filtering over the complete loaded ListScopes list, avoiding the bits-ui 2.18.1/Svelte 5 default-filter content-emptying gotcha already hit in plan 02-05
 - [Phase 02-recall-first-search]: WriteSurfaces relocated outside RecallSplit's snippets on /observe (mirrors plan 02-09's /search pitfall fix) to avoid destroying its bind:this reference and one-shot resume-restore across the narrow/wide layout switch.
 - [Phase 02-recall-first-search]: Phase 2 closes with two project-local skills (engram-console-conventions, engram-connect-client) routed from CLAUDE.md, grounded in shipped code and cited by both this phase's UI-SPEC and later UI phases (3-5).
+- [Phase 03]: [Phase 03]: 03-01: Task 1 decision gate resolved option-a (the phase's full seven-RPC wire contract), no item-level changes; plans 03-02..03-06 implement it as approved.
+- [Phase 03]: [Phase 03]: 03-01: corrected a stale per-plan commit ledger (gsd-plan-head-before-03-01, leftover from an earlier milestone's own phase-03/plan-01) to the correct plan-start commit 2ab4e15e before computing actuals.commits.
+- [Phase 03]: [Phase 03]: 03-01: archiveBatch reports one outcome row per caller-supplied token, never merged or deduplicated across repeats within one call (D-06 discretion item).
 
 ### Pending Todos
 
@@ -547,9 +550,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-27T01:44:25.144Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-curation-rpcs-mcp-tools/03-CONTEXT.md
+Last session: 2026-09-27T06:54:38.031Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
 
 ## Performance Metrics
 
@@ -764,6 +767,7 @@ Resume file: .planning/phases/03-curation-rpcs-mcp-tools/03-CONTEXT.md
 | Phase 2 P08 | 130min | 3 tasks | 10 files |
 | Phase 02 P09 | 35 min | 3 tasks | 7 files |
 | Phase 02-recall-first-search P10 | 23min | 3 tasks | 7 files |
+| Phase 03 P01 | 2h19m | 3 tasks | 22 files |
 
 ## Operator Next Steps
 
