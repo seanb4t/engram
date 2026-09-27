@@ -373,7 +373,7 @@ out to the CLI.
 
 - [x] **Phase 1: Store Prerequisites** - Authz-gated Archive/Restore, RelatedMemories, and ListTags land in `internal/store`, no proto or UI yet (completed 2026-09-26)
 - [x] **Phase 01.1: Console Sketches (INSERTED)** - Throwaway HTML sketches of the console surfaces to pick a visual direction before any UI-SPEC (completed 2026-09-26)
-- [ ] **Phase 2: Recall-First Search** - Honest id/short_id/text resolution, server-driven command palette, dense virtualized results row with facets and score/relevance
+- [x] **Phase 2: Recall-First Search** - Honest id/short_id/text resolution, server-driven command palette, dense virtualized results row with facets and score/relevance (completed 2026-09-26)
 - [ ] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided
 - [ ] **Phase 4: Curation Surfaces** - Supersede, archive/restore, rules, and scheduled views for operators, with resume-envelope coverage, an a11y audit, and an e2e round trip
 - [ ] **Phase 5: Related-Memories Graph & Tag Cloud** - A local, keyboard/ARIA-equivalent related-memories graph and a count-based tag cloud
@@ -443,7 +443,7 @@ they searched.
   6. A user can narrow results by category/tags/time window/derived state/scope as removable, URL-persisted filter chips, and pick a scope from an autocomplete combobox showing each scope's readable-record count
   7. The project-local `engram-console-conventions` and `engram-connect-client` skills exist and this phase's UI-SPEC cites them
 
-**Plans:** 10/10 plans executed
+**Plans:** 10/10 plans complete
 **UI hint**: yes
 
 Plans:
@@ -602,7 +602,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 25. Supersession with History | v0.11.x | 2/2 | Complete   | 2026-07-19 |
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
-| 2. Headless CLI Client | v0.12.x | 4/4 | In Progress|  |
+| 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-09-26 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | In Progress|  |
 | 4. Diagnosability | v0.12.x | 4/4 | In Progress|  |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
