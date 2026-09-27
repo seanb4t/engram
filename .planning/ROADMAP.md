@@ -534,7 +534,7 @@ and end-to-end check.
   4. A resume round-trip test proves a draft on every new write surface (supersede, archive, rules, scheduled) survives an OIDC re-login
   5. A WCAG 2.2 keyboard/contrast audit and Web Interface Guidelines review pass, or findings are fixed or recorded, using the vetted third-party skills once `fable-security-review` clears them; the chromedp console e2e exercises entry-point resolution, a supersede, and an archive/restore round trip against a live server
 
-**Plans:** 10/12 plans executed
+**Plans:** 11/12 plans executed
 **UI hint**: yes
 
 Plans:
@@ -562,7 +562,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 04-11-PLAN.md — WCAG 2.2 AA audit and fixes on every new surface, WIG findings filed, skills brought current (D-01, D-14, D-16, D-17; DSYS-03)
+- [x] 04-11-PLAN.md — WCAG 2.2 AA audit and fixes on every new surface, WIG findings filed, skills brought current (D-01, D-14, D-16, D-17; DSYS-03)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
