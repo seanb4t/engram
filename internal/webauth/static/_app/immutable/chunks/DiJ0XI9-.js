@@ -1,0 +1,1 @@
+var e=[`convention`,`gotcha`,`decision`,`preference`],t=[`archived`,`superseded`,`scheduled`];function n(e,t,n,r,i,a,o,s,c){return[`listMemories`,e,t,n,r,i,a,o,s,c]}export{t as n,n as r,e as t};
