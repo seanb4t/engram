@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 12
+open_count: 13
 waived_count: 0
 fixed_count: 7
-total_count: 19
-last_updated: 2026-09-27T11:01:45.242Z
+total_count: 20
+last_updated: 2026-09-27T14:15:14.028Z
 ---
 
 # Broken Windows Ledger
@@ -34,6 +34,7 @@ last_updated: 2026-09-27T11:01:45.242Z
 | 17 | 2 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete cannot flip ROW-02/ROW-03 (or any requirement this milestone) — every traceability row was seeded 'Mapped' at milestone creation, a Status value the verb does not recognize as a flippable FROM-state; milestone-wide and pre-existing (STORE-01/Phase1 is still unchecked too), not caused by this plan | open |  | 2026-09-26T20:44:01.413Z |  |
 | 18 | 03 | deviation | .planning/phases/03-curation-rpcs-mcp-tools/03-04-PLAN.md | 65 | Pre-existing key_links escaping-shape finding in a sibling plan (03-04), predates 03-01 execution; deferred, see deferred-items.md | open |  | 2026-09-27T06:50:17.582Z |  |
 | 19 | 03 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete cannot flip any ID (RPC-01..06 included) because the Traceability table's Status column reads 'Mapped' instead of 'Pending'/'Gaps Found' — milestone-wide, pre-existing since 2026-09-25; see phase 03 deferred-items.md | open |  | 2026-09-27T11:01:45.242Z |  |
+| 20 | 04 | stub | ui/src/lib/components/CurationSurfaces.svelte |  | onreauth(ids) parameter accepted but unused; calls redirectToLogin() only. Plan 04-06 adds the v2 resume-envelope persist before this redirect, consuming ids. | open |  | 2026-09-27T14:15:14.028Z |  |
 
 ````json
 [
@@ -272,6 +273,19 @@ last_updated: 2026-09-27T11:01:45.242Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-27T11:01:45.242Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 20,
+    "kind": "stub",
+    "phase": "04",
+    "file": "ui/src/lib/components/CurationSurfaces.svelte",
+    "line": null,
+    "description": "onreauth(ids) parameter accepted but unused; calls redirectToLogin() only. Plan 04-06 adds the v2 resume-envelope persist before this redirect, consuming ids.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-27T14:15:14.028Z",
     "resolved_at": null,
     "milestone": null
   }
