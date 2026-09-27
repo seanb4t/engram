@@ -65,9 +65,15 @@ derivation agrees).
 - `expired` is evaluated before `scheduled` and, when both windows would otherwise apply
   (an inverted `not_before`/`not_after` pair), suppresses it — a record is never both.
 - **Dim iff past:** `isPastState(words)` is true when `archived`, `superseded`, or `expired` is
-  present. A row/card with a past state renders its summary, category, tags and scope at ~50%
-  opacity (`ResultRow.svelte`'s `.dim` class). `scheduled` alone never dims — it describes a
-  record's future, not its past.
+  present. A row/card with a past state renders its summary, category, tags and scope in
+  `var(--muted-foreground)` (`ResultRow.svelte`'s `.dim` classes) rather than opacity — a raw
+  `opacity: 0.5` on the category/scope hues failed WCAG 2.2 AA's 4.5:1 (DSYS-03, D-17;
+  `.planning/phases/04-curation-surfaces/04-A11Y-AUDIT.md`). Only the category dot stays
+  opacity-dimmed (`.cat.dim .cat-dot`) — it's decorative (non-text), exempt from the text
+  contrast requirement. An active/opened row (background `var(--selected)`) falls back to the
+  same `--muted-foreground` treatment for its category word even when NOT dim, since the raw
+  category hues also fail against that tinted background. `scheduled` alone never dims — it
+  describes a record's future, not its past.
 - **Chip colour:** neutral mono chip by default; `expired` in `--warning`; `scheduled` in
   `--primary`; `superseded` and `archived` stay neutral.
 - **Overflow:** state chips first try to fit; on overflow they collapse to `first +N` (the
@@ -117,7 +123,7 @@ a semantic text query under any circumstance.
 ## Honest feedback
 
 Every result set — ranked, unranked, empty, or failed, on every recall surface (`/search`, the
-header dropdown, `/`, `/observe`) — states what was actually searched. `ui/src/lib/search/recall-header.ts`
+header dropdown, `/`, `/rules`, `/scheduled`) — states what was actually searched. `ui/src/lib/search/recall-header.ts`
 is the **one** formatter for this copy; nothing renders header/empty-state text ad hoc.
 
 - **Populated (ranked):** `{N} hits across {M} scopes for {query} · ranked by cosine · {K} hidden
@@ -152,7 +158,12 @@ with `aria-activedescendant` tracking the active one (`ui/src/lib/components/Res
 | `j` / `k`, `↑` / `↓` | Move the active row |
 | `Home` / `End` | Jump to the first/last row |
 | `Enter` | Toggle the detail pane for the active row (second `Enter`/click on the open row closes it) |
-| `Esc` | Close the topmost layer only — hover card first, then the pane — then blur |
+| `x` | Toggle the active row's selection (D-02, Phase 4) |
+| `⇧X` / `⇧click` | Select an inclusive range from the anchor row to the active/clicked row (D-02, Phase 4) |
+| `⇧S` | Supersede the selection (list order), or the active row alone when nothing is selected (D-01/D-16, Phase 4) — the only row action requiring a modifier, deliberately, because it has no undo |
+| `a` | Archive the selection, or the active row alone (D-01/D-16, Phase 4) |
+| `⇧A` | Restore the selection, or the active row alone (D-01/D-16, Phase 4) |
+| `Esc` | **Tiered** (D-03, Phase 4): clears the selection first (if any), then closes the topmost layer — hover card, then the pane — then blurs |
 | `e` | Edit the active row (never for `rule`/`discovery` categories) |
 | `s` | Share/make-private the active row (never for `rule`) |
 | `#` | Delete the active row (through the existing confirm dialog) |
@@ -160,11 +171,15 @@ with `aria-activedescendant` tracking the active one (`ui/src/lib/components/Res
 | `⇧C` | Copy the active row's full id |
 | `⌘+` / `⌘-` / `⌘0` | Step / reset the site-wide text-size preference |
 
-Row-action keys (`e`/`s`/`#`/`c`/`⇧C`) and every navigation key are ignored while a text field has
-focus or any modifier key is held (`ResultsList.svelte`'s `isTypingTarget` guard and the bare
-`event.metaKey || event.ctrlKey || event.altKey` early return). Supersede and Archive are
-reserved letters but **not bound** — those RPCs land in Phase 4 (D-16). Every visible shortcut is
-shown as a `<kbd>` hint in the listbox legend.
+Row-action keys (`e`/`s`/`#`/`c`/`⇧C`/`x`/`⇧X`/`a`/`⇧A`/`⇧S`) and every navigation key are ignored
+while `event.metaKey || event.ctrlKey || event.altKey` (`ResultsList.svelte`'s `onKeydown` guard)
+— Shift is never in that set, so `event.key`'s native uppercase form (`S`/`A`/`X` for
+`⇧s`/`⇧a`/`⇧x`) reaches the same `switch` as every bare key, each bound as its own distinct case;
+there is no separate "which keys may carry Shift" allowlist. Row-action keys are additionally
+ignored while a text field has focus (`isTypingTarget`) — navigation keys are unaffected. Every
+visible shortcut is shown as a `<kbd>` hint in the listbox legend, and a hint renders only for a
+key the host actually bound (e.g. the `⇧S` hint appears only when the route supplied
+`onsupersede`).
 
 ## Where the code lives
 
@@ -172,14 +187,26 @@ shown as a `<kbd>` hint in the listbox legend.
 |---|---|
 | Tokens | `ui/src/app.css` |
 | State-word derivation | `ui/src/lib/memorystate.ts` |
-| Row rendering, state chips, overflow | `ui/src/lib/components/ResultRow.svelte` |
-| Listbox / keyboard model | `ui/src/lib/components/ResultsList.svelte` |
+| Row rendering, state chips, overflow, dim treatment | `ui/src/lib/components/ResultRow.svelte` |
+| Listbox / keyboard model / selection | `ui/src/lib/components/ResultsList.svelte` |
+| Row hover toolbar (supersede/archive/restore/chain) | `ui/src/lib/components/RowActions.svelte` |
+| Results header / bulk-selection bar | `ui/src/lib/components/ResultsHeader.svelte` |
+| Curation host: supersede/archive/restore, resume reopen, chain hosting | `ui/src/lib/components/CurationSurfaces.svelte` |
+| Curation host registry (⌘K row actions) | `ui/src/lib/curation/host.svelte.ts` |
+| Post-write row flash | `ui/src/lib/curation/flash.svelte.ts` |
+| Supersede confirm/preview dialog | `ui/src/lib/components/SupersedeDialog.svelte` |
+| Archive/restore confirm dialog | `ui/src/lib/components/ArchiveConfirmDialog.svelte` |
+| Supersession chain dialog | `ui/src/lib/components/ChainDialog.svelte` |
+| Delete confirm dialog (memory/discovery/rule kinds) | `ui/src/lib/components/DeleteConfirmDialog.svelte` |
+| Rules view (CUR-03) | `ui/src/routes/rules/+page.svelte`, `ui/src/lib/search/rules-params.ts` |
+| Scheduled view (CUR-04) | `ui/src/routes/scheduled/+page.svelte`, `ui/src/lib/search/scheduled-params.ts` |
 | Scope chip + parsing | `ui/src/lib/components/ScopeChip.svelte`, `ui/src/lib/scope.ts` |
 | Scope combobox (approximate counts) | `ui/src/lib/components/ScopeCombobox.svelte` |
 | Classifier | `ui/src/lib/search/classify.ts` |
 | Honest-feedback copy | `ui/src/lib/search/recall-header.ts` |
 | Empty/error rendering | `ui/src/lib/components/RecallState.svelte` |
 | Site-wide text size | `ui/src/lib/display.svelte.ts` |
+| WCAG 2.2 AA audit helper (test-only) | `ui/src/lib/a11y/axe.ts` |
 
 For the design rationale behind these choices — why 28px rows, why 250ms hover delay, what
 layouts were tried and rejected — see `Skill("sketch-findings-engram")`.

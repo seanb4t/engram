@@ -69,9 +69,13 @@ Every `createQuery`/`createInfiniteQuery` in this codebase follows the same shap
 
 ## URL state
 
-`ui/src/lib/search/params.ts` (`/search`) and `ui/src/lib/queries.ts` (`/observe`'s
-`parseObserveParams`/`observeSearch`) are the codecs between a route's `URLSearchParams` and its
-typed params object. Rules both follow:
+`ui/src/lib/search/params.ts` (`/search`), `ui/src/lib/search/rules-params.ts` (`/rules`), and
+`ui/src/lib/search/scheduled-params.ts` (`/scheduled`) are the codecs between a route's
+`URLSearchParams` and its typed params object. `/` (root) has none — its "recent memories" feed is
+a fixed, unparametrized `ListMemories` read with no URL state of its own (D-14: the offset-mode
+listing route this once lived on was retired in Phase 4 and folded into `/`'s recent feed;
+`queries.ts`'s former parse/search helpers for that route no longer exist). Rules all three codecs
+follow:
 
 - **One parse function, one encode function, per route** — declared once so the two cannot drift
   out of sync (a param the encoder writes that the parser does not read, or vice versa, is a bug).
@@ -115,23 +119,31 @@ originating route):
   destination route still needs it to reopen the write sheet. The destination route's `WriteSurfaces`
   host calls `consumeResume()` only via the form's `onresumeapplied` callback, i.e. only after the
   restored values have actually been applied — never eagerly, never twice.
-- **`ALLOWED_DESTINATIONS`** (`resume.ts`): `['/observe', '/search', '/discovery']`. A
-  `returnPath` that does not resolve (via `normalizeReturnPath`) to one of these — including an
-  absolute/off-app URL — fails `isAllowedDestination` and the envelope is discarded rather than
-  followed; this closes an open-redirect-shaped tampering path. Any new route wanting resume
-  support must be added to this list.
-- The envelope carries a schema version (`v`) and a 10-minute TTL (`ts`); `peekResume()` returns
-  `null` on bad JSON, a version mismatch, an expired TTL, or a structurally invalid shape — never
-  hands the host a malformed object typed as valid.
+- **`ALLOWED_DESTINATIONS`** (`resume.ts`): `['/search', '/discovery', '/rules', '/scheduled']`
+  (Phase 4, D-16 — the retired offset-mode listing route was dropped from this list; `/` itself
+  never owns `peekResume`/`consumeResume`, it only relays). A `returnPath` that does not resolve
+  (via `normalizeReturnPath`) to one of these — including an absolute/off-app URL — fails
+  `isAllowedDestination` and the envelope is discarded rather than followed; this closes an
+  open-redirect-shaped tampering path. Any new route wanting resume support must be added to this
+  list.
+- The envelope carries a schema version (`v`, `RESUME_VERSION = 2` as of Phase 4) and a 10-minute
+  TTL (`ts`); `peekResume()` returns `null` on bad JSON, a version mismatch, an expired TTL, or a
+  structurally invalid shape — never hands the host a malformed object typed as valid. Five
+  envelope kinds share the union (`ResumeEnvelope`, `resume.ts`): `memory`/`discovery` (the
+  pre-Phase-4 write forms) and `supersede`/`archive`/`delete` (Phase 4's curation surfaces) — a v1
+  (pre-Phase-4) `memory`/`discovery` draft still restores, since v2 only adds kinds rather than
+  rewriting the schema. Write forms and curation dialogs alike call ONLY `persistResume(draft)`;
+  the destination route/host stays the sole `peekResume`/`consumeResume` owner either way — a
+  curation dialog reopens with its restored fields but takes no automatic network action (D-15).
 
 ## Per-RPC contract (Phase 2 surfaces)
 
 | RPC | Client | Request fields (this phase's usage) | Response fields | URL-persisted (which route) |
 |---|---|---|---|---|
 | `SearchMemories` | `engram` | `query, scope, crossSpine, k, tags, categories, full, createdAfter, createdBefore, includeArchived, includeSuperseded, includeScheduled` | `memories[], searchedScopes[], scopesTruncated, scopesUnknown, recallGateHidden` | `/search`: `q, scope, xs, cat, tag, after, before, inc, k` |
-| `ListMemories` | `engram` | Offset mode (`/observe`): `scope, limit, offset, categories, visibility, includeArchived, includeSuperseded, includeScheduled`. Cursor mode (`/search` operator-only, D-09): adds `cursorMode: true, pageToken, crossSpine, full: true` in place of `offset` | `memories[], total, nextPageToken, searchedScopes[], scopesTruncated, scopesUnknown, recallGateHidden, approximate` | `/observe`: `scope, cat, vis, inc, offset, sel`. `/search`: same query params as the operator-only case, cursor state kept in-memory (`createInfiniteQuery`), not URL-persisted |
-| `GetMemory` | `engram` | `{ id }` — a UUID, or a resolved id after a short_id lookup | `memory` (FULL record — `content` populated; a list/search row is summary-shaped with `content` cleared server-side) | `/search`: `q` (id/short_id-shaped); `/observe` and `/`: `sel` |
-| `ListScopes` | `engram` | `{}` (no fields) | `scopes[]` (`{ scope, count }`), `approximate` | Not URL-persisted (loaded unconditionally on `/`, `/observe`, `/search`'s `FacetStrip`) |
+| `ListMemories` | `engram` | Offset mode (`/`'s fixed recent-memories feed, D-14): `scope, limit, offset, categories, visibility, crossSpine`, unparametrized (always the same request, no URL state). Cursor mode (`/search` operator-only, D-09): adds `cursorMode: true, pageToken, crossSpine, full: true` in place of `offset` | `memories[], total, nextPageToken, searchedScopes[], scopesTruncated, scopesUnknown, recallGateHidden, approximate` | `/`: none (fixed feed). `/search`: same query params as the operator-only case, cursor state kept in-memory (`createInfiniteQuery`), not URL-persisted |
+| `GetMemory` | `engram` | `{ id }` — a UUID, or a resolved id after a short_id lookup | `memory` (FULL record — `content` populated; a list/search row is summary-shaped with `content` cleared server-side) | `/search`: `q` (id/short_id-shaped); `/rules`: `sel`; `/scheduled`: `sel`; `/`: no `sel` (a row/tile activation navigates to `/search?q=<id>` instead, D-14) |
+| `ListScopes` | `engram` | `{}` (no fields) | `scopes[]` (`{ scope, count }`), `approximate` | Not URL-persisted (loaded unconditionally on `/`, `/search`'s `FacetStrip`) |
 
 `recall_gate_hidden` on `SearchMemories`/`ListMemories` reports `{ total, archived, superseded,
 expired, scheduled }` counts of records the recall gate hid from that specific call — always
@@ -163,8 +175,13 @@ shape) keyed by `RelatedEdge.type` (`vector | tag | citation | supersession`) �
 before touching `value`, never assume which arm is populated from `type` alone without also
 checking `case` matches (defensive; the server always keeps them in lockstep, D-12).
 
-After a successful `ArchiveMemory`, `RestoreMemory`, or `SupersedeMemory` call, invalidate the
-`'searchMemories'`, `'listMemories'`, `'getMemory'`, `'listScheduled'`, `'relatedMemories'`, and
-`'listTags'` query-key prefixes — any of the three writes can change what those six read
-queries would return (an archived/restored/superseded record's recall visibility, its
+After a successful `ArchiveMemory`, `RestoreMemory`, or `SupersedeMemory` call
+(`invalidateAfterCuration`, `ui/src/lib/mutations/curation.ts`), invalidate seven query-key
+prefixes — but not identically: `'searchMemories'`, `'listMemories'`, `'listScheduled'`, and
+`'listRules'` invalidate with `refetchType: 'none'` (D-10) — the write already patched the
+affected rows in place (`applyArchiveResultsOptimistic`/its supersede analogue), so a background
+refetch on next mount/focus keeps the cache honest without yanking the **visible** list out from
+under the operator; `'getMemory'`, `'relatedMemories'`, and `'listTags'` refetch normally, since
+those are not the "don't jump the list" surface. Any of the three writes can change what these
+seven read queries would return (an archived/restored/superseded record's recall visibility, its
 neighbourhood, or its tag counts).
