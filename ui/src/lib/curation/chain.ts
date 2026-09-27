@@ -81,12 +81,22 @@ export function compareChainNodes(a: ChainNode, b: ChainNode): number {
 // buildChain places headResp.anchor at depth 0 and every PREDECESSOR-edged
 // memory in headResp.related at its edge depth, groups by depth, sorts each
 // group with compareChainNodes, and returns columns deepest-first (index 0
-// is the oldest) so the dialog renders oldest-left to head-right.
+// is the oldest) so the dialog renders oldest-left to head-right. For every
+// readable node, a predecessor id listed in its own `supersedes` that is NOT
+// among the readable nodes gets a placeholder ChainNode one depth further
+// out, so depth and column order stay honest instead of silently collapsing
+// (E3 partial). beyondCap is true when the head's own supersededBy is still
+// set — the forward walk from the anchor stopped at the 8-hop cap rather
+// than genuinely finding no successor.
 export function buildChain(headResp: RelatedMemoriesResponse, anchorId: string): ChainModel {
   const headMem = headResp.anchor;
   const headId = headMem?.id ?? '';
   const byDepth = new Map<number, ChainNode[]>();
-  if (headMem) byDepth.set(0, [toNode(headMem, 0)]);
+  const readable = new Map<string, { mem: Memory; depth: number }>();
+  if (headMem) {
+    byDepth.set(0, [toNode(headMem, 0)]);
+    readable.set(headMem.id, { mem: headMem, depth: 0 });
+  }
 
   for (const rel of headResp.related) {
     if (!rel.memory) continue;
@@ -96,7 +106,20 @@ export function buildChain(headResp: RelatedMemoriesResponse, anchorId: string):
         const arr = byDepth.get(depth) ?? [];
         arr.push(toNode(rel.memory, depth));
         byDepth.set(depth, arr);
+        readable.set(rel.memory.id, { mem: rel.memory, depth });
       }
+    }
+  }
+
+  const placeholdersAdded = new Set<string>();
+  for (const { mem: node, depth } of readable.values()) {
+    for (const predId of node.supersedes) {
+      if (readable.has(predId) || placeholdersAdded.has(predId)) continue;
+      placeholdersAdded.add(predId);
+      const phDepth = depth + 1;
+      const arr = byDepth.get(phDepth) ?? [];
+      arr.push({ id: predId, shortId: '', summary: '', category: '', kind: '', depth: phDepth, placeholder: true });
+      byDepth.set(phDepth, arr);
     }
   }
 
@@ -115,5 +138,7 @@ export function buildChain(headResp: RelatedMemoriesResponse, anchorId: string):
     }
   }
 
-  return { headId, anchorId, anchorDepth, columns, beyondCap: false };
+  const beyondCap = !!headMem?.supersededBy;
+
+  return { headId, anchorId, anchorDepth, columns, beyondCap };
 }
