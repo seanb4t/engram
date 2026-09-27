@@ -303,3 +303,14 @@ func listScheduledRequestToArgs(req *engramv1.ListScheduledRequest) listSchedule
 		Cursor:        req.GetPageToken(),
 	}
 }
+
+// listRulesRequestToArgs maps ListRulesRequest onto listRulesArgs (plan
+// 03-04, D-10): Scopes/Tags/Full mirror the pre-existing MCP fields
+// verbatim — an empty Scopes list is the all-scopes read on this lane too.
+func listRulesRequestToArgs(req *engramv1.ListRulesRequest) listRulesArgs {
+	return listRulesArgs{
+		Scopes: req.GetScopes(),
+		Tags:   req.GetTags(),
+		Full:   req.GetFull(),
+	}
+}

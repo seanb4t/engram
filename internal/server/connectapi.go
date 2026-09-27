@@ -611,6 +611,36 @@ func (a *engramAPI) ListScheduled(ctx context.Context, req *connect.Request[engr
 	}), nil
 }
 
+// ListRules (plan 03-04, D-10) delegates to the SAME d.listRuleRecords core
+// the list_rules MCP tool calls, mapping the request via
+// listRulesRequestToArgs and any error via connectError — the same
+// thin-adapter shape as every other RPC in this file. Coverage comes from
+// the SAME searchedScopes helper every cross-spine surface uses, filtered to
+// rule:* scopes by ruleScopeCoverage (T-03-18: never a raw searchedScopes
+// call on this RPC). Rules are shaped through shapeProtoMemories exactly
+// like ListMemories, so args.Full governs the compact-vs-full projection on
+// this lane too.
+func (a *engramAPI) ListRules(ctx context.Context, req *connect.Request[engramv1.ListRulesRequest]) (*connect.Response[engramv1.ListRulesResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	args := listRulesRequestToArgs(req.Msg)
+	rules, advisory, err := a.d.listRuleRecords(ctx, c, args)
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	allScopes := len(args.Scopes) == 0
+	cov := a.d.ruleScopeCoverage(ctx, c, allScopes)
+	return connect.NewResponse(&engramv1.ListRulesResponse{
+		Rules:           shapeProtoMemories(rules, args.Full, a.d.summaryMaxChars),
+		Advisory:        advisory,
+		SearchedScopes:  cov.Scopes,
+		ScopesTruncated: cov.Truncated,
+		ScopesUnknown:   cov.Unknown,
+	}), nil
+}
+
 // connectResolver supplies the per-request identity TokenInfo for the
 // Connect lane, plus WHICH credential family authenticated it (auth.Lane,
 // D-07). NewConnectResolver composes the bearer half and the webauth

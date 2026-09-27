@@ -83,6 +83,8 @@ const (
 	// EngramServiceListScheduledProcedure is the fully-qualified name of the EngramService's
 	// ListScheduled RPC.
 	EngramServiceListScheduledProcedure = "/engram.v1.EngramService/ListScheduled"
+	// EngramServiceListRulesProcedure is the fully-qualified name of the EngramService's ListRules RPC.
+	EngramServiceListRulesProcedure = "/engram.v1.EngramService/ListRules"
 )
 
 // EngramServiceClient is a client for the engram.v1.EngramService service.
@@ -107,6 +109,8 @@ type EngramServiceClient interface {
 	SupersedeMemory(context.Context, *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error)
 	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-03) ---
 	ListScheduled(context.Context, *connect.Request[v1.ListScheduledRequest]) (*connect.Response[v1.ListScheduledResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-04) ---
+	ListRules(context.Context, *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error)
 }
 
 // NewEngramServiceClient constructs a client for the engram.v1.EngramService service. By default,
@@ -216,6 +220,12 @@ func NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(engramServiceMethods.ByName("ListScheduled")),
 			connect.WithClientOptions(opts...),
 		),
+		listRules: connect.NewClient[v1.ListRulesRequest, v1.ListRulesResponse](
+			httpClient,
+			baseURL+EngramServiceListRulesProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("ListRules")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -237,6 +247,7 @@ type engramServiceClient struct {
 	restoreMemory     *connect.Client[v1.RestoreMemoryRequest, v1.RestoreMemoryResponse]
 	supersedeMemory   *connect.Client[v1.SupersedeMemoryRequest, v1.SupersedeMemoryResponse]
 	listScheduled     *connect.Client[v1.ListScheduledRequest, v1.ListScheduledResponse]
+	listRules         *connect.Client[v1.ListRulesRequest, v1.ListRulesResponse]
 }
 
 // ListScopes calls engram.v1.EngramService.ListScopes.
@@ -319,6 +330,11 @@ func (c *engramServiceClient) ListScheduled(ctx context.Context, req *connect.Re
 	return c.listScheduled.CallUnary(ctx, req)
 }
 
+// ListRules calls engram.v1.EngramService.ListRules.
+func (c *engramServiceClient) ListRules(ctx context.Context, req *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error) {
+	return c.listRules.CallUnary(ctx, req)
+}
+
 // EngramServiceHandler is an implementation of the engram.v1.EngramService service.
 type EngramServiceHandler interface {
 	ListScopes(context.Context, *connect.Request[v1.ListScopesRequest]) (*connect.Response[v1.ListScopesResponse], error)
@@ -341,6 +357,8 @@ type EngramServiceHandler interface {
 	SupersedeMemory(context.Context, *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error)
 	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-03) ---
 	ListScheduled(context.Context, *connect.Request[v1.ListScheduledRequest]) (*connect.Response[v1.ListScheduledResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-04) ---
+	ListRules(context.Context, *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error)
 }
 
 // NewEngramServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -446,6 +464,12 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(engramServiceMethods.ByName("ListScheduled")),
 		connect.WithHandlerOptions(opts...),
 	)
+	engramServiceListRulesHandler := connect.NewUnaryHandler(
+		EngramServiceListRulesProcedure,
+		svc.ListRules,
+		connect.WithSchema(engramServiceMethods.ByName("ListRules")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/engram.v1.EngramService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case EngramServiceListScopesProcedure:
@@ -480,6 +504,8 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 			engramServiceSupersedeMemoryHandler.ServeHTTP(w, r)
 		case EngramServiceListScheduledProcedure:
 			engramServiceListScheduledHandler.ServeHTTP(w, r)
+		case EngramServiceListRulesProcedure:
+			engramServiceListRulesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -551,4 +577,8 @@ func (UnimplementedEngramServiceHandler) SupersedeMemory(context.Context, *conne
 
 func (UnimplementedEngramServiceHandler) ListScheduled(context.Context, *connect.Request[v1.ListScheduledRequest]) (*connect.Response[v1.ListScheduledResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ListScheduled is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) ListRules(context.Context, *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ListRules is not implemented"))
 }

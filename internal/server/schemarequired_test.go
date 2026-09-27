@@ -306,12 +306,12 @@ func TestSchemaRequiredMovedToGoLevel(t *testing.T) {
 			return validateStoreRule(storeRuleArgs{Content: "c", Scope: "rule:repo:x"})
 		}},
 
-		// listRulesArgs.Scopes — deps.listRules, MCP-only.
-		{"listRulesArgs.Scopes", "scopes", HintRequired, func() error {
-			d := &deps{}
-			_, _, err := d.listRules(ctx, c, listRulesArgs{})
-			return err
-		}},
+		// listRulesArgs.Scopes: NO LONGER a required-field row (milestone
+		// 2026-09-25.01 Phase 3 plan 03-04, D-10/D-19) — an empty/omitted
+		// Scopes list is now the all-scopes read, not a rejection. The
+		// per-entry validRuleScope guard (a blank or non-rule scope INSIDE a
+		// non-empty list) is still enforced and is pinned separately by
+		// TestListRulesRejectsEmptyScope (rules_test.go), not this table.
 	}
 
 	if len(cases) < 24 {

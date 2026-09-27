@@ -532,6 +532,36 @@ message ListScheduledResponse {
   bool scopes_unknown = 5;
 }
 
+// ListRulesRequest widens list_rules' contract onto Connect (plan 03-04,
+// D-10): scopes empty (proto3 default for a repeated field) is now the
+// all-scopes read — one cross-scope read of every readable rule:* scope, up
+// to 1000 rules IN TOTAL, oldest-first across the whole result — rather than
+// a rejection; explicit scopes keep today's contract, up to 1000 rules PER
+// SCOPE, oldest-first within each, in the order supplied. No buf.validate
+// rule is attached: the single shared server-side core (listRuleRecords)
+// validates a blank or non-rule scope entry, so both lanes return the
+// byte-identical field=/hint= rejection envelope.
+message ListRulesRequest {
+  repeated string scopes = 1; // empty = every readable rule:* scope, one read up to 1000 rules in total
+  repeated string tags = 2;   // empty = all; non-empty = rules carrying ALL listed tags (AND)
+  bool full = 3;              // false (default) returns compact (content cleared) rules; true returns full content
+}
+message ListRulesResponse {
+  repeated Memory rules = 1;
+  // advisory is the curation-smell note (empty when no scope in the result
+  // is over the soft per-scope threshold); it never changes which rules are
+  // returned.
+  string advisory = 2;
+  // searched_scopes/scopes_truncated/scopes_unknown: present only on the
+  // all-scopes read (an empty scopes list on the request) — see
+  // ListMemoriesResponse.searched_scopes for the shared three-state
+  // semantics. Unlike ListMemoriesResponse, these name ONLY rule:* scopes —
+  // never a non-rule scope the same caller can also read (D-10).
+  repeated string searched_scopes = 3;
+  bool scopes_truncated = 4;
+  bool scopes_unknown = 5;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
@@ -553,4 +583,6 @@ service EngramService {
   rpc SupersedeMemory(SupersedeMemoryRequest) returns (SupersedeMemoryResponse);
   // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-03) ---
   rpc ListScheduled(ListScheduledRequest) returns (ListScheduledResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-04) ---
+  rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
 }

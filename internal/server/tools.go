@@ -3133,18 +3133,25 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("stored rule %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: fmt.Sprintf("List the COMPLETE rule set for one or more rule:* scopes, up to %d per scope, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", store.MaxRecallLimit), Annotations: annotationsFor("list_rules")},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: fmt.Sprintf("List the COMPLETE rule set for one or more rule:* scopes, up to %d per scope, oldest-first; omit scopes to list every readable rule scope's rules (up to %d in total) with searched_scopes / scopes_truncated (or scopes_unknown) naming the rule scopes covered. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", store.MaxRecallLimit, store.MaxRecallLimit), Annotations: annotationsFor("list_rules")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listRulesArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
 			rules, advisory, err := d.listRules(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
 			result := map[string]any{"rules": rules}
 			if advisory != "" {
 				result["advisory"] = advisory
 			}
-			return nil, result, err
+			// D-10: an empty/omitted Scopes list is the all-scopes read; coverage
+			// (searched_scopes/scopes_truncated/scopes_unknown) is added ONLY on
+			// that path, and names rule:* scopes only (ruleScopeCoverage).
+			allScopes := len(a.Scopes) == 0
+			return nil, recallResultMap(result, allScopes, d.ruleScopeCoverage(ctx, c, allScopes)), nil
 		})
 	return nil
 }

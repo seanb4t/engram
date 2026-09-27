@@ -573,25 +573,31 @@ Returns the stored rule's `id` and `short_id`.
 
 List the **complete** rule set for one or more `rule:*` scopes, up to 1000
 rules per scope (the same documented recall maximum every other listing/search
-tool shares), oldest-first. Rules are the repository/project's normative
-ground truth.
+tool shares), oldest-first; omit `scopes` to list every readable rule scope's
+rules in ONE cross-scope read, up to 1000 rules **in total** rather than per
+scope. Rules are the repository/project's normative ground truth.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `scopes` | string[] | yes | One or more `rule:*` scopes to fetch the complete rule set from |
+| `scopes` | string[] | no | One or more `rule:*` scopes to fetch the complete rule set from; omit for every readable rule scope's rules |
 | `tags` | string[] | no | Restrict to rules carrying **all** listed tags (AND) |
 | `full` | bool | no | `true` adds full content; default returns the compact index shape |
 
 The default compact shape is a `ruleView` (`short_id`, `id`, `summary`, `tags`,
 `scope`, `created_at`) — note it carries no `content`, so a contradiction or
 duplication check needs `full=true`. `full=true` returns the full records.
-Ordering is oldest-first (this ascending order is specific to `list_rules`).
+Ordering is oldest-first (this ascending order is specific to `list_rules`),
+within each explicit scope and across the whole all-scopes read alike.
 The result is returned as structured content and, per MCP 2026-07-28, also as
 the same JSON in a text block.
 A per-scope count above 50 adds a curation-smell advisory to the result under
 `advisory` (absent otherwise) — the `rules` payload is unaffected. The
 advisory is a volume signal only: it says nothing about duplication or
 contradiction, and it cannot fire below 51 rules in a scope.
+Omitting `scopes` additionally carries `searched_scopes`/`scopes_truncated`
+(or `scopes_unknown`) naming ONLY the rule scopes covered — never a non-rule
+scope the caller can also read — see `list_memory` above for the shared
+three-state coverage semantics.
 
 ---
 
