@@ -6,6 +6,7 @@ import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
+import { tick } from 'svelte';
 import { headerSearch, handoffToHeaderSearch } from '$lib/search/header-search.svelte';
 import HeaderSearch from './HeaderSearch.svelte';
 
@@ -373,5 +374,29 @@ describe('HeaderSearch', () => {
 
     await expect.element(input).not.toHaveFocus();
     await expect.element(screen.getByRole('option', { name: 'Observe', exact: true })).not.toBeInTheDocument();
+  });
+});
+
+describe('HeaderSearch — typing is debounced (ENTRY-06)', () => {
+  it('waits for the 70ms debounce before querying, and never queries an intermediate keystroke', async () => {
+    searchMemoriesSpy.mockResolvedValue({ memories: [] });
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' }).element() as HTMLInputElement;
+
+    input.value = 'ab';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    input.value = 'abc';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+
+    expect(searchMemoriesSpy).not.toHaveBeenCalled();
+
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBe(1);
+    expect(searchMemoriesSpy.mock.calls[0][0]).toMatchObject({ query: 'abc' });
+
+    await new Promise((r) => setTimeout(r, 150));
+    expect(searchMemoriesSpy).toHaveBeenCalledTimes(1);
+    expect(searchMemoriesSpy.mock.calls.some((c) => (c[0] as { query: string }).query === 'ab')).toBe(false);
   });
 });

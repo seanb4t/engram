@@ -586,3 +586,28 @@ describe('search route — re-auth landing recovery', () => {
     expect(consumeResumeSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('search route — typing is debounced (ENTRY-06)', () => {
+  it('coalesces rapid keystrokes into a single replaceState navigation for the final value', async () => {
+    pageState.url.href = 'http://localhost/search?q=';
+    const screen = await renderSearch();
+    gotoSpy.mockClear();
+
+    const input = screen.getByRole('textbox', { name: 'Search query' }).element() as HTMLInputElement;
+
+    for (const value of ['a', 'ab', 'abc']) {
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    expect(gotoSpy).not.toHaveBeenCalled();
+
+    await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
+    const [href, opts] = gotoSpy.mock.calls[0] as [string, { replaceState?: boolean }];
+    expect(href).toContain('q=abc');
+    expect(opts).toMatchObject({ replaceState: true });
+
+    await new Promise((r) => setTimeout(r, 250));
+    expect(gotoSpy).toHaveBeenCalledTimes(1);
+  });
+});
