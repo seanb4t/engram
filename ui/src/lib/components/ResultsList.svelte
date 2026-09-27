@@ -14,12 +14,17 @@
     loading = false,
     busy = false,
     hasMore = false,
+    selectable = false,
+    selectedIds = $bindable<string[]>([]),
     onloadmore,
     onopen,
     onescape,
     onedit,
     onvisibility,
-    ondelete
+    ondelete,
+    onsupersede,
+    onarchive,
+    onrestore
   }: {
     memories: Memory[];
     mode?: 'ranked' | 'unranked';
@@ -28,12 +33,17 @@
     loading?: boolean;
     busy?: boolean;
     hasMore?: boolean;
+    selectable?: boolean;
+    selectedIds?: string[];
     onloadmore?: () => void;
     onopen: (id: string) => void;
     onescape?: () => void;
     onedit?: (id: string) => void;
     onvisibility?: (m: Memory) => void;
     ondelete?: (id: string) => void;
+    onsupersede?: (ids: string[]) => void;
+    onarchive?: (ids: string[]) => void;
+    onrestore?: (ids: string[]) => void;
   } = $props();
 
   // D-07 / Pitfall A: @humanspeak/svelte-virtual-list's own viewport is a
@@ -256,6 +266,30 @@
     }
   }
 
+  // x toggles selection membership for one row, keeping `selectedIds` in
+  // LIST order (not insertion order) so a/A/S always submit ids in the
+  // order the rows appear, not the order they were selected.
+  function toggleSelection(id: string) {
+    if (selectedIds.includes(id)) {
+      selectedIds = selectedIds.filter((x) => x !== id);
+    } else {
+      const set = new Set(selectedIds);
+      set.add(id);
+      selectedIds = memories.filter((m) => set.has(m.id)).map((m) => m.id);
+    }
+  }
+
+  // a/A/S targets: the selection (in list order) when non-empty, else the
+  // active row alone.
+  function selectionTargets(): string[] {
+    if (selectedIds.length > 0) {
+      const set = new Set(selectedIds);
+      return memories.filter((m) => set.has(m.id)).map((m) => m.id);
+    }
+    const m = memories[activeIndex];
+    return m ? [m.id] : [];
+  }
+
   function handleListboxKey(key: string) {
     const current = activeIndex;
     switch (key) {
@@ -276,6 +310,27 @@
       case 'Enter': {
         const m = memories[current];
         if (m) onopen(m.id);
+        break;
+      }
+      case 'x': {
+        if (!selectable) break;
+        const m = memories[current];
+        if (m) toggleSelection(m.id);
+        break;
+      }
+      case 'a': {
+        const targets = selectionTargets();
+        if (targets.length > 0) onarchive?.(targets);
+        break;
+      }
+      case 'A': {
+        const targets = selectionTargets();
+        if (targets.length > 0) onrestore?.(targets);
+        break;
+      }
+      case 'S': {
+        const targets = selectionTargets();
+        if (targets.length > 0) onsupersede?.(targets);
         break;
       }
       case 'Escape':
@@ -328,9 +383,10 @@
   const showRel = $derived(memories.some((m) => m.relevance !== undefined));
 
   const NAV_KEYS = new Set(['j', 'k', 'ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter']);
-  // D-16: no binding for supersede or archive — reserved, not bound, until
-  // their RPCs land (Phase 3).
-  const ROW_ACTION_KEYS = new Set(['e', 's', '#', 'c', 'C']);
+  // D-16 update (Phase 4): x/a/A/S are now bound — x toggles selection, a
+  // archives, A (Shift+a) restores, S (Shift+s) supersedes the selection (or
+  // the active row alone when nothing is selected).
+  const ROW_ACTION_KEYS = new Set(['e', 's', '#', 'c', 'C', 'x', 'a', 'A', 'S']);
   const HANDLED_KEYS = new Set([...NAV_KEYS, ...ROW_ACTION_KEYS, 'Escape']);
 
   function isTypingTarget(target: EventTarget | null): boolean {
@@ -349,7 +405,10 @@
   // capture:true runs BEFORE the event reaches the library's target element,
   // so stopPropagation() here prevents the library's own Home/End/Arrow
   // native-scroll handling from ever firing for keys we own.
-  function listboxViewport(node: HTMLElement, params: { label: string; onKey: (key: string) => void }) {
+  function listboxViewport(
+    node: HTMLElement,
+    params: { label: string; onKey: (key: string) => void; selectable: boolean }
+  ) {
     let current = params;
 
     function findViewport(): HTMLElement | null {
@@ -372,6 +431,11 @@
       }
       vp.setAttribute('role', 'listbox');
       vp.setAttribute('aria-label', current.label);
+      if (current.selectable) {
+        vp.setAttribute('aria-multiselectable', 'true');
+      } else {
+        vp.removeAttribute('aria-multiselectable');
+      }
       viewportEl = vp;
     }
 
@@ -434,7 +498,7 @@
       class="results-listbox-wrapper"
       class:busy
       bind:this={wrapperEl}
-      use:listboxViewport={{ label, onKey: handleListboxKey }}
+      use:listboxViewport={{ label, onKey: handleListboxKey, selectable }}
     >
       <SvelteVirtualList
         bind:this={list}
@@ -456,7 +520,7 @@
           <div
             role="option"
             id={`opt-${m.id}`}
-            aria-selected={index === activeIndex}
+            aria-selected={selectable ? selectedIds.includes(m.id) : index === activeIndex}
             onclick={() => selectRow(m.id)}
             onmousemove={(e) => handleRowMouseMove(m, e.currentTarget as HTMLElement)}
             onmouseleave={() => handleRowMouseLeave(m)}
