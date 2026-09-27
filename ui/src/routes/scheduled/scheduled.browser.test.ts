@@ -1,17 +1,28 @@
 import { render } from 'vitest-browser-svelte';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, ArchiveOutcome, type Memory } from '$lib/gen/engram_pb';
+import { curationHost } from '$lib/curation/host.svelte.ts';
+import { persistResume, peekResume, type ArchiveResumeEnvelope } from '$lib/resume';
 import ScheduledPage from './+page.svelte';
 
 // `vi.hoisted` runs before this module's own imports are linked, so a
 // dynamic `import()` inside the (awaited) factory is used for SvelteURL —
 // mirrors search.browser.test.ts's identical ordering constraint.
-const { gotoSpy, pageState, listScheduledSpy, getMemorySpy } = await vi.hoisted(async () => {
+const {
+  gotoSpy,
+  pageState,
+  listScheduledSpy,
+  getMemorySpy,
+  archiveMemorySpy,
+  consumeResumeSpy,
+  redirectToLoginSpy,
+  toastSpy
+} = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/scheduled');
   const pageState = { url };
@@ -23,7 +34,11 @@ const { gotoSpy, pageState, listScheduledSpy, getMemorySpy } = await vi.hoisted(
     gotoSpy,
     pageState,
     listScheduledSpy: vi.fn(),
-    getMemorySpy: vi.fn()
+    getMemorySpy: vi.fn(),
+    archiveMemorySpy: vi.fn(),
+    consumeResumeSpy: vi.fn(),
+    redirectToLoginSpy: vi.fn(),
+    toastSpy: vi.fn()
   };
 });
 
@@ -39,9 +54,27 @@ vi.mock('$lib/client', async (importOriginal) => {
       ...actual.engram,
       listScheduled: listScheduledSpy,
       getMemory: getMemorySpy
+    },
+    engramWrite: {
+      ...actual.engramWrite,
+      archiveMemory: archiveMemorySpy
     }
   };
 });
+
+vi.mock('$lib/resume', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('$lib/resume')>();
+  return {
+    ...actual,
+    consumeResume: (...args: Parameters<typeof actual.consumeResume>) => {
+      consumeResumeSpy(...args);
+      return actual.consumeResume(...args);
+    },
+    redirectToLogin: redirectToLoginSpy
+  };
+});
+
+vi.mock('svelte-sonner', () => ({ toast: toastSpy }));
 
 let qc: QueryClient;
 function renderScheduled() {
@@ -67,10 +100,26 @@ function emptyListScheduledResult() {
   return { memories: [], nextPageToken: '', searchedScopes: [], scopesTruncated: false, scopesUnknown: false };
 }
 
+// An expired memory (notAfter in the past) — the one state /scheduled
+// permits archiving.
+function makeExpired(overrides: MessageInitShape<typeof MemorySchema> = {}): Memory {
+  return makeMemory({ notAfter: timestampFromDate(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)), ...overrides });
+}
+
+// A scheduled memory (notBefore in the future) — never archivable.
+function makeScheduled(overrides: MessageInitShape<typeof MemorySchema> = {}): Memory {
+  return makeMemory({ notBefore: timestampFromDate(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)), ...overrides });
+}
+
 beforeEach(() => {
   gotoSpy.mockClear();
   listScheduledSpy.mockReset().mockResolvedValue(emptyListScheduledResult());
   getMemorySpy.mockReset();
+  archiveMemorySpy.mockReset();
+  consumeResumeSpy.mockReset();
+  redirectToLoginSpy.mockReset();
+  toastSpy.mockReset();
+  sessionStorage.clear();
   pageState.url.href = 'http://localhost/scheduled';
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -292,5 +341,243 @@ describe('scheduled route — overflow (E6, DSYS-04)', () => {
     const win = screen.container.querySelector('.win') as HTMLElement;
     expect(win.getAttribute('title')).toContain('→');
     await page.screenshot();
+  });
+});
+
+describe('scheduled route — archive for expired rows only (D-13)', () => {
+  it('the all tab shows an Archive toolbar button on an expired row and none on a scheduled row', async () => {
+    pageState.url.href = 'http://localhost/scheduled?state=all';
+    const expired = makeExpired({ id: 'm-exp', summary: 'expired row' });
+    const scheduled = makeScheduled({ id: 'm-sch', summary: 'scheduled row' });
+    listScheduledSpy.mockResolvedValue({
+      memories: [expired, scheduled],
+      nextPageToken: '',
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+
+    const screen = await renderScheduled();
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('expired row')).toBeInTheDocument();
+
+    const expiredRow = screen.container.querySelector('#opt-m-exp') as HTMLElement;
+    await page.elementLocator(expiredRow).hover();
+    await expect.element(screen.getByRole('button', { name: `Archive ${expired.shortId}` })).toBeInTheDocument();
+
+    const scheduledRow = screen.container.querySelector('#opt-m-sch') as HTMLElement;
+    await page.elementLocator(scheduledRow).hover();
+    expect(screen.container.querySelector(`[aria-label="Archive ${scheduled.shortId}"]`)).toBeNull();
+  });
+
+  it('the pane shows Archive for an expired record and none for a scheduled one; no other curation action ever renders', async () => {
+    const expired = makeExpired({ id: 'm-exp', summary: 'expired row' });
+    listScheduledSpy.mockResolvedValue({
+      memories: [expired],
+      nextPageToken: '',
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    const screen = await renderScheduled();
+    screen.container.style.width = '1200px';
+    await expect.element(screen.getByText('expired row')).toBeInTheDocument();
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.poll(() => screen.container.querySelector('[aria-label="Memory detail"]') !== null).toBe(true);
+
+    await expect.element(screen.getByRole('button', { name: 'Archive' })).toBeInTheDocument();
+    for (const label of ['Edit', 'Share', 'Make private', 'Supersede…', 'Restore', 'Delete']) {
+      expect(screen.container.querySelector(`.d-actions button[aria-label="${label}"]`)).toBeNull();
+    }
+  });
+
+  it('pressing "a" on an active expired row opens the archive confirm for it', async () => {
+    const expired = makeExpired({ id: 'm-exp', summary: 'expired row' });
+    listScheduledSpy.mockResolvedValue({
+      memories: [expired],
+      nextPageToken: '',
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    // CurationSurfaces' resolveRecords only scans the searchMemories/
+    // listMemories caches; a /scheduled row is resolved through a live
+    // GetMemory fallback instead (never cached under listScheduled).
+    getMemorySpy.mockResolvedValue({ memory: expired });
+
+    const screen = await renderScheduled();
+    screen.container.style.width = '1200px';
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('expired row')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.rs-group') !== null).toBe(true);
+
+    const listbox = screen.getByRole('listbox', { name: 'Scheduled memories' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m-exp');
+    await userEvent.keyboard('a');
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByText('Archive 1 records?')).toBeInTheDocument();
+    expect(archiveMemorySpy).not.toHaveBeenCalled();
+  });
+
+  it('a selection of one expired and one scheduled row opens the confirm with only the expired row', async () => {
+    pageState.url.href = 'http://localhost/scheduled?state=all';
+    const expired = makeExpired({ id: 'm-exp', summary: 'expired row' });
+    const scheduled = makeScheduled({ id: 'm-sch', summary: 'scheduled row' });
+    listScheduledSpy.mockResolvedValue({
+      memories: [expired, scheduled],
+      nextPageToken: '',
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    getMemorySpy.mockImplementation(async ({ id }: { id: string }) => ({
+      memory: [expired, scheduled].find((m) => m.id === id)
+    }));
+
+    const screen = await renderScheduled();
+    screen.container.style.width = '1200px';
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('expired row')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.rs-group') !== null).toBe(true);
+
+    const listbox = screen.getByRole('listbox', { name: 'Scheduled memories' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m-exp');
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('j');
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m-sch');
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('a');
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByText('Archive 1 records?')).toBeInTheDocument();
+    await expect.element(dialog.getByText('expired row')).toBeInTheDocument();
+    await expect.element(dialog.getByText('scheduled row')).not.toBeInTheDocument();
+  });
+
+  it('a selection with only scheduled rows opens nothing and toasts "Archive applies to expired rows only"', async () => {
+    const scheduled = makeScheduled({ id: 'm-sch', summary: 'scheduled row' });
+    listScheduledSpy.mockResolvedValue({
+      memories: [scheduled],
+      nextPageToken: '',
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    const screen = await renderScheduled();
+    screen.container.style.width = '1200px';
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('scheduled row')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.rs-group') !== null).toBe(true);
+
+    const listbox = screen.getByRole('listbox', { name: 'Scheduled memories' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m-sch');
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('a');
+
+    expect(screen.container.querySelector('[role="dialog"]')).toBeNull();
+    expect(toastSpy).toHaveBeenCalledWith('Archive applies to expired rows only');
+  });
+
+  it('after confirming, the archived row stays in place dimmed with "archived" until the tab is re-queried', async () => {
+    const expired = makeExpired({ id: 'm-exp', summary: 'expired row' });
+    listScheduledSpy.mockResolvedValue({
+      memories: [expired],
+      nextPageToken: '',
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    archiveMemorySpy.mockResolvedValue({
+      results: [{ requested: 'm-exp', id: 'm-exp', outcome: ArchiveOutcome.ARCHIVED }]
+    });
+    getMemorySpy.mockResolvedValue({ memory: expired });
+    const screen = await renderScheduled();
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('expired row')).toBeInTheDocument();
+
+    const row = screen.container.querySelector('#opt-m-exp') as HTMLElement;
+    await page.elementLocator(row).hover();
+    await screen.getByRole('button', { name: `Archive ${expired.shortId}` }).click();
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByRole('button', { name: 'Archive' })).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Archive' }).click();
+    await expect.poll(() => archiveMemorySpy.mock.calls.length).toBe(1);
+    await dialog.getByRole('button', { name: 'Done' }).click();
+
+    const listbox = screen.getByRole('listbox', { name: 'Scheduled memories' });
+    await expect.element(listbox.getByText('expired row')).toBeInTheDocument();
+    // "archived"/"superseded" chips render as a neutral (unclassed) `.st`
+    // span -- only expired/scheduled get their own CSS class
+    // (engram-console-conventions) -- so the state word is asserted by its
+    // TEXT, not a `.archived` class selector.
+    await expect
+      .poll(() => Array.from(screen.container.querySelectorAll('.st')).some((el) => el.textContent === 'archived'))
+      .toBe(true);
+  });
+
+  it('a PermissionDenied archive persists a v2 archive envelope with returnPath "/scheduled?state=expired" on Re-authenticate', async () => {
+    pageState.url.href = 'http://localhost/scheduled?state=expired';
+    const expired = makeExpired({ id: 'm-exp', summary: 'expired row' });
+    listScheduledSpy.mockResolvedValue({
+      memories: [expired],
+      nextPageToken: '',
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    archiveMemorySpy.mockRejectedValue(new ConnectError('forbidden', Code.PermissionDenied));
+    getMemorySpy.mockResolvedValue({ memory: expired });
+
+    const screen = await renderScheduled();
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('expired row')).toBeInTheDocument();
+
+    const row = screen.container.querySelector('#opt-m-exp') as HTMLElement;
+    await page.elementLocator(row).hover();
+    await screen.getByRole('button', { name: `Archive ${expired.shortId}` }).click();
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByRole('button', { name: 'Archive' })).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Archive' }).click();
+    await expect
+      .element(dialog.getByText('Session expired. Nothing was written; your draft is kept.'))
+      .toBeInTheDocument();
+
+    await dialog.getByRole('button', { name: 'Re-authenticate' }).click();
+    expect(redirectToLoginSpy).toHaveBeenCalledTimes(1);
+
+    const persisted = peekResume() as ArchiveResumeEnvelope;
+    expect(persisted?.kind).toBe('archive');
+    expect(persisted.mode).toBe('archive');
+    expect(persisted.ids).toEqual(['m-exp']);
+    expect(persisted.returnPath).toBe('/scheduled?state=expired');
+  });
+
+  it('a seeded archive envelope reopens the confirm with those ids and the notice; archiveMemory is not called; consumeResume runs once', async () => {
+    persistResume({ returnPath: '/scheduled?state=expired', kind: 'archive', mode: 'archive', ids: ['m-exp'] });
+    const expired = makeExpired({ id: 'm-exp', summary: 'expired row' });
+    getMemorySpy.mockResolvedValue({ memory: expired });
+
+    const screen = await renderScheduled();
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByText('Signed in again — review and resend')).toBeInTheDocument();
+    await expect.poll(() => consumeResumeSpy.mock.calls.length).toBe(1);
+    expect(archiveMemorySpy).not.toHaveBeenCalled();
+  });
+
+  it('the registered curation host reports actionsFor as ["archive"] only for expired records', async () => {
+    listScheduledSpy.mockResolvedValue(emptyListScheduledResult());
+    await renderScheduled();
+    await expect.poll(() => curationHost.current !== null).toBe(true);
+
+    const expired = makeExpired({ id: 'm-exp' });
+    const scheduled = makeScheduled({ id: 'm-sch' });
+    expect(curationHost.current?.actionsFor(expired)).toEqual(['archive']);
+    expect(curationHost.current?.actionsFor(scheduled)).toEqual([]);
   });
 });
