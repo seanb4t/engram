@@ -3,7 +3,7 @@
   // queries (every query passes `{ signal }` and keys on the full normalized
   // params), the honest results header, and the shared ResultsList/RecallSplit/
   // DetailPane set from plans 02-06/02-07.
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
@@ -89,6 +89,12 @@
       });
     }, 160);
   }
+  // WR-05 fix: every other timer/listener in this file cleans up on
+  // teardown (onScroll, onTextSize, etc.) — this debounce was the one
+  // exception, leaving a pending goto() to fire against a torn-down route.
+  onDestroy(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+  });
 
   // ENTRY-05 fix row "without-full": a page-local override, not a URL param
   // (retrying without full content is a one-off mitigation for a

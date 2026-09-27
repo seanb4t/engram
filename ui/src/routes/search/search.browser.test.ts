@@ -537,6 +537,22 @@ describe('search route — operator-only input lists memories unranked with infi
   });
 });
 
+describe('search route — debounce timer cleanup (WR-05)', () => {
+  it('clears the pending debounced navigation on unmount so it never fires after teardown', async () => {
+    pageState.url.href = 'http://localhost/search?q=';
+    const screen = await renderSearch();
+    gotoSpy.mockClear();
+
+    const input = screen.getByRole('textbox', { name: 'Search query' });
+    await input.fill('late');
+
+    await screen.unmount();
+    await new Promise((r) => setTimeout(r, 250));
+
+    expect(gotoSpy).not.toHaveBeenCalled();
+  });
+});
+
 // Search-create recovery (Codex round-3 MEDIUM): the prior suite never
 // covered a seeded create-mode envelope landing on the search route.
 describe('search route — re-auth landing recovery', () => {
