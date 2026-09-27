@@ -4,6 +4,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -706,5 +708,165 @@ func TestConnectMemoryFieldsPopulated(t *testing.T) {
 		if !msg.ProtoReflect().Has(summaryModelFD) {
 			t.Error("summary_model: Has() reports false for a zero-value source, want true (D-14 §3 assign-always)")
 		}
+	})
+}
+
+// mcpMemorySchedIDs and connectMemoryIDs extract ids from the two lanes'
+// respective Memory shapes ([]store.Memory vs []*engramv1.Memory) — the read-
+// lane parity analog of connectapi_test.go's local id-extraction closures,
+// promoted to package level so TestReadParity's rows can share one pair of
+// helpers instead of each row hand-rolling its own.
+func mcpMemorySchedIDs(ms []store.Memory) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.ID
+	}
+	return out
+}
+
+func connectMemoryIDs(ms []*engramv1.Memory) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.GetId()
+	}
+	return out
+}
+
+// TestReadParity is the read-lane sibling of TestWriteParity (D-20/D-22):
+// for each row, the direct MCP-lane deps.* call and the Connect handler call
+// — over the SAME spy-backed fixture — produce identical results (ids, a
+// paging token, coverage) on a successful call, and an identical rejection
+// code/message on a failing one, proven behaviourally rather than via a
+// call-graph assertion. Later plans add rows to this table; ListScheduled
+// (plan 03-03, D-19/D-20) is the first.
+func TestReadParity(t *testing.T) {
+	t.Run("ListScheduled", func(t *testing.T) {
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-listscheduled"
+			const mcpActor = "human-parity-listscheduled@example.com"
+			const scope1 = "parity:project:listscheduled-s1"
+			const scope2 = "parity:project:listscheduled-s2"
+
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+
+			// spyStore.ListScheduled compares against REAL wall-clock time
+			// (time.Now(), not a mockable clock), so the fixture's NotBefore
+			// must be genuinely in the future relative to it — fixedParityNow
+			// (a fixed 2026-03-01 date) will not do here.
+			base := time.Now().UTC().Truncate(time.Second)
+			future := base.Add(time.Hour)
+			seedOne := func(sp *spyStore, id, scope string, offset time.Duration) {
+				m := store.Memory{
+					ID: id, Content: "read-parity fixture", Scope: scope,
+					Category: "gotcha", Source: "user-said", Owner: owner,
+					CreatedAt: base.Add(-offset), NotBefore: &future,
+				}
+				if err := sp.Upsert(context.Background(), m, []float32{0.1, 0.2, 0.3}); err != nil {
+					t.Fatalf("seed %s: %v", id, err)
+				}
+			}
+			fixture := []struct {
+				id     string
+				scope  string
+				offset time.Duration
+			}{
+				{"f8888888-0000-0000-0000-000000000001", scope1, 0},
+				{"f8888888-0000-0000-0000-000000000002", scope1, time.Second},
+				{"f8888888-0000-0000-0000-000000000003", scope2, 2 * time.Second},
+			}
+			for _, r := range fixture {
+				seedOne(spMCP, r.id, r.scope, r.offset)
+				seedOne(spConn, r.id, r.scope, r.offset)
+			}
+			spMCP.resetCalls()
+			spConn.resetCalls()
+
+			mcpCaller := parityMCPCaller(t, owner, mcpActor)
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			// Page 1: cross_spine, state=all, limit=2 — same inputs on both lanes.
+			req1 := listScheduledArgs{CrossSpine: true, State: "all", Limit: 2}
+			mcpRes1, mcpErr1 := dMCP.listScheduled(ctx, mcpCaller, req1)
+			connResp1, connErr1 := api.ListScheduled(connCtx, connect.NewRequest(&engramv1.ListScheduledRequest{
+				CrossSpine: true, State: "all", Limit: 2,
+			}))
+			assertCodeParity(ctx, t, mcpErr1, connErr1)
+			if mcpErr1 != nil || connErr1 != nil {
+				t.Fatalf("expected success on both lanes (page 1): mcp=%v connect=%v", mcpErr1, connErr1)
+			}
+			mcpIDs1 := mcpMemorySchedIDs(mcpRes1.Memories)
+			connIDs1 := connectMemoryIDs(connResp1.Msg.GetMemories())
+			if !slices.Equal(mcpIDs1, connIDs1) {
+				t.Errorf("page 1 ids mismatch: mcp=%v connect=%v", mcpIDs1, connIDs1)
+			}
+			if mcpRes1.NextCursor != connResp1.Msg.GetNextPageToken() {
+				t.Errorf("page 1 next token mismatch: mcp=%q connect=%q", mcpRes1.NextCursor, connResp1.Msg.GetNextPageToken())
+			}
+			connCaller, err := callerFromConnectContext(connCtx)
+			if err != nil {
+				t.Fatalf("callerFromConnectContext: %v", err)
+			}
+			mcpCov1 := dMCP.searchedScopes(ctx, mcpCaller, true)
+			connCov1 := dConn.searchedScopes(connCtx, connCaller, true)
+			if !slices.Equal(mcpCov1.Scopes, connCov1.Scopes) || mcpCov1.Truncated != connCov1.Truncated || mcpCov1.Unknown != connCov1.Unknown {
+				t.Errorf("page 1 coverage mismatch: mcp=%+v connect=%+v", mcpCov1, connCov1)
+			}
+			if mcpRes1.NextCursor == "" {
+				t.Fatal("page 1 next token is empty, want a token to page 2 (fixture has 3 records, limit 2)")
+			}
+
+			// Page 2: same cursor on both lanes.
+			req2 := listScheduledArgs{CrossSpine: true, State: "all", Limit: 2, Cursor: mcpRes1.NextCursor}
+			mcpRes2, mcpErr2 := dMCP.listScheduled(ctx, mcpCaller, req2)
+			connResp2, connErr2 := api.ListScheduled(connCtx, connect.NewRequest(&engramv1.ListScheduledRequest{
+				CrossSpine: true, State: "all", Limit: 2, PageToken: connResp1.Msg.GetNextPageToken(),
+			}))
+			assertCodeParity(ctx, t, mcpErr2, connErr2)
+			if mcpErr2 != nil || connErr2 != nil {
+				t.Fatalf("expected success on both lanes (page 2): mcp=%v connect=%v", mcpErr2, connErr2)
+			}
+			mcpIDs2 := mcpMemorySchedIDs(mcpRes2.Memories)
+			connIDs2 := connectMemoryIDs(connResp2.Msg.GetMemories())
+			if !slices.Equal(mcpIDs2, connIDs2) {
+				t.Errorf("page 2 ids mismatch: mcp=%v connect=%v", mcpIDs2, connIDs2)
+			}
+			if mcpRes2.NextCursor != connResp2.Msg.GetNextPageToken() {
+				t.Errorf("page 2 next token mismatch: mcp=%q connect=%q", mcpRes2.NextCursor, connResp2.Msg.GetNextPageToken())
+			}
+			if mcpRes2.NextCursor != "" {
+				t.Errorf("page 2 next token = %q, want empty (fixture exhausted)", mcpRes2.NextCursor)
+			}
+		})
+
+		t.Run("rejection_envelope_parity", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-listscheduled-reject"
+			dMCP, _ := newSpyDeps()
+			dConn, _ := newSpyDeps()
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-listscheduled-reject@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			t.Run("invalid_state", func(t *testing.T) {
+				_, mcpErr := dMCP.listScheduled(ctx, mcpCaller, listScheduledArgs{Scope: "tool:project:x", State: "bogus"})
+				_, connErr := api.ListScheduled(connCtx, connect.NewRequest(&engramv1.ListScheduledRequest{Scope: "tool:project:x", State: "bogus"}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+
+			t.Run("missing_scope_without_cross_spine", func(t *testing.T) {
+				_, mcpErr := dMCP.listScheduled(ctx, mcpCaller, listScheduledArgs{})
+				_, connErr := api.ListScheduled(connCtx, connect.NewRequest(&engramv1.ListScheduledRequest{}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+		})
 	})
 }
