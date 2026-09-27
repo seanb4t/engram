@@ -29,11 +29,18 @@
   let {
     returnPath,
     onchanged,
-    onresumeapplied
+    onresumeapplied,
+    onviewsuperseded,
+    onopenrecord
   }: {
     returnPath: string;
     onchanged?: (e: { kind: 'archive' | 'restore' | 'supersede'; ids: string[]; newId?: string }) => void;
     onresumeapplied?: () => void;
+    // Forwarded straight through to SupersedeDialog's success-footer actions
+    // (the route, plan 04-08, supplies these -- e.g. opening the Chain
+    // dialog on the superseded set, or selecting the new record).
+    onviewsuperseded?: (ids: string[]) => void;
+    onopenrecord?: (id: string) => void;
   } = $props();
 
   const queryClient = useQueryClient();
@@ -369,4 +376,6 @@
   oncancel={supersedeOncancel}
   ondone={supersedeOndone}
   onreauth={handleSupersedeReauth}
+  {onviewsuperseded}
+  {onopenrecord}
 />
