@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 03
 current_phase_name: Curation RPCs & MCP Tools
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-09-27T07:34:51.136Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-09-27T08:24:10.263Z"
 last_activity: 2026-09-27
 last_activity_desc: Phase 03 execution started
-state_head: 5fe79ab48b903f51c3ade2ae24b12bcf46056c36
+state_head: d56458cd12e8e3dfe6a5e763d17a2a58bcdf993c
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 21
-  completed_plans: 16
+  completed_plans: 17
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 2)
 ## Current Position
 
 Phase: 03 (Curation RPCs & MCP Tools) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-09-27 — Phase 03 execution started
 
@@ -454,6 +454,7 @@ milestone needs in working memory.
 - [Phase 03]: [Phase 03]: 03-01: corrected a stale per-plan commit ledger (gsd-plan-head-before-03-01, leftover from an earlier milestone's own phase-03/plan-01) to the correct plan-start commit 2ab4e15e before computing actuals.commits.
 - [Phase 03]: [Phase 03]: 03-01: archiveBatch reports one outcome row per caller-supplied token, never merged or deduplicated across repeats within one call (D-06 discretion item).
 - [Phase 03]: SupersedeMemory lands on Connect via one shared deps.supersede dispatch; validate_only reuses the real call's staged preflight functions verbatim, never a parallel copy — Guarantees Phase 4's preview-before-commit dialog can never disagree with its commit (D-18b), and keeps validate_only from ever touching the idempotency ledger, embedder, or short-id minter (D-08)
+- [Phase 03]: 03-03: deps.listScheduled resolves scope via effectiveSearchScope FIRST (scope now conditionally required); Store.ListScheduled/collectOrderedPages widened to support cursor resume and an empty-scope-spans-every-scope owner-only span — Matches the search_memory/list_memory/list_rules precedent for the scope-required-unless-cross-spine rule exactly, and reuses listFilter's existing scope-optional idiom rather than inventing a new one.
 
 ### Pending Todos
 
@@ -551,8 +552,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-27T07:34:51.105Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-09-27T08:24:10.233Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -770,6 +771,7 @@ Resume file: None
 | Phase 02-recall-first-search P10 | 23min | 3 tasks | 7 files |
 | Phase 03 P01 | 2h19m | 3 tasks | 22 files |
 | Phase 03 P02 | 38min | 2 tasks | 14 files |
+| Phase 03 P03 | 55min | 2 tasks | 22 files |
 
 ## Operator Next Steps
 
