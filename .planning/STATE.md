@@ -22,10 +22,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 2)
+See: .planning/PROJECT.md (updated 2026-09-27 after 2026-09-25.01 Phase 3)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 03 — Curation RPCs & MCP Tools
+**Current focus:** Phase 4 — Curation Surfaces
 
 ## Current Position
 

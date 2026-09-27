@@ -654,6 +654,7 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **ROW-01..07** — dense fixed-height rows in a virtualized WAI-ARIA listbox (`@humanspeak/svelte-virtual-list`, role rewritten to `listbox`), 250ms overlay hover card that never moves the keyboard-active row, `j`/`k` traversal and row-action keys, `score` always and `relevance` only when reranked, URL-persisted facet chips, `ListScopes` scope combobox with counts, and a resizable stacked-section detail pane — 2026-09-25.01 Phase 2
 - ✓ **DSYS-01/02** — project-local `engram-console-conventions` and `engram-connect-client` skills record the console design facts and the Connect client contract — 2026-09-25.01 Phase 2
 - ✓ **Recall-gate hidden count** — additive `RecallGateHidden { total, archived, superseded, expired, scheduled }` on `SearchMemoriesResponse` (5) / `ListMemoriesResponse` (8), the MCP `search_memory`/`list_memory` results and the CLI footer; computed by a second gate-lifted `Store.Search`/`Store.List` call under the caller's own subject (MCP input schemas unchanged) — 2026-09-25.01 Phase 2
+- ✓ **RPC-01..06** — seven curation RPCs on Connect (`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`, `ListRules`, `ListScheduled`, `RelatedMemories`, `ListTags`), each delegating to the same `deps.*` core its MCP tool calls; new MCP tools `archive_memory`/`restore_memory` (consent-gated, per-id outcomes), `related_memories` (on-demand, `oneof` edge evidence) and `list_tags`; `validate_only` supersede preview on both lanes; `list_rules` empty scopes = one all-readable read capped at 1000 total; `list_scheduled` gains `cross_spine` + cursor on both lanes. The three writes are CSRF-gated (proven by the phase's first test), proto additive (`buf breaking` clean), SPA re-vendored (ui-drift clean) — 2026-09-25.01 Phase 3
 
 ### Active
 
@@ -663,7 +664,7 @@ absorb.
 
 - [x] Honest unified search entry (id / short_id / text; cross-spine default; server-driven palette) — Phase 2
 - [x] Dense hover-expand results row, detail pane, keyboard traversal, score/relevance, facets — Phase 2
-- [ ] Connect RPCs: SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags
+- [x] Connect RPCs: SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags — Phase 3
 - [ ] Curation surfaces: supersede, archive/restore, rules and scheduled views
 - [ ] Related-memories graph, tag cloud, scope autocomplete
 - [ ] Natural-language query understanding as advisory, user-confirmed filter chips
@@ -1099,4 +1100,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-26 after 2026-09-25.01 Phase 2*
+*Last updated: 2026-09-27 after 2026-09-25.01 Phase 3*
