@@ -177,6 +177,13 @@ var operations = []Operation{
 		MCPTool: "restore_memory", CLICommand: "",
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
+	{
+		// related_memories (milestone 2026-09-25.01 Phase 3, D-23): a plain
+		// read over the id-neighbourhood core — no write RPC, same stance
+		// as search_discovery/list_rules above.
+		MCPTool: "related_memories", CLICommand: "",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
 
 	// CLI-only operations: no MCP tool exists for any of these, so
 	// MCPTool is deliberately empty. Classified by the same conservative

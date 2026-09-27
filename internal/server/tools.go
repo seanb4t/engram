@@ -3153,12 +3153,25 @@ func registerTools(s *mcp.Server, d *deps) error {
 			allScopes := len(a.Scopes) == 0
 			return nil, recallResultMap(result, allScopes, d.ruleScopeCoverage(ctx, c, allScopes)), nil
 		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "related_memories", Description: "Fetch the neighbourhood of one memory you can read: its supersession chain (both directions, including soft-hidden members), records sharing a citation (kind + ref), records sharing rarity-weighted tags, and its nearest vector neighbours — one entry per related record, listing every edge that reached it with its evidence. Call it only on demand — when curating (dedup before a store, finding what a correction should supersede) or when the user asks — never at session start and never as an automatic follow-up to a search. `k` widens only the vector neighbours (default 8, maximum 1000). Compact summaries by default; `full=true` for full content. `truncated` reports that the result ceiling left a vector neighbour out. The id may be the full UUID or the short_id.", Annotations: annotationsFor("related_memories")},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a relatedArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			res, err := d.relatedMemories(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			return nil, relatedResultMap(res, a.Full, d.summaryMaxChars), nil
+		})
 	return nil
 }
 
 // textResult gives a write tool its short confirmation text. The read tools
-// (search_memory, list_memory, list_scheduled, search_discovery, list_rules)
-// return a nil result instead, so go-sdk puts the structured result in a
+// (search_memory, list_memory, list_scheduled, search_discovery, list_rules,
+// related_memories) return a nil result instead, so go-sdk puts the structured result in a
 // TextContent block as serialized JSON too, as MCP 2026-07-28 § Structured
 // Content says a tool SHOULD; a client that reads only `content` then still
 // gets the records rather than a count.

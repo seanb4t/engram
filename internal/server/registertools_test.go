@@ -13,20 +13,20 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// wantRegisteredToolNames is the full-set inventory this test pins: 17 tool
+// wantRegisteredToolNames is the full-set inventory this test pins: 18 tool
 // registrations (the 15 that already lived on main plus milestone
-// 2026-09-25.01 Phase 3's archive_memory/restore_memory; memory contract in
-// CLAUDE.md). This is a deliberate, single, reviewable inventory assertion
-// on tool IDENTIFIERS — it does NOT retype any tool's Description or
-// Annotations (the values plan 02-02/02-04's conformance gates read from
-// THIS test's registeredTools helper, from the live registration, never
-// from a second hand-typed copy here).
+// 2026-09-25.01 Phase 3's archive_memory/restore_memory and
+// related_memories; memory contract in CLAUDE.md). This is a deliberate,
+// single, reviewable inventory assertion on tool IDENTIFIERS — it does NOT
+// retype any tool's Description or Annotations (the values plan 02-02/02-04's
+// conformance gates read from THIS test's registeredTools helper, from the
+// live registration, never from a second hand-typed copy here).
 var wantRegisteredToolNames = []string{
 	"store_memory", "schedule_memory", "search_memory", "list_memory",
 	"list_scheduled", "get_memory", "update_memory", "delete_memory",
 	"delete_all", "store_discovery", "search_discovery", "set_visibility",
 	"supersede_memory", "store_rule", "list_rules",
-	"archive_memory", "restore_memory",
+	"archive_memory", "restore_memory", "related_memories",
 }
 
 // registeredTools connects an in-memory MCP client to a server built by

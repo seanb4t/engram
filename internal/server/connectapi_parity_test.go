@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"reflect"
@@ -732,6 +733,114 @@ func connectMemoryIDs(ms []*engramv1.Memory) []string {
 	return out
 }
 
+// relatedParityFixture builds a fresh store.RelatedResult scripted onto a
+// spyStore's `related` field (plan 03-05's TestReadParity/RelatedMemories
+// row, D-20): one entry per edge type, PLUS one entry carrying two edge
+// types (D-06's multi-edge merge rule), so the parity comparison exercises
+// every oneof case and the merge shape at once.
+func relatedParityFixture(anchorID string) store.RelatedResult {
+	return store.RelatedResult{
+		Anchor: store.Memory{ID: anchorID, Content: "anchor content", Summary: "anchor summary", Scope: "s", Category: "gotcha"},
+		Related: []store.RelatedMemory{
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000001", Content: "vector entry", Summary: "vector summary"},
+				Edges:  []store.RelatedEdge{{Type: store.RelatedEdgeVector, Score: 0.87}},
+			},
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000002", Content: "tag entry", Summary: "tag summary"},
+				Edges: []store.RelatedEdge{{
+					Type:       store.RelatedEdgeTag,
+					SharedTags: []store.WeightedTag{{Tag: "t1", Weight: 1.1}, {Tag: "t2", Weight: 0.5}},
+					TagWeight:  1.6,
+				}},
+			},
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000003", Content: "citation entry", Summary: "citation summary"},
+				Edges: []store.RelatedEdge{{
+					Type:            store.RelatedEdgeCitation,
+					SharedCitations: []store.CitationRef{{Kind: "file", Ref: "x.go"}},
+				}},
+			},
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000004", Content: "supersession entry", Summary: "supersession summary"},
+				Edges: []store.RelatedEdge{{
+					Type:      store.RelatedEdgeSupersession,
+					Direction: store.SupersessionPredecessor,
+					Depth:     2,
+				}},
+			},
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000005", Content: "dual entry", Summary: "dual summary"},
+				Edges: []store.RelatedEdge{
+					{Type: store.RelatedEdgeCitation, SharedCitations: []store.CitationRef{{Kind: "url", Ref: "http://example.com"}}},
+					{Type: store.RelatedEdgeTag, SharedTags: []store.WeightedTag{{Tag: "t3", Weight: 0.9}}, TagWeight: 0.9},
+				},
+			},
+		},
+		Truncated: true,
+	}
+}
+
+// protoEdgeTypeToStoreForTest and protoSupersessionDirectionToStoreForTest
+// are relatedEdgeToProto/supersessionDirectionToProto's exact inverse, used
+// ONLY by the parity comparison below to normalize the Connect side onto
+// the same store.RelatedEdge shape the MCP side decodes into.
+func protoEdgeTypeToStoreForTest(et engramv1.EdgeType) store.RelatedEdgeType {
+	switch et {
+	case engramv1.EdgeType_EDGE_TYPE_SUPERSESSION:
+		return store.RelatedEdgeSupersession
+	case engramv1.EdgeType_EDGE_TYPE_CITATION:
+		return store.RelatedEdgeCitation
+	case engramv1.EdgeType_EDGE_TYPE_TAG:
+		return store.RelatedEdgeTag
+	case engramv1.EdgeType_EDGE_TYPE_VECTOR:
+		return store.RelatedEdgeVector
+	default:
+		return ""
+	}
+}
+
+func protoSupersessionDirectionToStoreForTest(d engramv1.SupersessionDirection) store.SupersessionDirection {
+	switch d {
+	case engramv1.SupersessionDirection_SUPERSESSION_DIRECTION_SUCCESSOR:
+		return store.SupersessionSuccessor
+	case engramv1.SupersessionDirection_SUPERSESSION_DIRECTION_PREDECESSOR:
+		return store.SupersessionPredecessor
+	default:
+		return ""
+	}
+}
+
+// protoEdgeToStoreForTest maps one Connect *engramv1.RelatedEdge back onto
+// store.RelatedEdge — the SAME flat shape json.Unmarshal produces on the MCP
+// side — so both lanes can be compared with reflect.DeepEqual.
+func protoEdgeToStoreForTest(e *engramv1.RelatedEdge) store.RelatedEdge {
+	out := store.RelatedEdge{Type: protoEdgeTypeToStoreForTest(e.GetType())}
+	switch v := e.GetEvidence().(type) {
+	case *engramv1.RelatedEdge_Vector:
+		out.Score = v.Vector.GetScore()
+	case *engramv1.RelatedEdge_Tag:
+		for _, t := range v.Tag.GetSharedTags() {
+			out.SharedTags = append(out.SharedTags, store.WeightedTag{Tag: t.GetTag(), Weight: t.GetWeight()})
+		}
+		out.TagWeight = v.Tag.GetTagWeight()
+	case *engramv1.RelatedEdge_Citation:
+		for _, c := range v.Citation.GetSharedCitations() {
+			out.SharedCitations = append(out.SharedCitations, store.CitationRef{Kind: c.GetKind(), Ref: c.GetRef()})
+		}
+	case *engramv1.RelatedEdge_Supersession:
+		out.Direction = protoSupersessionDirectionToStoreForTest(v.Supersession.GetDirection())
+		out.Depth = int(v.Supersession.GetDepth())
+	}
+	return out
+}
+
+// idOnly decodes just the "id" key from a JSON-encoded memory/recallView
+// value — both carry it under the same json tag.
+type idOnly struct {
+	ID string `json:"id"`
+}
+
 // TestReadParity is the read-lane sibling of TestWriteParity (D-20/D-22):
 // for each row, the direct MCP-lane deps.* call and the Connect handler call
 // — over the SAME spy-backed fixture — produce identical results (ids, a
@@ -974,6 +1083,115 @@ func TestReadParity(t *testing.T) {
 				assertEnvelopeParity(ctx, t, mcpErr, connErr)
 				if mcpErr == nil || connErr == nil {
 					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+		})
+	})
+
+	t.Run("RelatedMemories", func(t *testing.T) {
+		const owner = "actor-parity-related"
+		const mcpActor = "human-parity-related@example.com"
+		const anchorID = "d0000000-0000-0000-0000-000000000000"
+
+		dMCP, spMCP := newSpyDeps()
+		dConn, spConn := newSpyDeps()
+		spMCP.related = relatedParityFixture(anchorID)
+		spConn.related = relatedParityFixture(anchorID)
+
+		mcpCaller := parityMCPCaller(t, owner, mcpActor)
+		connCtx := parityConnectCtx(owner)
+		api := &engramAPI{d: dConn}
+
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			mcpRes, mcpErr := dMCP.relatedMemories(ctx, mcpCaller, relatedArgs{ID: anchorID})
+			connResp, connErr := api.RelatedMemories(connCtx, connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: anchorID}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+
+			mcpMap := relatedResultMap(mcpRes, false, dMCP.summaryMaxChars)
+			raw, err := json.Marshal(mcpMap)
+			if err != nil {
+				t.Fatalf("json.Marshal(relatedResultMap): %v", err)
+			}
+			var decoded struct {
+				Anchor  json.RawMessage `json:"anchor"`
+				Related []struct {
+					Memory json.RawMessage     `json:"memory"`
+					Edges  []store.RelatedEdge `json:"edges"`
+				} `json:"related"`
+				Truncated bool `json:"truncated"`
+			}
+			if err := json.Unmarshal(raw, &decoded); err != nil {
+				t.Fatalf("json.Unmarshal(relatedResultMap output): %v", err)
+			}
+
+			var mcpAnchor idOnly
+			if err := json.Unmarshal(decoded.Anchor, &mcpAnchor); err != nil {
+				t.Fatalf("json.Unmarshal(anchor): %v", err)
+			}
+			if mcpAnchor.ID != connResp.Msg.GetAnchor().GetId() {
+				t.Errorf("anchor id mismatch: mcp=%q connect=%q", mcpAnchor.ID, connResp.Msg.GetAnchor().GetId())
+			}
+			if decoded.Truncated != connResp.Msg.GetTruncated() {
+				t.Errorf("truncated mismatch: mcp=%v connect=%v", decoded.Truncated, connResp.Msg.GetTruncated())
+			}
+
+			connRelated := connResp.Msg.GetRelated()
+			if len(decoded.Related) != len(connRelated) {
+				t.Fatalf("related entry count mismatch: mcp=%d connect=%d", len(decoded.Related), len(connRelated))
+			}
+			for i, mcpEntry := range decoded.Related {
+				var mcpMem idOnly
+				if err := json.Unmarshal(mcpEntry.Memory, &mcpMem); err != nil {
+					t.Fatalf("json.Unmarshal(related[%d].memory): %v", i, err)
+				}
+				connEntry := connRelated[i]
+				if mcpMem.ID != connEntry.GetMemory().GetId() {
+					t.Errorf("related[%d] memory id mismatch: mcp=%q connect=%q", i, mcpMem.ID, connEntry.GetMemory().GetId())
+				}
+				connEdges := connEntry.GetEdges()
+				if len(mcpEntry.Edges) != len(connEdges) {
+					t.Fatalf("related[%d] edge count mismatch: mcp=%d connect=%d", i, len(mcpEntry.Edges), len(connEdges))
+				}
+				for j, mcpEdge := range mcpEntry.Edges {
+					connEdge := protoEdgeToStoreForTest(connEdges[j])
+					if !reflect.DeepEqual(mcpEdge, connEdge) {
+						t.Errorf("related[%d].edges[%d] mismatch:\nmcp:     %+v\nconnect: %+v", i, j, mcpEdge, connEdge)
+					}
+				}
+			}
+		})
+
+		t.Run("rejection_envelope_parity", func(t *testing.T) {
+			ctx := context.Background()
+
+			t.Run("empty_id", func(t *testing.T) {
+				_, mcpErr := dMCP.relatedMemories(ctx, mcpCaller, relatedArgs{ID: ""})
+				_, connErr := api.RelatedMemories(connCtx, connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: ""}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+
+			t.Run("k_over_maximum", func(t *testing.T) {
+				_, mcpErr := dMCP.relatedMemories(ctx, mcpCaller, relatedArgs{ID: anchorID, K: 1001})
+				_, connErr := api.RelatedMemories(connCtx, connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: anchorID, K: 1001}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+
+			t.Run("k_at_maximum_succeeds", func(t *testing.T) {
+				_, mcpErr := dMCP.relatedMemories(ctx, mcpCaller, relatedArgs{ID: anchorID, K: 1000})
+				_, connErr := api.RelatedMemories(connCtx, connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: anchorID, K: 1000}))
+				assertCodeParity(ctx, t, mcpErr, connErr)
+				if mcpErr != nil || connErr != nil {
+					t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
 				}
 			})
 		})

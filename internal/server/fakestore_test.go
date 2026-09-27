@@ -565,7 +565,7 @@ func (s *spyStore) MintShortID(_ context.Context, seen map[string]struct{}) (str
 // matches s.related.Anchor.ID, or an ErrNotFound-wrapping error otherwise —
 // mirroring MigrateStatus's scripted-not-derived precedent. A test sets
 // s.related directly before exercising a handler.
-func (s *spyStore) RelatedMemories(_ context.Context, id string, subj store.Subject, k uint64, full bool) (store.RelatedResult, error) {
+func (s *spyStore) RelatedMemories(_ context.Context, id string, subj store.Subject, _ uint64, _ bool) (store.RelatedResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.record("RelatedMemories", ownerOfSubject(subj), id)

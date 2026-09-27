@@ -218,6 +218,9 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 		// ListRules (plan 03-04, RPC-05): a read Procedure, absent from
 		// csrfWriteProcedures and reachable without a CSRF token.
 		engramv1connect.EngramServiceListRulesProcedure,
+		// RelatedMemories (plan 03-05, RPC-05): a read Procedure, absent
+		// from csrfWriteProcedures and reachable without a CSRF token.
+		engramv1connect.EngramServiceRelatedMemoriesProcedure,
 	}
 	for _, p := range readProcedures {
 		if csrfWriteProcedures[p] {
@@ -427,6 +430,16 @@ func TestReadRPCsCSRFExempt(t *testing.T) {
 				req.Header().Set("X-Test-Actor", "actor-A")
 				_, err := c.ListRules(ctx, req)
 				return err
+			},
+		},
+		{
+			name:      "RelatedMemories",
+			procedure: engramv1connect.EngramServiceRelatedMemoriesProcedure,
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient) error {
+				req := connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: "00000000-0000-0000-0000-000000000000"})
+				req.Header().Set("X-Test-Actor", "actor-A")
+				_, err := c.RelatedMemories(ctx, req)
+				return err // a not_found is fine here; only PermissionDenied fails this test
 			},
 		},
 	}

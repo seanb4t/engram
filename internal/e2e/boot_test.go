@@ -89,7 +89,7 @@ func TestStartupAcceptsHostedChatBaseURL(t *testing.T) {
 // require updating this list deliberately.
 var documentedTools = []string{
 	"archive_memory", "delete_all", "delete_memory", "get_memory", "list_memory",
-	"list_rules", "list_scheduled", "restore_memory", "schedule_memory",
+	"list_rules", "list_scheduled", "related_memories", "restore_memory", "schedule_memory",
 	"search_discovery", "search_memory", "set_visibility", "store_discovery",
 	"store_memory", "store_rule", "supersede_memory", "update_memory",
 }
