@@ -362,6 +362,89 @@ func TestCSRFCurationWritesRequireDoubleSubmit(t *testing.T) {
 			t.Errorf("second RestoreMemory result = %+v, want one NOT_ARCHIVED row", got)
 		}
 	})
+
+	// SupersedeMemory/SupersedeMemory_validate_only (plan 03-02, D-08/D-15):
+	// validate_only is still a call on this write Procedure, so CSRF applies
+	// to it exactly as it does to a real supersede call.
+	t.Run("SupersedeMemory", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolveWithLane(auth.LaneCookie), csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+		ctx := context.Background()
+
+		const id = "d0000000-0000-0000-0000-000000000003"
+		sp.records[id] = store.Memory{ID: id, Owner: ownerA}
+
+		do := func(supersedes []string, h csrfHeaders) (*engramv1.SupersedeMemoryResponse, error) {
+			return archiveCSRFDo(ctx, client.SupersedeMemory, &engramv1.SupersedeMemoryRequest{
+				Content: "valid content", Scope: "test:scope", Source: "agent-inferred", Category: "decision",
+				Supersedes: supersedes,
+			}, h)
+		}
+
+		if _, err := do([]string{id}, csrfHeaders{actor: ownerA}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("no cookie, no header: got code %v (%v), want PermissionDenied", connect.CodeOf(err), err)
+		}
+		if _, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("cookie, no header: got code %v (%v), want PermissionDenied", connect.CodeOf(err), err)
+		}
+		if _, err := do([]string{}, csrfHeaders{actor: ownerA}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("no token, empty supersedes: got code %v (%v), want PermissionDenied (CSRF must precede validation)", connect.CodeOf(err), err)
+		}
+
+		resp, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken, hasHeader: true, headerValue: validToken})
+		if err != nil {
+			t.Fatalf("matching cookie+header: got err %v, want success", err)
+		}
+		if resp.GetId() == "" {
+			t.Errorf("SupersedeMemory result = %+v, want a non-empty id", resp)
+		}
+	})
+
+	t.Run("SupersedeMemory_validate_only", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolveWithLane(auth.LaneCookie), csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+		ctx := context.Background()
+
+		const id = "d0000000-0000-0000-0000-000000000004"
+		sp.records[id] = store.Memory{ID: id, Owner: ownerA}
+
+		do := func(supersedes []string, h csrfHeaders) (*engramv1.SupersedeMemoryResponse, error) {
+			return archiveCSRFDo(ctx, client.SupersedeMemory, &engramv1.SupersedeMemoryRequest{
+				Content: "valid content", Scope: "test:scope", Source: "agent-inferred", Category: "decision",
+				Supersedes: supersedes, ValidateOnly: true,
+			}, h)
+		}
+
+		if _, err := do([]string{id}, csrfHeaders{actor: ownerA}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("no cookie, no header: got code %v (%v), want PermissionDenied", connect.CodeOf(err), err)
+		}
+		if _, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("cookie, no header: got code %v (%v), want PermissionDenied", connect.CodeOf(err), err)
+		}
+		if _, err := do([]string{}, csrfHeaders{actor: ownerA}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("no token, empty supersedes: got code %v (%v), want PermissionDenied (CSRF must precede validation)", connect.CodeOf(err), err)
+		}
+
+		resp, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken, hasHeader: true, headerValue: validToken})
+		if err != nil {
+			t.Fatalf("matching cookie+header: got err %v, want success", err)
+		}
+		if !resp.GetValidated() || len(resp.GetSupersedes()) != 1 || resp.GetSupersedes()[0] != id {
+			t.Errorf("validate_only result = %+v, want validated true and supersedes [%s]", resp, id)
+		}
+	})
 }
 
 // TestCSRFCookieLaneStillEnforcesDoubleSubmit: a request stamped

@@ -170,15 +170,21 @@ func csrfWriteCases(futureNotBefore *timestamppb.Timestamp) []csrfWriteRPCCase {
 				return doCSRFWrite(ctx, c.RestoreMemory, &engramv1.RestoreMemoryRequest{Ids: []string{"some-id"}}, h)
 			},
 		},
+		{
+			name: "SupersedeMemory",
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient, h csrfHeaders) error {
+				return doCSRFWrite(ctx, c.SupersedeMemory, &engramv1.SupersedeMemoryRequest{Content: "valid content", Scope: "test:scope", Source: "agent-inferred", Category: "decision", Supersedes: []string{"some-id"}}, h)
+			},
+		},
 	}
 }
 
 // TestCSRFWriteProcedureAllowlist pins csrfWriteProcedures at the data level
-// (SC3 / T-16-08): exactly the eight generated write Procedure constants
+// (SC3 / T-16-08): exactly the nine generated write Procedure constants
 // (the original six plus milestone 2026-09-25.01 Phase 3's
-// ArchiveMemory/RestoreMemory, D-15), and none of the five read Procedure
-// constants — independent of, and a faster backstop than, the full httptest
-// matrices below.
+// ArchiveMemory/RestoreMemory (D-15) and plan 03-02's SupersedeMemory
+// (D-15)), and none of the five read Procedure constants — independent of,
+// and a faster backstop than, the full httptest matrices below.
 func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 	wantWrite := []string{
 		engramv1connect.EngramServiceStoreMemoryProcedure,
@@ -189,9 +195,10 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 		engramv1connect.EngramServiceScheduleMemoryProcedure,
 		engramv1connect.EngramServiceArchiveMemoryProcedure,
 		engramv1connect.EngramServiceRestoreMemoryProcedure,
+		engramv1connect.EngramServiceSupersedeMemoryProcedure,
 	}
-	if got := len(csrfWriteProcedures); got != 8 {
-		t.Fatalf("csrfWriteProcedures has %d entries, want exactly 8", got)
+	if got := len(csrfWriteProcedures); got != 9 {
+		t.Fatalf("csrfWriteProcedures has %d entries, want exactly 9", got)
 	}
 	for _, p := range wantWrite {
 		if !csrfWriteProcedures[p] {

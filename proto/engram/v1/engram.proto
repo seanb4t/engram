@@ -458,6 +458,50 @@ message RestoreMemoryResponse {
   repeated ArchiveResult results = 1;
 }
 
+// SupersedeMemoryRequest takes the store_memory field set (content through
+// summary) plus citations, supersedes (one or more ids of the memories this
+// new record corrects/replaces, each a full UUID or short_id) and
+// idempotency_key (fingerprint covers content and the resolved target set,
+// D-08/D-09). validate_only, when set, runs the identical preflight a real
+// call runs (argument checks, ownership and addressability, rule rejection,
+// single live head, ambiguous short_id) and names every offending target
+// exactly as a real call would, but writes nothing: no record, no
+// superseded_by stamp, no idempotency ledger entry, no embed, no short-id
+// mint. It never consults or records idempotency_key, so it never reports a
+// replay. It is still a call on this write RPC, so CSRF applies. No
+// buf.validate rule is attached to this message: the single shared
+// server-side core validates, so both the MCP and Connect lanes return the
+// byte-identical field=/hint= rejection envelope (D-17/D-20).
+message SupersedeMemoryRequest {
+  string content = 1;
+  string scope = 2;
+  string source = 3;
+  string category = 4;
+  repeated string tags = 5;
+  string repo = 6;
+  string workspace = 7;
+  string worktree = 8;
+  string base_dir = 9;
+  string summary = 10;
+  repeated Citation citations = 11;
+  repeated string supersedes = 12;
+  string idempotency_key = 13;
+  bool validate_only = 14;
+}
+
+// SupersedeMemoryResponse: id/short_id are set on a real call
+// (validate_only false). validated, supersedes (the resolved canonical
+// target ids in caller order, deduplicated — the exact list a commit would
+// write) and targets (compact summary view) are set only when validated is
+// true (D-08/D-09).
+message SupersedeMemoryResponse {
+  string id = 1;
+  string short_id = 2;
+  bool validated = 3;
+  repeated string supersedes = 4;
+  repeated Memory targets = 5;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
@@ -475,4 +519,6 @@ service EngramService {
   // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
   rpc ArchiveMemory(ArchiveMemoryRequest) returns (ArchiveMemoryResponse);
   rpc RestoreMemory(RestoreMemoryRequest) returns (RestoreMemoryResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-02) ---
+  rpc SupersedeMemory(SupersedeMemoryRequest) returns (SupersedeMemoryResponse);
 }

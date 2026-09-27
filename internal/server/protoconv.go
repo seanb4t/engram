@@ -201,6 +201,53 @@ func idsToStoreDiscoveryResponse(id, shortID string) *engramv1.StoreDiscoveryRes
 	return &engramv1.StoreDiscoveryResponse{Id: id, ShortId: shortID}
 }
 
+// supersedeMemoryRequestToArgs converts a SupersedeMemoryRequest into
+// supersedeArgs (milestone 2026-09-25.01 Phase 3 plan 03-02, D-08/D-09):
+// embeds the store_memory field set plus Supersedes, IdempotencyKey, and
+// ValidateOnly. Citations is assigned only when the request carries at
+// least one — citationsToArgs always allocates, so this keeps a
+// Citation-less Connect call matching the MCP lane's nil.
+func supersedeMemoryRequestToArgs(req *engramv1.SupersedeMemoryRequest) supersedeArgs {
+	a := supersedeArgs{
+		storeArgs: storeArgs{
+			Content:        req.GetContent(),
+			Scope:          req.GetScope(),
+			Source:         req.GetSource(),
+			Category:       req.GetCategory(),
+			Tags:           req.GetTags(),
+			Repo:           req.GetRepo(),
+			Workspace:      req.GetWorkspace(),
+			Worktree:       req.GetWorktree(),
+			BaseDir:        req.GetBaseDir(),
+			Summary:        req.GetSummary(),
+			IdempotencyKey: req.GetIdempotencyKey(),
+		},
+		Supersedes:   req.GetSupersedes(),
+		ValidateOnly: req.GetValidateOnly(),
+	}
+	if len(req.GetCitations()) > 0 {
+		a.Citations = citationsToArgs(req.GetCitations())
+	}
+	return a
+}
+
+// supersedeOutcomeToResponse maps a supersedeOutcome into the wire response
+// (D-08/D-09, option-a): Id/ShortId are set on a real call; Validated,
+// Supersedes, and Targets (compact view) are set only when Validated is
+// true.
+func supersedeOutcomeToResponse(o supersedeOutcome, maxChars int) *engramv1.SupersedeMemoryResponse {
+	resp := &engramv1.SupersedeMemoryResponse{
+		Id:        o.ID,
+		ShortId:   o.ShortID,
+		Validated: o.Validated,
+	}
+	if o.Validated {
+		resp.Supersedes = o.Supersedes
+		resp.Targets = shapeProtoMemories(o.Targets, false, maxChars)
+	}
+	return resp
+}
+
 // archiveOutcomeToProto maps one archive.go outcome word to its
 // ArchiveOutcome enum value (milestone 2026-09-25.01 Phase 3). An unknown
 // word (should not occur — archive.go's outcome constants are the only

@@ -945,6 +945,11 @@ type supersedeArgs struct {
 	// array behaves exactly as the pre-phase single-target call). No maximum
 	// length is enforced or advertised (PD-07, 03.1-00-SUMMARY.md).
 	Supersedes []string `json:"supersedes,omitempty" jsonschema:"non-empty array of ids (full UUID or short_id) of the memories this new record corrects/replaces"`
+	// ValidateOnly (D-08/D-09, milestone 2026-09-25.01 Phase 3 plan 03-02): a
+	// caller-chosen control flag, never client-authored record content — it
+	// must NOT be added to contentFingerprint/mergeFingerprint, since it never
+	// reaches a write. See supersedepreview.go's supersede/validateSupersede.
+	ValidateOnly bool `json:"validate_only,omitempty" jsonschema:"optional; true runs the full preflight (ownership, single live head, rule and ambiguity checks) and names the resolved targets without writing anything; never consults or records idempotency_key"`
 }
 
 type searchArgs struct {
@@ -2570,6 +2575,18 @@ func (d *deps) validateSupersedeTargetState(_ context.Context, _ caller, targets
 	return nil
 }
 
+// supersedeArgChecks (milestone 2026-09-25.01 Phase 3 plan 03-02) is the
+// argument-checking prefix supersedeMemory ran inline before this extraction
+// — validateStoreArgs then validateCitations, unchanged in order — factored
+// out so validateSupersede (supersedepreview.go) can run the IDENTICAL two
+// checks for a validate_only dry run without duplicating them.
+func (d *deps) supersedeArgChecks(a supersedeArgs) error {
+	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes, d.writeCaps); err != nil {
+		return err
+	}
+	return validateCitations(a.Citations, 0)
+}
+
 // supersedeMemory corrects a memory the caller owns by merging one or more
 // targets into a single new record (phase 03.1: promoted from one target to
 // a set — D-01 promote semantics, a one-element array behaves exactly as the
@@ -2592,10 +2609,7 @@ func (d *deps) validateSupersedeTargetState(_ context.Context, _ caller, targets
 // async summary-on-write like any other store_memory write, exactly once
 // regardless of target-set size.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
-	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes, d.writeCaps); err != nil {
-		return "", "", err
-	}
-	if err := validateCitations(a.Citations, 0); err != nil {
+	if err := d.supersedeArgChecks(a); err != nil {
 		return "", "", err
 	}
 
@@ -3049,8 +3063,11 @@ func registerTools(s *mcp.Server, d *deps) error {
 			if err != nil {
 				return nil, nil, err
 			}
-			id, sid, err := d.supersedeMemory(ctx, c, a)
-			return textResult(fmt.Sprintf("stored %s, superseding %s", id, strings.Join(a.Supersedes, ", "))), map[string]string{"id": id, "short_id": sid}, err
+			out, err := d.supersede(ctx, c, a)
+			if out.Validated {
+				return textResult("validated: would supersede " + strings.Join(out.Supersedes, ", ")), map[string]any{"validated": true, "supersedes": out.Supersedes, "targets": shapeRecall(out.Targets, false, d.summaryMaxChars)}, err
+			}
+			return textResult(fmt.Sprintf("stored %s, superseding %s", out.ID, strings.Join(a.Supersedes, ", "))), map[string]string{"id": out.ID, "short_id": out.ShortID}, err
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "archive_memory", Description: "Archive one or more memories you own (retire a record that is still true but no longer useful, reversibly): each stamps archived_at, so it drops out of search_memory/list_memory/search_discovery/list_scheduled but stays fetchable by id via get_memory. Never a delete — reversed by restore_memory. Call only after the user agrees to it in this conversation. Compare: delete_memory removes junk outright; supersede_memory records a correction/reversal; archive_memory retires without erasing. `ids` takes 1 to 1000 ids (full UUID or short_id). The result has one outcome per id, in order: archived | already_archived | not_found — a record you do not own reads identically to one that does not exist.", Annotations: annotationsFor("archive_memory")},

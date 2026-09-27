@@ -77,6 +77,9 @@ const (
 	// EngramServiceRestoreMemoryProcedure is the fully-qualified name of the EngramService's
 	// RestoreMemory RPC.
 	EngramServiceRestoreMemoryProcedure = "/engram.v1.EngramService/RestoreMemory"
+	// EngramServiceSupersedeMemoryProcedure is the fully-qualified name of the EngramService's
+	// SupersedeMemory RPC.
+	EngramServiceSupersedeMemoryProcedure = "/engram.v1.EngramService/SupersedeMemory"
 )
 
 // EngramServiceClient is a client for the engram.v1.EngramService service.
@@ -97,6 +100,8 @@ type EngramServiceClient interface {
 	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
 	ArchiveMemory(context.Context, *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error)
 	RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-02) ---
+	SupersedeMemory(context.Context, *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error)
 }
 
 // NewEngramServiceClient constructs a client for the engram.v1.EngramService service. By default,
@@ -194,6 +199,12 @@ func NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(engramServiceMethods.ByName("RestoreMemory")),
 			connect.WithClientOptions(opts...),
 		),
+		supersedeMemory: connect.NewClient[v1.SupersedeMemoryRequest, v1.SupersedeMemoryResponse](
+			httpClient,
+			baseURL+EngramServiceSupersedeMemoryProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("SupersedeMemory")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -213,6 +224,7 @@ type engramServiceClient struct {
 	scheduleMemory    *connect.Client[v1.ScheduleMemoryRequest, v1.ScheduleMemoryResponse]
 	archiveMemory     *connect.Client[v1.ArchiveMemoryRequest, v1.ArchiveMemoryResponse]
 	restoreMemory     *connect.Client[v1.RestoreMemoryRequest, v1.RestoreMemoryResponse]
+	supersedeMemory   *connect.Client[v1.SupersedeMemoryRequest, v1.SupersedeMemoryResponse]
 }
 
 // ListScopes calls engram.v1.EngramService.ListScopes.
@@ -285,6 +297,11 @@ func (c *engramServiceClient) RestoreMemory(ctx context.Context, req *connect.Re
 	return c.restoreMemory.CallUnary(ctx, req)
 }
 
+// SupersedeMemory calls engram.v1.EngramService.SupersedeMemory.
+func (c *engramServiceClient) SupersedeMemory(ctx context.Context, req *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error) {
+	return c.supersedeMemory.CallUnary(ctx, req)
+}
+
 // EngramServiceHandler is an implementation of the engram.v1.EngramService service.
 type EngramServiceHandler interface {
 	ListScopes(context.Context, *connect.Request[v1.ListScopesRequest]) (*connect.Response[v1.ListScopesResponse], error)
@@ -303,6 +320,8 @@ type EngramServiceHandler interface {
 	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
 	ArchiveMemory(context.Context, *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error)
 	RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-02) ---
+	SupersedeMemory(context.Context, *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error)
 }
 
 // NewEngramServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -396,6 +415,12 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(engramServiceMethods.ByName("RestoreMemory")),
 		connect.WithHandlerOptions(opts...),
 	)
+	engramServiceSupersedeMemoryHandler := connect.NewUnaryHandler(
+		EngramServiceSupersedeMemoryProcedure,
+		svc.SupersedeMemory,
+		connect.WithSchema(engramServiceMethods.ByName("SupersedeMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/engram.v1.EngramService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case EngramServiceListScopesProcedure:
@@ -426,6 +451,8 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 			engramServiceArchiveMemoryHandler.ServeHTTP(w, r)
 		case EngramServiceRestoreMemoryProcedure:
 			engramServiceRestoreMemoryHandler.ServeHTTP(w, r)
+		case EngramServiceSupersedeMemoryProcedure:
+			engramServiceSupersedeMemoryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -489,4 +516,8 @@ func (UnimplementedEngramServiceHandler) ArchiveMemory(context.Context, *connect
 
 func (UnimplementedEngramServiceHandler) RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.RestoreMemory is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) SupersedeMemory(context.Context, *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.SupersedeMemory is not implemented"))
 }

@@ -456,7 +456,7 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 // mapper (D-11) — never the store directly, never a hand-rolled per-handler
 // error mapping, never an ownership comparison (DEC-cgb). The original six
 // (StoreMemory..ScheduleMemory) plus milestone 2026-09-25.01 Phase 3's
-// ArchiveMemory/RestoreMemory all follow this shape.
+// ArchiveMemory/RestoreMemory/SupersedeMemory all follow this shape.
 
 func (a *engramAPI) StoreMemory(ctx context.Context, req *connect.Request[engramv1.StoreMemoryRequest]) (*connect.Response[engramv1.StoreMemoryResponse], error) {
 	c, err := callerFromConnectContext(ctx)
@@ -564,6 +564,25 @@ func (a *engramAPI) RestoreMemory(ctx context.Context, req *connect.Request[engr
 		return nil, connectError(ctx, err)
 	}
 	return connect.NewResponse(&engramv1.RestoreMemoryResponse{Results: archiveResultsToProto(rs)}), nil
+}
+
+// SupersedeMemory (milestone 2026-09-25.01 Phase 3 plan 03-02, D-08/D-09)
+// follows the same thin-adapter shape as the other write RPCs: resolve the
+// caller, call the SAME deps.supersede dispatch the supersede_memory MCP
+// tool calls (through d.supersede, never d.supersedeMemory/
+// d.validateSupersede directly, so validate_only can never reach the real
+// write on this lane either), map the result via protoconv, map any error
+// via connectError.
+func (a *engramAPI) SupersedeMemory(ctx context.Context, req *connect.Request[engramv1.SupersedeMemoryRequest]) (*connect.Response[engramv1.SupersedeMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	out, err := a.d.supersede(ctx, c, supersedeMemoryRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(supersedeOutcomeToResponse(out, a.d.summaryMaxChars)), nil
 }
 
 // connectResolver supplies the per-request identity TokenInfo for the
