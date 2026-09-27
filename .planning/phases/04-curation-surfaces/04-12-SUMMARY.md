@@ -239,7 +239,17 @@ neither assertion itself was changed or loosened.
 
 ## Issues Encountered
 
-None beyond the deviations documented above.
+`gsd-tools requirements mark-complete DSYS-04 CUR-01 CUR-02` (the `update_requirements` step)
+reported all three `not_found`, despite each appearing exactly once in REQUIREMENTS.md.
+Root-caused to a pre-existing, milestone-wide gap: REQUIREMENTS.md's traceability table Status
+column reads `Mapped` for all 40 v1 requirements (every phase, not just this one), not the
+`Pending`/`Complete` vocabulary the tool's template and `mark-complete` verb expect — confirmed
+neither `- [x]` checkboxes nor `| Complete |` rows exist anywhere in the file, even though Phases
+1-3 already shipped. Not fixed here: REQUIREMENTS.md is a tool-owned generated file, and this
+repo's `planning-artifacts.md` rule forbids hand-editing structure a tool doesn't recognize into
+it. Filed as `.planning/phases/04-curation-surfaces/deferred-items.md` and a `WINDOWS.md` entry
+(kind `deviation`) rather than worked around. DSYS-04/CUR-01/CUR-02 are functionally satisfied
+per this plan's own `coverage:` block regardless of the traceability table's stale display state.
 
 ## Known Stubs
 
