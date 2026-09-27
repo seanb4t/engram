@@ -162,7 +162,7 @@ describe('ArchiveConfirmDialog — rejected envelope (E2 error)', () => {
     await expect.element(screen.getByText('hint=out_of_range', { exact: false })).toBeInTheDocument();
     await expect.element(screen.getByText(/too many ids/)).toBeInTheDocument();
     // The chips stay in place -- a rejected call never drops a record.
-    await expect.element(screen.getByText('m1', { exact: false })).toBeInTheDocument();
+    await expect.element(screen.getByText('s0000000001')).toBeInTheDocument();
   });
 });
 
