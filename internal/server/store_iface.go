@@ -22,6 +22,13 @@ import (
 // disposition: no bloat beyond the deps.* surface; the three TEST call sites
 // that used to pass d.st to them now use testDepsWithStore instead).
 type memStore interface {
+	// ArchiveAs/RestoreAs are the owner-gated (authz.ActionArchive) verbs for
+	// the caller-facing lanes (ArchiveMemory/RestoreMemory Connect RPCs, the
+	// archive_memory/restore_memory MCP tools; milestone 2026-09-25.01 Phase
+	// 3, D-16). The subject-less operator-tier siblings (Archive/Restore) are
+	// deliberately NOT on this interface, so no handler reachable through
+	// deps.* can bypass the Cedar ActionArchive gate.
+	ArchiveAs(ctx context.Context, id string, subj store.Subject) (store.ArchiveResult, error)
 	Delete(ctx context.Context, id string, subj store.Subject) error
 	DeleteAll(ctx context.Context, scope string, subj store.Subject) error
 	FetchForUpdate(ctx context.Context, id string, subj store.Subject) (store.Memory, error)
@@ -39,6 +46,8 @@ type memStore interface {
 	MintShortID(ctx context.Context, seen map[string]struct{}) (string, error)
 	OwnedOrAbsent(ctx context.Context, id string, subj store.Subject) error
 	ResolvePointID(ctx context.Context, idOrShort string) (string, error)
+	// RestoreAs is ArchiveAs's owner-gated sibling — see the doc comment above.
+	RestoreAs(ctx context.Context, id string, subj store.Subject) (store.ArchiveResult, error)
 	// Search is the plain vector-order read (D-02, phase 02-recall-first-search
 	// plan 02-01) — used ONLY for the recall-gate hidden-count comparison
 	// (hiddencount.go's searchRecallHidden), never as a substitute for the

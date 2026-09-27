@@ -200,3 +200,43 @@ func idsToScheduleMemoryResponse(id, shortID string) *engramv1.ScheduleMemoryRes
 func idsToStoreDiscoveryResponse(id, shortID string) *engramv1.StoreDiscoveryResponse {
 	return &engramv1.StoreDiscoveryResponse{Id: id, ShortId: shortID}
 }
+
+// archiveOutcomeToProto maps one archive.go outcome word to its
+// ArchiveOutcome enum value (milestone 2026-09-25.01 Phase 3). An unknown
+// word (should not occur — archive.go's outcome constants are the only
+// producers) maps to ARCHIVE_OUTCOME_UNSPECIFIED rather than panicking, so a
+// future outcome word added to archive.go without a matching arm here fails
+// visibly on the wire (an UNSPECIFIED outcome) instead of crashing the
+// handler.
+func archiveOutcomeToProto(outcome string) engramv1.ArchiveOutcome {
+	switch outcome {
+	case outcomeArchived:
+		return engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_ARCHIVED
+	case outcomeAlreadyArchived:
+		return engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_ALREADY_ARCHIVED
+	case outcomeRestored:
+		return engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_RESTORED
+	case outcomeNotArchived:
+		return engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_NOT_ARCHIVED
+	case outcomeNotFound:
+		return engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_NOT_FOUND
+	default:
+		return engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_UNSPECIFIED
+	}
+}
+
+// archiveResultsToProto is a plain field-by-field copy (no validation, no
+// re-fetch — protoconv's standing discipline) from archive.go's
+// []archiveResult into the wire []*engramv1.ArchiveResult shape shared by
+// ArchiveMemoryResponse and RestoreMemoryResponse.
+func archiveResultsToProto(rs []archiveResult) []*engramv1.ArchiveResult {
+	out := make([]*engramv1.ArchiveResult, len(rs))
+	for i, r := range rs {
+		out[i] = &engramv1.ArchiveResult{
+			Requested: r.Requested,
+			Id:        r.ID,
+			Outcome:   archiveOutcomeToProto(r.Outcome),
+		}
+	}
+	return out
+}

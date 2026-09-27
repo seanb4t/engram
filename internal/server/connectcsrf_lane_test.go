@@ -18,6 +18,7 @@ import (
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/auth"
+	"github.com/seanb4t/engram/internal/store"
 )
 
 // csrfStubResolveWithLane is the unit-shaped lane-aware stub-resolver
@@ -230,6 +231,137 @@ func TestCSRFReadProceduresUnaffectedByLane(t *testing.T) {
 	if _, err := client.ListScopes(ctx, req); err != nil {
 		t.Fatalf("read RPC with unstamped lane: got err %v, want success", err)
 	}
+}
+
+// archiveCSRFDo issues one ArchiveMemory/RestoreMemory-shaped request over a
+// bare client (mirroring doCSRFWrite's header assembly) and returns the
+// decoded response alongside the error, so the caller can assert on the
+// per-id outcome as well as the CSRF rejection code — doCSRFWrite discards
+// the response, which TestCSRFCurationWritesRequireDoubleSubmit needs.
+func archiveCSRFDo[Req, Resp any](ctx context.Context, fn func(context.Context, *connect.Request[Req]) (*connect.Response[Resp], error), msg *Req, h csrfHeaders) (*Resp, error) {
+	req := connect.NewRequest(msg)
+	if h.actor != "" {
+		req.Header().Set("X-Test-Actor", h.actor)
+	}
+	if h.hasCookie {
+		req.Header().Set("Cookie", CSRFCookieName+"="+h.cookieValue)
+	}
+	if h.hasHeader {
+		req.Header().Set(CSRFHeaderName, h.headerValue)
+	}
+	resp, err := fn(ctx, req)
+	if resp == nil {
+		return nil, err
+	}
+	return resp.Msg, err
+}
+
+// TestCSRFCurationWritesRequireDoubleSubmit (D-15, SC1, RPC-05) is the
+// phase's primary CSRF red-first test for milestone 2026-09-25.01 Phase 3:
+// explicit subtests "ArchiveMemory" and "RestoreMemory" (never a range over
+// csrfWriteProcedures) over the real interceptor chain and a spy record
+// owned by actor-A (pre-archived for the RestoreMemory subtest). Each
+// subtest proves: no cookie and no header -> permission_denied; cookie but
+// no header -> permission_denied; no token and an EMPTY ids list ->
+// permission_denied (proving CSRF runs before validation, since an empty
+// list carries no buf.validate rule to reject it first); a matching cookie
+// and header -> success with one result reporting the "changed" outcome;
+// the SAME valid token again -> success with the "already" outcome (the
+// idempotent repeat).
+func TestCSRFCurationWritesRequireDoubleSubmit(t *testing.T) {
+	const ownerA = "actor-A"
+	validToken := csrfTestToken(ownerA)
+
+	t.Run("ArchiveMemory", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolveWithLane(auth.LaneCookie), csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+		ctx := context.Background()
+
+		const id = "d0000000-0000-0000-0000-000000000001"
+		sp.records[id] = store.Memory{ID: id, Owner: ownerA}
+
+		do := func(ids []string, h csrfHeaders) (*engramv1.ArchiveMemoryResponse, error) {
+			return archiveCSRFDo(ctx, client.ArchiveMemory, &engramv1.ArchiveMemoryRequest{Ids: ids}, h)
+		}
+
+		if _, err := do([]string{id}, csrfHeaders{actor: ownerA}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("no cookie, no header: got code %v (%v), want PermissionDenied", connect.CodeOf(err), err)
+		}
+		if _, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("cookie, no header: got code %v (%v), want PermissionDenied", connect.CodeOf(err), err)
+		}
+		if _, err := do([]string{}, csrfHeaders{actor: ownerA}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("no token, empty ids: got code %v (%v), want PermissionDenied (CSRF must precede validation)", connect.CodeOf(err), err)
+		}
+
+		resp, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken, hasHeader: true, headerValue: validToken})
+		if err != nil {
+			t.Fatalf("matching cookie+header: got err %v, want success", err)
+		}
+		if got := resp.GetResults(); len(got) != 1 || got[0].GetOutcome() != engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_ARCHIVED {
+			t.Errorf("first ArchiveMemory result = %+v, want one ARCHIVED row", got)
+		}
+
+		resp2, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken, hasHeader: true, headerValue: validToken})
+		if err != nil {
+			t.Fatalf("repeat with the same valid token: got err %v, want success", err)
+		}
+		if got := resp2.GetResults(); len(got) != 1 || got[0].GetOutcome() != engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_ALREADY_ARCHIVED {
+			t.Errorf("second ArchiveMemory result = %+v, want one ALREADY_ARCHIVED row", got)
+		}
+	})
+
+	t.Run("RestoreMemory", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolveWithLane(auth.LaneCookie), csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+		ctx := context.Background()
+
+		const id = "d0000000-0000-0000-0000-000000000002"
+		archivedAt := time.Now().UTC()
+		sp.records[id] = store.Memory{ID: id, Owner: ownerA, ArchivedAt: &archivedAt}
+
+		do := func(ids []string, h csrfHeaders) (*engramv1.RestoreMemoryResponse, error) {
+			return archiveCSRFDo(ctx, client.RestoreMemory, &engramv1.RestoreMemoryRequest{Ids: ids}, h)
+		}
+
+		if _, err := do([]string{id}, csrfHeaders{actor: ownerA}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("no cookie, no header: got code %v (%v), want PermissionDenied", connect.CodeOf(err), err)
+		}
+		if _, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("cookie, no header: got code %v (%v), want PermissionDenied", connect.CodeOf(err), err)
+		}
+		if _, err := do([]string{}, csrfHeaders{actor: ownerA}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("no token, empty ids: got code %v (%v), want PermissionDenied (CSRF must precede validation)", connect.CodeOf(err), err)
+		}
+
+		resp, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken, hasHeader: true, headerValue: validToken})
+		if err != nil {
+			t.Fatalf("matching cookie+header: got err %v, want success", err)
+		}
+		if got := resp.GetResults(); len(got) != 1 || got[0].GetOutcome() != engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_RESTORED {
+			t.Errorf("first RestoreMemory result = %+v, want one RESTORED row", got)
+		}
+
+		resp2, err := do([]string{id}, csrfHeaders{actor: ownerA, hasCookie: true, cookieValue: validToken, hasHeader: true, headerValue: validToken})
+		if err != nil {
+			t.Fatalf("repeat with the same valid token: got err %v, want success", err)
+		}
+		if got := resp2.GetResults(); len(got) != 1 || got[0].GetOutcome() != engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_NOT_ARCHIVED {
+			t.Errorf("second RestoreMemory result = %+v, want one NOT_ARCHIVED row", got)
+		}
+	})
 }
 
 // TestCSRFCookieLaneStillEnforcesDoubleSubmit: a request stamped

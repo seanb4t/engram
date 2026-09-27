@@ -63,12 +63,15 @@ func assertFields(t *testing.T, fd protoreflect.FileDescriptor, msgName string, 
 
 // TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs walks the
 // generated EngramService FileDescriptor and asserts the phase's structural
-// invariants survive codegen: exactly 12 RPCs (6 read + 6 write; 07-06 added
-// the sixth read RPC, MigrateStatus), the six write RPCs' exact
-// request/response types, per-field wire-shape tables for
+// invariants survive codegen: IDEMPOTENCY_UNKNOWN on every method (SC2/D-12 —
+// no write RPC may become GET-reachable) plus per-field wire-shape tables for
 // the read-lane messages plus Memory/ScopeCount (SC4 — not just message
-// names), and IDEMPOTENCY_UNKNOWN on every method (SC2/D-12 — no write RPC
-// may become GET-reachable).
+// names). Milestone 2026-09-25.01 Phase 3 (D-26) deleted the RPC-count
+// assertion and the per-RPC request/response name/type map that used to live
+// here: buf breaking already guards wire compatibility on every RPC this
+// service gains, and each new RPC's request/response shapes are proven by
+// its own round-trip tests. A second descriptor-level name/type pin would
+// only restate the .proto.
 func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testing.T) {
 	fd := engramv1.File_engram_v1_engram_proto
 	svc := fd.Services().Get(0)
@@ -77,41 +80,9 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 	}
 
 	methods := svc.Methods()
-	if methods.Len() != 12 {
-		t.Fatalf("expected 12 RPCs (6 read + 6 write), got %d", methods.Len())
-	}
-
-	wantReqResp := map[string][2]protoreflect.FullName{
-		// read lane (finding #6: pinned by exact name, not just count)
-		"ListScopes":        {"engram.v1.ListScopesRequest", "engram.v1.ListScopesResponse"},
-		"ListMemories":      {"engram.v1.ListMemoriesRequest", "engram.v1.ListMemoriesResponse"},
-		"SearchMemories":    {"engram.v1.SearchMemoriesRequest", "engram.v1.SearchMemoriesResponse"},
-		"GetMemory":         {"engram.v1.GetMemoryRequest", "engram.v1.GetMemoryResponse"},
-		"SearchDiscoveries": {"engram.v1.SearchDiscoveriesRequest", "engram.v1.SearchDiscoveriesResponse"},
-		// 07-06: the sixth read RPC.
-		"MigrateStatus": {"engram.v1.MigrateStatusRequest", "engram.v1.MigrateStatusResponse"},
-		// write lane (finding #6: pinned by exact name, not just count)
-		"StoreMemory":    {"engram.v1.StoreMemoryRequest", "engram.v1.StoreMemoryResponse"},
-		"StoreDiscovery": {"engram.v1.StoreDiscoveryRequest", "engram.v1.StoreDiscoveryResponse"},
-		"UpdateMemory":   {"engram.v1.UpdateMemoryRequest", "engram.v1.UpdateMemoryResponse"},
-		"DeleteMemory":   {"engram.v1.DeleteMemoryRequest", "engram.v1.DeleteMemoryResponse"},
-		"SetVisibility":  {"engram.v1.SetVisibilityRequest", "engram.v1.SetVisibilityResponse"},
-		"ScheduleMemory": {"engram.v1.ScheduleMemoryRequest", "engram.v1.ScheduleMemoryResponse"},
-	}
-
-	seen := make(map[string]bool, len(wantReqResp))
 	for i := 0; i < methods.Len(); i++ {
 		md := methods.Get(i)
 		name := string(md.Name())
-		want, ok := wantReqResp[name]
-		if !ok {
-			t.Errorf("unexpected RPC %s not in the expected 11-RPC set", name)
-			continue
-		}
-		seen[name] = true
-		if md.Input().FullName() != want[0] || md.Output().FullName() != want[1] {
-			t.Errorf("%s: req/resp types changed: got (%s, %s), want (%s, %s)", name, md.Input().FullName(), md.Output().FullName(), want[0], want[1])
-		}
 
 		// No-side-effects invariant (SC2/D-12): every method — read and
 		// write — must report IDEMPOTENCY_UNKNOWN. A nil Options() (no
@@ -127,11 +98,6 @@ func TestEngramServiceDescriptor_ReadLaneUnaffectedAndNoSideEffectsRPCs(t *testi
 		}
 		if opts.GetIdempotencyLevel() != descriptorpb.MethodOptions_IDEMPOTENCY_UNKNOWN {
 			t.Errorf("%s: idempotency_level = %v, want IDEMPOTENCY_UNKNOWN (SC2/D-12 guard)", name, opts.GetIdempotencyLevel())
-		}
-	}
-	for name := range wantReqResp {
-		if !seen[name] {
-			t.Errorf("expected RPC %s not found in descriptor", name)
 		}
 	}
 

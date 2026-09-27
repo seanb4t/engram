@@ -71,6 +71,12 @@ const (
 	// EngramServiceScheduleMemoryProcedure is the fully-qualified name of the EngramService's
 	// ScheduleMemory RPC.
 	EngramServiceScheduleMemoryProcedure = "/engram.v1.EngramService/ScheduleMemory"
+	// EngramServiceArchiveMemoryProcedure is the fully-qualified name of the EngramService's
+	// ArchiveMemory RPC.
+	EngramServiceArchiveMemoryProcedure = "/engram.v1.EngramService/ArchiveMemory"
+	// EngramServiceRestoreMemoryProcedure is the fully-qualified name of the EngramService's
+	// RestoreMemory RPC.
+	EngramServiceRestoreMemoryProcedure = "/engram.v1.EngramService/RestoreMemory"
 )
 
 // EngramServiceClient is a client for the engram.v1.EngramService service.
@@ -88,6 +94,9 @@ type EngramServiceClient interface {
 	DeleteMemory(context.Context, *connect.Request[v1.DeleteMemoryRequest]) (*connect.Response[v1.DeleteMemoryResponse], error)
 	SetVisibility(context.Context, *connect.Request[v1.SetVisibilityRequest]) (*connect.Response[v1.SetVisibilityResponse], error)
 	ScheduleMemory(context.Context, *connect.Request[v1.ScheduleMemoryRequest]) (*connect.Response[v1.ScheduleMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
+	ArchiveMemory(context.Context, *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error)
+	RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error)
 }
 
 // NewEngramServiceClient constructs a client for the engram.v1.EngramService service. By default,
@@ -173,6 +182,18 @@ func NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(engramServiceMethods.ByName("ScheduleMemory")),
 			connect.WithClientOptions(opts...),
 		),
+		archiveMemory: connect.NewClient[v1.ArchiveMemoryRequest, v1.ArchiveMemoryResponse](
+			httpClient,
+			baseURL+EngramServiceArchiveMemoryProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("ArchiveMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		restoreMemory: connect.NewClient[v1.RestoreMemoryRequest, v1.RestoreMemoryResponse](
+			httpClient,
+			baseURL+EngramServiceRestoreMemoryProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("RestoreMemory")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -190,6 +211,8 @@ type engramServiceClient struct {
 	deleteMemory      *connect.Client[v1.DeleteMemoryRequest, v1.DeleteMemoryResponse]
 	setVisibility     *connect.Client[v1.SetVisibilityRequest, v1.SetVisibilityResponse]
 	scheduleMemory    *connect.Client[v1.ScheduleMemoryRequest, v1.ScheduleMemoryResponse]
+	archiveMemory     *connect.Client[v1.ArchiveMemoryRequest, v1.ArchiveMemoryResponse]
+	restoreMemory     *connect.Client[v1.RestoreMemoryRequest, v1.RestoreMemoryResponse]
 }
 
 // ListScopes calls engram.v1.EngramService.ListScopes.
@@ -252,6 +275,16 @@ func (c *engramServiceClient) ScheduleMemory(ctx context.Context, req *connect.R
 	return c.scheduleMemory.CallUnary(ctx, req)
 }
 
+// ArchiveMemory calls engram.v1.EngramService.ArchiveMemory.
+func (c *engramServiceClient) ArchiveMemory(ctx context.Context, req *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error) {
+	return c.archiveMemory.CallUnary(ctx, req)
+}
+
+// RestoreMemory calls engram.v1.EngramService.RestoreMemory.
+func (c *engramServiceClient) RestoreMemory(ctx context.Context, req *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error) {
+	return c.restoreMemory.CallUnary(ctx, req)
+}
+
 // EngramServiceHandler is an implementation of the engram.v1.EngramService service.
 type EngramServiceHandler interface {
 	ListScopes(context.Context, *connect.Request[v1.ListScopesRequest]) (*connect.Response[v1.ListScopesResponse], error)
@@ -267,6 +300,9 @@ type EngramServiceHandler interface {
 	DeleteMemory(context.Context, *connect.Request[v1.DeleteMemoryRequest]) (*connect.Response[v1.DeleteMemoryResponse], error)
 	SetVisibility(context.Context, *connect.Request[v1.SetVisibilityRequest]) (*connect.Response[v1.SetVisibilityResponse], error)
 	ScheduleMemory(context.Context, *connect.Request[v1.ScheduleMemoryRequest]) (*connect.Response[v1.ScheduleMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
+	ArchiveMemory(context.Context, *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error)
+	RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error)
 }
 
 // NewEngramServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -348,6 +384,18 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(engramServiceMethods.ByName("ScheduleMemory")),
 		connect.WithHandlerOptions(opts...),
 	)
+	engramServiceArchiveMemoryHandler := connect.NewUnaryHandler(
+		EngramServiceArchiveMemoryProcedure,
+		svc.ArchiveMemory,
+		connect.WithSchema(engramServiceMethods.ByName("ArchiveMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceRestoreMemoryHandler := connect.NewUnaryHandler(
+		EngramServiceRestoreMemoryProcedure,
+		svc.RestoreMemory,
+		connect.WithSchema(engramServiceMethods.ByName("RestoreMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/engram.v1.EngramService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case EngramServiceListScopesProcedure:
@@ -374,6 +422,10 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 			engramServiceSetVisibilityHandler.ServeHTTP(w, r)
 		case EngramServiceScheduleMemoryProcedure:
 			engramServiceScheduleMemoryHandler.ServeHTTP(w, r)
+		case EngramServiceArchiveMemoryProcedure:
+			engramServiceArchiveMemoryHandler.ServeHTTP(w, r)
+		case EngramServiceRestoreMemoryProcedure:
+			engramServiceRestoreMemoryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -429,4 +481,12 @@ func (UnimplementedEngramServiceHandler) SetVisibility(context.Context, *connect
 
 func (UnimplementedEngramServiceHandler) ScheduleMemory(context.Context, *connect.Request[v1.ScheduleMemoryRequest]) (*connect.Response[v1.ScheduleMemoryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ScheduleMemory is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) ArchiveMemory(context.Context, *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ArchiveMemory is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.RestoreMemory is not implemented"))
 }

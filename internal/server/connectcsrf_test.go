@@ -158,13 +158,27 @@ func csrfWriteCases(futureNotBefore *timestamppb.Timestamp) []csrfWriteRPCCase {
 				}, h)
 			},
 		},
+		{
+			name: "ArchiveMemory",
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient, h csrfHeaders) error {
+				return doCSRFWrite(ctx, c.ArchiveMemory, &engramv1.ArchiveMemoryRequest{Ids: []string{"some-id"}}, h)
+			},
+		},
+		{
+			name: "RestoreMemory",
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient, h csrfHeaders) error {
+				return doCSRFWrite(ctx, c.RestoreMemory, &engramv1.RestoreMemoryRequest{Ids: []string{"some-id"}}, h)
+			},
+		},
 	}
 }
 
 // TestCSRFWriteProcedureAllowlist pins csrfWriteProcedures at the data level
-// (SC3 / T-16-08): exactly the six generated write Procedure constants, and
-// none of the five read Procedure constants — independent of, and a faster
-// backstop than, the full httptest matrices below.
+// (SC3 / T-16-08): exactly the eight generated write Procedure constants
+// (the original six plus milestone 2026-09-25.01 Phase 3's
+// ArchiveMemory/RestoreMemory, D-15), and none of the five read Procedure
+// constants — independent of, and a faster backstop than, the full httptest
+// matrices below.
 func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 	wantWrite := []string{
 		engramv1connect.EngramServiceStoreMemoryProcedure,
@@ -173,9 +187,11 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 		engramv1connect.EngramServiceDeleteMemoryProcedure,
 		engramv1connect.EngramServiceSetVisibilityProcedure,
 		engramv1connect.EngramServiceScheduleMemoryProcedure,
+		engramv1connect.EngramServiceArchiveMemoryProcedure,
+		engramv1connect.EngramServiceRestoreMemoryProcedure,
 	}
-	if got := len(csrfWriteProcedures); got != 6 {
-		t.Fatalf("csrfWriteProcedures has %d entries, want exactly 6", got)
+	if got := len(csrfWriteProcedures); got != 8 {
+		t.Fatalf("csrfWriteProcedures has %d entries, want exactly 8", got)
 	}
 	for _, p := range wantWrite {
 		if !csrfWriteProcedures[p] {

@@ -399,6 +399,65 @@ message ScheduleMemoryResponse {
   string short_id = 2;
 }
 
+// --- curation RPCs (milestone 2026-09-25.01 Phase 3) ---
+
+// ArchiveOutcome enumerates the per-id result ArchiveMemory/RestoreMemory
+// report for one requested id (D-06/D-07). The zero value is never a real
+// outcome — every response entry sets one of the other five explicitly.
+enum ArchiveOutcome {
+  ARCHIVE_OUTCOME_UNSPECIFIED = 0;
+  ARCHIVE_OUTCOME_ARCHIVED = 1;
+  ARCHIVE_OUTCOME_ALREADY_ARCHIVED = 2;
+  ARCHIVE_OUTCOME_RESTORED = 3;
+  ARCHIVE_OUTCOME_NOT_ARCHIVED = 4;
+  // ARCHIVE_OUTCOME_NOT_FOUND covers a nonexistent id, an id the caller does
+  // not own, and an ambiguous short_id alike (D-07, DEC-xa6) —
+  // indistinguishable by design.
+  ARCHIVE_OUTCOME_NOT_FOUND = 5;
+}
+
+// ArchiveResult is ArchiveMemory/RestoreMemory's per-id report, reused
+// verbatim across both response messages — one message, two independent
+// field-number sequences (buf breaking: breaking.use: [FILE]), mirroring the
+// RecallGateHidden precedent above.
+message ArchiveResult {
+  // requested is the token the caller actually supplied (a short_id or a
+  // UUID), set on EVERY row including NOT_FOUND, so a caller can correlate
+  // each row back to its input (results[i] always answers ids[i]; a
+  // duplicate token is reported once per occurrence, never merged).
+  string requested = 1;
+  // id is the canonical UUID, set once the target resolved. It is ALWAYS
+  // EMPTY on ARCHIVE_OUTCOME_NOT_FOUND (D-07, DEC-xa6) — a caller learns
+  // nothing about a record it cannot write, even one it addressed by a
+  // guessed short_id that happens to resolve.
+  string id = 2;
+  ArchiveOutcome outcome = 3;
+}
+
+// ArchiveMemoryRequest/RestoreMemoryRequest take a batch of ids (full UUID
+// or short_id, D-06). The whole call is rejected only for an empty list,
+// more than 1000 ids, or a blank or over-256-byte entry — never for an
+// individual id that does not resolve or is not owned, which reports
+// ARCHIVE_OUTCOME_NOT_FOUND in the response instead (D-06/D-07). There is
+// no cross-record atomicity: a store failure part-way through aborts the
+// call and ids already processed keep their new state — each per-id
+// operation is independently idempotent and reversible (D-06). No
+// buf.validate rule is attached to either request message: the single
+// shared server-side core validates, so both the MCP and Connect lanes
+// return the byte-identical field=/hint= rejection envelope (D-17/D-20).
+message ArchiveMemoryRequest {
+  repeated string ids = 1;
+}
+message ArchiveMemoryResponse {
+  repeated ArchiveResult results = 1;
+}
+message RestoreMemoryRequest {
+  repeated string ids = 1;
+}
+message RestoreMemoryResponse {
+  repeated ArchiveResult results = 1;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
@@ -413,4 +472,7 @@ service EngramService {
   rpc DeleteMemory(DeleteMemoryRequest) returns (DeleteMemoryResponse);
   rpc SetVisibility(SetVisibilityRequest) returns (SetVisibilityResponse);
   rpc ScheduleMemory(ScheduleMemoryRequest) returns (ScheduleMemoryResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
+  rpc ArchiveMemory(ArchiveMemoryRequest) returns (ArchiveMemoryResponse);
+  rpc RestoreMemory(RestoreMemoryRequest) returns (RestoreMemoryResponse);
 }

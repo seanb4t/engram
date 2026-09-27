@@ -449,12 +449,14 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(&engramv1.SearchDiscoveriesResponse{Discoveries: memoriesToProto(ms)}), nil
 }
 
-// The six Connect write RPCs below are thin adapters (SC2): resolve the caller
+// The write Connect RPCs below are thin adapters (SC2): resolve the caller
 // via callerFromConnectContext, convert the proto request to args via the
 // 17-03 protoconv layer, call the SAME deps.* method the MCP tool calls, map
 // the result via protoconv, and map any error via the single connectError
 // mapper (D-11) — never the store directly, never a hand-rolled per-handler
-// error mapping, never an ownership comparison (DEC-cgb).
+// error mapping, never an ownership comparison (DEC-cgb). The original six
+// (StoreMemory..ScheduleMemory) plus milestone 2026-09-25.01 Phase 3's
+// ArchiveMemory/RestoreMemory all follow this shape.
 
 func (a *engramAPI) StoreMemory(ctx context.Context, req *connect.Request[engramv1.StoreMemoryRequest]) (*connect.Response[engramv1.StoreMemoryResponse], error) {
 	c, err := callerFromConnectContext(ctx)
@@ -530,6 +532,38 @@ func (a *engramAPI) ScheduleMemory(ctx context.Context, req *connect.Request[eng
 		return nil, connectError(ctx, err)
 	}
 	return connect.NewResponse(idsToScheduleMemoryResponse(id, shortID)), nil
+}
+
+// ArchiveMemory/RestoreMemory (milestone 2026-09-25.01 Phase 3, D-06/D-07)
+// follow the same thin-adapter shape as the six write RPCs above: resolve
+// the caller, call the SAME deps.* batch core the archive_memory/
+// restore_memory MCP tools call (Task 3), map the result via protoconv, map
+// any error via connectError. A per-id not_found row is never an error path
+// (Pitfall 1) — only a shape violation (empty list, over-cap list, malformed
+// entry) reaches connectError here.
+
+func (a *engramAPI) ArchiveMemory(ctx context.Context, req *connect.Request[engramv1.ArchiveMemoryRequest]) (*connect.Response[engramv1.ArchiveMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	rs, err := a.d.archiveMemory(ctx, c, archiveArgs{IDs: req.Msg.GetIds()})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(&engramv1.ArchiveMemoryResponse{Results: archiveResultsToProto(rs)}), nil
+}
+
+func (a *engramAPI) RestoreMemory(ctx context.Context, req *connect.Request[engramv1.RestoreMemoryRequest]) (*connect.Response[engramv1.RestoreMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	rs, err := a.d.restoreMemory(ctx, c, archiveArgs{IDs: req.Msg.GetIds()})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(&engramv1.RestoreMemoryResponse{Results: archiveResultsToProto(rs)}), nil
 }
 
 // connectResolver supplies the per-request identity TokenInfo for the

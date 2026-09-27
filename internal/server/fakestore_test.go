@@ -299,6 +299,48 @@ func (s *spyStore) UpdatePayload(_ context.Context, cur store.Memory, shared *bo
 	return nil
 }
 
+// ArchiveAs mirrors store.Store.ArchiveAs's owner-gate and outcome
+// semantics (milestone 2026-09-25.01 Phase 3, D-16): absent or not-owned ->
+// ArchiveOutcomeNotFound plus an ErrNotFound-wrapping error; already
+// archived -> ArchiveOutcomeAlready, no mutation; otherwise stamps
+// ArchivedAt and reports ArchiveOutcomeChanged.
+func (s *spyStore) ArchiveAs(_ context.Context, id string, subj store.Subject) (store.ArchiveResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := ownerOfSubject(subj)
+	s.record("ArchiveAs", owner, id)
+	m, ok := s.records[id]
+	if !ok || m.Owner != owner {
+		return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeNotFound}, fmt.Errorf("%w: %s", store.ErrNotFound, id)
+	}
+	if m.ArchivedAt != nil {
+		return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeAlready}, nil
+	}
+	now := time.Now().UTC()
+	m.ArchivedAt = &now
+	s.records[id] = m
+	return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeChanged}, nil
+}
+
+// RestoreAs mirrors store.Store.RestoreAs, the exact inverse of ArchiveAs
+// above.
+func (s *spyStore) RestoreAs(_ context.Context, id string, subj store.Subject) (store.ArchiveResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := ownerOfSubject(subj)
+	s.record("RestoreAs", owner, id)
+	m, ok := s.records[id]
+	if !ok || m.Owner != owner {
+		return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeNotFound}, fmt.Errorf("%w: %s", store.ErrNotFound, id)
+	}
+	if m.ArchivedAt == nil {
+		return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeAlready}, nil
+	}
+	m.ArchivedAt = nil
+	s.records[id] = m
+	return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeChanged}, nil
+}
+
 func (s *spyStore) Delete(_ context.Context, id string, subj store.Subject) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
