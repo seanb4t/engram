@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import type { Memory } from '$lib/gen/engram_pb';
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
   import { toast } from 'svelte-sonner';
@@ -7,6 +8,14 @@
   import ResultHoverCard from './ResultHoverCard.svelte';
   import RowActions from './RowActions.svelte';
   import { defaultActionsFor, type CurationAction } from '$lib/curation/host.svelte.ts';
+
+  // D-11/D-12/D-13: a group-header item, or a row item carrying its index
+  // into `memories` (never re-derived from the virtual list's own index,
+  // which includes headers). `groupKey`/`groupHeader` are consumed by
+  // /rules (scope headers) and left unset everywhere else.
+  type ListItem =
+    | { kind: 'header'; key: string; count: number }
+    | { kind: 'row'; memory: Memory; rowIndex: number };
 
   let {
     memories,
@@ -29,7 +38,10 @@
     onarchive,
     onrestore,
     onchain,
-    rowActions = defaultActionsFor
+    rowActions = defaultActionsFor,
+    rowTrailing,
+    groupKey,
+    groupHeader
   }: {
     memories: Memory[];
     mode?: 'ranked' | 'unranked';
@@ -52,7 +64,38 @@
     onrestore?: (ids: string[]) => void;
     onchain?: (id: string) => void;
     rowActions?: (m: Memory) => CurationAction[];
+    rowTrailing?: Snippet<[Memory]>;
+    groupKey?: (m: Memory) => string;
+    groupHeader?: Snippet<[string, number]>;
   } = $props();
+
+  // D-12: a header before the first row of each key, in `memories` order —
+  // routes pre-sort, this never re-sorts. Without `groupKey`, `items` is
+  // `memories` wrapped as row items, unchanged in effect from before this
+  // prop existed.
+  const items = $derived.by((): ListItem[] => {
+    if (!groupKey) return memories.map((memory, rowIndex) => ({ kind: 'row', memory, rowIndex }) as const);
+    const out: ListItem[] = [];
+    const counts = new Map<string, number>();
+    for (const m of memories) counts.set(groupKey(m), (counts.get(groupKey(m)) ?? 0) + 1);
+    let lastKey: string | undefined;
+    memories.forEach((memory, rowIndex) => {
+      const key = groupKey(memory);
+      if (key !== lastKey) {
+        out.push({ kind: 'header', key, count: counts.get(key) ?? 0 });
+        lastKey = key;
+      }
+      out.push({ kind: 'row', memory, rowIndex });
+    });
+    return out;
+  });
+
+  // Maps a `memories` index to its position in `items` (headers shift every
+  // row after the first group forward) — `moveActive` needs this to scroll
+  // the VIRTUAL list, which is indexed over `items`, not `memories`.
+  function itemIndexForRow(rowIndex: number): number {
+    return items.findIndex((it) => it.kind === 'row' && it.rowIndex === rowIndex);
+  }
 
   // D-07 / Pitfall A: @humanspeak/svelte-virtual-list's own viewport is a
   // hardcoded role="region" — there is no prop to change it. The
@@ -362,7 +405,10 @@
     if (memories.length === 0) return;
     const clamped = Math.max(0, Math.min(memories.length - 1, targetIndex));
     if (list) {
-      await list.scroll({ index: clamped, align: 'nearest', smoothScroll: false });
+      // D-12: `list` is indexed over `items` (headers included), not
+      // `memories` — map the row index to its item position before scrolling.
+      const itemIndex = itemIndexForRow(clamped);
+      await list.scroll({ index: itemIndex >= 0 ? itemIndex : clamped, align: 'nearest', smoothScroll: false });
     }
     activeId = memories[clamped]?.id;
     // D-05: keyboard movement re-asserts the toolbar too, clearing any prior
@@ -694,41 +740,56 @@
     >
       <SvelteVirtualList
         bind:this={list}
-        items={memories}
-        itemKey={(m) => m.id}
+        {items}
+        itemKey={(it: ListItem) => (it.kind === 'header' ? `h:${it.key}` : it.memory.id)}
         defaultEstimatedItemHeight={rowHeightPx}
         bufferSize={10}
         viewportLabel={label}
         {hasMore}
         onLoadMore={onloadmore}
       >
-        {#snippet renderItem(m: Memory, index: number)}
-          <!-- WAI-ARIA APG listbox: options are NOT tab stops and take no
-               keyboard handler of their own — the container (role="listbox")
-               owns all keyboard interaction via aria-activedescendant, and
-               click is a supplementary pointer affordance. -->
-          <!-- svelte-ignore a11y_interactive_supports_focus -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div
-            role="option"
-            id={`opt-${m.id}`}
-            aria-selected={selectable ? selectedIds.includes(m.id) : index === activeIndex}
-            onclick={(e) => handleOptionClick(e, m.id)}
-            onmousemove={(e) => handleRowMouseMove(m, e.currentTarget as HTMLElement)}
-            onmouseleave={() => handleRowMouseLeave(m)}
-          >
-            <ResultRow
-              memory={m}
-              {mode}
-              {showRel}
-              active={index === activeIndex}
-              opened={m.id === openId}
-              {listFocused}
-              {selectable}
-              selected={selectedIds.includes(m.id)}
-              selectionActive={selectable && selectedIds.length > 0}
-            />
-          </div>
+        {#snippet renderItem(it: ListItem)}
+          {#if it.kind === 'header'}
+            <!-- D-12: a group header — role="presentation" (not an option;
+                 j/k/Home/End skip it, aria-activedescendant never names it). -->
+            <div role="presentation" class="results-group-header">
+              {#if groupHeader}
+                {@render groupHeader(it.key, it.count)}
+              {:else}
+                <span class="rgh-key">{it.key}</span>
+                <span class="rgh-count">({it.count})</span>
+              {/if}
+            </div>
+          {:else}
+            {@const m = it.memory}
+            <!-- WAI-ARIA APG listbox: options are NOT tab stops and take no
+                 keyboard handler of their own — the container (role="listbox")
+                 owns all keyboard interaction via aria-activedescendant, and
+                 click is a supplementary pointer affordance. -->
+            <!-- svelte-ignore a11y_interactive_supports_focus -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <div
+              role="option"
+              id={`opt-${m.id}`}
+              aria-selected={selectable ? selectedIds.includes(m.id) : it.rowIndex === activeIndex}
+              onclick={(e) => handleOptionClick(e, m.id)}
+              onmousemove={(e) => handleRowMouseMove(m, e.currentTarget as HTMLElement)}
+              onmouseleave={() => handleRowMouseLeave(m)}
+            >
+              <ResultRow
+                memory={m}
+                {mode}
+                {showRel}
+                trailing={rowTrailing}
+                active={it.rowIndex === activeIndex}
+                opened={m.id === openId}
+                {listFocused}
+                {selectable}
+                selected={selectedIds.includes(m.id)}
+                selectionActive={selectable && selectedIds.length > 0}
+              />
+            </div>
+          {/if}
         {/snippet}
       </SvelteVirtualList>
     </div>
@@ -749,8 +810,17 @@
     {/if}
   </div>
   <div class="results-legend">
-    <Kbd>j</Kbd><Kbd>k</Kbd> move · <Kbd>↵</Kbd> open / close · <Kbd>esc</Kbd> close · <Kbd>e</Kbd> edit ·
-    <Kbd>s</Kbd> share · <Kbd>#</Kbd> delete · <Kbd>c</Kbd> copy short_id · <Kbd>⇧C</Kbd> copy id
+    <Kbd>j</Kbd><Kbd>k</Kbd> move · <Kbd>↵</Kbd> open / close · <Kbd>esc</Kbd> close
+    {#if onedit}
+      · <Kbd>e</Kbd> edit
+    {/if}
+    {#if onvisibility}
+      · <Kbd>s</Kbd> share
+    {/if}
+    {#if ondelete}
+      · <Kbd>#</Kbd> delete
+    {/if}
+    · <Kbd>c</Kbd> copy short_id · <Kbd>⇧C</Kbd> copy id
     {#if selectable}
       · <Kbd>x</Kbd> select · <Kbd>⇧X</Kbd> range
     {/if}
@@ -795,6 +865,26 @@
     height: 100%;
     min-height: 0;
     transition: opacity 0.15s ease;
+  }
+  /* D-12: a presentation-only group header — never a role="option", so it
+     is skipped by j/k/Home/End and never named by aria-activedescendant. */
+  .results-group-header {
+    display: flex;
+    align-items: baseline;
+    gap: calc(6 * var(--u));
+    height: calc(22 * var(--u));
+    padding: 0 calc(14 * var(--u));
+    font-size: calc(11 * var(--u));
+    color: var(--text-faint);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .rgh-key {
+    font-family: var(--font-mono, monospace);
+    font-weight: 500;
+  }
+  .rgh-count {
+    color: var(--text-faint);
   }
   .results-listbox-wrapper.busy {
     opacity: 0.55;
