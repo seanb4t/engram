@@ -20,6 +20,7 @@
     "@testing-library/jest-dom": "7.0.1",
     "@vitest/browser": "5.0.1",
     "@vitest/browser-playwright": "5.0.1",
+    "axe-core": "4.13.0",
     "paneforge": "1.0.2",
     "playwright": "1.63.0",
     "shadcn-svelte": "1.7.0",

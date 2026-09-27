@@ -105,6 +105,23 @@ scope chip semantics, id/short_id/text resolution, honest-feedback rule) and
 `engram-connect-client` (query-key conventions, `engramWrite` interceptor
 stack, CSRF + re-auth resume envelope, per-RPC contract).
 
+## Design-skill security verdicts (Phase 4)
+
+Reviewed 2026-09-27 via `Skill("fable-security-review")`, intended use "design
+guidance and review skill loaded into coding-agent sessions on this repo".
+Each candidate's outcome is normalized to `pass`/`fail` per the folded todo's
+rule: anything other than an unqualified pass is `fail`.
+
+- pbakaus/impeccable: fail — reviewed `9d715cc4f5564a990ca8345abfdd5df6dc9b41c8` on 2026-09-27; reviewer's own rubric tier is "USE WITH MITIGATIONS" (not an unqualified pass) — HIGH finding: the skill launcher downloads and executes an unsigned per-platform engine binary verified only by a same-origin sha256 sidecar, safe only after applying `IMPECCABLE_BIN`/`IMPECCABLE_NO_TELEMETRY` mitigations
+- vercel-labs/agent-skills@web-design-guidelines: fail — reviewed `063bee94c3f4df8453406c830b0a7df0f2860278` on 2026-09-27; reviewer states "FAIL as shipped" — HIGH finding: `SKILL.md` fetches and obeys unpinned remote instructions from `vercel-labs/web-interface-guidelines@main/command.md` on every invocation, with no pin and no local copy
+- addyosmani/web-quality-skills@accessibility: pass — installed at /Users/sean/.agents/skills/accessibility
+
+Reviewed `afa8da942115f2961fdbfa80807ea0b232ff6c00` on 2026-09-27; reviewer
+states "SAFE TO USE — changelog: PASS" — three plain-Markdown WCAG 2.2
+reference files, no hidden instructions, no tool grants, no scripts; only LOW
+findings (unpinned `npx`/`npm install -g` fallback commands, silent-update
+channel via `skills update`).
+
 ## Research dispositions (2026-09-25, gsd-phase-researcher, sonnet tier)
 
 Admitted, with sources:

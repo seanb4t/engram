@@ -6,6 +6,9 @@ severity: minor
 resolves_phase: 4
 files:
   - .planning/notes/console-overhaul-exploration.md
+
+completed: 2026-09-27
+status: completed
 ---
 
 ## Problem
