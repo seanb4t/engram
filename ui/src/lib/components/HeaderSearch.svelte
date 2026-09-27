@@ -151,6 +151,19 @@
   const getError = $derived(getQuery.error ? parseConnectError(getQuery.error) : null);
   const searchError = $derived(searchQuery.error ? parseConnectError(searchQuery.error) : null);
 
+  // WR-04 fix: `k` (50n) and `full` (false) are hardcoded for every
+  // searchQuery call in this component — there is no local state for
+  // 'lower-k'/'without-full'/'clear-created' to mutate, so applyFixRow
+  // collapses all three to a plain retry that fails again with the same
+  // error. Filter them out of the rendered rows rather than show an
+  // action-labelled button that silently does nothing different from
+  // "Retry"; `fixRowsFor` always appends a plain retry row last, so the
+  // generic fallback survives this filter untouched.
+  const NOOP_FIX_ROW_IDS = new Set(['lower-k', 'without-full', 'clear-created']);
+  const visibleFixRows = $derived(
+    searchError ? fixRowsFor(searchError).filter((row) => !NOOP_FIX_ROW_IDS.has(row.id)) : []
+  );
+
   // A short_id-shaped input GetMemory reports not-found is re-searched as
   // text — never a silent reinterpretation (carried-forward rule).
   const shortIdFallbackText = $derived(
@@ -424,7 +437,7 @@
                 <pre class="whitespace-pre-wrap rounded border border-destructive bg-card p-1.5 font-mono text-xs text-destructive">field={searchError.fields.join(',')} hint={searchError.hint}: {searchError.detail}</pre>
               </div>
               <Command.Group heading="Fix it">
-                {#each fixRowsFor(searchError) as row (row.id)}
+                {#each visibleFixRows as row (row.id)}
                   <Command.Item value={`fix-${row.id}`} onSelect={() => applyFixRow(row)}>{row.label}</Command.Item>
                 {/each}
               </Command.Group>

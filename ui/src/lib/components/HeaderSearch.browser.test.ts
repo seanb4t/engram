@@ -142,6 +142,23 @@ describe('HeaderSearch', () => {
     await expect.element(screen.getByRole('option', { name: 'Pick one scope instead' })).toBeInTheDocument();
   });
 
+  // WR-04: `k`/`full` are hardcoded for every searchQuery call in this
+  // component, so "Show fewer results"/"Retry without full content" have no
+  // local state to mutate and would silently retry the identical request —
+  // they must not render at all, only the generic "Retry the request" row.
+  it('a response_too_large rejection renders only the generic Retry row, never the no-op lower-k/without-full rows', async () => {
+    searchMemoriesSpy.mockRejectedValue(
+      new ConnectError('field=k hint=response_too_large: response would exceed the size limit', Code.FailedPrecondition)
+    );
+    const screen = await renderHeaderSearch();
+    await screen.getByRole('combobox', { name: 'Search memories' }).fill('github');
+
+    await expect.element(screen.getByText('Server rejected the request')).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Retry the request' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Show fewer results' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Retry without full content' })).not.toBeInTheDocument();
+  });
+
   it('renders the D-04 ambiguous short_id warning with no candidate list', async () => {
     getMemorySpy.mockRejectedValue(new ConnectError('ambiguous short id: k3m9p2qr7a', Code.FailedPrecondition));
     const screen = await renderHeaderSearch();
