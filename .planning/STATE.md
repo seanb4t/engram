@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 03
 current_phase_name: Curation RPCs & MCP Tools
 status: executing
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-09-27T09:55:14.751Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-09-27T10:25:58.548Z"
 last_activity: 2026-09-27
 last_activity_desc: Phase 03 execution started
-state_head: 22aec07f49a688466dd7ca514740d61ae96d87d6
+state_head: 3084b23fd5e4a7a370d28e565bc2650b71023421
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 21
-  completed_plans: 19
+  completed_plans: 20
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 2)
 ## Current Position
 
 Phase: 03 (Curation RPCs & MCP Tools) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-09-27 — Phase 03 execution started
 
@@ -459,6 +459,7 @@ milestone needs in working memory.
 - [Phase 03]: 03-04: corrected a stale gsd-plan-head-before-03-04 ledger (pointed to a commit not an ancestor of HEAD at all) before computing actuals.commits
 - [Phase 03]: Store.RelatedMemories gains a full bool (D-13); RelatedMemories lands on Connect and as an on-demand related_memories MCP tool over one shared core, with a type-safe oneof wire shape for supersession/citation/tag/vector evidence.
 - [Phase 03]: 03-05: fixed two Phase 1 key_links patterns (01-03-PLAN.md, 01-04-PLAN.md) that this plan own store change to relatedmemories.go (full-knob threading) legitimately broke; from/to/via unchanged, only the literal pattern text updated.
+- [Phase 03]: ListTags D-27 fixture strengthened with a second same-owner scope so the plan's literal empty-scope mutation is actually observable; mutation confirmed red then reverted (03-06).
 
 ### Pending Todos
 
@@ -556,8 +557,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-27T09:55:14.719Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-09-27T10:25:58.517Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -778,6 +779,7 @@ Resume file: None
 | Phase 03 P03 | 55min | 2 tasks | 22 files |
 | Phase 03 P04 | 1h20m | 2 tasks | 13 files |
 | Phase 03 P05 | 49min | 2 tasks | 23 files |
+| Phase 03 P06 | 55min | 2 tasks | 19 files |
 
 ## Operator Next Steps
 

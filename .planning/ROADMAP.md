@@ -488,7 +488,7 @@ a known pattern.
   3. An invalid `SupersedeMemory` target set is rejected with every offending target named
   4. All proto changes are additive (`buf breaking` green), `gen/go`, `gen/ts`, and `ui/src/lib/gen` are regenerated and committed, the vendored SPA passes the `ui-drift` gate, and each RPC carries its blast-radius annotations and self-describe catalog entry
 
-**Plans:** 5/7 plans executed
+**Plans:** 6/7 plans executed
 
 Plans:
 **Wave 1**
@@ -513,7 +513,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 03-06-PLAN.md — ListTags on Connect and the list_tags MCP tool for tag reuse, private-tag isolation proven (D-03, D-14, D-20, D-21, D-23; RPC-04, RPC-05, RPC-06)
+- [x] 03-06-PLAN.md — ListTags on Connect and the list_tags MCP tool for tag reuse, private-tag isolation proven (D-03, D-14, D-20, D-21, D-23; RPC-04, RPC-05, RPC-06)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
