@@ -78,6 +78,7 @@ function renderCS(props: {
   returnPath: string;
   onchanged?: (e: { kind: string; ids: string[] }) => void;
   onresumeapplied?: () => void;
+  onbusychange?: (busy: boolean) => void;
 }) {
   return render(CurationSurfaces, props, { wrapper: QueryClientProvider, wrapperProps: { client: qc } });
 }
@@ -373,5 +374,66 @@ describe('CurationSurfaces — supersede add-target and use-head wiring', () => 
     await screen.component.openSupersede(['p1']);
 
     await expect.element(screen.getByText(`not the live head — current head is ${head.shortId}`)).toBeInTheDocument();
+  });
+});
+
+describe('CurationSurfaces — openChain (D-06)', () => {
+  it('openChain(id) opens the Chain dialog for that anchor; "Supersede head…" closes it and opens the supersede dialog for the head', async () => {
+    const p1 = makeMemory({ id: 'p1', shortId: 'P1SHORT0001' });
+    relatedMemoriesSpy.mockResolvedValue(create(RelatedMemoriesResponseSchema, { anchor: p1, related: [] }));
+    getMemorySpy.mockResolvedValue({ memory: p1 });
+
+    const screen = await renderCS({ returnPath: '/search' });
+    await screen.component.openChain('p1');
+    await expect.element(screen.getByText('Chain · P1SHORT0001')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Supersede head…' }).click();
+    await expect.element(screen.getByText('Chain · P1SHORT0001')).not.toBeInTheDocument();
+    await expect.element(screen.getByText('Supersede 1 records into one')).toBeInTheDocument();
+  });
+});
+
+describe('CurationSurfaces — onbusychange (E4)', () => {
+  it('fires true when an archive call starts and false once it settles', async () => {
+    let resolveArchive!: (v: unknown) => void;
+    archiveMemorySpy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveArchive = resolve;
+        })
+    );
+    const onbusychange = vi.fn();
+    const screen = await renderCS({ returnPath: '/search', onbusychange });
+    await screen.component.openArchive(['m1']);
+    await screen.getByRole('button', { name: 'Archive' }).click();
+
+    await expect.poll(() => onbusychange.mock.calls.some((c) => c[0] === true)).toBe(true);
+    expect(onbusychange.mock.calls.some((c) => c[0] === false)).toBe(false);
+
+    resolveArchive({ results: [{ requested: 'm1', id: 'm1', outcome: ArchiveOutcome.ARCHIVED }] });
+    await expect.poll(() => onbusychange.mock.calls.at(-1)?.[0]).toBe(false);
+  });
+
+  it('does not fire around a supersede preview -- only around the commit', async () => {
+    const full = makeMemory({ id: 'm1', content: 'content', shortId: 's0000000001' });
+    getMemorySpy.mockResolvedValue({ memory: full });
+    supersedeMemorySpy.mockImplementation(async (req: SupersedeMemoryRequest) => {
+      if (req.validateOnly) return { id: '', shortId: '', validated: true, supersedes: ['m1'], targets: [] };
+      return { id: 'n1', shortId: 'n1short0000', validated: false, supersedes: [], targets: [] };
+    });
+
+    const onbusychange = vi.fn();
+    const screen = await renderCS({ returnPath: '/search', onbusychange });
+    await screen.component.openSupersede(['m1']);
+    const submitBtn = screen.getByRole('button', { name: 'Supersede 1 → 1' });
+    await expect.element(submitBtn).not.toBeDisabled();
+
+    // The debounced validate_only preview already ran -- it must never have
+    // toggled busy.
+    expect(onbusychange).not.toHaveBeenCalled();
+
+    await submitBtn.click();
+    await expect.poll(() => onbusychange.mock.calls.at(-1)?.[0]).toBe(false);
+    expect(onbusychange.mock.calls[0]?.[0]).toBe(true);
   });
 });
