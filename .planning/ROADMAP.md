@@ -534,7 +534,7 @@ and end-to-end check.
   4. A resume round-trip test proves a draft on every new write surface (supersede, archive, rules, scheduled) survives an OIDC re-login
   5. A WCAG 2.2 keyboard/contrast audit and Web Interface Guidelines review pass, or findings are fixed or recorded, using the vetted third-party skills once `fable-security-review` clears them; the chromedp console e2e exercises entry-point resolution, a supersede, and an archive/restore round trip against a live server
 
-**Plans:** 11/12 plans executed
+**Plans:** 12/12 plans executed
 **UI hint**: yes
 
 Plans:
@@ -566,7 +566,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 04-12-PLAN.md — chromedp archive→undo, supersede and entry-point round trips, vendored SPA, phase gates (D-14, D-18; DSYS-04, CUR-01, CUR-02)
+- [x] 04-12-PLAN.md — chromedp archive→undo, supersede and entry-point round trips, vendored SPA, phase gates (D-14, D-18; DSYS-04, CUR-01, CUR-02)
 
 ### Phase 5: Related-Memories Graph & Tag Cloud
 
