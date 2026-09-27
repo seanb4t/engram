@@ -46,6 +46,11 @@ type memStore interface {
 	MintShortID(ctx context.Context, seen map[string]struct{}) (string, error)
 	OwnedOrAbsent(ctx context.Context, id string, subj store.Subject) error
 	ResolvePointID(ctx context.Context, idOrShort string) (string, error)
+	// RelatedMemories is the id's-neighbourhood read (milestone 2026-09-25.01
+	// Phase 3, RPC-04): the shared core both the Connect RelatedMemories RPC
+	// and the related_memories MCP tool call. No post-filter above this call
+	// — the Subject IS the enforcement point (Pitfall 4, DEC-cgb).
+	RelatedMemories(ctx context.Context, id string, subj store.Subject, k uint64, full bool) (store.RelatedResult, error)
 	// RestoreAs is ArchiveAs's owner-gated sibling — see the doc comment above.
 	RestoreAs(ctx context.Context, id string, subj store.Subject) (store.ArchiveResult, error)
 	// Search is the plain vector-order read (D-02, phase 02-recall-first-search

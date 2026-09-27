@@ -1257,7 +1257,7 @@ var recallInvocationRows = []recallInvocationRow{
 		expectCount: 6, expectMethods: []string{"Count", "Facet", "Query", "Scroll", "Scroll", "Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
-			if _, err := s.RelatedMemories(ctx, recallGateRelatedAnonAnchorID, recallGateAnonymousSubject, 0); err != nil {
+			if _, err := s.RelatedMemories(ctx, recallGateRelatedAnonAnchorID, recallGateAnonymousSubject, 0, false); err != nil {
 				t.Fatalf("RelatedMemories(anonymous): %v", err)
 			}
 		},
@@ -1269,7 +1269,7 @@ var recallInvocationRows = []recallInvocationRow{
 		expectCount: 6, expectMethods: []string{"Count", "Facet", "Query", "Scroll", "Scroll", "Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
-			if _, err := s.RelatedMemories(ctx, recallGateRelatedOwnerAnchorID, recallGateOwnerSubject, 0); err != nil {
+			if _, err := s.RelatedMemories(ctx, recallGateRelatedOwnerAnchorID, recallGateOwnerSubject, 0, false); err != nil {
 				t.Fatalf("RelatedMemories(owner): %v", err)
 			}
 		},

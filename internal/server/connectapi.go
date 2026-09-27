@@ -641,6 +641,25 @@ func (a *engramAPI) ListRules(ctx context.Context, req *connect.Request[engramv1
 	}), nil
 }
 
+// RelatedMemories (plan 03-05, RPC-04) delegates to the SAME
+// d.relatedMemories core the related_memories MCP tool calls, mapping the
+// request fields directly and any error via connectError — the same thin-
+// adapter shape as every other RPC in this file. The response is shaped
+// through relatedResultToProto, which composes shapeProtoMemories exactly
+// like every other read RPC, so req.Msg.GetFull() governs the compact-vs-
+// full projection on this lane too (D-13).
+func (a *engramAPI) RelatedMemories(ctx context.Context, req *connect.Request[engramv1.RelatedMemoriesRequest]) (*connect.Response[engramv1.RelatedMemoriesResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	res, err := a.d.relatedMemories(ctx, c, relatedArgs{ID: req.Msg.GetId(), K: req.Msg.GetK(), Full: req.Msg.GetFull()})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(relatedResultToProto(res, req.Msg.GetFull(), a.d.summaryMaxChars)), nil
+}
+
 // connectResolver supplies the per-request identity TokenInfo for the
 // Connect lane, plus WHICH credential family authenticated it (auth.Lane,
 // D-07). NewConnectResolver composes the bearer half and the webauth

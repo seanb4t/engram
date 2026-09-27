@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/store"
 )
 
 // protoconv is the D-09 conversion layer: every write RPC proto request ->
@@ -313,4 +314,97 @@ func listRulesRequestToArgs(req *engramv1.ListRulesRequest) listRulesArgs {
 		Tags:   req.GetTags(),
 		Full:   req.GetFull(),
 	}
+}
+
+// edgeTypeToProto maps store.RelatedEdgeType onto the wire EdgeType enum
+// (plan 03-05, D-12). An unrecognized type maps to UNSPECIFIED — this
+// mirrors archiveOutcomeToProto's default-arm discipline, never a panic.
+func edgeTypeToProto(t store.RelatedEdgeType) engramv1.EdgeType {
+	switch t {
+	case store.RelatedEdgeSupersession:
+		return engramv1.EdgeType_EDGE_TYPE_SUPERSESSION
+	case store.RelatedEdgeCitation:
+		return engramv1.EdgeType_EDGE_TYPE_CITATION
+	case store.RelatedEdgeTag:
+		return engramv1.EdgeType_EDGE_TYPE_TAG
+	case store.RelatedEdgeVector:
+		return engramv1.EdgeType_EDGE_TYPE_VECTOR
+	default:
+		return engramv1.EdgeType_EDGE_TYPE_UNSPECIFIED
+	}
+}
+
+// supersessionDirectionToProto maps store.SupersessionDirection onto the
+// wire SupersessionDirection enum.
+func supersessionDirectionToProto(d store.SupersessionDirection) engramv1.SupersessionDirection {
+	switch d {
+	case store.SupersessionSuccessor:
+		return engramv1.SupersessionDirection_SUPERSESSION_DIRECTION_SUCCESSOR
+	case store.SupersessionPredecessor:
+		return engramv1.SupersessionDirection_SUPERSESSION_DIRECTION_PREDECESSOR
+	default:
+		return engramv1.SupersessionDirection_SUPERSESSION_DIRECTION_UNSPECIFIED
+	}
+}
+
+// relatedEdgeToProto maps one store.RelatedEdge onto the wire RelatedEdge —
+// a switch on e.Type setting exactly one oneof wrapper, copying every
+// evidence value exactly (D-12): the type and the oneof case always match.
+// An unrecognized type maps to UNSPECIFIED with no evidence case set.
+func relatedEdgeToProto(e store.RelatedEdge) *engramv1.RelatedEdge {
+	switch e.Type {
+	case store.RelatedEdgeVector:
+		return &engramv1.RelatedEdge{
+			Type:     edgeTypeToProto(e.Type),
+			Evidence: &engramv1.RelatedEdge_Vector{Vector: &engramv1.VectorEvidence{Score: e.Score}},
+		}
+	case store.RelatedEdgeTag:
+		tags := make([]*engramv1.WeightedTag, len(e.SharedTags))
+		for i, t := range e.SharedTags {
+			tags[i] = &engramv1.WeightedTag{Tag: t.Tag, Weight: t.Weight}
+		}
+		return &engramv1.RelatedEdge{
+			Type:     edgeTypeToProto(e.Type),
+			Evidence: &engramv1.RelatedEdge_Tag{Tag: &engramv1.TagEvidence{SharedTags: tags, TagWeight: e.TagWeight}},
+		}
+	case store.RelatedEdgeCitation:
+		refs := make([]*engramv1.CitationRef, len(e.SharedCitations))
+		for i, c := range e.SharedCitations {
+			refs[i] = &engramv1.CitationRef{Kind: c.Kind, Ref: c.Ref}
+		}
+		return &engramv1.RelatedEdge{
+			Type:     edgeTypeToProto(e.Type),
+			Evidence: &engramv1.RelatedEdge_Citation{Citation: &engramv1.CitationEvidence{SharedCitations: refs}},
+		}
+	case store.RelatedEdgeSupersession:
+		return &engramv1.RelatedEdge{
+			Type: edgeTypeToProto(e.Type),
+			Evidence: &engramv1.RelatedEdge_Supersession{Supersession: &engramv1.SupersessionEvidence{
+				Direction: supersessionDirectionToProto(e.Direction),
+				Depth:     uint32(e.Depth),
+			}},
+		}
+	default:
+		return &engramv1.RelatedEdge{Type: edgeTypeToProto(e.Type)}
+	}
+}
+
+// relatedResultToProto shapes a store.RelatedResult for the Connect
+// RelatedMemories response: the anchor and every entry's memory go through
+// shapeProtoMemories exactly like every other read RPC, so full governs the
+// compact-vs-full projection on this lane too (D-13).
+func relatedResultToProto(res store.RelatedResult, full bool, maxChars int) *engramv1.RelatedMemoriesResponse {
+	anchor := shapeProtoMemories([]store.Memory{res.Anchor}, full, maxChars)[0]
+	related := make([]*engramv1.RelatedMemory, len(res.Related))
+	for i, r := range res.Related {
+		edges := make([]*engramv1.RelatedEdge, len(r.Edges))
+		for j, e := range r.Edges {
+			edges[j] = relatedEdgeToProto(e)
+		}
+		related[i] = &engramv1.RelatedMemory{
+			Memory: shapeProtoMemories([]store.Memory{r.Memory}, full, maxChars)[0],
+			Edges:  edges,
+		}
+	}
+	return &engramv1.RelatedMemoriesResponse{Anchor: anchor, Related: related, Truncated: res.Truncated}
 }

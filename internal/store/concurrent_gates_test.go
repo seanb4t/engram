@@ -196,7 +196,7 @@ func TestRelatedMemoriesCandidateVanishesBeforeFetch(t *testing.T) {
 		return ids
 	}
 
-	before, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0)
+	before, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories before: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestRelatedMemoriesCandidateVanishesBeforeFetch(t *testing.T) {
 	}
 	t.Cleanup(func() { relatedBeforeFetchHook = nil })
 
-	res, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories with vanishing candidates: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestRelatedMemoriesAdmitsByTypeNotScore(t *testing.T) {
 	near := Memory{ID: "ad000000-0000-0000-0000-000000000003", Scope: scope, Owner: "race-order-a", Category: "note", Summary: "near"}
 	seedSpineMemoryVector(t, s, near, []float32{0.99, 0.01, 0})
 
-	res, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 1) // k=1: only near gets a vector edge
+	res, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 1, false) // k=1: only near gets a vector edge
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}

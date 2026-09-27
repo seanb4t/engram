@@ -48,7 +48,7 @@ func TestRelatedMemoriesVectorEdge(t *testing.T) {
 	f := Memory{ID: "bbbb0000-0000-0000-0000-000000000001", Scope: scope, Owner: "related-owner-b", Category: "note", Summary: "f"}
 	seedSpineMemoryVector(t, s, f, []float32{1, 0, 0})
 
-	res, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -95,15 +95,15 @@ func TestRelatedMemoriesAnchorAccess(t *testing.T) {
 	privateAnchor := Memory{ID: "cccc0000-0000-0000-0000-000000000001", Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "private"}
 	seedSpineMemoryVector(t, s, privateAnchor, []float32{1, 0, 0})
 
-	if _, err := s.RelatedMemories(ctx, privateAnchor.ID, ownerB, 0); !errors.Is(err, ErrNotFound) {
+	if _, err := s.RelatedMemories(ctx, privateAnchor.ID, ownerB, 0, false); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("RelatedMemories(shared reader on private anchor) error = %v, want ErrNotFound", err)
 	}
 
-	if _, err := s.RelatedMemories(ctx, "dddd0000-0000-0000-0000-000000000099", ownerA, 0); !errors.Is(err, ErrNotFound) {
+	if _, err := s.RelatedMemories(ctx, "dddd0000-0000-0000-0000-000000000099", ownerA, 0, false); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("RelatedMemories(nonexistent id) error = %v, want ErrNotFound", err)
 	}
 
-	if _, err := s.RelatedMemories(ctx, privateAnchor.ID, nil, 0); !errors.Is(err, ErrNotFound) {
+	if _, err := s.RelatedMemories(ctx, privateAnchor.ID, nil, 0, false); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("RelatedMemories(nil Subject) error = %v, want ErrNotFound", err)
 	}
 
@@ -120,7 +120,7 @@ func TestRelatedMemoriesAnchorAccess(t *testing.T) {
 		t.Fatalf("ArchiveAs(archivedAnchor): %v", err)
 	}
 
-	res, err := s2.RelatedMemories(ctx, archivedAnchor.ID, ownerA, 0)
+	res, err := s2.RelatedMemories(ctx, archivedAnchor.ID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories(archived anchor): %v", err)
 	}
@@ -172,7 +172,7 @@ func TestRelatedMemoriesSupersessionChain(t *testing.T) {
 		Supersedes: []string{r3},
 	}, []float32{0, 0, 0.95}) // close to R2 (the anchor) — the live head also surfaces as a vector edge
 
-	res, err := s.RelatedMemories(ctx, r2, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, r2, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestRelatedMemoriesSupersessionChain(t *testing.T) {
 		ID: z, Scope: scope, Owner: "related-owner-b", Category: "note", Summary: "z",
 	}, []float32{0, 0, 1})
 
-	res2, err := s2.RelatedMemories(ctx, q, ownerA, 0)
+	res2, err := s2.RelatedMemories(ctx, q, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories(Q): %v", err)
 	}
@@ -298,7 +298,7 @@ func TestRelatedMemoriesSupersessionCaps(t *testing.T) {
 			seedSpineMemoryVector(t, s, m, vec)
 		}
 
-		res, err := s.RelatedMemories(ctx, c[0], ownerA, 0)
+		res, err := s.RelatedMemories(ctx, c[0], ownerA, 0, false)
 		if err != nil {
 			t.Fatalf("RelatedMemories: %v", err)
 		}
@@ -361,7 +361,7 @@ func TestRelatedMemoriesSupersessionCaps(t *testing.T) {
 			}, []float32{1, 0, 0})
 		}
 
-		res, err := s.RelatedMemories(ctx, p, ownerA, 0)
+		res, err := s.RelatedMemories(ctx, p, ownerA, 0, false)
 		if err != nil {
 			t.Fatalf("RelatedMemories: %v", err)
 		}
@@ -422,7 +422,7 @@ func TestRelatedMemoriesGatedEdgesFollowRecallGate(t *testing.T) {
 	v5 := Memory{ID: "f0f00000-0000-0000-0000-000000000005", Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "v5-live"}
 	seedSpineMemoryVector(t, s, v5, []float32{1, 0, 0})
 
-	res, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestRelatedMemoriesReadScope(t *testing.T) {
 	nBPrivate := Memory{ID: "a0a00000-0000-0000-0000-000000000003", Scope: scopeOne, Owner: "related-owner-b", Category: "note", Summary: "n-b-private"}
 	seedSpineMemoryVector(t, s, nBPrivate, []float32{1, 0, 0})
 
-	res, err := s.RelatedMemories(ctx, anchorA.ID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchorA.ID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories(a): %v", err)
 	}
@@ -479,7 +479,7 @@ func TestRelatedMemoriesReadScope(t *testing.T) {
 	nAnon := Memory{ID: "a0a00000-0000-0000-0000-000000000005", Scope: scopeOne, Owner: "", Category: "note", Summary: "n-anon"}
 	seedSpineMemoryVector(t, s, nAnon, []float32{1, 0, 0})
 
-	resAnon, err := s.RelatedMemories(ctx, anchorAnon.ID, anon, 0)
+	resAnon, err := s.RelatedMemories(ctx, anchorAnon.ID, anon, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories(anon): %v", err)
 	}
@@ -506,7 +506,7 @@ func TestRelatedMemoriesBounds(t *testing.T) {
 			seedSpineMemoryVector(t, s, m, []float32{1 - float32(i)*0.01, float32(i) * 0.01, 0})
 		}
 
-		res0, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0)
+		res0, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0, false)
 		if err != nil {
 			t.Fatalf("RelatedMemories(k=0): %v", err)
 		}
@@ -514,7 +514,7 @@ func TestRelatedMemoriesBounds(t *testing.T) {
 			t.Fatalf("k=0: len(Related) = %d, want 8 (%+v)", len(res0.Related), res0.Related)
 		}
 
-		res3, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 3)
+		res3, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 3, false)
 		if err != nil {
 			t.Fatalf("RelatedMemories(k=3): %v", err)
 		}
@@ -522,7 +522,7 @@ func TestRelatedMemoriesBounds(t *testing.T) {
 			t.Fatalf("k=3: len(Related) = %d, want 3 (%+v)", len(res3.Related), res3.Related)
 		}
 
-		_, err = s.RelatedMemories(ctx, anchor.ID, ownerA, MaxRecallLimit+1)
+		_, err = s.RelatedMemories(ctx, anchor.ID, ownerA, MaxRecallLimit+1, false)
 		if !errors.Is(err, ErrInvalidArgument) {
 			t.Fatalf("RelatedMemories(k=MaxRecallLimit+1) error = %v, want ErrInvalidArgument", err)
 		}
@@ -542,7 +542,7 @@ func TestRelatedMemoriesBounds(t *testing.T) {
 			seedSpineMemoryVector(t, s, m, []float32{1, float32(i) * 0.001, 0})
 		}
 
-		res1000, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 1000)
+		res1000, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 1000, false)
 		if err != nil {
 			t.Fatalf("RelatedMemories(k=1000): %v", err)
 		}
@@ -553,7 +553,7 @@ func TestRelatedMemoriesBounds(t *testing.T) {
 			t.Fatalf("k=1000: Truncated = false, want true")
 		}
 
-		res0, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0)
+		res0, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0, false)
 		if err != nil {
 			t.Fatalf("RelatedMemories(k=0): %v", err)
 		}
@@ -582,7 +582,7 @@ func TestRelatedMemoriesDeterministic(t *testing.T) {
 	n2 := Memory{ID: "d0d00000-0000-0000-0000-000000000002", Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "n2"}
 	seedSpineMemoryVector(t, s, n2, []float32{0.5, 0.5, 0})
 
-	res1, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0)
+	res1, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories (1st call): %v", err)
 	}
@@ -590,7 +590,7 @@ func TestRelatedMemoriesDeterministic(t *testing.T) {
 		t.Fatalf("Related = %+v, want [%s, %s] (id-ascending tiebreak)", res1.Related, n1.ID, n2.ID)
 	}
 
-	res2, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0)
+	res2, err := s.RelatedMemories(ctx, anchor.ID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories (2nd call): %v", err)
 	}
@@ -635,7 +635,7 @@ func TestRelatedMemoriesEntryShape(t *testing.T) {
 	}
 	seedSpineMemoryVector(t, s, neighbour, []float32{0.9, 0.1, 0})
 
-	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -734,7 +734,7 @@ func TestRelatedMemoriesTagEdgeRarity(t *testing.T) {
 		seedSpineMemoryVector(t, s, Memory{ID: fIDs[i], Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("f%d", i), Tags: []string{"common"}}, []float32{0.5, 0.5, 0.5})
 	}
 
-	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -810,7 +810,7 @@ func TestRelatedMemoriesTagEdgeCap(t *testing.T) {
 		seedSpineMemoryVector(t, s, Memory{ID: fID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("filler%d", i)}, []float32{0, 0, 1})
 	}
 
-	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -854,7 +854,7 @@ func TestRelatedMemoriesTagWeightBeyondFacetLimit(t *testing.T) {
 		seedSpineMemoryVector(t, s, Memory{ID: fID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("filler%d", i)}, []float32{0, 0, 1})
 	}
 
-	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -949,7 +949,7 @@ func TestRelatedMemoriesCitationEdge(t *testing.T) {
 	}
 	seedSpineMemoryVector(t, s, c3, []float32{0.5, 0.5, 0})
 
-	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -998,7 +998,7 @@ func TestRelatedMemoriesCitationEdge(t *testing.T) {
 			}, []float32{float32(i) * 0.01, 1 - float32(i)*0.01, 0})
 		}
 
-		res2, err := s2.RelatedMemories(ctx, anchorID2, ownerA, 0)
+		res2, err := s2.RelatedMemories(ctx, anchorID2, ownerA, 0, false)
 		if err != nil {
 			t.Fatalf("RelatedMemories: %v", err)
 		}
@@ -1041,7 +1041,7 @@ func TestRelatedMemoriesMultiEdgeEntry(t *testing.T) {
 		seedSpineMemoryVector(t, s, Memory{ID: fID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("filler%d", i)}, []float32{0, 1, 0})
 	}
 
-	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -1116,7 +1116,7 @@ func TestRelatedMemoriesTagAndCitationEdgesFollowGates(t *testing.T) {
 	seedSpineMemoryVector(t, s, Memory{ID: filler1ID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "filler1"}, []float32{0, 1, 0})
 	seedSpineMemoryVector(t, s, Memory{ID: filler2ID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: "filler2"}, []float32{0, 0, 1})
 
-	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories: %v", err)
 	}
@@ -1161,7 +1161,7 @@ func TestRelatedMemoriesTagAndCitationEdgesFollowGates(t *testing.T) {
 	seedSpineMemoryVector(t, s, Memory{ID: fillerAnon1ID, Scope: scope, Owner: "", Category: "note", Summary: "filler-anon1"}, []float32{0, 1, 0})
 	seedSpineMemoryVector(t, s, Memory{ID: fillerAnon2ID, Scope: scope, Owner: "", Category: "note", Summary: "filler-anon2"}, []float32{1, 0, 0})
 
-	resAnon, err := s.RelatedMemories(ctx, anchorAnonID, anon, 0)
+	resAnon, err := s.RelatedMemories(ctx, anchorAnonID, anon, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories(anon): %v", err)
 	}
@@ -1208,11 +1208,11 @@ func TestRelatedMemoriesAllEdgesDeterministic(t *testing.T) {
 		seedSpineMemoryVector(t, s, Memory{ID: fID, Scope: scope, Owner: "related-owner-a", Category: "note", Summary: fmt.Sprintf("filler%d", i)}, []float32{0, 0, 1})
 	}
 
-	res1, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res1, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories (1st call): %v", err)
 	}
-	res2, err := s.RelatedMemories(ctx, anchorID, ownerA, 0)
+	res2, err := s.RelatedMemories(ctx, anchorID, ownerA, 0, false)
 	if err != nil {
 		t.Fatalf("RelatedMemories (2nd call): %v", err)
 	}

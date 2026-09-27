@@ -143,6 +143,116 @@ func (ArchiveOutcome) EnumDescriptor() ([]byte, []int) {
 	return file_engram_v1_engram_proto_rawDescGZIP(), []int{1}
 }
 
+// EdgeType names the kind of relationship a RelatedEdge was reached by
+// (D-12). The zero value is never a real edge — every RelatedEdge sets one
+// of the other four explicitly, and its oneof evidence case always matches
+// this field.
+type EdgeType int32
+
+const (
+	EdgeType_EDGE_TYPE_UNSPECIFIED  EdgeType = 0
+	EdgeType_EDGE_TYPE_SUPERSESSION EdgeType = 1
+	EdgeType_EDGE_TYPE_CITATION     EdgeType = 2
+	EdgeType_EDGE_TYPE_TAG          EdgeType = 3
+	EdgeType_EDGE_TYPE_VECTOR       EdgeType = 4
+)
+
+// Enum value maps for EdgeType.
+var (
+	EdgeType_name = map[int32]string{
+		0: "EDGE_TYPE_UNSPECIFIED",
+		1: "EDGE_TYPE_SUPERSESSION",
+		2: "EDGE_TYPE_CITATION",
+		3: "EDGE_TYPE_TAG",
+		4: "EDGE_TYPE_VECTOR",
+	}
+	EdgeType_value = map[string]int32{
+		"EDGE_TYPE_UNSPECIFIED":  0,
+		"EDGE_TYPE_SUPERSESSION": 1,
+		"EDGE_TYPE_CITATION":     2,
+		"EDGE_TYPE_TAG":          3,
+		"EDGE_TYPE_VECTOR":       4,
+	}
+)
+
+func (x EdgeType) Enum() *EdgeType {
+	p := new(EdgeType)
+	*p = x
+	return p
+}
+
+func (x EdgeType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EdgeType) Descriptor() protoreflect.EnumDescriptor {
+	return file_engram_v1_engram_proto_enumTypes[2].Descriptor()
+}
+
+func (EdgeType) Type() protoreflect.EnumType {
+	return &file_engram_v1_engram_proto_enumTypes[2]
+}
+
+func (x EdgeType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EdgeType.Descriptor instead.
+func (EdgeType) EnumDescriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{2}
+}
+
+// SupersessionDirection names which pointer a supersession edge was reached
+// through, relative to the anchor.
+type SupersessionDirection int32
+
+const (
+	SupersessionDirection_SUPERSESSION_DIRECTION_UNSPECIFIED SupersessionDirection = 0
+	SupersessionDirection_SUPERSESSION_DIRECTION_SUCCESSOR   SupersessionDirection = 1
+	SupersessionDirection_SUPERSESSION_DIRECTION_PREDECESSOR SupersessionDirection = 2
+)
+
+// Enum value maps for SupersessionDirection.
+var (
+	SupersessionDirection_name = map[int32]string{
+		0: "SUPERSESSION_DIRECTION_UNSPECIFIED",
+		1: "SUPERSESSION_DIRECTION_SUCCESSOR",
+		2: "SUPERSESSION_DIRECTION_PREDECESSOR",
+	}
+	SupersessionDirection_value = map[string]int32{
+		"SUPERSESSION_DIRECTION_UNSPECIFIED": 0,
+		"SUPERSESSION_DIRECTION_SUCCESSOR":   1,
+		"SUPERSESSION_DIRECTION_PREDECESSOR": 2,
+	}
+)
+
+func (x SupersessionDirection) Enum() *SupersessionDirection {
+	p := new(SupersessionDirection)
+	*p = x
+	return p
+}
+
+func (x SupersessionDirection) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SupersessionDirection) Descriptor() protoreflect.EnumDescriptor {
+	return file_engram_v1_engram_proto_enumTypes[3].Descriptor()
+}
+
+func (SupersessionDirection) Type() protoreflect.EnumType {
+	return &file_engram_v1_engram_proto_enumTypes[3]
+}
+
+func (x SupersessionDirection) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SupersessionDirection.Descriptor instead.
+func (SupersessionDirection) EnumDescriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{3}
+}
+
 // A single memory record (mirrors internal/store.Memory's readable fields).
 type Memory struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3356,6 +3466,632 @@ func (x *ListRulesResponse) GetScopesUnknown() bool {
 	return false
 }
 
+// WeightedTag is one tag the anchor and a candidate share, plus its rarity
+// weight (Phase 1 D-07).
+type WeightedTag struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tag           string                 `protobuf:"bytes,1,opt,name=tag,proto3" json:"tag,omitempty"`
+	Weight        float64                `protobuf:"fixed64,2,opt,name=weight,proto3" json:"weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WeightedTag) Reset() {
+	*x = WeightedTag{}
+	mi := &file_engram_v1_engram_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WeightedTag) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WeightedTag) ProtoMessage() {}
+
+func (x *WeightedTag) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WeightedTag.ProtoReflect.Descriptor instead.
+func (*WeightedTag) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *WeightedTag) GetTag() string {
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+func (x *WeightedTag) GetWeight() float64 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+// CitationRef is one citation kind+ref the anchor and a candidate share
+// (Phase 1 D-08) — locator, pin, and excerpt are excluded from the identity
+// comparison.
+type CitationRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	Ref           string                 `protobuf:"bytes,2,opt,name=ref,proto3" json:"ref,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CitationRef) Reset() {
+	*x = CitationRef{}
+	mi := &file_engram_v1_engram_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CitationRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CitationRef) ProtoMessage() {}
+
+func (x *CitationRef) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CitationRef.ProtoReflect.Descriptor instead.
+func (*CitationRef) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *CitationRef) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *CitationRef) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+// VectorEvidence is the vector edge's evidence: the raw Qdrant cosine
+// similarity.
+type VectorEvidence struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Score         float32                `protobuf:"fixed32,1,opt,name=score,proto3" json:"score,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VectorEvidence) Reset() {
+	*x = VectorEvidence{}
+	mi := &file_engram_v1_engram_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VectorEvidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VectorEvidence) ProtoMessage() {}
+
+func (x *VectorEvidence) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VectorEvidence.ProtoReflect.Descriptor instead.
+func (*VectorEvidence) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *VectorEvidence) GetScore() float32 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+// TagEvidence is the tag edge's evidence: the shared tags with their rarity
+// weight, and the sum of those weights.
+type TagEvidence struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SharedTags    []*WeightedTag         `protobuf:"bytes,1,rep,name=shared_tags,json=sharedTags,proto3" json:"shared_tags,omitempty"`
+	TagWeight     float64                `protobuf:"fixed64,2,opt,name=tag_weight,json=tagWeight,proto3" json:"tag_weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TagEvidence) Reset() {
+	*x = TagEvidence{}
+	mi := &file_engram_v1_engram_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TagEvidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TagEvidence) ProtoMessage() {}
+
+func (x *TagEvidence) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TagEvidence.ProtoReflect.Descriptor instead.
+func (*TagEvidence) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *TagEvidence) GetSharedTags() []*WeightedTag {
+	if x != nil {
+		return x.SharedTags
+	}
+	return nil
+}
+
+func (x *TagEvidence) GetTagWeight() float64 {
+	if x != nil {
+		return x.TagWeight
+	}
+	return 0
+}
+
+// CitationEvidence is the citation edge's evidence: the shared kind+ref
+// pairs.
+type CitationEvidence struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	SharedCitations []*CitationRef         `protobuf:"bytes,1,rep,name=shared_citations,json=sharedCitations,proto3" json:"shared_citations,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CitationEvidence) Reset() {
+	*x = CitationEvidence{}
+	mi := &file_engram_v1_engram_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CitationEvidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CitationEvidence) ProtoMessage() {}
+
+func (x *CitationEvidence) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CitationEvidence.ProtoReflect.Descriptor instead.
+func (*CitationEvidence) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *CitationEvidence) GetSharedCitations() []*CitationRef {
+	if x != nil {
+		return x.SharedCitations
+	}
+	return nil
+}
+
+// SupersessionEvidence is the supersession edge's evidence: which pointer
+// was followed, and how many hops from the anchor (1 = direct link).
+type SupersessionEvidence struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Direction     SupersessionDirection  `protobuf:"varint,1,opt,name=direction,proto3,enum=engram.v1.SupersessionDirection" json:"direction,omitempty"`
+	Depth         uint32                 `protobuf:"varint,2,opt,name=depth,proto3" json:"depth,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SupersessionEvidence) Reset() {
+	*x = SupersessionEvidence{}
+	mi := &file_engram_v1_engram_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SupersessionEvidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SupersessionEvidence) ProtoMessage() {}
+
+func (x *SupersessionEvidence) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SupersessionEvidence.ProtoReflect.Descriptor instead.
+func (*SupersessionEvidence) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *SupersessionEvidence) GetDirection() SupersessionDirection {
+	if x != nil {
+		return x.Direction
+	}
+	return SupersessionDirection_SUPERSESSION_DIRECTION_UNSPECIFIED
+}
+
+func (x *SupersessionEvidence) GetDepth() uint32 {
+	if x != nil {
+		return x.Depth
+	}
+	return 0
+}
+
+// RelatedEdge is one piece of per-type evidence for why a candidate appeared
+// in a RelatedMemory's edges (D-12). type and the oneof evidence case always
+// match exactly: vector -> VectorEvidence, tag -> TagEvidence,
+// citation -> CitationEvidence, supersession -> SupersessionEvidence.
+// Evidence is never comparable across types — a vector score and a
+// supersession depth measure different things.
+type RelatedEdge struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Type  EdgeType               `protobuf:"varint,1,opt,name=type,proto3,enum=engram.v1.EdgeType" json:"type,omitempty"`
+	// Types that are valid to be assigned to Evidence:
+	//
+	//	*RelatedEdge_Vector
+	//	*RelatedEdge_Tag
+	//	*RelatedEdge_Citation
+	//	*RelatedEdge_Supersession
+	Evidence      isRelatedEdge_Evidence `protobuf_oneof:"evidence"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelatedEdge) Reset() {
+	*x = RelatedEdge{}
+	mi := &file_engram_v1_engram_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelatedEdge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelatedEdge) ProtoMessage() {}
+
+func (x *RelatedEdge) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelatedEdge.ProtoReflect.Descriptor instead.
+func (*RelatedEdge) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *RelatedEdge) GetType() EdgeType {
+	if x != nil {
+		return x.Type
+	}
+	return EdgeType_EDGE_TYPE_UNSPECIFIED
+}
+
+func (x *RelatedEdge) GetEvidence() isRelatedEdge_Evidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
+func (x *RelatedEdge) GetVector() *VectorEvidence {
+	if x != nil {
+		if x, ok := x.Evidence.(*RelatedEdge_Vector); ok {
+			return x.Vector
+		}
+	}
+	return nil
+}
+
+func (x *RelatedEdge) GetTag() *TagEvidence {
+	if x != nil {
+		if x, ok := x.Evidence.(*RelatedEdge_Tag); ok {
+			return x.Tag
+		}
+	}
+	return nil
+}
+
+func (x *RelatedEdge) GetCitation() *CitationEvidence {
+	if x != nil {
+		if x, ok := x.Evidence.(*RelatedEdge_Citation); ok {
+			return x.Citation
+		}
+	}
+	return nil
+}
+
+func (x *RelatedEdge) GetSupersession() *SupersessionEvidence {
+	if x != nil {
+		if x, ok := x.Evidence.(*RelatedEdge_Supersession); ok {
+			return x.Supersession
+		}
+	}
+	return nil
+}
+
+type isRelatedEdge_Evidence interface {
+	isRelatedEdge_Evidence()
+}
+
+type RelatedEdge_Vector struct {
+	Vector *VectorEvidence `protobuf:"bytes,2,opt,name=vector,proto3,oneof"`
+}
+
+type RelatedEdge_Tag struct {
+	Tag *TagEvidence `protobuf:"bytes,3,opt,name=tag,proto3,oneof"`
+}
+
+type RelatedEdge_Citation struct {
+	Citation *CitationEvidence `protobuf:"bytes,4,opt,name=citation,proto3,oneof"`
+}
+
+type RelatedEdge_Supersession struct {
+	Supersession *SupersessionEvidence `protobuf:"bytes,5,opt,name=supersession,proto3,oneof"`
+}
+
+func (*RelatedEdge_Vector) isRelatedEdge_Evidence() {}
+
+func (*RelatedEdge_Tag) isRelatedEdge_Evidence() {}
+
+func (*RelatedEdge_Citation) isRelatedEdge_Evidence() {}
+
+func (*RelatedEdge_Supersession) isRelatedEdge_Evidence() {}
+
+// RelatedMemory is one candidate record plus every edge type that reached
+// it (Phase 1 D-06's documented multi-edge rule): a candidate reachable by
+// more than one edge type is ONE entry, never returned twice. memory is
+// compact unless RelatedMemoriesRequest.full is set (D-13).
+type RelatedMemory struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Memory        *Memory                `protobuf:"bytes,1,opt,name=memory,proto3" json:"memory,omitempty"`
+	Edges         []*RelatedEdge         `protobuf:"bytes,2,rep,name=edges,proto3" json:"edges,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelatedMemory) Reset() {
+	*x = RelatedMemory{}
+	mi := &file_engram_v1_engram_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelatedMemory) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelatedMemory) ProtoMessage() {}
+
+func (x *RelatedMemory) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelatedMemory.ProtoReflect.Descriptor instead.
+func (*RelatedMemory) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *RelatedMemory) GetMemory() *Memory {
+	if x != nil {
+		return x.Memory
+	}
+	return nil
+}
+
+func (x *RelatedMemory) GetEdges() []*RelatedEdge {
+	if x != nil {
+		return x.Edges
+	}
+	return nil
+}
+
+// RelatedMemoriesRequest requests the neighbourhood of one memory the
+// caller can read (RPC-04). id is a full UUID or short_id. k widens ONLY
+// the vector edge (0 resolves to the default of 8 vector neighbours; a
+// value above 1000 is rejected). full requests full content instead of
+// compact summaries for the anchor and every entry's memory (D-13). No
+// buf.validate rule is attached: the single shared server-side core
+// validates, so both lanes return the byte-identical field=/hint= rejection
+// envelope (D-17/D-20).
+type RelatedMemoriesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	K             uint64                 `protobuf:"varint,2,opt,name=k,proto3" json:"k,omitempty"`
+	Full          bool                   `protobuf:"varint,3,opt,name=full,proto3" json:"full,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelatedMemoriesRequest) Reset() {
+	*x = RelatedMemoriesRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelatedMemoriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelatedMemoriesRequest) ProtoMessage() {}
+
+func (x *RelatedMemoriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelatedMemoriesRequest.ProtoReflect.Descriptor instead.
+func (*RelatedMemoriesRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *RelatedMemoriesRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *RelatedMemoriesRequest) GetK() uint64 {
+	if x != nil {
+		return x.K
+	}
+	return 0
+}
+
+func (x *RelatedMemoriesRequest) GetFull() bool {
+	if x != nil {
+		return x.Full
+	}
+	return false
+}
+
+// RelatedMemoriesResponse is RelatedMemories' return shape: the resolved
+// anchor, its neighbourhood, and whether the result ceiling left a fetched
+// vector candidate out (truncated). An unreadable or nonexistent anchor
+// reads not_found, echoing only the caller's original input (matching every
+// other per-id gate on this service).
+type RelatedMemoriesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Anchor        *Memory                `protobuf:"bytes,1,opt,name=anchor,proto3" json:"anchor,omitempty"`
+	Related       []*RelatedMemory       `protobuf:"bytes,2,rep,name=related,proto3" json:"related,omitempty"`
+	Truncated     bool                   `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelatedMemoriesResponse) Reset() {
+	*x = RelatedMemoriesResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelatedMemoriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelatedMemoriesResponse) ProtoMessage() {}
+
+func (x *RelatedMemoriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelatedMemoriesResponse.ProtoReflect.Descriptor instead.
+func (*RelatedMemoriesResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *RelatedMemoriesResponse) GetAnchor() *Memory {
+	if x != nil {
+		return x.Anchor
+	}
+	return nil
+}
+
+func (x *RelatedMemoriesResponse) GetRelated() []*RelatedMemory {
+	if x != nil {
+		return x.Related
+	}
+	return nil
+}
+
+func (x *RelatedMemoriesResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
 var File_engram_v1_engram_proto protoreflect.FileDescriptor
 
 const file_engram_v1_engram_proto_rawDesc = "" +
@@ -3643,7 +4379,44 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\badvisory\x18\x02 \x01(\tR\badvisory\x12'\n" +
 	"\x0fsearched_scopes\x18\x03 \x03(\tR\x0esearchedScopes\x12)\n" +
 	"\x10scopes_truncated\x18\x04 \x01(\bR\x0fscopesTruncated\x12%\n" +
-	"\x0escopes_unknown\x18\x05 \x01(\bR\rscopesUnknown*W\n" +
+	"\x0escopes_unknown\x18\x05 \x01(\bR\rscopesUnknown\"7\n" +
+	"\vWeightedTag\x12\x10\n" +
+	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x16\n" +
+	"\x06weight\x18\x02 \x01(\x01R\x06weight\"3\n" +
+	"\vCitationRef\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x10\n" +
+	"\x03ref\x18\x02 \x01(\tR\x03ref\"&\n" +
+	"\x0eVectorEvidence\x12\x14\n" +
+	"\x05score\x18\x01 \x01(\x02R\x05score\"e\n" +
+	"\vTagEvidence\x127\n" +
+	"\vshared_tags\x18\x01 \x03(\v2\x16.engram.v1.WeightedTagR\n" +
+	"sharedTags\x12\x1d\n" +
+	"\n" +
+	"tag_weight\x18\x02 \x01(\x01R\ttagWeight\"U\n" +
+	"\x10CitationEvidence\x12A\n" +
+	"\x10shared_citations\x18\x01 \x03(\v2\x16.engram.v1.CitationRefR\x0fsharedCitations\"l\n" +
+	"\x14SupersessionEvidence\x12>\n" +
+	"\tdirection\x18\x01 \x01(\x0e2 .engram.v1.SupersessionDirectionR\tdirection\x12\x14\n" +
+	"\x05depth\x18\x02 \x01(\rR\x05depth\"\xa5\x02\n" +
+	"\vRelatedEdge\x12'\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x13.engram.v1.EdgeTypeR\x04type\x123\n" +
+	"\x06vector\x18\x02 \x01(\v2\x19.engram.v1.VectorEvidenceH\x00R\x06vector\x12*\n" +
+	"\x03tag\x18\x03 \x01(\v2\x16.engram.v1.TagEvidenceH\x00R\x03tag\x129\n" +
+	"\bcitation\x18\x04 \x01(\v2\x1b.engram.v1.CitationEvidenceH\x00R\bcitation\x12E\n" +
+	"\fsupersession\x18\x05 \x01(\v2\x1f.engram.v1.SupersessionEvidenceH\x00R\fsupersessionB\n" +
+	"\n" +
+	"\bevidence\"h\n" +
+	"\rRelatedMemory\x12)\n" +
+	"\x06memory\x18\x01 \x01(\v2\x11.engram.v1.MemoryR\x06memory\x12,\n" +
+	"\x05edges\x18\x02 \x03(\v2\x16.engram.v1.RelatedEdgeR\x05edges\"J\n" +
+	"\x16RelatedMemoriesRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\f\n" +
+	"\x01k\x18\x02 \x01(\x04R\x01k\x12\x12\n" +
+	"\x04full\x18\x03 \x01(\bR\x04full\"\x96\x01\n" +
+	"\x17RelatedMemoriesResponse\x12)\n" +
+	"\x06anchor\x18\x01 \x01(\v2\x11.engram.v1.MemoryR\x06anchor\x122\n" +
+	"\arelated\x18\x02 \x03(\v2\x18.engram.v1.RelatedMemoryR\arelated\x12\x1c\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated*W\n" +
 	"\n" +
 	"Visibility\x12\x1a\n" +
 	"\x16VISIBILITY_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -3655,7 +4428,17 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	" ARCHIVE_OUTCOME_ALREADY_ARCHIVED\x10\x02\x12\x1c\n" +
 	"\x18ARCHIVE_OUTCOME_RESTORED\x10\x03\x12 \n" +
 	"\x1cARCHIVE_OUTCOME_NOT_ARCHIVED\x10\x04\x12\x1d\n" +
-	"\x19ARCHIVE_OUTCOME_NOT_FOUND\x10\x052\x8e\v\n" +
+	"\x19ARCHIVE_OUTCOME_NOT_FOUND\x10\x05*\x82\x01\n" +
+	"\bEdgeType\x12\x19\n" +
+	"\x15EDGE_TYPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16EDGE_TYPE_SUPERSESSION\x10\x01\x12\x16\n" +
+	"\x12EDGE_TYPE_CITATION\x10\x02\x12\x11\n" +
+	"\rEDGE_TYPE_TAG\x10\x03\x12\x14\n" +
+	"\x10EDGE_TYPE_VECTOR\x10\x04*\x8d\x01\n" +
+	"\x15SupersessionDirection\x12&\n" +
+	"\"SUPERSESSION_DIRECTION_UNSPECIFIED\x10\x00\x12$\n" +
+	" SUPERSESSION_DIRECTION_SUCCESSOR\x10\x01\x12&\n" +
+	"\"SUPERSESSION_DIRECTION_PREDECESSOR\x10\x022\xe8\v\n" +
 	"\rEngramService\x12I\n" +
 	"\n" +
 	"ListScopes\x12\x1c.engram.v1.ListScopesRequest\x1a\x1d.engram.v1.ListScopesResponse\x12O\n" +
@@ -3674,7 +4457,8 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\rRestoreMemory\x12\x1f.engram.v1.RestoreMemoryRequest\x1a .engram.v1.RestoreMemoryResponse\x12X\n" +
 	"\x0fSupersedeMemory\x12!.engram.v1.SupersedeMemoryRequest\x1a\".engram.v1.SupersedeMemoryResponse\x12R\n" +
 	"\rListScheduled\x12\x1f.engram.v1.ListScheduledRequest\x1a .engram.v1.ListScheduledResponse\x12F\n" +
-	"\tListRules\x12\x1b.engram.v1.ListRulesRequest\x1a\x1c.engram.v1.ListRulesResponseB\x96\x01\n" +
+	"\tListRules\x12\x1b.engram.v1.ListRulesRequest\x1a\x1c.engram.v1.ListRulesResponse\x12X\n" +
+	"\x0fRelatedMemories\x12!.engram.v1.RelatedMemoriesRequest\x1a\".engram.v1.RelatedMemoriesResponseB\x96\x01\n" +
 	"\rcom.engram.v1B\vEngramProtoP\x01Z3github.com/seanb4t/engram/gen/go/engram/v1;engramv1\xa2\x02\x03EXX\xaa\x02\tEngram.V1\xca\x02\tEngram\\V1\xe2\x02\x15Engram\\V1\\GPBMetadata\xea\x02\n" +
 	"Engram::V1b\x06proto3"
 
@@ -3690,122 +4474,148 @@ func file_engram_v1_engram_proto_rawDescGZIP() []byte {
 	return file_engram_v1_engram_proto_rawDescData
 }
 
-var file_engram_v1_engram_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_engram_v1_engram_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_engram_v1_engram_proto_goTypes = []any{
 	(Visibility)(0),                   // 0: engram.v1.Visibility
 	(ArchiveOutcome)(0),               // 1: engram.v1.ArchiveOutcome
-	(*Memory)(nil),                    // 2: engram.v1.Memory
-	(*ScopeCount)(nil),                // 3: engram.v1.ScopeCount
-	(*ListScopesRequest)(nil),         // 4: engram.v1.ListScopesRequest
-	(*ListScopesResponse)(nil),        // 5: engram.v1.ListScopesResponse
-	(*ListMemoriesRequest)(nil),       // 6: engram.v1.ListMemoriesRequest
-	(*ListMemoriesResponse)(nil),      // 7: engram.v1.ListMemoriesResponse
-	(*RecallGateHidden)(nil),          // 8: engram.v1.RecallGateHidden
-	(*SearchMemoriesRequest)(nil),     // 9: engram.v1.SearchMemoriesRequest
-	(*SearchMemoriesResponse)(nil),    // 10: engram.v1.SearchMemoriesResponse
-	(*GetMemoryRequest)(nil),          // 11: engram.v1.GetMemoryRequest
-	(*GetMemoryResponse)(nil),         // 12: engram.v1.GetMemoryResponse
-	(*SearchDiscoveriesRequest)(nil),  // 13: engram.v1.SearchDiscoveriesRequest
-	(*SearchDiscoveriesResponse)(nil), // 14: engram.v1.SearchDiscoveriesResponse
-	(*SchemaVersionBucket)(nil),       // 15: engram.v1.SchemaVersionBucket
-	(*MigrateStatusRequest)(nil),      // 16: engram.v1.MigrateStatusRequest
-	(*MigrateStatusResponse)(nil),     // 17: engram.v1.MigrateStatusResponse
-	(*StoreMemoryRequest)(nil),        // 18: engram.v1.StoreMemoryRequest
-	(*StoreMemoryResponse)(nil),       // 19: engram.v1.StoreMemoryResponse
-	(*Citation)(nil),                  // 20: engram.v1.Citation
-	(*StoreDiscoveryRequest)(nil),     // 21: engram.v1.StoreDiscoveryRequest
-	(*StoreDiscoveryResponse)(nil),    // 22: engram.v1.StoreDiscoveryResponse
-	(*UpdateMemoryRequest)(nil),       // 23: engram.v1.UpdateMemoryRequest
-	(*UpdateMemoryResponse)(nil),      // 24: engram.v1.UpdateMemoryResponse
-	(*DeleteMemoryRequest)(nil),       // 25: engram.v1.DeleteMemoryRequest
-	(*DeleteMemoryResponse)(nil),      // 26: engram.v1.DeleteMemoryResponse
-	(*SetVisibilityRequest)(nil),      // 27: engram.v1.SetVisibilityRequest
-	(*SetVisibilityResponse)(nil),     // 28: engram.v1.SetVisibilityResponse
-	(*ScheduleMemoryRequest)(nil),     // 29: engram.v1.ScheduleMemoryRequest
-	(*ScheduleMemoryResponse)(nil),    // 30: engram.v1.ScheduleMemoryResponse
-	(*ArchiveResult)(nil),             // 31: engram.v1.ArchiveResult
-	(*ArchiveMemoryRequest)(nil),      // 32: engram.v1.ArchiveMemoryRequest
-	(*ArchiveMemoryResponse)(nil),     // 33: engram.v1.ArchiveMemoryResponse
-	(*RestoreMemoryRequest)(nil),      // 34: engram.v1.RestoreMemoryRequest
-	(*RestoreMemoryResponse)(nil),     // 35: engram.v1.RestoreMemoryResponse
-	(*SupersedeMemoryRequest)(nil),    // 36: engram.v1.SupersedeMemoryRequest
-	(*SupersedeMemoryResponse)(nil),   // 37: engram.v1.SupersedeMemoryResponse
-	(*ListScheduledRequest)(nil),      // 38: engram.v1.ListScheduledRequest
-	(*ListScheduledResponse)(nil),     // 39: engram.v1.ListScheduledResponse
-	(*ListRulesRequest)(nil),          // 40: engram.v1.ListRulesRequest
-	(*ListRulesResponse)(nil),         // 41: engram.v1.ListRulesResponse
-	(*timestamppb.Timestamp)(nil),     // 42: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),     // 43: google.protobuf.FieldMask
+	(EdgeType)(0),                     // 2: engram.v1.EdgeType
+	(SupersessionDirection)(0),        // 3: engram.v1.SupersessionDirection
+	(*Memory)(nil),                    // 4: engram.v1.Memory
+	(*ScopeCount)(nil),                // 5: engram.v1.ScopeCount
+	(*ListScopesRequest)(nil),         // 6: engram.v1.ListScopesRequest
+	(*ListScopesResponse)(nil),        // 7: engram.v1.ListScopesResponse
+	(*ListMemoriesRequest)(nil),       // 8: engram.v1.ListMemoriesRequest
+	(*ListMemoriesResponse)(nil),      // 9: engram.v1.ListMemoriesResponse
+	(*RecallGateHidden)(nil),          // 10: engram.v1.RecallGateHidden
+	(*SearchMemoriesRequest)(nil),     // 11: engram.v1.SearchMemoriesRequest
+	(*SearchMemoriesResponse)(nil),    // 12: engram.v1.SearchMemoriesResponse
+	(*GetMemoryRequest)(nil),          // 13: engram.v1.GetMemoryRequest
+	(*GetMemoryResponse)(nil),         // 14: engram.v1.GetMemoryResponse
+	(*SearchDiscoveriesRequest)(nil),  // 15: engram.v1.SearchDiscoveriesRequest
+	(*SearchDiscoveriesResponse)(nil), // 16: engram.v1.SearchDiscoveriesResponse
+	(*SchemaVersionBucket)(nil),       // 17: engram.v1.SchemaVersionBucket
+	(*MigrateStatusRequest)(nil),      // 18: engram.v1.MigrateStatusRequest
+	(*MigrateStatusResponse)(nil),     // 19: engram.v1.MigrateStatusResponse
+	(*StoreMemoryRequest)(nil),        // 20: engram.v1.StoreMemoryRequest
+	(*StoreMemoryResponse)(nil),       // 21: engram.v1.StoreMemoryResponse
+	(*Citation)(nil),                  // 22: engram.v1.Citation
+	(*StoreDiscoveryRequest)(nil),     // 23: engram.v1.StoreDiscoveryRequest
+	(*StoreDiscoveryResponse)(nil),    // 24: engram.v1.StoreDiscoveryResponse
+	(*UpdateMemoryRequest)(nil),       // 25: engram.v1.UpdateMemoryRequest
+	(*UpdateMemoryResponse)(nil),      // 26: engram.v1.UpdateMemoryResponse
+	(*DeleteMemoryRequest)(nil),       // 27: engram.v1.DeleteMemoryRequest
+	(*DeleteMemoryResponse)(nil),      // 28: engram.v1.DeleteMemoryResponse
+	(*SetVisibilityRequest)(nil),      // 29: engram.v1.SetVisibilityRequest
+	(*SetVisibilityResponse)(nil),     // 30: engram.v1.SetVisibilityResponse
+	(*ScheduleMemoryRequest)(nil),     // 31: engram.v1.ScheduleMemoryRequest
+	(*ScheduleMemoryResponse)(nil),    // 32: engram.v1.ScheduleMemoryResponse
+	(*ArchiveResult)(nil),             // 33: engram.v1.ArchiveResult
+	(*ArchiveMemoryRequest)(nil),      // 34: engram.v1.ArchiveMemoryRequest
+	(*ArchiveMemoryResponse)(nil),     // 35: engram.v1.ArchiveMemoryResponse
+	(*RestoreMemoryRequest)(nil),      // 36: engram.v1.RestoreMemoryRequest
+	(*RestoreMemoryResponse)(nil),     // 37: engram.v1.RestoreMemoryResponse
+	(*SupersedeMemoryRequest)(nil),    // 38: engram.v1.SupersedeMemoryRequest
+	(*SupersedeMemoryResponse)(nil),   // 39: engram.v1.SupersedeMemoryResponse
+	(*ListScheduledRequest)(nil),      // 40: engram.v1.ListScheduledRequest
+	(*ListScheduledResponse)(nil),     // 41: engram.v1.ListScheduledResponse
+	(*ListRulesRequest)(nil),          // 42: engram.v1.ListRulesRequest
+	(*ListRulesResponse)(nil),         // 43: engram.v1.ListRulesResponse
+	(*WeightedTag)(nil),               // 44: engram.v1.WeightedTag
+	(*CitationRef)(nil),               // 45: engram.v1.CitationRef
+	(*VectorEvidence)(nil),            // 46: engram.v1.VectorEvidence
+	(*TagEvidence)(nil),               // 47: engram.v1.TagEvidence
+	(*CitationEvidence)(nil),          // 48: engram.v1.CitationEvidence
+	(*SupersessionEvidence)(nil),      // 49: engram.v1.SupersessionEvidence
+	(*RelatedEdge)(nil),               // 50: engram.v1.RelatedEdge
+	(*RelatedMemory)(nil),             // 51: engram.v1.RelatedMemory
+	(*RelatedMemoriesRequest)(nil),    // 52: engram.v1.RelatedMemoriesRequest
+	(*RelatedMemoriesResponse)(nil),   // 53: engram.v1.RelatedMemoriesResponse
+	(*timestamppb.Timestamp)(nil),     // 54: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),     // 55: google.protobuf.FieldMask
 }
 var file_engram_v1_engram_proto_depIdxs = []int32{
-	42, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
-	42, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
-	20, // 2: engram.v1.Memory.citations:type_name -> engram.v1.Citation
-	42, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
-	42, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
-	42, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
-	42, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
-	3,  // 7: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
-	2,  // 8: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
-	8,  // 9: engram.v1.ListMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
-	2,  // 10: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
-	8,  // 11: engram.v1.SearchMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
-	2,  // 12: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
-	2,  // 13: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
-	15, // 14: engram.v1.MigrateStatusResponse.buckets:type_name -> engram.v1.SchemaVersionBucket
-	15, // 15: engram.v1.MigrateStatusResponse.future:type_name -> engram.v1.SchemaVersionBucket
-	20, // 16: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
-	43, // 17: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
+	54, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
+	54, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
+	22, // 2: engram.v1.Memory.citations:type_name -> engram.v1.Citation
+	54, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
+	54, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
+	54, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
+	54, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
+	5,  // 7: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
+	4,  // 8: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
+	10, // 9: engram.v1.ListMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
+	4,  // 10: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
+	10, // 11: engram.v1.SearchMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
+	4,  // 12: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
+	4,  // 13: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
+	17, // 14: engram.v1.MigrateStatusResponse.buckets:type_name -> engram.v1.SchemaVersionBucket
+	17, // 15: engram.v1.MigrateStatusResponse.future:type_name -> engram.v1.SchemaVersionBucket
+	22, // 16: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
+	55, // 17: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
 	0,  // 18: engram.v1.SetVisibilityRequest.visibility:type_name -> engram.v1.Visibility
-	42, // 19: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
-	42, // 20: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
+	54, // 19: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
+	54, // 20: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
 	1,  // 21: engram.v1.ArchiveResult.outcome:type_name -> engram.v1.ArchiveOutcome
-	31, // 22: engram.v1.ArchiveMemoryResponse.results:type_name -> engram.v1.ArchiveResult
-	31, // 23: engram.v1.RestoreMemoryResponse.results:type_name -> engram.v1.ArchiveResult
-	20, // 24: engram.v1.SupersedeMemoryRequest.citations:type_name -> engram.v1.Citation
-	2,  // 25: engram.v1.SupersedeMemoryResponse.targets:type_name -> engram.v1.Memory
-	2,  // 26: engram.v1.ListScheduledResponse.memories:type_name -> engram.v1.Memory
-	2,  // 27: engram.v1.ListRulesResponse.rules:type_name -> engram.v1.Memory
-	4,  // 28: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
-	6,  // 29: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
-	9,  // 30: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
-	11, // 31: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
-	13, // 32: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
-	16, // 33: engram.v1.EngramService.MigrateStatus:input_type -> engram.v1.MigrateStatusRequest
-	18, // 34: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
-	21, // 35: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
-	23, // 36: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
-	25, // 37: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
-	27, // 38: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
-	29, // 39: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
-	32, // 40: engram.v1.EngramService.ArchiveMemory:input_type -> engram.v1.ArchiveMemoryRequest
-	34, // 41: engram.v1.EngramService.RestoreMemory:input_type -> engram.v1.RestoreMemoryRequest
-	36, // 42: engram.v1.EngramService.SupersedeMemory:input_type -> engram.v1.SupersedeMemoryRequest
-	38, // 43: engram.v1.EngramService.ListScheduled:input_type -> engram.v1.ListScheduledRequest
-	40, // 44: engram.v1.EngramService.ListRules:input_type -> engram.v1.ListRulesRequest
-	5,  // 45: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
-	7,  // 46: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
-	10, // 47: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
-	12, // 48: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
-	14, // 49: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
-	17, // 50: engram.v1.EngramService.MigrateStatus:output_type -> engram.v1.MigrateStatusResponse
-	19, // 51: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
-	22, // 52: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
-	24, // 53: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
-	26, // 54: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
-	28, // 55: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
-	30, // 56: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
-	33, // 57: engram.v1.EngramService.ArchiveMemory:output_type -> engram.v1.ArchiveMemoryResponse
-	35, // 58: engram.v1.EngramService.RestoreMemory:output_type -> engram.v1.RestoreMemoryResponse
-	37, // 59: engram.v1.EngramService.SupersedeMemory:output_type -> engram.v1.SupersedeMemoryResponse
-	39, // 60: engram.v1.EngramService.ListScheduled:output_type -> engram.v1.ListScheduledResponse
-	41, // 61: engram.v1.EngramService.ListRules:output_type -> engram.v1.ListRulesResponse
-	45, // [45:62] is the sub-list for method output_type
-	28, // [28:45] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	33, // 22: engram.v1.ArchiveMemoryResponse.results:type_name -> engram.v1.ArchiveResult
+	33, // 23: engram.v1.RestoreMemoryResponse.results:type_name -> engram.v1.ArchiveResult
+	22, // 24: engram.v1.SupersedeMemoryRequest.citations:type_name -> engram.v1.Citation
+	4,  // 25: engram.v1.SupersedeMemoryResponse.targets:type_name -> engram.v1.Memory
+	4,  // 26: engram.v1.ListScheduledResponse.memories:type_name -> engram.v1.Memory
+	4,  // 27: engram.v1.ListRulesResponse.rules:type_name -> engram.v1.Memory
+	44, // 28: engram.v1.TagEvidence.shared_tags:type_name -> engram.v1.WeightedTag
+	45, // 29: engram.v1.CitationEvidence.shared_citations:type_name -> engram.v1.CitationRef
+	3,  // 30: engram.v1.SupersessionEvidence.direction:type_name -> engram.v1.SupersessionDirection
+	2,  // 31: engram.v1.RelatedEdge.type:type_name -> engram.v1.EdgeType
+	46, // 32: engram.v1.RelatedEdge.vector:type_name -> engram.v1.VectorEvidence
+	47, // 33: engram.v1.RelatedEdge.tag:type_name -> engram.v1.TagEvidence
+	48, // 34: engram.v1.RelatedEdge.citation:type_name -> engram.v1.CitationEvidence
+	49, // 35: engram.v1.RelatedEdge.supersession:type_name -> engram.v1.SupersessionEvidence
+	4,  // 36: engram.v1.RelatedMemory.memory:type_name -> engram.v1.Memory
+	50, // 37: engram.v1.RelatedMemory.edges:type_name -> engram.v1.RelatedEdge
+	4,  // 38: engram.v1.RelatedMemoriesResponse.anchor:type_name -> engram.v1.Memory
+	51, // 39: engram.v1.RelatedMemoriesResponse.related:type_name -> engram.v1.RelatedMemory
+	6,  // 40: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
+	8,  // 41: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
+	11, // 42: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
+	13, // 43: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
+	15, // 44: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
+	18, // 45: engram.v1.EngramService.MigrateStatus:input_type -> engram.v1.MigrateStatusRequest
+	20, // 46: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
+	23, // 47: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
+	25, // 48: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
+	27, // 49: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
+	29, // 50: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
+	31, // 51: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
+	34, // 52: engram.v1.EngramService.ArchiveMemory:input_type -> engram.v1.ArchiveMemoryRequest
+	36, // 53: engram.v1.EngramService.RestoreMemory:input_type -> engram.v1.RestoreMemoryRequest
+	38, // 54: engram.v1.EngramService.SupersedeMemory:input_type -> engram.v1.SupersedeMemoryRequest
+	40, // 55: engram.v1.EngramService.ListScheduled:input_type -> engram.v1.ListScheduledRequest
+	42, // 56: engram.v1.EngramService.ListRules:input_type -> engram.v1.ListRulesRequest
+	52, // 57: engram.v1.EngramService.RelatedMemories:input_type -> engram.v1.RelatedMemoriesRequest
+	7,  // 58: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
+	9,  // 59: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
+	12, // 60: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
+	14, // 61: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
+	16, // 62: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
+	19, // 63: engram.v1.EngramService.MigrateStatus:output_type -> engram.v1.MigrateStatusResponse
+	21, // 64: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
+	24, // 65: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
+	26, // 66: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
+	28, // 67: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
+	30, // 68: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
+	32, // 69: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
+	35, // 70: engram.v1.EngramService.ArchiveMemory:output_type -> engram.v1.ArchiveMemoryResponse
+	37, // 71: engram.v1.EngramService.RestoreMemory:output_type -> engram.v1.RestoreMemoryResponse
+	39, // 72: engram.v1.EngramService.SupersedeMemory:output_type -> engram.v1.SupersedeMemoryResponse
+	41, // 73: engram.v1.EngramService.ListScheduled:output_type -> engram.v1.ListScheduledResponse
+	43, // 74: engram.v1.EngramService.ListRules:output_type -> engram.v1.ListRulesResponse
+	53, // 75: engram.v1.EngramService.RelatedMemories:output_type -> engram.v1.RelatedMemoriesResponse
+	58, // [58:76] is the sub-list for method output_type
+	40, // [40:58] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_engram_v1_engram_proto_init() }
@@ -3814,13 +4624,19 @@ func file_engram_v1_engram_proto_init() {
 		return
 	}
 	file_engram_v1_engram_proto_msgTypes[0].OneofWrappers = []any{}
+	file_engram_v1_engram_proto_msgTypes[46].OneofWrappers = []any{
+		(*RelatedEdge_Vector)(nil),
+		(*RelatedEdge_Tag)(nil),
+		(*RelatedEdge_Citation)(nil),
+		(*RelatedEdge_Supersession)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_engram_v1_engram_proto_rawDesc), len(file_engram_v1_engram_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   40,
+			NumEnums:      4,
+			NumMessages:   50,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

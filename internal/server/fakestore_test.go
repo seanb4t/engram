@@ -51,6 +51,11 @@ type spyStore struct {
 	// other method here; a test sets this field directly before exercising
 	// a handler.
 	migrateStatus store.MigrateStatusResult
+	// related is the SCRIPTED result RelatedMemories returns (milestone
+	// 2026-09-25.01 Phase 3) — this fake never derives a neighbourhood from
+	// s.records, mirroring migrateStatus's precedent; a test sets this field
+	// directly before exercising a handler.
+	related store.RelatedResult
 }
 
 var _ memStore = (*spyStore)(nil)
@@ -554,6 +559,20 @@ func (s *spyStore) MintShortID(_ context.Context, seen map[string]struct{}) (str
 		return id, nil
 	}
 	return "", errors.New("spyStore: could not mint a unique short id")
+}
+
+// RelatedMemories returns the SCRIPTED s.related value when the requested id
+// matches s.related.Anchor.ID, or an ErrNotFound-wrapping error otherwise —
+// mirroring MigrateStatus's scripted-not-derived precedent. A test sets
+// s.related directly before exercising a handler.
+func (s *spyStore) RelatedMemories(_ context.Context, id string, subj store.Subject, k uint64, full bool) (store.RelatedResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.record("RelatedMemories", ownerOfSubject(subj), id)
+	if s.related.Anchor.ID != id {
+		return store.RelatedResult{}, fmt.Errorf("%w: %s", store.ErrNotFound, id)
+	}
+	return s.related, nil
 }
 
 // Search mirrors SearchReranked's filtering exactly (scope/readableBy/

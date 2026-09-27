@@ -562,6 +562,125 @@ message ListRulesResponse {
   bool scopes_unknown = 5;
 }
 
+// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
+//
+// RelatedMemories wraps the store's id-neighbourhood read (2026-09-25.01
+// Phase 1, D-06..D-12): the supersession chain in both directions, records
+// sharing a citation kind+ref, records sharing rarity-weighted tags, and the
+// anchor's nearest vector neighbours — one entry per related record, never
+// twice, listing every edge that reached it.
+
+// EdgeType names the kind of relationship a RelatedEdge was reached by
+// (D-12). The zero value is never a real edge — every RelatedEdge sets one
+// of the other four explicitly, and its oneof evidence case always matches
+// this field.
+enum EdgeType {
+  EDGE_TYPE_UNSPECIFIED = 0;
+  EDGE_TYPE_SUPERSESSION = 1;
+  EDGE_TYPE_CITATION = 2;
+  EDGE_TYPE_TAG = 3;
+  EDGE_TYPE_VECTOR = 4;
+}
+
+// SupersessionDirection names which pointer a supersession edge was reached
+// through, relative to the anchor.
+enum SupersessionDirection {
+  SUPERSESSION_DIRECTION_UNSPECIFIED = 0;
+  SUPERSESSION_DIRECTION_SUCCESSOR = 1;
+  SUPERSESSION_DIRECTION_PREDECESSOR = 2;
+}
+
+// WeightedTag is one tag the anchor and a candidate share, plus its rarity
+// weight (Phase 1 D-07).
+message WeightedTag {
+  string tag = 1;
+  double weight = 2;
+}
+
+// CitationRef is one citation kind+ref the anchor and a candidate share
+// (Phase 1 D-08) — locator, pin, and excerpt are excluded from the identity
+// comparison.
+message CitationRef {
+  string kind = 1;
+  string ref = 2;
+}
+
+// VectorEvidence is the vector edge's evidence: the raw Qdrant cosine
+// similarity.
+message VectorEvidence {
+  float score = 1;
+}
+
+// TagEvidence is the tag edge's evidence: the shared tags with their rarity
+// weight, and the sum of those weights.
+message TagEvidence {
+  repeated WeightedTag shared_tags = 1;
+  double tag_weight = 2;
+}
+
+// CitationEvidence is the citation edge's evidence: the shared kind+ref
+// pairs.
+message CitationEvidence {
+  repeated CitationRef shared_citations = 1;
+}
+
+// SupersessionEvidence is the supersession edge's evidence: which pointer
+// was followed, and how many hops from the anchor (1 = direct link).
+message SupersessionEvidence {
+  SupersessionDirection direction = 1;
+  uint32 depth = 2;
+}
+
+// RelatedEdge is one piece of per-type evidence for why a candidate appeared
+// in a RelatedMemory's edges (D-12). type and the oneof evidence case always
+// match exactly: vector -> VectorEvidence, tag -> TagEvidence,
+// citation -> CitationEvidence, supersession -> SupersessionEvidence.
+// Evidence is never comparable across types — a vector score and a
+// supersession depth measure different things.
+message RelatedEdge {
+  EdgeType type = 1;
+  oneof evidence {
+    VectorEvidence vector = 2;
+    TagEvidence tag = 3;
+    CitationEvidence citation = 4;
+    SupersessionEvidence supersession = 5;
+  }
+}
+
+// RelatedMemory is one candidate record plus every edge type that reached
+// it (Phase 1 D-06's documented multi-edge rule): a candidate reachable by
+// more than one edge type is ONE entry, never returned twice. memory is
+// compact unless RelatedMemoriesRequest.full is set (D-13).
+message RelatedMemory {
+  Memory memory = 1;
+  repeated RelatedEdge edges = 2;
+}
+
+// RelatedMemoriesRequest requests the neighbourhood of one memory the
+// caller can read (RPC-04). id is a full UUID or short_id. k widens ONLY
+// the vector edge (0 resolves to the default of 8 vector neighbours; a
+// value above 1000 is rejected). full requests full content instead of
+// compact summaries for the anchor and every entry's memory (D-13). No
+// buf.validate rule is attached: the single shared server-side core
+// validates, so both lanes return the byte-identical field=/hint= rejection
+// envelope (D-17/D-20).
+message RelatedMemoriesRequest {
+  string id = 1;
+  uint64 k = 2;
+  bool full = 3;
+}
+
+// RelatedMemoriesResponse is RelatedMemories' return shape: the resolved
+// anchor, its neighbourhood, and whether the result ceiling left a fetched
+// vector candidate out (truncated). An unreadable or nonexistent anchor
+// reads not_found, echoing only the caller's original input (matching every
+// other per-id gate on this service).
+message RelatedMemoriesResponse {
+  Memory anchor = 1;
+  repeated RelatedMemory related = 2;
+  bool truncated = 3;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
@@ -585,4 +704,6 @@ service EngramService {
   rpc ListScheduled(ListScheduledRequest) returns (ListScheduledResponse);
   // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-04) ---
   rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
+  rpc RelatedMemories(RelatedMemoriesRequest) returns (RelatedMemoriesResponse);
 }

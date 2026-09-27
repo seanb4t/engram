@@ -477,7 +477,7 @@ func dedupSortedExcluding(ids []string, visited map[string]bool) []string {
 // against corrupt cycles across both directions and against the anchor
 // itself. Bounded to at most relatedSupersessionDepth hops per direction and
 // relatedSupersessionCap members total.
-func (s *Store) relatedSupersessionChain(ctx context.Context, anchor Memory, subj Subject) ([]RelatedMemory, error) {
+func (s *Store) relatedSupersessionChain(ctx context.Context, anchor Memory, subj Subject, full bool) ([]RelatedMemory, error) {
 	visited := map[string]bool{anchor.ID: true}
 	var out []RelatedMemory
 
@@ -496,7 +496,7 @@ func (s *Store) relatedSupersessionChain(ctx context.Context, anchor Memory, sub
 			return nil, err
 		}
 		out = append(out, RelatedMemory{
-			Memory: summaryShape(m),
+			Memory: relatedShape(m, full),
 			Edges:  []RelatedEdge{{Type: RelatedEdgeSupersession, Direction: SupersessionSuccessor, Depth: depth}},
 		})
 		cur = m
@@ -521,7 +521,7 @@ func (s *Store) relatedSupersessionChain(ctx context.Context, anchor Memory, sub
 				return nil, err
 			}
 			out = append(out, RelatedMemory{
-				Memory: summaryShape(m),
+				Memory: relatedShape(m, full),
 				Edges:  []RelatedEdge{{Type: RelatedEdgeSupersession, Direction: SupersessionPredecessor, Depth: depth}},
 			})
 			next = append(next, m.Supersedes...)
@@ -558,6 +558,18 @@ func summaryShape(m Memory) Memory {
 		m.Content = ""
 	}
 	return m
+}
+
+// relatedShape shapes m for RelatedMemories' response (milestone 2026-09-25.01
+// Phase 3 D-13): m unchanged when full is true, else summaryShape(m) —
+// compact by default, full opt-in. The filter composed into the fetch
+// (recallVisibleFilter) is unchanged by full; this only selects the payload
+// projection of records the filter already admitted.
+func relatedShape(m Memory, full bool) Memory {
+	if full {
+		return m
+	}
+	return summaryShape(m)
 }
 
 // relatedVectorEdges finds the anchor's vector neighbourhood: exactly one
@@ -608,7 +620,7 @@ func (s *Store) relatedVectorEdges(ctx context.Context, f *qdrant.Filter, anchor
 // silently. Once len(related) reaches relatedTotalCeiling, further NEW
 // entries are skipped and truncated is set — an already-present candidate's
 // extra edge is still recorded, since that costs no new entry.
-func (s *Store) assembleRelated(ctx context.Context, f *qdrant.Filter, anchorID string, chain []RelatedMemory, gated ...[]relatedCandidate) (related []RelatedMemory, truncated bool, err error) {
+func (s *Store) assembleRelated(ctx context.Context, f *qdrant.Filter, anchorID string, full bool, chain []RelatedMemory, gated ...[]relatedCandidate) (related []RelatedMemory, truncated bool, err error) {
 	chainIDs := make(map[string]bool, len(chain))
 	for _, c := range chain {
 		chainIDs[c.Memory.ID] = true
@@ -629,7 +641,8 @@ func (s *Store) assembleRelated(ctx context.Context, f *qdrant.Filter, anchorID 
 	if relatedBeforeFetchHook != nil {
 		relatedBeforeFetchHook(ids)
 	}
-	fetched, err := s.fetchPayloadsByID(ctx, f, s.summaryView(), ids)
+	view := s.recallView(full)
+	fetched, err := s.fetchPayloadsByID(ctx, f, view, ids)
 	if err != nil {
 		return nil, false, err
 	}
@@ -643,8 +656,10 @@ func (s *Store) assembleRelated(ctx context.Context, f *qdrant.Filter, anchorID 
 		sliceIndex[id] = len(slice)
 		slice = append(slice, m)
 	}
-	if err := s.backfillNoSummaryContent(ctx, f, slice); err != nil {
-		return nil, false, err
+	if isSummaryView(view) {
+		if err := s.backfillNoSummaryContent(ctx, f, slice); err != nil {
+			return nil, false, err
+		}
 	}
 
 	related = append([]RelatedMemory{}, chain...)
@@ -670,7 +685,7 @@ func (s *Store) assembleRelated(ctx context.Context, f *qdrant.Filter, anchorID 
 				continue
 			}
 			related = append(related, RelatedMemory{
-				Memory: summaryShape(slice[si]),
+				Memory: relatedShape(slice[si], full),
 				Edges:  []RelatedEdge{c.edge},
 			})
 			index[c.id] = len(related) - 1
@@ -703,11 +718,15 @@ func (s *Store) assembleRelated(ctx context.Context, f *qdrant.Filter, anchorID 
 // id must be a canonical id — callers resolve short ids first
 // (ResolvePointID). RelatedMemories issues no write RPC. Phase 3 wraps this
 // as the RelatedMemories RPC and the related_memories MCP tool (RPC-04).
-func (s *Store) RelatedMemories(ctx context.Context, id string, subj Subject, k uint64) (res RelatedResult, err error) {
+// full selects the fetch projection (milestone 2026-09-25.01 Phase 3 D-13):
+// compact summaries by default, full content when true — the filter
+// composed into every sub-query and the payload fetch is unchanged by it.
+func (s *Store) RelatedMemories(ctx context.Context, id string, subj Subject, k uint64, full bool) (res RelatedResult, err error) {
 	ctx, span := tracer.Start(ctx, "store.RelatedMemories", trace.WithAttributes(
 		attribute.String("engram.id", id),
 		attribute.String("engram.owner", ownerOf(subj)),
 		attribute.Int64("engram.k", int64(k)),
+		attribute.Bool("engram.full", full),
 	))
 	defer span.End()
 	start := time.Now()
@@ -735,7 +754,7 @@ func (s *Store) RelatedMemories(ctx context.Context, id string, subj Subject, k 
 		return RelatedResult{}, err
 	}
 	f := s.recallVisibleFilter(ctx, "", subj)
-	chain, err := s.relatedSupersessionChain(ctx, anchor, subj)
+	chain, err := s.relatedSupersessionChain(ctx, anchor, subj, full)
 	if err != nil {
 		return RelatedResult{}, err
 	}
@@ -751,9 +770,9 @@ func (s *Store) RelatedMemories(ctx context.Context, id string, subj Subject, k 
 	if err != nil {
 		return RelatedResult{}, err
 	}
-	related, truncated, err := s.assembleRelated(ctx, f, anchor.ID, chain, citations, tags, vector)
+	related, truncated, err := s.assembleRelated(ctx, f, anchor.ID, full, chain, citations, tags, vector)
 	if err != nil {
 		return RelatedResult{}, err
 	}
-	return RelatedResult{Anchor: summaryShape(anchor), Related: related, Truncated: truncated}, nil
+	return RelatedResult{Anchor: relatedShape(anchor, full), Related: related, Truncated: truncated}, nil
 }
