@@ -121,7 +121,7 @@ Inherits Phase 2's 4px scale (`xs 4 · sm 8 · md 16 · lg 24 · xl 32 · 2xl 48
 | Dialog width — medium | `calc(640 * var(--u))` | Chain dialog, supersede success state |
 | Dialog width — small | `calc(440 * var(--u))` | Archive/Restore confirm |
 | Dialog two-column gap | `calc(16 * var(--u))` | Supersede dialog's `Predecessors` / `Correcting record` columns; collapses to one column at `@container frame (max-width: 700px)` |
-| Target chip padding | `calc(6*var(--u)) calc(6*var(--u)) calc(6*var(--u)) calc(8*var(--u))` | `.tchip` |
+| Target chip padding | `calc(4*var(--u)) calc(8*var(--u))` (top/bottom 4, left/right 8 — the sketch's raw `6/6/6/8` transcribed without translating to the on-unit scale; this rounds the 6 down to the nearest 4-multiple, keeping vertical padding smaller than horizontal) | `.tchip` |
 | Chain node height | `calc(24 * var(--u))` | `.cnode` |
 | Checkbox column width | `calc(28 * var(--u))` (matches the existing row height, keeps the grid on-unit) | New leftmost column in `ResultsList`'s row grid — **must update `--cols` per `xx98my50ng`** (grid drop-outs swap the whole `--cols` value, not append one column) |
 | Bulk bar height | Same as `ResultsHeader`'s existing single-line height (no new token) | Header swaps content, not height, when a selection exists |
