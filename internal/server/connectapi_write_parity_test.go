@@ -845,6 +845,132 @@ func TestWriteParity(t *testing.T) {
 		})
 	})
 
+	// SupersedeMemory (milestone 2026-09-25.01 Phase 3 plan 03-02, D-20):
+	// unlike StoreMemory, both lanes call the ONE deps.supersede dispatch
+	// (never deps.supersedeMemory/deps.validateSupersede directly), so the
+	// "validate_only" subtest additionally asserts the store trace carries
+	// no Upsert/Supersede/MintShortID call.
+	t.Run("SupersedeMemory", func(t *testing.T) {
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-supersede"
+			const mcpActor = "human-parity-supersede@example.com"
+			const scope = "parity:project:supersede"
+			seed := store.Memory{
+				ID: "f7777777-0000-0000-0000-000000000001", ShortID: "PARITY0013",
+				Content: "to be superseded", Scope: scope,
+				Category: "gotcha", Source: "user-said", Owner: owner, CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, owner, mcpActor)
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			mcpOut, mcpErr := dMCP.supersede(ctx, mcpCaller, supersedeArgs{
+				storeArgs:  storeArgs{Content: "corrected", Scope: scope, Category: "gotcha", Source: "user-said"},
+				Supersedes: []string{seed.ID},
+			})
+			connResp, connErr := api.SupersedeMemory(connCtx, connect.NewRequest(&engramv1.SupersedeMemoryRequest{
+				Content: "corrected", Scope: scope, Category: "gotcha", Source: "user-said",
+				Supersedes: []string{seed.ID},
+			}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTrace(t, spMCP, spConn) // sequence: MintShortID, Upsert, Supersede — CREATE row, ids differ
+			if mcpOut.ID == "" || connResp.Msg.GetId() == "" {
+				t.Errorf("expected a minted id on both lanes: mcp=%q connect=%q", mcpOut.ID, connResp.Msg.GetId())
+			}
+		})
+
+		t.Run("cross_owner_target_rejected", func(t *testing.T) {
+			ctx := context.Background()
+			const ownerA = "actor-parity-supersede-a"
+			const ownerB = "actor-parity-supersede-b"
+			const scope = "parity:project:supersede-xowner"
+			seed := store.Memory{
+				ID: "f7777777-0000-0000-0000-000000000002", ShortID: "PARITY0014",
+				Content: "owned by A", Scope: scope,
+				Category: "gotcha", Source: "user-said", Visibility: "shared", Owner: ownerA, CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, ownerB, "human-parity-supersede-b@example.com")
+			connCtx := parityConnectCtx(ownerB)
+			api := &engramAPI{d: dConn}
+
+			args := supersedeArgs{
+				storeArgs:  storeArgs{Content: "attacker merge", Scope: scope, Category: "gotcha", Source: "user-said"},
+				Supersedes: []string{seed.ID},
+			}
+			_, mcpErr := dMCP.supersede(ctx, mcpCaller, args)
+			connResp, connErr := api.SupersedeMemory(connCtx, connect.NewRequest(&engramv1.SupersedeMemoryRequest{
+				Content: args.Content, Scope: args.Scope, Category: args.Category, Source: args.Source,
+				Supersedes: args.Supersedes,
+			}))
+			assertEnvelopeParity(ctx, t, mcpErr, connErr)
+			if connResp != nil {
+				t.Errorf("expected no response on rejection, got %+v", connResp.Msg)
+			}
+			assertSameStoreTrace(t, spMCP, spConn)
+			if spMCP.records[seed.ID].SupersededBy != nil {
+				t.Error("A's record superseded by B's rejected call")
+			}
+		})
+
+		t.Run("validate_only", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-supersede-validate"
+			const scope = "parity:project:supersede-validate"
+			seed := store.Memory{
+				ID: "f7777777-0000-0000-0000-000000000003", ShortID: "PARITY0015",
+				Content: "would be superseded", Scope: scope,
+				Category: "gotcha", Source: "user-said", Owner: owner, CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-supersede-validate@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			args := supersedeArgs{
+				storeArgs:  storeArgs{Content: "would-be merge", Scope: scope, Category: "gotcha", Source: "user-said"},
+				Supersedes: []string{seed.ID}, ValidateOnly: true,
+			}
+			mcpOut, mcpErr := dMCP.supersede(ctx, mcpCaller, args)
+			connResp, connErr := api.SupersedeMemory(connCtx, connect.NewRequest(&engramv1.SupersedeMemoryRequest{
+				Content: args.Content, Scope: args.Scope, Category: args.Category, Source: args.Source,
+				Supersedes: args.Supersedes, ValidateOnly: true,
+			}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTraceExact(t, spMCP, spConn) // identical target id, no freshly minted UUID in play
+			if !mcpOut.Validated || len(mcpOut.Supersedes) != 1 || mcpOut.Supersedes[0] != seed.ID {
+				t.Errorf("mcp preview = %+v, want validated true and supersedes [%s]", mcpOut, seed.ID)
+			}
+			if !connResp.Msg.GetValidated() || len(connResp.Msg.GetSupersedes()) != 1 || connResp.Msg.GetSupersedes()[0] != seed.ID {
+				t.Errorf("connect preview = %+v, want validated true and supersedes [%s]", connResp.Msg, seed.ID)
+			}
+			for _, lane := range [][]spyCall{spMCP.callLog(), spConn.callLog()} {
+				for _, call := range lane {
+					if call.Method == "Upsert" || call.Method == "Supersede" || call.Method == "MintShortID" {
+						t.Errorf("store trace contains a write call during validate_only: %+v", call)
+					}
+				}
+			}
+		})
+	})
+
 	// source_delegates_to_named_deps_methods is the source/AST delegation
 	// sub-test (finding 8, round-8 MED): the spy above proves an identical
 	// STORE TRACE, but storeMemory/scheduleMemory share MintShortID+Upsert,
