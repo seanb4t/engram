@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sean Brandt
 
-// Package server: this file implements the shared archive/restore batch core
-// (milestone 2026-09-25.01 Phase 3, D-06/D-07/D-16) both the ArchiveMemory/
+// This file implements the shared archive/restore batch core (milestone
+// 2026-09-25.01 Phase 3, D-06/D-07/D-16) both the ArchiveMemory/
 // RestoreMemory Connect RPCs and the archive_memory/restore_memory MCP tools
 // call. There is no store-level batch primitive by design (D-06): the loop
 // over store.ArchiveAs/RestoreAs, each call already serialized by the
@@ -11,6 +11,7 @@
 // the owner-gated ArchiveAs/RestoreAs (store_iface.go), so no code in this
 // file can reach the subject-less operator-tier Archive/Restore and bypass
 // the Cedar ActionArchive gate.
+
 package server
 
 import (

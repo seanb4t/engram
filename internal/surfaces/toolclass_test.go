@@ -50,11 +50,12 @@ func TestValidateOperationsCatchesBothEmpty(t *testing.T) {
 }
 
 // TestOperationsCoverEveryTool proves the registry carries exactly one
-// entry per registered MCP tool — 15, matching
+// entry per registered MCP tool — 17 (15 plus milestone 2026-09-25.01
+// Phase 3's archive_memory/restore_memory), matching
 // registertools_test.go's wantRegisteredToolNames inventory — with no
 // duplicate and no missing tool.
 func TestOperationsCoverEveryTool(t *testing.T) {
-	const wantToolCount = 15
+	const wantToolCount = 17
 
 	got := 0
 	for _, op := range Operations() {

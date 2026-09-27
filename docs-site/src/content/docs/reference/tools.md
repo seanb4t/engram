@@ -64,6 +64,8 @@ untrusted server.
 | `supersede_memory` | false | false | true | false |
 | `store_rule` | false | false | false | false |
 | `list_rules` | true | false | true | false |
+| `archive_memory` | false | false | true | false |
+| `restore_memory` | false | false | true | false |
 <!-- engram:rule:end tool-blast-radius -->
 
 ---

@@ -3053,6 +3053,32 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("stored %s, superseding %s", id, strings.Join(a.Supersedes, ", "))), map[string]string{"id": id, "short_id": sid}, err
 		})
 
+	mcp.AddTool(s, &mcp.Tool{Name: "archive_memory", Description: "Archive one or more memories you own (retire a record that is still true but no longer useful, reversibly): each stamps archived_at, so it drops out of search_memory/list_memory/search_discovery/list_scheduled but stays fetchable by id via get_memory. Never a delete — reversed by restore_memory. Call only after the user agrees to it in this conversation. Compare: delete_memory removes junk outright; supersede_memory records a correction/reversal; archive_memory retires without erasing. `ids` takes 1 to 1000 ids (full UUID or short_id). The result has one outcome per id, in order: archived | already_archived | not_found — a record you do not own reads identically to one that does not exist.", Annotations: annotationsFor("archive_memory")},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a archiveArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			rs, err := d.archiveMemory(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			return textResult(archiveSummaryText(rs)), map[string]any{"results": rs}, nil
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "restore_memory", Description: "Restore one or more memories you own, reversing archive_memory: each clears archived_at, so it reappears in search_memory/list_memory/search_discovery/list_scheduled. `ids` takes 1 to 1000 ids (full UUID or short_id). The result has one outcome per id, in order: restored | not_archived | not_found — a record you do not own reads identically to one that does not exist.", Annotations: annotationsFor("restore_memory")},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a archiveArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			rs, err := d.restoreMemory(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			return textResult(archiveSummaryText(rs)), map[string]any{"results": rs}, nil
+		})
+
 	mcp.AddTool(s, &mcp.Tool{Name: "store_rule", Description: "Persist a NORMATIVE rule (ground truth) for a repo/project. Call ONLY on explicit user instruction — never promote a rule unilaterally; propose it to the user instead. scope=rule:repo:<repo> or rule:project:<project>. summary is REQUIRED and is the one-line index entry (single line). Rules are always shared and user-blessed. The result includes the rule's id and short_id.", Annotations: annotationsFor("store_rule")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a storeRuleArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
