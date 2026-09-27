@@ -6,10 +6,11 @@
 // explicitly so --u and the design tokens are real here, same as the shipped app.
 import '../../app.css';
 import { render } from 'vitest-browser-svelte';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { MemorySchema } from '$lib/gen/engram_pb';
+import { flashing, flashRows, FLASH_MS } from '$lib/curation/flash.svelte.ts';
 import ResultRow from './ResultRow.svelte';
 
 const now = new Date('2030-06-15T12:00:00Z');
@@ -198,5 +199,71 @@ describe('ResultRow', () => {
     await expect.element(screen.container.querySelector('.cat-word') as HTMLElement).toHaveTextContent('gotcha');
     const catEl = screen.container.querySelector('.result-row-line') as HTMLElement;
     expect(catEl.style.getPropertyValue('--c')).toBe('var(--cat-gotcha)');
+  });
+
+  describe('selection (D-02, D-10)', () => {
+    const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    it.each([1000, 800, 500])(
+      'selectable adds exactly one grid-template-columns track at a %ipx list width, and the check element is aria-hidden',
+      async (width) => {
+        const mem = create(MemorySchema, { id: `sel-${width}`, summary: 'x', category: 'convention' });
+
+        const plain = await render(ResultRow, { memory: mem });
+        Object.assign(plain.container.style, { width: `${width}px`, containerType: 'inline-size', containerName: 'list' });
+
+        const selectableScreen = await render(ResultRow, { memory: mem, selectable: true });
+        Object.assign(selectableScreen.container.style, {
+          width: `${width}px`,
+          containerType: 'inline-size',
+          containerName: 'list'
+        });
+        await nextFrame();
+
+        const plainRow = plain.container.querySelector('.result-row-line') as HTMLElement;
+        const selRow = selectableScreen.container.querySelector('.result-row-line') as HTMLElement;
+        const trackCount = (el: HTMLElement) => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length;
+        expect(trackCount(selRow)).toBe(trackCount(plainRow) + 1);
+
+        const check = selectableScreen.container.querySelector('.row-check');
+        expect(check).toBeTruthy();
+        expect(check?.getAttribute('aria-hidden')).toBe('true');
+      }
+    );
+
+    it('the check element is not rendered when selectable is false', async () => {
+      const mem = create(MemorySchema, { id: 'nosel', summary: 'x', category: 'convention' });
+      const screen = await render(ResultRow, { memory: mem });
+      expect(screen.container.querySelector('.row-check')).toBeNull();
+    });
+  });
+
+  describe('flash (D-10)', () => {
+    afterEach(() => {
+      flashing.clear();
+    });
+
+    it('a row whose id is in the flashing set gets the flash class, which clears after FLASH_MS', async () => {
+      vi.useFakeTimers();
+      try {
+        const mem = create(MemorySchema, { id: 'flash-1', summary: 'x', category: 'convention' });
+        flashRows([mem.id]);
+        const screen = await render(ResultRow, { memory: mem });
+        const row = screen.container.querySelector('.result-row-line') as HTMLElement;
+        expect(row.classList.contains('flash')).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(FLASH_MS);
+        expect(row.classList.contains('flash')).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('a row whose id is NOT in the flashing set never gets the flash class', async () => {
+      const mem = create(MemorySchema, { id: 'no-flash', summary: 'x', category: 'convention' });
+      const screen = await render(ResultRow, { memory: mem });
+      const row = screen.container.querySelector('.result-row-line') as HTMLElement;
+      expect(row.classList.contains('flash')).toBe(false);
+    });
   });
 });

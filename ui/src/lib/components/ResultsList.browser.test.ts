@@ -359,3 +359,173 @@ describe('ResultsList', () => {
     expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C']);
   });
 });
+
+describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
+  it('x on row 1 sets the anchor; moving to row 4 and pressing Shift+X selects the inclusive range 1-4', async () => {
+    const onopen = vi.fn();
+    const five = makeMemories(5);
+    const screen = await render(ResultsList, { memories: five, label: 'Search results', onopen, selectable: true });
+    screen.container.style.height = '600px';
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0000');
+
+    await userEvent.keyboard('x'); // anchor = row 1 (m0000)
+    await userEvent.keyboard('j');
+    await userEvent.keyboard('j');
+    await userEvent.keyboard('j');
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0003'); // row 4
+
+    fireKey(listbox.element(), 'X', { shiftKey: true });
+
+    const selected = Array.from(screen.container.querySelectorAll('[role="option"][aria-selected="true"]')).map(
+      (el) => el.id
+    );
+    expect(selected).toEqual(['opt-m0000', 'opt-m0001', 'opt-m0002', 'opt-m0003']);
+  });
+
+  it('shift+click on a later row extends the range from the same anchor, without opening the pane', async () => {
+    const onopen = vi.fn();
+    const six = makeMemories(6);
+    const screen = await render(ResultsList, { memories: six, label: 'Search results', onopen, selectable: true });
+    screen.container.style.height = '600px';
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+
+    await userEvent.keyboard('x'); // anchor = row 1 (m0000)
+    await userEvent.keyboard('j');
+    await userEvent.keyboard('j');
+    await userEvent.keyboard('j');
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0003');
+    fireKey(listbox.element(), 'X', { shiftKey: true }); // selects rows 1-4
+
+    const row6 = screen.container.querySelector('#opt-m0005') as HTMLElement;
+    row6.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+
+    const selected = Array.from(screen.container.querySelectorAll('[role="option"][aria-selected="true"]')).map(
+      (el) => el.id
+    );
+    expect(selected).toEqual(['opt-m0000', 'opt-m0001', 'opt-m0002', 'opt-m0003', 'opt-m0004', 'opt-m0005']);
+    expect(onopen).not.toHaveBeenCalled();
+  });
+
+  it('a click on the row-check cell toggles selection and does not open the pane', async () => {
+    const onopen = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen, selectable: true });
+    screen.container.style.height = '600px';
+
+    const check = screen.container.querySelector('#opt-m0000 .row-check') as HTMLElement;
+    check.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    expect(screen.container.querySelector('#opt-m0000')?.getAttribute('aria-selected')).toBe('true');
+    expect(onopen).not.toHaveBeenCalled();
+  });
+
+  it('Escape clears a non-empty selection first, leaves the card/pane state untouched; a second Escape closes the card; a third calls onescape', async () => {
+    const onopen = vi.fn();
+    const onescape = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, {
+      memories: three,
+      label: 'Search results',
+      onopen,
+      onescape,
+      selectable: true
+    });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('{End}');
+    await expect.poll(() => document.querySelector(HOVER_CARD_SELECTOR) !== null).toBe(true);
+    expect(screen.container.querySelector('[role="option"][aria-selected="true"]')).toBeTruthy();
+
+    await userEvent.keyboard('{Escape}');
+    expect(screen.container.querySelector('[role="option"][aria-selected="true"]')).toBeNull();
+    expect(document.querySelector(HOVER_CARD_SELECTOR)).not.toBeNull();
+    expect(onescape).not.toHaveBeenCalled();
+
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => document.querySelector(HOVER_CARD_SELECTOR) === null).toBe(true);
+    expect(onescape).not.toHaveBeenCalled();
+
+    await userEvent.keyboard('{Escape}');
+    expect(onescape).toHaveBeenCalledTimes(1);
+  });
+
+  it("typing 'a' or 'x' into an input inside the list container fires nothing", async () => {
+    const onopen = vi.fn();
+    const onarchive = vi.fn();
+    const mem = create(MemorySchema, { id: 'ty1', category: 'convention', summary: 'x', scope: 's', shortId: 'sid0000005' });
+    const screen = await render(ResultsList, {
+      memories: [mem],
+      label: 'Search results',
+      onopen,
+      selectable: true,
+      onarchive
+    });
+    const wrapper = screen.container.querySelector('.results-listbox-wrapper') as HTMLElement;
+    const input = document.createElement('input');
+    wrapper.appendChild(input);
+    input.focus();
+
+    fireKey(input, 'x');
+    fireKey(input, 'a');
+
+    expect(onarchive).not.toHaveBeenCalled();
+    expect(screen.container.querySelector('[role="option"]')?.getAttribute('aria-selected')).toBe('false');
+    input.remove();
+  });
+
+  it('the legend shows select/range/curation Kbd hints only for the callbacks supplied', async () => {
+    const onopen = vi.fn();
+    const three = makeMemories(3);
+    const onarchive = vi.fn();
+    const onrestore = vi.fn();
+    const onsupersede = vi.fn();
+    const screen = await render(ResultsList, {
+      memories: three,
+      label: 'Search results',
+      onopen,
+      selectable: true,
+      onarchive,
+      onrestore,
+      onsupersede
+    });
+    const legend = screen.container.querySelector('.results-legend') as HTMLElement;
+    const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C', 'x', '⇧X', '⇧S', 'a', '⇧A']);
+  });
+
+  it('with only onarchive supplied, the legend shows select/range/archive hints but not restore or supersede', async () => {
+    const onopen = vi.fn();
+    const three = makeMemories(3);
+    const onarchive = vi.fn();
+    const screen = await render(ResultsList, {
+      memories: three,
+      label: 'Search results',
+      onopen,
+      selectable: true,
+      onarchive
+    });
+    const legend = screen.container.querySelector('.results-legend') as HTMLElement;
+    const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C', 'x', '⇧X', 'a']);
+  });
+
+  it('without selectable, neither the check column nor the selection hints render, and aria-selected follows the active row', async () => {
+    const onopen = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen });
+    const legend = screen.container.querySelector('.results-legend') as HTMLElement;
+    const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C']);
+    expect(screen.container.querySelector('.row-check')).toBeNull();
+
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0000');
+    expect(screen.container.querySelector('#opt-m0000')?.getAttribute('aria-selected')).toBe('true');
+    expect(screen.container.querySelector('#opt-m0001')?.getAttribute('aria-selected')).toBe('false');
+  });
+});
