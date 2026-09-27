@@ -378,6 +378,9 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
 
     fireKey(listbox.element(), 'X', { shiftKey: true });
 
+    await expect
+      .poll(() => screen.container.querySelectorAll('[role="option"][aria-selected="true"]').length)
+      .toBe(4);
     const selected = Array.from(screen.container.querySelectorAll('[role="option"][aria-selected="true"]')).map(
       (el) => el.id
     );
@@ -398,10 +401,16 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
     await userEvent.keyboard('j');
     await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0003');
     fireKey(listbox.element(), 'X', { shiftKey: true }); // selects rows 1-4
+    await expect
+      .poll(() => screen.container.querySelectorAll('[role="option"][aria-selected="true"]').length)
+      .toBe(4);
 
     const row6 = screen.container.querySelector('#opt-m0005') as HTMLElement;
     row6.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
 
+    await expect
+      .poll(() => screen.container.querySelectorAll('[role="option"][aria-selected="true"]').length)
+      .toBe(6);
     const selected = Array.from(screen.container.querySelectorAll('[role="option"][aria-selected="true"]')).map(
       (el) => el.id
     );
@@ -418,7 +427,9 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
     const check = screen.container.querySelector('#opt-m0000 .row-check') as HTMLElement;
     check.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-    expect(screen.container.querySelector('#opt-m0000')?.getAttribute('aria-selected')).toBe('true');
+    await expect
+      .poll(() => screen.container.querySelector('#opt-m0000')?.getAttribute('aria-selected'))
+      .toBe('true');
     expect(onopen).not.toHaveBeenCalled();
   });
 
@@ -511,6 +522,23 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
     const legend = screen.container.querySelector('.results-legend') as HTMLElement;
     const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
     expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C', 'x', '⇧X', 'a']);
+  });
+
+  it('captures the list with a selection (DSYS-04)', async () => {
+    const onopen = vi.fn();
+    const five = makeMemories(5);
+    const screen = await render(ResultsList, { memories: five, label: 'Search results', onopen, selectable: true });
+    screen.container.style.height = '600px';
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('j');
+    await userEvent.keyboard('j');
+    fireKey(listbox.element(), 'X', { shiftKey: true });
+    await expect
+      .poll(() => screen.container.querySelectorAll('[role="option"][aria-selected="true"]').length)
+      .toBe(3);
+    await page.screenshot();
   });
 
   it('without selectable, neither the check column nor the selection hints render, and aria-selected follows the active row', async () => {
