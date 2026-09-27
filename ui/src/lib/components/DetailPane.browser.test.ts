@@ -365,3 +365,118 @@ describe('DetailPane — inline actions (D-15, D-16)', () => {
     await expect.element(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
   });
 });
+
+describe('DetailPane — Supersede and Chain (D-05, D-06)', () => {
+  const conventionRecord = create(MemorySchema, {
+    id: 'convention-record-0001',
+    shortId: 'CONVREC001',
+    content: 'a convention',
+    category: 'convention',
+    scope: 'repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'private'
+  });
+  const ruleRecord = create(MemorySchema, {
+    id: 'rule-record-0002',
+    shortId: 'RULEREC002',
+    content: 'a normative rule',
+    category: 'rule',
+    scope: 'rule:repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'private'
+  });
+  const discoveryRecord = create(MemorySchema, {
+    id: 'discovery-record-0002',
+    shortId: 'DISCREC002',
+    content: 'a discovery map',
+    category: 'gotcha',
+    kind: 'map',
+    scope: 'discovery:repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'private'
+  });
+  const supersededRecord = create(MemorySchema, {
+    id: 'superseded-record-0001',
+    shortId: 'SUPRECD001',
+    content: 'a superseded record',
+    category: 'convention',
+    scope: 'repo:x',
+    source: 'user-said',
+    actor: 'sean',
+    owner: 'sean',
+    visibility: 'private',
+    supersededBy: SUCCESSOR_ID
+  });
+
+  it('a convention record with onsupersede supplied shows "Supersede…", calling onsupersede(id)', async () => {
+    const onsupersede = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: conventionRecord,
+      loading: false,
+      error: null,
+      requestedId: conventionRecord.id,
+      onsupersede
+    });
+    const btn = screen.getByRole('button', { name: 'Supersede…' });
+    await expect.element(btn).toBeInTheDocument();
+    await btn.click();
+    expect(onsupersede).toHaveBeenCalledWith(conventionRecord.id);
+  });
+
+  it('a rule record shows no "Supersede…" even with onsupersede supplied', async () => {
+    const onsupersede = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: ruleRecord,
+      loading: false,
+      error: null,
+      requestedId: ruleRecord.id,
+      onsupersede
+    });
+    await expect.element(screen.getByRole('button', { name: 'Supersede…' })).not.toBeInTheDocument();
+  });
+
+  it('a discovery record shows no "Supersede…" even with onsupersede supplied', async () => {
+    const onsupersede = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: discoveryRecord,
+      loading: false,
+      error: null,
+      requestedId: discoveryRecord.id,
+      onsupersede
+    });
+    await expect.element(screen.getByRole('button', { name: 'Supersede…' })).not.toBeInTheDocument();
+  });
+
+  it('a record with supersededBy shows "View chain" in the State section, calling onchain(id)', async () => {
+    const onchain = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: supersededRecord,
+      loading: false,
+      error: null,
+      requestedId: supersededRecord.id,
+      onchain
+    });
+    const btn = screen.getByRole('button', { name: 'View chain' });
+    await expect.element(btn).toBeInTheDocument();
+    await btn.click();
+    expect(onchain).toHaveBeenCalledWith(supersededRecord.id);
+  });
+
+  it('a record with neither supersededBy nor supersedes shows no "View chain" even with onchain supplied', async () => {
+    const onchain = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: conventionRecord,
+      loading: false,
+      error: null,
+      requestedId: conventionRecord.id,
+      onchain
+    });
+    await expect.element(screen.getByRole('button', { name: 'View chain' })).not.toBeInTheDocument();
+  });
+});
