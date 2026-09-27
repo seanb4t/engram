@@ -6,7 +6,6 @@
   import { Button } from '$lib/components/ui/button';
   import { Separator } from '$lib/components/ui/separator';
   import { Skeleton } from '$lib/components/ui/skeleton';
-  import * as Tooltip from '$lib/components/ui/tooltip';
   import { toast } from 'svelte-sonner';
   import { relativeTime, fullTimestamp } from '$lib/time';
   import { memoryStateWords } from '$lib/memorystate';
@@ -16,12 +15,13 @@
   import CopyIcon from '@lucide/svelte/icons/copy';
   import XIcon from '@lucide/svelte/icons/x';
 
-  const CURATION_TOOLTIP = 'Arrives with curation — Phase 4';
-
   // D-14/ROW-07: the record view is stacked sections in a fixed order — no
   // tabs. MemoryDetail.svelte (tabs) stays untouched and keeps serving
-  // /discovery; this component replaces it for /search (this plan) and
-  // / and /observe (plan 02-10).
+  // /discovery; this component hosts /search, /rules and /scheduled.
+  //
+  // Every action button is callback-gated (D-05/D-15/D-16): a route that
+  // omits a callback simply never renders the corresponding button, rather
+  // than rendering a disabled one. /rules and /scheduled rely on this.
   let {
     memory,
     loading,
@@ -34,7 +34,9 @@
     ontag,
     onedit,
     onvisibility,
-    ondelete
+    ondelete,
+    onarchive,
+    onrestore
   }: {
     memory: Memory | undefined;
     loading: boolean;
@@ -48,6 +50,8 @@
     onedit?: (id: string) => void;
     onvisibility?: (memory: Memory) => void;
     ondelete?: (id: string) => void;
+    onarchive?: (id: string) => void;
+    onrestore?: (id: string) => void;
   } = $props();
 
   // D-15/D-16 rule fence (mechanical, not "parent omits callbacks"): a rule
@@ -131,43 +135,24 @@
       {/if}
       <h2 class="d-title">{title}</h2>
       <div class="d-actions">
-        {#if !isRule && !isDiscovery}
+        {#if onedit && !isRule && !isDiscovery}
           <Button variant="outline" size="sm" onclick={() => onedit?.(memory!.id)}>Edit</Button>
         {/if}
 
-        <Tooltip.Provider delayDuration={0}>
-          <Tooltip.Root>
-            <Tooltip.Trigger>
-              {#snippet child({ props })}
-                <!-- svelte-ignore a11y_no_noninteractive_tabindex -- a wrapping focus target for a disabled button's tooltip is the standard accessible pattern; the real disabled <button> inside stays inert. -->
-                <span {...props} tabindex="0" class="d-tooltip-wrap">
-                  <Button variant="outline" size="sm" disabled>Supersede…</Button>
-                </span>
-              {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Content>{CURATION_TOOLTIP}</Tooltip.Content>
-          </Tooltip.Root>
-        </Tooltip.Provider>
+        {#if onarchive && !memory.archivedAt}
+          <Button variant="outline" size="sm" onclick={() => onarchive?.(memory!.id)}>Archive</Button>
+        {/if}
+        {#if onrestore && memory.archivedAt}
+          <Button variant="outline" size="sm" onclick={() => onrestore?.(memory!.id)}>Restore</Button>
+        {/if}
 
-        <Tooltip.Provider delayDuration={0}>
-          <Tooltip.Root>
-            <Tooltip.Trigger>
-              {#snippet child({ props })}
-                <!-- svelte-ignore a11y_no_noninteractive_tabindex -- see the Supersede trigger above. -->
-                <span {...props} tabindex="0" class="d-tooltip-wrap">
-                  <Button variant="outline" size="sm" disabled>{memory.archivedAt ? 'Restore' : 'Archive'}</Button>
-                </span>
-              {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Content>{CURATION_TOOLTIP}</Tooltip.Content>
-          </Tooltip.Root>
-        </Tooltip.Provider>
-
-        {#if !isRule}
+        {#if onvisibility && !isRule}
           <Button variant="outline" size="sm" onclick={() => onvisibility?.(memory!)}>{isShared ? 'Make private' : 'Share'}</Button>
         {/if}
 
-        <Button variant="destructive" size="sm" onclick={() => ondelete?.(memory!.id)}>Delete</Button>
+        {#if ondelete}
+          <Button variant="destructive" size="sm" onclick={() => ondelete?.(memory!.id)}>Delete</Button>
+        {/if}
       </div>
 
       {#if hasState}
@@ -369,12 +354,6 @@
     display: flex;
     gap: calc(6 * var(--u));
     flex-wrap: wrap;
-  }
-  .d-tooltip-wrap {
-    display: inline-flex;
-  }
-  .d-tooltip-wrap:focus-visible {
-    outline: none;
   }
 
   .d-sec h3,

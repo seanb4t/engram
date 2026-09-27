@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, ArchiveOutcome, type Memory } from '$lib/gen/engram_pb';
 import { persistResume } from '$lib/resume';
 import SearchPage from './+page.svelte';
 
@@ -13,7 +13,17 @@ import SearchPage from './+page.svelte';
 // above — is not yet bound when a synchronous factory would run. A dynamic
 // `import()` inside the (awaited) factory sidesteps that ordering: it is a
 // genuine async operation, resolved after linking, not a static binding.
-const { gotoSpy, pageState, searchMemoriesSpy, getMemorySpy, listScopesSpy, listMemoriesSpy, consumeResumeSpy } = await vi.hoisted(async () => {
+const {
+  gotoSpy,
+  pageState,
+  searchMemoriesSpy,
+  getMemorySpy,
+  listScopesSpy,
+  listMemoriesSpy,
+  consumeResumeSpy,
+  archiveMemorySpy,
+  restoreMemorySpy
+} = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/search');
   const pageState = { url };
@@ -28,7 +38,9 @@ const { gotoSpy, pageState, searchMemoriesSpy, getMemorySpy, listScopesSpy, list
     getMemorySpy: vi.fn(),
     listScopesSpy: vi.fn(),
     listMemoriesSpy: vi.fn(),
-    consumeResumeSpy: vi.fn()
+    consumeResumeSpy: vi.fn(),
+    archiveMemorySpy: vi.fn(),
+    restoreMemorySpy: vi.fn()
   };
 });
 
@@ -46,6 +58,11 @@ vi.mock('$lib/client', async (importOriginal) => {
       getMemory: getMemorySpy,
       listScopes: listScopesSpy,
       listMemories: listMemoriesSpy
+    },
+    engramWrite: {
+      ...actual.engramWrite,
+      archiveMemory: archiveMemorySpy,
+      restoreMemory: restoreMemorySpy
     }
   };
 });
@@ -97,6 +114,8 @@ beforeEach(() => {
   listScopesSpy.mockReset().mockResolvedValue({ scopes: [], approximate: false });
   listMemoriesSpy.mockReset().mockResolvedValue(emptyListResult());
   consumeResumeSpy.mockReset();
+  archiveMemorySpy.mockReset();
+  restoreMemorySpy.mockReset();
   sessionStorage.clear();
   pageState.url.href = 'http://localhost/search';
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -609,5 +628,50 @@ describe('search route — typing is debounced (ENTRY-06)', () => {
 
     await new Promise((r) => setTimeout(r, 250));
     expect(gotoSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('search route — archive from the detail pane (CUR-02 tracer)', () => {
+  it('archives the open record via CurationSurfaces/ArchiveConfirmDialog and patches the row in place', async () => {
+    pageState.url.href = 'http://localhost/search?q=github';
+    const memory = makeMemory({ id: 'm1', summary: 'archive me' });
+    searchMemoriesSpy.mockResolvedValue({
+      memories: [memory],
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    archiveMemorySpy.mockResolvedValue({
+      results: [{ requested: 'm1', id: 'm1', outcome: ArchiveOutcome.ARCHIVED }]
+    });
+
+    const screen = await renderSearch();
+    // Force the wide (non-overlay) RecallSplit layout so the pane's action
+    // row is a normal in-flow element, not the narrow-mode absolute overlay
+    // (RecallSplit.browser.test.ts's own convention for reliable clicks).
+    screen.container.style.width = '1200px';
+    await expect.element(screen.getByText('archive me')).toBeInTheDocument();
+
+    // Open the pane on the m1 row.
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.poll(() => screen.container.querySelector('[aria-label="Memory detail"]') !== null).toBe(true);
+
+    await screen.getByRole('button', { name: 'Archive' }).click();
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByText('Archive 1 records?')).toBeInTheDocument();
+    expect(archiveMemorySpy).not.toHaveBeenCalled();
+
+    await dialog.getByRole('button', { name: 'Archive' }).click();
+
+    await expect.poll(() => archiveMemorySpy.mock.calls.length).toBe(1);
+    const [req] = archiveMemorySpy.mock.calls[0];
+    expect(req.ids).toEqual(['m1']);
+
+    await dialog.getByRole('button', { name: 'Done' }).click();
+
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    await expect.element(listbox.getByText('archive me')).toBeInTheDocument();
+    await expect.element(listbox.getByText('archived')).toBeInTheDocument();
   });
 });

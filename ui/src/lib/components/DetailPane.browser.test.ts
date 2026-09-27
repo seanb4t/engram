@@ -259,10 +259,11 @@ describe('DetailPane — inline actions (D-15, D-16)', () => {
     visibility: 'private'
   });
 
-  it('a private gotcha shows Edit, disabled Supersede/Archive with the Phase 4 tooltip, Share and Delete', async () => {
+  it('a private gotcha with onarchive supplied shows a live Archive button, Edit, Share and Delete', async () => {
     const onedit = vi.fn();
     const ondelete = vi.fn();
     const onvisibility = vi.fn();
+    const onarchive = vi.fn();
     const screen = await render(DetailPane, {
       memory: privateGotcha,
       loading: false,
@@ -270,21 +271,20 @@ describe('DetailPane — inline actions (D-15, D-16)', () => {
       requestedId: privateGotcha.id,
       onedit,
       ondelete,
-      onvisibility
+      onvisibility,
+      onarchive
     });
 
     await expect.element(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-    const supersede = screen.getByRole('button', { name: 'Supersede…' });
-    await expect.element(supersede).toBeDisabled();
+    await expect.element(screen.getByRole('button', { name: 'Supersede…' })).not.toBeInTheDocument();
     const archive = screen.getByRole('button', { name: 'Archive' });
-    await expect.element(archive).toBeDisabled();
+    await expect.element(archive).toBeInTheDocument();
+    await expect.element(archive).not.toBeDisabled();
     await expect.element(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
 
-    // Focusing the disabled button's focusable wrapper surfaces the tooltip.
-    const supersedeWrap = screen.container.querySelectorAll('.d-tooltip-wrap')[0] as HTMLElement;
-    supersedeWrap.focus();
-    await expect.element(screen.getByText('Arrives with curation — Phase 4').first()).toBeInTheDocument();
+    await archive.click();
+    expect(onarchive).toHaveBeenCalledWith(privateGotcha.id);
 
     await screen.getByRole('button', { name: 'Edit' }).click();
     expect(onedit).toHaveBeenCalledWith(privateGotcha.id);
@@ -294,10 +294,33 @@ describe('DetailPane — inline actions (D-15, D-16)', () => {
     expect(onvisibility).toHaveBeenCalledWith(privateGotcha);
   });
 
-  it('an archived record reads "Restore" on the disabled archive/restore button', async () => {
-    const screen = await render(DetailPane, { memory: archivedDecision, loading: false, error: null, requestedId: archivedDecision.id });
-    await expect.element(screen.getByRole('button', { name: 'Restore' })).toBeDisabled();
+  it('an archived record with onrestore supplied shows a live Restore button calling onrestore', async () => {
+    const onrestore = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: archivedDecision,
+      loading: false,
+      error: null,
+      requestedId: archivedDecision.id,
+      onrestore
+    });
+    const restore = screen.getByRole('button', { name: 'Restore' });
+    await expect.element(restore).toBeInTheDocument();
+    await expect.element(restore).not.toBeDisabled();
     await expect.element(screen.getByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+
+    await restore.click();
+    expect(onrestore).toHaveBeenCalledWith(archivedDecision.id);
+  });
+
+  it('with neither onarchive nor onrestore supplied, neither button renders', async () => {
+    const screen = await render(DetailPane, { memory: privateGotcha, loading: false, error: null, requestedId: privateGotcha.id });
+    await expect.element(screen.getByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  });
+
+  it('with no ondelete supplied, the Delete button does not render', async () => {
+    const screen = await render(DetailPane, { memory: privateGotcha, loading: false, error: null, requestedId: privateGotcha.id });
+    await expect.element(screen.getByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('a shared record shows "Make private" and clicking it calls onvisibility(memory)', async () => {
@@ -308,16 +331,36 @@ describe('DetailPane — inline actions (D-15, D-16)', () => {
     await expect.element(screen.getByRole('button', { name: 'Share' })).not.toBeInTheDocument();
   });
 
-  it('a rule record shows no Edit and no Share/Make private (delete only)', async () => {
-    const screen = await render(DetailPane, { memory: ruleRecord, loading: false, error: null, requestedId: ruleRecord.id });
+  it('a rule record shows no Edit and no Share/Make private (delete only), even with onedit/onvisibility supplied', async () => {
+    const onedit = vi.fn();
+    const onvisibility = vi.fn();
+    const ondelete = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: ruleRecord,
+      loading: false,
+      error: null,
+      requestedId: ruleRecord.id,
+      onedit,
+      onvisibility,
+      ondelete
+    });
     await expect.element(screen.getByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'Share' })).not.toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'Make private' })).not.toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
 
-  it('a discovery record shows no Edit', async () => {
-    const screen = await render(DetailPane, { memory: discoveryRecord, loading: false, error: null, requestedId: discoveryRecord.id });
+  it('a discovery record shows no Edit, even with onedit supplied', async () => {
+    const onedit = vi.fn();
+    const onvisibility = vi.fn();
+    const screen = await render(DetailPane, {
+      memory: discoveryRecord,
+      loading: false,
+      error: null,
+      requestedId: discoveryRecord.id,
+      onedit,
+      onvisibility
+    });
     await expect.element(screen.getByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
   });

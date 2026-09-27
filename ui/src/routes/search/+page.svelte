@@ -10,7 +10,7 @@
   import { ConnectError, Code } from '@connectrpc/connect';
   import { createQuery, createInfiniteQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
-  import { peekResume, consumeResume } from '$lib/resume';
+  import { peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
   import { normalizeVisibility } from '$lib/mutations/memory';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import {
@@ -44,6 +44,7 @@
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
   import WriteSurfaces from '$lib/components/WriteSurfaces.svelte';
+  import CurationSurfaces from '$lib/components/CurationSurfaces.svelte';
   import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
   import { Button } from '$lib/components/ui/button';
 
@@ -466,6 +467,7 @@
   }
 
   let writeSurfaces: ReturnType<typeof WriteSurfaces> | undefined = $state();
+  let curation: ReturnType<typeof CurationSurfaces> | undefined = $state();
 
   onMount(() => {
     const env = peekResume();
@@ -511,6 +513,7 @@
         if (id === effectiveSel) navigate({ sel: '' });
       }}
     />
+    <CurationSurfaces bind:this={curation} returnPath={normalizeReturnPath(page.url.pathname + page.url.search)} />
   </div>
   <div class="search-body">
     <RecallSplit open={!!effectiveSel} onclose={closeSel} autoSaveId="engram-search-split">
@@ -559,6 +562,8 @@
               ? writeSurfaces?.requestMakePrivate(m, 'memory')
               : writeSurfaces?.requestShare(m, 'memory')}
           ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
+          onarchive={(id) => curation?.openArchive([id])}
+          onrestore={(id) => curation?.openRestore([id])}
         />
       {/snippet}
     </RecallSplit>
