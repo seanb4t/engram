@@ -1,19 +1,26 @@
 <script lang="ts">
-  // CUR-04 tracer (D-11, D-13): /scheduled lists windowed records — memories
-  // the recall gate is hiding for a future or lapsed window — across every
-  // scope, showing each row's window and when it reveals/expired.
+  // CUR-04 (D-11, D-13): /scheduled lists windowed records — memories the
+  // recall gate is hiding for a future or lapsed window — by state tab
+  // (scheduled | expired | all), across every scope, each row showing its
+  // window and when it reveals/expired. Cursor infinite scroll only, never
+  // numbered pages (D-13's own rule).
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { createInfiniteQuery, createQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
-  import { parseScheduledParams, encodeScheduledParams, type ScheduledParams } from '$lib/search/scheduled-params';
+  import { parseScheduledParams, encodeScheduledParams, type ScheduledParams, type ScheduledState } from '$lib/search/scheduled-params';
+  import { scheduledHeaderParts, scheduledEmptyHeading, type HeaderPart } from '$lib/search/recall-header';
   import { windowRange, windowPhrase } from '$lib/time';
+  import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import type { Memory } from '$lib/gen/engram_pb';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
+  import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
+  import * as Tabs from '$lib/components/ui/tabs';
+  import { Button } from '$lib/components/ui/button';
 
   const params = $derived(parseScheduledParams(page.url.searchParams));
 
@@ -43,8 +50,36 @@
   }));
 
   const rows = $derived(listQ.data?.pages.flatMap((p) => p.memories) ?? []);
+  const firstPage = $derived(listQ.data?.pages[0]);
+  const scopeCount = $derived(firstPage?.searchedScopes?.length ?? 0);
+
+  // Loading (first load only) mirrors /search's own listLoading; busy is a
+  // background refetch (tab switch, keepPreviousData) — appending a page
+  // never dims the whole list (isFetchingNextPage excluded from both).
   const listLoading = $derived(listQ.isLoading && !listQ.data);
   const listBusy = $derived(listQ.isFetching && !listQ.isFetchingNextPage && !!listQ.data);
+
+  // A first-load rejection has no data at all — a next-page failure leaves
+  // page 1's data in place, so `parsedError` (which blanks the WHOLE list)
+  // never fires for it; the trailing envelope+Retry row below is what
+  // surfaces a page-2 failure instead.
+  const parsedError = $derived(listQ.isError && !listQ.data ? parseConnectError(listQ.error) : undefined);
+  const isEmpty = $derived(listQ.isSuccess && !listQ.isFetching && rows.length === 0);
+
+  const recallState = $derived.by((): RecallStateInput | undefined => {
+    if (parsedError) return { kind: 'error', parsed: parsedError, fixes: fixRowsFor(parsedError) };
+    if (isEmpty) return { kind: 'empty', heading: scheduledEmptyHeading(params.state), fixes: [] };
+    return undefined;
+  });
+
+  const headerParts = $derived.by((): HeaderPart[] => {
+    if (!listQ.data) return [];
+    return scheduledHeaderParts({ state: params.state, count: rows.length, scopeCount, more: listQ.hasNextPage });
+  });
+
+  const nextPageError = $derived(
+    listQ.isFetchNextPageError && listQ.error ? parseConnectError(listQ.error) : undefined
+  );
 
   const effectiveSel = $derived(params.sel);
   const inResults = $derived(rows.some((m) => m.id === effectiveSel));
@@ -73,27 +108,55 @@
 <div class="scheduled-page">
   <div class="scheduled-head">
     <h1 class="scheduled-title">Scheduled</h1>
+    <Tabs.Root value={params.state} onValueChange={(v) => navigate({ state: v as ScheduledState, sel: '' })}>
+      <Tabs.List>
+        <Tabs.Trigger value="scheduled">scheduled</Tabs.Trigger>
+        <Tabs.Trigger value="expired">expired</Tabs.Trigger>
+        <Tabs.Trigger value="all">all</Tabs.Trigger>
+      </Tabs.List>
+    </Tabs.Root>
   </div>
-  <ResultsHeader parts={[]} k={0} busy={listBusy} />
+  <ResultsHeader parts={headerParts} k={0} busy={listBusy} />
   <div class="scheduled-body">
     <RecallSplit open={!!effectiveSel} onclose={closeSel} autoSaveId="engram-scheduled-split">
       {#snippet list()}
-        <ResultsList
-          memories={rows}
-          mode="unranked"
-          label="Scheduled memories"
-          openId={effectiveSel}
-          loading={listLoading}
-          busy={listBusy}
-          hasMore={listQ.hasNextPage}
-          onloadmore={() => listQ.fetchNextPage()}
-          onopen={toggleOpen}
-          onescape={closeSel}
-        >
-          {#snippet rowTrailing(m: Memory)}
-            <span class="win" title={windowRange(m)}>{windowRange(m)} · {windowPhrase(m)}</span>
-          {/snippet}
-        </ResultsList>
+        {#if recallState}
+          <RecallState state={recallState} onfix={() => listQ.refetch()} onretry={() => listQ.refetch()} />
+        {:else}
+          <ResultsList
+            memories={rows}
+            mode="unranked"
+            label="Scheduled memories"
+            openId={effectiveSel}
+            loading={listLoading}
+            busy={listBusy}
+            hasMore={listQ.hasNextPage && !listQ.isFetchNextPageError}
+            onloadmore={() => listQ.fetchNextPage()}
+            onopen={toggleOpen}
+            onescape={closeSel}
+          >
+            {#snippet rowTrailing(m: Memory)}
+              <span class="win" title={windowRange(m)}>
+                <span class="win-range">{windowRange(m)}</span>
+                <span class="win-phrase">{windowPhrase(m)}</span>
+              </span>
+            {/snippet}
+          </ResultsList>
+          {#if listQ.isFetchingNextPage}
+            <div class="loading-more-row" data-testid="loading-more">Loading more…</div>
+          {:else if nextPageError}
+            <div class="next-page-error" role="alert" data-testid="next-page-error">
+              {#if nextPageError.kind === 'rejected'}
+                <pre>field={nextPageError.fields.join(',')} hint={nextPageError.hint}: {nextPageError.detail}</pre>
+              {:else if nextPageError.kind === 'opaque'}
+                <pre>{nextPageError.detail}</pre>
+              {:else}
+                <pre>Could not load the next page</pre>
+              {/if}
+              <Button variant="outline" size="sm" onclick={() => listQ.fetchNextPage()}>Retry</Button>
+            </div>
+          {/if}
+        {/if}
       {/snippet}
       {#snippet detail()}
         <DetailPane
@@ -119,6 +182,10 @@
   }
   .scheduled-head {
     flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(10 * var(--u));
     padding: calc(10 * var(--u)) calc(14 * var(--u)) calc(4 * var(--u));
   }
   .scheduled-title {
@@ -129,11 +196,46 @@
     flex: 1;
     min-height: 0;
   }
+  /* E6 overflow: the relative phrase truncates before the window
+     timestamps -- the range stays a fixed, never-shrinking track, the
+     phrase is the one flex child allowed to ellipsize. */
   .win {
+    display: flex;
+    align-items: baseline;
+    gap: calc(4 * var(--u));
+    min-width: 0;
     color: var(--text-faint);
     font-size: calc(11.5 * var(--u));
+  }
+  .win-range {
+    flex: none;
     white-space: nowrap;
+  }
+  .win-phrase {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .loading-more-row {
+    flex: none;
+    padding: calc(8 * var(--u)) calc(14 * var(--u));
+    font-size: calc(11.5 * var(--u));
+    color: var(--text-faint);
+  }
+  .next-page-error {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--u));
+    padding: calc(8 * var(--u)) calc(14 * var(--u));
+  }
+  .next-page-error pre {
+    font-family: var(--font-mono, monospace);
+    font-size: calc(11 * var(--u));
+    color: var(--destructive);
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 </style>
