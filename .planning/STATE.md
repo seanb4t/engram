@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 1)
 Phase: 3 — Curation RPCs & MCP Tools
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-26 — Phase 2 complete, transitioned to Phase 3
+Last activity: 2026-09-26 - Completed quick task 260926-st6: Fix Phase 2 UI-REVIEW result-row grid blocker and facet-strip scroll cue
 
 ## Deferred Items
 
@@ -529,6 +529,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 260926-st6 | Fix Phase 2 UI-REVIEW result-row grid blocker and facet-strip scroll cue | 2026-09-26 | 20a0e010 | [260926-st6-fix-phase-2-ui-review-result-row-grid-bl](./quick/260926-st6-fix-phase-2-ui-review-result-row-grid-bl/) |
 
 ### Roadmap Evolution
 
