@@ -22,10 +22,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-27 after 2026-09-25.01 Phase 3)
+See: .planning/PROJECT.md (updated 2026-09-27 after 2026-09-25.01 Phase 4)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 04 — Curation Surfaces
+**Current focus:** Phase 5 — Related-Memories Graph & Tag Cloud
 
 ## Current Position
 
@@ -461,6 +461,9 @@ milestone needs in working memory.
 - [Phase 03]: 03-05: fixed two Phase 1 key_links patterns (01-03-PLAN.md, 01-04-PLAN.md) that this plan own store change to relatedmemories.go (full-knob threading) legitimately broke; from/to/via unchanged, only the literal pattern text updated.
 - [Phase 03]: ListTags D-27 fixture strengthened with a second same-owner scope so the plan's literal empty-scope mutation is actually observable; mutation confirmed red then reverted (03-06).
 - [Phase 03]: Upgrade-guide entry renumbered to ### 21 (not ### 19 as the plan literally said) since entries 19-20 were already shipped by this milestone's earlier phases. — Avoids a duplicate/ambiguous heading; the plan's read_first note was stale relative to the file on disk.
+- [Phase 04]: 04-01: not-owned records use option-a (server-answer only) — the console never infers the caller's owner claim; supersede pre-blocks via the validate_only preview, archive reports not-owned after the call.
+- [Phase 04]: 04-02: /observe and ScopesSidebar removed with no redirect (D-14); the re-auth resume envelope is v2, a discriminated union over the curation kinds (D-16).
+- [Phase 04]: 04-03: axe-core 4.13.0 pinned as a test-only devDependency (user-approved) for WCAG 2.2 AA audits in vitest-browser.
 
 ### Pending Todos
 
@@ -560,7 +563,7 @@ Both prior entries were delivered and had simply never been closed out:
 
 Last session: 2026-09-27T12:08:49.055Z
 Stopped at: Phase 04 complete, ready to plan Phase 5
-Resume file: .planning/phases/04-curation-surfaces/04-UI-SPEC.md
+Resume file: None
 
 ## Performance Metrics
 

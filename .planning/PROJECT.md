@@ -655,6 +655,7 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **DSYS-01/02** — project-local `engram-console-conventions` and `engram-connect-client` skills record the console design facts and the Connect client contract — 2026-09-25.01 Phase 2
 - ✓ **Recall-gate hidden count** — additive `RecallGateHidden { total, archived, superseded, expired, scheduled }` on `SearchMemoriesResponse` (5) / `ListMemoriesResponse` (8), the MCP `search_memory`/`list_memory` results and the CLI footer; computed by a second gate-lifted `Store.Search`/`Store.List` call under the caller's own subject (MCP input schemas unchanged) — 2026-09-25.01 Phase 2
 - ✓ **RPC-01..06** — seven curation RPCs on Connect (`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`, `ListRules`, `ListScheduled`, `RelatedMemories`, `ListTags`), each delegating to the same `deps.*` core its MCP tool calls; new MCP tools `archive_memory`/`restore_memory` (consent-gated, per-id outcomes), `related_memories` (on-demand, `oneof` edge evidence) and `list_tags`; `validate_only` supersede preview on both lanes; `list_rules` empty scopes = one all-readable read capped at 1000 total; `list_scheduled` gains `cross_spine` + cursor on both lanes. The three writes are CSRF-gated (proven by the phase's first test), proto additive (`buf breaking` clean), SPA re-vendored (ui-drift clean) — 2026-09-25.01 Phase 3
+- ✓ **CUR-01..05, DSYS-03/04** — console curation workbench: supersede with a `validate_only` preview and history-chain dialog, archive/restore with per-id outcomes and two undo surfaces, multi-select bulk actions and a hover row toolbar on /search, /rules (grouped, delete-only) and /scheduled (tabs, cursor paging, archive-expired) routes, a v2 re-auth resume envelope covering every new write surface, a WCAG 2.2 AA axe-core audit across the surfaces, and chromedp e2e round trips against the real binary; /observe removed — 2026-09-25.01 Phase 4
 
 ### Active
 
@@ -665,10 +666,10 @@ absorb.
 - [x] Honest unified search entry (id / short_id / text; cross-spine default; server-driven palette) — Phase 2
 - [x] Dense hover-expand results row, detail pane, keyboard traversal, score/relevance, facets — Phase 2
 - [x] Connect RPCs: SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags — Phase 3
-- [ ] Curation surfaces: supersede, archive/restore, rules and scheduled views
+- [x] Curation surfaces: supersede, archive/restore, rules and scheduled views — Phase 4
 - [ ] Related-memories graph, tag cloud, scope autocomplete
 - [ ] Natural-language query understanding as advisory, user-confirmed filter chips
-- [ ] Console conventions + Connect client skills (done, Phase 2); vetted design/a11y skills (Phase 4, DSYS-03)
+- [x] Console conventions + Connect client skills (Phase 2); vetted design/a11y skills and WCAG 2.2 AA audit (Phase 4, DSYS-03)
 
 ### Deferred (carry-forward for next milestone)
 
@@ -1080,6 +1081,8 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | The search path gets its own decider: `jev.WithNoRetry()` plus `ENGRAM_SEARCH_RERANK_TIMEOUT` (2s), separate from the decisions timeout and single retry that consolidate keeps (2026-09-22.01 Phase 4, D-09) | A retry inside a synchronous search doubles tail latency for a ranking that has a free fallback; sweeps are offline and benefit from the retry | ✓ Good — 0/26 fallbacks at 2s in the live eval |
 | Decision state per candidate is summary + content head at 600 chars, shrunk uniformly (floor 100) under a 28k-token chars/4 guard, so 100 candidates fit Jev's 32k context (2026-09-22.01 Phase 4, D-08) | Reuses Phase 3's state shape instead of a second truncation scheme; the guard is arithmetic at the recall maximum rather than discovered at runtime | ✓ Good — boundary, floor, and multi-byte cases pinned in `internal/relevance` |
 | Helm exposes `memory.search.ranker` / `memory.search.rerankTimeout`, gated independently of `memory.decisions.provider` so `jev` without a provider still renders and reaches the server's rejection (2026-09-22.01 Phase 4, D-10) | Nesting under the provider gate would render nothing and leave the operator's opt-in silently inert | ✓ Good — default render byte-identical; `chart:validate` checksum re-pinned |
+| The console never infers the caller's owner claim: not-owned records are presented from the server's answer only (supersede via the `validate_only` preview, archive after the call) (2026-09-25.01 Phase 4, 04-01 option-a) | The SPA has no caller-identity signal; deriving one from cached private records would be client-side authz inference | ✓ Good — shipped; a pre-block would need a WhoAmI RPC |
+| axe-core pinned as a test-only devDependency for WCAG 2.2 AA checks in vitest-browser, never bundled (2026-09-25.01 Phase 4, 04-03) | A maintained rule engine beats a hand-rolled contrast checker; legitimacy verified by the user before install | ✓ Good — 9 AA defects found and fixed |
 
 ## Evolution
 
@@ -1100,4 +1103,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-27 after 2026-09-25.01 Phase 3*
+*Last updated: 2026-09-27 after 2026-09-25.01 Phase 4*
