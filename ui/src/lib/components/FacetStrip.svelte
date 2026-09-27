@@ -48,6 +48,34 @@
     return value ? value.slice(0, 10) : '';
   }
 
+  // UI-REVIEW: a visible scroll cue. The strip fades whichever edge hides
+  // chips, re-measured on scroll and whenever the viewport or its content
+  // resizes (window width, pane drag, text size, chips added/removed).
+  let viewportEl: HTMLElement | null = $state(null);
+  let fadeStart = $state(false);
+  let fadeEnd = $state(false);
+
+  function measureFade() {
+    if (!viewportEl) return;
+    const max = viewportEl.scrollWidth - viewportEl.clientWidth;
+    fadeStart = viewportEl.scrollLeft > 1;
+    fadeEnd = viewportEl.scrollLeft < max - 1;
+  }
+
+  $effect(() => {
+    const el = viewportEl;
+    if (!el) return;
+    const ro = new ResizeObserver(() => measureFade());
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    el.addEventListener('scroll', measureFade, { passive: true });
+    measureFade();
+    return () => {
+      ro.disconnect();
+      el.removeEventListener('scroll', measureFade);
+    };
+  });
+
   let createdOpen = $state(false);
   const createdLabel = $derived(
     params.createdAfter || params.createdBefore
@@ -58,7 +86,15 @@
   );
 </script>
 
-<ScrollArea.Root orientation="horizontal" class="facet-strip">
+<ScrollArea.Root
+  orientation="horizontal"
+  type="auto"
+  class="facet-strip"
+  scrollbarXClasses="data-horizontal:h-1.5"
+  bind:viewportRef={viewportEl}
+  data-fade-start={fadeStart || undefined}
+  data-fade-end={fadeEnd || undefined}
+>
   <div class="facet-strip-row">
     <button type="button" class="facet-chip" class:facet-chip-active={params.categories.length === 0} onclick={() => onchange({ categories: [] })}>
       all{totalHits !== undefined ? ` ${totalHits}` : ''}
@@ -152,6 +188,26 @@
   :global(.facet-strip) {
     width: 100%;
     white-space: nowrap;
+  }
+  /* Edge fades: a mask (alpha only, not a colour) over the viewport on the
+     edge(s) still hiding chips. */
+  :global(.facet-strip) {
+    --facet-fade: calc(32 * var(--u));
+  }
+  :global(.facet-strip[data-fade-end] [data-slot='scroll-area-viewport']) {
+    mask-image: linear-gradient(to right, black calc(100% - var(--facet-fade)), transparent);
+  }
+  :global(.facet-strip[data-fade-start] [data-slot='scroll-area-viewport']) {
+    mask-image: linear-gradient(to right, transparent, black var(--facet-fade));
+  }
+  :global(.facet-strip[data-fade-start][data-fade-end] [data-slot='scroll-area-viewport']) {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      black var(--facet-fade),
+      black calc(100% - var(--facet-fade)),
+      transparent
+    );
   }
   .facet-strip-row {
     display: flex;
