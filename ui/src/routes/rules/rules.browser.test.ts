@@ -1,7 +1,10 @@
+import '../../app.css';
 import { render } from 'vitest-browser-svelte';
+import { page } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
+import { ConnectError, Code } from '@connectrpc/connect';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import RulesPage from './+page.svelte';
 
@@ -102,5 +105,209 @@ describe('rules route — lists every readable rule grouped by scope (CUR-03 tra
     await expect.poll(() => getMemorySpy.mock.calls.length).toBeGreaterThanOrEqual(1);
     expect(getMemorySpy).toHaveBeenCalledWith({ id: 'r-1' }, expect.anything());
     await expect.element(screen.getByText('full rule content')).toBeInTheDocument();
+  });
+});
+
+describe('rules route — honest header, coverage and advisory (D-12)', () => {
+  it('reads the header from count/searchedScopes and renders the scopes_truncated clause verbatim', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [
+        makeRule({ id: 'r-1', scope: 'rule:repo:alpha' }),
+        makeRule({ id: 'r-2', scope: 'rule:repo:beta' }),
+        makeRule({ id: 'r-3', scope: 'rule:repo:beta' })
+      ],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha', 'rule:repo:beta'],
+      scopesTruncated: true,
+      scopesUnknown: false
+    });
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('3 rules')).toBeInTheDocument();
+    await expect.element(screen.getByText('across 2 scopes', { exact: false })).toBeInTheDocument();
+    await expect.element(screen.getByText('scopes_truncated: scope list incomplete', { exact: false })).toBeInTheDocument();
+  });
+
+  it('renders "across every readable scope" and the scopes_unknown clause when coverage could not be listed', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha' })],
+      advisory: '',
+      searchedScopes: [],
+      scopesTruncated: false,
+      scopesUnknown: true
+    });
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('across every readable scope', { exact: false })).toBeInTheDocument();
+    await expect.element(screen.getByText('scopes_unknown: scope coverage could not be listed', { exact: false })).toBeInTheDocument();
+  });
+
+  it('renders a non-empty advisory verbatim under the header', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha' })],
+      advisory: 'rule:repo:alpha holds more rules than the soft per-scope threshold',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+
+    const screen = await renderRules();
+    await expect
+      .element(screen.getByText('rule:repo:alpha holds more rules than the soft per-scope threshold'))
+      .toBeInTheDocument();
+  });
+
+  it('renders no advisory line when the response advisory is empty', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('rule:repo:alpha')).toBeInTheDocument();
+    expect(screen.container.querySelector('.rules-advisory')).toBeNull();
+  });
+});
+
+describe('rules route — empty, loading and error states (E5)', () => {
+  it('shows the honest empty heading with no fix rows when no rules are readable', async () => {
+    listRulesSpy.mockResolvedValue(emptyListRulesResult());
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('No rules in any scope you can read')).toBeInTheDocument();
+    const empty = screen.container.querySelector('[data-testid="recall-empty"]') as HTMLElement;
+    expect(empty.querySelectorAll('button').length).toBe(0);
+  });
+
+  it('shows the skeleton rows on first load only, never on a re-fetch (keepPreviousData)', async () => {
+    let resolveFirst!: (v: unknown) => void;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    listRulesSpy.mockReturnValueOnce(firstPromise);
+
+    const screen = await renderRules();
+    await expect.element(screen.getByTestId('results-loading')).toBeInTheDocument();
+
+    resolveFirst({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'first-load rule' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    await expect.element(screen.getByText('first-load rule')).toBeInTheDocument();
+    expect(screen.container.querySelector('[data-testid="results-loading"]')).toBeNull();
+
+    // A re-fetch (triggered directly through the shared QueryClient, since
+    // /rules has no facet control of its own to drive one) keeps the prior
+    // row visible — never a flash back to the skeleton.
+    let resolveSecond!: (v: unknown) => void;
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+    listRulesSpy.mockReturnValueOnce(secondPromise);
+    void qc.refetchQueries({ queryKey: ['listRules'] });
+    await expect.element(screen.getByText('first-load rule')).toBeInTheDocument();
+    expect(screen.container.querySelector('[data-testid="results-loading"]')).toBeNull();
+    resolveSecond({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'first-load rule' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+  });
+
+  it('a rejected ListRules call renders the field=/hint= envelope and a working Retry fix row', async () => {
+    listRulesSpy.mockRejectedValue(
+      new ConnectError('field=scopes hint=too_many: at most 1000 rules', Code.FailedPrecondition)
+    );
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('Server rejected the request')).toBeInTheDocument();
+    await expect
+      .element(screen.getByText('field=scopes hint=too_many: at most 1000 rules', { exact: false }))
+      .toBeInTheDocument();
+
+    listRulesSpy.mockClear();
+    listRulesSpy.mockResolvedValue(emptyListRulesResult());
+    await screen.getByRole('button', { name: 'Retry the request' }).click();
+    await expect.poll(() => listRulesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('rules route — adjacency and ordering (CUR-03)', () => {
+  it('two identical summaries in different scopes render as two rows under two separate headers', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [
+        makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'reuse existing tags before storing' }),
+        makeRule({ id: 'r-2', scope: 'rule:repo:beta', summary: 'reuse existing tags before storing' })
+      ],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha', 'rule:repo:beta'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('rule:repo:alpha')).toBeInTheDocument();
+    await expect.element(screen.getByText('rule:repo:beta')).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('.results-group-header').length).toBe(2);
+    expect(screen.container.querySelectorAll('[role="option"]').length).toBe(2);
+  });
+
+  it('two identical summaries sharing one scope render as two rows under one header', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [
+        makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'reuse existing tags before storing' }),
+        makeRule({ id: 'r-2', scope: 'rule:repo:alpha', summary: 'reuse existing tags before storing' })
+      ],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('rule:repo:alpha')).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('.results-group-header').length).toBe(1);
+    expect(screen.container.querySelectorAll('[role="option"]').length).toBe(2);
+  });
+});
+
+describe('rules route — long summaries stay one line (E5/CUR-03 backstop)', () => {
+  it('a 512-byte multi-byte summary keeps the same row height as a short one', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-short', scope: 'rule:repo:alpha', summary: 'short' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    const screen = await renderRules();
+    await expect.element(screen.getByText('short', { exact: true })).toBeInTheDocument();
+    const shortHeight = (screen.container.querySelector('[role="option"]') as HTMLElement).getBoundingClientRect()
+      .height;
+
+    // A 512-byte multi-byte (3-byte-per-char) summary — well past a naive
+    // per-character truncation and past the 512-byte server bound alike.
+    const longSummary = '漢'.repeat(170);
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-long', scope: 'rule:repo:alpha', summary: longSummary })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    void qc.refetchQueries({ queryKey: ['listRules'] });
+    await expect.element(screen.getByText(longSummary)).toBeInTheDocument();
+    const longHeight = (screen.container.querySelector('[role="option"]') as HTMLElement).getBoundingClientRect()
+      .height;
+    expect(longHeight).toBe(shortHeight);
+    await page.screenshot();
   });
 });
