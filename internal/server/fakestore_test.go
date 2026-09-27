@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -426,15 +427,26 @@ func (s *spyStore) List(_ context.Context, scope string, subj store.Subject, opt
 	return page, total, "", nil
 }
 
-func (s *spyStore) ListScheduled(_ context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) ([]store.Memory, error) {
+// ListScheduled treats an empty scope as spanning every scope (owner filter
+// kept — deferred reveal stays owner-only, milestone 2026-09-25.01 Phase 3
+// D-11), sorts matches by CreatedAt descending then ID for a deterministic
+// page order, and pages with a decimal-offset cursor: opts.Cursor is the
+// starting index into the sorted match set ("" means 0), a non-numeric or
+// negative token is rejected as store.ErrInvalidArgument, and the returned
+// next cursor is the decimal offset of the first unreturned match ("" once
+// the match set is exhausted).
+func (s *spyStore) ListScheduled(_ context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) ([]store.Memory, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	owner := ownerOfSubject(subj)
 	s.record("ListScheduled", owner, scope)
 	now := time.Now().UTC()
-	var out []store.Memory
+	var matched []store.Memory
 	for _, m := range s.records {
-		if m.Scope != scope || m.Owner != owner {
+		if scope != "" && m.Scope != scope {
+			continue
+		}
+		if m.Owner != owner {
 			continue
 		}
 		pending := m.NotBefore != nil && now.Before(*m.NotBefore)
@@ -453,14 +465,46 @@ func (s *spyStore) ListScheduled(_ context.Context, scope string, subj store.Sub
 				continue
 			}
 		}
-		out = append(out, m)
-		if opts.Limit > 0 && uint64(len(out)) >= opts.Limit {
-			break
-		}
+		matched = append(matched, m)
 	}
-	return out, nil
+	sort.Slice(matched, func(i, j int) bool {
+		if matched[i].CreatedAt.Equal(matched[j].CreatedAt) {
+			return matched[i].ID < matched[j].ID
+		}
+		return matched[i].CreatedAt.After(matched[j].CreatedAt)
+	})
+
+	start := 0
+	if opts.Cursor != "" {
+		n, cErr := strconv.Atoi(opts.Cursor)
+		if cErr != nil || n < 0 {
+			return nil, "", store.ErrInvalidArgument
+		}
+		start = n
+	}
+	if start > len(matched) {
+		start = len(matched)
+	}
+	limit := opts.Limit
+	if limit == 0 {
+		limit = 20
+	}
+	end := start + int(limit)
+	if end > len(matched) {
+		end = len(matched)
+	}
+	page := append([]store.Memory{}, matched[start:end]...)
+	next := ""
+	if end < len(matched) {
+		next = strconv.Itoa(end)
+	}
+	return page, next, nil
 }
 
+// ListScopes sorts its result by scope (the real store does — Qdrant's
+// bucket enumeration returns them in a deterministic order and downstream
+// coverage assertions rely on it), so a coverage test can assert
+// searched_scopes verbatim rather than sorting it itself.
 func (s *spyStore) ListScopes(_ context.Context, subj store.Subject) ([]store.ScopeCount, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -477,6 +521,7 @@ func (s *spyStore) ListScopes(_ context.Context, subj store.Subject) ([]store.Sc
 	for scope, c := range counts {
 		out = append(out, store.ScopeCount{Scope: scope, Count: c})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Scope < out[j].Scope })
 	return out, false, nil
 }
 

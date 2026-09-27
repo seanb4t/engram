@@ -35,7 +35,7 @@ type memStore interface {
 	Get(ctx context.Context, id string) (store.Memory, error)
 	GetReadable(ctx context.Context, id string, subj store.Subject) (store.Memory, error)
 	List(ctx context.Context, scope string, subj store.Subject, opts store.ListOptions) (items []store.Memory, total uint64, nextCursor string, err error)
-	ListScheduled(ctx context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) ([]store.Memory, error)
+	ListScheduled(ctx context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) (items []store.Memory, nextCursor string, err error)
 	ListScopes(ctx context.Context, subj store.Subject) ([]store.ScopeCount, bool, error)
 	// MigrateStatus is the handler-error test seam for the Connect
 	// MigrateStatus RPC (07-06): one method added to this EXISTING,

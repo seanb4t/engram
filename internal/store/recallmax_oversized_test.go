@@ -123,7 +123,7 @@ func TestStoreRejectsOverMaximumCount(t *testing.T) {
 		{
 			name: "ListScheduled", field: "limit",
 			invoke: func(n uint64) error {
-				_, err := st.ListScheduled(ctx, scope, owner, store.ScheduledPending, store.ListOptions{Limit: n})
+				_, _, err := st.ListScheduled(ctx, scope, owner, store.ScheduledPending, store.ListOptions{Limit: n})
 				return err
 			},
 		},
@@ -174,7 +174,7 @@ func TestStoreRejectsOverMaximumCount(t *testing.T) {
 		}
 	})
 	t.Run("ListScheduled/zero_default", func(t *testing.T) {
-		if _, err := st.ListScheduled(ctx, scope, owner, store.ScheduledPending, store.ListOptions{Limit: 0}); err != nil {
+		if _, _, err := st.ListScheduled(ctx, scope, owner, store.ScheduledPending, store.ListOptions{Limit: 0}); err != nil {
 			t.Fatalf("zero-limit ListScheduled: %v", err)
 		}
 	})

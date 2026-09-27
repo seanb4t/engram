@@ -3022,6 +3022,187 @@ func (x *SupersedeMemoryResponse) GetTargets() []*Memory {
 	return nil
 }
 
+// ListScheduledRequest widens list_scheduled's contract onto Connect (plan
+// 03-03, D-11): cross_spine and an opaque page_token/next_page_token join
+// the existing scope/state/limit/window fields. No buf.validate rule is
+// attached: the single shared server-side core validates, so both lanes
+// return the byte-identical field=/hint= rejection envelope (D-17/D-20).
+type ListScheduledRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Scope         string                 `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`                                      // required unless cross_spine
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`                                      // scheduled (default, not yet active) | expired | all
+	Limit         uint64                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`                                     // 0 resolves to the page default 20; a larger value is rejected
+	CreatedAfter  string                 `protobuf:"bytes,4,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`    // RFC3339; inclusive lower bound on created_at
+	CreatedBefore string                 `protobuf:"bytes,5,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"` // RFC3339; exclusive upper bound on created_at
+	// cross_spine lists across every scope, still returning only the caller's
+	// own records, ignoring `scope` when true.
+	// engram:rule:start scope-required-unless-cross-spine
+	// scope is required unless cross_spine is true
+	// engram:rule:end scope-required-unless-cross-spine
+	CrossSpine    bool   `protobuf:"varint,6,opt,name=cross_spine,json=crossSpine,proto3" json:"cross_spine,omitempty"`
+	PageToken     string `protobuf:"bytes,7,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"` // opaque cursor; when set, resumes from a prior next_page_token
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListScheduledRequest) Reset() {
+	*x = ListScheduledRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListScheduledRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListScheduledRequest) ProtoMessage() {}
+
+func (x *ListScheduledRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListScheduledRequest.ProtoReflect.Descriptor instead.
+func (*ListScheduledRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ListScheduledRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *ListScheduledRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *ListScheduledRequest) GetLimit() uint64 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListScheduledRequest) GetCreatedAfter() string {
+	if x != nil {
+		return x.CreatedAfter
+	}
+	return ""
+}
+
+func (x *ListScheduledRequest) GetCreatedBefore() string {
+	if x != nil {
+		return x.CreatedBefore
+	}
+	return ""
+}
+
+func (x *ListScheduledRequest) GetCrossSpine() bool {
+	if x != nil {
+		return x.CrossSpine
+	}
+	return false
+}
+
+func (x *ListScheduledRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListScheduledResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Memories      []*Memory              `protobuf:"bytes,1,rep,name=memories,proto3" json:"memories,omitempty"`
+	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"` // empty when no further pages
+	// searched_scopes/scopes_truncated/scopes_unknown: see
+	// ListMemoriesResponse.searched_scopes; identical semantics, present only
+	// on a cross_spine request.
+	SearchedScopes  []string `protobuf:"bytes,3,rep,name=searched_scopes,json=searchedScopes,proto3" json:"searched_scopes,omitempty"`
+	ScopesTruncated bool     `protobuf:"varint,4,opt,name=scopes_truncated,json=scopesTruncated,proto3" json:"scopes_truncated,omitempty"`
+	ScopesUnknown   bool     `protobuf:"varint,5,opt,name=scopes_unknown,json=scopesUnknown,proto3" json:"scopes_unknown,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ListScheduledResponse) Reset() {
+	*x = ListScheduledResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListScheduledResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListScheduledResponse) ProtoMessage() {}
+
+func (x *ListScheduledResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListScheduledResponse.ProtoReflect.Descriptor instead.
+func (*ListScheduledResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ListScheduledResponse) GetMemories() []*Memory {
+	if x != nil {
+		return x.Memories
+	}
+	return nil
+}
+
+func (x *ListScheduledResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+func (x *ListScheduledResponse) GetSearchedScopes() []string {
+	if x != nil {
+		return x.SearchedScopes
+	}
+	return nil
+}
+
+func (x *ListScheduledResponse) GetScopesTruncated() bool {
+	if x != nil {
+		return x.ScopesTruncated
+	}
+	return false
+}
+
+func (x *ListScheduledResponse) GetScopesUnknown() bool {
+	if x != nil {
+		return x.ScopesUnknown
+	}
+	return false
+}
+
 var File_engram_v1_engram_proto protoreflect.FileDescriptor
 
 const file_engram_v1_engram_proto_rawDesc = "" +
@@ -3283,7 +3464,23 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\n" +
 	"supersedes\x18\x04 \x03(\tR\n" +
 	"supersedes\x12+\n" +
-	"\atargets\x18\x05 \x03(\v2\x11.engram.v1.MemoryR\atargets*W\n" +
+	"\atargets\x18\x05 \x03(\v2\x11.engram.v1.MemoryR\atargets\"\xe4\x01\n" +
+	"\x14ListScheduledRequest\x12\x14\n" +
+	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x04R\x05limit\x12#\n" +
+	"\rcreated_after\x18\x04 \x01(\tR\fcreatedAfter\x12%\n" +
+	"\x0ecreated_before\x18\x05 \x01(\tR\rcreatedBefore\x12\x1f\n" +
+	"\vcross_spine\x18\x06 \x01(\bR\n" +
+	"crossSpine\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\a \x01(\tR\tpageToken\"\xe9\x01\n" +
+	"\x15ListScheduledResponse\x12-\n" +
+	"\bmemories\x18\x01 \x03(\v2\x11.engram.v1.MemoryR\bmemories\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12'\n" +
+	"\x0fsearched_scopes\x18\x03 \x03(\tR\x0esearchedScopes\x12)\n" +
+	"\x10scopes_truncated\x18\x04 \x01(\bR\x0fscopesTruncated\x12%\n" +
+	"\x0escopes_unknown\x18\x05 \x01(\bR\rscopesUnknown*W\n" +
 	"\n" +
 	"Visibility\x12\x1a\n" +
 	"\x16VISIBILITY_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -3295,7 +3492,8 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	" ARCHIVE_OUTCOME_ALREADY_ARCHIVED\x10\x02\x12\x1c\n" +
 	"\x18ARCHIVE_OUTCOME_RESTORED\x10\x03\x12 \n" +
 	"\x1cARCHIVE_OUTCOME_NOT_ARCHIVED\x10\x04\x12\x1d\n" +
-	"\x19ARCHIVE_OUTCOME_NOT_FOUND\x10\x052\xf2\t\n" +
+	"\x19ARCHIVE_OUTCOME_NOT_FOUND\x10\x052\xc6\n" +
+	"\n" +
 	"\rEngramService\x12I\n" +
 	"\n" +
 	"ListScopes\x12\x1c.engram.v1.ListScopesRequest\x1a\x1d.engram.v1.ListScopesResponse\x12O\n" +
@@ -3312,7 +3510,8 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x0eScheduleMemory\x12 .engram.v1.ScheduleMemoryRequest\x1a!.engram.v1.ScheduleMemoryResponse\x12R\n" +
 	"\rArchiveMemory\x12\x1f.engram.v1.ArchiveMemoryRequest\x1a .engram.v1.ArchiveMemoryResponse\x12R\n" +
 	"\rRestoreMemory\x12\x1f.engram.v1.RestoreMemoryRequest\x1a .engram.v1.RestoreMemoryResponse\x12X\n" +
-	"\x0fSupersedeMemory\x12!.engram.v1.SupersedeMemoryRequest\x1a\".engram.v1.SupersedeMemoryResponseB\x96\x01\n" +
+	"\x0fSupersedeMemory\x12!.engram.v1.SupersedeMemoryRequest\x1a\".engram.v1.SupersedeMemoryResponse\x12R\n" +
+	"\rListScheduled\x12\x1f.engram.v1.ListScheduledRequest\x1a .engram.v1.ListScheduledResponseB\x96\x01\n" +
 	"\rcom.engram.v1B\vEngramProtoP\x01Z3github.com/seanb4t/engram/gen/go/engram/v1;engramv1\xa2\x02\x03EXX\xaa\x02\tEngram.V1\xca\x02\tEngram\\V1\xe2\x02\x15Engram\\V1\\GPBMetadata\xea\x02\n" +
 	"Engram::V1b\x06proto3"
 
@@ -3329,7 +3528,7 @@ func file_engram_v1_engram_proto_rawDescGZIP() []byte {
 }
 
 var file_engram_v1_engram_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
 var file_engram_v1_engram_proto_goTypes = []any{
 	(Visibility)(0),                   // 0: engram.v1.Visibility
 	(ArchiveOutcome)(0),               // 1: engram.v1.ArchiveOutcome
@@ -3369,17 +3568,19 @@ var file_engram_v1_engram_proto_goTypes = []any{
 	(*RestoreMemoryResponse)(nil),     // 35: engram.v1.RestoreMemoryResponse
 	(*SupersedeMemoryRequest)(nil),    // 36: engram.v1.SupersedeMemoryRequest
 	(*SupersedeMemoryResponse)(nil),   // 37: engram.v1.SupersedeMemoryResponse
-	(*timestamppb.Timestamp)(nil),     // 38: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),     // 39: google.protobuf.FieldMask
+	(*ListScheduledRequest)(nil),      // 38: engram.v1.ListScheduledRequest
+	(*ListScheduledResponse)(nil),     // 39: engram.v1.ListScheduledResponse
+	(*timestamppb.Timestamp)(nil),     // 40: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),     // 41: google.protobuf.FieldMask
 }
 var file_engram_v1_engram_proto_depIdxs = []int32{
-	38, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
-	38, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
+	40, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
+	40, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
 	20, // 2: engram.v1.Memory.citations:type_name -> engram.v1.Citation
-	38, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
-	38, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
-	38, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
-	38, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
+	40, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
+	40, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
+	40, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
+	40, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
 	3,  // 7: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
 	2,  // 8: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
 	8,  // 9: engram.v1.ListMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
@@ -3390,50 +3591,53 @@ var file_engram_v1_engram_proto_depIdxs = []int32{
 	15, // 14: engram.v1.MigrateStatusResponse.buckets:type_name -> engram.v1.SchemaVersionBucket
 	15, // 15: engram.v1.MigrateStatusResponse.future:type_name -> engram.v1.SchemaVersionBucket
 	20, // 16: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
-	39, // 17: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
+	41, // 17: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
 	0,  // 18: engram.v1.SetVisibilityRequest.visibility:type_name -> engram.v1.Visibility
-	38, // 19: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
-	38, // 20: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
+	40, // 19: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
+	40, // 20: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
 	1,  // 21: engram.v1.ArchiveResult.outcome:type_name -> engram.v1.ArchiveOutcome
 	31, // 22: engram.v1.ArchiveMemoryResponse.results:type_name -> engram.v1.ArchiveResult
 	31, // 23: engram.v1.RestoreMemoryResponse.results:type_name -> engram.v1.ArchiveResult
 	20, // 24: engram.v1.SupersedeMemoryRequest.citations:type_name -> engram.v1.Citation
 	2,  // 25: engram.v1.SupersedeMemoryResponse.targets:type_name -> engram.v1.Memory
-	4,  // 26: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
-	6,  // 27: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
-	9,  // 28: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
-	11, // 29: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
-	13, // 30: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
-	16, // 31: engram.v1.EngramService.MigrateStatus:input_type -> engram.v1.MigrateStatusRequest
-	18, // 32: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
-	21, // 33: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
-	23, // 34: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
-	25, // 35: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
-	27, // 36: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
-	29, // 37: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
-	32, // 38: engram.v1.EngramService.ArchiveMemory:input_type -> engram.v1.ArchiveMemoryRequest
-	34, // 39: engram.v1.EngramService.RestoreMemory:input_type -> engram.v1.RestoreMemoryRequest
-	36, // 40: engram.v1.EngramService.SupersedeMemory:input_type -> engram.v1.SupersedeMemoryRequest
-	5,  // 41: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
-	7,  // 42: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
-	10, // 43: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
-	12, // 44: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
-	14, // 45: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
-	17, // 46: engram.v1.EngramService.MigrateStatus:output_type -> engram.v1.MigrateStatusResponse
-	19, // 47: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
-	22, // 48: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
-	24, // 49: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
-	26, // 50: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
-	28, // 51: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
-	30, // 52: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
-	33, // 53: engram.v1.EngramService.ArchiveMemory:output_type -> engram.v1.ArchiveMemoryResponse
-	35, // 54: engram.v1.EngramService.RestoreMemory:output_type -> engram.v1.RestoreMemoryResponse
-	37, // 55: engram.v1.EngramService.SupersedeMemory:output_type -> engram.v1.SupersedeMemoryResponse
-	41, // [41:56] is the sub-list for method output_type
-	26, // [26:41] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	2,  // 26: engram.v1.ListScheduledResponse.memories:type_name -> engram.v1.Memory
+	4,  // 27: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
+	6,  // 28: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
+	9,  // 29: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
+	11, // 30: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
+	13, // 31: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
+	16, // 32: engram.v1.EngramService.MigrateStatus:input_type -> engram.v1.MigrateStatusRequest
+	18, // 33: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
+	21, // 34: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
+	23, // 35: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
+	25, // 36: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
+	27, // 37: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
+	29, // 38: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
+	32, // 39: engram.v1.EngramService.ArchiveMemory:input_type -> engram.v1.ArchiveMemoryRequest
+	34, // 40: engram.v1.EngramService.RestoreMemory:input_type -> engram.v1.RestoreMemoryRequest
+	36, // 41: engram.v1.EngramService.SupersedeMemory:input_type -> engram.v1.SupersedeMemoryRequest
+	38, // 42: engram.v1.EngramService.ListScheduled:input_type -> engram.v1.ListScheduledRequest
+	5,  // 43: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
+	7,  // 44: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
+	10, // 45: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
+	12, // 46: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
+	14, // 47: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
+	17, // 48: engram.v1.EngramService.MigrateStatus:output_type -> engram.v1.MigrateStatusResponse
+	19, // 49: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
+	22, // 50: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
+	24, // 51: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
+	26, // 52: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
+	28, // 53: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
+	30, // 54: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
+	33, // 55: engram.v1.EngramService.ArchiveMemory:output_type -> engram.v1.ArchiveMemoryResponse
+	35, // 56: engram.v1.EngramService.RestoreMemory:output_type -> engram.v1.RestoreMemoryResponse
+	37, // 57: engram.v1.EngramService.SupersedeMemory:output_type -> engram.v1.SupersedeMemoryResponse
+	39, // 58: engram.v1.EngramService.ListScheduled:output_type -> engram.v1.ListScheduledResponse
+	43, // [43:59] is the sub-list for method output_type
+	27, // [27:43] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_engram_v1_engram_proto_init() }
@@ -3448,7 +3652,7 @@ func file_engram_v1_engram_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_engram_v1_engram_proto_rawDesc), len(file_engram_v1_engram_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   36,
+			NumMessages:   38,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

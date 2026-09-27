@@ -980,12 +980,19 @@ type listArgs struct {
 
 type listScheduledArgs struct {
 	// Scope carries omitempty (D-06a); its presence check runs in
-	// deps.listScheduled, first.
-	Scope         string `json:"scope,omitempty" jsonschema:"the scope to list scheduled/expired memories from"`
+	// deps.listScheduled, first, via effectiveSearchScope (plan 03-03, D-11:
+	// scope is now required unless cross_spine).
+	Scope         string `json:"scope,omitempty" jsonschema:"the scope to list scheduled/expired memories from; required unless cross_spine"`
 	State         string `json:"state,omitempty" jsonschema:"scheduled (default, not yet active) | expired | all"`
 	Limit         uint64 `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 	CreatedAfter  string `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
 	CreatedBefore string `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
+	// CrossSpine and Cursor are additive (plan 03-03, D-11): CrossSpine lists
+	// across every scope the caller may read (still only their own records —
+	// ListScheduled stays owner-only even when it spans every scope);
+	// Cursor pages through the result via the returned next_cursor.
+	CrossSpine bool   `json:"cross_spine,omitempty" jsonschema:"list across every scope (still only your own records; ignores scope)"`
+	Cursor     string `json:"cursor,omitempty" jsonschema:"opaque pagination cursor from a prior next_cursor; omit for the first page"`
 }
 
 type idArgs struct {
@@ -1892,25 +1899,36 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 	}, nil
 }
 
-func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs) ([]store.Memory, error) {
-	// D-06a: Scope carries omitempty now; this is the sole remaining guard
-	// (list_scheduled has no Connect RPC — MCP-only).
-	if a.Scope == "" {
-		return nil, argErrf(classMalformed, HintRequired, "scope", "scope is required")
+// coreScheduledResult is deps.listScheduled's transport-neutral return shape
+// (plan 03-03, D-11): Memories plus the opaque NextCursor both the Connect
+// ListScheduled handler and the MCP list_scheduled closure surface under
+// their own field names (next_page_token / next_cursor).
+type coreScheduledResult struct {
+	Memories   []store.Memory
+	NextCursor string
+}
+
+func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs) (coreScheduledResult, error) {
+	// D-11: scope is now required unless cross_spine — replaces the old
+	// unconditional required-scope check with the same conditional-rule
+	// envelope search_memory/list_memory already use.
+	scope, err := effectiveSearchScope(a.Scope, a.CrossSpine)
+	if err != nil {
+		return coreScheduledResult{}, err
 	}
 	if err := rejectOverMaximumCount("limit", a.Limit); err != nil {
-		return nil, err
+		return coreScheduledResult{}, err
 	}
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
 	after, err := parseRFC3339(a.CreatedAfter)
 	if err != nil {
-		return nil, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
+		return coreScheduledResult{}, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
 	}
 	before, err := parseRFC3339(a.CreatedBefore)
 	if err != nil {
-		return nil, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
+		return coreScheduledResult{}, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
 	}
 	var state store.ScheduledState
 	switch a.State {
@@ -1921,10 +1939,14 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 	case "all":
 		state = store.ScheduledAll
 	default:
-		return nil, argErrf(classMalformed, HintEnum, "state", "state must be one of scheduled|expired|all")
+		return coreScheduledResult{}, argErrf(classMalformed, HintEnum, "state", "state must be one of scheduled|expired|all")
 	}
-	return d.st.ListScheduled(ctx, a.Scope, c.Subj, state,
-		store.ListOptions{Limit: a.Limit, CreatedAfter: after, CreatedBefore: before})
+	mems, next, err := d.st.ListScheduled(ctx, scope, c.Subj, state,
+		store.ListOptions{Limit: a.Limit, CreatedAfter: after, CreatedBefore: before, Cursor: a.Cursor})
+	if err != nil {
+		return coreScheduledResult{}, err
+	}
+	return coreScheduledResult{Memories: mems, NextCursor: next}, nil
 }
 
 // searchMemory runs the shared rerank search on the transport-neutral typed
@@ -2963,14 +2985,19 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return nil, result, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory.", Annotations: annotationsFor("list_scheduled")},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory. " + scopeRule.Sentence + "; `cross_spine=true` lists across every scope (still only your own records — ListScheduled stays owner-only; ignores `scope` if supplied), reporting searched_scopes/scopes_truncated (or scopes_unknown). `cursor` pages through results using the returned next_cursor (empty means the last page).", Annotations: annotationsFor("list_scheduled")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listScheduledArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			mems, err := d.listScheduled(ctx, c, a)
-			return nil, map[string]any{"memories": mems}, err
+			res, err := d.listScheduled(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			cov := d.searchedScopes(ctx, c, a.CrossSpine)
+			result := recallResultMap(map[string]any{"memories": res.Memories, "next_cursor": res.NextCursor}, a.CrossSpine, cov)
+			return nil, result, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns every state recall hides — scheduled (not-yet-active), expired, superseded, and archived records too. The id may be the full UUID or the short_id.", Annotations: annotationsFor("get_memory")},

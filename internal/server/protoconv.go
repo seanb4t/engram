@@ -287,3 +287,19 @@ func archiveResultsToProto(rs []archiveResult) []*engramv1.ArchiveResult {
 	}
 	return out
 }
+
+// listScheduledRequestToArgs maps ListScheduledRequest onto listScheduledArgs
+// (plan 03-03, D-11) — Scope/State/Limit/CreatedAfter/CreatedBefore mirror
+// the pre-existing MCP fields; CrossSpine and Cursor (from PageToken) are the
+// widened fields shared with the Connect ListMemories precedent.
+func listScheduledRequestToArgs(req *engramv1.ListScheduledRequest) listScheduledArgs {
+	return listScheduledArgs{
+		Scope:         req.GetScope(),
+		State:         req.GetState(),
+		Limit:         req.GetLimit(),
+		CreatedAfter:  req.GetCreatedAfter(),
+		CreatedBefore: req.GetCreatedBefore(),
+		CrossSpine:    req.GetCrossSpine(),
+		Cursor:        req.GetPageToken(),
+	}
+}

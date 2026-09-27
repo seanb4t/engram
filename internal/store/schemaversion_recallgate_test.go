@@ -518,7 +518,7 @@ var recallTransmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.scrollOrderedPage",
-		justification: "Emits Scroll (orderedpage.go), its own transmission. Reachable from the List seeds as of plan 04-02: Store.List's offset mode (via collectOrderedPages) and its cursor mode (via listByCursor) both compose this shared primitive instead of issuing a Scroll of their own (03-INVENTORY closing check (d)). Reachable from the ListScheduled seed as of plan 04-03: ListScheduled (via collectOrderedPages) now composes this same shared primitive instead of issuing a Scroll of its own, so it no longer has a classification row of its own below. Serves List's offset-mode and cursor-mode paths, and ListScheduled's single assembled page.",
+		justification: "Emits Scroll (orderedpage.go), its own transmission. Reachable from the List seeds as of plan 04-02: Store.List's offset mode (via collectOrderedPages) and its cursor mode (via listByCursor) both compose this shared primitive instead of issuing a Scroll of their own (03-INVENTORY closing check (d)). Reachable from the ListScheduled seed as of plan 04-03: ListScheduled (via collectOrderedPages) now composes this same shared primitive instead of issuing a Scroll of its own, so it no longer has a classification row of its own below. Serves List's offset-mode and cursor-mode paths, and — as of plan 03-03 (D-11) — ListScheduled's own cursor-resumed, all-scopes-capable assembled page.",
 	},
 	{
 		enclosingFunc: "Store.ListScopes",
@@ -1192,7 +1192,7 @@ var recallInvocationRows = []recallInvocationRow{
 		expectCount: 1, expectMethods: []string{"Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
-			if _, err := s.ListScheduled(ctx, recallGateScope, recallGateAnonymousSubject, ScheduledPending, ListOptions{}); err != nil {
+			if _, _, err := s.ListScheduled(ctx, recallGateScope, recallGateAnonymousSubject, ScheduledPending, ListOptions{}); err != nil {
 				t.Fatalf("ListScheduled(anonymous): %v", err)
 			}
 		},
@@ -1202,7 +1202,7 @@ var recallInvocationRows = []recallInvocationRow{
 		expectCount: 1, expectMethods: []string{"Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
-			if _, err := s.ListScheduled(ctx, recallGateScope, recallGateOwnerSubject, ScheduledPending, ListOptions{}); err != nil {
+			if _, _, err := s.ListScheduled(ctx, recallGateScope, recallGateOwnerSubject, ScheduledPending, ListOptions{}); err != nil {
 				t.Fatalf("ListScheduled(owner): %v", err)
 			}
 		},

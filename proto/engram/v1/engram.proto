@@ -502,6 +502,36 @@ message SupersedeMemoryResponse {
   repeated Memory targets = 5;
 }
 
+// ListScheduledRequest widens list_scheduled's contract onto Connect (plan
+// 03-03, D-11): cross_spine and an opaque page_token/next_page_token join
+// the existing scope/state/limit/window fields. No buf.validate rule is
+// attached: the single shared server-side core validates, so both lanes
+// return the byte-identical field=/hint= rejection envelope (D-17/D-20).
+message ListScheduledRequest {
+  string scope = 1; // required unless cross_spine
+  string state = 2; // scheduled (default, not yet active) | expired | all
+  uint64 limit = 3; // 0 resolves to the page default 20; a larger value is rejected
+  string created_after = 4;  // RFC3339; inclusive lower bound on created_at
+  string created_before = 5; // RFC3339; exclusive upper bound on created_at
+  // cross_spine lists across every scope, still returning only the caller's
+  // own records, ignoring `scope` when true.
+  // engram:rule:start scope-required-unless-cross-spine
+  // scope is required unless cross_spine is true
+  // engram:rule:end scope-required-unless-cross-spine
+  bool cross_spine = 6;
+  string page_token = 7; // opaque cursor; when set, resumes from a prior next_page_token
+}
+message ListScheduledResponse {
+  repeated Memory memories = 1;
+  string next_page_token = 2; // empty when no further pages
+  // searched_scopes/scopes_truncated/scopes_unknown: see
+  // ListMemoriesResponse.searched_scopes; identical semantics, present only
+  // on a cross_spine request.
+  repeated string searched_scopes = 3;
+  bool scopes_truncated = 4;
+  bool scopes_unknown = 5;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
@@ -521,4 +551,6 @@ service EngramService {
   rpc RestoreMemory(RestoreMemoryRequest) returns (RestoreMemoryResponse);
   // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-02) ---
   rpc SupersedeMemory(SupersedeMemoryRequest) returns (SupersedeMemoryResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-03) ---
+  rpc ListScheduled(ListScheduledRequest) returns (ListScheduledResponse);
 }

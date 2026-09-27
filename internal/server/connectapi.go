@@ -585,6 +585,32 @@ func (a *engramAPI) SupersedeMemory(ctx context.Context, req *connect.Request[en
 	return connect.NewResponse(supersedeOutcomeToResponse(out, a.d.summaryMaxChars)), nil
 }
 
+// ListScheduled (plan 03-03, D-11) delegates to the SAME d.listScheduled
+// core the list_scheduled MCP tool calls, mapping the request via
+// listScheduledRequestToArgs and any error via connectError — the same
+// thin-adapter shape as every other RPC in this file. Coverage comes from
+// the one searchedScopes helper every cross-spine surface uses, exactly like
+// ListMemories above. Records are returned in full (no full/summary knob —
+// no surface exposes one for this method, 04-RESEARCH.md Pitfall 6).
+func (a *engramAPI) ListScheduled(ctx context.Context, req *connect.Request[engramv1.ListScheduledRequest]) (*connect.Response[engramv1.ListScheduledResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	res, err := a.d.listScheduled(ctx, c, listScheduledRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	cov := a.d.searchedScopes(ctx, c, req.Msg.GetCrossSpine())
+	return connect.NewResponse(&engramv1.ListScheduledResponse{
+		Memories:        memoriesToProto(res.Memories),
+		NextPageToken:   res.NextCursor,
+		SearchedScopes:  cov.Scopes,
+		ScopesTruncated: cov.Truncated,
+		ScopesUnknown:   cov.Unknown,
+	}), nil
+}
+
 // connectResolver supplies the per-request identity TokenInfo for the
 // Connect lane, plus WHICH credential family authenticated it (auth.Lane,
 // D-07). NewConnectResolver composes the bearer half and the webauth

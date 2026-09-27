@@ -1716,25 +1716,29 @@ func (s *Store) walkOffsetPrefix(ctx context.Context, f *qdrant.Filter, dir qdra
 // Scroll's error path did before this change. Callers of this loop are
 // bounded by COUNT alone — at most MaxRecallLimit times the view's
 // per-record ceiling for any offset-mode List call — never by
-// pageByteBudget. Only items and err are returned: neither of this plan's
-// two callers (Store.List's offset mode, Store.ListScheduled) needs the
-// resume cursor or the exhaustion flag scrollOrderedPage's own page
-// contract already tracks internally — a genuine exhaustion before `want`
-// is reached simply yields fewer than `want` items, never an error.
-func (s *Store) collectOrderedPages(ctx context.Context, f *qdrant.Filter, view readView, dir qdrant.Direction, from listCursor, want uint64) (items []Memory, err error) {
-	next := from
+// pageByteBudget.
+//
+// next and exhausted are the last page's Next/Exhausted (plan 03-03, D-11):
+// exhausted is true also when zero items were found, so a caller can tell
+// "nothing left" apart from "stopped early for another reason" without
+// re-deriving it from len(items). Store.List's offset-mode caller discards
+// both (its own resume mechanics are unrelated); Store.ListScheduled uses
+// both to support cursor resume across scopes.
+func (s *Store) collectOrderedPages(ctx context.Context, f *qdrant.Filter, view readView, dir qdrant.Direction, from listCursor, want uint64) (items []Memory, next listCursor, exhausted bool, err error) {
+	next = from
 	for uint64(len(items)) < want {
 		page, pErr := s.scrollOrderedPage(ctx, f, view, dir, next, want-uint64(len(items)))
 		if pErr != nil {
-			return nil, pErr
+			return nil, listCursor{}, false, pErr
 		}
 		items = append(items, page.Items...)
 		next = page.Next
+		exhausted = page.Exhausted
 		if page.Exhausted {
 			break
 		}
 	}
-	return items, nil
+	return items, next, exhausted, nil
 }
 
 // List returns a CreatedAt-ordered page of the caller's readable records in scope
@@ -1849,7 +1853,7 @@ func (s *Store) List(ctx context.Context, scope string, subj Subject, opts ListO
 		return []Memory{}, total, "", nil
 	}
 	view := s.recallView(opts.Full)
-	items, err = s.collectOrderedPages(ctx, f, view, dir, from, effectiveLimit)
+	items, _, _, err = s.collectOrderedPages(ctx, f, view, dir, from, effectiveLimit)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -1970,9 +1974,20 @@ func scheduledStateCondition(state ScheduledState, now time.Time) *qdrant.Condit
 // full/summary knob — it always reads s.fullView(), exactly as before this
 // change — because no surface exposes one for this method (04-RESEARCH.md
 // Pitfall 6). opts.Offset is ignored — paginates by Limit alone.
-func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, err error) {
+//
+// An empty scope spans EVERY scope the caller may read while staying
+// owner-only (plan 03-03, D-11): the scope Match condition is simply omitted
+// from the filter when scope is "" — the owner-only condition, the state
+// clause, and both soft-hide conditions stay unconditional, so another
+// actor's shared scheduled/expired record in any scope stays invisible
+// (deferred reveal preserved, milestone 2026-09-25.01 Phase 3 D-11). Resumes
+// from a non-empty opts.Cursor exactly as List's cursor mode does (decoded
+// via decodeCursor, rejected as ErrInvalidArgument when malformed or when
+// its Seen set exceeds MaxRecallLimit); nextCursor is "" once the primitive
+// reports exhaustion, else encodeCursor(next of the last page).
+func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, state ScheduledState, opts ListOptions) (items []Memory, nextCursor string, err error) {
 	if !state.valid() {
-		return nil, fmt.Errorf("invalid scheduled state %q (want scheduled|expired|all)", state)
+		return nil, "", fmt.Errorf("invalid scheduled state %q (want scheduled|expired|all)", state)
 	}
 	ctx, span := tracer.Start(ctx, "store.ListScheduled", trace.WithAttributes(
 		attribute.String("engram.scope", scope),
@@ -1995,14 +2010,17 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 	// zero limit still means twenty) and before any filter construction or
 	// RPC.
 	if err := rejectOverMaximum("limit", opts.Limit); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	limit := opts.Limit
 	if limit == 0 {
 		limit = 20
 	}
-	f := &qdrant.Filter{Must: []*qdrant.Condition{
-		qdrant.NewMatch("scope", scope),
+	must := make([]*qdrant.Condition, 0, 5)
+	if scope != "" {
+		must = append(must, qdrant.NewMatch("scope", scope))
+	}
+	must = append(must,
 		s.ownerOnlyCondition(ctx, subj),
 		scheduledStateCondition(state, s.now()),
 		// Soft-hide superseded scheduled records from the management view
@@ -2014,15 +2032,34 @@ func (s *Store) ListScheduled(ctx context.Context, scope string, subj Subject, s
 		// archived and superseded are independently observable states.
 		// get_memory stays ungated.
 		qdrant.NewIsEmpty("archived_at"),
-	}}
+	)
+	f := &qdrant.Filter{Must: must}
 	if c := createdRangeCondition(opts.CreatedAfter, opts.CreatedBefore); c != nil {
 		f.Must = append(f.Must, c)
 	}
-	items, err = s.collectOrderedPages(ctx, f, s.fullView(), qdrant.Direction_Desc, listCursor{}, limit)
-	if err != nil {
-		return nil, err
+
+	var from listCursor
+	if opts.Cursor != "" {
+		c, cErr := decodeCursor(opts.Cursor)
+		if cErr != nil {
+			return nil, "", fmt.Errorf("list scheduled cursor: %w: %w", cErr, ErrInvalidArgument)
+		}
+		if len(c.Seen) > MaxRecallLimit {
+			return nil, "", fmt.Errorf("list scheduled cursor: seen set too large: %w", ErrInvalidArgument)
+		}
+		from = c
 	}
-	return items, nil
+
+	var next listCursor
+	var exhausted bool
+	items, next, exhausted, err = s.collectOrderedPages(ctx, f, s.fullView(), qdrant.Direction_Desc, from, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	if exhausted {
+		return items, "", nil
+	}
+	return items, encodeCursor(next), nil
 }
 
 // ScopeCount is a scope plus the number of records in it the caller can read.

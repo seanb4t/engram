@@ -193,8 +193,12 @@ func TestSchemaRequiredMovedToGoLevel(t *testing.T) {
 			return err
 		}},
 
-		// listScheduledArgs.Scope — deps.listScheduled, MCP-only.
-		{"listScheduledArgs.Scope", "scope", HintRequired, func() error {
+		// listScheduledArgs.Scope — deps.listScheduled, MCP-only. Scope is now
+		// conditionally required (plan 03-03, D-11): effectiveSearchScope
+		// rejects via HintConditionalRequired, naming both "scope" and
+		// "cross_spine" (mirroring effectiveSearchScope/effectiveDiscoveryScope's
+		// own rows), not HintRequired.
+		{"listScheduledArgs.Scope", "scope", HintConditionalRequired, func() error {
 			d := &deps{}
 			_, err := d.listScheduled(ctx, c, listScheduledArgs{Scope: ""})
 			return err

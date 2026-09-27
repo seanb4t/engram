@@ -252,17 +252,24 @@ by `offset` or `page_token` rather than relying on the default.
 ## list_scheduled
 
 List your windowed memories the recall gate is hiding. Active windowed records
-surface via `list_memory`/`search_memory`, not here.
+surface via `list_memory`/`search_memory`, not here. ListScheduled stays
+owner-only even when `cross_spine` spans every scope — another actor's shared
+scheduled or expired record never appears here (deferred reveal).
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `scope` | string | yes | The scope to list scheduled/expired memories from |
+| `scope` | string | required unless `cross_spine` | The scope to list scheduled/expired memories from |
 | `state` | string | no | `scheduled` (default, not yet active), `expired`, or `all` |
 | `limit` | uint64 | no | Maximum memories to return; 0 resolves to this tool's default, 20; values above 1000 (the maximum) are rejected (`field=limit hint=out_of_range`) |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
+| `cross_spine` | bool | no | List across every scope the caller can read (still only the caller's own records; ignores `scope` if supplied) |
+| `cursor` | string | no | Opaque pagination cursor from a prior `next_cursor`; omit for the first page |
 
-Returns `{ "memories": [...] }`, the matching hidden windowed records.
+Returns `{ "memories": [...], "next_cursor": "..." }`, the matching hidden
+windowed records and an opaque token for the next page (empty when this is
+the last page). A `cross_spine` call additionally carries `searched_scopes`/
+`scopes_truncated` (or `scopes_unknown`) — see `list_memory` above.
 The result is returned as structured content and, per MCP 2026-07-28, also as
 the same JSON in a text block.
 

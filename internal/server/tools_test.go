@@ -5142,12 +5142,12 @@ func TestListScheduledTool(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
 
-	got, err := d.listScheduled(ctx, callerFor(ctx, t), listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
+	res, err := d.listScheduled(ctx, callerFor(ctx, t), listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
 	if err != nil {
 		t.Fatalf("list_scheduled: %v", err)
 	}
 	found := false
-	for _, m := range got {
+	for _, m := range res.Memories {
 		if m.ID == id {
 			found = true
 		}
