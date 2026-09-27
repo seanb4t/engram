@@ -273,17 +273,20 @@ func mintFixtureMarker(t *testing.T) string {
 // an MCP-written record lands in the owner=="" bucket and would be invisible
 // to the console (verified_facts item 5).
 //
-// The write lane requires the CSRF cookie AND header to be present, equal,
-// and verifiable (verified_facts item 6); both are set here. A non-empty
-// response id is asserted so a silently-degraded write cannot leave the
-// render assertion below to fail later for the wrong reason.
-func seedFixtureRecord(ctx context.Context, t *testing.T, fixture *consoleFixture, marker string) {
+// scope is caller-supplied (generalized in plan 04-12 so every chromedp test
+// can seed under its own scope, per DSYS-04 ordering — no shared scope, no
+// dependence on another test's state). The write lane requires the CSRF
+// cookie AND header to be present, equal, and verifiable (verified_facts item
+// 6); both are set here. A non-empty response id is asserted so a
+// silently-degraded write cannot leave the render assertion below to fail
+// later for the wrong reason. Returns the stored id and short_id.
+func seedFixtureRecord(ctx context.Context, t *testing.T, fixture *consoleFixture, scope, marker string) (id, shortID string) {
 	t.Helper()
 	client := engramv1connect.NewEngramServiceClient(http.DefaultClient, fixture.srv.baseURL())
 
 	req := connect.NewRequest(&engramv1.StoreMemoryRequest{
 		Content:  "e2e console round-trip fixture record",
-		Scope:    fixtureScope,
+		Scope:    scope,
 		Source:   "agent-inferred",
 		Category: "convention",
 		Summary:  marker,
@@ -298,6 +301,28 @@ func seedFixtureRecord(ctx context.Context, t *testing.T, fixture *consoleFixtur
 	if resp.Msg.GetId() == "" {
 		t.Fatal("seed fixture record: response carried an empty id")
 	}
+	return resp.Msg.GetId(), resp.Msg.GetShortId()
+}
+
+// getMemoryAsFixture fetches a memory by id through the Connect API using the
+// SAME cookie-authenticated identity the browser session carries (GetMemory
+// is a read: no CSRF header is required, mirroring the memory contract's
+// write-only CSRF gate).
+func getMemoryAsFixture(ctx context.Context, t *testing.T, fixture *consoleFixture, id string) *engramv1.Memory {
+	t.Helper()
+	client := engramv1connect.NewEngramServiceClient(http.DefaultClient, fixture.srv.baseURL())
+
+	req := connect.NewRequest(&engramv1.GetMemoryRequest{Id: id})
+	req.Header().Set("Cookie", consoleCookieHeader(fixture))
+
+	resp, err := client.GetMemory(ctx, req)
+	if err != nil {
+		t.Fatalf("get memory %s: %v", id, err)
+	}
+	if resp.Msg.GetMemory() == nil {
+		t.Fatalf("get memory %s: response carried a nil memory", id)
+	}
+	return resp.Msg.GetMemory()
 }
 
 // consoleCookieHeader renders the sealed session cookie and the CSRF cookie
@@ -330,6 +355,18 @@ const hydrationPollExpr = `(() => {
 func markerPollExpr(marker string) string {
 	markerJSON, _ := json.Marshal(marker)
 	return fmt.Sprintf(`(() => document.body.innerText.includes(%s))()`, markerJSON)
+}
+
+// uiTextPollExpr is satisfied once text is visible in the live rendered
+// page. Unlike markerPollExpr, text is ordinary UI copy (a dialog heading, a
+// result line) that legitimately ships inside the bundle itself — this only
+// proves the browser rendered that exact string right now (a dialog opened,
+// a mutation's result rendered), never a round trip through the server on
+// its own; the Connect assertions alongside each use of this poll are what
+// prove the round trip.
+func uiTextPollExpr(text string) string {
+	textJSON, _ := json.Marshal(text)
+	return fmt.Sprintf(`(() => document.body.innerText.includes(%s))()`, textJSON)
 }
 
 // rootRoutePollExpr is satisfied ONLY once BOTH the root route's scope tiles
@@ -374,7 +411,7 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	fixture := startConsoleServer(t)
 
 	marker := mintFixtureMarker(t)
-	seedFixtureRecord(context.Background(), t, fixture, marker) // BEFORE navigation, so the record exists when the SPA's first listMemories fires.
+	seedFixtureRecord(context.Background(), t, fixture, fixtureScope, marker) // BEFORE navigation, so the record exists when the SPA's first listMemories fires.
 
 	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
 		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
@@ -640,4 +677,140 @@ func sweepConsoleAssets(t *testing.T, baseURL string) {
 	if len(offenders) > 0 {
 		t.Fatalf("stale or missing immutable asset references: %v", offenders)
 	}
+}
+
+// archiveScope is TestConsoleArchiveUndoRoundTrip's own scope — a fresh
+// marker under a scope no other chromedp test writes to, per DSYS-04
+// ordering: no shared state, no dependence on another test's execution
+// order.
+const archiveScope = "repo:e2e-console-archive"
+
+// TestConsoleArchiveUndoRoundTrip drives a REAL headless Chrome against the
+// REAL engram binary and Qdrant (D-18): archives a seeded record through the
+// listbox's `a` keyboard shortcut and ArchiveConfirmDialog's confirm button,
+// confirms the server agrees (GetMemory.ArchivedAt set for the SAME id),
+// then undoes it through the same dialog's "Undo — restore N" action
+// (ArchiveConfirmDialog's D-09 result-body undo surface) and confirms the
+// server agrees again (ArchivedAt cleared).
+func TestConsoleArchiveUndoRoundTrip(t *testing.T) {
+	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
+	fixture := startConsoleServer(t)
+
+	marker := mintFixtureMarker(t)
+	id, _ := seedFixtureRecord(context.Background(), t, fixture, archiveScope, marker) // BEFORE navigation, so the record exists when the SPA's first search fires.
+
+	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
+		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
+		chromedp.ExecPath(chromePath),
+	)
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	t.Cleanup(allocCancel)
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	t.Cleanup(browserCancel)
+
+	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
+	defer runCancel()
+
+	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
+		return setConsoleCookies(ctx, fixture)
+	})
+
+	obs := newBrowserObserver()
+	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
+
+	scopeURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("scope:"+archiveScope)
+	var rendered bool
+	navErr := chromedp.Run(runCtx,
+		setCookies,
+		chromedp.Navigate(scopeURL),
+		chromedp.Poll(markerPollExpr(marker), &rendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	)
+	if navErr != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("scoped render wait failed: %v", navErr)
+	}
+	if !rendered {
+		t.Fatal("scoped render poll returned without error but rendered=false")
+	}
+
+	// Focus the listbox so its own keydown model (ResultsList.svelte) sees
+	// the 'a' key rather than a browser-native scroll/no-op.
+	if err := chromedp.Run(runCtx, chromedp.Focus(`[role="listbox"]`, chromedp.ByQuery)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("focus listbox: %v", err)
+	}
+	if err := chromedp.Run(runCtx, chromedp.KeyEvent("a")); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("send 'a' key: %v", err)
+	}
+
+	var dialogShown bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("Archive 1 records?"), &dialogShown,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("archive confirm dialog wait failed: %v", err)
+	}
+	if !dialogShown {
+		t.Fatal("archive confirm dialog poll returned without error but dialogShown=false")
+	}
+
+	// Scoped to role="dialog" so this can never match RowActions' own
+	// per-row "Archive" button or the bulk bar's "Archive <Kbd>a</Kbd>"
+	// button, neither of which lives inside the dialog's DOM subtree.
+	if err := chromedp.Run(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Archive"]`, chromedp.BySearch)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("click Archive: %v", err)
+	}
+
+	var archived bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("✓ 1 archived"), &archived,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("archive result wait failed: %v", err)
+	}
+	if !archived {
+		t.Fatal("archive result poll returned without error but archived=false")
+	}
+
+	afterArchive := getMemoryAsFixture(context.Background(), t, fixture, id)
+	if afterArchive.GetId() != id {
+		t.Fatalf("archive result: fetched wrong record, got id %q want %q", afterArchive.GetId(), id)
+	}
+	if afterArchive.GetArchivedAt() == nil {
+		t.Fatalf("archive result: ArchivedAt is nil for %s after archiving through the console", id)
+	}
+
+	if err := chromedp.Run(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Undo — restore 1"]`, chromedp.BySearch)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("click Undo: %v", err)
+	}
+
+	var restored bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("✓ 1 restored"), &restored,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("restore result wait failed: %v", err)
+	}
+	if !restored {
+		t.Fatal("restore result poll returned without error but restored=false")
+	}
+
+	afterRestore := getMemoryAsFixture(context.Background(), t, fixture, id)
+	if afterRestore.GetId() != id {
+		t.Fatalf("restore result: fetched wrong record, got id %q want %q", afterRestore.GetId(), id)
+	}
+	if afterRestore.GetArchivedAt() != nil {
+		t.Fatalf("restore result: ArchivedAt is still set for %s after undo through the console", id)
+	}
+
+	obs.assertClean(t)
 }
