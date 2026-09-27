@@ -201,7 +201,7 @@ interface MemoryCacheCtx {
 // filter must be inspected for the set-visibility filtered-membership rule
 // below), applying `fn` to the matching record. `fn` returning null removes
 // the record from that cache entry.
-function applyToMemoryCaches(
+export function applyToMemoryCaches(
   queryClient: QueryClient,
   id: string,
   fn: (m: Memory, ctx: MemoryCacheCtx) => Memory | null
