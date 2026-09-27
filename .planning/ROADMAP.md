@@ -534,7 +534,7 @@ and end-to-end check.
   4. A resume round-trip test proves a draft on every new write surface (supersede, archive, rules, scheduled) survives an OIDC re-login
   5. A WCAG 2.2 keyboard/contrast audit and Web Interface Guidelines review pass, or findings are fixed or recorded, using the vetted third-party skills once `fable-security-review` clears them; the chromedp console e2e exercises entry-point resolution, a supersede, and an archive/restore round trip against a live server
 
-**Plans:** 4/12 plans executed
+**Plans:** 6/12 plans executed
 **UI hint**: yes
 
 Plans:
@@ -547,8 +547,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-05-PLAN.md — multi-select, curation keys, Esc tiers, check column, bulk bar, selection lifecycle, row flash and in-place patch for every list shape (D-01–D-04, D-10; CUR-02)
-- [ ] 04-06-PLAN.md — supersede dialog with validate_only preview, curation re-auth resume, pane Supersede/Chain, host registry (D-05–D-07, D-15, D-16; CUR-01, CUR-05)
+- [x] 04-05-PLAN.md — multi-select, curation keys, Esc tiers, check column, bulk bar, selection lifecycle, row flash and in-place patch for every list shape (D-01–D-04, D-10; CUR-02)
+- [x] 04-06-PLAN.md — supersede dialog with validate_only preview, curation re-auth resume, pane Supersede/Chain, host registry (D-05–D-07, D-15, D-16; CUR-01, CUR-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
