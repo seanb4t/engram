@@ -650,6 +650,10 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **STORE-01** — owner-gated `Store.ArchiveAs`/`RestoreAs` on a distinct Cedar `ActionArchive` via `getWritable`, sharing the subject-less core so `spine-review archive`/`restore` is unchanged; concurrent calls serialize under the per-id lock — 2026-09-25.01 Phase 1
 - ✓ **STORE-02** — `Store.RelatedMemories` returns supersession, citation, rarity-weighted tag and read-filtered vector edges, one entry per candidate, admitted by fixed type order (never a blended score), capped at 64 — 2026-09-25.01 Phase 1
 - ✓ **STORE-03** — `Store.ListTags` returns exact recall-visible facet counts over a new `tags` keyword index under the caller's read filter, limit + `more`; the recall gate recognizes filtered `Facet` in all four lists — 2026-09-25.01 Phase 1
+- ✓ **ENTRY-01..06** — every console search box runs one shared UUID / short_id / text / operator classifier (UUID and short_id fetched by id, never sent as a query), free text defaults to `cross_spine`, the header dropdown is the server-driven palette (`shouldFilter={false}`), ⌘K is a command menu whose unfiltered hand-off row never reports "no matches" for unsearched text, results state what was searched (resolution path, hits, scopes, `scopes_truncated`/`scopes_unknown`, `recall_gate_hidden`), rejections render `field=/hint=`, and search state is URL-persisted, debounced and race-safe — 2026-09-25.01 Phase 2
+- ✓ **ROW-01..07** — dense fixed-height rows in a virtualized WAI-ARIA listbox (`@humanspeak/svelte-virtual-list`, role rewritten to `listbox`), 250ms overlay hover card that never moves the keyboard-active row, `j`/`k` traversal and row-action keys, `score` always and `relevance` only when reranked, URL-persisted facet chips, `ListScopes` scope combobox with counts, and a resizable stacked-section detail pane — 2026-09-25.01 Phase 2
+- ✓ **DSYS-01/02** — project-local `engram-console-conventions` and `engram-connect-client` skills record the console design facts and the Connect client contract — 2026-09-25.01 Phase 2
+- ✓ **Recall-gate hidden count** — additive `RecallGateHidden { total, archived, superseded, expired, scheduled }` on `SearchMemoriesResponse` (5) / `ListMemoriesResponse` (8), the MCP `search_memory`/`list_memory` results and the CLI footer; computed by a second gate-lifted `Store.Search`/`Store.List` call under the caller's own subject (MCP input schemas unchanged) — 2026-09-25.01 Phase 2
 
 ### Active
 
@@ -657,13 +661,13 @@ Milestone 2026-09-25.01 — Console Overhaul. Scoped in `REQUIREMENTS.md` (REQ-I
 `ROADMAP.md`; the Deferred list below remains the candidate pool for what this milestone does not
 absorb.
 
-- [ ] Honest unified search entry (id / short_id / text; cross-spine default; server-driven palette)
-- [ ] Dense hover-expand results row, detail pane, keyboard traversal, score/relevance, facets
+- [x] Honest unified search entry (id / short_id / text; cross-spine default; server-driven palette) — Phase 2
+- [x] Dense hover-expand results row, detail pane, keyboard traversal, score/relevance, facets — Phase 2
 - [ ] Connect RPCs: SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags
 - [ ] Curation surfaces: supersede, archive/restore, rules and scheduled views
 - [ ] Related-memories graph, tag cloud, scope autocomplete
 - [ ] Natural-language query understanding as advisory, user-confirmed filter chips
-- [ ] Console conventions + Connect client skills; vetted design/a11y skills
+- [ ] Console conventions + Connect client skills (done, Phase 2); vetted design/a11y skills (Phase 4, DSYS-03)
 
 ### Deferred (carry-forward for next milestone)
 
@@ -1095,4 +1099,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-26 after 2026-09-25.01 Phase 1*
+*Last updated: 2026-09-26 after 2026-09-25.01 Phase 2*
