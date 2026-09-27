@@ -2,7 +2,7 @@
 
 - `internal/keylinks` `TestNoEscapedPatternsRepoWide` fails against a pre-existing
   key_links pattern in a sibling plan file, not touched by 03-01's execution
-  status: open
+  status: resolved (orchestrator, post-wave-1 gate: pattern re-quoted to single-quoted YAML)
   **What:** `03-04-PLAN.md:65` declares a `key_links` pattern with an escaped
   quote shape (`d[.]st[.]List[(]ctx, \"\", c[.]Subj`) that the gate flags as
   `shape=escaping`, with the fix `d[.]st[.]List[(]ctx, "", c[.]Subj`.
