@@ -506,6 +506,7 @@
     busy={headerBusy}
     selection={{
       count: selectedIds.length,
+      onsupersede: () => curation?.openSupersede(selectedIds),
       onarchive: () => curation?.openArchive(selectedIds),
       onrestore: () => curation?.openRestore(selectedIds),
       onclear: () => (selectedIds = [])
@@ -561,6 +562,7 @@
             selectable
             bind:selectedIds
             selectionKey={encodeSearchParams({ ...params, k: DEFAULT_K, sel: '' })}
+            onsupersede={(ids) => curation?.openSupersede(ids)}
             onarchive={(ids) => curation?.openArchive(ids)}
             onrestore={(ids) => curation?.openRestore(ids)}
           />
@@ -587,6 +589,7 @@
               ? writeSurfaces?.requestMakePrivate(m, 'memory')
               : writeSurfaces?.requestShare(m, 'memory')}
           ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
+          onsupersede={(id) => curation?.openSupersede([id])}
           onarchive={(id) => curation?.openArchive([id])}
           onrestore={(id) => curation?.openRestore([id])}
         />

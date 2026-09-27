@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { MemorySchema, ArchiveOutcome, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, ArchiveOutcome, type Memory, type SupersedeMemoryRequest } from '$lib/gen/engram_pb';
 import { persistResume } from '$lib/resume';
 import SearchPage from './+page.svelte';
 
@@ -22,7 +22,8 @@ const {
   listMemoriesSpy,
   consumeResumeSpy,
   archiveMemorySpy,
-  restoreMemorySpy
+  restoreMemorySpy,
+  supersedeMemorySpy
 } = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/search');
@@ -40,7 +41,8 @@ const {
     listMemoriesSpy: vi.fn(),
     consumeResumeSpy: vi.fn(),
     archiveMemorySpy: vi.fn(),
-    restoreMemorySpy: vi.fn()
+    restoreMemorySpy: vi.fn(),
+    supersedeMemorySpy: vi.fn()
   };
 });
 
@@ -62,7 +64,8 @@ vi.mock('$lib/client', async (importOriginal) => {
     engramWrite: {
       ...actual.engramWrite,
       archiveMemory: archiveMemorySpy,
-      restoreMemory: restoreMemorySpy
+      restoreMemory: restoreMemorySpy,
+      supersedeMemory: supersedeMemorySpy
     }
   };
 });
@@ -116,6 +119,7 @@ beforeEach(() => {
   consumeResumeSpy.mockReset();
   archiveMemorySpy.mockReset();
   restoreMemorySpy.mockReset();
+  supersedeMemorySpy.mockReset();
   sessionStorage.clear();
   pageState.url.href = 'http://localhost/search';
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -859,5 +863,72 @@ describe('search route — selection lifecycle (D-04)', () => {
 
     expect(pageState.url.toString()).not.toContain('m1');
     expect(pageState.url.searchParams.has('sel')).toBe(false);
+  });
+});
+
+describe('search route — supersede with ⇧S (CUR-01 tracer)', () => {
+  it('selects m1 and m2, ⇧S opens the supersede dialog, commits once, and both rows dim in place as superseded', async () => {
+    pageState.url.href = 'http://localhost/search?q=github';
+    const m1 = makeMemory({ id: 'm1', shortId: 'S0000000001', summary: 'hit one', content: 'full content one' });
+    const m2 = makeMemory({ id: 'm2', shortId: 'S0000000002', summary: 'hit two', content: 'full content two' });
+    searchMemoriesSpy.mockResolvedValue({
+      memories: [m1, m2],
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    getMemorySpy.mockImplementation(async ({ id }: { id: string }) => {
+      if (id === 'm1') return { memory: m1 };
+      if (id === 'm2') return { memory: m2 };
+      return { memory: undefined };
+    });
+    supersedeMemorySpy.mockImplementation(async (req: SupersedeMemoryRequest) => {
+      if (req.validateOnly) {
+        return { id: '', shortId: '', validated: true, supersedes: ['m1', 'm2'], targets: [] };
+      }
+      return { id: 'n1', shortId: 'N1SHORT0001', validated: false, supersedes: [], targets: [] };
+    });
+
+    const screen = await renderSearch();
+    screen.container.style.width = '1200px';
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('hit one')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.rs-group') !== null).toBe(true);
+
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m1');
+
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('j');
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m2');
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('S');
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByText('Supersede 2 records into one')).toBeInTheDocument();
+    expect(supersedeMemorySpy.mock.calls.filter((c) => (c[0] as SupersedeMemoryRequest).validateOnly === false)).toHaveLength(0);
+
+    const submitBtn = screen.getByRole('button', { name: 'Supersede 2 → 1' });
+    await expect.element(submitBtn).not.toBeDisabled();
+
+    await submitBtn.click();
+
+    const commitCalls = () =>
+      supersedeMemorySpy.mock.calls.filter((c) => (c[0] as SupersedeMemoryRequest).validateOnly === false);
+    await expect.poll(() => commitCalls().length).toBe(1);
+    const commitReq = commitCalls()[0][0] as SupersedeMemoryRequest;
+    expect(commitReq.supersedes).toEqual(['m1', 'm2']);
+
+    await dialog.getByRole('button', { name: 'Done' }).click();
+
+    await expect.element(listbox.getByText('hit one')).toBeInTheDocument();
+    await expect.element(listbox.getByText('hit two')).toBeInTheDocument();
+    const rows = screen.container.querySelectorAll('[role="option"]');
+    expect(rows.length).toBe(2);
+    for (const row of rows) {
+      await expect.element(row.querySelector('.states')).toHaveTextContent('superseded');
+      expect(row.querySelector('.sum')?.classList.contains('dim')).toBe(true);
+    }
   });
 });
