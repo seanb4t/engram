@@ -165,7 +165,7 @@
     {#if tagOverflow > 0}<span class="tag more">+{tagOverflow}</span>{/if}
   </span>
   <span class="scope" class:dim={dimmed}>
-    {#if memory.scope}<ScopeChip scope={memory.scope} />{/if}
+    {#if memory.scope}<ScopeChip scope={memory.scope} dim={dimmed || active || opened} />{/if}
   </span>
   <span class="age">{when}</span>
   {#if trailing}
@@ -239,8 +239,20 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .cat.dim {
+  /* DSYS-03/D-17: opacity-dimmed text on the light background fell below
+     4.5:1 (verified by surfaces.browser.test.ts). The category dot is
+     decorative (non-text, exempt) and stays opacity-dimmed; the word swaps
+     to --muted-foreground instead, which meets 4.5:1 in both themes. A row
+     that is active/opened (background var(--selected)) needs the same
+     fallback even when NOT dim -- the raw category hues fail against that
+     tinted background too. */
+  .cat.dim .cat-dot {
     opacity: 0.5;
+  }
+  .active-row .cat .cat-word,
+  .opened-row .cat .cat-word,
+  .cat.dim .cat-word {
+    color: var(--muted-foreground);
   }
 
   .sum {
@@ -251,7 +263,7 @@
     min-width: 0;
   }
   .sum.dim {
-    opacity: 0.5;
+    color: var(--muted-foreground);
   }
   .sum code {
     font-family: var(--font-mono, monospace);
@@ -309,7 +321,7 @@
     overflow: hidden;
   }
   .tags.dim {
-    opacity: 0.5;
+    color: var(--muted-foreground);
   }
   .tag {
     flex: none;
@@ -328,9 +340,10 @@
     min-width: 0;
     overflow: hidden;
   }
-  .scope.dim {
-    opacity: 0.5;
-  }
+  /* DSYS-03/D-17: dimming is conveyed by ScopeChip's own `dim` prop (which
+     overrides its internal category-hued classes with --muted-foreground) --
+     opacity would blend the chip's already-marginal-on-light-backgrounds
+     colours further toward failure. This class stays as a markup hook. */
 
   .age {
     font-family: var(--font-mono, monospace);
