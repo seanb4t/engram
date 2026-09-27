@@ -251,7 +251,7 @@ lands on both lanes.
 ## Deferred Ideas
 
 - Client-tier CLI verbs for the new capabilities (`engram related`, `engram tags`, archive/restore
-  over Connect). Tracked as a GitHub issue, not a GSD backlog phase.
+  over Connect). Tracked as GitHub issue #630, not a GSD backlog phase.
 - A server-side ListTags prefix search (text/prefix index on `tags`), only if client-side
   filtering over the capped list proves insufficient in Phase 5.
 
