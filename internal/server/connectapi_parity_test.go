@@ -869,4 +869,113 @@ func TestReadParity(t *testing.T) {
 			})
 		})
 	})
+
+	// ListRules (plan 03-04, D-19/D-20): explicit scopes and the all-scopes
+	// read give identical rule ids, order, advisory and coverage on the MCP
+	// core and the Connect handler; a non-rule scope gives an identical
+	// rejection envelope. The empty-scopes row seeds each lane's spy through
+	// a failingListScopesStore wrapper (crossspinecoverage_test.go) whose
+	// fixture scope is ruleScope — spyStore.List filters on exact scope
+	// equality, so an unwrapped empty-scopes call would match nothing.
+	t.Run("ListRules", func(t *testing.T) {
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-listrules"
+			const mcpActor = "human-parity-listrules@example.com"
+			ruleScope := "rule:repo:parity-listrules"
+
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			dMCP.st = &failingListScopesStore{spyStore: spMCP, scope: ruleScope}
+			dConn.st = &failingListScopesStore{spyStore: spConn, scope: ruleScope}
+
+			seedOne := func(sp *spyStore, id string, offset time.Duration) {
+				m := store.Memory{
+					ID: id, Content: "read-parity rule fixture", Summary: "read-parity rule fixture",
+					Scope: ruleScope, Category: "rule", Source: "user-said", Visibility: "shared",
+					Owner: owner, CreatedAt: fixedParityNow.Add(offset),
+				}
+				if err := sp.Upsert(context.Background(), m, []float32{0.1, 0.2, 0.3}); err != nil {
+					t.Fatalf("seed %s: %v", id, err)
+				}
+			}
+			const id1 = "f9999999-0000-0000-0000-000000000001"
+			const id2 = "f9999999-0000-0000-0000-000000000002"
+			seedOne(spMCP, id1, 0)
+			seedOne(spMCP, id2, time.Second)
+			seedOne(spConn, id1, 0)
+			seedOne(spConn, id2, time.Second)
+			spMCP.resetCalls()
+			spConn.resetCalls()
+
+			mcpCaller := parityMCPCaller(t, owner, mcpActor)
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			t.Run("explicit_scope", func(t *testing.T) {
+				mcpRules, mcpAdv, mcpErr := dMCP.listRules(ctx, mcpCaller, listRulesArgs{Scopes: []string{ruleScope}})
+				connResp, connErr := api.ListRules(connCtx, connect.NewRequest(&engramv1.ListRulesRequest{Scopes: []string{ruleScope}}))
+				assertCodeParity(ctx, t, mcpErr, connErr)
+				if mcpErr != nil || connErr != nil {
+					t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+				}
+				mcpIDs := ruleViewIDs(t, mcpRules)
+				connIDs := connectMemoryIDs(connResp.Msg.GetRules())
+				if !slices.Equal(mcpIDs, connIDs) {
+					t.Errorf("explicit scope ids mismatch: mcp=%v connect=%v", mcpIDs, connIDs)
+				}
+				if mcpAdv != connResp.Msg.GetAdvisory() {
+					t.Errorf("explicit scope advisory mismatch: mcp=%q connect=%q", mcpAdv, connResp.Msg.GetAdvisory())
+				}
+				if len(connResp.Msg.GetSearchedScopes()) != 0 {
+					t.Errorf("explicit scope: Connect SearchedScopes = %v, want empty", connResp.Msg.GetSearchedScopes())
+				}
+			})
+
+			t.Run("empty_scopes", func(t *testing.T) {
+				mcpRules, mcpAdv, mcpErr := dMCP.listRules(ctx, mcpCaller, listRulesArgs{})
+				connResp, connErr := api.ListRules(connCtx, connect.NewRequest(&engramv1.ListRulesRequest{}))
+				assertCodeParity(ctx, t, mcpErr, connErr)
+				if mcpErr != nil || connErr != nil {
+					t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+				}
+				mcpIDs := ruleViewIDs(t, mcpRules)
+				connIDs := connectMemoryIDs(connResp.Msg.GetRules())
+				if !slices.Equal(mcpIDs, connIDs) {
+					t.Errorf("empty scopes ids mismatch: mcp=%v connect=%v", mcpIDs, connIDs)
+				}
+				if mcpAdv != connResp.Msg.GetAdvisory() {
+					t.Errorf("empty scopes advisory mismatch: mcp=%q connect=%q", mcpAdv, connResp.Msg.GetAdvisory())
+				}
+				connCaller, err := callerFromConnectContext(connCtx)
+				if err != nil {
+					t.Fatalf("callerFromConnectContext: %v", err)
+				}
+				mcpCov := dMCP.ruleScopeCoverage(ctx, mcpCaller, true)
+				connCov := dConn.ruleScopeCoverage(connCtx, connCaller, true)
+				if !slices.Equal(mcpCov.Scopes, connCov.Scopes) || mcpCov.Truncated != connCov.Truncated || mcpCov.Unknown != connCov.Unknown {
+					t.Errorf("empty scopes coverage mismatch: mcp=%+v connect=%+v", mcpCov, connCov)
+				}
+			})
+		})
+
+		t.Run("rejection_envelope_parity", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-listrules-reject"
+			dMCP, _ := newSpyDeps()
+			dConn, _ := newSpyDeps()
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-listrules-reject@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			t.Run("non_rule_scope", func(t *testing.T) {
+				_, _, mcpErr := dMCP.listRules(ctx, mcpCaller, listRulesArgs{Scopes: []string{"tool:project:x"}})
+				_, connErr := api.ListRules(connCtx, connect.NewRequest(&engramv1.ListRulesRequest{Scopes: []string{"tool:project:x"}}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+		})
+	})
 }

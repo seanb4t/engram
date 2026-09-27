@@ -215,6 +215,9 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 		// ListScheduled (plan 03-03, RPC-05): a read Procedure, absent from
 		// csrfWriteProcedures and reachable without a CSRF token.
 		engramv1connect.EngramServiceListScheduledProcedure,
+		// ListRules (plan 03-04, RPC-05): a read Procedure, absent from
+		// csrfWriteProcedures and reachable without a CSRF token.
+		engramv1connect.EngramServiceListRulesProcedure,
 	}
 	for _, p := range readProcedures {
 		if csrfWriteProcedures[p] {
@@ -413,6 +416,16 @@ func TestReadRPCsCSRFExempt(t *testing.T) {
 				req := connect.NewRequest(&engramv1.ListScheduledRequest{Scope: "test:scope"})
 				req.Header().Set("X-Test-Actor", "actor-A")
 				_, err := c.ListScheduled(ctx, req)
+				return err
+			},
+		},
+		{
+			name:      "ListRules",
+			procedure: engramv1connect.EngramServiceListRulesProcedure,
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient) error {
+				req := connect.NewRequest(&engramv1.ListRulesRequest{}) // empty scopes: the all-scopes read
+				req.Header().Set("X-Test-Actor", "actor-A")
+				_, err := c.ListRules(ctx, req)
 				return err
 			},
 		},
