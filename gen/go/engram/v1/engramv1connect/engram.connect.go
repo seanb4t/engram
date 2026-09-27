@@ -88,6 +88,8 @@ const (
 	// EngramServiceRelatedMemoriesProcedure is the fully-qualified name of the EngramService's
 	// RelatedMemories RPC.
 	EngramServiceRelatedMemoriesProcedure = "/engram.v1.EngramService/RelatedMemories"
+	// EngramServiceListTagsProcedure is the fully-qualified name of the EngramService's ListTags RPC.
+	EngramServiceListTagsProcedure = "/engram.v1.EngramService/ListTags"
 )
 
 // EngramServiceClient is a client for the engram.v1.EngramService service.
@@ -116,6 +118,8 @@ type EngramServiceClient interface {
 	ListRules(context.Context, *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error)
 	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
 	RelatedMemories(context.Context, *connect.Request[v1.RelatedMemoriesRequest]) (*connect.Response[v1.RelatedMemoriesResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-06) ---
+	ListTags(context.Context, *connect.Request[v1.ListTagsRequest]) (*connect.Response[v1.ListTagsResponse], error)
 }
 
 // NewEngramServiceClient constructs a client for the engram.v1.EngramService service. By default,
@@ -237,6 +241,12 @@ func NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(engramServiceMethods.ByName("RelatedMemories")),
 			connect.WithClientOptions(opts...),
 		),
+		listTags: connect.NewClient[v1.ListTagsRequest, v1.ListTagsResponse](
+			httpClient,
+			baseURL+EngramServiceListTagsProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("ListTags")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -260,6 +270,7 @@ type engramServiceClient struct {
 	listScheduled     *connect.Client[v1.ListScheduledRequest, v1.ListScheduledResponse]
 	listRules         *connect.Client[v1.ListRulesRequest, v1.ListRulesResponse]
 	relatedMemories   *connect.Client[v1.RelatedMemoriesRequest, v1.RelatedMemoriesResponse]
+	listTags          *connect.Client[v1.ListTagsRequest, v1.ListTagsResponse]
 }
 
 // ListScopes calls engram.v1.EngramService.ListScopes.
@@ -352,6 +363,11 @@ func (c *engramServiceClient) RelatedMemories(ctx context.Context, req *connect.
 	return c.relatedMemories.CallUnary(ctx, req)
 }
 
+// ListTags calls engram.v1.EngramService.ListTags.
+func (c *engramServiceClient) ListTags(ctx context.Context, req *connect.Request[v1.ListTagsRequest]) (*connect.Response[v1.ListTagsResponse], error) {
+	return c.listTags.CallUnary(ctx, req)
+}
+
 // EngramServiceHandler is an implementation of the engram.v1.EngramService service.
 type EngramServiceHandler interface {
 	ListScopes(context.Context, *connect.Request[v1.ListScopesRequest]) (*connect.Response[v1.ListScopesResponse], error)
@@ -378,6 +394,8 @@ type EngramServiceHandler interface {
 	ListRules(context.Context, *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error)
 	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
 	RelatedMemories(context.Context, *connect.Request[v1.RelatedMemoriesRequest]) (*connect.Response[v1.RelatedMemoriesResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-06) ---
+	ListTags(context.Context, *connect.Request[v1.ListTagsRequest]) (*connect.Response[v1.ListTagsResponse], error)
 }
 
 // NewEngramServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -495,6 +513,12 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(engramServiceMethods.ByName("RelatedMemories")),
 		connect.WithHandlerOptions(opts...),
 	)
+	engramServiceListTagsHandler := connect.NewUnaryHandler(
+		EngramServiceListTagsProcedure,
+		svc.ListTags,
+		connect.WithSchema(engramServiceMethods.ByName("ListTags")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/engram.v1.EngramService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case EngramServiceListScopesProcedure:
@@ -533,6 +557,8 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 			engramServiceListRulesHandler.ServeHTTP(w, r)
 		case EngramServiceRelatedMemoriesProcedure:
 			engramServiceRelatedMemoriesHandler.ServeHTTP(w, r)
+		case EngramServiceListTagsProcedure:
+			engramServiceListTagsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -612,4 +638,8 @@ func (UnimplementedEngramServiceHandler) ListRules(context.Context, *connect.Req
 
 func (UnimplementedEngramServiceHandler) RelatedMemories(context.Context, *connect.Request[v1.RelatedMemoriesRequest]) (*connect.Response[v1.RelatedMemoriesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.RelatedMemories is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) ListTags(context.Context, *connect.Request[v1.ListTagsRequest]) (*connect.Response[v1.ListTagsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ListTags is not implemented"))
 }

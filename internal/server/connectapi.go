@@ -660,6 +660,22 @@ func (a *engramAPI) RelatedMemories(ctx context.Context, req *connect.Request[en
 	return connect.NewResponse(relatedResultToProto(res, req.Msg.GetFull(), a.d.summaryMaxChars)), nil
 }
 
+// ListTags (plan 03-06, RPC-04) delegates to the SAME a.d.listTags core the
+// list_tags MCP tool calls, mapping the request fields directly and any
+// error via connectError — the same thin-adapter shape as every other RPC
+// in this file.
+func (a *engramAPI) ListTags(ctx context.Context, req *connect.Request[engramv1.ListTagsRequest]) (*connect.Response[engramv1.ListTagsResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	ts, more, err := a.d.listTags(ctx, c, listTagsArgs{Scope: req.Msg.GetScope(), Limit: req.Msg.GetLimit()})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(&engramv1.ListTagsResponse{Tags: tagCountsToProto(ts), More: more}), nil
+}
+
 // connectResolver supplies the per-request identity TokenInfo for the
 // Connect lane, plus WHICH credential family authenticated it (auth.Lane,
 // D-07). NewConnectResolver composes the bearer half and the webauth

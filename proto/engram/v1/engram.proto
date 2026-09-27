@@ -681,6 +681,37 @@ message RelatedMemoriesResponse {
   bool truncated = 3;
 }
 
+// TagCount is one tag plus the exact number of the caller's recall-visible
+// records that carry it (2026-09-25.01 Phase 1 D-13), wrapped onto Connect
+// by milestone 2026-09-25.01 Phase 3 (RPC-04).
+message TagCount {
+  string tag = 1;
+  uint64 count = 2;
+}
+
+// ListTagsRequest lists the tags on the records the caller can recall in
+// scope, or across every readable scope when scope is empty (2026-09-25.01
+// Phase 1 D-14, Phase 3 D-14). limit 0 resolves to 100; a value above the
+// maximum, 1000, is rejected. No buf.validate rule is attached: the single
+// shared server-side core validates, so both lanes return the byte-identical
+// field=/hint= rejection envelope. No server-side prefix filter is offered
+// by design (Phase 3 D-14) — filter the returned list on the client; Qdrant
+// Facet has no prefix match on a keyword index.
+message ListTagsRequest {
+  string scope = 1; // empty = every scope the caller can read
+  uint64 limit = 2; // 0 resolves to 100; above 1000 is rejected
+}
+
+// ListTagsResponse is ListTags' return shape: counts are exact over
+// recall-visible records only (no archived, superseded, expired, or
+// not-yet-active ones), ordered by count descending then tag ascending.
+// more reports that more distinct tags exist beyond limit — never a silent
+// truncation.
+message ListTagsResponse {
+  repeated TagCount tags = 1;
+  bool more = 2;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
@@ -706,4 +737,6 @@ service EngramService {
   rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
   // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
   rpc RelatedMemories(RelatedMemoriesRequest) returns (RelatedMemoriesResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-06) ---
+  rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
 }

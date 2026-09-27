@@ -3166,12 +3166,25 @@ func registerTools(s *mcp.Server, d *deps) error {
 			}
 			return nil, relatedResultMap(res, a.Full, d.summaryMaxChars), nil
 		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "list_tags", Description: "List the tags on the records you can recall in a scope — or, with no scope, across every scope you can read — with exact counts, most-used first (default 100, maximum 1000), and `more` when more distinct tags exist. Before store_memory, check the scope's existing tags and reuse one rather than invent a near-duplicate; also useful for choosing a search_memory / list_memory `tags` filter. Counts cover only recall-visible records (no archived, superseded, expired, or not-yet-active ones).", Annotations: annotationsFor("list_tags")},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a listTagsArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			ts, more, err := d.listTags(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			return nil, map[string]any{"tags": tagCountViews(ts), "more": more}, nil
+		})
 	return nil
 }
 
 // textResult gives a write tool its short confirmation text. The read tools
 // (search_memory, list_memory, list_scheduled, search_discovery, list_rules,
-// related_memories) return a nil result instead, so go-sdk puts the structured result in a
+// related_memories, list_tags) return a nil result instead, so go-sdk puts the structured result in a
 // TextContent block as serialized JSON too, as MCP 2026-07-28 § Structured
 // Content says a tool SHOULD; a client that reads only `content` then still
 // gets the records rather than a count.

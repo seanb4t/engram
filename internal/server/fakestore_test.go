@@ -56,6 +56,12 @@ type spyStore struct {
 	// s.records, mirroring migrateStatus's precedent; a test sets this field
 	// directly before exercising a handler.
 	related store.RelatedResult
+	// tags/tagsMore are the SCRIPTED result ListTags returns (milestone
+	// 2026-09-25.01 Phase 3) — this fake never derives tag counts from
+	// s.records, mirroring migrateStatus/related's precedent; a test sets
+	// these fields directly before exercising a handler.
+	tags     []store.TagCount
+	tagsMore bool
 }
 
 var _ memStore = (*spyStore)(nil)
@@ -573,6 +579,16 @@ func (s *spyStore) RelatedMemories(_ context.Context, id string, subj store.Subj
 		return store.RelatedResult{}, fmt.Errorf("%w: %s", store.ErrNotFound, id)
 	}
 	return s.related, nil
+}
+
+// ListTags returns the SCRIPTED s.tags/s.tagsMore values, mirroring
+// MigrateStatus/RelatedMemories's scripted-not-derived precedent. A test
+// sets s.tags/s.tagsMore directly before exercising a handler.
+func (s *spyStore) ListTags(_ context.Context, subj store.Subject, scope string, _ uint64) ([]store.TagCount, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.record("ListTags", ownerOfSubject(subj), scope)
+	return s.tags, s.tagsMore, nil
 }
 
 // Search mirrors SearchReranked's filtering exactly (scope/readableBy/

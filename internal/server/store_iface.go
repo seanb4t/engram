@@ -37,6 +37,12 @@ type memStore interface {
 	List(ctx context.Context, scope string, subj store.Subject, opts store.ListOptions) (items []store.Memory, total uint64, nextCursor string, err error)
 	ListScheduled(ctx context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) (items []store.Memory, nextCursor string, err error)
 	ListScopes(ctx context.Context, subj store.Subject) ([]store.ScopeCount, bool, error)
+	// ListTags is the scope tag-count read (milestone 2026-09-25.01 Phase 3,
+	// RPC-04): the shared core both the Connect ListTags RPC and the
+	// list_tags MCP tool call. No post-filter above this call — the Subject
+	// IS the enforcement point (Pitfall 4, DEC-cgb). An empty scope means
+	// every scope the caller can read (D-14).
+	ListTags(ctx context.Context, subj store.Subject, scope string, limit uint64) ([]store.TagCount, bool, error)
 	// MigrateStatus is the handler-error test seam for the Connect
 	// MigrateStatus RPC (07-06): one method added to this EXISTING,
 	// already-eighteen-strong interface — not a new interface. Whole-

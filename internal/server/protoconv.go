@@ -408,3 +408,14 @@ func relatedResultToProto(res store.RelatedResult, full bool, maxChars int) *eng
 	}
 	return &engramv1.RelatedMemoriesResponse{Anchor: anchor, Related: related, Truncated: res.Truncated}
 }
+
+// tagCountsToProto is a plain field-by-field copy (no validation, no
+// re-fetch — protoconv's standing discipline) from store.TagCount into the
+// wire []*engramv1.TagCount shape (plan 03-06, RPC-04).
+func tagCountsToProto(ts []store.TagCount) []*engramv1.TagCount {
+	out := make([]*engramv1.TagCount, len(ts))
+	for i, t := range ts {
+		out[i] = &engramv1.TagCount{Tag: t.Tag, Count: t.Count}
+	}
+	return out
+}

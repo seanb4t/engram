@@ -184,6 +184,13 @@ var operations = []Operation{
 		MCPTool: "related_memories", CLICommand: "",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
+	{
+		// list_tags (milestone 2026-09-25.01 Phase 3 plan 03-06, D-23): a
+		// plain read over the scope tag-count core — no write RPC, same
+		// stance as related_memories/list_rules above.
+		MCPTool: "list_tags", CLICommand: "",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
 
 	// CLI-only operations: no MCP tool exists for any of these, so
 	// MCPTool is deliberately empty. Classified by the same conservative
