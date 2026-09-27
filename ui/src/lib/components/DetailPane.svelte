@@ -36,7 +36,9 @@
     onvisibility,
     ondelete,
     onarchive,
-    onrestore
+    onrestore,
+    onsupersede,
+    onchain
   }: {
     memory: Memory | undefined;
     loading: boolean;
@@ -52,6 +54,8 @@
     ondelete?: (id: string) => void;
     onarchive?: (id: string) => void;
     onrestore?: (id: string) => void;
+    onsupersede?: (id: string) => void;
+    onchain?: (id: string) => void;
   } = $props();
 
   // D-15/D-16 rule fence (mechanical, not "parent omits callbacks"): a rule
@@ -70,6 +74,11 @@
   // opens the section so its predecessor links still render.
   const stateWords = $derived(memory ? memoryStateWords(memory) : []);
   const hasState = $derived(stateWords.length > 0 || (memory?.supersedes.length ?? 0) > 0);
+  // D-06: the chain link is available whenever the record has a successor
+  // (supersededBy) or at least one predecessor (supersedes) -- both are
+  // already part of hasState's own OR clause, so gating on hasChain never
+  // opens the State section on its own.
+  const hasChain = $derived(!!memory?.supersededBy || (memory?.supersedes.length ?? 0) > 0);
   const hasTags = $derived((memory?.tags.length ?? 0) > 0);
   const hasCitations = $derived((memory?.citations.length ?? 0) > 0);
   const closesInFuture = $derived(!!memory?.notAfter && timestampDate(memory.notAfter) > new Date());
@@ -139,6 +148,10 @@
           <Button variant="outline" size="sm" onclick={() => onedit?.(memory!.id)}>Edit</Button>
         {/if}
 
+        {#if onsupersede && !isRule && !isDiscovery}
+          <Button variant="outline" size="sm" onclick={() => onsupersede?.(memory!.id)}>Supersede…</Button>
+        {/if}
+
         {#if onarchive && !memory.archivedAt}
           <Button variant="outline" size="sm" onclick={() => onarchive?.(memory!.id)}>Archive</Button>
         {/if}
@@ -160,6 +173,11 @@
         <section class="d-sec">
           <h3>State</h3>
           <div class="d-statelist">
+            {#if onchain && hasChain}
+              <div>
+                <button type="button" class="d-link" onclick={() => onchain?.(memory!.id)}>View chain</button>
+              </div>
+            {/if}
             {#if stateWords.includes('archived') && memory.archivedAt}
               {@const archivedDate = timestampDate(memory.archivedAt)}
               <div>archived since {fullTimestamp(archivedDate)} · {relativeTime(archivedDate)}</div>

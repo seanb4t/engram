@@ -2,8 +2,10 @@ import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create } from '@bufbuild/protobuf';
+import { ConnectError, Code } from '@connectrpc/connect';
 import { MemorySchema, ArchiveOutcome, type Memory, type SupersedeMemoryRequest } from '$lib/gen/engram_pb';
 import { flashing, FLASH_MS } from '$lib/curation/flash.svelte.ts';
+import { peekResume, type SupersedeResumeEnvelope, type ArchiveResumeEnvelope } from '$lib/resume';
 import CurationSurfaces from './CurationSurfaces.svelte';
 
 const { archiveMemorySpy, restoreMemorySpy, supersedeMemorySpy, getMemorySpy, toastSpy, redirectToLoginSpy } = vi.hoisted(
@@ -54,7 +56,11 @@ function makeMemory(overrides: Partial<Memory> = {}): Memory {
 }
 
 let qc: QueryClient;
-function renderCS(props: { returnPath: string; onchanged?: (e: { kind: string; ids: string[] }) => void }) {
+function renderCS(props: {
+  returnPath: string;
+  onchanged?: (e: { kind: string; ids: string[] }) => void;
+  onresumeapplied?: () => void;
+}) {
   return render(CurationSurfaces, props, { wrapper: QueryClientProvider, wrapperProps: { client: qc } });
 }
 
@@ -65,6 +71,7 @@ beforeEach(() => {
   getMemorySpy.mockReset();
   toastSpy.mockReset();
   redirectToLoginSpy.mockReset();
+  sessionStorage.clear();
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(['searchMemories', 'q', ''], { memories: [makeMemory({ id: 'm1' })] });
 });
@@ -205,5 +212,90 @@ describe('CurationSurfaces — supersede via the host (CUR-01 tracer)', () => {
 
     const cached = qc.getQueryData(['searchMemories', 'q', '']) as { memories: Memory[] };
     expect(cached.memories.find((m) => m.id === 'm1')?.supersededBy).toBe('n1');
+  });
+});
+
+describe('CurationSurfaces — supersede re-auth resume (CUR-05, D-15)', () => {
+  it('an Unauthenticated preview persists a resume envelope on Re-authenticate; reopenFromResume restores it, previews once and Resend commits with the original key', async () => {
+    const target = makeMemory({ id: 'm1', content: 'full predecessor content', shortId: 's0000000001' });
+    getMemorySpy.mockResolvedValue({ memory: target });
+    supersedeMemorySpy.mockImplementation(async (req: SupersedeMemoryRequest) => {
+      if (req.validateOnly) throw new ConnectError('session expired', Code.Unauthenticated);
+      return { id: 'n1', shortId: 'N1SHORT0001', validated: false, supersedes: [], targets: [] };
+    });
+
+    const onresumeapplied = vi.fn();
+    const screen = await renderCS({ returnPath: '/search', onresumeapplied });
+    await screen.component.openSupersede(['m1']);
+    await expect
+      .element(screen.getByText('Session expired. Nothing was written; your draft is kept.'))
+      .toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Re-authenticate' }).click();
+    expect(redirectToLoginSpy).toHaveBeenCalledTimes(1);
+
+    const persisted = peekResume() as SupersedeResumeEnvelope;
+    expect(persisted?.kind).toBe('supersede');
+    expect(persisted.targets).toEqual(['m1']);
+    expect(persisted.returnPath).toBe('/search');
+    expect(persisted.idempotencyKey.length).toBeGreaterThan(0);
+    const idempotencyKey = persisted.idempotencyKey;
+
+    // Simulate the real world: the OIDC round trip lands back on /ui/, a
+    // fresh CurationSurfaces mounts there and calls reopenFromResume with
+    // the envelope the route peeked. The preview now succeeds.
+    supersedeMemorySpy.mockReset();
+    supersedeMemorySpy.mockImplementation(async (req: SupersedeMemoryRequest) => {
+      if (req.validateOnly) return { id: '', shortId: '', validated: true, supersedes: ['m1'], targets: [] };
+      return { id: 'n1', shortId: 'N1SHORT0001', validated: false, supersedes: [], targets: [] };
+    });
+
+    await screen.component.reopenFromResume(persisted);
+    await expect.element(screen.getByText('Signed in again — review and resend')).toBeInTheDocument();
+    expect(onresumeapplied).toHaveBeenCalledTimes(1);
+
+    const resendBtn = screen.getByRole('button', { name: 'Resend — Supersede 1 → 1' });
+    await expect.element(resendBtn).not.toBeDisabled();
+
+    const commitCallsBefore = supersedeMemorySpy.mock.calls.filter((c) => (c[0] as SupersedeMemoryRequest).validateOnly === false);
+    expect(commitCallsBefore).toHaveLength(0);
+    const previewCalls = supersedeMemorySpy.mock.calls.filter((c) => (c[0] as SupersedeMemoryRequest).validateOnly === true);
+    expect(previewCalls.length).toBeGreaterThanOrEqual(1);
+
+    await resendBtn.click();
+
+    const commitCalls = () =>
+      supersedeMemorySpy.mock.calls.filter((c) => (c[0] as SupersedeMemoryRequest).validateOnly === false);
+    await expect.poll(() => commitCalls().length).toBe(1);
+    expect((commitCalls()[0][0] as SupersedeMemoryRequest).idempotencyKey).toBe(idempotencyKey);
+  });
+});
+
+describe('CurationSurfaces — archive re-auth resume (CUR-05, D-15)', () => {
+  it('a PermissionDenied archive persists an archive envelope on Re-authenticate; reopenFromResume restores it with no ArchiveMemory call', async () => {
+    archiveMemorySpy.mockRejectedValue(new ConnectError('forbidden', Code.PermissionDenied));
+
+    const onresumeapplied = vi.fn();
+    const screen = await renderCS({ returnPath: '/search', onresumeapplied });
+    await screen.component.openArchive(['m1']);
+    await screen.getByRole('button', { name: 'Archive' }).click();
+    await expect
+      .element(screen.getByText('Session expired. Nothing was written; your draft is kept.'))
+      .toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Re-authenticate' }).click();
+    expect(redirectToLoginSpy).toHaveBeenCalledTimes(1);
+
+    const persisted = peekResume() as ArchiveResumeEnvelope;
+    expect(persisted?.kind).toBe('archive');
+    expect(persisted.mode).toBe('archive');
+    expect(persisted.ids).toEqual(['m1']);
+    expect(persisted.returnPath).toBe('/search');
+
+    archiveMemorySpy.mockReset();
+    await screen.component.reopenFromResume(persisted);
+    await expect.element(screen.getByText('Signed in again — review and resend')).toBeInTheDocument();
+    expect(onresumeapplied).toHaveBeenCalledTimes(1);
+    expect(archiveMemorySpy).not.toHaveBeenCalled();
   });
 });

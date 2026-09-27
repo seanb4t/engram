@@ -1,9 +1,10 @@
 <script lang="ts">
   import { useQueryClient } from '@tanstack/svelte-query';
   import { toast } from 'svelte-sonner';
+  import { create } from '@bufbuild/protobuf';
   import { ConnectError, Code } from '@connectrpc/connect';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
-  import type { Memory, SupersedeMemoryResponse } from '$lib/gen/engram_pb';
+  import { MemorySchema, type Memory, type SupersedeMemoryResponse } from '$lib/gen/engram_pb';
   import { engram } from '$lib/client';
   import {
     useArchiveMemory,
@@ -16,7 +17,7 @@
     type SupersedeFields
   } from '$lib/mutations/curation';
   import { parseConnectError } from '$lib/errors/connect-error';
-  import { redirectToLogin } from '$lib/resume';
+  import { persistResume, redirectToLogin, type CurationResumeEnvelope } from '$lib/resume';
   import { flashRows } from '$lib/curation/flash.svelte.ts';
   import ArchiveConfirmDialog from './ArchiveConfirmDialog.svelte';
   import SupersedeDialog from './SupersedeDialog.svelte';
@@ -26,13 +27,13 @@
   // resolves ids to Memory records for the chip display, runs the mutation,
   // and reports the changed ids back up to the route via `onchanged`.
   let {
-    // returnPath is threaded through for the re-auth resume envelope (wired
-    // in plan 04-06); this plan accepts and stores it but does not yet use
-    // it, so it is intentionally not destructured into a local binding.
-    onchanged
+    returnPath,
+    onchanged,
+    onresumeapplied
   }: {
     returnPath: string;
     onchanged?: (e: { kind: 'archive' | 'restore' | 'supersede'; ids: string[]; newId?: string }) => void;
+    onresumeapplied?: () => void;
   } = $props();
 
   const queryClient = useQueryClient();
@@ -84,9 +85,37 @@
     return ids.map((id) => found.get(id)).filter((m): m is Memory => !!m);
   }
 
+  // resolveRecordsKeepAll is resolveRecords, but an id that cannot be
+  // resolved becomes a placeholder Memory-shaped chip instead of being
+  // silently dropped -- reopenFromResume's own contract ("an unreadable id
+  // becomes a not-found chip, never dropped") needs every envelope target to
+  // stay visibly represented, unlike the ordinary open path where a missing
+  // chip is an acceptable degrade (the server still reports NOT_FOUND for
+  // the full id set on submit).
+  async function resolveRecordsKeepAll(ids: string[]): Promise<Memory[]> {
+    const records = await resolveRecords(ids);
+    const byId = new Map(records.map((m) => [m.id, m]));
+    return ids.map(
+      (id) =>
+        byId.get(id) ??
+        create(MemorySchema, {
+          id,
+          shortId: id,
+          summary: `not found: ${id}`,
+          content: '',
+          category: 'convention',
+          scope: '',
+          visibility: 'private',
+          owner: '',
+          tags: []
+        })
+    );
+  }
+
   export async function openArchive(ids: string[]): Promise<void> {
     archiveMode = 'archive';
     archiveOutcome = undefined;
+    archiveNotice = undefined;
     archiveRecords = await resolveRecords(ids);
     archiveOpen = true;
   }
@@ -94,6 +123,7 @@
   export async function openRestore(ids: string[]): Promise<void> {
     archiveMode = 'restore';
     archiveOutcome = undefined;
+    archiveNotice = undefined;
     archiveRecords = await resolveRecords(ids);
     archiveOpen = true;
   }
@@ -171,9 +201,13 @@
     }
   }
 
-  // plan 04-06 persists the v2 resume envelope before this redirect; this
-  // plan wires the redirect only.
-  function onreauth(_ids: string[]): void {
+  // D-15: persists a v2 archive resume envelope BEFORE the redirect, so the
+  // /ui/ landing can restore this exact dialog (mode + ids) after the OIDC
+  // round trip. Replaces the redirect-only behaviour from plan 04-01.
+  let archiveNotice = $state<string | undefined>(undefined);
+
+  function onreauth(ids: string[]): void {
+    persistResume({ returnPath, kind: 'archive', mode: archiveMode, ids });
     redirectToLogin();
   }
 
@@ -257,6 +291,55 @@
   function supersedeOndone(): void {
     supersedeOpen = false;
   }
+
+  // D-15: persists a v2 supersede resume envelope (targets in chip order,
+  // the current field values, and the SAME idempotency_key the draft was
+  // minted with) before the redirect, so a resend after re-auth replays
+  // rather than duplicates.
+  function handleSupersedeReauth(draft: SupersedeDraft): void {
+    persistResume({
+      returnPath,
+      kind: 'supersede',
+      targets: draft.targets,
+      fields: { ...draft.fields },
+      idempotencyKey: draft.idempotencyKey
+    });
+    redirectToLogin();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Re-auth resume (CUR-05, D-15/D-16)
+  // ---------------------------------------------------------------------------
+  //
+  // reopenFromResume never reads or clears sessionStorage itself -- the
+  // route (plans 04-08, 04-10) is the sole owner of the resume-envelope
+  // read/delete lifecycle and hands the already-validated envelope in here.
+  // Both restored dialogs
+  // show the 'Signed in again — review and resend' notice and NEVER auto-
+  // resubmit -- the operator reviews the re-validated preview and clicks
+  // Resend/the verb button themselves.
+  export async function reopenFromResume(env: CurationResumeEnvelope): Promise<void> {
+    if (env.kind === 'supersede') {
+      const records = await resolveRecordsKeepAll(env.targets);
+      supersedeTargets = records;
+      supersedeFields = env.fields as SupersedeFields;
+      supersedePrefillShortId = '';
+      supersedeIdempotencyKey = env.idempotencyKey;
+      supersedeNotice = 'Signed in again — review and resend';
+      supersedeResend = true;
+      supersedeOpen = true;
+    } else if (env.kind === 'archive') {
+      const records = await resolveRecordsKeepAll(env.ids);
+      archiveMode = env.mode;
+      archiveOutcome = undefined;
+      archiveRecords = records;
+      archiveNotice = 'Signed in again — review and resend';
+      archiveOpen = true;
+    }
+    // env.kind === 'delete' is the Rules view's own delete confirm (plan
+    // 04-08/04-09), not a surface this host owns.
+    onresumeapplied?.();
+  }
 </script>
 
 <ArchiveConfirmDialog
@@ -265,6 +348,7 @@
   bind:pending={archivePending}
   bind:outcome={archiveOutcome}
   records={archiveRecords}
+  notice={archiveNotice}
   {onsubmit}
   {oncancel}
   {ondone}
@@ -284,4 +368,5 @@
   onsubmit={supersedeOnsubmit}
   oncancel={supersedeOncancel}
   ondone={supersedeOndone}
+  onreauth={handleSupersedeReauth}
 />

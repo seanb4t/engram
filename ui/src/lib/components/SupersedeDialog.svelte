@@ -401,34 +401,34 @@
         <div role="status" class="sd-loading">supersede_memory · {currentTargets.length} targets…</div>
       {/if}
 
-      {#if submitRejectionParsed}
-        {#if submitRejectionParsed.kind === 'field'}
+      {#if latestRejection}
+        {#if latestRejection.kind === 'field'}
           <div role="alert" class="sd-alert">
             <span>Rejected — fix the named field and resend</span>
             <div class="sd-pills">
-              <span class="sd-pill">field={submitRejectionParsed.fields.join(',')}</span>
-              <span class="sd-pill">hint={submitRejectionParsed.hint}</span>
+              <span class="sd-pill">field={latestRejection.fields.join(',')}</span>
+              <span class="sd-pill">hint={latestRejection.hint}</span>
             </div>
-            <div class="sd-detail">{submitRejectionParsed.detail}</div>
+            <div class="sd-detail">{latestRejection.detail}</div>
           </div>
-        {:else if submitRejectionParsed.kind === 'targets'}
+        {:else if latestRejection.kind === 'targets'}
           <div role="alert" class="sd-alert">
             <span>Server rejected the call — nothing was written</span>
-            {#if submitRejectionParsed.issue === 'already-superseded'}
+            {#if latestRejection.issue === 'already-superseded'}
               <span class="sd-pill">target is already superseded</span>
               <div class="sd-detail">
                 Another session superseded this target after you opened the editor. Supersede its current head instead.
               </div>
             {/if}
           </div>
-        {:else if submitRejectionParsed.kind === 'reauth'}
+        {:else if latestRejection.kind === 'reauth'}
           <div role="alert" class="sd-alert">
             <span>Session expired. Nothing was written; your draft is kept.</span>
             <Button variant="outline" size="sm" class="self-start" onclick={handleReauth}>Re-authenticate</Button>
           </div>
         {:else}
           <div role="alert" class="sd-alert">
-            <span>Could not supersede — {submitRejectionParsed.codeName}</span>
+            <span>Could not supersede — {latestRejection.codeName}</span>
             <Button variant="outline" size="sm" class="self-start" onclick={handleSubmit}>Retry</Button>
           </div>
         {/if}
@@ -576,7 +576,7 @@
           {/snippet}
         </Dialog.Close>
         <Button disabled={!canSubmit} onclick={handleSubmit}>
-          Supersede {currentTargets.length} → 1
+          {resend ? 'Resend — ' : ''}Supersede {currentTargets.length} → 1
         </Button>
       </Dialog.Footer>
     {/if}
