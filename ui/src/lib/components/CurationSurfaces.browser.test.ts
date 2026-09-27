@@ -2,24 +2,32 @@ import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create } from '@bufbuild/protobuf';
-import { MemorySchema, ArchiveOutcome, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, ArchiveOutcome, type Memory, type SupersedeMemoryRequest } from '$lib/gen/engram_pb';
 import { flashing, FLASH_MS } from '$lib/curation/flash.svelte.ts';
 import CurationSurfaces from './CurationSurfaces.svelte';
 
-const { archiveMemorySpy, restoreMemorySpy, getMemorySpy, toastSpy, redirectToLoginSpy } = vi.hoisted(() => ({
-  archiveMemorySpy: vi.fn(),
-  restoreMemorySpy: vi.fn(),
-  getMemorySpy: vi.fn(),
-  toastSpy: vi.fn(),
-  redirectToLoginSpy: vi.fn()
-}));
+const { archiveMemorySpy, restoreMemorySpy, supersedeMemorySpy, getMemorySpy, toastSpy, redirectToLoginSpy } = vi.hoisted(
+  () => ({
+    archiveMemorySpy: vi.fn(),
+    restoreMemorySpy: vi.fn(),
+    supersedeMemorySpy: vi.fn(),
+    getMemorySpy: vi.fn(),
+    toastSpy: vi.fn(),
+    redirectToLoginSpy: vi.fn()
+  })
+);
 
 vi.mock('$lib/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('$lib/client')>();
   return {
     ...actual,
     engram: { ...actual.engram, getMemory: getMemorySpy },
-    engramWrite: { ...actual.engramWrite, archiveMemory: archiveMemorySpy, restoreMemory: restoreMemorySpy }
+    engramWrite: {
+      ...actual.engramWrite,
+      archiveMemory: archiveMemorySpy,
+      restoreMemory: restoreMemorySpy,
+      supersedeMemory: supersedeMemorySpy
+    }
   };
 });
 
@@ -53,6 +61,7 @@ function renderCS(props: { returnPath: string; onchanged?: (e: { kind: string; i
 beforeEach(() => {
   archiveMemorySpy.mockReset();
   restoreMemorySpy.mockReset();
+  supersedeMemorySpy.mockReset();
   getMemorySpy.mockReset();
   toastSpy.mockReset();
   redirectToLoginSpy.mockReset();
@@ -152,5 +161,49 @@ describe('CurationSurfaces — re-auth redirect', () => {
 
     await screen.getByRole('button', { name: 'Re-authenticate' }).click();
     expect(redirectToLoginSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CurationSurfaces — supersede via the host (CUR-01 tracer)', () => {
+  it('supersede end to end (CUR-01 tracer)', async () => {
+    const full = makeMemory({ id: 'm1', content: 'full predecessor content', shortId: 's0000000001' });
+    getMemorySpy.mockResolvedValue({ memory: full });
+    supersedeMemorySpy.mockImplementation(async (req: SupersedeMemoryRequest) => {
+      if (req.validateOnly) {
+        return { id: '', shortId: '', validated: true, supersedes: ['m1'], targets: [] };
+      }
+      return { id: 'n1', shortId: 'n1short0000', validated: false, supersedes: [], targets: [] };
+    });
+
+    const screen = await renderCS({ returnPath: '/search' });
+    await screen.component.openSupersede(['m1']);
+    await expect.element(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // The correcting record's content field is prefilled from the newest
+    // predecessor's FULL record (via GetMemory, not the summary-shaped cache).
+    await expect
+      .poll(() => (document.querySelector('.sd-col-record textarea') as HTMLTextAreaElement | null)?.value)
+      .toBe('full predecessor content');
+
+    // The debounced validate_only preview enables the button once it resolves.
+    const submitBtn = screen.getByRole('button', { name: 'Supersede 1 → 1' });
+    await expect.element(submitBtn).not.toBeDisabled();
+
+    const commitCalls = () =>
+      supersedeMemorySpy.mock.calls.filter((call) => (call[0] as SupersedeMemoryRequest).validateOnly === false);
+
+    // No commit (validate_only: false) request was sent before the click.
+    expect(commitCalls()).toHaveLength(0);
+
+    await submitBtn.click();
+
+    await expect.poll(() => commitCalls().length).toBe(1);
+    const commitReq = commitCalls()[0][0] as SupersedeMemoryRequest;
+    expect(commitReq.idempotencyKey.length).toBeGreaterThan(0);
+
+    await expect.element(screen.getByText(/No undo\./)).toBeInTheDocument();
+
+    const cached = qc.getQueryData(['searchMemories', 'q', '']) as { memories: Memory[] };
+    expect(cached.memories.find((m) => m.id === 'm1')?.supersededBy).toBe('n1');
   });
 });

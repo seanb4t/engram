@@ -2,18 +2,24 @@
   import { useQueryClient } from '@tanstack/svelte-query';
   import { toast } from 'svelte-sonner';
   import { ConnectError, Code } from '@connectrpc/connect';
-  import type { Memory } from '$lib/gen/engram_pb';
+  import { timestampDate } from '@bufbuild/protobuf/wkt';
+  import type { Memory, SupersedeMemoryResponse } from '$lib/gen/engram_pb';
   import { engram } from '$lib/client';
   import {
     useArchiveMemory,
     useRestoreMemory,
+    useSupersedeMemory,
+    previewSupersede,
     changedIds,
-    type ArchiveSubmitOutcome
+    type ArchiveSubmitOutcome,
+    type SupersedeDraft,
+    type SupersedeFields
   } from '$lib/mutations/curation';
   import { parseConnectError } from '$lib/errors/connect-error';
   import { redirectToLogin } from '$lib/resume';
   import { flashRows } from '$lib/curation/flash.svelte.ts';
   import ArchiveConfirmDialog from './ArchiveConfirmDialog.svelte';
+  import SupersedeDialog from './SupersedeDialog.svelte';
 
   // CurationSurfaces is the route-level curation write host (mirrors
   // WriteSurfaces): it owns the archive/restore confirm dialog's open state,
@@ -32,6 +38,7 @@
   const queryClient = useQueryClient();
   const archiveMutation = useArchiveMemory();
   const restoreMutation = useRestoreMemory();
+  const supersedeMutation = useSupersedeMemory();
 
   let archiveOpen = $state(false);
   let archiveMode = $state<'archive' | 'restore'>('archive');
@@ -169,6 +176,87 @@
   function onreauth(_ids: string[]): void {
     redirectToLogin();
   }
+
+  // ---------------------------------------------------------------------------
+  // Supersede (CUR-01, D-07, D-10)
+  // ---------------------------------------------------------------------------
+
+  let supersedeOpen = $state(false);
+  let supersedeTargets = $state<Memory[]>([]);
+  let supersedeFields = $state<SupersedeFields>({ summary: '', content: '', category: '', scope: '', tags: [] });
+  let supersedePrefillShortId = $state('');
+  let supersedeIdempotencyKey = $state('');
+  let supersedeNotice = $state<string | undefined>(undefined);
+  let supersedeResend = $state(false);
+
+  // openSupersede resolves the target set to real Memory records (chip
+  // display), prefills the correcting-record form from the newest
+  // predecessor's FULL record (validate_only targets on the preview response
+  // are compact -- content cleared -- so the prefill needs its own
+  // GetMemory), and mints the ONE idempotency key this draft reuses across
+  // every preview/commit/resend.
+  export async function openSupersede(ids: string[]): Promise<void> {
+    const uniqueIds = [...new Set(ids)];
+    const records = await resolveRecords(uniqueIds);
+    supersedeTargets = records;
+
+    let newest: Memory | undefined;
+    for (const r of records) {
+      const rTime = r.createdAt ? timestampDate(r.createdAt).getTime() : 0;
+      const nTime = newest?.createdAt ? timestampDate(newest.createdAt).getTime() : -1;
+      if (!newest || rTime >= nTime) newest = r;
+    }
+
+    let full = newest;
+    if (newest) {
+      try {
+        const resp = await queryClient.fetchQuery({
+          queryKey: ['getMemory', newest.id],
+          queryFn: () => engram.getMemory({ id: newest!.id })
+        });
+        if (resp.memory) full = resp.memory;
+      } catch {
+        // Keep the summary-shaped record as a fallback prefill source -- an
+        // unresolvable full fetch degrades the prefill, not the whole open.
+      }
+    }
+
+    supersedeFields = {
+      summary: full?.summary ?? '',
+      content: full?.content ?? '',
+      category: full?.category ?? 'convention',
+      scope: full && !full.scope.startsWith('rule:') ? full.scope : '',
+      tags: full ? [...full.tags] : []
+    };
+    supersedePrefillShortId = full?.shortId ?? '';
+    supersedeIdempotencyKey = crypto.randomUUID();
+    supersedeNotice = undefined;
+    supersedeResend = false;
+    supersedeOpen = true;
+  }
+
+  function supersedeOnpreview(draft: SupersedeDraft, signal: AbortSignal): Promise<SupersedeMemoryResponse> {
+    return previewSupersede(draft, signal);
+  }
+
+  // The commit path itself: useSupersedeMemory's own onSuccess already
+  // patches supersededBy in place and invalidates recall surfaces (mirrors
+  // useArchiveMemory); this wrapper adds the parts that need component-level
+  // props -- the row flash and the route's onchanged notification.
+  async function supersedeOnsubmit(draft: SupersedeDraft): Promise<SupersedeMemoryResponse> {
+    const resp = await supersedeMutation.mutateAsync(draft);
+    flashRows([...draft.targets, resp.id]);
+    onchanged?.({ kind: 'supersede', ids: draft.targets, newId: resp.id });
+    return resp;
+  }
+
+  function supersedeOncancel(): void {
+    supersedeOpen = false;
+  }
+
+  function supersedeOndone(): void {
+    supersedeOpen = false;
+  }
 </script>
 
 <ArchiveConfirmDialog
@@ -182,4 +270,18 @@
   {ondone}
   {onundo}
   {onreauth}
+/>
+
+<SupersedeDialog
+  bind:open={supersedeOpen}
+  targets={supersedeTargets}
+  fields={supersedeFields}
+  idempotencyKey={supersedeIdempotencyKey}
+  prefillShortId={supersedePrefillShortId}
+  notice={supersedeNotice}
+  resend={supersedeResend}
+  onpreview={supersedeOnpreview}
+  onsubmit={supersedeOnsubmit}
+  oncancel={supersedeOncancel}
+  ondone={supersedeOndone}
 />
