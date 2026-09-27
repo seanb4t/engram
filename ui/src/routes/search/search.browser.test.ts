@@ -218,6 +218,40 @@ describe('search route — id resolution', () => {
   });
 });
 
+describe('search route — id/short_id pane close (WR-02)', () => {
+  it('closing the pane via the close button does not silently reopen it', async () => {
+    const uuid = '753aba22-1111-2222-3333-444455556666';
+    pageState.url.href = `http://localhost/search?q=${uuid}`;
+    const memory = makeMemory({ id: uuid, summary: 'the resolved memory' });
+    getMemorySpy.mockResolvedValue({ memory });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByRole('heading', { name: 'the resolved memory' })).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'close', exact: true }).click();
+    await expect.element(screen.getByRole('heading', { name: 'the resolved memory' })).not.toBeInTheDocument();
+    await expect.poll(() => pageState.url.searchParams.get('sel')).toBe(null);
+
+    // idQ.data stays loaded and the query is still classified id — without
+    // the fix, effectiveSel falls back to autoOpenId and the pane reopens.
+    await new Promise((r) => setTimeout(r, 30));
+    await expect.element(screen.getByRole('heading', { name: 'the resolved memory' })).not.toBeInTheDocument();
+  });
+
+  it('clicking the auto-opened row a second time closes the pane instead of leaving it open', async () => {
+    const uuid = '753aba22-1111-2222-3333-444455556667';
+    pageState.url.href = `http://localhost/search?q=${uuid}`;
+    const memory = makeMemory({ id: uuid, summary: 'the resolved memory' });
+    getMemorySpy.mockResolvedValue({ memory });
+
+    const screen = await renderSearch();
+    await expect.element(screen.getByRole('heading', { name: 'the resolved memory' })).toBeInTheDocument();
+
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.element(screen.getByRole('heading', { name: 'the resolved memory' })).not.toBeInTheDocument();
+  });
+});
+
 describe('search route — toggle pane', () => {
   it('clicking a row opens the pane; clicking the same row again closes it', async () => {
     pageState.url.href = 'http://localhost/search?q=github';

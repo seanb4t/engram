@@ -175,13 +175,50 @@
   // resolution line and one row, and opens the pane"); an explicit `sel`
   // (from clicking a row, or from a shared /search?...&sel=... URL) always
   // wins otherwise.
+  //
+  // WR-02 fix: `params.sel` is the ONLY signal `navigate({ sel: '' })` can
+  // produce, and it is always falsy once cleared — so a bare `params.sel ||
+  // autoOpenId` fallback reopens the pane on every close click as long as
+  // the query is still classified id/short_id and idQ.data stays loaded.
+  // `dismissedAutoOpen` is the explicit "user closed it" flag the fallback
+  // needs to respect; it resets whenever the resolved target itself changes
+  // (a fresh id/short_id lookup should still auto-open once).
+  let dismissedAutoOpen = $state(false);
+  $effect(() => {
+    idToFetch;
+    dismissedAutoOpen = false;
+  });
+
   const autoOpenId = $derived(
-    (classified.kind === 'id' || classified.kind === 'short_id') && idQ.data?.memory && !shortIdMissText
+    (classified.kind === 'id' || classified.kind === 'short_id') &&
+      idQ.data?.memory &&
+      !shortIdMissText &&
+      !dismissedAutoOpen
       ? idQ.data.memory.id
       : ''
   );
   const effectiveSel = $derived(params.sel || autoOpenId);
   const inResults = $derived(memories.some((m) => m.id === effectiveSel));
+
+  // Every close affordance (RecallSplit/DetailPane close button, ResultsList
+  // onescape, a second Enter on the open row) routes through here so the
+  // dismissal is recorded before clearing `sel` — see the WR-02 note above.
+  function closeSel() {
+    dismissedAutoOpen = true;
+    navigate({ sel: '' });
+  }
+
+  function toggleOpen(id: string) {
+    // Compares against effectiveSel (not params.sel) so a second Enter/click
+    // on an auto-opened id/short_id row is recognized as "close the open
+    // row" rather than a redundant "open it again" (part of the WR-02 fix
+    // above: openId={effectiveSel} is what ResultsList renders as open).
+    if (effectiveSel === id) {
+      closeSel();
+    } else {
+      navigate({ sel: id });
+    }
+  }
 
   const detailQ = createQuery(() => ({
     queryKey: ['getMemory', effectiveSel],
@@ -470,7 +507,7 @@
     />
   </div>
   <div class="search-body">
-    <RecallSplit open={!!effectiveSel} onclose={() => navigate({ sel: '' })} autoSaveId="engram-search-split">
+    <RecallSplit open={!!effectiveSel} onclose={closeSel} autoSaveId="engram-search-split">
       {#snippet list()}
         {#if recallState}
           <RecallState state={recallState} onfix={onRecallFix} onretry={onRecallRetry} />
@@ -484,8 +521,8 @@
             busy={classified.kind === 'operators' ? listBusy : searchQ.isFetching && searchQ.isPlaceholderData}
             hasMore={classified.kind === 'operators' ? listQ.hasNextPage : false}
             onloadmore={classified.kind === 'operators' ? () => listQ.fetchNextPage() : undefined}
-            onopen={(id) => navigate({ sel: params.sel === id ? '' : id })}
-            onescape={() => navigate({ sel: '' })}
+            onopen={toggleOpen}
+            onescape={closeSel}
             onedit={(id) => writeSurfaces?.openEdit(id)}
             onvisibility={(m) =>
               normalizeVisibility(m.visibility) === 'shared'
@@ -508,7 +545,7 @@
           requestedId={effectiveSel}
           {inResults}
           hit={selectedMemory ? { score: selectedMemory.score, relevance: selectedMemory.relevance } : undefined}
-          onclose={() => navigate({ sel: '' })}
+          onclose={closeSel}
           onselect={(id) => navigate({ sel: id })}
           onedit={(id) => writeSurfaces?.openEdit(id)}
           onvisibility={(m) =>
