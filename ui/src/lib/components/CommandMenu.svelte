@@ -16,6 +16,7 @@
   import { handoffToHeaderSearch } from '$lib/search/header-search.svelte';
   import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
   import { stepTextSize, resetTextSize } from '$lib/display.svelte';
+  import { curationHost, type CurationAction } from '$lib/curation/host.svelte.ts';
   import type { Memory } from '$lib/gen/engram_pb';
 
   // D-11: ⌘K is a command menu of static actions (navigation, display,
@@ -94,6 +95,23 @@
   const queryClient = useQueryClient();
   const sel = $derived(page.url.searchParams.get('sel') ?? '');
   const selMemory = $derived(sel ? queryClient.getQueryData<{ memory?: Memory }>(['getMemory', sel])?.memory : undefined);
+  // Phase 2 D-11: curation row actions from the CURRENT route's registered
+  // host (curationHost.current). No host, or no cached record for `sel`,
+  // means none of these items render -- they never appear on a route that
+  // has not registered one, and never claim an action the host itself did
+  // not offer for this record.
+  const CURATION_LABEL: Record<CurationAction, (shortId: string) => string> = {
+    supersede: (s) => `Supersede ${s}…`,
+    archive: (s) => `Archive ${s}`,
+    restore: (s) => `Restore ${s}`,
+    chain: (s) => `Show chain ${s}`
+  };
+
+  function runCuration(action: CurationAction) {
+    open = false;
+    curationHost.current?.run(action, [sel]);
+  }
+
   const recordItems = $derived.by(() => {
     if (!sel) return [] as { label: string; onSelect: () => void }[];
     const items: { label: string; onSelect: () => void }[] = [
@@ -102,6 +120,12 @@
     if (selMemory?.shortId) {
       const shortId = selMemory.shortId;
       items.push({ label: `Copy short_id ${shortId}`, onSelect: () => copyText(shortId) });
+    }
+    if (curationHost.current && selMemory) {
+      const shortId = selMemory.shortId;
+      for (const action of curationHost.current.actionsFor(selMemory)) {
+        items.push({ label: CURATION_LABEL[action](shortId), onSelect: () => runCuration(action) });
+      }
     }
     return items;
   });

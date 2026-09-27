@@ -13,6 +13,7 @@
   import { peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
   import { normalizeVisibility } from '$lib/mutations/memory';
   import { flashRows } from '$lib/curation/flash.svelte.ts';
+  import { registerCurationHost, defaultActionsFor } from '$lib/curation/host.svelte.ts';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import {
     parseSearchParams,
@@ -484,6 +485,22 @@
     const env = peekResume();
     if (env && env.kind === 'memory') writeSurfaces?.reopenFromResume(env);
     else if (env && (env.kind === 'supersede' || env.kind === 'archive')) curation?.reopenFromResume(env);
+
+    // Phase 2 D-11: registers /search as the active curation host for ⌘K's
+    // record-group actions -- unregistered on teardown so a stale
+    // registration can never survive a route switch.
+    const unregister = registerCurationHost({
+      actionsFor: defaultActionsFor,
+      run: (action, ids) =>
+        action === 'supersede'
+          ? curation?.openSupersede(ids)
+          : action === 'archive'
+            ? curation?.openArchive(ids)
+            : action === 'restore'
+              ? curation?.openRestore(ids)
+              : curation?.openChain(ids[0])
+    });
+    return unregister;
   });
 </script>
 

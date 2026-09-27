@@ -1,10 +1,11 @@
 import { render } from 'vitest-browser-svelte';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import { headerSearch } from '$lib/search/header-search.svelte';
 import { DEFAULT_TEXT_SIZE } from '$lib/display.svelte';
+import { registerCurationHost } from '$lib/curation/host.svelte.ts';
 import CommandMenu from './CommandMenu.svelte';
 
 const { gotoSpy, searchMemoriesSpy, getMemorySpy, setModeSpy, pageState } = vi.hoisted(() => ({
@@ -198,5 +199,68 @@ describe('CommandMenu', () => {
     const screen = await renderMenu();
     await expect.element(screen.getByText(/copy full id/i)).not.toBeInTheDocument();
     await expect.element(screen.getByText(/copy short_id/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('CommandMenu — curation row actions from the registered host (Phase 2 D-11)', () => {
+  let unregister: (() => void) | undefined;
+
+  afterEach(() => {
+    unregister?.();
+    unregister = undefined;
+  });
+
+  it('lists Supersede/Archive/Show chain items for the selected record when a host is registered', async () => {
+    const uuid = '753aba22-0000-4000-8000-000000000001';
+    pageState.url = new URL(`http://localhost/ui/search?sel=${uuid}`);
+    qc.setQueryData(['getMemory', uuid], { memory: fakeMemory({ id: uuid, shortId: 'k3m9p2qr7a' }) });
+    const run = vi.fn();
+    unregister = registerCurationHost({ actionsFor: () => ['supersede', 'archive', 'chain'], run });
+
+    const screen = await renderMenu();
+    await expect.element(screen.getByRole('option', { name: 'Supersede k3m9p2qr7a…', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Archive k3m9p2qr7a', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Show chain k3m9p2qr7a', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Restore k3m9p2qr7a', exact: true })).not.toBeInTheDocument();
+  });
+
+  it('selecting "Archive {short}" closes the menu and calls run("archive", [id])', async () => {
+    const uuid = '753aba22-0000-4000-8000-000000000001';
+    pageState.url = new URL(`http://localhost/ui/search?sel=${uuid}`);
+    qc.setQueryData(['getMemory', uuid], { memory: fakeMemory({ id: uuid, shortId: 'k3m9p2qr7a' }) });
+    const run = vi.fn();
+    unregister = registerCurationHost({ actionsFor: () => ['archive'], run });
+
+    const screen = await renderMenu();
+    await screen.getByRole('option', { name: 'Archive k3m9p2qr7a', exact: true }).click();
+
+    expect(run).toHaveBeenCalledExactlyOnceWith('archive', [uuid]);
+    await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it("an archived record's host actionsFor returning ['restore'] lists \"Restore {short}\" instead of Archive", async () => {
+    const uuid = '753aba22-0000-4000-8000-000000000001';
+    pageState.url = new URL(`http://localhost/ui/search?sel=${uuid}`);
+    qc.setQueryData(['getMemory', uuid], { memory: fakeMemory({ id: uuid, shortId: 'k3m9p2qr7a' }) });
+    unregister = registerCurationHost({ actionsFor: () => ['restore'], run: vi.fn() });
+
+    const screen = await renderMenu();
+    await expect.element(screen.getByRole('option', { name: 'Restore k3m9p2qr7a', exact: true })).toBeInTheDocument();
+    await expect.element(screen.getByRole('option', { name: 'Archive k3m9p2qr7a', exact: true })).not.toBeInTheDocument();
+  });
+
+  it('with no host registered, only the copy items appear for a selected record', async () => {
+    const uuid = '753aba22-0000-4000-8000-000000000001';
+    pageState.url = new URL(`http://localhost/ui/search?sel=${uuid}`);
+    qc.setQueryData(['getMemory', uuid], { memory: fakeMemory({ id: uuid, shortId: 'k3m9p2qr7a' }) });
+
+    const screen = await renderMenu();
+    await expect.element(screen.getByRole('option', { name: /copy full id/i })).toBeInTheDocument();
+    await expect
+      .element(screen.getByRole('option', { name: 'Supersede k3m9p2qr7a…', exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole('option', { name: 'Show chain k3m9p2qr7a', exact: true }))
+      .not.toBeInTheDocument();
   });
 });
