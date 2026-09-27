@@ -78,4 +78,18 @@ describe('FacetStrip', () => {
     const screen = await render(FacetStrip, baseProps({ params }));
     await expect.element(screen.getByText('cross_spine')).not.toBeInTheDocument();
   });
+
+  // WR-03: ScopeCombobox's own Retry button calls onretry?.() — FacetStrip
+  // must actually thread its onretry prop through, not swallow it, or that
+  // button silently does nothing on a ListScopes failure.
+  it('wires its onretry prop through to ScopeCombobox\'s Retry button', async () => {
+    const onretry = vi.fn();
+    const screen = await render(FacetStrip, baseProps({ scopesError: new Error('boom'), onretry }));
+
+    await screen.getByRole('button', { name: /any scope/ }).click();
+    await expect.element(screen.getByText('Could not load scopes')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Retry' }).click();
+    expect(onretry).toHaveBeenCalledTimes(1);
+  });
 });

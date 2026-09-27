@@ -447,6 +447,7 @@
     scopesLoading={scopesQ.isLoading}
     scopesError={scopesQ.error}
     onchange={(partial) => navigate({ ...partial, sel: '' })}
+    onretry={() => scopesQ.refetch()}
   />
   <ResultsHeader parts={headerParts} {scopeHits} k={effective.k} busy={headerBusy} />
   <!-- WriteSurfaces lives in a STABLE location outside RecallSplit: that

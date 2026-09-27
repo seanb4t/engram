@@ -17,7 +17,8 @@
     scopes,
     scopesLoading,
     scopesError,
-    onchange
+    onchange,
+    onretry
   }: {
     params: SearchParams;
     categoryCounts?: Record<string, number>;
@@ -25,6 +26,7 @@
     scopesLoading: boolean;
     scopesError: unknown;
     onchange: (next: Partial<SearchParams>) => void;
+    onretry?: () => void;
   } = $props();
 
   const totalHits = $derived(categoryCounts ? Object.values(categoryCounts).reduce((a, b) => a + b, 0) : undefined);
@@ -83,6 +85,7 @@
       loading={scopesLoading}
       error={scopesError}
       onselect={(s) => onchange({ scope: s, crossSpine: s ? false : true })}
+      {onretry}
     />
 
     {#if !params.scope}
