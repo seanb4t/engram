@@ -488,7 +488,7 @@ a known pattern.
   3. An invalid `SupersedeMemory` target set is rejected with every offending target named
   4. All proto changes are additive (`buf breaking` green), `gen/go`, `gen/ts`, and `ui/src/lib/gen` are regenerated and committed, the vendored SPA passes the `ui-drift` gate, and each RPC carries its blast-radius annotations and self-describe catalog entry
 
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans executed
 
 Plans:
 **Wave 1**
@@ -517,7 +517,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 03-07-PLAN.md — same-PR agent guidance, the curation client-routing contract, upgrade notes, the vendored SPA and the phase gates (D-01–D-05, D-09, D-24, D-25, D-28, D-30; RPC-01–RPC-06)
+- [x] 03-07-PLAN.md — same-PR agent guidance, the curation client-routing contract, upgrade notes, the vendored SPA and the phase gates (D-01–D-05, D-09, D-24, D-25, D-28, D-30; RPC-01–RPC-06)
 
 ### Phase 4: Curation Surfaces
 
