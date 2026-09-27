@@ -488,7 +488,36 @@ a known pattern.
   3. An invalid `SupersedeMemory` target set is rejected with every offending target named
   4. All proto changes are additive (`buf breaking` green), `gen/go`, `gen/ts`, and `ui/src/lib/gen` are regenerated and committed, the vendored SPA passes the `ui-drift` gate, and each RPC carries its blast-radius annotations and self-describe catalog entry
 
-**Plans:** 0/? plans (not yet planned)
+**Plans:** 7 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — wire-contract decision gate for the phase, then ArchiveMemory/RestoreMemory on Connect behind CSRF (first test) and archive_memory/restore_memory MCP tools with owner-gate proofs on both lanes (D-06, D-07, D-15–D-17, D-20, D-23, D-26; RPC-02, RPC-05, RPC-06)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — SupersedeMemory on Connect behind CSRF and validate_only on both lanes through one dispatch, with every-offender and preview-matches-commit proofs (D-08, D-09, D-15, D-18, D-20; RPC-01, RPC-05, RPC-06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-03-PLAN.md — ListScheduled on Connect with cross_spine and cursor on both lanes, deferred reveal proven across scopes (D-11, D-19, D-20, D-29; RPC-03, RPC-05, RPC-06)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 03-04-PLAN.md — ListRules on Connect and the empty-scopes all-rules read on both lanes with rule-scope coverage (D-10, D-19, D-20; RPC-03, RPC-05, RPC-06)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 03-05-PLAN.md — RelatedMemories on Connect with oneof edge evidence and a full opt-in, plus the on-demand related_memories MCP tool (D-02, D-12, D-13, D-20, D-21, D-23; RPC-04, RPC-05, RPC-06)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 03-06-PLAN.md — ListTags on Connect and the list_tags MCP tool for tag reuse, private-tag isolation proven (D-03, D-14, D-20, D-21, D-23; RPC-04, RPC-05, RPC-06)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 03-07-PLAN.md — same-PR agent guidance, the curation client-routing contract, upgrade notes, the vendored SPA and the phase gates (D-01–D-05, D-09, D-24, D-25, D-28, D-30; RPC-01–RPC-06)
 
 ### Phase 4: Curation Surfaces
 
