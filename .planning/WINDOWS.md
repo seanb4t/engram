@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 14
+open_count: 15
 waived_count: 0
 fixed_count: 7
-total_count: 21
-last_updated: 2026-09-27T15:02:29.671Z
+total_count: 22
+last_updated: 2026-09-27T17:28:55.623Z
 ---
 
 # Broken Windows Ledger
@@ -36,6 +36,7 @@ last_updated: 2026-09-27T15:02:29.671Z
 | 19 | 03 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete cannot flip any ID (RPC-01..06 included) because the Traceability table's Status column reads 'Mapped' instead of 'Pending'/'Gaps Found' — milestone-wide, pre-existing since 2026-09-25; see phase 03 deferred-items.md | open |  | 2026-09-27T11:01:45.242Z |  |
 | 20 | 04 | stub | ui/src/lib/components/CurationSurfaces.svelte |  | onreauth(ids) parameter accepted but unused; calls redirectToLogin() only. Plan 04-06 adds the v2 resume-envelope persist before this redirect, consuming ids. | open |  | 2026-09-27T14:15:14.028Z |  |
 | 21 | 04 | stub | ui/src/lib/components/CurationSurfaces.svelte |  | resolveRecordsKeepAll's placeholder chip for a resume-envelope target GetMemory cannot resolve renders as a plain chip (summary text 'not found: {id}') rather than SupersedeDialog's styled server-rejection issue treatment -- visible and never dropped, but cosmetically un-flagged | open |  | 2026-09-27T15:02:29.671Z |  |
+| 22 | 04 | deviation | .planning/REQUIREMENTS.md |  | Traceability table Status column parked at 'Mapped' for every Phase 4 row (and every other phase); requirements.mark-complete only accepts Pending/Gaps Found and cannot flip any of them -- milestone-wide, pre-existing, not caused by plan 04-09 | open |  | 2026-09-27T17:28:55.623Z |  |
 
 ````json
 [
@@ -300,6 +301,19 @@ last_updated: 2026-09-27T15:02:29.671Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-27T15:02:29.671Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 22,
+    "kind": "deviation",
+    "phase": "04",
+    "file": ".planning/REQUIREMENTS.md",
+    "line": null,
+    "description": "Traceability table Status column parked at 'Mapped' for every Phase 4 row (and every other phase); requirements.mark-complete only accepts Pending/Gaps Found and cannot flip any of them -- milestone-wide, pre-existing, not caused by plan 04-09",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-27T17:28:55.623Z",
     "resolved_at": null,
     "milestone": null
   }
