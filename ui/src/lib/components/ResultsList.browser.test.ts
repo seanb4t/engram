@@ -85,6 +85,22 @@ describe('ResultsList', () => {
     expect(document.activeElement).toBe(listbox.element());
   });
 
+  // WR-01: applyRole() rewrites role="region" to role="listbox", which
+  // un-matches the vendored library's own `[role='region']:focus-visible`
+  // rule — a compensating rule for the rewritten role must restore the ring.
+  it('the rewritten listbox keeps a visible :focus-visible ring', async () => {
+    const onopen = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0000');
+
+    const style = getComputedStyle(listbox.element());
+    expect(style.outlineStyle).toBe('solid');
+    expect(parseFloat(style.outlineWidth)).toBeGreaterThan(0);
+  });
+
   it('re-rendering with a different array keeps role listbox and resets the active row to the first item', async () => {
     const onopen = vi.fn();
     const screen = await render(ResultsList, { memories: THOUSAND, label: 'Search results', onopen });

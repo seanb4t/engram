@@ -513,6 +513,15 @@
   .results-listbox-wrapper.busy {
     opacity: 0.55;
   }
+  /* WR-01 fix: applyRole() rewrites the vendored viewport's role from
+     "region" to "listbox", which un-matches @humanspeak/svelte-virtual-list's
+     own scoped `[role='region'][tabindex='0']:focus-visible` rule — restore
+     an equivalent ring for the rewritten role so a keyboard user tabbing to
+     or focusing the results list still gets a visible indicator. */
+  .results-listbox-wrapper :global([role='listbox']:focus-visible) {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+  }
   .loadbar {
     position: absolute;
     top: 0;
