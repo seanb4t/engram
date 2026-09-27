@@ -11,6 +11,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -186,4 +187,189 @@ func TestListTagsRoundTripBothLanes(t *testing.T) {
 	if !proto.Equal(connResp.Msg, repeatResp.Msg) {
 		t.Errorf("repeated ListTags call diverged:\nfirst:  %v\nsecond: %v", connResp.Msg, repeatResp.Msg)
 	}
+}
+
+// protoTagCountsToViews maps Connect's []*engramv1.TagCount onto
+// tagCountView — the same flat shape the MCP JSON decode below produces —
+// so both lanes' results can be compared and asserted on with one set of
+// helpers.
+func protoTagCountsToViews(ts []*engramv1.TagCount) []tagCountView {
+	out := make([]tagCountView, len(ts))
+	for i, t := range ts {
+		out[i] = tagCountView{Tag: t.GetTag(), Count: t.GetCount()}
+	}
+	return out
+}
+
+// decodeListTagsViews decodes a list_tags MCP structured result's "tags"
+// key into []tagCountView — the same bytes a real MCP client receives.
+func decodeListTagsViews(t *testing.T, structured map[string]any) []tagCountView {
+	t.Helper()
+	raw, err := json.Marshal(structured["tags"])
+	if err != nil {
+		t.Fatalf("json.Marshal(list_tags tags): %v", err)
+	}
+	var out []tagCountView
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("json.Unmarshal(list_tags tags): %v", err)
+	}
+	return out
+}
+
+// findTagCount returns a pointer to the tagCountView for tag in vs, or nil.
+func findTagCount(vs []tagCountView, tag string) *tagCountView {
+	for i := range vs {
+		if vs[i].Tag == tag {
+			return &vs[i]
+		}
+	}
+	return nil
+}
+
+// assertTagCountAbsent fails if tag appears anywhere in vs.
+func assertTagCountAbsent(t *testing.T, label string, vs []tagCountView, tag string) {
+	t.Helper()
+	if v := findTagCount(vs, tag); v != nil {
+		t.Errorf("%s: tags contains %q, want absent: %+v", label, tag, vs)
+	}
+}
+
+// assertTagCountContains fails unless tag appears in vs (any count).
+func assertTagCountContains(t *testing.T, label string, vs []tagCountView, tag string) {
+	t.Helper()
+	if findTagCount(vs, tag) == nil {
+		t.Fatalf("%s: tags missing %q: %+v", label, tag, vs)
+	}
+}
+
+// assertTagCountExact fails unless tag appears in vs with exactly count.
+func assertTagCountExact(t *testing.T, label string, vs []tagCountView, tag string, count uint64) {
+	t.Helper()
+	v := findTagCount(vs, tag)
+	if v == nil {
+		t.Fatalf("%s: tags missing %q: %+v", label, tag, vs)
+	}
+	if v.Count != count {
+		t.Errorf("%s: tag %q count = %d, want %d", label, tag, v.Count, count)
+	}
+}
+
+// TestListTagsNeverShowsPrivate proves D-21 on both lanes, scoped and
+// all-scopes: owner B's PRIVATE record's tag never appears in owner A's
+// ListTags/list_tags results even though it shares A's tag name with a
+// SHARED record (positive control), and A's second-scope tag never leaks
+// into a scoped call for the first scope. As B, ListTags(S) contains the
+// private tag — visible to its own owner.
+func TestListTagsNeverShowsPrivate(t *testing.T) {
+	d, st := testDepsWithStore(t)
+	api := &engramAPI{d: d}
+
+	ownerA := "sub-listtags-iso-a-" + uuid.NewString()
+	ownerB := "sub-listtags-iso-b-" + uuid.NewString()
+	scopeS := "iso-test:project:listtags-iso-" + uuid.NewString()
+	scopeS2 := "iso-test:project:listtags-iso-s2-" + uuid.NewString()
+	tagShared := "s-" + uuid.NewString()
+	tagPrivate := "p-" + uuid.NewString()
+	tagX := "x-" + uuid.NewString()
+	vec := []float32{0.1, 0.2, 0.3}
+	now := time.Now().UTC().Truncate(time.Second)
+
+	t.Cleanup(func() {
+		cleanupErr(t, "DeleteAll(A) "+scopeS, st.DeleteAll(context.Background(), scopeS, store.Authenticated(ownerA)))
+		cleanupErr(t, "DeleteAll(A) "+scopeS2, st.DeleteAll(context.Background(), scopeS2, store.Authenticated(ownerA)))
+		cleanupErr(t, "DeleteAll(B) "+scopeS, st.DeleteAll(context.Background(), scopeS, store.Authenticated(ownerB)))
+	})
+
+	// B: PRIVATE record in S, tagged p-<u>.
+	bPrivate := store.Memory{
+		ID: uuid.NewString(), Content: "B private", Scope: scopeS,
+		Category: "gotcha", Source: "user-said", Owner: ownerB,
+		Tags: []string{tagPrivate}, Summary: "B private summary", CreatedAt: now,
+	}
+	if err := st.Upsert(context.Background(), bPrivate, vec); err != nil {
+		t.Fatalf("seed B private: %v", err)
+	}
+
+	// B: SHARED record in S, tagged s-<u> (positive control).
+	bShared := store.Memory{
+		ID: uuid.NewString(), Content: "B shared", Scope: scopeS,
+		Category: "gotcha", Source: "user-said", Owner: ownerB, Visibility: "shared",
+		Tags: []string{tagShared}, Summary: "B shared summary", CreatedAt: now.Add(time.Second),
+	}
+	if err := st.Upsert(context.Background(), bShared, vec); err != nil {
+		t.Fatalf("seed B shared: %v", err)
+	}
+
+	// A: record in S, tagged s-<u> too (same tag as B's shared record ->
+	// count 2, the positive control's exact count).
+	aInS := store.Memory{
+		ID: uuid.NewString(), Content: "A in S", Scope: scopeS,
+		Category: "gotcha", Source: "user-said", Owner: ownerA,
+		Tags: []string{tagShared}, Summary: "A in S summary", CreatedAt: now.Add(2 * time.Second),
+	}
+	if err := st.Upsert(context.Background(), aInS, vec); err != nil {
+		t.Fatalf("seed A in S: %v", err)
+	}
+
+	// A: record in S2 (a SECOND scope owned by A), tagged x-<u>.
+	aInS2 := store.Memory{
+		ID: uuid.NewString(), Content: "A in S2", Scope: scopeS2,
+		Category: "gotcha", Source: "user-said", Owner: ownerA,
+		Tags: []string{tagX}, Summary: "A in S2 summary", CreatedAt: now.Add(3 * time.Second),
+	}
+	if err := st.Upsert(context.Background(), aInS2, vec); err != nil {
+		t.Fatalf("seed A in S2: %v", err)
+	}
+
+	// As A, Connect ListTags(S): contains {s-<u>, 2}, never p-<u>, never x-<u>.
+	ctxA := parityConnectCtx(ownerA)
+	connS, err := api.ListTags(ctxA, connect.NewRequest(&engramv1.ListTagsRequest{Scope: scopeS}))
+	if err != nil {
+		t.Fatalf("Connect ListTags(A, S): %v", err)
+	}
+	connSViews := protoTagCountsToViews(connS.Msg.GetTags())
+	assertTagCountExact(t, "Connect A/S", connSViews, tagShared, 2)
+	assertTagCountAbsent(t, "Connect A/S", connSViews, tagPrivate)
+	assertTagCountAbsent(t, "Connect A/S", connSViews, tagX)
+
+	// As A, Connect ListTags(""): contains s-<u> and x-<u>, never p-<u>.
+	connAll, err := api.ListTags(ctxA, connect.NewRequest(&engramv1.ListTagsRequest{}))
+	if err != nil {
+		t.Fatalf("Connect ListTags(A, all scopes): %v", err)
+	}
+	connAllViews := protoTagCountsToViews(connAll.Msg.GetTags())
+	assertTagCountContains(t, "Connect A/all", connAllViews, tagShared)
+	assertTagCountContains(t, "Connect A/all", connAllViews, tagX)
+	assertTagCountAbsent(t, "Connect A/all", connAllViews, tagPrivate)
+
+	// As A, MCP list_tags(S) and list_tags(""), same assertions.
+	mcpCtxA, csA := newMCPSession(t, d, ownerA)
+
+	mcpS, mcpSText := callToolTextJSON(mcpCtxA, t, csA, "list_tags", map[string]any{"scope": scopeS})
+	assertTextIsStructuredJSON(t, "list_tags", mcpSText, mcpS)
+	mcpSViews := decodeListTagsViews(t, mcpS)
+	assertTagCountExact(t, "MCP A/S", mcpSViews, tagShared, 2)
+	assertTagCountAbsent(t, "MCP A/S", mcpSViews, tagPrivate)
+	assertTagCountAbsent(t, "MCP A/S", mcpSViews, tagX)
+
+	mcpAll, mcpAllText := callToolTextJSON(mcpCtxA, t, csA, "list_tags", map[string]any{})
+	assertTextIsStructuredJSON(t, "list_tags", mcpAllText, mcpAll)
+	mcpAllViews := decodeListTagsViews(t, mcpAll)
+	assertTagCountContains(t, "MCP A/all", mcpAllViews, tagShared)
+	assertTagCountContains(t, "MCP A/all", mcpAllViews, tagX)
+	assertTagCountAbsent(t, "MCP A/all", mcpAllViews, tagPrivate)
+
+	// As B, ListTags(S) contains the private tag — visible to its own
+	// owner — on both lanes.
+	ctxB := parityConnectCtx(ownerB)
+	connB, err := api.ListTags(ctxB, connect.NewRequest(&engramv1.ListTagsRequest{Scope: scopeS}))
+	if err != nil {
+		t.Fatalf("Connect ListTags(B, S): %v", err)
+	}
+	assertTagCountContains(t, "Connect B/S", protoTagCountsToViews(connB.Msg.GetTags()), tagPrivate)
+
+	mcpCtxB, csB := newMCPSession(t, d, ownerB)
+	mcpB, mcpBText := callToolTextJSON(mcpCtxB, t, csB, "list_tags", map[string]any{"scope": scopeS})
+	assertTextIsStructuredJSON(t, "list_tags", mcpBText, mcpB)
+	assertTagCountContains(t, "MCP B/S", decodeListTagsViews(t, mcpB), tagPrivate)
 }

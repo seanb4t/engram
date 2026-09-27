@@ -1196,4 +1196,74 @@ func TestReadParity(t *testing.T) {
 			})
 		})
 	})
+
+	t.Run("ListTags", func(t *testing.T) {
+		const owner = "actor-parity-listtags"
+		const mcpActor = "human-parity-listtags@example.com"
+		const scope = "parity:project:listtags"
+
+		// listTagsFixture (D-20): two tags share the same count (beta/gamma
+		// at 2) — the real-Qdrant round-trip test (tags_test.go) already
+		// proves count-desc/tag-asc ordering; this scripted row only proves
+		// the two lanes see the SAME scripted values, never re-derives it.
+		listTagsFixture := []store.TagCount{
+			{Tag: "alpha", Count: 5},
+			{Tag: "beta", Count: 2},
+			{Tag: "gamma", Count: 2},
+		}
+
+		dMCP, spMCP := newSpyDeps()
+		dConn, spConn := newSpyDeps()
+		spMCP.tags, spMCP.tagsMore = listTagsFixture, true
+		spConn.tags, spConn.tagsMore = listTagsFixture, true
+
+		mcpCaller := parityMCPCaller(t, owner, mcpActor)
+		connCtx := parityConnectCtx(owner)
+		api := &engramAPI{d: dConn}
+
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			mcpTags, mcpMore, mcpErr := dMCP.listTags(ctx, mcpCaller, listTagsArgs{Scope: scope})
+			connResp, connErr := api.ListTags(connCtx, connect.NewRequest(&engramv1.ListTagsRequest{Scope: scope}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			if mcpMore != connResp.Msg.GetMore() {
+				t.Errorf("more mismatch: mcp=%v connect=%v", mcpMore, connResp.Msg.GetMore())
+			}
+			mcpViews := tagCountViews(mcpTags)
+			connTags := connResp.Msg.GetTags()
+			if len(mcpViews) != len(connTags) {
+				t.Fatalf("tag count mismatch: mcp=%d connect=%d", len(mcpViews), len(connTags))
+			}
+			for i, v := range mcpViews {
+				if v.Tag != connTags[i].GetTag() || v.Count != connTags[i].GetCount() {
+					t.Errorf("tags[%d] mismatch: mcp=%+v connect={%s %d}", i, v, connTags[i].GetTag(), connTags[i].GetCount())
+				}
+			}
+		})
+
+		t.Run("rejection_envelope_parity", func(t *testing.T) {
+			ctx := context.Background()
+
+			t.Run("limit_over_maximum", func(t *testing.T) {
+				_, _, mcpErr := dMCP.listTags(ctx, mcpCaller, listTagsArgs{Scope: scope, Limit: 1001})
+				_, connErr := api.ListTags(connCtx, connect.NewRequest(&engramv1.ListTagsRequest{Scope: scope, Limit: 1001}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+
+			t.Run("limit_at_maximum_succeeds", func(t *testing.T) {
+				_, _, mcpErr := dMCP.listTags(ctx, mcpCaller, listTagsArgs{Scope: scope, Limit: 1000})
+				_, connErr := api.ListTags(connCtx, connect.NewRequest(&engramv1.ListTagsRequest{Scope: scope, Limit: 1000}))
+				assertCodeParity(ctx, t, mcpErr, connErr)
+				if mcpErr != nil || connErr != nil {
+					t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+		})
+	})
 }
