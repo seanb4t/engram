@@ -8,13 +8,15 @@
   import HeaderSearch from './HeaderSearch.svelte';
   import { Button } from '$lib/components/ui/button';
   import { Kbd } from '$lib/components/ui/kbd';
-  import EyeIcon from '@lucide/svelte/icons/eye';
+  import ScrollTextIcon from '@lucide/svelte/icons/scroll-text';
+  import CalendarClockIcon from '@lucide/svelte/icons/calendar-clock';
   import SearchIcon from '@lucide/svelte/icons/search';
   import CompassIcon from '@lucide/svelte/icons/compass';
   import SunMoonIcon from '@lucide/svelte/icons/sun-moon';
   let { children, oncommand }: { children?: import('svelte').Snippet; oncommand?: () => void } = $props();
   const nav = [
-    { href: `${base}/observe`, label: 'Observe', icon: EyeIcon },
+    { href: `${base}/rules`, label: 'Rules', icon: ScrollTextIcon },
+    { href: `${base}/scheduled`, label: 'Scheduled', icon: CalendarClockIcon },
     { href: `${base}/search`, label: 'Search', icon: SearchIcon },
     { href: `${base}/discovery`, label: 'Discovery', icon: CompassIcon }
   ];

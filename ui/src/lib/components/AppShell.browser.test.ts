@@ -27,7 +27,9 @@ beforeEach(() => {
 describe('AppShell', () => {
   it('renders nav links, the header search box and the command menu trigger', async () => {
     const screen = await renderShell();
-    await expect.element(screen.getByRole('link', { name: /observe/i })).toBeInTheDocument();
+    await expect.element(screen.getByRole('link', { name: /rules/i })).toBeInTheDocument();
+    await expect.element(screen.getByRole('link', { name: /scheduled/i })).toBeInTheDocument();
+    await expect.element(screen.getByRole('link', { name: /observe/i })).not.toBeInTheDocument();
     await expect.element(screen.getByRole('combobox', { name: 'Search memories' })).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: /open command menu/i })).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: /toggle theme/i })).toBeInTheDocument();
@@ -40,7 +42,7 @@ describe('AppShell', () => {
 
   it('renders no migration strip for a zero/zero response', async () => {
     const screen = await renderShell();
-    await expect.element(screen.getByRole('link', { name: /observe/i })).toBeInTheDocument();
+    await expect.element(screen.getByRole('link', { name: /rules/i })).toBeInTheDocument();
     await expect.element(screen.getByText(/pending migration/)).not.toBeInTheDocument();
   });
 

@@ -8,7 +8,8 @@
   import { setMode, mode } from 'mode-watcher';
   import { toast } from 'svelte-sonner';
   import HouseIcon from '@lucide/svelte/icons/house';
-  import EyeIcon from '@lucide/svelte/icons/eye';
+  import ScrollTextIcon from '@lucide/svelte/icons/scroll-text';
+  import CalendarClockIcon from '@lucide/svelte/icons/calendar-clock';
   import SearchIcon from '@lucide/svelte/icons/search';
   import CompassIcon from '@lucide/svelte/icons/compass';
   import { classifyInput } from '$lib/search/classify';
@@ -40,7 +41,8 @@
 
   const navItems = [
     { label: 'Home', href: `${base}/`, icon: HouseIcon },
-    { label: 'Observe', href: `${base}/observe`, icon: EyeIcon },
+    { label: 'Rules', href: `${base}/rules`, icon: ScrollTextIcon },
+    { label: 'Scheduled', href: `${base}/scheduled`, icon: CalendarClockIcon },
     { label: 'Search', href: `${base}/search`, icon: SearchIcon },
     { label: 'Discovery', href: `${base}/discovery`, icon: CompassIcon }
   ];

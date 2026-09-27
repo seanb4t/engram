@@ -21,7 +21,7 @@ func TestStaticHandlerSPAFallback(t *testing.T) {
 	}
 	// A client route with no matching asset falls back to index.html (200), not 404.
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/observe", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/search", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "operator console") {
 		t.Fatalf("fallback: status=%d body=%q", rec.Code, rec.Body.String())
 	}

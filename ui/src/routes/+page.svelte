@@ -5,6 +5,7 @@
   import { base } from '$app/paths';
   import { engram } from '$lib/client';
   import { PAGE_LIMIT, listMemoriesKey } from '$lib/queries';
+  import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
   import { peekResume, consumeResume, normalizeReturnPath, isAllowedDestination } from '$lib/resume';
   import ResultsList from '$lib/components/ResultsList.svelte';
   import ScopeChip from '$lib/components/ScopeChip.svelte';
@@ -18,18 +19,27 @@
     queryKey: listMemoriesKey('', [], '', PAGE_LIMIT, 0, false, false, false, true),
     queryFn: () => engram.listMemories({ scope: '', limit: BigInt(PAGE_LIMIT), offset: 0n, categories: [], visibility: '', crossSpine: true })
   }));
-  function openRecord(id: string) { goto(`${base}/observe?sel=${encodeURIComponent(id)}`); }
+  // D-14: the Observe route is gone (redundant since Phase 2 -- /search
+  // with operator-only input is the same unranked ListMemories listing). Both a
+  // scope tile and a recent-row activation land on /search: a scope tile
+  // searches `scope:<x>` (classify.ts's operator-token syntax), a row
+  // activation searches the record's own id, which resolves via GetMemory
+  // and auto-opens the pane (ENTRY-01).
+  function openRecord(id: string) {
+    goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), q: id })}`);
+  }
 
   // D-09 re-auth landing (Codex round-3 HIGH): the OIDC callback always lands
   // here (/ui/, handlers.go:187), never the originating route. This root
   // page PEEKS the resume envelope and routes back to its returnPath WITHOUT
-  // deleting it -- the destination route (observe/search/discovery) still
-  // needs it to reopen the sheet and pass resumeValues in as props; it is
-  // the sole owner of consumeResume() (after the form's onresumeapplied
-  // acknowledgement). base + normalizeReturnPath guarantees the redirect
-  // never double-prefixes to /ui/ui/observe (base='/ui', svelte.config.js:9).
-  // A malformed/tampered returnPath that fails isAllowedDestination is
-  // rejected and the envelope discarded rather than followed.
+  // deleting it -- the destination route (search/discovery/rules/scheduled)
+  // still needs it to reopen the sheet/dialog and pass resumeValues in as
+  // props; it is the sole owner of consumeResume() (after the form's
+  // onresumeapplied acknowledgement). base + normalizeReturnPath guarantees
+  // the redirect never double-prefixes to /ui/ui/search (base='/ui',
+  // svelte.config.js:9). A malformed/tampered returnPath that fails
+  // isAllowedDestination is rejected and the envelope discarded rather than
+  // followed.
   onMount(() => {
     const env = peekResume();
     if (!env) return;
@@ -53,7 +63,8 @@
         <Button
           variant="surface"
           class="relative text-left p-3 h-auto block overflow-hidden bg-[var(--surface-2)] border border-[var(--border-subtle,var(--border))]"
-          onclick={() => goto(`${base}/observe?scope=${encodeURIComponent(s.scope)}`)}
+          onclick={() =>
+            goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), q: `scope:${s.scope}` })}`)}
         >
           <span class="absolute left-0 top-0 bottom-0 w-[calc(3*var(--u))] bg-primary"></span>
           <ScopeChip scope={s.scope} mode="stacked" />
