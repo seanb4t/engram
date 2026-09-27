@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { QueryClient } from '@tanstack/svelte-query';
 import { create } from '@bufbuild/protobuf';
 import { createClient, ConnectError, Code, createRouterTransport } from '@connectrpc/connect';
@@ -14,7 +14,9 @@ import {
   restoreMemoryQueries,
   applyUpdateOptimistic,
   applyDeleteOptimistic,
-  applySetVisibilityOptimistic
+  applySetVisibilityOptimistic,
+  applyToMemoryCaches,
+  invalidateAfterDelete
 } from './memory';
 
 // ---------------------------------------------------------------------------
@@ -302,5 +304,83 @@ describe('applySetVisibilityOptimistic', () => {
 
     restoreMemoryQueries(qc, snapshot);
     expect((qc.getQueryData(privateFilteredKey) as any).memories[0].visibility).toBe('private');
+  });
+});
+
+describe('applyToMemoryCaches — infinite query pages (D-10, every list shape)', () => {
+  it('patches a record inside an infinite listMemories cursor cache ({ pages: [{ memories }] }) without changing page lengths', () => {
+    const qc = new QueryClient();
+    const cursorKey = ['listMemories', 's', [], '', 50, 'cursor', false, false, false, true, [], '', ''];
+    qc.setQueryData(cursorKey, {
+      pages: [
+        {
+          memories: [memory({ id: 'm1' }), memory({ id: 'm2' })],
+          nextPageToken: 't2',
+          searchedScopes: [],
+          scopesTruncated: false,
+          scopesUnknown: false
+        },
+        {
+          memories: [memory({ id: 'm3' })],
+          nextPageToken: '',
+          searchedScopes: [],
+          scopesTruncated: false,
+          scopesUnknown: false
+        }
+      ],
+      pageParams: ['', 't2']
+    });
+
+    applyToMemoryCaches(qc, 'm3', (m) => ({ ...m, content: 'patched' }));
+
+    const after = qc.getQueryData(cursorKey) as any;
+    expect(after.pages.length).toBe(2);
+    expect(after.pages[0].memories.length).toBe(2);
+    expect(after.pages[1].memories.length).toBe(1);
+    expect(after.pages[1].memories[0].content).toBe('patched');
+    expect(after.pages[0].memories[0].content).not.toBe('patched');
+  });
+
+  it("patches a record inside an infinite ['listScheduled', …] cache without changing page lengths", () => {
+    const qc = new QueryClient();
+    const scheduledKey = ['listScheduled', 's', 'scheduled', 50, '', '', false, ''];
+    qc.setQueryData(scheduledKey, {
+      pages: [{ memories: [memory({ id: 'sch1' })], nextPageToken: '' }],
+      pageParams: ['']
+    });
+
+    applyToMemoryCaches(qc, 'sch1', (m) => ({ ...m, content: 'patched' }));
+
+    const after = qc.getQueryData(scheduledKey) as any;
+    expect(after.pages.length).toBe(1);
+    expect(after.pages[0].memories.length).toBe(1);
+    expect(after.pages[0].memories[0].content).toBe('patched');
+  });
+
+  it('leaves a non-matching id untouched in both an infinite listMemories page and an infinite listScheduled page', () => {
+    const qc = new QueryClient();
+    const cursorKey = ['listMemories', 's', [], '', 50, 'cursor', false, false, false, true, [], '', ''];
+    const scheduledKey = ['listScheduled', 's', 'scheduled', 50, '', '', false, ''];
+    qc.setQueryData(cursorKey, { pages: [{ memories: [memory({ id: 'other' })] }], pageParams: [''] });
+    qc.setQueryData(scheduledKey, { pages: [{ memories: [memory({ id: 'other' })] }], pageParams: [''] });
+
+    applyToMemoryCaches(qc, 'nope', (m) => ({ ...m, content: 'patched' }));
+
+    expect((qc.getQueryData(cursorKey) as any).pages[0].memories[0].content).not.toBe('patched');
+    expect((qc.getQueryData(scheduledKey) as any).pages[0].memories[0].content).not.toBe('patched');
+  });
+});
+
+describe('invalidateAfterDelete (component-free, D-10)', () => {
+  it('invalidates listMemories, searchMemories, listScopes, listRules and listScheduled', () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+
+    invalidateAfterDelete(qc);
+
+    const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey[0]);
+    expect(keys).toEqual(
+      expect.arrayContaining(['listMemories', 'searchMemories', 'listScopes', 'listRules', 'listScheduled'])
+    );
   });
 });
