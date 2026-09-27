@@ -67,7 +67,11 @@ cycles and self-supersession structurally impossible. See
 `archived_at`, an entirely **new, orthogonal** key — distinct from both `not_after`
 expiry and `superseded_by` supersession. Archiving never writes `not_after` and
 never writes `superseded_by`; a record can be archived, expired, and superseded
-independently, and each state is cleared independently of the others.
+independently, and each state is cleared independently of the others. The MCP
+[`archive_memory`](/reference/tools/#archive_memory) /
+[`restore_memory`](/reference/tools/#restore_memory) tools and the Connect
+`ArchiveMemory` / `RestoreMemory` RPCs reach the identical effect over a batch
+of ids, owner-gated the same way the CLI verbs are.
 
 A record carrying `archived_at` is **soft-hidden from recall** (`search_memory`,
 `list_memory`, `search_discovery`, `list_scheduled`) but remains **fetchable by id**

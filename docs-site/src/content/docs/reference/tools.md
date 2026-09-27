@@ -27,6 +27,8 @@ records created.
 | `set_visibility` | Share or unshare a memory you own |
 | `store_rule` | Persist a normative, user-blessed rule (ground truth) |
 | `list_rules` | List the complete rule set for one or more scopes |
+| `archive_memory` | Retire a memory you own without deleting it (reversible) |
+| `restore_memory` | Reverse an `archive_memory` call |
 
 **`actor` and `owner` are always server-set.** They come from the validated OIDC
 token and are never accepted as client input.
@@ -600,6 +602,69 @@ Omitting `scopes` additionally carries `searched_scopes`/`scopes_truncated`
 (or `scopes_unknown`) naming ONLY the rule scopes covered — never a non-rule
 scope the caller can also read — see `list_memory` above for the shared
 three-state coverage semantics.
+
+---
+
+## archive_memory
+
+Retire one or more memories you own, reversibly, without deleting them.
+Archived records drop out of `search_memory` / `list_memory` /
+`search_discovery` / `list_scheduled` but stay fetchable via
+[`get_memory`](#get_memory). Nothing is deleted, and no other derived state
+(`superseded_by`, `not_before`/`not_after`) is touched — see
+[Archiving](/reference/memory-record/#archiving) for the full
+independently-cleared-state contract.
+
+Discriminate against its siblings: [`delete_memory`](#delete_memory) removes
+junk with no history worth keeping; [`supersede_memory`](#supersede_memory)
+records a reversal because the fact itself changed; `archive_memory` retires
+a record that is still true but no longer useful. **Use only after the user
+has explicitly agreed to it in the conversation** — never as automatic
+tidy-up.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `ids` | string[] | yes | 1 to 1000 ids, each a full UUID or `short_id`. Each entry is bounded at 256 bytes. |
+
+Returns one outcome per id, **in the order you supplied them**:
+`archived`, `already_archived`, or `not_found`. A duplicate id in the list is
+reported once per occurrence, never merged or deduplicated. `id` is empty on
+a `not_found` row and set to the resolved UUID otherwise.
+
+A target you do not own and a target that does not exist both read
+`not_found` — the same indistinguishable-by-design rejection
+[`supersede_memory`](#supersede_memory) uses for its target set — so the
+call never echoes a UUID for either case. The whole call rejects only on a
+malformed batch (empty `ids`, a blank entry, more than 1000 entries, or an
+entry over 256 bytes); see
+[Batch outcomes](/reference/errors/#batch-outcomes-archive_memory--restore_memory).
+
+Operators reach the identical effect via `engram spine-review archive` on
+the CLI.
+
+---
+
+## restore_memory
+
+Reverse an [`archive_memory`](#archive_memory) call: clears `archived_at`,
+returning the record to normal recall. Never a delete, content erasure, or
+vector removal.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `ids` | string[] | yes | 1 to 1000 ids, each a full UUID or `short_id`. Each entry is bounded at 256 bytes. |
+
+Returns one outcome per id, **in the order you supplied them**: `restored`
+(the record was archived and is now not), `not_archived` (it was not
+archived — nothing to restore), or `not_found` — the same
+indistinguishable-by-design rejection as `archive_memory` above. A duplicate
+id in the list is reported once per occurrence, never merged. `id` is empty
+on a `not_found` row and set to the resolved UUID otherwise. Rejection
+conditions and the malformed-batch envelope are identical to
+`archive_memory`.
+
+Operators reach the identical effect via `engram spine-review restore` on
+the CLI.
 
 ---
 

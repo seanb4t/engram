@@ -272,6 +272,13 @@ the tool-layer envelope.
 This is the consent gate — the only thing between a judgment and a
 mutation.
 
+The same gate governs `archive_memory` / `restore_memory` (MCP) and `engram
+spine-review archive` / `restore` (CLI) — propose, get the user's explicit
+yes in this conversation, then act. This skill does not call `archive_memory`
+or `restore_memory` itself (`## Tools this skill may call` names the six it
+does); the constraint is stated here for consistency with `curating-memory`,
+which does call them.
+
 Present every finding from a sweep as **one report, grouped by verdict**,
 and treat that report as the single inline moment the source consent
 protocol calls for. Each item inside the report still gets its own steps

@@ -108,6 +108,19 @@ no new hint code was added for this verb. Set-shape rejections (empty array, bla
 entry) DO use the field-and-hint grammar above, naming the `supersedes` argument
 itself rather than any target value.
 
+## Batch outcomes (archive_memory / restore_memory)
+
+[`archive_memory`](/reference/tools/#archive_memory) and
+[`restore_memory`](/reference/tools/#restore_memory) take a batch of `ids` and
+return one outcome per id — a per-id `not_found` (not yours, or does not
+exist) is an **outcome in the result**, not an error, and the call still
+succeeds. The whole call rejects, with the ordinary field-and-hint grammar
+above naming `ids`, only on a malformed batch:
+
+- `hint=required` — `ids` is empty, or one of its entries is blank.
+- `hint=out_of_range` — `ids` has more than 1000 entries.
+- `hint=too_long` — one entry exceeds 256 bytes.
+
 ## The twelve hint codes
 
 Transcribed directly from `internal/server/argerror.go`'s `HintCode` constants and checked

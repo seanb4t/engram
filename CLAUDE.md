@@ -76,7 +76,7 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 Tools: `store_memory` / `schedule_memory` / `search_memory` / `list_memory` /
 `list_scheduled` / `get_memory` / `supersede_memory` / `update_memory` /
-`delete_memory` / `delete_all`. A record carries `content`,
+`delete_memory` / `delete_all` / `archive_memory` / `restore_memory`. A record carries `content`,
 `scope`, repo/workspace/worktree/base_dir, `source`, `category`, `tags`,
 `summary`/`summary_source` (client-authored or auto-generated digest; omit for none),
 `actor` (verified caller — server-set, never client-supplied), `owner` (caller's
@@ -177,7 +177,15 @@ refinement and `delete_memory` for junk. Agent-facing guidance lives in the
 Archived state: `engram spine-review archive` stamps `archived_at` on one or
 more records by id; `engram spine-review restore` deletes it, returning the
 record to normal recall — always reversible, and never a delete, content
-erasure, or vector removal. `archived_at` shares supersession's soft-hidden-
+erasure, or vector removal. The MCP `archive_memory` / `restore_memory` tools
+and the Connect `ArchiveMemory` / `RestoreMemory` RPCs reach the identical
+effect: `ids` (1 to 1000, each a full UUID or `short_id`), one outcome per id
+in caller-supplied order (`archived` / `already_archived` / `restored` /
+`not_archived` / `not_found`), owner-only — a record you do not own reads
+`not_found`, indistinguishable from a nonexistent id, and never echoes its
+UUID. Agent use is gated on the user agreeing to it in the conversation, never
+on the agent's own judgment; `engram spine-review archive` / `restore` remain
+the operator-tier path, unchanged. `archived_at` shares supersession's soft-hidden-
 but-still-fetchable-by-id contract: an archived record drops out of
 `search_memory`/`list_memory`/`search_discovery`/`list_scheduled` but stays reachable by id via `get_memory`.
 Archiving is an orthogonal key — it never writes an expiry and never writes a

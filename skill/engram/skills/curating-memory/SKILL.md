@@ -1,6 +1,6 @@
 ---
 name: curating-memory
-description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, whenever a durable fact you are about to store contradicts or corrects one already in the store (supersede it, do not overwrite it), and before any mcp__engram__store_memory / schedule_memory / supersede_memory / update_memory / delete_memory / store_rule / list_rules call, when a fact you are about to store is phrased as a MUST / NEVER / ALWAYS constraint on future behavior (propose a rule, never promote one), and when a footgun the store already records is hit again.
+description: Use when storing or updating durable project memory via the engram MCP tools — enforces the engram-vs-beads routing gate (engram is preferred over `bd remember`/`bd memories` for durable facts), durable-only capture, search-before-store, supersede-on-contradiction, and the two-tier spine/overlay scope. Trigger when the user states a durable decision/preference/convention/gotcha, when the user explicitly asks to remember something (including a time-bound reminder, due date, or "not before"/expiry — even if it looks task-shaped), whenever you are about to record a durable fact and the repo also has a beads memory store (prefer engram; do not write it to `bd remember`), on the session-start recall and capture nudges, whenever a durable fact you are about to store contradicts or corrects one already in the store (supersede it, do not overwrite it), and before any mcp__engram__store_memory / schedule_memory / supersede_memory / update_memory / delete_memory / store_rule / list_rules / archive_memory / restore_memory call, when the user considers archiving, restoring, or otherwise retiring a memory (consent required every time — see Archiving), when a fact you are about to store is phrased as a MUST / NEVER / ALWAYS constraint on future behavior (propose a rule, never promote one), and when a footgun the store already records is hit again.
 metadata:
   engram-summary: "The routing gate and write discipline before any engram memory write — durable-only, search-before-store, supersede-on-contradiction, and engram preferred over beads."
 ---
@@ -440,6 +440,32 @@ Rules that will bite you if ignored:
   result instead of merging again. If the target set changed between attempts,
   expect a conflict rather than a silent second application.
 
+## Archiving (retire without deleting)
+
+`archive_memory` stamps `archived_at` on records you own, so they drop out of
+`search_memory` / `list_memory` / `search_discovery` / `list_scheduled` but stay
+fetchable via `get_memory`; `restore_memory` reverses it. Nothing is deleted:
+content, tags, and the vector are untouched either way.
+
+Discriminate against its siblings: `delete_memory` removes junk — there is no
+history worth keeping. `supersede_memory` records a reversal — the fact
+itself changed. `archive_memory` retires a record that is still true but no
+longer useful, reversibly. The three verbs never overlap.
+
+**Consent, every time (MUST).** Archive or restore only after the user
+agrees to it in this conversation — never on your own judgment, and never as
+routine tidy-up.
+
+Both tools take `ids`: 1 to 1000 ids, each a full UUID or `short_id`. The
+result carries one outcome per id, in the caller-supplied order:
+`archived` / `already_archived` / `restored` / `not_archived` / `not_found`.
+`not_found` means "not yours, or does not exist" — the two are
+indistinguishable by design (the same rule `supersede_memory`'s target
+rejection follows) — so report it as such rather than retrying.
+
+Operators reach the identical effect via `engram spine-review archive` /
+`restore` on the CLI; the two lanes share one gate.
+
 ## Citations (structured provenance)
 
 A memory may optionally carry structured **citations** — the same shape
@@ -502,7 +528,7 @@ durable fact, not a document, and split or trim instead of retrying.
 All tools are on the `engram` server: `mcp__engram__store_memory`,
 `…__schedule_memory`, `…__search_memory`, `…__supersede_memory`,
 `…__update_memory`, `…__delete_memory`, `…__list_memory`, `…__list_scheduled`,
-`…__get_memory`. If a
+`…__get_memory`, `…__archive_memory`, `…__restore_memory`. If a
 call returns 401/403 the server is not authenticated —
 tell the user to authenticate via `/mcp` (engram → Authenticate), and
 restate the durable fact so they can re-store it after authenticating; never
