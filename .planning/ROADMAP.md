@@ -375,7 +375,7 @@ out to the CLI.
 - [x] **Phase 01.1: Console Sketches (INSERTED)** - Throwaway HTML sketches of the console surfaces to pick a visual direction before any UI-SPEC (completed 2026-09-26)
 - [x] **Phase 2: Recall-First Search** - Honest id/short_id/text resolution, server-driven command palette, dense virtualized results row with facets and score/relevance (completed 2026-09-26)
 - [x] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided (completed 2026-09-27)
-- [ ] **Phase 4: Curation Surfaces** - Supersede, archive/restore, rules, and scheduled views for operators, with resume-envelope coverage, an a11y audit, and an e2e round trip
+- [x] **Phase 4: Curation Surfaces** - Supersede, archive/restore, rules, and scheduled views for operators, with resume-envelope coverage, an a11y audit, and an e2e round trip (completed 2026-09-27)
 - [ ] **Phase 5: Related-Memories Graph & Tag Cloud** - A local, keyboard/ARIA-equivalent related-memories graph and a count-based tag cloud
 - [ ] **Phase 6: Query Understanding** - Advisory, off-by-default NL-query-understanding filter chips
 
@@ -534,7 +534,7 @@ and end-to-end check.
   4. A resume round-trip test proves a draft on every new write surface (supersede, archive, rules, scheduled) survives an OIDC re-login
   5. A WCAG 2.2 keyboard/contrast audit and Web Interface Guidelines review pass, or findings are fixed or recorded, using the vetted third-party skills once `fable-security-review` clears them; the chromedp console e2e exercises entry-point resolution, a supersede, and an archive/restore round trip against a live server
 
-**Plans:** 12/12 plans executed
+**Plans:** 12/12 plans complete
 **UI hint**: yes
 
 Plans:
@@ -664,7 +664,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-09-26 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-09-27 |
-| 4. Diagnosability | v0.12.x | 4/4 | In Progress|  |
+| 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-09-27 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-08-17 |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |

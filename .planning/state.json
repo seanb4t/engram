@@ -341,12 +341,12 @@
     {
       "number": "4",
       "name": "Curation Surfaces",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "5",
       "name": "Related-Memories Graph & Tag Cloud",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "6",
@@ -356,8 +356,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 04 of 7 · 29% · executing"
+    "label": "Advance to the next step (plan phase 5)",
+    "reason": "Phase 5 of 7 — needs a plan"
   },
-  "updated_at": "2026-09-27T13:31:09.452Z"
+  "updated_at": "2026-09-27T21:08:41.389Z"
 }
