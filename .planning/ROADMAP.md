@@ -534,7 +534,7 @@ and end-to-end check.
   4. A resume round-trip test proves a draft on every new write surface (supersede, archive, rules, scheduled) survives an OIDC re-login
   5. A WCAG 2.2 keyboard/contrast audit and Web Interface Guidelines review pass, or findings are fixed or recorded, using the vetted third-party skills once `fable-security-review` clears them; the chromedp console e2e exercises entry-point resolution, a supersede, and an archive/restore round trip against a live server
 
-**Plans:** 7/12 plans executed
+**Plans:** 10/12 plans executed
 **UI hint**: yes
 
 Plans:
@@ -556,9 +556,9 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 04-08-PLAN.md — /search curation workbench: supersede and chain entry points, view superseded, route-owned resume, ⌘K row actions (D-01, D-03, D-06, D-07, D-15, D-16; CUR-01, CUR-05)
-- [ ] 04-09-PLAN.md — /rules: every readable rule grouped by scope, delete-only with a re-auth-safe confirm (D-11, D-12, D-16; CUR-03, CUR-05)
-- [ ] 04-10-PLAN.md — /scheduled: state tabs, cursor paging, archive for expired rows only (D-11, D-13, D-16; CUR-04, CUR-05)
+- [x] 04-08-PLAN.md — /search curation workbench: supersede and chain entry points, view superseded, route-owned resume, ⌘K row actions (D-01, D-03, D-06, D-07, D-15, D-16; CUR-01, CUR-05)
+- [x] 04-09-PLAN.md — /rules: every readable rule grouped by scope, delete-only with a re-auth-safe confirm (D-11, D-12, D-16; CUR-03, CUR-05)
+- [x] 04-10-PLAN.md — /scheduled: state tabs, cursor paging, archive for expired rows only (D-11, D-13, D-16; CUR-04, CUR-05)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
