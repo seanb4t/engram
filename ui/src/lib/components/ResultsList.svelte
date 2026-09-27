@@ -16,6 +16,7 @@
     hasMore = false,
     selectable = false,
     selectedIds = $bindable<string[]>([]),
+    selectionKey,
     onloadmore,
     onopen,
     onescape,
@@ -35,6 +36,7 @@
     hasMore?: boolean;
     selectable?: boolean;
     selectedIds?: string[];
+    selectionKey?: string;
     onloadmore?: () => void;
     onopen: (id: string) => void;
     onescape?: () => void;
@@ -270,6 +272,33 @@
   // both extend FROM this same anchor, never reassign it, so repeated range
   // extensions stay relative to the row the operator first toggled.
   let anchorId = $state<string | undefined>(undefined);
+
+  // D-04: selection lifecycle. `selectionKey` is a route-owned digest of
+  // "what changed" (see /search's `encodeSearchParams({ ...params, k:
+  // DEFAULT_K, sel: '' })`) — a change clears the selection; the SAME key
+  // across a Show more (k-only) or a pane open/close (sel-only) or an
+  // in-place cache patch leaves it untouched. `lastSelectionKey` is plain
+  // (non-reactive) bookkeeping, not $state — it only needs to survive
+  // between effect runs, never to trigger one itself.
+  let lastSelectionKey: string | undefined;
+  $effect(() => {
+    const key = selectionKey;
+    const first = lastSelectionKey === undefined;
+    if (key !== lastSelectionKey) {
+      lastSelectionKey = key;
+      if (!first) selectedIds = [];
+    }
+  });
+
+  // Keep the selection honest: drop any id no longer present in `memories`
+  // (e.g. after a delete). An in-place cache patch never removes an id from
+  // the array, so this never disturbs a live selection's membership.
+  $effect(() => {
+    if (selectedIds.length === 0) return;
+    const present = new Set(memories.map((m) => m.id));
+    const pruned = selectedIds.filter((id) => present.has(id));
+    if (pruned.length !== selectedIds.length) selectedIds = pruned;
+  });
 
   // x toggles selection membership for one row, keeping `selectedIds` in
   // LIST order (not insertion order) so a/A/S always submit ids in the

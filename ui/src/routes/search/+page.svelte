@@ -499,7 +499,18 @@
     onchange={(partial) => navigate({ ...partial, sel: '' })}
     onretry={() => scopesQ.refetch()}
   />
-  <ResultsHeader parts={headerParts} {scopeHits} k={effective.k} busy={headerBusy} />
+  <ResultsHeader
+    parts={headerParts}
+    {scopeHits}
+    k={effective.k}
+    busy={headerBusy}
+    selection={{
+      count: selectedIds.length,
+      onarchive: () => curation?.openArchive(selectedIds),
+      onrestore: () => curation?.openRestore(selectedIds),
+      onclear: () => (selectedIds = [])
+    }}
+  />
   <!-- WriteSurfaces lives in a STABLE location outside RecallSplit: that
        component switches its narrow/wide layout branch based on a
        ResizeObserver measurement that settles a tick after mount, and both
@@ -549,6 +560,7 @@
             ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
             selectable
             bind:selectedIds
+            selectionKey={encodeSearchParams({ ...params, k: DEFAULT_K, sel: '' })}
             onarchive={(ids) => curation?.openArchive(ids)}
             onrestore={(ids) => curation?.openRestore(ids)}
           />

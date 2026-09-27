@@ -157,7 +157,7 @@ export async function scheduleMemoryComposite(
 
 export type CacheEntry = [readonly unknown[], unknown];
 
-const MEMORY_LIST_PREFIXES = [['listMemories'], ['searchMemories']] as const;
+const MEMORY_LIST_PREFIXES = [['listMemories'], ['searchMemories'], ['listScheduled']] as const;
 
 export function snapshotMemoryQueries(queryClient: QueryClient, id?: string): CacheEntry[] {
   const entries: CacheEntry[] = [];
@@ -195,12 +195,44 @@ interface MemoryCacheCtx {
   visibilityFilter?: string;
 }
 
-// Iterates every cached listMemories/searchMemories page plus the getMemory
-// cache via getQueriesData/setQueryData per-key (setQueriesData's updater
-// signature does not receive the key, and a listMemoriesKey visibility
-// filter must be inspected for the set-visibility filtered-membership rule
-// below), applying `fn` to the matching record. `fn` returning null removes
-// the record from that cache entry.
+// A createInfiniteQuery cache value is { pages: T[], pageParams: unknown[] }
+// — each page is itself a ListLikeResponse (listMemories cursor mode,
+// listScheduled). Detected structurally (an array `pages` field), not by
+// query key, so a shape change in either RPC's page type stays covered.
+interface PagedResponse {
+  pages: unknown[];
+  pageParams?: unknown[];
+}
+
+function isPagedResponse(data: unknown): data is PagedResponse {
+  return !!data && typeof data === 'object' && Array.isArray((data as PagedResponse).pages);
+}
+
+function mapPagedMemories(old: PagedResponse, fn: (m: Memory) => Memory | null): PagedResponse {
+  return {
+    ...old,
+    pages: old.pages.map((p) => mapMemoriesField(p as ListLikeResponse | undefined, fn))
+  };
+}
+
+// Applies `fn` (offset-mode/single-value) or its infinite-page-aware sibling
+// to whichever shape `data` actually is, without changing page count/order.
+function mapListShaped(
+  data: unknown,
+  fn: (m: Memory) => Memory | null
+): ListLikeResponse | PagedResponse | undefined {
+  if (isPagedResponse(data)) return mapPagedMemories(data, fn);
+  return mapMemoriesField(data as ListLikeResponse | undefined, fn);
+}
+
+// Iterates every cached listMemories/searchMemories/listScheduled entry
+// (offset-mode single value OR infinite-query { pages: [...] }) plus the
+// getMemory cache via getQueriesData/setQueryData per-key (setQueriesData's
+// updater signature does not receive the key, and a listMemoriesKey
+// visibility filter must be inspected for the set-visibility filtered-
+// membership rule below), applying `fn` to the matching record. `fn`
+// returning null removes the record from that cache entry (never from an
+// infinite page's page COUNT — only from that page's own `memories` array).
 export function applyToMemoryCaches(
   queryClient: QueryClient,
   id: string,
@@ -210,17 +242,19 @@ export function applyToMemoryCaches(
     const visibilityFilter = typeof key[3] === 'string' ? (key[3] as string) : undefined;
     queryClient.setQueryData(
       key,
-      mapMemoriesField(data as ListLikeResponse | undefined, (m) =>
-        m.id === id ? fn(m, { isListPage: true, visibilityFilter }) : m
-      )
+      mapListShaped(data, (m) => (m.id === id ? fn(m, { isListPage: true, visibilityFilter }) : m))
     );
   }
   for (const [key, data] of queryClient.getQueriesData({ queryKey: ['searchMemories'] })) {
     queryClient.setQueryData(
       key,
-      mapMemoriesField(data as ListLikeResponse | undefined, (m) =>
-        m.id === id ? fn(m, { isListPage: false }) : m
-      )
+      mapListShaped(data, (m) => (m.id === id ? fn(m, { isListPage: false }) : m))
+    );
+  }
+  for (const [key, data] of queryClient.getQueriesData({ queryKey: ['listScheduled'] })) {
+    queryClient.setQueryData(
+      key,
+      mapListShaped(data, (m) => (m.id === id ? fn(m, { isListPage: true }) : m))
     );
   }
   queryClient.setQueryData(['getMemory', id], (old: { memory?: Memory } | undefined) => {
@@ -326,6 +360,21 @@ export function useUpdateMemory() {
   }));
 }
 
+// Component-free (no useQueryClient) so a plain test QueryClient can spy on
+// it directly — same reasoning as curation.ts's invalidateAfterCuration.
+// listRules/listScheduled join here (D-10, plan 04-05): a deleted record
+// leaves those views too, same as it already left listMemories/searchMemories.
+export function invalidateAfterDelete(queryClient: QueryClient): void {
+  // Do NOT invalidate ['getMemory', id] on delete: the record is gone, so a
+  // refetch can only return NotFound. The detail pane is cleared by the
+  // route's ondeleted->clearSelection relay (WR-02), not by reconciliation.
+  queryClient.invalidateQueries({ queryKey: ['listMemories'] });
+  queryClient.invalidateQueries({ queryKey: ['searchMemories'] });
+  queryClient.invalidateQueries({ queryKey: ['listScopes'] });
+  queryClient.invalidateQueries({ queryKey: ['listRules'] });
+  queryClient.invalidateQueries({ queryKey: ['listScheduled'] });
+}
+
 export function useDeleteMemory() {
   const queryClient = useQueryClient();
   return createMutation(() => ({
@@ -346,12 +395,7 @@ export function useDeleteMemory() {
       toast.success('deleted');
     },
     onSettled: (_data, _err, _vars) => {
-      // Do NOT invalidate ['getMemory', id] on delete: the record is gone, so a
-      // refetch can only return NotFound. The detail pane is cleared by the
-      // route's ondeleted->clearSelection relay (WR-02), not by reconciliation.
-      queryClient.invalidateQueries({ queryKey: ['listMemories'] });
-      queryClient.invalidateQueries({ queryKey: ['searchMemories'] });
-      queryClient.invalidateQueries({ queryKey: ['listScopes'] });
+      invalidateAfterDelete(queryClient);
     }
   }));
 }
