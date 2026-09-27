@@ -581,7 +581,7 @@ this codebase and is flagged for a research/UI-spec pass at plan time.
   1. Opening the graph from a record renders that record plus its neighbourhood only (never a global view), as inline SVG with d3-force pan/zoom/drag, a fixed settle budget, a capped edge count per node, and a legend distinguishing edge types with per-type toggles
   2. Every graph node is reachable by keyboard (Tab/arrows, Enter to focus and re-centre, Escape to return) with an accessible name, and an `aria-live` textual list of the neighbourhood is available as a screen-reader equivalent
   3. The graph renders correctly in light and dark mode using the category colour tokens, and clicking a node selects it in the detail pane
-  4. A tag cloud sized by count quantile, in DOM order matching reading order, is built from `ListTags` counts; clicking a tag adds it as a filter chip, and the same counts are available via chip autocomplete without opening the cloud
+  4. A tag popularity list drawn as linear bars with printed counts (amended 2026-09-27 from a quantile-sized cloud; Phase 5 D-12), in DOM order matching reading order, is built from `ListTags` counts; clicking a tag adds it as a filter chip, and the same counts are available via chip autocomplete without opening the cloud
 
 **Plans:** 0/? plans (not yet planned)
 **UI hint**: yes

@@ -67,7 +67,7 @@ Tailwind 4, TanStack Query 6), with the missing Connect RPCs added rather than l
 - [ ] **GRAPH-01**: From any record a user can open a local related-memories graph (that record plus its neighbourhood, never a global view) rendered as inline SVG with d3-force layout, pan/zoom, drag, a fixed settle budget, a capped edge count per node, and visually distinct edge types with a legend and per-type toggles.
 - [ ] **GRAPH-02**: Every graph node is reachable by keyboard (Tab / arrows, Enter to focus a node and re-centre, Escape to return), carries an accessible name, and an `aria-live` textual list of the neighbourhood is available as an equivalent for screen readers.
 - [ ] **GRAPH-03**: The graph works in light and dark mode using the category colour tokens, and clicking a node selects it in the detail pane.
-- [ ] **TAGS-01**: A user can open a tag cloud for the current scope (or all readable scopes) built from `ListTags` counts, sized by count quantile, in DOM order that matches reading order, where clicking a tag adds it as a filter chip.
+- [ ] **TAGS-01**: A user can open a tag popularity list for the current scope (or all readable scopes) built from `ListTags` counts, drawn as linear bars from zero with printed counts (amended 2026-09-27 from "a cloud sized by count quantile"; Phase 5 D-12), in DOM order that matches reading order, where clicking a tag adds it as a filter chip.
 - [ ] **TAGS-02**: The tag filter chip offers autocomplete over `ListTags` with counts, so tags are filterable without the cloud.
 
 ### Query understanding
