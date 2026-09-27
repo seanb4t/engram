@@ -5,7 +5,7 @@
   import type { Memory } from '$lib/gen/engram_pb';
   import { engram } from '$lib/client';
   import { describeError } from '$lib/errors';
-  import { redirectToLogin, type ResumeEnvelope } from '$lib/resume';
+  import { redirectToLogin, type FormResumeEnvelope } from '$lib/resume';
   import { useDeleteMemory, useSetMemoryVisibility, normalizeVisibility } from '$lib/mutations/memory';
   import { useDeleteDiscovery, useSetDiscoveryVisibility } from '$lib/mutations/discovery';
   import { Button } from '$lib/components/ui/button';
@@ -157,7 +157,7 @@
   // peeks/deletes the envelope itself, the route is the sole owner (Task
   // 2). Guarded on env.kind matching this host's kind as defense-in-depth
   // (the route already checks this before calling).
-  export async function reopenFromResume(env: ResumeEnvelope): Promise<void> {
+  export async function reopenFromResume(env: FormResumeEnvelope): Promise<void> {
     if (env.kind !== kind) return;
     if (env.mode === 'edit' && env.recordId) {
       await openEdit(env.recordId);

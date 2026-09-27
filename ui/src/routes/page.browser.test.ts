@@ -57,7 +57,7 @@ beforeEach(() => {
 describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', () => {
   it('peeks the envelope and goto()s the base + base-relative returnPath WITHOUT deleting it first (peek-not-consume)', async () => {
     persistResume({
-      returnPath: '/observe?scope=repo%3Ax',
+      returnPath: '/search?scope=repo%3Ax',
       kind: 'memory',
       mode: 'create',
       recordId: null,
@@ -66,7 +66,7 @@ describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', 
 
     await renderRoot();
     await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
-    expect(gotoSpy).toHaveBeenCalledWith('/ui/observe?scope=repo%3Ax');
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?scope=repo%3Ax');
     // Peek-not-consume: the envelope must still be present after the
     // redirect fires -- the destination route is the one that consumes it,
     // only after its form acknowledges applying the restored values.
@@ -75,7 +75,7 @@ describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', 
 
   it('normalizes a returnPath mistakenly stored WITH the /ui base prefix to a single /ui (no /ui/ui/ double-prefix)', async () => {
     persistResume({
-      returnPath: '/ui/observe?scope=repo%3Ax',
+      returnPath: '/ui/search?scope=repo%3Ax',
       kind: 'memory',
       mode: 'create',
       recordId: null,
@@ -84,7 +84,36 @@ describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', 
 
     await renderRoot();
     await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
-    expect(gotoSpy).toHaveBeenCalledWith('/ui/observe?scope=repo%3Ax');
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?scope=repo%3Ax');
+  });
+
+  it('makes a persisted v2 archive envelope with returnPath /scheduled?state=expired goto /ui/scheduled?state=expired and leaves the envelope in sessionStorage', async () => {
+    persistResume({
+      returnPath: '/scheduled?state=expired',
+      kind: 'archive',
+      mode: 'archive',
+      ids: ['a', 'b']
+    });
+
+    await renderRoot();
+    await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/scheduled?state=expired');
+    expect(sessionStorage.getItem(RESUME_KEY)).not.toBeNull();
+  });
+
+  it('consumes and does not navigate for an envelope whose returnPath is the deleted /observe route', async () => {
+    persistResume({
+      returnPath: '/observe?sel=abc',
+      kind: 'memory',
+      mode: 'create',
+      recordId: null,
+      values: {}
+    });
+
+    await renderRoot();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gotoSpy).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(RESUME_KEY)).toBeNull();
   });
 
   it('routes back to /ui/discovery for a discovery-kind envelope', async () => {
