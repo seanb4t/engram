@@ -10,7 +10,17 @@ import RulesPage from './+page.svelte';
 
 // `vi.hoisted` runs before the module's own imports are linked — mirrors
 // search.browser.test.ts's route test harness (04-09-PLAN.md read_first).
-const { gotoSpy, pageState, listRulesSpy, getMemorySpy } = await vi.hoisted(async () => {
+const {
+  gotoSpy,
+  pageState,
+  listRulesSpy,
+  getMemorySpy,
+  deleteMemorySpy,
+  persistResumeSpy,
+  redirectToLoginSpy,
+  peekResumeSpy,
+  consumeResumeSpy
+} = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/rules');
   const pageState = { url };
@@ -22,7 +32,12 @@ const { gotoSpy, pageState, listRulesSpy, getMemorySpy } = await vi.hoisted(asyn
     gotoSpy,
     pageState,
     listRulesSpy: vi.fn(),
-    getMemorySpy: vi.fn()
+    getMemorySpy: vi.fn(),
+    deleteMemorySpy: vi.fn(),
+    persistResumeSpy: vi.fn(),
+    redirectToLoginSpy: vi.fn(),
+    peekResumeSpy: vi.fn(() => null),
+    consumeResumeSpy: vi.fn()
   };
 });
 
@@ -38,9 +53,28 @@ vi.mock('$lib/client', async (importOriginal) => {
       ...actual.engram,
       listRules: listRulesSpy,
       getMemory: getMemorySpy
+    },
+    engramWrite: {
+      ...actual.engramWrite,
+      deleteMemory: deleteMemorySpy
     }
   };
 });
+
+vi.mock('$lib/resume', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('$lib/resume')>();
+  return {
+    ...actual,
+    persistResume: persistResumeSpy,
+    redirectToLogin: redirectToLoginSpy,
+    peekResume: peekResumeSpy,
+    consumeResume: consumeResumeSpy
+  };
+});
+
+function fireKey(el: Element, key: string, opts: Partial<KeyboardEventInit> = {}) {
+  el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
+}
 
 let qc: QueryClient;
 function renderRules() {
@@ -70,6 +104,11 @@ beforeEach(() => {
   gotoSpy.mockClear();
   listRulesSpy.mockReset().mockResolvedValue(emptyListRulesResult());
   getMemorySpy.mockReset();
+  deleteMemorySpy.mockReset();
+  persistResumeSpy.mockReset();
+  redirectToLoginSpy.mockReset();
+  peekResumeSpy.mockReset().mockReturnValue(null);
+  consumeResumeSpy.mockReset();
   pageState.url.href = 'http://localhost/rules';
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -309,5 +348,169 @@ describe('rules route — long summaries stay one line (E5/CUR-03 backstop)', ()
       .height;
     expect(longHeight).toBe(shortHeight);
     await page.screenshot();
+  });
+});
+
+describe('rules route — delete only (D-12, CUR-05)', () => {
+  it('the pane and legend offer delete only — no edit/visibility/archive/restore/supersede/selection', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'alpha rule' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    getMemorySpy.mockResolvedValue({
+      memory: makeRule({ id: 'r-1', scope: 'rule:repo:alpha', content: 'full content' })
+    });
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('alpha rule')).toBeInTheDocument();
+
+    const legend = screen.container.querySelector('.results-legend') as HTMLElement;
+    const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', '#', 'c', '⇧C']);
+    expect(screen.container.querySelector('.row-check')).toBeNull();
+
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.element(screen.getByText('full content')).toBeInTheDocument();
+
+    const detail = screen.container.querySelector('[aria-label="Memory detail"]') as HTMLElement;
+    const actionButtons = Array.from(detail.querySelectorAll('.d-actions button')).map((b) => b.textContent?.trim());
+    expect(actionButtons).toEqual(['Delete']);
+  });
+
+  it('# opens the delete confirm for the active row', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'alpha rule' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('alpha rule')).toBeInTheDocument();
+    const listbox = screen.getByRole('listbox', { name: 'Rules' });
+    listbox.element().focus();
+    fireKey(listbox.element(), '#');
+
+    await expect.element(screen.getByText('Delete this rule?')).toBeInTheDocument();
+  });
+
+  it('Delete calls deleteMemory with the id, clears sel and invalidates listRules', async () => {
+    pageState.url.href = 'http://localhost/rules?sel=r-1';
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'alpha rule' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    getMemorySpy.mockResolvedValue({
+      memory: makeRule({ id: 'r-1', scope: 'rule:repo:alpha', content: 'full content' })
+    });
+    deleteMemorySpy.mockResolvedValue({});
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('alpha rule')).toBeInTheDocument();
+    const listbox = screen.getByRole('listbox', { name: 'Rules' });
+    listbox.element().focus();
+    fireKey(listbox.element(), '#');
+    await expect.element(screen.getByText('Delete this rule?')).toBeInTheDocument();
+
+    listRulesSpy.mockClear();
+    await screen.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+
+    await expect.poll(() => deleteMemorySpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(deleteMemorySpy.mock.calls[0][0].id).toBe('r-1');
+    await expect.poll(() => pageState.url.searchParams.get('sel')).toBe(null);
+    await expect.poll(() => listRulesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    await expect.element(screen.getByText('Delete this rule?')).not.toBeInTheDocument();
+  });
+
+  it('an Unauthenticated delete shows the re-auth block and persists a v2 delete envelope before redirecting', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'alpha rule' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    deleteMemorySpy.mockRejectedValue(new ConnectError('unauthenticated', Code.Unauthenticated));
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('alpha rule')).toBeInTheDocument();
+    const listbox = screen.getByRole('listbox', { name: 'Rules' });
+    listbox.element().focus();
+    fireKey(listbox.element(), '#');
+    await expect.element(screen.getByText('Delete this rule?')).toBeInTheDocument();
+
+    await screen.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+    await expect
+      .element(screen.getByText('write failed — session expired. re-authenticate to continue.'))
+      .toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Re-authenticate' }).click();
+    expect(persistResumeSpy).toHaveBeenCalledWith({
+      returnPath: '/rules',
+      kind: 'delete',
+      id: 'r-1'
+    });
+    expect(redirectToLoginSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a seeded delete envelope reopens the confirm with the review-and-resend notice, deletes nothing until Delete is clicked, and consumes the envelope once', async () => {
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'alpha rule' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    peekResumeSpy.mockReturnValue({
+      v: 2,
+      ts: Date.now(),
+      returnPath: '/rules',
+      kind: 'delete',
+      id: 'r-1'
+    });
+    deleteMemorySpy.mockResolvedValue({});
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('Delete this rule?')).toBeInTheDocument();
+    await expect.element(screen.getByText('Signed in again — review and resend')).toBeInTheDocument();
+    expect(deleteMemorySpy).not.toHaveBeenCalled();
+    expect(consumeResumeSpy).toHaveBeenCalledTimes(1);
+
+    await screen.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+    await expect.poll(() => deleteMemorySpy.mock.calls.length).toBe(1);
+    expect(deleteMemorySpy.mock.calls[0][0].id).toBe('r-1');
+  });
+
+  it('a NotFound delete closes the confirm and clears sel without crashing', async () => {
+    pageState.url.href = 'http://localhost/rules?sel=r-1';
+    listRulesSpy.mockResolvedValue({
+      rules: [makeRule({ id: 'r-1', scope: 'rule:repo:alpha', summary: 'alpha rule' })],
+      advisory: '',
+      searchedScopes: ['rule:repo:alpha'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    getMemorySpy.mockResolvedValue({
+      memory: makeRule({ id: 'r-1', scope: 'rule:repo:alpha', content: 'full content' })
+    });
+    deleteMemorySpy.mockRejectedValue(new ConnectError('not found', Code.NotFound));
+
+    const screen = await renderRules();
+    await expect.element(screen.getByText('alpha rule')).toBeInTheDocument();
+    const listbox = screen.getByRole('listbox', { name: 'Rules' });
+    listbox.element().focus();
+    fireKey(listbox.element(), '#');
+    await expect.element(screen.getByText('Delete this rule?')).toBeInTheDocument();
+
+    await screen.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+    await expect.element(screen.getByText('Delete this rule?')).not.toBeInTheDocument();
+    await expect.poll(() => pageState.url.searchParams.get('sel')).toBe(null);
   });
 });

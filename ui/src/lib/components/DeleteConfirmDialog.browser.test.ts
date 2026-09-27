@@ -116,4 +116,36 @@ describe('DeleteConfirmDialog', () => {
     });
     await expect.element(screen.getByText(/re-authenticate to continue/)).not.toBeInTheDocument();
   });
+
+  it('renders the rule-kind copy (CUR-03, D-12)', async () => {
+    const screen = await render(DeleteConfirmDialog, {
+      open: true,
+      kind: 'rule',
+      onconfirm: vi.fn(() => Promise.resolve()),
+      oncancel: vi.fn()
+    });
+    await expect.element(screen.getByText('Delete this rule?')).toBeInTheDocument();
+    await expect.element(screen.getByText("this can't be undone. the rule is removed permanently.")).toBeInTheDocument();
+  });
+
+  it('renders a notice above the footer when set', async () => {
+    const screen = await render(DeleteConfirmDialog, {
+      open: true,
+      kind: 'rule',
+      onconfirm: vi.fn(() => Promise.resolve()),
+      oncancel: vi.fn(),
+      notice: 'Signed in again — review and resend'
+    });
+    await expect.element(screen.getByText('Signed in again — review and resend')).toBeInTheDocument();
+  });
+
+  it('omits the notice block when unset', async () => {
+    const screen = await render(DeleteConfirmDialog, {
+      open: true,
+      kind: 'rule',
+      onconfirm: vi.fn(() => Promise.resolve()),
+      oncancel: vi.fn()
+    });
+    await expect.element(screen.getByText('Signed in again — review and resend')).not.toBeInTheDocument();
+  });
 });
