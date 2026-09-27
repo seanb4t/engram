@@ -122,3 +122,18 @@ it from the Scheduled view (no decision needed).
 
 - Client-tier CLI verbs for new capabilities → GitHub issue.
 - Server-side ListTags prefix search → only if Phase 5 needs it.
+
+---
+
+## Testing and verification (follow-up review)
+
+Reviewed the testing plan against rules `m45p2b4bp7` / `3p0zsqrhmb` and preference `x0krpn67b0`;
+most items follow directly from them (CONTEXT D-15..D-30). One genuine choice:
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Keep invariant, drop pins | keep IDEMPOTENCY_UNKNOWN check; delete RPC count/name map; no field-shape pins for new messages | ✓ |
+| Extend the pins | bump to 19 RPCs + field-shape tables for new messages | |
+| Minimal bump only | add names + count; no new field pins | |
+
+**User's choice:** Keep invariant, drop pins.

@@ -132,7 +132,95 @@ lands on both lanes.
 - Success criterion 1: the missing-CSRF-token → `permission_denied` test for each new mutating RPC
   (`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`) is written first.
 
+### Testing and verification
+Governing rules: `m45p2b4bp7` (never test behaviour we do not own), `3p0zsqrhmb` (no tests for
+tests, no gates of gates, no struct-shape assertions), and preference `x0krpn67b0` (no manual UAT;
+everything code can exercise is an automated test). Between the two rules, **a test's subject is
+the behaviour of code we own.**
+
+**What gets tested (behaviour we own; Connect handler + MCP tool tests against a real Qdrant
+testcontainer, `djkt37zdax`):**
+- **D-15 (first tests, SC1/RPC-05):** for each new write Procedure (`SupersedeMemory`,
+  `ArchiveMemory`, `RestoreMemory`), a cookie-lane request without the double-submit token →
+  `permission_denied`, **paired with** a valid-token request that gets through the interceptor. The
+  pairing makes the rejection non-vacuous. List the procedures explicitly in the test. Never
+  iterate `csrfWriteProcedures`: a test driven by the map cannot notice a Procedure missing from
+  it. Follow the `connectcsrf_lane_test.go` end-to-end shape. The CSRF test covers the
+  `validate_only` path too (it is the same write Procedure).
+- **D-16 (authz wiring, the highest-risk defect):** through BOTH lanes, a non-owner archiving or
+  restoring a readable shared record gets a per-id `not_found`, and a re-read shows `archived_at`
+  unchanged. This catches a handler that calls the subject-less `Archive`/`Restore` instead of
+  `ArchiveAs`/`RestoreAs`. Phase 1 already proves the store gate. This test proves the wiring
+  (`jvaycjtx3c`: two proofs, authz and wiring). Include anonymous vs authenticated callers, and
+  use overlapping scope names so an isolation test cannot pass vacuously (`yr34zp1hqr`).
+- **D-17 (batch outcomes):** a mixed id list (owned, already-archived, shared-not-owned,
+  nonexistent, a short_id) yields the exact per-id outcome for each id. An empty list, an
+  over-cap list, or a malformed id rejects with the `field=<f> hint=<code>` envelope.
+- **D-18 (supersede, SC3):** an invalid target set names every offending target for each failure
+  class, on both lanes. For `validate_only`: (a) a re-read shows no new record and no
+  `superseded_by` stamp; (b) the same inputs committed for real afterwards produce the same
+  resolved targets, or the same rejection naming the same targets, so the preview cannot disagree
+  with the commit; (c) a dry run with an `idempotency_key`, followed by a real call with that key,
+  performs the write and is not a replay (the dry run left the ledger untouched).
+- **D-19 (list widenings):** `list_rules` with empty `scopes` returns rules from every readable
+  `rule:*` scope and reports coverage. The existing test that asserts an empty `scopes` rejection
+  is updated, not duplicated. `list_scheduled` with `cross_spine`: another actor's `shared`
+  scheduled record stays invisible, so the deferred-reveal guarantee holds across scopes. Cursor
+  pages cover the full set with no duplicates and no gaps. Coverage fields are asserted verbatim.
+- **D-20 (lane parity, SC2):** the MCP↔Connect parity tests (`connectapi_parity_test.go`,
+  `connectapi_write_parity_test.go`) get rows for all seven capabilities. Each row asserts that the
+  same inputs give equivalent results and equivalent rejection envelopes on both lanes, including
+  the `validate_only` field and the flat-vs-oneof `RelatedEdge` mapping.
+- **D-21 (read shapes):** RelatedMemories and ListTags through Connect return compact vs `full`
+  as requested, and never show another actor's private record. Phase 1 already tests the store
+  semantics; these tests cover handler wiring and the wire mapping only.
+
+**Success-criteria reinterpretations (sanctioned channel per `m45p2b4bp7`; ROADMAP.md is not
+edited):**
+- **D-22:** SC2's "each RPC delegates to the same core function as its MCP tool" is verified
+  **behaviourally** by D-20's parity rows. The verifier may also confirm the delegation by reading
+  the code. No test asserts the call graph or handler structure.
+- **D-23:** SC4's "blast-radius annotations and self-describe catalog entry" is satisfied **by
+  construction**. A new tool must get a `surfaces.Class` entry because the existing
+  `TestToolAnnotationsBothDirections` and the catalog set-equality tests already enforce it, and
+  the values are reviewed in the PR. No new test hard-codes per-tool annotation values: that would
+  restate the config.
+- **D-24:** SC4's "`buf breaking` green, gen regenerated, vendored SPA passes `ui-drift`" is
+  satisfied by the existing CI jobs. No new test for these.
+- **D-25:** D-04's agent guidance (skill, CLAUDE.md, docs-site) is verified by the verifier and
+  reviewer reading it. No doc-presence or grep test. New hint codes are still caught by the
+  existing `hintcodedocs_test.go`.
+- **D-26:** `connectdescriptor_test.go` (red when the RPC count goes from 12 to 19): **keep** the
+  IDEMPOTENCY_UNKNOWN-on-every-method check (our config, and security-relevant: no write RPC may
+  be reachable over GET). **Delete** the RPC count/name/type map. **Do not add** field-shape pins
+  for the new messages. They restate the `.proto`, `buf breaking` guards wire compatibility, and
+  D-15..D-21 prove the new shapes by round trip. The existing read-lane field pins are left alone
+  (Phase 3 does not change those messages).
+
+**Not tested (owned by others; documented, not gated):** Connect's HTTP/code mapping, protovalidate
+itself, Qdrant Facet exactness or cursor mechanics, buf/codegen output, go-sdk annotation
+serialization.
+
+**Non-vacuity and evidence:**
+- **D-27:** while executing, confirm each new test goes red against a temporary, uncommitted
+  mutation of the guarded code (e.g. drop the procedure from `csrfWriteProcedures`, swap
+  `ArchiveAs`→`Archive`, drop the owner-only clause from the cross-spine scheduled filter), then
+  restore the code. Record what was mutated in the plan SUMMARY. **No committed harness, patch
+  files, or meta-test** (`3p0zsqrhmb` removed exactly that).
+- **D-28:** no human UAT items. The phase has no UI. Anything a verifier flags as `human_needed`
+  that code can exercise becomes an automated test (`x0krpn67b0`). VALIDATION.md `-run` commands
+  are re-resolved against `go test -list`, and evidence counts `--- PASS` lines, never exit status
+  (`gfh6q1ack4`, `bsbsvn4hbc`).
+- **D-29:** if any new store read path issues a Qdrant call (e.g. cross-spine enumeration for
+  ListScheduled/ListRules), widen all four vocabularies in `schemaversion_recallgate_test.go`
+  (`ba1st8kzwz`).
+- **D-30:** quality gate: `task` (lint + test) green. There is no new concurrency: the batch
+  loop is sequential over `ArchiveAs`, whose per-id lock Phase 1 already race-tests
+  (`concurrent_gates_test.go`). So no new `-race` requirement and no concurrency tests are added.
+
 ### Claude's Discretion
+- Whether a duplicated id within one Archive/Restore list is deduplicated or reported once per
+  occurrence (whichever it is, test it and document it).
 - Exact proto message, field, and enum names, and field numbers (additive; `buf breaking` green).
 - The per-id outcome enum's exact values and whether it reuses `store.ArchiveResult.Outcome`
   names.
