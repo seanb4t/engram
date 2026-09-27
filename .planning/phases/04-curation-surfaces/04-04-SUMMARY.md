@@ -211,3 +211,10 @@ None - no external service configuration required.
 ---
 *Phase: 04-curation-surfaces*
 *Completed: 2026-09-27*
+
+## Self-Check: PASSED
+
+- Files: `ui/src/lib/curation/chain.ts`, `ui/src/lib/curation/chain.test.ts`, `ui/src/lib/components/ChainDialog.svelte`, `ui/src/lib/components/ChainDialog.browser.test.ts`, this SUMMARY.md — all present on disk.
+- Commits: `6d05f858`, `93efae52`, `92fae3de`, `0e7dce38`, `311709a1` — all present in `git log`.
+- Acceptance criteria re-run: Task 1's three `rg` checks and Task 2's three `rg` checks all print the expected counts (verified above, in-flow).
+- Plan-level `<verification>` (both tasks' `<verify>` commands) re-run clean: `chain.test.ts` 12/12 pass, `ChainDialog.browser.test.ts` 8/8 pass.
