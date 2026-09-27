@@ -140,6 +140,44 @@ describe('buildChain', () => {
   });
 });
 
+describe('buildChain — placeholders for unreadable predecessors and beyondCap (Task 2)', () => {
+  it('a readable depth-1 node whose supersedes lists an id absent from the result yields a placeholder node at depth 2', () => {
+    const head = mem('head-id');
+    const p1 = mem('p1-id', { supersedes: ['missing-id'] });
+    const headResp = create(RelatedMemoriesResponseSchema, {
+      anchor: head,
+      related: [create(RelatedMemorySchema, { memory: p1, edges: [supersessionEdge(SupersessionDirection.PREDECESSOR, 1)] })]
+    });
+
+    const chain = buildChain(headResp, 'p1-id');
+
+    expect(chain.columns).toHaveLength(3);
+    expect(chain.columns[0]).toEqual([expect.objectContaining({ id: 'missing-id', placeholder: true, depth: 2 })]);
+    expect(chain.columns[1].map((n) => n.id)).toEqual(['p1-id']);
+    expect(chain.columns[2].map((n) => n.id)).toEqual(['head-id']);
+  });
+
+  it('a head-only response (no predecessors) yields one column [[head]]', () => {
+    const head = mem('head-id');
+    const headResp = create(RelatedMemoriesResponseSchema, { anchor: head, related: [] });
+    const chain = buildChain(headResp, 'head-id');
+    expect(chain.columns).toHaveLength(1);
+    expect(chain.columns[0].map((n) => n.id)).toEqual(['head-id']);
+  });
+
+  it('beyondCap is true when the top-most successor (the head) itself still has supersededBy set', () => {
+    const head = mem('head-id', { supersededBy: 'beyond-the-cap-id' });
+    const headResp = create(RelatedMemoriesResponseSchema, { anchor: head, related: [] });
+    expect(buildChain(headResp, 'head-id').beyondCap).toBe(true);
+  });
+
+  it('beyondCap is false when the head has no supersededBy', () => {
+    const head = mem('head-id');
+    const headResp = create(RelatedMemoriesResponseSchema, { anchor: head, related: [] });
+    expect(buildChain(headResp, 'head-id').beyondCap).toBe(false);
+  });
+});
+
 function chainNode(id: string, createdAt?: Date): ChainNode {
   return { id, shortId: id, summary: '', category: '', kind: '', createdAt, depth: 0, placeholder: false };
 }
