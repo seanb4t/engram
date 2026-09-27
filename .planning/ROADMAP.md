@@ -488,7 +488,7 @@ a known pattern.
   3. An invalid `SupersedeMemory` target set is rejected with every offending target named
   4. All proto changes are additive (`buf breaking` green), `gen/go`, `gen/ts`, and `ui/src/lib/gen` are regenerated and committed, the vendored SPA passes the `ui-drift` gate, and each RPC carries its blast-radius annotations and self-describe catalog entry
 
-**Plans:** 1/7 plans executed
+**Plans:** 2/7 plans executed
 
 Plans:
 **Wave 1**
@@ -497,7 +497,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02-PLAN.md — SupersedeMemory on Connect behind CSRF and validate_only on both lanes through one dispatch, with every-offender and preview-matches-commit proofs (D-08, D-09, D-15, D-18, D-20; RPC-01, RPC-05, RPC-06)
+- [x] 03-02-PLAN.md — SupersedeMemory on Connect behind CSRF and validate_only on both lanes through one dispatch, with every-offender and preview-matches-commit proofs (D-08, D-09, D-15, D-18, D-20; RPC-01, RPC-05, RPC-06)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

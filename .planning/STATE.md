@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 03
 current_phase_name: Curation RPCs & MCP Tools
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-09-27T06:54:38.063Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-09-27T07:34:51.136Z"
 last_activity: 2026-09-27
 last_activity_desc: Phase 03 execution started
-state_head: fdcba249a2d31c9c50fc8e1eb06f94a2bfe32cf2
+state_head: 5fe79ab48b903f51c3ade2ae24b12bcf46056c36
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 21
-  completed_plans: 15
+  completed_plans: 16
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 2)
 ## Current Position
 
 Phase: 03 (Curation RPCs & MCP Tools) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-09-27 — Phase 03 execution started
 
@@ -453,6 +453,7 @@ milestone needs in working memory.
 - [Phase 03]: [Phase 03]: 03-01: Task 1 decision gate resolved option-a (the phase's full seven-RPC wire contract), no item-level changes; plans 03-02..03-06 implement it as approved.
 - [Phase 03]: [Phase 03]: 03-01: corrected a stale per-plan commit ledger (gsd-plan-head-before-03-01, leftover from an earlier milestone's own phase-03/plan-01) to the correct plan-start commit 2ab4e15e before computing actuals.commits.
 - [Phase 03]: [Phase 03]: 03-01: archiveBatch reports one outcome row per caller-supplied token, never merged or deduplicated across repeats within one call (D-06 discretion item).
+- [Phase 03]: SupersedeMemory lands on Connect via one shared deps.supersede dispatch; validate_only reuses the real call's staged preflight functions verbatim, never a parallel copy — Guarantees Phase 4's preview-before-commit dialog can never disagree with its commit (D-18b), and keeps validate_only from ever touching the idempotency ledger, embedder, or short-id minter (D-08)
 
 ### Pending Todos
 
@@ -550,8 +551,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-27T06:54:38.031Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-09-27T07:34:51.105Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -768,6 +769,7 @@ Resume file: None
 | Phase 02 P09 | 35 min | 3 tasks | 7 files |
 | Phase 02-recall-first-search P10 | 23min | 3 tasks | 7 files |
 | Phase 03 P01 | 2h19m | 3 tasks | 22 files |
+| Phase 03 P02 | 38min | 2 tasks | 14 files |
 
 ## Operator Next Steps
 
