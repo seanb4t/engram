@@ -534,8 +534,39 @@ and end-to-end check.
   4. A resume round-trip test proves a draft on every new write surface (supersede, archive, rules, scheduled) survives an OIDC re-login
   5. A WCAG 2.2 keyboard/contrast audit and Web Interface Guidelines review pass, or findings are fixed or recorded, using the vetted third-party skills once `fable-security-review` clears them; the chromedp console e2e exercises entry-point resolution, a supersede, and an archive/restore round trip against a live server
 
-**Plans:** 0/? plans (not yet planned)
+**Plans:** 12 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — archive/restore end to end from the /search pane, the not-owned decision gate, the full confirm with per-id outcomes and double undo (D-05, D-08–D-10; CUR-02)
+- [ ] 04-02-PLAN.md — v2 re-auth resume envelope with the curation kinds, /observe removed with links retargeted to /search, Rules and Scheduled in the nav (D-11, D-14, D-16; CUR-05)
+- [ ] 04-03-PLAN.md — a11y tooling: axe-core legitimacy gate and WCAG 2.2 AA audit helper, fable-security-review of the three design skills (D-17, D-18; DSYS-03)
+- [ ] 04-04-PLAN.md — Chain dialog over RelatedMemories with fetch-by-id peek and supersede-head entry (D-06; CUR-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-05-PLAN.md — multi-select, curation keys, Esc tiers, check column, bulk bar, selection lifecycle, row flash and in-place patch for every list shape (D-01–D-04, D-10; CUR-02)
+- [ ] 04-06-PLAN.md — supersede dialog with validate_only preview, curation re-auth resume, pane Supersede/Chain, host registry (D-05–D-07, D-15, D-16; CUR-01, CUR-05)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 04-07-PLAN.md — row action toolbar, trailing cells, scope group headers, Rules/Scheduled header copy (D-05, D-11–D-13; CUR-02–CUR-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 04-08-PLAN.md — /search curation workbench: supersede and chain entry points, view superseded, route-owned resume, ⌘K row actions (D-01, D-03, D-06, D-07, D-15, D-16; CUR-01, CUR-05)
+- [ ] 04-09-PLAN.md — /rules: every readable rule grouped by scope, delete-only with a re-auth-safe confirm (D-11, D-12, D-16; CUR-03, CUR-05)
+- [ ] 04-10-PLAN.md — /scheduled: state tabs, cursor paging, archive for expired rows only (D-11, D-13, D-16; CUR-04, CUR-05)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 04-11-PLAN.md — WCAG 2.2 AA audit and fixes on every new surface, WIG findings filed, skills brought current (D-01, D-14, D-16, D-17; DSYS-03)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 04-12-PLAN.md — chromedp archive→undo, supersede and entry-point round trips, vendored SPA, phase gates (D-14, D-18; DSYS-04, CUR-01, CUR-02)
 
 ### Phase 5: Related-Memories Graph & Tag Cloud
 
