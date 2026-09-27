@@ -1,5 +1,5 @@
 import { render } from 'vitest-browser-svelte';
-import { userEvent } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
@@ -673,6 +673,50 @@ describe('search route — archive from the detail pane (CUR-02 tracer)', () => 
     const listbox = screen.getByRole('listbox', { name: 'Search results' });
     await expect.element(listbox.getByText('archive me')).toBeInTheDocument();
     await expect.element(listbox.getByText('archived')).toBeInTheDocument();
+  });
+});
+
+describe('search route — row toolbar archive (D-05 tracer)', () => {
+  it('hovering the m1 row and clicking its toolbar Archive button opens the confirm dialog for exactly that row', async () => {
+    pageState.url.href = 'http://localhost/search?q=github';
+    const memory = makeMemory({ id: 'm1', summary: 'archive me' });
+    searchMemoriesSpy.mockResolvedValue({
+      memories: [memory],
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    archiveMemorySpy.mockResolvedValue({
+      results: [{ requested: 'm1', id: 'm1', outcome: ArchiveOutcome.ARCHIVED }]
+    });
+
+    const screen = await renderSearch();
+    // Force the wide layout and wait for the ResizeObserver flip to settle,
+    // same convention as the bulk-archive tracer below — a real pointer
+    // hover needs a settled, non-zero-height row to land on.
+    screen.container.style.width = '1200px';
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('archive me')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.rs-group') !== null).toBe(true);
+
+    const row = screen.container.querySelector('[role="option"]') as HTMLElement;
+    await page.elementLocator(row).hover();
+
+    const archiveBtn = screen.getByRole('button', { name: `Archive ${memory.shortId}` });
+    await expect.element(archiveBtn).toBeInTheDocument();
+    await archiveBtn.click();
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByText('Archive 1 records?')).toBeInTheDocument();
+    expect(archiveMemorySpy).not.toHaveBeenCalled();
+
+    // The row action must not have navigated `sel` to open the detail pane.
+    expect(pageState.url.searchParams.get('sel')).toBeFalsy();
+
+    await dialog.getByRole('button', { name: 'Archive' }).click();
+    await expect.poll(() => archiveMemorySpy.mock.calls.length).toBe(1);
+    const [req] = archiveMemorySpy.mock.calls[0];
+    expect(req.ids).toEqual(['m1']);
   });
 });
 

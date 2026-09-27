@@ -557,3 +557,105 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
     expect(screen.container.querySelector('#opt-m0001')?.getAttribute('aria-selected')).toBe('false');
   });
 });
+
+describe('ResultsList — row action toolbar (D-05)', () => {
+  it('hovering a row shows a toolbar named "Row actions for {short}" whose Archive button calls onarchive; the toolbar is never nested inside the option', async () => {
+    const onopen = vi.fn();
+    const onarchive = vi.fn();
+    const five = makeMemories(5);
+    const screen = await render(ResultsList, { memories: five, label: 'Search results', onopen, onarchive });
+    screen.container.style.height = '600px';
+
+    const row2 = screen.container.querySelector('#opt-m0001') as HTMLElement;
+    await page.elementLocator(row2).hover();
+
+    const toolbar = screen.getByRole('toolbar', { name: `Row actions for ${five[1].shortId}` });
+    await expect.element(toolbar).toBeInTheDocument();
+
+    const archiveBtn = screen.getByRole('button', { name: `Archive ${five[1].shortId}` });
+    await archiveBtn.click();
+    expect(onarchive).toHaveBeenCalledWith([five[1].id]);
+    expect(onopen).not.toHaveBeenCalled();
+
+    // Clicking the toolbar button must not move aria-activedescendant.
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    expect(listbox.element().getAttribute('aria-activedescendant')).not.toBe('opt-m0001');
+
+    // The toolbar is a SIBLING of the listbox, never a descendant of the
+    // hovered option.
+    expect(row2.querySelector('[role="toolbar"]')).toBeNull();
+  });
+
+  it('an archived row\'s toolbar shows Restore, not Archive', async () => {
+    const onopen = vi.fn();
+    const onarchive = vi.fn();
+    const onrestore = vi.fn();
+    const mem = create(MemorySchema, {
+      id: 'ar1',
+      category: 'convention',
+      summary: 'x',
+      scope: 's',
+      shortId: 'sidarchivd1',
+      archivedAt: timestampFromDate(new Date())
+    });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen, onarchive, onrestore });
+    screen.container.style.height = '600px';
+
+    const row = screen.container.querySelector('#opt-ar1') as HTMLElement;
+    await page.elementLocator(row).hover();
+
+    await expect.element(screen.getByRole('button', { name: `Restore ${mem.shortId}` })).toBeInTheDocument();
+    expect(screen.container.querySelector(`[aria-label="Archive ${mem.shortId}"]`)).toBeNull();
+
+    const restoreBtn = screen.getByRole('button', { name: `Restore ${mem.shortId}` });
+    await restoreBtn.click();
+    expect(onrestore).toHaveBeenCalledWith([mem.id]);
+  });
+
+  it('Chain renders only for a row with supersededBy when onchain is supplied', async () => {
+    const onopen = vi.fn();
+    const onchain = vi.fn();
+    const chained = create(MemorySchema, {
+      id: 'ch1',
+      category: 'convention',
+      summary: 'x',
+      scope: 's',
+      shortId: 'sidchaind01',
+      supersededBy: 'succ1'
+    });
+
+    const withCallback = await render(ResultsList, { memories: [chained], label: 'Search results', onopen, onchain });
+    withCallback.container.style.height = '600px';
+    await page.elementLocator(withCallback.container.querySelector('#opt-ch1') as HTMLElement).hover();
+    const chainBtn = withCallback.getByRole('button', { name: `Chain ${chained.shortId}` });
+    await expect.element(chainBtn).toBeInTheDocument();
+    await chainBtn.click();
+    expect(onchain).toHaveBeenCalledWith('ch1');
+
+    // No onchain supplied: no Chain button even for a chained row.
+    const withoutCallback = await render(ResultsList, { memories: [chained], label: 'Search results', onopen });
+    withoutCallback.container.style.height = '600px';
+    await page.elementLocator(withoutCallback.container.querySelector('#opt-ch1') as HTMLElement).hover();
+    expect(withoutCallback.container.querySelector(`[aria-label="Chain ${chained.shortId}"]`)).toBeNull();
+
+    // A plain (non-chained) row never shows Chain, even with onchain supplied.
+    const plain = create(MemorySchema, { id: 'pl1', category: 'convention', summary: 'x', scope: 's', shortId: 'sidplain001' });
+    const plainScreen = await render(ResultsList, { memories: [plain], label: 'Search results', onopen, onchain });
+    plainScreen.container.style.height = '600px';
+    await page.elementLocator(plainScreen.container.querySelector('#opt-pl1') as HTMLElement).hover();
+    expect(plainScreen.container.querySelector(`[aria-label="Chain ${plain.shortId}"]`)).toBeNull();
+  });
+
+  it('captures the row action toolbar over a row (DSYS-04)', async () => {
+    const onopen = vi.fn();
+    const onarchive = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen, onarchive });
+    screen.container.style.height = '600px';
+    await page.elementLocator(screen.container.querySelector('#opt-m0001') as HTMLElement).hover();
+    await expect
+      .element(screen.getByRole('toolbar', { name: `Row actions for ${three[1].shortId}` }))
+      .toBeInTheDocument();
+    await page.screenshot();
+  });
+});

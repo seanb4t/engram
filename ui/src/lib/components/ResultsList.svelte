@@ -5,6 +5,8 @@
   import { Kbd } from '$lib/components/ui/kbd';
   import ResultRow from './ResultRow.svelte';
   import ResultHoverCard from './ResultHoverCard.svelte';
+  import RowActions from './RowActions.svelte';
+  import { defaultActionsFor, type CurationAction } from '$lib/curation/host.svelte.ts';
 
   let {
     memories,
@@ -25,7 +27,9 @@
     ondelete,
     onsupersede,
     onarchive,
-    onrestore
+    onrestore,
+    onchain,
+    rowActions = defaultActionsFor
   }: {
     memories: Memory[];
     mode?: 'ranked' | 'unranked';
@@ -46,6 +50,8 @@
     onsupersede?: (ids: string[]) => void;
     onarchive?: (ids: string[]) => void;
     onrestore?: (ids: string[]) => void;
+    onchain?: (id: string) => void;
+    rowActions?: (m: Memory) => CurationAction[];
   } = $props();
 
   // D-07 / Pitfall A: @humanspeak/svelte-virtual-list's own viewport is a
@@ -58,7 +64,43 @@
   let list: ReturnType<typeof SvelteVirtualList> | undefined = $state();
   let viewportEl: HTMLElement | null = $state(null);
   let wrapperEl: HTMLElement | null = $state(null);
+  let containerEl: HTMLElement | null = $state(null);
   let listFocused = $state(false);
+
+  // D-05: the row action toolbar's own anchor tracking, kept SEPARATE from
+  // the hover-card's `hoverRowId`/timers below — the toolbar has no open
+  // delay (it must reveal instantly on hover per the sketch's gradient-fade
+  // affordance) and falls back to the keyboard-active row while the list has
+  // focus, independent of whether the hover card's own 250ms timer has fired.
+  // `toolbarMemory`/its positioning effect are declared further down, once
+  // `activeId` exists.
+  let pointerRowId = $state<string | undefined>(undefined);
+  let toolbarSuppressed = $state(false);
+  let toolbarAnchorEl = $state<HTMLElement | null>(null);
+  let toolbarRef: HTMLElement | null = $state(null);
+  let toolbarCloseTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Mirrors ResultHoverCard's own close-lifecycle (openCardFor/
+  // scheduleCloseCard/cardRef below): the toolbar is a SIBLING overlay
+  // painted on top of the row it anchors to, so moving the real pointer from
+  // the row onto the toolbar's own buttons fires the row's mouseleave (the
+  // browser resolves hover by paint order, not DOM ancestry) — clearing
+  // pointerRowId immediately there would unmount the toolbar out from under
+  // an in-flight click. A short grace period, cancelled the instant the
+  // pointer actually lands on the toolbar, closes that gap.
+  function clearToolbarCloseTimer() {
+    if (toolbarCloseTimer !== undefined) {
+      clearTimeout(toolbarCloseTimer);
+      toolbarCloseTimer = undefined;
+    }
+  }
+  function scheduleToolbarClose() {
+    clearToolbarCloseTimer();
+    toolbarCloseTimer = setTimeout(() => {
+      toolbarCloseTimer = undefined;
+      pointerRowId = undefined;
+    }, 120);
+  }
 
   // ROW-02: the hover card's own state, kept SEPARATE from activeIndex/
   // activeId (Pitfall 4) — a mouse resting on a different row than the
@@ -116,6 +158,12 @@
   // pointer resting still while the row underneath it changes via keyboard
   // scroll; mousemove keeps re-asserting hover intent on real pointer motion.
   function handleRowMouseMove(m: Memory, rowEl: HTMLElement) {
+    // D-05: the toolbar reveals instantly on hover — no delay, and no
+    // early-return on an unchanged hoverRowId, so a scroll-suppressed
+    // toolbar re-asserts on the very next mousemove over the same row.
+    pointerRowId = m.id;
+    toolbarSuppressed = false;
+    clearToolbarCloseTimer();
     if (hoverRowId === m.id) return;
     hoverRowId = m.id;
     clearCloseTimer();
@@ -127,11 +175,36 @@
   }
 
   function handleRowMouseLeave(m: Memory) {
+    // Scheduled, not immediate (see scheduleToolbarClose's comment) — the
+    // pointer may be travelling onto the toolbar itself, which is painted
+    // on top of this row but is not its DOM descendant.
+    if (pointerRowId === m.id) scheduleToolbarClose();
     if (hoverRowId !== m.id) return;
     hoverRowId = undefined;
     clearOpenTimer();
     scheduleCloseCard();
   }
+
+  // The pointer can travel from the row onto the toolbar's own buttons
+  // within the 120ms grace scheduleToolbarClose sets up — cancelled the
+  // instant it actually arrives there (mirrors the hover card's cardRef
+  // effect below).
+  $effect(() => {
+    if (!toolbarRef) return;
+    const el = toolbarRef;
+    function onEnter() {
+      clearToolbarCloseTimer();
+    }
+    function onLeave() {
+      scheduleToolbarClose();
+    }
+    el.addEventListener('mousemove', onEnter);
+    el.addEventListener('mouseleave', onLeave);
+    return () => {
+      el.removeEventListener('mousemove', onEnter);
+      el.removeEventListener('mouseleave', onLeave);
+    };
+  });
 
   // openId changing means the pane just opened/switched/closed — the hover
   // card must not linger over stale state either way.
@@ -229,6 +302,45 @@
     }
   });
 
+  // D-05: the toolbar's target row — the pointer-hovered row when there is
+  // one, else the keyboard-active row while the list has focus.
+  const toolbarMemory = $derived.by(() => {
+    if (toolbarSuppressed || memories.length === 0) return undefined;
+    const id = pointerRowId ?? (listFocused ? activeId : undefined);
+    if (!id) return undefined;
+    return memories.find((m) => m.id === id);
+  });
+
+  $effect(() => {
+    const mem = toolbarMemory;
+    if (!mem || !wrapperEl) {
+      toolbarAnchorEl = null;
+      return;
+    }
+    toolbarAnchorEl = wrapperEl.querySelector<HTMLElement>(`#opt-${CSS.escape(mem.id)}`);
+  });
+
+  // Hides the toolbar on scroll/text-size change, same trigger as the hover
+  // card's own effects above — a floating toolbar over a row that just
+  // scrolled out from under it (or resized under a text-size step) is
+  // exactly the T-04-17 risk this clears.
+  $effect(() => {
+    if (!viewportEl) return;
+    const vp = viewportEl;
+    function onScroll() {
+      toolbarSuppressed = true;
+    }
+    vp.addEventListener('scroll', onScroll);
+    return () => vp.removeEventListener('scroll', onScroll);
+  });
+  $effect(() => {
+    function onTextSize() {
+      toolbarSuppressed = true;
+    }
+    window.addEventListener('engram:textsize', onTextSize);
+    return () => window.removeEventListener('engram:textsize', onTextSize);
+  });
+
   // Row height in px at the CURRENT text-size preference (D-13): 28 * var(--u)
   // evaluated against the live root font-size, so the virtualizer's initial
   // estimate is never a stale 13px-basis guess. Recomputed on engram:textsize
@@ -253,6 +365,10 @@
       await list.scroll({ index: clamped, align: 'nearest', smoothScroll: false });
     }
     activeId = memories[clamped]?.id;
+    // D-05: keyboard movement re-asserts the toolbar too, clearing any prior
+    // scroll/text-size suppression — the active row is a fresh, deliberate
+    // target the user just navigated to.
+    toolbarSuppressed = false;
 
     // ROW-02: keyboard movement opens the hover card INSTANTLY for the new
     // active row (no 250ms pointer delay) — overriding any pending
@@ -564,7 +680,7 @@
     {/each}
   </div>
 {:else if memories.length > 0}
-  <div class="results-list-container">
+  <div class="results-list-container" bind:this={containerEl}>
     {#if busy}
       <!-- E1 loading (re-query): previous rows stay, dimmed, with an
            indeterminate progress bar — never a flash to empty. -->
@@ -616,6 +732,21 @@
         {/snippet}
       </SvelteVirtualList>
     </div>
+    <!-- D-05: the row action toolbar — a sibling of the listbox wrapper, NEVER
+         inside renderItem's role="option" row. -->
+    {#if toolbarMemory && toolbarAnchorEl && containerEl}
+      <RowActions
+        memory={toolbarMemory}
+        anchor={toolbarAnchorEl}
+        container={containerEl}
+        actions={rowActions(toolbarMemory)}
+        bind:toolbarRef
+        {onsupersede}
+        {onarchive}
+        {onrestore}
+        {onchain}
+      />
+    {/if}
   </div>
   <div class="results-legend">
     <Kbd>j</Kbd><Kbd>k</Kbd> move · <Kbd>↵</Kbd> open / close · <Kbd>esc</Kbd> close · <Kbd>e</Kbd> edit ·
