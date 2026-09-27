@@ -534,16 +534,16 @@ and end-to-end check.
   4. A resume round-trip test proves a draft on every new write surface (supersede, archive, rules, scheduled) survives an OIDC re-login
   5. A WCAG 2.2 keyboard/contrast audit and Web Interface Guidelines review pass, or findings are fixed or recorded, using the vetted third-party skills once `fable-security-review` clears them; the chromedp console e2e exercises entry-point resolution, a supersede, and an archive/restore round trip against a live server
 
-**Plans:** 12 plans
+**Plans:** 4/12 plans executed
 **UI hint**: yes
 
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — archive/restore end to end from the /search pane, the not-owned decision gate, the full confirm with per-id outcomes and double undo (D-05, D-08–D-10; CUR-02)
-- [ ] 04-02-PLAN.md — v2 re-auth resume envelope with the curation kinds, /observe removed with links retargeted to /search, Rules and Scheduled in the nav (D-11, D-14, D-16; CUR-05)
-- [ ] 04-03-PLAN.md — a11y tooling: axe-core legitimacy gate and WCAG 2.2 AA audit helper, fable-security-review of the three design skills (D-17, D-18; DSYS-03)
-- [ ] 04-04-PLAN.md — Chain dialog over RelatedMemories with fetch-by-id peek and supersede-head entry (D-06; CUR-01)
+- [x] 04-01-PLAN.md — archive/restore end to end from the /search pane, the not-owned decision gate, the full confirm with per-id outcomes and double undo (D-05, D-08–D-10; CUR-02)
+- [x] 04-02-PLAN.md — v2 re-auth resume envelope with the curation kinds, /observe removed with links retargeted to /search, Rules and Scheduled in the nav (D-11, D-14, D-16; CUR-05)
+- [x] 04-03-PLAN.md — a11y tooling: axe-core legitimacy gate and WCAG 2.2 AA audit helper, fable-security-review of the three design skills (D-17, D-18; DSYS-03)
+- [x] 04-04-PLAN.md — Chain dialog over RelatedMemories with fetch-by-id peek and supersede-head entry (D-06; CUR-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
