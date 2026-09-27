@@ -19,6 +19,7 @@
   import { parseConnectError } from '$lib/errors/connect-error';
   import { persistResume, redirectToLogin, type CurationResumeEnvelope } from '$lib/resume';
   import { flashRows } from '$lib/curation/flash.svelte.ts';
+  import { headIdFrom } from '$lib/curation/chain';
   import ArchiveConfirmDialog from './ArchiveConfirmDialog.svelte';
   import SupersedeDialog from './SupersedeDialog.svelte';
 
@@ -280,6 +281,42 @@
     return previewSupersede(draft, signal);
   }
 
+  // Add-target-by-id/short_id lookup: GetMemory accepts a short_id anywhere
+  // an id is accepted (memory contract), so a single fetch resolves either
+  // shape -- no separate short_id resolution RPC exists.
+  async function supersedeOnlookup(value: string): Promise<Memory | undefined> {
+    try {
+      const resp = await queryClient.fetchQuery({
+        queryKey: ['getMemory', value],
+        queryFn: () => engram.getMemory({ id: value })
+      });
+      return resp.memory;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // "use head {short_id}" resolution: a RelatedMemories read from the
+  // superseded target finds its SUCCESSOR edge (chain.ts's own headIdFrom,
+  // 04-04), then GetMemory fetches the resolved head's full-enough record
+  // for the swap. No successor found (target IS the head already, or the
+  // read failed) resolves to undefined -- the dialog just keeps showing the
+  // "…" placeholder until a later read succeeds.
+  async function supersedeOnresolvehead(id: string): Promise<Memory | undefined> {
+    try {
+      const related = await engram.relatedMemories({ id, k: 1n, full: false });
+      const headId = headIdFrom(related);
+      if (!headId || headId === id) return undefined;
+      const resp = await queryClient.fetchQuery({
+        queryKey: ['getMemory', headId],
+        queryFn: () => engram.getMemory({ id: headId })
+      });
+      return resp.memory;
+    } catch {
+      return undefined;
+    }
+  }
+
   // The commit path itself: useSupersedeMemory's own onSuccess already
   // patches supersededBy in place and invalidates recall surfaces (mirrors
   // useArchiveMemory); this wrapper adds the parts that need component-level
@@ -373,6 +410,8 @@
   resend={supersedeResend}
   onpreview={supersedeOnpreview}
   onsubmit={supersedeOnsubmit}
+  onlookup={supersedeOnlookup}
+  onresolvehead={supersedeOnresolvehead}
   oncancel={supersedeOncancel}
   ondone={supersedeOndone}
   onreauth={handleSupersedeReauth}

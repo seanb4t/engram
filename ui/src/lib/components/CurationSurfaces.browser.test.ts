@@ -3,27 +3,45 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { MemorySchema, ArchiveOutcome, type Memory, type SupersedeMemoryRequest } from '$lib/gen/engram_pb';
+import {
+  MemorySchema,
+  ArchiveOutcome,
+  RelatedMemoriesResponseSchema,
+  RelatedMemorySchema,
+  RelatedEdgeSchema,
+  SupersessionEvidenceSchema,
+  EdgeType,
+  SupersessionDirection,
+  type Memory,
+  type SupersedeMemoryRequest
+} from '$lib/gen/engram_pb';
 import { flashing, FLASH_MS } from '$lib/curation/flash.svelte.ts';
 import { peekResume, type SupersedeResumeEnvelope, type ArchiveResumeEnvelope } from '$lib/resume';
 import CurationSurfaces from './CurationSurfaces.svelte';
 
-const { archiveMemorySpy, restoreMemorySpy, supersedeMemorySpy, getMemorySpy, toastSpy, redirectToLoginSpy } = vi.hoisted(
-  () => ({
-    archiveMemorySpy: vi.fn(),
-    restoreMemorySpy: vi.fn(),
-    supersedeMemorySpy: vi.fn(),
-    getMemorySpy: vi.fn(),
-    toastSpy: vi.fn(),
-    redirectToLoginSpy: vi.fn()
-  })
-);
+const {
+  archiveMemorySpy,
+  restoreMemorySpy,
+  supersedeMemorySpy,
+  getMemorySpy,
+  relatedMemoriesSpy,
+  toastSpy,
+  redirectToLoginSpy
+} = vi.hoisted(() => ({
+  archiveMemorySpy: vi.fn(),
+  restoreMemorySpy: vi.fn(),
+  supersedeMemorySpy: vi.fn(),
+  getMemorySpy: vi.fn(),
+  relatedMemoriesSpy: vi.fn(),
+  toastSpy: vi.fn(),
+  redirectToLoginSpy: vi.fn()
+}));
 
 vi.mock('$lib/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('$lib/client')>();
   return {
     ...actual,
-    engram: { ...actual.engram, getMemory: getMemorySpy },
+    engram: { ...actual.engram, getMemory: getMemorySpy, relatedMemories: relatedMemoriesSpy },
     engramWrite: {
       ...actual.engramWrite,
       archiveMemory: archiveMemorySpy,
@@ -69,6 +87,7 @@ beforeEach(() => {
   restoreMemorySpy.mockReset();
   supersedeMemorySpy.mockReset();
   getMemorySpy.mockReset();
+  relatedMemoriesSpy.mockReset();
   toastSpy.mockReset();
   redirectToLoginSpy.mockReset();
   sessionStorage.clear();
@@ -297,5 +316,62 @@ describe('CurationSurfaces — archive re-auth resume (CUR-05, D-15)', () => {
     await expect.element(screen.getByText('Signed in again — review and resend')).toBeInTheDocument();
     expect(onresumeapplied).toHaveBeenCalledTimes(1);
     expect(archiveMemorySpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('CurationSurfaces — supersede add-target and use-head wiring', () => {
+  it('wires onlookup to GetMemory (id or short_id) so a looked-up record can be added as a target', async () => {
+    const target = makeMemory({ id: 'm1', content: 'seed', shortId: 's0000000001' });
+    const found = makeMemory({ id: 'm9', content: 'looked up record', shortId: 'M9SHRT0001', summary: 'a looked-up record' });
+    getMemorySpy.mockImplementation(async ({ id }: { id: string }) => {
+      if (id === 'm9' || id === 'M9SHRT0001') return { memory: found };
+      return { memory: target };
+    });
+    supersedeMemorySpy.mockResolvedValue({ id: '', shortId: '', validated: true, supersedes: [], targets: [] });
+
+    const screen = await renderCS({ returnPath: '/search' });
+    await screen.component.openSupersede(['m1']);
+    await expect.element(screen.getByRole('dialog')).toBeInTheDocument();
+
+    const addInput = screen.getByPlaceholder('add target by short_id…');
+    await addInput.fill('M9SHRT0001');
+    await expect.element(screen.getByText(/M9SHRT0001 —/)).toBeInTheDocument();
+    await screen.getByText(/M9SHRT0001 —/).click();
+
+    await expect.poll(() => document.querySelectorAll('.sd-chip').length).toBe(2);
+  });
+
+  it('wires onresolvehead through RelatedMemories/chain.headIdFrom so "use head" shows the current head', async () => {
+    const head = makeMemory({ id: 'h1', content: 'head content', shortId: 'HEADSHORT01' });
+    const superseded = makeMemory({ id: 'p1', content: 'stale', shortId: 'P1SHORT0001', supersededBy: 'h1' });
+    getMemorySpy.mockImplementation(async ({ id }: { id: string }) => {
+      if (id === 'h1') return { memory: head };
+      return { memory: superseded };
+    });
+    relatedMemoriesSpy.mockImplementation(async ({ id }: { id: string }) => {
+      if (id !== 'p1') throw new Error(`unexpected id ${id}`);
+      return create(RelatedMemoriesResponseSchema, {
+        anchor: superseded,
+        related: [
+          create(RelatedMemorySchema, {
+            memory: head,
+            edges: [
+              create(RelatedEdgeSchema, {
+                type: EdgeType.SUPERSESSION,
+                evidence: {
+                  case: 'supersession',
+                  value: create(SupersessionEvidenceSchema, { direction: SupersessionDirection.SUCCESSOR, depth: 1 })
+                }
+              })
+            ]
+          })
+        ]
+      });
+    });
+
+    const screen = await renderCS({ returnPath: '/search' });
+    await screen.component.openSupersede(['p1']);
+
+    await expect.element(screen.getByText(`not the live head — current head is ${head.shortId}`)).toBeInTheDocument();
   });
 });
