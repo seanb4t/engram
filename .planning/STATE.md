@@ -5,16 +5,16 @@ milestone_name: Console Overhaul
 current_phase: 03
 current_phase_name: Curation RPCs & MCP Tools
 status: executing
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-09-27T09:03:41.370Z"
+stopped_at: Completed 03-05-PLAN.md
+last_updated: "2026-09-27T09:55:14.751Z"
 last_activity: 2026-09-27
 last_activity_desc: Phase 03 execution started
-state_head: b06b3c76e4dd8421d3be0fe014bcc11470a20621
+state_head: 22aec07f49a688466dd7ca514740d61ae96d87d6
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 21
-  completed_plans: 18
+  completed_plans: 19
   percent: 29
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-26 after 2026-09-25.01 Phase 2)
 ## Current Position
 
 Phase: 03 (Curation RPCs & MCP Tools) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-09-27 — Phase 03 execution started
 
@@ -457,6 +457,8 @@ milestone needs in working memory.
 - [Phase 03]: 03-03: deps.listScheduled resolves scope via effectiveSearchScope FIRST (scope now conditionally required); Store.ListScheduled/collectOrderedPages widened to support cursor resume and an empty-scope-spans-every-scope owner-only span — Matches the search_memory/list_memory/list_rules precedent for the scope-required-unless-cross-spine rule exactly, and reuses listFilter's existing scope-optional idiom rather than inventing a new one.
 - [Phase 03]: 03-04: ListRules Connect RPC + all-scopes read (D-10) shipped over a new shared listRuleRecords core; empty scopes list is now the all-scopes read on both lanes, rule-only coverage via ruleScopeCoverage
 - [Phase 03]: 03-04: corrected a stale gsd-plan-head-before-03-04 ledger (pointed to a commit not an ancestor of HEAD at all) before computing actuals.commits
+- [Phase 03]: Store.RelatedMemories gains a full bool (D-13); RelatedMemories lands on Connect and as an on-demand related_memories MCP tool over one shared core, with a type-safe oneof wire shape for supersession/citation/tag/vector evidence.
+- [Phase 03]: 03-05: fixed two Phase 1 key_links patterns (01-03-PLAN.md, 01-04-PLAN.md) that this plan own store change to relatedmemories.go (full-knob threading) legitimately broke; from/to/via unchanged, only the literal pattern text updated.
 
 ### Pending Todos
 
@@ -554,8 +556,8 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-27T09:03:41.340Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-09-27T09:55:14.719Z
+Stopped at: Completed 03-05-PLAN.md
 Resume file: None
 
 ## Performance Metrics
@@ -775,6 +777,7 @@ Resume file: None
 | Phase 03 P02 | 38min | 2 tasks | 14 files |
 | Phase 03 P03 | 55min | 2 tasks | 22 files |
 | Phase 03 P04 | 1h20m | 2 tasks | 13 files |
+| Phase 03 P05 | 49min | 2 tasks | 23 files |
 
 ## Operator Next Steps
 
