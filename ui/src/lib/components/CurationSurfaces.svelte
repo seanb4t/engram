@@ -1,8 +1,18 @@
 <script lang="ts">
   import { useQueryClient } from '@tanstack/svelte-query';
+  import { toast } from 'svelte-sonner';
+  import { ConnectError, Code } from '@connectrpc/connect';
   import type { Memory } from '$lib/gen/engram_pb';
   import { engram } from '$lib/client';
-  import { useArchiveMemory, useRestoreMemory, type ArchiveSubmitOutcome } from '$lib/mutations/curation';
+  import {
+    useArchiveMemory,
+    useRestoreMemory,
+    changedIds,
+    type ArchiveSubmitOutcome
+  } from '$lib/mutations/curation';
+  import { parseConnectError } from '$lib/errors/connect-error';
+  import { redirectToLogin } from '$lib/resume';
+  import { flashRows } from '$lib/curation/flash.svelte.ts';
   import ArchiveConfirmDialog from './ArchiveConfirmDialog.svelte';
 
   // CurationSurfaces is the route-level curation write host (mirrors
@@ -26,6 +36,8 @@
   let archiveOpen = $state(false);
   let archiveMode = $state<'archive' | 'restore'>('archive');
   let archiveRecords = $state<Memory[]>([]);
+  let archivePending = $state(false);
+  let archiveOutcome = $state<ArchiveSubmitOutcome | undefined>(undefined);
 
   // Resolves each id to a Memory from the query cache (searchMemories/
   // listMemories pages, then getMemory), falling back to a direct fetch for
@@ -67,33 +79,107 @@
 
   export async function openArchive(ids: string[]): Promise<void> {
     archiveMode = 'archive';
+    archiveOutcome = undefined;
     archiveRecords = await resolveRecords(ids);
     archiveOpen = true;
   }
 
   export async function openRestore(ids: string[]): Promise<void> {
     archiveMode = 'restore';
+    archiveOutcome = undefined;
     archiveRecords = await resolveRecords(ids);
     archiveOpen = true;
   }
 
-  // Task 3 (D-08/D-09) maps a mutation error to { kind: 'reauth' | 'rejected' }
-  // for the dialog's status block; this tracer slice runs only the success
-  // path -- error mapping is deliberately out of scope until Task 3.
+  // Maps a mutation failure to ArchiveSubmitOutcome (D-08/D-09): an
+  // Unauthenticated/PermissionDenied failure is a re-auth gate, everything
+  // else routes through the shared connect-error classifier.
+  function mapMutationError(err: unknown): ArchiveSubmitOutcome {
+    if (err instanceof ConnectError && (err.code === Code.Unauthenticated || err.code === Code.PermissionDenied)) {
+      return { kind: 'reauth' };
+    }
+    return { kind: 'rejected', parsed: parseConnectError(err) };
+  }
+
+  // The dialog's own confirm-click path: runs the CURRENT mode's mutation.
+  // On success: patch the caches (the mutation hook's onSuccess already does
+  // this), flash the changed rows and notify the route -- immediately, not
+  // deferred to Done (D-10, and the D-09 result body needs the flash to
+  // already be live when it renders).
   async function onsubmit(ids: string[]): Promise<ArchiveSubmitOutcome> {
     const mutation = archiveMode === 'archive' ? archiveMutation : restoreMutation;
-    const resp = await mutation.mutateAsync({ ids });
-    return { kind: 'ok', results: resp.results };
+    try {
+      const resp = await mutation.mutateAsync({ ids });
+      const changed = changedIds(resp.results);
+      flashRows(changed);
+      onchanged?.({ kind: archiveMode, ids: changed });
+      return { kind: 'ok', results: resp.results };
+    } catch (err) {
+      return mapMutationError(err);
+    }
   }
 
   function oncancel(): void {
     archiveOpen = false;
   }
 
-  function ondone(changed: string[]): void {
+  // D-09 surface 1 (result-body undo): "Undo — restore N" on a just-shown
+  // archive result runs the INVERSE call through the SAME dialog -- no
+  // second confirm. Flips the bound `mode`/`pending`/`outcome` directly
+  // (ArchiveConfirmDialog re-renders its result view from the new outcome).
+  async function onundo(ids: string[]): Promise<void> {
+    const inverseMode = archiveMode === 'archive' ? 'restore' : 'archive';
+    const inverseMutation = inverseMode === 'archive' ? archiveMutation : restoreMutation;
+    archiveMode = inverseMode;
+    archivePending = true;
+    try {
+      const resp = await inverseMutation.mutateAsync({ ids });
+      const changed = changedIds(resp.results);
+      flashRows(changed);
+      onchanged?.({ kind: inverseMode, ids: changed });
+      archiveOutcome = { kind: 'ok', results: resp.results };
+    } catch (err) {
+      archiveOutcome = mapMutationError(err);
+    } finally {
+      archivePending = false;
+    }
+  }
+
+  // D-09 surface 2 (toast undo): closing an archive result with >=1 archived
+  // id fires an 8s toast whose Undo action restores exactly those ids.
+  // Restore results never get a toast (Flagged assumptions: no double undo).
+  function ondone(ids: string[]): void {
+    const wasArchive = archiveMode === 'archive';
     archiveOpen = false;
-    onchanged?.({ kind: archiveMode, ids: changed });
+    if (wasArchive && ids.length > 0) {
+      toast(`${ids.length} archived · Undo`, {
+        duration: 8000,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            restoreMutation.mutate({ ids });
+          }
+        }
+      });
+    }
+  }
+
+  // plan 04-06 persists the v2 resume envelope before this redirect; this
+  // plan wires the redirect only.
+  function onreauth(_ids: string[]): void {
+    redirectToLogin();
   }
 </script>
 
-<ArchiveConfirmDialog bind:open={archiveOpen} mode={archiveMode} records={archiveRecords} {onsubmit} {oncancel} {ondone} />
+<ArchiveConfirmDialog
+  bind:open={archiveOpen}
+  bind:mode={archiveMode}
+  bind:pending={archivePending}
+  bind:outcome={archiveOutcome}
+  records={archiveRecords}
+  {onsubmit}
+  {oncancel}
+  {ondone}
+  {onundo}
+  {onreauth}
+/>
