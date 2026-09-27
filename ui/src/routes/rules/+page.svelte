@@ -9,10 +9,14 @@
   import { base } from '$app/paths';
   import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
+  import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import { parseRulesParams, encodeRulesParams, type RulesParams } from '$lib/search/rules-params';
+  import { rulesHeaderParts, rulesEmptyHeading, type HeaderPart } from '$lib/search/recall-header';
+  import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
+  import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
   import { Badge } from '$lib/components/ui/badge';
 
   const params = $derived(parseRulesParams(page.url.searchParams));
@@ -57,6 +61,44 @@
     if (params.sel === id) closeSel();
     else navigate({ sel: id });
   }
+
+  // D-12: honest header — count, scope coverage, scopes_truncated/unknown —
+  // and the server's own advisory line, rendered verbatim never inferred.
+  const headerParts = $derived.by((): HeaderPart[] => {
+    if (!rulesQ.data) return [];
+    return rulesHeaderParts({
+      count: rules.length,
+      scopeCount: rulesQ.data.searchedScopes?.length ?? 0,
+      scopesTruncated: rulesQ.data.scopesTruncated,
+      scopesUnknown: rulesQ.data.scopesUnknown
+    });
+  });
+
+  const advisory = $derived(rulesQ.data?.advisory ?? '');
+
+  // E5 loading: first-load skeleton only; a re-fetch keeps the prior rows
+  // (keepPreviousData) and shows the header's progress bar instead.
+  const loading = $derived(rulesQ.isLoading && !rulesQ.data);
+  const busy = $derived(rulesQ.isFetching && rulesQ.isPlaceholderData);
+
+  const parsedError = $derived(rulesQ.error ? parseConnectError(rulesQ.error) : undefined);
+  const isEmpty = $derived(!parsedError && rulesQ.isSuccess && !rulesQ.isFetching && rules.length === 0);
+
+  const recallState = $derived.by((): RecallStateInput | undefined => {
+    if (parsedError) return { kind: 'error', parsed: parsedError, fixes: fixRowsFor(parsedError) };
+    if (isEmpty) return { kind: 'empty', heading: rulesEmptyHeading(), fixes: [] };
+    return undefined;
+  });
+
+  // /rules has no facet-driven fixes (no scope/category/k to adjust) — the
+  // only fix row fixRowsFor ever returns for a generic rejection is retry.
+  function onRecallFix() {
+    rulesQ.refetch();
+  }
+
+  function onRecallRetry() {
+    rulesQ.refetch();
+  }
 </script>
 
 {#snippet sharedChip()}
@@ -70,20 +112,30 @@
 
 <div class="rules-page">
   <h1 class="rules-heading">Rules</h1>
+  <ResultsHeader parts={headerParts} k={0} {busy} />
+  {#if advisory}
+    <div class="rules-advisory">{advisory}</div>
+  {/if}
   <div class="rules-body">
     <RecallSplit open={!!params.sel} onclose={closeSel} autoSaveId="engram-rules-split">
       {#snippet list()}
-        <ResultsList
-          memories={rules}
-          mode="unranked"
-          label="Rules"
-          openId={params.sel}
-          onopen={toggleOpen}
-          onescape={closeSel}
-          groupKey={(m) => m.scope}
-          groupHeader={scopeGroupHeader}
-          rowTrailing={sharedChip}
-        />
+        {#if recallState}
+          <RecallState state={recallState} onfix={onRecallFix} onretry={onRecallRetry} />
+        {:else}
+          <ResultsList
+            memories={rules}
+            mode="unranked"
+            label="Rules"
+            openId={params.sel}
+            {loading}
+            {busy}
+            onopen={toggleOpen}
+            onescape={closeSel}
+            groupKey={(m) => m.scope}
+            groupHeader={scopeGroupHeader}
+            rowTrailing={sharedChip}
+          />
+        {/if}
       {/snippet}
       {#snippet detail()}
         <DetailPane
@@ -112,6 +164,12 @@
     padding: calc(8 * var(--u)) calc(14 * var(--u)) calc(6 * var(--u));
     font-size: calc(16 * var(--u));
     font-weight: 600;
+  }
+  .rules-advisory {
+    flex: none;
+    padding: calc(2 * var(--u)) calc(14 * var(--u)) calc(6 * var(--u));
+    font-size: calc(11 * var(--u));
+    color: var(--text-faint, var(--muted-foreground));
   }
   .rules-body {
     flex: 1;
