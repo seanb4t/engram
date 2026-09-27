@@ -336,12 +336,12 @@
     {
       "number": "3",
       "name": "Curation RPCs & MCP Tools",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "4",
       "name": "Curation Surfaces",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "5",
@@ -356,8 +356,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 03 of 7 · 29% · ready to verify"
+    "label": "Advance to the next step (plan phase 4)",
+    "reason": "Phase 4 of 7 — needs a plan"
   },
-  "updated_at": "2026-09-27T10:57:29.083Z"
+  "updated_at": "2026-09-27T11:19:52.552Z"
 }

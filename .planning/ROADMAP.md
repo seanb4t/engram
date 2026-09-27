@@ -374,7 +374,7 @@ out to the CLI.
 - [x] **Phase 1: Store Prerequisites** - Authz-gated Archive/Restore, RelatedMemories, and ListTags land in `internal/store`, no proto or UI yet (completed 2026-09-26)
 - [x] **Phase 01.1: Console Sketches (INSERTED)** - Throwaway HTML sketches of the console surfaces to pick a visual direction before any UI-SPEC (completed 2026-09-26)
 - [x] **Phase 2: Recall-First Search** - Honest id/short_id/text resolution, server-driven command palette, dense virtualized results row with facets and score/relevance (completed 2026-09-26)
-- [ ] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided
+- [x] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided (completed 2026-09-27)
 - [ ] **Phase 4: Curation Surfaces** - Supersede, archive/restore, rules, and scheduled views for operators, with resume-envelope coverage, an a11y audit, and an e2e round trip
 - [ ] **Phase 5: Related-Memories Graph & Tag Cloud** - A local, keyboard/ARIA-equivalent related-memories graph and a count-based tag cloud
 - [ ] **Phase 6: Query Understanding** - Advisory, off-by-default NL-query-understanding filter chips
@@ -488,7 +488,7 @@ a known pattern.
   3. An invalid `SupersedeMemory` target set is rejected with every offending target named
   4. All proto changes are additive (`buf breaking` green), `gen/go`, `gen/ts`, and `ui/src/lib/gen` are regenerated and committed, the vendored SPA passes the `ui-drift` gate, and each RPC carries its blast-radius annotations and self-describe catalog entry
 
-**Plans:** 7/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
 **Wave 1**
@@ -632,7 +632,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 26. Structured Citations, Category Filter & Chat Base URL | v0.11.x | 6/6 | Complete | 2026-07-25 |
 | 1. Shared Auth Chain & Connect Bearer Identity | v0.12.x | 4/4 | In Progress|  |
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-09-26 |
-| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | In Progress|  |
+| 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-09-27 |
 | 4. Diagnosability | v0.12.x | 4/4 | In Progress|  |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-08-17 |
