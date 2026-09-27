@@ -5,6 +5,7 @@ import '../../app.css';
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
+import { createRawSnippet } from 'svelte';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
@@ -350,13 +351,42 @@ describe('ResultsList', () => {
     expect(onedit).not.toHaveBeenCalled();
   });
 
-  it('the legend shows Kbd hints for j, k, enter, esc, e, s, #, c and shift-C', async () => {
+  it('the legend shows Kbd hints for j, k, enter, esc, e, s, #, c and shift-C when their callbacks are supplied', async () => {
+    const onopen = vi.fn();
+    const onedit = vi.fn();
+    const onvisibility = vi.fn();
+    const ondelete = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, {
+      memories: three,
+      label: 'Search results',
+      onopen,
+      onedit,
+      onvisibility,
+      ondelete
+    });
+    const legend = screen.container.querySelector('.results-legend') as HTMLElement;
+    const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C']);
+  });
+
+  it('the legend omits the edit/share/delete hints entirely when their callbacks are not supplied', async () => {
     const onopen = vi.fn();
     const three = makeMemories(3);
     const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen });
     const legend = screen.container.querySelector('.results-legend') as HTMLElement;
     const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
-    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C']);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'c', '⇧C']);
+  });
+
+  it('given only ondelete, the legend shows the delete hint but not edit or share (so /rules and /scheduled never advertise a key that does nothing)', async () => {
+    const onopen = vi.fn();
+    const ondelete = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen, ondelete });
+    const legend = screen.container.querySelector('.results-legend') as HTMLElement;
+    const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', '#', 'c', '⇧C']);
   });
 });
 
@@ -490,6 +520,9 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
 
   it('the legend shows select/range/curation Kbd hints only for the callbacks supplied', async () => {
     const onopen = vi.fn();
+    const onedit = vi.fn();
+    const onvisibility = vi.fn();
+    const ondelete = vi.fn();
     const three = makeMemories(3);
     const onarchive = vi.fn();
     const onrestore = vi.fn();
@@ -498,6 +531,9 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
       memories: three,
       label: 'Search results',
       onopen,
+      onedit,
+      onvisibility,
+      ondelete,
       selectable: true,
       onarchive,
       onrestore,
@@ -510,12 +546,18 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
 
   it('with only onarchive supplied, the legend shows select/range/archive hints but not restore or supersede', async () => {
     const onopen = vi.fn();
+    const onedit = vi.fn();
+    const onvisibility = vi.fn();
+    const ondelete = vi.fn();
     const three = makeMemories(3);
     const onarchive = vi.fn();
     const screen = await render(ResultsList, {
       memories: three,
       label: 'Search results',
       onopen,
+      onedit,
+      onvisibility,
+      ondelete,
       selectable: true,
       onarchive
     });
@@ -543,8 +585,11 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
 
   it('without selectable, neither the check column nor the selection hints render, and aria-selected follows the active row', async () => {
     const onopen = vi.fn();
+    const onedit = vi.fn();
+    const onvisibility = vi.fn();
+    const ondelete = vi.fn();
     const three = makeMemories(3);
-    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen });
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen, onedit, onvisibility, ondelete });
     const legend = screen.container.querySelector('.results-legend') as HTMLElement;
     const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
     expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', 'e', 's', '#', 'c', '⇧C']);
@@ -555,5 +600,226 @@ describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
     await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m0000');
     expect(screen.container.querySelector('#opt-m0000')?.getAttribute('aria-selected')).toBe('true');
     expect(screen.container.querySelector('#opt-m0001')?.getAttribute('aria-selected')).toBe('false');
+  });
+});
+
+describe('ResultsList — row action toolbar (D-05)', () => {
+  it('hovering a row shows a toolbar named "Row actions for {short}" whose Archive button calls onarchive; the toolbar is never nested inside the option', async () => {
+    const onopen = vi.fn();
+    const onarchive = vi.fn();
+    const five = makeMemories(5);
+    const screen = await render(ResultsList, { memories: five, label: 'Search results', onopen, onarchive });
+    screen.container.style.height = '600px';
+
+    const row2 = screen.container.querySelector('#opt-m0001') as HTMLElement;
+    await page.elementLocator(row2).hover();
+
+    const toolbar = screen.getByRole('toolbar', { name: `Row actions for ${five[1].shortId}` });
+    await expect.element(toolbar).toBeInTheDocument();
+
+    const archiveBtn = screen.getByRole('button', { name: `Archive ${five[1].shortId}` });
+    await archiveBtn.click();
+    expect(onarchive).toHaveBeenCalledWith([five[1].id]);
+    expect(onopen).not.toHaveBeenCalled();
+
+    // Clicking the toolbar button must not move aria-activedescendant.
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    expect(listbox.element().getAttribute('aria-activedescendant')).not.toBe('opt-m0001');
+
+    // The toolbar is a SIBLING of the listbox, never a descendant of the
+    // hovered option.
+    expect(row2.querySelector('[role="toolbar"]')).toBeNull();
+  });
+
+  it('an archived row\'s toolbar shows Restore, not Archive', async () => {
+    const onopen = vi.fn();
+    const onarchive = vi.fn();
+    const onrestore = vi.fn();
+    const mem = create(MemorySchema, {
+      id: 'ar1',
+      category: 'convention',
+      summary: 'x',
+      scope: 's',
+      shortId: 'sidarchivd1',
+      archivedAt: timestampFromDate(new Date())
+    });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen, onarchive, onrestore });
+    screen.container.style.height = '600px';
+
+    const row = screen.container.querySelector('#opt-ar1') as HTMLElement;
+    await page.elementLocator(row).hover();
+
+    await expect.element(screen.getByRole('button', { name: `Restore ${mem.shortId}` })).toBeInTheDocument();
+    expect(screen.container.querySelector(`[aria-label="Archive ${mem.shortId}"]`)).toBeNull();
+
+    const restoreBtn = screen.getByRole('button', { name: `Restore ${mem.shortId}` });
+    await restoreBtn.click();
+    expect(onrestore).toHaveBeenCalledWith([mem.id]);
+  });
+
+  it('Chain renders only for a row with supersededBy when onchain is supplied', async () => {
+    const onopen = vi.fn();
+    const onchain = vi.fn();
+    const chained = create(MemorySchema, {
+      id: 'ch1',
+      category: 'convention',
+      summary: 'x',
+      scope: 's',
+      shortId: 'sidchaind01',
+      supersededBy: 'succ1'
+    });
+
+    const withCallback = await render(ResultsList, { memories: [chained], label: 'Search results', onopen, onchain });
+    withCallback.container.style.height = '600px';
+    await page.elementLocator(withCallback.container.querySelector('#opt-ch1') as HTMLElement).hover();
+    const chainBtn = withCallback.getByRole('button', { name: `Chain ${chained.shortId}` });
+    await expect.element(chainBtn).toBeInTheDocument();
+    await chainBtn.click();
+    expect(onchain).toHaveBeenCalledWith('ch1');
+
+    // No onchain supplied: no Chain button even for a chained row.
+    const withoutCallback = await render(ResultsList, { memories: [chained], label: 'Search results', onopen });
+    withoutCallback.container.style.height = '600px';
+    await page.elementLocator(withoutCallback.container.querySelector('#opt-ch1') as HTMLElement).hover();
+    expect(withoutCallback.container.querySelector(`[aria-label="Chain ${chained.shortId}"]`)).toBeNull();
+
+    // A plain (non-chained) row never shows Chain, even with onchain supplied.
+    const plain = create(MemorySchema, { id: 'pl1', category: 'convention', summary: 'x', scope: 's', shortId: 'sidplain001' });
+    const plainScreen = await render(ResultsList, { memories: [plain], label: 'Search results', onopen, onchain });
+    plainScreen.container.style.height = '600px';
+    await page.elementLocator(plainScreen.container.querySelector('#opt-pl1') as HTMLElement).hover();
+    expect(plainScreen.container.querySelector(`[aria-label="Chain ${plain.shortId}"]`)).toBeNull();
+  });
+
+  it('captures the row action toolbar over a row (DSYS-04)', async () => {
+    const onopen = vi.fn();
+    const onarchive = vi.fn();
+    const three = makeMemories(3);
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen, onarchive });
+    screen.container.style.height = '600px';
+    await page.elementLocator(screen.container.querySelector('#opt-m0001') as HTMLElement).hover();
+    await expect
+      .element(screen.getByRole('toolbar', { name: `Row actions for ${three[1].shortId}` }))
+      .toBeInTheDocument();
+    await page.screenshot();
+  });
+});
+
+describe('ResultsList — rowTrailing (D-11)', () => {
+  it('rowTrailing is passed to every row as its trailing snippet', async () => {
+    const onopen = vi.fn();
+    const three = makeMemories(3);
+    const rowTrailing = createRawSnippet((getMemory: () => Memory) => ({
+      render: () => `<span data-testid="row-trail">${getMemory().id}</span>`
+    }));
+    const screen = await render(ResultsList, { memories: three, label: 'Search results', onopen, rowTrailing });
+    const trails = Array.from(screen.container.querySelectorAll('[data-testid="row-trail"]')).map((el) => el.textContent);
+    expect(trails).toEqual(['m0000', 'm0001', 'm0002']);
+  });
+});
+
+describe('ResultsList — scope group headers (D-12)', () => {
+  function makeGrouped(): Memory[] {
+    return [
+      create(MemorySchema, { id: 'a', category: 'convention', summary: 'row a', scope: 's1', shortId: 'sida000001' }),
+      create(MemorySchema, { id: 'b', category: 'convention', summary: 'row b', scope: 's1', shortId: 'sidb000001' }),
+      create(MemorySchema, { id: 'c', category: 'convention', summary: 'row c', scope: 's2', shortId: 'sidc000001' })
+    ];
+  }
+
+  it('renders one presentation header per group key, s1 (2) and s2 (1), before that group\'s first row', async () => {
+    const onopen = vi.fn();
+    const rows = makeGrouped();
+    const screen = await render(ResultsList, {
+      memories: rows,
+      label: 'Search results',
+      onopen,
+      groupKey: (m: Memory) => m.scope
+    });
+    const headers = Array.from(screen.container.querySelectorAll('.results-group-header'));
+    expect(headers.length).toBe(2);
+    expect(headers[0].getAttribute('role')).toBe('presentation');
+    expect(headers[0].textContent).toContain('s1');
+    expect(headers[0].textContent).toContain('2');
+    expect(headers[1].textContent).toContain('s2');
+    expect(headers[1].textContent).toContain('1');
+  });
+
+  it('j moves over rows only (skipping the header); aria-activedescendant always names an option', async () => {
+    const onopen = vi.fn();
+    const rows = makeGrouped();
+    const screen = await render(ResultsList, {
+      memories: rows,
+      label: 'Search results',
+      onopen,
+      groupKey: (m: Memory) => m.scope
+    });
+    screen.container.style.height = '600px';
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-a');
+
+    await userEvent.keyboard('j');
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-b');
+
+    await userEvent.keyboard('j');
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-c');
+  });
+
+  it('End lands on the last row (c), never a header', async () => {
+    const onopen = vi.fn();
+    const rows = makeGrouped();
+    const screen = await render(ResultsList, {
+      memories: rows,
+      label: 'Search results',
+      onopen,
+      groupKey: (m: Memory) => m.scope
+    });
+    screen.container.style.height = '600px';
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await userEvent.keyboard('{End}');
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-c');
+  });
+
+  it('a single-row group still renders its own header', async () => {
+    const onopen = vi.fn();
+    const solo = [create(MemorySchema, { id: 'x', category: 'convention', summary: 'x', scope: 'solo', shortId: 'sidx000001' })];
+    const screen = await render(ResultsList, {
+      memories: solo,
+      label: 'Search results',
+      onopen,
+      groupKey: (m: Memory) => m.scope
+    });
+    const headers = Array.from(screen.container.querySelectorAll('.results-group-header'));
+    expect(headers.length).toBe(1);
+    expect(headers[0].textContent).toContain('solo');
+    expect(headers[0].textContent).toContain('1');
+  });
+
+  it('without groupKey, nothing changes — no group headers render', async () => {
+    const onopen = vi.fn();
+    const rows = makeGrouped();
+    const screen = await render(ResultsList, { memories: rows, label: 'Search results', onopen });
+    expect(screen.container.querySelectorAll('.results-group-header').length).toBe(0);
+  });
+
+  it('groupHeader overrides the default header content', async () => {
+    const onopen = vi.fn();
+    const rows = makeGrouped();
+    const groupHeader = createRawSnippet((getKey: () => string, getCount: () => number) => ({
+      render: () => `<span data-testid="custom-header">custom:${getKey()}:${getCount()}</span>`
+    }));
+    const screen = await render(ResultsList, {
+      memories: rows,
+      label: 'Search results',
+      onopen,
+      groupKey: (m: Memory) => m.scope,
+      groupHeader
+    });
+    const custom = screen.container.querySelectorAll('[data-testid="custom-header"]');
+    expect(custom.length).toBe(2);
+    expect(custom[0].textContent).toBe('custom:s1:2');
+    expect(custom[1].textContent).toBe('custom:s2:1');
   });
 });

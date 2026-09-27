@@ -38,6 +38,12 @@ export function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
 }
 
+// D-06's verbatim coverage clauses — extracted here (rather than left inline
+// in rankedHeaderParts) so rulesHeaderParts below reuses the exact same
+// strings; rankedHeaderParts' own output is unchanged (byte-identical).
+const SCOPES_TRUNCATED_CLAUSE = '· scopes_truncated: scope list incomplete';
+const SCOPES_UNKNOWN_CLAUSE = '· scopes_unknown: scope coverage could not be listed';
+
 // '1 archived, 1 superseded' — nonzero buckets only, in canonical state order.
 // A record can carry more than one state simultaneously, so the per-state sum
 // can exceed `total` (the count of distinct hidden records); when it does,
@@ -102,10 +108,10 @@ export function rankedHeaderParts(input: RankedHeaderInput): HeaderPart[] {
   }
 
   if (input.scopesTruncated) {
-    parts.push({ kind: 'coverage', text: '· scopes_truncated: scope list incomplete' });
+    parts.push({ kind: 'coverage', text: SCOPES_TRUNCATED_CLAUSE });
   }
   if (input.scopesUnknown) {
-    parts.push({ kind: 'coverage', text: '· scopes_unknown: scope coverage could not be listed' });
+    parts.push({ kind: 'coverage', text: SCOPES_UNKNOWN_CLAUSE });
   }
 
   return parts;
@@ -196,4 +202,78 @@ export function listingHeaderParts(input: ListingHeaderInput): HeaderPart[] {
   }
 
   return parts;
+}
+
+// D-12's /rules header: "N rules across M scopes", the same cross-spine
+// coverage clauses as rankedHeaderParts (verbatim, never inferred). Rules has
+// no free-text query, so there is no query clause here.
+export interface RulesHeaderInput {
+  count: number;
+  scopeCount: number;
+  scopesTruncated?: boolean;
+  scopesUnknown?: boolean;
+}
+
+export function rulesHeaderParts(input: RulesHeaderInput): HeaderPart[] {
+  const parts: HeaderPart[] = [];
+  parts.push({ kind: 'count', text: `${input.count} ${plural(input.count, 'rule', 'rules')}` });
+
+  const scopesText = input.scopesUnknown
+    ? 'across every readable scope'
+    : `across ${input.scopeCount} ${plural(input.scopeCount, 'scope', 'scopes')}`;
+  parts.push({ kind: 'scopes', text: scopesText });
+
+  if (input.scopesTruncated) {
+    parts.push({ kind: 'coverage', text: SCOPES_TRUNCATED_CLAUSE });
+  }
+  if (input.scopesUnknown) {
+    parts.push({ kind: 'coverage', text: SCOPES_UNKNOWN_CLAUSE });
+  }
+
+  return parts;
+}
+
+// D-12's honest-feedback empty state for /rules — fixed, cross-spine only
+// (Rules has no free-text query to name, unlike emptyHeading above).
+export function rulesEmptyHeading(): string {
+  return 'No rules in any scope you can read';
+}
+
+// D-13's /scheduled tab state word — shared by scheduledHeaderParts and
+// scheduledEmptyHeading so the two never drift: the `all` tab reads
+// "windowed" in copy, never "all".
+export type ScheduledTabState = 'scheduled' | 'expired' | 'all';
+
+const SCHEDULED_STATE_WORD: Record<ScheduledTabState, string> = {
+  scheduled: 'scheduled',
+  expired: 'expired',
+  all: 'windowed'
+};
+
+// D-13's /scheduled header: "N {state} memories across M scopes", with an
+// optional "· scroll for more" clause while another cursor page exists,
+// following the listing-header pattern (researcher default — not in the
+// UI-SPEC verbatim, per the plan's flagged assumption).
+export interface ScheduledHeaderInput {
+  state: ScheduledTabState;
+  count: number;
+  scopeCount: number;
+  more?: boolean;
+}
+
+export function scheduledHeaderParts(input: ScheduledHeaderInput): HeaderPart[] {
+  const parts: HeaderPart[] = [];
+  const stateWord = SCHEDULED_STATE_WORD[input.state];
+  parts.push({ kind: 'count', text: `${input.count} ${stateWord} ${plural(input.count, 'memory', 'memories')}` });
+  parts.push({ kind: 'scopes', text: `across ${input.scopeCount} ${plural(input.scopeCount, 'scope', 'scopes')}` });
+  if (input.more) {
+    parts.push({ kind: 'text', text: '· scroll for more' });
+  }
+  return parts;
+}
+
+// D-13's per-tab empty state — each tab states its own honest empty line,
+// never a shared generic one.
+export function scheduledEmptyHeading(state: ScheduledTabState): string {
+  return `No ${SCHEDULED_STATE_WORD[state]} memories in any scope you can read`;
 }

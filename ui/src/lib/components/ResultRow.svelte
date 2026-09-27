@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import type { Memory } from '$lib/gen/engram_pb';
   import { stripCategoryPrefix } from '$lib/summary';
   import { relativeTime } from '$lib/time';
@@ -11,10 +12,14 @@
   // ROW-01/ROW-04/D-05: the full dense one-line row grid — category, summary
   // (inline code, ellipsized), state chips (first +N), tags (first two +N),
   // scope, age, score (always) and rel (only when the reranker ran).
+  // D-11: a route-supplied `trailing` snippet REPLACES score+rel entirely
+  // (one `.trail` cell in their place) — used by /rules' shared chip and
+  // /scheduled's window phrase, neither of which has a ranking score.
   let {
     memory,
     mode = 'ranked',
     showRel = false,
+    trailing,
     active = false,
     opened = false,
     listFocused = false,
@@ -25,6 +30,7 @@
     memory: Memory;
     mode?: 'ranked' | 'unranked';
     showRel?: boolean;
+    trailing?: Snippet<[Memory]>;
     active?: boolean;
     opened?: boolean;
     listFocused?: boolean;
@@ -124,7 +130,7 @@
 
 <div
   class="result-row-line"
-  class:show-rel={showRel}
+  class:show-rel={showRel && !trailing}
   class:active-row={active}
   class:opened-row={opened}
   class:list-focused={listFocused}
@@ -162,14 +168,18 @@
     {#if memory.scope}<ScopeChip scope={memory.scope} />{/if}
   </span>
   <span class="age">{when}</span>
-  <span class="score">
-    <span class="num">{scoreDisplay}</span>
-    {#if mode !== 'unranked'}
-      <span class="bar"><b style="width:{scoreBarPct}%"></b></span>
+  {#if trailing}
+    <span class="trail">{@render trailing(memory)}</span>
+  {:else}
+    <span class="score">
+      <span class="num">{scoreDisplay}</span>
+      {#if mode !== 'unranked'}
+        <span class="bar"><b style="width:{scoreBarPct}%"></b></span>
+      {/if}
+    </span>
+    {#if showRel}
+      <span class="rel">{relDisplay}</span>
     {/if}
-  </span>
-  {#if showRel}
-    <span class="rel">{relDisplay}</span>
   {/if}
 </div>
 
@@ -360,6 +370,16 @@
     color: var(--text-faint);
     text-align: right;
     white-space: nowrap;
+  }
+
+  /* D-11: the route-supplied trailing cell — occupies the same trailing
+     grid track the score cell would, so no --cols change is needed. */
+  .trail {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+    overflow: hidden;
   }
 
   /* Column drop-out by LIST width (container query on the ancestor named

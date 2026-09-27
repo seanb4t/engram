@@ -9,6 +9,10 @@ import {
   resolutionLine,
   emptyHeading,
   listingHeaderParts,
+  rulesHeaderParts,
+  rulesEmptyHeading,
+  scheduledHeaderParts,
+  scheduledEmptyHeading,
   type HiddenCounts
 } from './recall-header';
 
@@ -165,5 +169,60 @@ describe('listingHeaderParts', () => {
   it('agrees in singular for exactly one memory and one scope, omitting the hidden clause when no pages are loaded', () => {
     const parts = listingHeaderParts({ total: 1, scopes: 1, hiddenPages: [] });
     expect(headerText(parts)).toBe('Latest 1 memory across 1 scope · unranked (list — no score)');
+  });
+});
+
+describe('rulesHeaderParts (D-12)', () => {
+  it('renders "N rules across M scopes"', () => {
+    const parts = rulesHeaderParts({ count: 3, scopeCount: 2 });
+    expect(headerText(parts)).toBe('3 rules across 2 scopes');
+  });
+
+  it('agrees in singular for exactly one rule and one scope', () => {
+    const parts = rulesHeaderParts({ count: 1, scopeCount: 1 });
+    expect(headerText(parts)).toBe('1 rule across 1 scope');
+  });
+
+  it('appends the verbatim scopes_truncated clause', () => {
+    const parts = rulesHeaderParts({ count: 3, scopeCount: 2, scopesTruncated: true });
+    expect(headerText(parts)).toBe('3 rules across 2 scopes · scopes_truncated: scope list incomplete');
+  });
+
+  it('replaces the scopes clause with "across every readable scope" and appends the verbatim scopes_unknown clause', () => {
+    const parts = rulesHeaderParts({ count: 3, scopeCount: 2, scopesUnknown: true });
+    expect(headerText(parts)).toBe(
+      '3 rules across every readable scope · scopes_unknown: scope coverage could not be listed'
+    );
+  });
+});
+
+describe('rulesEmptyHeading (D-12)', () => {
+  it('is the fixed cross-spine heading, no query clause', () => {
+    expect(rulesEmptyHeading()).toBe('No rules in any scope you can read');
+  });
+});
+
+describe('scheduledHeaderParts (D-13)', () => {
+  it('renders "N {state} memories across M scopes · scroll for more"', () => {
+    const parts = scheduledHeaderParts({ state: 'expired', count: 4, scopeCount: 3, more: true });
+    expect(headerText(parts)).toBe('4 expired memories across 3 scopes · scroll for more');
+  });
+
+  it('state "all" uses the word "windowed"', () => {
+    const parts = scheduledHeaderParts({ state: 'all', count: 2, scopeCount: 1 });
+    expect(headerText(parts)).toBe('2 windowed memories across 1 scope');
+  });
+
+  it('omits the scroll-for-more clause when there is no more page', () => {
+    const parts = scheduledHeaderParts({ state: 'scheduled', count: 1, scopeCount: 1 });
+    expect(headerText(parts)).toBe('1 scheduled memory across 1 scope');
+  });
+});
+
+describe('scheduledEmptyHeading (D-13)', () => {
+  it('names the tab state word per tab', () => {
+    expect(scheduledEmptyHeading('scheduled')).toBe('No scheduled memories in any scope you can read');
+    expect(scheduledEmptyHeading('expired')).toBe('No expired memories in any scope you can read');
+    expect(scheduledEmptyHeading('all')).toBe('No windowed memories in any scope you can read');
   });
 });

@@ -1,10 +1,21 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import type { Memory } from '$lib/gen/engram_pb';
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
   import { toast } from 'svelte-sonner';
   import { Kbd } from '$lib/components/ui/kbd';
   import ResultRow from './ResultRow.svelte';
   import ResultHoverCard from './ResultHoverCard.svelte';
+  import RowActions from './RowActions.svelte';
+  import { defaultActionsFor, type CurationAction } from '$lib/curation/host.svelte.ts';
+
+  // D-11/D-12/D-13: a group-header item, or a row item carrying its index
+  // into `memories` (never re-derived from the virtual list's own index,
+  // which includes headers). `groupKey`/`groupHeader` are consumed by
+  // /rules (scope headers) and left unset everywhere else.
+  type ListItem =
+    | { kind: 'header'; key: string; count: number }
+    | { kind: 'row'; memory: Memory; rowIndex: number };
 
   let {
     memories,
@@ -25,7 +36,12 @@
     ondelete,
     onsupersede,
     onarchive,
-    onrestore
+    onrestore,
+    onchain,
+    rowActions = defaultActionsFor,
+    rowTrailing,
+    groupKey,
+    groupHeader
   }: {
     memories: Memory[];
     mode?: 'ranked' | 'unranked';
@@ -46,7 +62,40 @@
     onsupersede?: (ids: string[]) => void;
     onarchive?: (ids: string[]) => void;
     onrestore?: (ids: string[]) => void;
+    onchain?: (id: string) => void;
+    rowActions?: (m: Memory) => CurationAction[];
+    rowTrailing?: Snippet<[Memory]>;
+    groupKey?: (m: Memory) => string;
+    groupHeader?: Snippet<[string, number]>;
   } = $props();
+
+  // D-12: a header before the first row of each key, in `memories` order —
+  // routes pre-sort, this never re-sorts. Without `groupKey`, `items` is
+  // `memories` wrapped as row items, unchanged in effect from before this
+  // prop existed.
+  const items = $derived.by((): ListItem[] => {
+    if (!groupKey) return memories.map((memory, rowIndex) => ({ kind: 'row', memory, rowIndex }) as const);
+    const out: ListItem[] = [];
+    const counts = new Map<string, number>();
+    for (const m of memories) counts.set(groupKey(m), (counts.get(groupKey(m)) ?? 0) + 1);
+    let lastKey: string | undefined;
+    memories.forEach((memory, rowIndex) => {
+      const key = groupKey(memory);
+      if (key !== lastKey) {
+        out.push({ kind: 'header', key, count: counts.get(key) ?? 0 });
+        lastKey = key;
+      }
+      out.push({ kind: 'row', memory, rowIndex });
+    });
+    return out;
+  });
+
+  // Maps a `memories` index to its position in `items` (headers shift every
+  // row after the first group forward) — `moveActive` needs this to scroll
+  // the VIRTUAL list, which is indexed over `items`, not `memories`.
+  function itemIndexForRow(rowIndex: number): number {
+    return items.findIndex((it) => it.kind === 'row' && it.rowIndex === rowIndex);
+  }
 
   // D-07 / Pitfall A: @humanspeak/svelte-virtual-list's own viewport is a
   // hardcoded role="region" — there is no prop to change it. The
@@ -58,7 +107,43 @@
   let list: ReturnType<typeof SvelteVirtualList> | undefined = $state();
   let viewportEl: HTMLElement | null = $state(null);
   let wrapperEl: HTMLElement | null = $state(null);
+  let containerEl: HTMLElement | null = $state(null);
   let listFocused = $state(false);
+
+  // D-05: the row action toolbar's own anchor tracking, kept SEPARATE from
+  // the hover-card's `hoverRowId`/timers below — the toolbar has no open
+  // delay (it must reveal instantly on hover per the sketch's gradient-fade
+  // affordance) and falls back to the keyboard-active row while the list has
+  // focus, independent of whether the hover card's own 250ms timer has fired.
+  // `toolbarMemory`/its positioning effect are declared further down, once
+  // `activeId` exists.
+  let pointerRowId = $state<string | undefined>(undefined);
+  let toolbarSuppressed = $state(false);
+  let toolbarAnchorEl = $state<HTMLElement | null>(null);
+  let toolbarRef: HTMLElement | null = $state(null);
+  let toolbarCloseTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Mirrors ResultHoverCard's own close-lifecycle (openCardFor/
+  // scheduleCloseCard/cardRef below): the toolbar is a SIBLING overlay
+  // painted on top of the row it anchors to, so moving the real pointer from
+  // the row onto the toolbar's own buttons fires the row's mouseleave (the
+  // browser resolves hover by paint order, not DOM ancestry) — clearing
+  // pointerRowId immediately there would unmount the toolbar out from under
+  // an in-flight click. A short grace period, cancelled the instant the
+  // pointer actually lands on the toolbar, closes that gap.
+  function clearToolbarCloseTimer() {
+    if (toolbarCloseTimer !== undefined) {
+      clearTimeout(toolbarCloseTimer);
+      toolbarCloseTimer = undefined;
+    }
+  }
+  function scheduleToolbarClose() {
+    clearToolbarCloseTimer();
+    toolbarCloseTimer = setTimeout(() => {
+      toolbarCloseTimer = undefined;
+      pointerRowId = undefined;
+    }, 120);
+  }
 
   // ROW-02: the hover card's own state, kept SEPARATE from activeIndex/
   // activeId (Pitfall 4) — a mouse resting on a different row than the
@@ -116,6 +201,12 @@
   // pointer resting still while the row underneath it changes via keyboard
   // scroll; mousemove keeps re-asserting hover intent on real pointer motion.
   function handleRowMouseMove(m: Memory, rowEl: HTMLElement) {
+    // D-05: the toolbar reveals instantly on hover — no delay, and no
+    // early-return on an unchanged hoverRowId, so a scroll-suppressed
+    // toolbar re-asserts on the very next mousemove over the same row.
+    pointerRowId = m.id;
+    toolbarSuppressed = false;
+    clearToolbarCloseTimer();
     if (hoverRowId === m.id) return;
     hoverRowId = m.id;
     clearCloseTimer();
@@ -127,11 +218,36 @@
   }
 
   function handleRowMouseLeave(m: Memory) {
+    // Scheduled, not immediate (see scheduleToolbarClose's comment) — the
+    // pointer may be travelling onto the toolbar itself, which is painted
+    // on top of this row but is not its DOM descendant.
+    if (pointerRowId === m.id) scheduleToolbarClose();
     if (hoverRowId !== m.id) return;
     hoverRowId = undefined;
     clearOpenTimer();
     scheduleCloseCard();
   }
+
+  // The pointer can travel from the row onto the toolbar's own buttons
+  // within the 120ms grace scheduleToolbarClose sets up — cancelled the
+  // instant it actually arrives there (mirrors the hover card's cardRef
+  // effect below).
+  $effect(() => {
+    if (!toolbarRef) return;
+    const el = toolbarRef;
+    function onEnter() {
+      clearToolbarCloseTimer();
+    }
+    function onLeave() {
+      scheduleToolbarClose();
+    }
+    el.addEventListener('mousemove', onEnter);
+    el.addEventListener('mouseleave', onLeave);
+    return () => {
+      el.removeEventListener('mousemove', onEnter);
+      el.removeEventListener('mouseleave', onLeave);
+    };
+  });
 
   // openId changing means the pane just opened/switched/closed — the hover
   // card must not linger over stale state either way.
@@ -229,6 +345,45 @@
     }
   });
 
+  // D-05: the toolbar's target row — the pointer-hovered row when there is
+  // one, else the keyboard-active row while the list has focus.
+  const toolbarMemory = $derived.by(() => {
+    if (toolbarSuppressed || memories.length === 0) return undefined;
+    const id = pointerRowId ?? (listFocused ? activeId : undefined);
+    if (!id) return undefined;
+    return memories.find((m) => m.id === id);
+  });
+
+  $effect(() => {
+    const mem = toolbarMemory;
+    if (!mem || !wrapperEl) {
+      toolbarAnchorEl = null;
+      return;
+    }
+    toolbarAnchorEl = wrapperEl.querySelector<HTMLElement>(`#opt-${CSS.escape(mem.id)}`);
+  });
+
+  // Hides the toolbar on scroll/text-size change, same trigger as the hover
+  // card's own effects above — a floating toolbar over a row that just
+  // scrolled out from under it (or resized under a text-size step) is
+  // exactly the T-04-17 risk this clears.
+  $effect(() => {
+    if (!viewportEl) return;
+    const vp = viewportEl;
+    function onScroll() {
+      toolbarSuppressed = true;
+    }
+    vp.addEventListener('scroll', onScroll);
+    return () => vp.removeEventListener('scroll', onScroll);
+  });
+  $effect(() => {
+    function onTextSize() {
+      toolbarSuppressed = true;
+    }
+    window.addEventListener('engram:textsize', onTextSize);
+    return () => window.removeEventListener('engram:textsize', onTextSize);
+  });
+
   // Row height in px at the CURRENT text-size preference (D-13): 28 * var(--u)
   // evaluated against the live root font-size, so the virtualizer's initial
   // estimate is never a stale 13px-basis guess. Recomputed on engram:textsize
@@ -250,9 +405,16 @@
     if (memories.length === 0) return;
     const clamped = Math.max(0, Math.min(memories.length - 1, targetIndex));
     if (list) {
-      await list.scroll({ index: clamped, align: 'nearest', smoothScroll: false });
+      // D-12: `list` is indexed over `items` (headers included), not
+      // `memories` — map the row index to its item position before scrolling.
+      const itemIndex = itemIndexForRow(clamped);
+      await list.scroll({ index: itemIndex >= 0 ? itemIndex : clamped, align: 'nearest', smoothScroll: false });
     }
     activeId = memories[clamped]?.id;
+    // D-05: keyboard movement re-asserts the toolbar too, clearing any prior
+    // scroll/text-size suppression — the active row is a fresh, deliberate
+    // target the user just navigated to.
+    toolbarSuppressed = false;
 
     // ROW-02: keyboard movement opens the hover card INSTANTLY for the new
     // active row (no 250ms pointer delay) — overriding any pending
@@ -564,7 +726,7 @@
     {/each}
   </div>
 {:else if memories.length > 0}
-  <div class="results-list-container">
+  <div class="results-list-container" bind:this={containerEl}>
     {#if busy}
       <!-- E1 loading (re-query): previous rows stay, dimmed, with an
            indeterminate progress bar — never a flash to empty. -->
@@ -578,48 +740,87 @@
     >
       <SvelteVirtualList
         bind:this={list}
-        items={memories}
-        itemKey={(m) => m.id}
+        {items}
+        itemKey={(it: ListItem) => (it.kind === 'header' ? `h:${it.key}` : it.memory.id)}
         defaultEstimatedItemHeight={rowHeightPx}
         bufferSize={10}
         viewportLabel={label}
         {hasMore}
         onLoadMore={onloadmore}
       >
-        {#snippet renderItem(m: Memory, index: number)}
-          <!-- WAI-ARIA APG listbox: options are NOT tab stops and take no
-               keyboard handler of their own — the container (role="listbox")
-               owns all keyboard interaction via aria-activedescendant, and
-               click is a supplementary pointer affordance. -->
-          <!-- svelte-ignore a11y_interactive_supports_focus -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div
-            role="option"
-            id={`opt-${m.id}`}
-            aria-selected={selectable ? selectedIds.includes(m.id) : index === activeIndex}
-            onclick={(e) => handleOptionClick(e, m.id)}
-            onmousemove={(e) => handleRowMouseMove(m, e.currentTarget as HTMLElement)}
-            onmouseleave={() => handleRowMouseLeave(m)}
-          >
-            <ResultRow
-              memory={m}
-              {mode}
-              {showRel}
-              active={index === activeIndex}
-              opened={m.id === openId}
-              {listFocused}
-              {selectable}
-              selected={selectedIds.includes(m.id)}
-              selectionActive={selectable && selectedIds.length > 0}
-            />
-          </div>
+        {#snippet renderItem(it: ListItem)}
+          {#if it.kind === 'header'}
+            <!-- D-12: a group header — role="presentation" (not an option;
+                 j/k/Home/End skip it, aria-activedescendant never names it). -->
+            <div role="presentation" class="results-group-header">
+              {#if groupHeader}
+                {@render groupHeader(it.key, it.count)}
+              {:else}
+                <span class="rgh-key">{it.key}</span>
+                <span class="rgh-count">({it.count})</span>
+              {/if}
+            </div>
+          {:else}
+            {@const m = it.memory}
+            <!-- WAI-ARIA APG listbox: options are NOT tab stops and take no
+                 keyboard handler of their own — the container (role="listbox")
+                 owns all keyboard interaction via aria-activedescendant, and
+                 click is a supplementary pointer affordance. -->
+            <!-- svelte-ignore a11y_interactive_supports_focus -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <div
+              role="option"
+              id={`opt-${m.id}`}
+              aria-selected={selectable ? selectedIds.includes(m.id) : it.rowIndex === activeIndex}
+              onclick={(e) => handleOptionClick(e, m.id)}
+              onmousemove={(e) => handleRowMouseMove(m, e.currentTarget as HTMLElement)}
+              onmouseleave={() => handleRowMouseLeave(m)}
+            >
+              <ResultRow
+                memory={m}
+                {mode}
+                {showRel}
+                trailing={rowTrailing}
+                active={it.rowIndex === activeIndex}
+                opened={m.id === openId}
+                {listFocused}
+                {selectable}
+                selected={selectedIds.includes(m.id)}
+                selectionActive={selectable && selectedIds.length > 0}
+              />
+            </div>
+          {/if}
         {/snippet}
       </SvelteVirtualList>
     </div>
+    <!-- D-05: the row action toolbar — a sibling of the listbox wrapper, NEVER
+         inside renderItem's role="option" row. -->
+    {#if toolbarMemory && toolbarAnchorEl && containerEl}
+      <RowActions
+        memory={toolbarMemory}
+        anchor={toolbarAnchorEl}
+        container={containerEl}
+        actions={rowActions(toolbarMemory)}
+        bind:toolbarRef
+        {onsupersede}
+        {onarchive}
+        {onrestore}
+        {onchain}
+      />
+    {/if}
   </div>
   <div class="results-legend">
-    <Kbd>j</Kbd><Kbd>k</Kbd> move · <Kbd>↵</Kbd> open / close · <Kbd>esc</Kbd> close · <Kbd>e</Kbd> edit ·
-    <Kbd>s</Kbd> share · <Kbd>#</Kbd> delete · <Kbd>c</Kbd> copy short_id · <Kbd>⇧C</Kbd> copy id
+    <Kbd>j</Kbd><Kbd>k</Kbd> move · <Kbd>↵</Kbd> open / close · <Kbd>esc</Kbd> close
+    {#if onedit}
+      · <Kbd>e</Kbd> edit
+    {/if}
+    {#if onvisibility}
+      · <Kbd>s</Kbd> share
+    {/if}
+    {#if ondelete}
+      · <Kbd>#</Kbd> delete
+    {/if}
+    · <Kbd>c</Kbd> copy short_id · <Kbd>⇧C</Kbd> copy id
     {#if selectable}
       · <Kbd>x</Kbd> select · <Kbd>⇧X</Kbd> range
     {/if}
@@ -664,6 +865,26 @@
     height: 100%;
     min-height: 0;
     transition: opacity 0.15s ease;
+  }
+  /* D-12: a presentation-only group header — never a role="option", so it
+     is skipped by j/k/Home/End and never named by aria-activedescendant. */
+  .results-group-header {
+    display: flex;
+    align-items: baseline;
+    gap: calc(6 * var(--u));
+    height: calc(22 * var(--u));
+    padding: 0 calc(14 * var(--u));
+    font-size: calc(11 * var(--u));
+    color: var(--text-faint);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .rgh-key {
+    font-family: var(--font-mono, monospace);
+    font-weight: 500;
+  }
+  .rgh-count {
+    color: var(--text-faint);
   }
   .results-listbox-wrapper.busy {
     opacity: 0.55;

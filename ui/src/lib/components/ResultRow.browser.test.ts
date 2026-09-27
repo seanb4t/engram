@@ -7,9 +7,10 @@
 import '../../app.css';
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { createRawSnippet } from 'svelte';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { MemorySchema } from '$lib/gen/engram_pb';
+import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import { flashing, flashRows, FLASH_MS } from '$lib/curation/flash.svelte.ts';
 import ResultRow from './ResultRow.svelte';
 
@@ -199,6 +200,58 @@ describe('ResultRow', () => {
     await expect.element(screen.container.querySelector('.cat-word') as HTMLElement).toHaveTextContent('gotcha');
     const catEl = screen.container.querySelector('.result-row-line') as HTMLElement;
     expect(catEl.style.getPropertyValue('--c')).toBe('var(--cat-gotcha)');
+  });
+
+  describe('trailing (D-11)', () => {
+    function trailingSnippet() {
+      return createRawSnippet((getMemory: () => Memory) => ({
+        render: () => `<span data-testid="trail-content">trail:${getMemory().id}</span>`
+      }));
+    }
+
+    it('a trailing snippet replaces the score and rel cells with its own output', async () => {
+      const mem = create(MemorySchema, { id: 'tr1', summary: 'x', category: 'convention', score: 0.5, relevance: 0.4 });
+      const screen = await render(ResultRow, {
+        memory: mem,
+        mode: 'ranked',
+        showRel: true,
+        trailing: trailingSnippet()
+      });
+      expect(screen.container.querySelector('.score')).toBeNull();
+      expect(screen.container.querySelector('.rel')).toBeNull();
+      await expect
+        .element(screen.container.querySelector('[data-testid="trail-content"]') as HTMLElement)
+        .toHaveTextContent('trail:tr1');
+    });
+
+    it('the grid track count with a trailing snippet equals the no-rel count at every container width', async () => {
+      const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const mem = create(MemorySchema, { id: 'tr2', summary: 'x', category: 'convention' });
+
+      const plain = await render(ResultRow, { memory: mem, mode: 'ranked', showRel: true });
+      const withTrailing = await render(ResultRow, {
+        memory: mem,
+        mode: 'ranked',
+        showRel: true,
+        trailing: trailingSnippet()
+      });
+
+      for (const width of [1000, 800, 390]) {
+        Object.assign(plain.container.style, { width: `${width}px`, containerType: 'inline-size', containerName: 'list' });
+        Object.assign(withTrailing.container.style, {
+          width: `${width}px`,
+          containerType: 'inline-size',
+          containerName: 'list'
+        });
+        await nextFrame();
+        const plainRow = plain.container.querySelector('.result-row-line') as HTMLElement;
+        const trailRow = withTrailing.container.querySelector('.result-row-line') as HTMLElement;
+        const trackCount = (el: HTMLElement) => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length;
+        // `plain` has showRel=true (one extra track over the no-rel count);
+        // the trailing version must match the NO-REL count -- one fewer.
+        expect(trackCount(trailRow)).toBe(trackCount(plainRow) - 1);
+      }
+    });
   });
 
   describe('selection (D-02, D-10)', () => {
