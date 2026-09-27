@@ -675,3 +675,145 @@ describe('search route — archive from the detail pane (CUR-02 tracer)', () => 
     await expect.element(listbox.getByText('archived')).toBeInTheDocument();
   });
 });
+
+describe('search route — bulk archive with x and a (D-01..D-03 tracer)', () => {
+  it('selects two rows with x/j/x, archives them together through the confirm dialog, and clears the selection', async () => {
+    pageState.url.href = 'http://localhost/search?q=github';
+    const m1 = makeMemory({ id: 'm1', summary: 'hit one' });
+    const m2 = makeMemory({ id: 'm2', summary: 'hit two' });
+    searchMemoriesSpy.mockResolvedValue({
+      memories: [m1, m2],
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    archiveMemorySpy.mockResolvedValue({
+      results: [
+        { requested: 'm1', id: 'm1', outcome: ArchiveOutcome.ARCHIVED },
+        { requested: 'm2', id: 'm2', outcome: ArchiveOutcome.ARCHIVED }
+      ]
+    });
+
+    const screen = await renderSearch();
+    // j needs a real box for SvelteVirtualList's scroll() to resolve (see
+    // ResultsList.browser.test.ts's pointer-hover test for the same note).
+    // Force the wide (non-overlay) RecallSplit layout (same convention as
+    // the CUR-02 tracer test above) and wait for the ResizeObserver-driven
+    // narrow->wide flip to actually settle before focusing anything -- the
+    // flip unmounts/remounts ResultsList, and a stale focus() on a node from
+    // the since-torn-down narrow branch silently blurs to <body>.
+    screen.container.style.width = '1200px';
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText('hit one')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.rs-group') !== null).toBe(true);
+
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m1');
+
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('j');
+    // moveActive resolves asynchronously (list.scroll) — wait for the active
+    // row to actually land on m2 before the second x, or it would toggle m1
+    // again against a stale activeIndex.
+    await expect.element(listbox).toHaveAttribute('aria-activedescendant', 'opt-m2');
+    await userEvent.keyboard('x');
+    await userEvent.keyboard('a');
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByText('Archive 2 records?')).toBeInTheDocument();
+    expect(archiveMemorySpy).not.toHaveBeenCalled();
+
+    await dialog.getByRole('button', { name: 'Archive' }).click();
+    await expect.poll(() => archiveMemorySpy.mock.calls.length).toBe(1);
+    const [req] = archiveMemorySpy.mock.calls[0];
+    expect(req.ids).toEqual(['m1', 'm2']);
+
+    await dialog.getByRole('button', { name: 'Done' }).click();
+
+    await expect.element(listbox.getByText('hit one')).toBeInTheDocument();
+    await expect.element(listbox.getByText('hit two')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelectorAll('.states .st').length).toBe(2);
+
+    const options = screen.container.querySelectorAll('[role="option"]');
+    expect(options.length).toBe(2);
+    for (const opt of options) {
+      expect(opt.getAttribute('aria-selected')).toBe('false');
+    }
+  });
+});
+
+describe('search route — selection lifecycle (D-04)', () => {
+  async function renderWideWithSelection(memories: Memory[]) {
+    searchMemoriesSpy.mockResolvedValue({
+      memories,
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    const screen = await renderSearch();
+    screen.container.style.width = '1200px';
+    screen.container.style.height = '600px';
+    await expect.element(screen.getByText(memories[0].summary)).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.rs-group') !== null).toBe(true);
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+    await userEvent.keyboard('x');
+    await expect
+      .poll(() => screen.container.querySelectorAll('[role="option"][aria-selected="true"]').length)
+      .toBe(1);
+    return { screen, listbox };
+  }
+
+  it('changing the query clears the selection', async () => {
+    pageState.url.href = 'http://localhost/search?q=github';
+    const { screen } = await renderWideWithSelection([makeMemory({ id: 'm1', summary: 'hit one' })]);
+
+    const input = screen.getByRole('textbox', { name: 'Search query' }).element() as HTMLInputElement;
+    input.value = 'other';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await expect.poll(() => pageState.url.searchParams.get('q')).toBe('other');
+
+    await expect
+      .poll(() => screen.container.querySelectorAll('[role="option"][aria-selected="true"]').length)
+      .toBe(0);
+  });
+
+  it('clicking Show more keeps the selection', async () => {
+    pageState.url.href = 'http://localhost/search?q=x';
+    const fifty = Array.from({ length: 50 }, (_, i) => makeMemory({ id: `m-${i}`, summary: `hit ${i}` }));
+    const { screen } = await renderWideWithSelection(fifty);
+    await expect.element(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Show more' }).click();
+    await expect.poll(() => pageState.url.searchParams.get('k')).toBe('100');
+
+    await expect
+      .poll(() => screen.container.querySelectorAll('[role="option"][aria-selected="true"]').length)
+      .toBe(1);
+  });
+
+  it('a rejected archive keeps the selection', async () => {
+    pageState.url.href = 'http://localhost/search?q=github';
+    archiveMemorySpy.mockRejectedValue(new ConnectError('boom', Code.Internal));
+    const { screen, listbox } = await renderWideWithSelection([makeMemory({ id: 'm1', summary: 'hit one' })]);
+
+    await userEvent.keyboard('a');
+    const dialog = screen.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Archive' }).click();
+    await expect.poll(() => archiveMemorySpy.mock.calls.length).toBe(1);
+    await expect.element(dialog.getByText(/Could not archive/)).toBeInTheDocument();
+
+    await expect
+      .poll(() => listbox.element().querySelectorAll('[role="option"][aria-selected="true"]').length)
+      .toBe(1);
+  });
+
+  it('the URL never contains the selected ids', async () => {
+    pageState.url.href = 'http://localhost/search?q=github';
+    await renderWideWithSelection([makeMemory({ id: 'm1', summary: 'hit one' })]);
+
+    expect(pageState.url.toString()).not.toContain('m1');
+    expect(pageState.url.searchParams.has('sel')).toBe(false);
+  });
+});

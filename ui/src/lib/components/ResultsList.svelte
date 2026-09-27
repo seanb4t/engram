@@ -14,12 +14,18 @@
     loading = false,
     busy = false,
     hasMore = false,
+    selectable = false,
+    selectedIds = $bindable<string[]>([]),
+    selectionKey,
     onloadmore,
     onopen,
     onescape,
     onedit,
     onvisibility,
-    ondelete
+    ondelete,
+    onsupersede,
+    onarchive,
+    onrestore
   }: {
     memories: Memory[];
     mode?: 'ranked' | 'unranked';
@@ -28,12 +34,18 @@
     loading?: boolean;
     busy?: boolean;
     hasMore?: boolean;
+    selectable?: boolean;
+    selectedIds?: string[];
+    selectionKey?: string;
     onloadmore?: () => void;
     onopen: (id: string) => void;
     onescape?: () => void;
     onedit?: (id: string) => void;
     onvisibility?: (m: Memory) => void;
     ondelete?: (id: string) => void;
+    onsupersede?: (ids: string[]) => void;
+    onarchive?: (ids: string[]) => void;
+    onrestore?: (ids: string[]) => void;
   } = $props();
 
   // D-07 / Pitfall A: @humanspeak/svelte-virtual-list's own viewport is a
@@ -256,6 +268,77 @@
     }
   }
 
+  // D-02: the range-select anchor. Only `x` sets it — Shift+X and shift+click
+  // both extend FROM this same anchor, never reassign it, so repeated range
+  // extensions stay relative to the row the operator first toggled.
+  let anchorId = $state<string | undefined>(undefined);
+
+  // D-04: selection lifecycle. `selectionKey` is a route-owned digest of
+  // "what changed" (see /search's `encodeSearchParams({ ...params, k:
+  // DEFAULT_K, sel: '' })`) — a change clears the selection; the SAME key
+  // across a Show more (k-only) or a pane open/close (sel-only) or an
+  // in-place cache patch leaves it untouched. `lastSelectionKey` is plain
+  // (non-reactive) bookkeeping, not $state — it only needs to survive
+  // between effect runs, never to trigger one itself.
+  let lastSelectionKey: string | undefined;
+  $effect(() => {
+    const key = selectionKey;
+    const first = lastSelectionKey === undefined;
+    if (key !== lastSelectionKey) {
+      lastSelectionKey = key;
+      if (!first) selectedIds = [];
+    }
+  });
+
+  // Keep the selection honest: drop any id no longer present in `memories`
+  // (e.g. after a delete). An in-place cache patch never removes an id from
+  // the array, so this never disturbs a live selection's membership.
+  $effect(() => {
+    if (selectedIds.length === 0) return;
+    const present = new Set(memories.map((m) => m.id));
+    const pruned = selectedIds.filter((id) => present.has(id));
+    if (pruned.length !== selectedIds.length) selectedIds = pruned;
+  });
+
+  // x toggles selection membership for one row, keeping `selectedIds` in
+  // LIST order (not insertion order) so a/A/S always submit ids in the
+  // order the rows appear, not the order they were selected.
+  function toggleSelection(id: string) {
+    anchorId = id;
+    if (selectedIds.includes(id)) {
+      selectedIds = selectedIds.filter((x) => x !== id);
+    } else {
+      const set = new Set(selectedIds);
+      set.add(id);
+      selectedIds = memories.filter((m) => set.has(m.id)).map((m) => m.id);
+    }
+  }
+
+  // Shift+X / shift+click: the inclusive range from the anchor to `toId`,
+  // added to (not replacing) the current selection.
+  function selectRange(toId: string) {
+    const anchor = anchorId ?? activeId;
+    if (!anchor) return;
+    const anchorIdx = memories.findIndex((m) => m.id === anchor);
+    const toIdx = memories.findIndex((m) => m.id === toId);
+    if (anchorIdx === -1 || toIdx === -1) return;
+    const [lo, hi] = anchorIdx <= toIdx ? [anchorIdx, toIdx] : [toIdx, anchorIdx];
+    const set = new Set(selectedIds);
+    for (let i = lo; i <= hi; i++) set.add(memories[i].id);
+    selectedIds = memories.filter((m) => set.has(m.id)).map((m) => m.id);
+  }
+
+  // a/A/S targets: the selection (in list order) when non-empty, else the
+  // active row alone.
+  function selectionTargets(): string[] {
+    if (selectedIds.length > 0) {
+      const set = new Set(selectedIds);
+      return memories.filter((m) => set.has(m.id)).map((m) => m.id);
+    }
+    const m = memories[activeIndex];
+    return m ? [m.id] : [];
+  }
+
   function handleListboxKey(key: string) {
     const current = activeIndex;
     switch (key) {
@@ -278,12 +361,41 @@
         if (m) onopen(m.id);
         break;
       }
+      case 'x': {
+        if (!selectable) break;
+        const m = memories[current];
+        if (m) toggleSelection(m.id);
+        break;
+      }
+      case 'X': {
+        if (!selectable) break;
+        const m = memories[current];
+        if (m) selectRange(m.id);
+        break;
+      }
+      case 'a': {
+        const targets = selectionTargets();
+        if (targets.length > 0) onarchive?.(targets);
+        break;
+      }
+      case 'A': {
+        const targets = selectionTargets();
+        if (targets.length > 0) onrestore?.(targets);
+        break;
+      }
+      case 'S': {
+        const targets = selectionTargets();
+        if (targets.length > 0) onsupersede?.(targets);
+        break;
+      }
       case 'Escape':
-        // D-17/foundations.md Esc layering: close the topmost layer only.
-        // The hover card sits above the pane in z-order, so it closes first;
-        // onescape (the host's own "close the pane" handler) fires only on a
-        // SECOND Esc once no card is open.
-        if (cardOpen) {
+        // D-03/D-17: close the topmost layer only, selection first. A
+        // non-empty selection is the topmost "layer" — clearing it leaves
+        // the hover card/pane untouched. Only once the selection is empty
+        // does Escape fall through to the existing card-then-onescape tiers.
+        if (selectedIds.length > 0) {
+          selectedIds = [];
+        } else if (cardOpen) {
           closeCard();
         } else {
           onescape?.();
@@ -322,15 +434,35 @@
     onopen(id);
   }
 
+  // D-02: a click on the row-check cell toggles selection (never opens); a
+  // shift+click extends the range from the anchor (never opens); otherwise
+  // the click opens the row as before.
+  function handleOptionClick(event: MouseEvent, id: string) {
+    if (selectable) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.row-check')) {
+        toggleSelection(id);
+        return;
+      }
+      if (event.shiftKey) {
+        selectRange(id);
+        return;
+      }
+    }
+    selectRow(id);
+  }
+
   // ROW-01: showRel is a single list-level flag so every row's column
   // layout agrees — a per-row check would let rows in the SAME list
   // disagree about whether a rel column exists at all.
   const showRel = $derived(memories.some((m) => m.relevance !== undefined));
 
   const NAV_KEYS = new Set(['j', 'k', 'ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter']);
-  // D-16: no binding for supersede or archive — reserved, not bound, until
-  // their RPCs land (Phase 3).
-  const ROW_ACTION_KEYS = new Set(['e', 's', '#', 'c', 'C']);
+  // D-16 update (Phase 4): x/X/a/A/S are now bound — x toggles selection, X
+  // (Shift+x) extends it as a range from the anchor, a archives, A (Shift+a)
+  // restores, S (Shift+s) supersedes the selection (or the active row alone
+  // when nothing is selected).
+  const ROW_ACTION_KEYS = new Set(['e', 's', '#', 'c', 'C', 'x', 'X', 'a', 'A', 'S']);
   const HANDLED_KEYS = new Set([...NAV_KEYS, ...ROW_ACTION_KEYS, 'Escape']);
 
   function isTypingTarget(target: EventTarget | null): boolean {
@@ -349,7 +481,10 @@
   // capture:true runs BEFORE the event reaches the library's target element,
   // so stopPropagation() here prevents the library's own Home/End/Arrow
   // native-scroll handling from ever firing for keys we own.
-  function listboxViewport(node: HTMLElement, params: { label: string; onKey: (key: string) => void }) {
+  function listboxViewport(
+    node: HTMLElement,
+    params: { label: string; onKey: (key: string) => void; selectable: boolean }
+  ) {
     let current = params;
 
     function findViewport(): HTMLElement | null {
@@ -372,6 +507,11 @@
       }
       vp.setAttribute('role', 'listbox');
       vp.setAttribute('aria-label', current.label);
+      if (current.selectable) {
+        vp.setAttribute('aria-multiselectable', 'true');
+      } else {
+        vp.removeAttribute('aria-multiselectable');
+      }
       viewportEl = vp;
     }
 
@@ -434,7 +574,7 @@
       class="results-listbox-wrapper"
       class:busy
       bind:this={wrapperEl}
-      use:listboxViewport={{ label, onKey: handleListboxKey }}
+      use:listboxViewport={{ label, onKey: handleListboxKey, selectable }}
     >
       <SvelteVirtualList
         bind:this={list}
@@ -456,8 +596,8 @@
           <div
             role="option"
             id={`opt-${m.id}`}
-            aria-selected={index === activeIndex}
-            onclick={() => selectRow(m.id)}
+            aria-selected={selectable ? selectedIds.includes(m.id) : index === activeIndex}
+            onclick={(e) => handleOptionClick(e, m.id)}
             onmousemove={(e) => handleRowMouseMove(m, e.currentTarget as HTMLElement)}
             onmouseleave={() => handleRowMouseLeave(m)}
           >
@@ -468,6 +608,9 @@
               active={index === activeIndex}
               opened={m.id === openId}
               {listFocused}
+              {selectable}
+              selected={selectedIds.includes(m.id)}
+              selectionActive={selectable && selectedIds.length > 0}
             />
           </div>
         {/snippet}
@@ -477,6 +620,18 @@
   <div class="results-legend">
     <Kbd>j</Kbd><Kbd>k</Kbd> move · <Kbd>↵</Kbd> open / close · <Kbd>esc</Kbd> close · <Kbd>e</Kbd> edit ·
     <Kbd>s</Kbd> share · <Kbd>#</Kbd> delete · <Kbd>c</Kbd> copy short_id · <Kbd>⇧C</Kbd> copy id
+    {#if selectable}
+      · <Kbd>x</Kbd> select · <Kbd>⇧X</Kbd> range
+    {/if}
+    {#if onsupersede}
+      · <Kbd>⇧S</Kbd> supersede
+    {/if}
+    {#if onarchive}
+      · <Kbd>a</Kbd> archive
+    {/if}
+    {#if onrestore}
+      · <Kbd>⇧A</Kbd> restore
+    {/if}
   </div>
 {/if}
 

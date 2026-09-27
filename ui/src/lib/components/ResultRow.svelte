@@ -4,7 +4,9 @@
   import { relativeTime } from '$lib/time';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
   import { memoryStateWords, isPastState, type RecordStateWord } from '$lib/memorystate';
+  import { flashing } from '$lib/curation/flash.svelte.ts';
   import ScopeChip from './ScopeChip.svelte';
+  import CheckIcon from '@lucide/svelte/icons/check';
 
   // ROW-01/ROW-04/D-05: the full dense one-line row grid — category, summary
   // (inline code, ellipsized), state chips (first +N), tags (first two +N),
@@ -15,7 +17,10 @@
     showRel = false,
     active = false,
     opened = false,
-    listFocused = false
+    listFocused = false,
+    selectable = false,
+    selected = false,
+    selectionActive = false
   }: {
     memory: Memory;
     mode?: 'ranked' | 'unranked';
@@ -23,6 +28,9 @@
     active?: boolean;
     opened?: boolean;
     listFocused?: boolean;
+    selectable?: boolean;
+    selected?: boolean;
+    selectionActive?: boolean;
   } = $props();
 
   const summary = $derived(stripCategoryPrefix(memory.summary, memory.category));
@@ -120,9 +128,17 @@
   class:active-row={active}
   class:opened-row={opened}
   class:list-focused={listFocused}
+  class:selectable
+  class:selection-active={selectionActive}
+  class:flash={flashing.has(memory.id)}
   style="--c:var(--cat-{memory.category})"
   title={opened ? 'Open in the detail pane: click or press ↵ again to close' : undefined}
 >
+  {#if selectable}
+    <span class="row-check" aria-hidden="true" class:checked={selected}>
+      {#if selected}<CheckIcon size={12} aria-hidden="true" />{/if}
+    </span>
+  {/if}
   <span class="cat" class:dim={dimmed}>
     <i class="cat-dot" aria-hidden="true" style="background:var(--c)"></i>
     <span class="cat-word">{memory.category}</span>
@@ -173,6 +189,13 @@
     column-gap: calc(10 * var(--u));
     height: calc(28 * var(--u));
     padding: 0 calc(12 * var(--u)) 0 calc(14 * var(--u));
+  }
+  /* D-02: the leading check-column track, prepended only when selectable.
+     Higher specificity than the base rule above (two classes), so it wins
+     regardless of source order. */
+  .result-row-line.selectable {
+    --cols: calc(28 * var(--u)) calc(96 * var(--u)) minmax(var(--sum-min), 1fr) auto minmax(0, calc(172 * var(--u)))
+      minmax(0, calc(132 * var(--u))) calc(34 * var(--u)) calc(70 * var(--u));
   }
   .result-row-line.show-rel {
     grid-template-columns: var(--cols) calc(56 * var(--u));
@@ -349,6 +372,10 @@
       --cols: calc(96 * var(--u)) minmax(var(--sum-min), 1fr) auto minmax(0, calc(132 * var(--u)))
         calc(34 * var(--u)) calc(70 * var(--u));
     }
+    .result-row-line.selectable {
+      --cols: calc(28 * var(--u)) calc(96 * var(--u)) minmax(var(--sum-min), 1fr) auto
+        minmax(0, calc(132 * var(--u))) calc(34 * var(--u)) calc(70 * var(--u));
+    }
     .tags {
       display: none;
     }
@@ -356,6 +383,10 @@
   @container list (max-width: 560px) {
     .result-row-line {
       --cols: calc(6 * var(--u)) minmax(var(--sum-min), 1fr) auto calc(34 * var(--u)) calc(40 * var(--u));
+    }
+    .result-row-line.selectable {
+      --cols: calc(28 * var(--u)) calc(6 * var(--u)) minmax(var(--sum-min), 1fr) auto calc(34 * var(--u))
+        calc(40 * var(--u));
     }
     .tags,
     .scope {
@@ -366,6 +397,48 @@
     }
     .score .bar {
       display: none;
+    }
+  }
+
+  /* D-02: the check column. Decorative only (aria-hidden — the option's
+     aria-selected carries the real semantics, foundations.md WCAG 4.1.2:
+     no focusable control nested inside role="option"). Faint until the row
+     is hovered or the list has a non-empty selection somewhere, so an
+     unselected row's checkbox doesn't compete with the summary at rest. */
+  .row-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(14 * var(--u));
+    height: calc(14 * var(--u));
+    border: 1px solid var(--border);
+    border-radius: calc(3 * var(--u));
+    color: var(--primary-foreground);
+    opacity: 0.35;
+    transition: opacity 0.1s ease;
+  }
+  .result-row-line:hover .row-check,
+  .result-row-line.selection-active .row-check {
+    opacity: 1;
+  }
+  .row-check.checked {
+    background: var(--primary);
+    border-color: var(--primary);
+    opacity: 1;
+  }
+
+  /* D-10: a row whose id is in the shared `flashing` set (flash.svelte.ts)
+     briefly highlights after a successful curation write. */
+  .result-row-line.flash {
+    animation: row-flash 1.6s ease;
+  }
+  @keyframes row-flash {
+    0%,
+    30% {
+      background: var(--primary-soft);
+    }
+    100% {
+      background: transparent;
     }
   }
 </style>

@@ -469,6 +469,11 @@
   let writeSurfaces: ReturnType<typeof WriteSurfaces> | undefined = $state();
   let curation: ReturnType<typeof CurationSurfaces> | undefined = $state();
 
+  // D-01..D-04: the multi-select bulk-curation state lives at the route
+  // level so both ResultsList (keyboard/pointer selection) and
+  // ResultsHeader's bulk bar (Task 3) share it.
+  let selectedIds = $state<string[]>([]);
+
   onMount(() => {
     const env = peekResume();
     if (env && env.kind === 'memory') writeSurfaces?.reopenFromResume(env);
@@ -494,7 +499,18 @@
     onchange={(partial) => navigate({ ...partial, sel: '' })}
     onretry={() => scopesQ.refetch()}
   />
-  <ResultsHeader parts={headerParts} {scopeHits} k={effective.k} busy={headerBusy} />
+  <ResultsHeader
+    parts={headerParts}
+    {scopeHits}
+    k={effective.k}
+    busy={headerBusy}
+    selection={{
+      count: selectedIds.length,
+      onarchive: () => curation?.openArchive(selectedIds),
+      onrestore: () => curation?.openRestore(selectedIds),
+      onclear: () => (selectedIds = [])
+    }}
+  />
   <!-- WriteSurfaces lives in a STABLE location outside RecallSplit: that
        component switches its narrow/wide layout branch based on a
        ResizeObserver measurement that settles a tick after mount, and both
@@ -513,7 +529,11 @@
         if (id === effectiveSel) navigate({ sel: '' });
       }}
     />
-    <CurationSurfaces bind:this={curation} returnPath={normalizeReturnPath(page.url.pathname + page.url.search)} />
+    <CurationSurfaces
+      bind:this={curation}
+      returnPath={normalizeReturnPath(page.url.pathname + page.url.search)}
+      onchanged={() => (selectedIds = [])}
+    />
   </div>
   <div class="search-body">
     <RecallSplit open={!!effectiveSel} onclose={closeSel} autoSaveId="engram-search-split">
@@ -538,6 +558,11 @@
                 ? writeSurfaces?.requestMakePrivate(m, 'memory')
                 : writeSurfaces?.requestShare(m, 'memory')}
             ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
+            selectable
+            bind:selectedIds
+            selectionKey={encodeSearchParams({ ...params, k: DEFAULT_K, sel: '' })}
+            onarchive={(ids) => curation?.openArchive(ids)}
+            onrestore={(ids) => curation?.openRestore(ids)}
           />
           {#if classified.kind === 'text' && memories.length === effective.k && nextK(effective.k) !== undefined}
             <div class="show-more-row">
