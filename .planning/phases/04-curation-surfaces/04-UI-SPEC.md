@@ -269,52 +269,66 @@ give exact strings — the executor must not paraphrase. Where a source gives a 
 
 ## UI Considerations
 
-Probe: `ui-consideration-probe` over 6 authored elements (E1–E6), `--auto`. Empty/error copy
-lives in the Copywriting Contract above; rows here reference it rather than restating it.
+Probe: `ui-consideration-probe` over 6 authored elements (E1–E6), run post-verification by
+`/gsd-ui-phase` (interactive). E3's kinds were widened by the user to
+`interactive-control + list-collection + static-content` (the prose classifier caught only the
+control cue). 48 applicable considerations, 0 unclassified, 48 resolved (45 explicit, 3
+backstop). Empty/error COPY lives in the Copywriting Contract above; rows here reference it
+rather than restating it.
 
 Elements: E1 Supersede dialog · E2 Archive/Restore confirm dialog · E3 Chain dialog · E4 Bulk
 selection bar and row action buttons · E5 Rules route · E6 Scheduled route
 
 | Element | Category | Status | Truth |
 |---------|----------|--------|-------|
-| E1 | empty | resolved (explicit) | A supersede dialog opened with zero targets shows the gate `Add at least one target` and a disabled primary button — it never opens with an empty predecessors column with no explanation. |
+| E1 | empty | resolved (explicit) | A supersede dialog opened with zero targets shows the gate `Add at least one target` and a disabled primary button — it never opens with an empty predecessors column and no explanation. |
 | E1 | loading | resolved (explicit) | The validate_only preview call shows `supersede_memory · {N} targets…` with a spinner; existing chip/form content stays visible and interactive (not blanked) while it resolves. |
-| E1 | error | resolved (explicit) | Validation, server-rejection, and re-auth each render their own named status block (Copywriting Contract); a client-side per-target issue is computed instantly, the server's own validate_only answer is trusted over it when they could differ. |
+| E1 | error | resolved (explicit) | Validation, server-rejection, and re-auth each render their own named status block (Copywriting Contract); a client-side per-target issue is computed instantly, and the server's own validate_only answer is trusted over it when they could differ. |
 | E1 | populated | resolved (explicit) | Two-column layout (targets left, correcting record right) collapses to one column under `@container frame (max-width: 700px)`; the chain preview strip re-renders on every keystroke/target change without remounting the input fields (no focus loss while typing). |
-| E1 | partial | resolved (explicit) | A mix of valid and invalid targets renders each independently — valid chips show their subline, invalid chips show their issue line — the gate blocks submit until every target is valid, never a partial/best-effort submit. |
-| E1 | overflow | resolved (explicit) | More predecessors than fit the left column scroll within that column (the column, not the dialog, scrolls); the chain-preview column strip scrolls horizontally past 4-5 nodes (`.chain-cols { overflow-x: auto }`, already in the sketch CSS). |
-| E1 | zero-one-many | resolved (explicit) | Header and button copy agree in number: `Supersede N records into one` / `Supersede N → 1` for any N ≥ 1, including N = 1 (no singular-form special case — "1 records" is avoided by phrasing the count before the noun consistently, matching the sketch's own N-agnostic template). |
-| E1 | long-text | resolved (explicit) | Target chip summaries and the correcting-record's content field do not overflow the dialog — chip summaries ellipsize, content is a scrollable textarea. |
-| E2 | empty | resolved (backstop) | `{ statement: "Archive/Restore confirm dialog: undefined", verification: backstop }` — an empty target set cannot occur (the dialog is only ever opened with ids already resolved from a row action or a non-empty selection). |
-| E2 | loading | resolved (explicit) | Same shared status-block pattern as supersede (loading/validation/rejection/re-auth), reused rather than re-invented. |
-| E2 | error | resolved (explicit) | A not-owned record in the set shows its issue inline and can be removed via `×`; the gate blocks submit while any remains, matching supersede's per-target validation pattern. |
-| E2 | populated | resolved (explicit) | One chip per record with its current state chips; Archive and Restore render as the SAME dialog component with a `mode` prop swapping header/subline/button copy and style (danger-outline vs primary), not two components. |
-| E2 | partial | resolved (explicit) | An idempotent outcome (`already_archived`, `not_archived`) renders in the result body as information text, never with error styling — `04-CONTEXT.md` D-09 is explicit that idempotent cases are not errors. |
-| E2 | overflow | resolved (default) | A bulk archive of many records lists every chip in a scrollable body region (the dialog itself does not grow unbounded) — consistent with the supersede dialog's own left-column scroll pattern. |
+| E1 | partial | resolved (explicit) | A mix of valid and invalid targets renders each independently — valid chips show their subline, invalid chips show their issue line — and the gate blocks submit until every target is valid; never a partial/best-effort submit. |
+| E1 | overflow | resolved (explicit) | More predecessors than fit the left column scroll within that column (the column, not the dialog, scrolls); the chain-preview column strip scrolls horizontally past 4–5 nodes (`.chain-cols { overflow-x: auto }`, already in the sketch CSS). |
+| E1 | zero-one-many | resolved (explicit) | Header and button copy agree in number: `Supersede N records into one` / `Supersede N → 1` for any N ≥ 1, including N = 1 — the count precedes the noun in every template so no singular special case is needed. |
+| E1 | long-text | resolved (explicit) | Target chip summaries ellipsize on one line and the correcting-record content field is a scrollable textarea; neither can grow the 920-unit dialog. |
+| E2 | empty | resolved (explicit) | The dialog opens only with one or more ids already resolved from a row action or a non-empty selection; if `×` removes the last chip, the Archive/Restore button disables and the chip region sits empty with no error styling — an empty set is never submitted. |
+| E2 | loading | resolved (explicit) | Same shared status-block pattern as supersede (loading / validation / rejection / re-auth), reused rather than re-invented; the button disables while the call is in flight. |
+| E2 | error | resolved (explicit) | A not-owned record in the set shows its issue inline and can be removed via `×`; the gate `Remove 1 record you don't own` blocks submit while any remains, matching supersede's per-target validation pattern. A rejected call renders the Copywriting Contract's rejection copy and leaves every chip in place. |
+| E2 | populated | resolved (explicit) | One chip per record with its current state chips; Archive and Restore are the SAME dialog component with a `mode` prop swapping header/subline/button copy and style (danger-outline vs primary), not two components. |
+| E2 | partial | resolved (explicit) | Per-id outcomes render individually in the result body: `already_archived` / `not_archived` appear as information text (never error styling, per D-09) and `not_found` rows use the rejection copy, while the archived/restored ids are listed under `✓ N archived` with N counting only the changed ids. |
+| E2 | overflow | resolved (explicit) | A bulk archive of many records lists every chip in a scrollable body region; the 640-unit dialog does not grow unbounded — consistent with the supersede dialog's left-column scroll pattern. |
 | E2 | zero-one-many | resolved (explicit) | `Archive N records?` / `✓ N archived` / `Undo — restore N` all use the same N-agnostic phrasing for N = 1 through many. |
-| E2 | long-text | resolved (backstop) | `{ statement: "Archive/Restore confirm dialog: undefined", verification: backstop }` |
-| E3 | empty | resolved (backstop) | `{ statement: "Chain dialog: undefined", verification: backstop }` — a chain dialog is only reachable from a row already known to be chained (D-06), so an empty chain cannot occur. |
-| E3 | loading | resolved (explicit) | Each node's fetch-by-id peek shows its own inline loading state (not a dialog-wide spinner) since nodes are fetched independently on click, not all at once. |
-| E3 | error | resolved (default) | A peeked node that fails to fetch (e.g. a transient error) shows `No memory with id {id} that you can read` inline on that node, reusing the detail-pane's existing not-found copy rather than inventing a new string. |
-| E3 | populated | resolved (explicit) | Columns run oldest-left to head-right per `curation.md`; the active/opening row is highlighted (`.cnode.hl`) among the chain. |
+| E2 | long-text | resolved (explicit) | Chip summaries ellipsize on one line inside the 640-unit dialog; the result-body id list wraps; the toast text is the fixed template `{N} archived · Undo` and carries no user text, so it cannot grow. |
+| E3 | empty | resolved (explicit) | Unreachable by design: the chain dialog opens only from a row already carrying a supersession link (D-06). If a peek finds every predecessor unreadable, the dialog still renders the head node alone in the `head · d0` column with the legend — never a blank strip. |
+| E3 | loading | resolved (explicit) | Each node's fetch-by-id peek shows its own inline loading state (not a dialog-wide spinner), since nodes are fetched independently on click, not all at once. |
+| E3 | error | resolved (explicit) | A peeked node that fails to fetch shows `No memory with id {id} that you can read` inline on that node, reusing the detail pane's existing not-found copy rather than a new string. |
+| E3 | populated | resolved (explicit) | Columns run oldest-left to head-right per `curation.md`; the row the dialog was opened from is highlighted (`.cnode.hl`) among the chain. |
+| E3 | partial | resolved (explicit) | A predecessor the caller cannot read (not owned, deleted) renders as a placeholder node in its column position carrying the not-found copy, so column order and depth stay honest rather than silently collapsing. |
 | E3 | overflow | resolved (explicit) | The column strip scrolls horizontally (`scroll-area` wraps it on narrow viewports) rather than wrapping to a second line, which would break the left-to-right reading order the legend promises. |
-| E3 | zero-one-many | resolved (default) | A chain of depth 1 (one predecessor, one head) still renders as two columns, never collapsed to a single-node special case — the same layout scales from depth 1 to many. |
-| E3 | long-text | resolved (backstop) | `{ statement: "Chain dialog: undefined", verification: backstop }` |
-| E4 | empty | resolved (explicit) | With zero rows selected, the bulk bar does not render at all — `ResultsHeader` shows its normal honest-feedback content (Phase 2 contract, unchanged). |
-| E4 | populated | resolved (explicit) | With one or more rows selected, the header swaps entirely to the violet bulk bar copy (D-03) — it does not append to the existing header text. |
-| E4 | overflow | resolved (default) | On a narrow viewport the bulk bar's action list wraps to a second line before truncating any action label — matches the existing header's own narrow-viewport wrap behavior (Phase 2 "below 620px" precedent) rather than hiding an action. |
-| E4 | zero-one-many | resolved (explicit) | `{N} selected` agrees in number and the action verbs stay plural-agnostic (`Supersede N into one…` reads correctly at N=1 through many, same template as E1). |
+| E3 | zero-one-many | resolved (explicit) | A chain of depth 1 (one predecessor, one head) still renders as two columns, never collapsed to a single-node special case; the same layout scales from depth 1 to many. |
+| E3 | long-text | resolved (explicit) | Node summaries ellipsize within a fixed node width; `Chain · {short_id}` is fixed-length; the subline wraps to a second line rather than widening the dialog. |
+| E4 | empty | resolved (explicit) | With zero rows selected the bulk bar does not render at all — `ResultsHeader` shows its normal honest-feedback content (Phase 2 contract, unchanged). |
+| E4 | loading | resolved (explicit) | While a bulk write is in flight the bar's action verbs disable and `{N} selected` stays; the loading status is shown in the open dialog, not in the bar. |
+| E4 | error | resolved (explicit) | A failed bulk write is reported in the dialog's status block; the bar keeps the selection (selection clears only on success or query change, D-04) so the operator can resend without reselecting. |
+| E4 | populated | resolved (explicit) | With one or more rows selected the header swaps entirely to the bulk bar copy (D-03) — it does not append to the existing header text. |
+| E4 | partial | resolved (explicit) | After a mixed per-id result, only rows whose outcome was `archived`/`restored` update their derived-state word and dim in place (D-10); `not_found` rows are untouched; the selection then clears as a whole. |
+| E4 | overflow | resolved (explicit) | On a narrow viewport the bulk bar's action list wraps to a second line before truncating any action label — matching the existing header's narrow-viewport wrap (Phase 2 "below 620px" precedent) rather than hiding an action. |
+| E4 | zero-one-many | resolved (explicit) | `{N} selected` agrees in number and the action verbs stay plural-agnostic (`Supersede N into one…` reads correctly at N = 1 through many, same template as E1). |
+| E4 | long-text | resolved (explicit) | Bar copy is a fixed template that renders no user text, so it cannot grow beyond the wrap behaviour above; per-row hover action buttons are icon+short-verb only. |
 | E5 | empty | resolved (explicit) | `No rules in any scope you can read` (Copywriting Contract), following the same honest-feedback structure as Phase 2's search empty state — never a bare "no rules". |
-| E5 | loading | resolved (default) | First-load skeleton rows shaped like the Rules row grid (summary + tags + `shared` chip), matching Phase 2's "skeletons only on first load" rule — never on re-query. |
-| E5 | error | resolved (default) | A rejected `ListRules` call renders through the same `field=/hint=` envelope pattern as `/search` (Copywriting Contract, "Rejected" row) — no new error-rendering path is invented for Rules. |
-| E5 | populated | resolved (explicit) | Rows are grouped under a scope header (D-12) — the one-line summary+tags+`shared` chip layout, full text loading on demand via `GetMemory` in the shared detail pane. |
-| E5 | overflow | resolved (default) | Long rule summaries ellipsize on one line, matching `ResultRow.svelte`'s existing single-line-ellipsis behavior — Rules reuses `ResultsList`'s row rendering, not a bespoke layout. |
-| E6 | empty | resolved (explicit) | Per-tab empty copy (Copywriting Contract) — each of `scheduled`/`expired`/`all` states its own honest empty line, never a shared generic one. |
-| E6 | loading | resolved (default) | Cursor-driven infinite scroll shows a trailing loading row at the list's end while fetching the next page, matching the existing infinite-scroll pattern conventions (no full-list skeleton on page 2+). |
+| E5 | loading | resolved (explicit) | First-load skeleton rows shaped like the Rules row grid (summary + tags + `shared` chip), matching Phase 2's "skeletons only on first load" rule — never on re-query. |
+| E5 | error | resolved (explicit) | A rejected `ListRules` call renders through the same `field=/hint=` envelope pattern as `/search` (Copywriting Contract, "Rejected" row) — no new error-rendering path for Rules. |
+| E5 | populated | resolved (explicit) | Rows are grouped under a scope header (D-12) — one-line summary + tags + `shared` chip, full text loading on demand via `GetMemory` in the shared detail pane. |
+| E5 | partial | resolved (explicit) | `scopes_truncated` / `scopes_unknown` render verbatim in the coverage line; a rule scope whose read failed is absent from `searched_scopes` and the coverage line says so — never a silently shorter list. |
+| E5 | overflow | resolved (explicit) | Long rule summaries ellipsize on one line, matching `ResultRow.svelte`'s single-line-ellipsis behaviour — Rules reuses `ResultsList`'s row rendering, not a bespoke layout. |
+| E5 | zero-one-many | resolved (explicit) | `{N} rules across {M} scopes` is count-agnostic; a scope holding a single rule still gets its own scope header, and zero falls to the empty row above. |
+| E5 | long-text | resolved (backstop) | `{ statement: "Rule summaries are server-bounded to a single line and ellipsize in the row; full content scrolls in the detail pane — a visual-state test renders a 512-byte summary and asserts one row height.", verification: backstop }` |
+| E6 | empty | resolved (explicit) | Per-tab empty copy (Copywriting Contract) — each of `scheduled` / `expired` / `all` states its own honest empty line, never a shared generic one. |
+| E6 | loading | resolved (explicit) | Cursor-driven infinite scroll shows a trailing loading row at the list's end while fetching the next page (no full-list skeleton on page 2+); first load uses the Phase 2 skeleton rule. |
+| E6 | error | resolved (explicit) | A rejected `ListScheduled` call renders through the same `field=/hint=` envelope pattern as `/search`; a failed next-page fetch replaces the trailing loading row with the envelope and keeps the rows already shown. |
 | E6 | populated | resolved (explicit) | Each row shows the `not_before → not_after` window plus the relative phrase and the state word; Archive appears only on expired rows (absence, not a disabled control). |
-| E6 | overflow | resolved (default) | The relative-phrase clause (`reveals in {N}d` / `expired {N}d ago`) truncates before the window timestamps if the row is too narrow — the raw timestamps are the more load-bearing fact and are shown in the row's tooltip if clipped. |
-| E6 | zero-one-many | resolved (backstop) | `{ statement: "Scheduled route: undefined", verification: backstop }` |
-| E6 | long-text | resolved (backstop) | `{ statement: "Scheduled route: undefined", verification: backstop }` |
+| E6 | partial | resolved (explicit) | A record with only one bound renders `—` for the absent side of `{not_before} → {not_after}` and only the applicable relative phrase (`reveals in {N}d` needs `not_before`; `expired {N}d ago` needs `not_after`). |
+| E6 | overflow | resolved (explicit) | The relative-phrase clause truncates before the window timestamps if the row is too narrow — the raw timestamps are the load-bearing fact and are shown in the row's tooltip if clipped. |
+| E6 | zero-one-many | resolved (backstop) | `{ statement: "Tab lists are count-agnostic: one windowed record renders as a single row under its tab with no summary line, and zero falls to that tab's empty copy — a visual-state test asserts the single-row and empty renders per tab.", verification: backstop }` |
+| E6 | long-text | resolved (backstop) | `{ statement: "Summaries ellipsize as in ResultRow and the window phrase truncates per the overflow row; a visual-state test renders a max-length summary on a 360px-wide row and asserts no horizontal scroll.", verification: backstop }` |
 
 ---
 
