@@ -23,9 +23,11 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	"github.com/chromedp/chromedp/kb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
@@ -273,17 +275,20 @@ func mintFixtureMarker(t *testing.T) string {
 // an MCP-written record lands in the owner=="" bucket and would be invisible
 // to the console (verified_facts item 5).
 //
-// The write lane requires the CSRF cookie AND header to be present, equal,
-// and verifiable (verified_facts item 6); both are set here. A non-empty
-// response id is asserted so a silently-degraded write cannot leave the
-// render assertion below to fail later for the wrong reason.
-func seedFixtureRecord(ctx context.Context, t *testing.T, fixture *consoleFixture, marker string) {
+// scope is caller-supplied (generalized in plan 04-12 so every chromedp test
+// can seed under its own scope, per DSYS-04 ordering — no shared scope, no
+// dependence on another test's state). The write lane requires the CSRF
+// cookie AND header to be present, equal, and verifiable (verified_facts item
+// 6); both are set here. A non-empty response id is asserted so a
+// silently-degraded write cannot leave the render assertion below to fail
+// later for the wrong reason. Returns the stored id and short_id.
+func seedFixtureRecord(ctx context.Context, t *testing.T, fixture *consoleFixture, scope, marker string) (id, shortID string) {
 	t.Helper()
 	client := engramv1connect.NewEngramServiceClient(http.DefaultClient, fixture.srv.baseURL())
 
 	req := connect.NewRequest(&engramv1.StoreMemoryRequest{
 		Content:  "e2e console round-trip fixture record",
-		Scope:    fixtureScope,
+		Scope:    scope,
 		Source:   "agent-inferred",
 		Category: "convention",
 		Summary:  marker,
@@ -298,6 +303,28 @@ func seedFixtureRecord(ctx context.Context, t *testing.T, fixture *consoleFixtur
 	if resp.Msg.GetId() == "" {
 		t.Fatal("seed fixture record: response carried an empty id")
 	}
+	return resp.Msg.GetId(), resp.Msg.GetShortId()
+}
+
+// getMemoryAsFixture fetches a memory by id through the Connect API using the
+// SAME cookie-authenticated identity the browser session carries (GetMemory
+// is a read: no CSRF header is required, mirroring the memory contract's
+// write-only CSRF gate).
+func getMemoryAsFixture(ctx context.Context, t *testing.T, fixture *consoleFixture, id string) *engramv1.Memory {
+	t.Helper()
+	client := engramv1connect.NewEngramServiceClient(http.DefaultClient, fixture.srv.baseURL())
+
+	req := connect.NewRequest(&engramv1.GetMemoryRequest{Id: id})
+	req.Header().Set("Cookie", consoleCookieHeader(fixture))
+
+	resp, err := client.GetMemory(ctx, req)
+	if err != nil {
+		t.Fatalf("get memory %s: %v", id, err)
+	}
+	if resp.Msg.GetMemory() == nil {
+		t.Fatalf("get memory %s: response carried a nil memory", id)
+	}
+	return resp.Msg.GetMemory()
 }
 
 // consoleCookieHeader renders the sealed session cookie and the CSRF cookie
@@ -330,6 +357,45 @@ const hydrationPollExpr = `(() => {
 func markerPollExpr(marker string) string {
 	markerJSON, _ := json.Marshal(marker)
 	return fmt.Sprintf(`(() => document.body.innerText.includes(%s))()`, markerJSON)
+}
+
+// uiTextPollExpr is satisfied once text is visible in the live rendered
+// page. Unlike markerPollExpr, text is ordinary UI copy (a dialog heading, a
+// result line) that legitimately ships inside the bundle itself — this only
+// proves the browser rendered that exact string right now (a dialog opened,
+// a mutation's result rendered), never a round trip through the server on
+// its own; the Connect assertions alongside each use of this poll are what
+// prove the round trip.
+func uiTextPollExpr(text string) string {
+	textJSON, _ := json.Marshal(text)
+	return fmt.Sprintf(`(() => document.body.innerText.includes(%s))()`, textJSON)
+}
+
+// detailPaneMarkerPollExpr is satisfied once marker is visible INSIDE the
+// open detail pane specifically — scoped to aside[aria-label="Memory
+// detail"] — rather than merely somewhere on the page. Used by the
+// entry-point resolution assertions, where the pane opening (not just a
+// results-list row) is the thing under test.
+func detailPaneMarkerPollExpr(marker string) string {
+	markerJSON, _ := json.Marshal(marker)
+	return fmt.Sprintf(`(() => {
+		const aside = document.querySelector('aside[aria-label="Memory detail"]');
+		return !!aside && aside.innerText.includes(%s);
+	})()`, markerJSON)
+}
+
+// submitButtonEnabledPollExpr is satisfied once a dialog-scoped button whose
+// exact trimmed text equals label exists and is NOT disabled. Used to wait
+// for SupersedeDialog's debounced validate_only preview to answer before
+// clicking its primary action — canSubmit gates on the preview response,
+// not merely on the dialog being open.
+func submitButtonEnabledPollExpr(label string) string {
+	labelJSON, _ := json.Marshal(label)
+	return fmt.Sprintf(`(() => {
+		const btns = [...document.querySelectorAll('div[role="dialog"] button')];
+		const b = btns.find((el) => el.textContent && el.textContent.trim() === %s);
+		return !!b && !b.disabled;
+	})()`, labelJSON)
 }
 
 // rootRoutePollExpr is satisfied ONLY once BOTH the root route's scope tiles
@@ -374,7 +440,7 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	fixture := startConsoleServer(t)
 
 	marker := mintFixtureMarker(t)
-	seedFixtureRecord(context.Background(), t, fixture, marker) // BEFORE navigation, so the record exists when the SPA's first listMemories fires.
+	seedFixtureRecord(context.Background(), t, fixture, fixtureScope, marker) // BEFORE navigation, so the record exists when the SPA's first listMemories fires.
 
 	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
 		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
@@ -640,4 +706,462 @@ func sweepConsoleAssets(t *testing.T, baseURL string) {
 	if len(offenders) > 0 {
 		t.Fatalf("stale or missing immutable asset references: %v", offenders)
 	}
+}
+
+// archiveScope is TestConsoleArchiveUndoRoundTrip's own scope — a fresh
+// marker under a scope no other chromedp test writes to, per DSYS-04
+// ordering: no shared state, no dependence on another test's execution
+// order.
+const archiveScope = "repo:e2e-console-archive"
+
+// TestConsoleArchiveUndoRoundTrip drives a REAL headless Chrome against the
+// REAL engram binary and Qdrant (D-18): archives a seeded record through the
+// listbox's `a` keyboard shortcut and ArchiveConfirmDialog's confirm button,
+// confirms the server agrees (GetMemory.ArchivedAt set for the SAME id),
+// then undoes it through the same dialog's "Undo — restore N" action
+// (ArchiveConfirmDialog's D-09 result-body undo surface) and confirms the
+// server agrees again (ArchivedAt cleared).
+func TestConsoleArchiveUndoRoundTrip(t *testing.T) {
+	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
+	fixture := startConsoleServer(t)
+
+	marker := mintFixtureMarker(t)
+	id, _ := seedFixtureRecord(context.Background(), t, fixture, archiveScope, marker) // BEFORE navigation, so the record exists when the SPA's first search fires.
+
+	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
+		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
+		chromedp.ExecPath(chromePath),
+		chromedp.WindowSize(1280, 1000), // the default headless window is short enough to put a dialog's footer buttons below the fold, off a raw-coordinate click's reach.
+	)
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	t.Cleanup(allocCancel)
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	t.Cleanup(browserCancel)
+
+	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
+	defer runCancel()
+
+	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
+		return setConsoleCookies(ctx, fixture)
+	})
+
+	obs := newBrowserObserver()
+	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
+
+	scopeURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("scope:"+archiveScope)
+	var rendered bool
+	navErr := chromedp.Run(runCtx,
+		setCookies,
+		chromedp.Navigate(scopeURL),
+		chromedp.Poll(markerPollExpr(marker), &rendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	)
+	if navErr != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("scoped render wait failed: %v", navErr)
+	}
+	if !rendered {
+		t.Fatal("scoped render poll returned without error but rendered=false")
+	}
+
+	// Focus the listbox so its own keydown model (ResultsList.svelte) sees
+	// the 'a' key rather than a browser-native scroll/no-op.
+	if err := chromedp.Run(runCtx, chromedp.Focus(`[role="listbox"]`, chromedp.ByQuery)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("focus listbox: %v", err)
+	}
+	if err := chromedp.Run(runCtx, chromedp.KeyEvent("a")); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("send 'a' key: %v", err)
+	}
+
+	var dialogShown bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("Archive 1 records?"), &dialogShown,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("archive confirm dialog wait failed: %v", err)
+	}
+	if !dialogShown {
+		t.Fatal("archive confirm dialog poll returned without error but dialogShown=false")
+	}
+
+	// Scoped to role="dialog" so this can never match RowActions' own
+	// per-row "Archive" button or the bulk bar's "Archive <Kbd>a</Kbd>"
+	// button, neither of which lives inside the dialog's DOM subtree.
+	if err := chromedp.Run(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Archive"]`, chromedp.BySearch)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("click Archive: %v", err)
+	}
+
+	var archived bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("✓ 1 archived"), &archived,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("archive result wait failed: %v", err)
+	}
+	if !archived {
+		t.Fatal("archive result poll returned without error but archived=false")
+	}
+
+	afterArchive := getMemoryAsFixture(context.Background(), t, fixture, id)
+	if afterArchive.GetId() != id {
+		t.Fatalf("archive result: fetched wrong record, got id %q want %q", afterArchive.GetId(), id)
+	}
+	if afterArchive.GetArchivedAt() == nil {
+		t.Fatalf("archive result: ArchivedAt is nil for %s after archiving through the console", id)
+	}
+
+	if err := chromedp.Run(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Undo — restore 1"]`, chromedp.BySearch)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("click Undo: %v", err)
+	}
+
+	var restored bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("✓ 1 restored"), &restored,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("restore result wait failed: %v", err)
+	}
+	if !restored {
+		t.Fatal("restore result poll returned without error but restored=false")
+	}
+
+	afterRestore := getMemoryAsFixture(context.Background(), t, fixture, id)
+	if afterRestore.GetId() != id {
+		t.Fatalf("restore result: fetched wrong record, got id %q want %q", afterRestore.GetId(), id)
+	}
+	if afterRestore.GetArchivedAt() != nil {
+		t.Fatalf("restore result: ArchivedAt is still set for %s after undo through the console", id)
+	}
+
+	obs.assertClean(t)
+}
+
+// supersedeScope is TestConsoleSupersedeRoundTrip's own scope — a fresh
+// marker under a scope no other chromedp test writes to (DSYS-04 ordering).
+const supersedeScope = "repo:e2e-console-supersede"
+
+// TestConsoleSupersedeRoundTrip drives a REAL headless Chrome against the
+// REAL engram binary and Qdrant (D-18, CUR-01): supersedes a seeded record
+// through the listbox's ⇧S shortcut, SupersedeDialog's debounced
+// validate_only preview, and its "Supersede 1 → 1" commit button; then, via
+// Connect, confirms the predecessor's SupersededBy resolves to a successor
+// whose content carries the edited draft.
+func TestConsoleSupersedeRoundTrip(t *testing.T) {
+	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
+	fixture := startConsoleServer(t)
+
+	marker := mintFixtureMarker(t)
+	id, _ := seedFixtureRecord(context.Background(), t, fixture, supersedeScope, marker) // BEFORE navigation, so the record exists when the SPA's first search fires.
+
+	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
+		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
+		chromedp.ExecPath(chromePath),
+		chromedp.WindowSize(1280, 1000), // the default headless window is short enough to put a dialog's footer buttons below the fold, off a raw-coordinate click's reach.
+	)
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	t.Cleanup(allocCancel)
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	t.Cleanup(browserCancel)
+
+	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
+	defer runCancel()
+
+	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
+		return setConsoleCookies(ctx, fixture)
+	})
+
+	obs := newBrowserObserver()
+	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
+
+	scopeURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("scope:"+supersedeScope)
+	var rendered bool
+	navErr := chromedp.Run(runCtx,
+		setCookies,
+		chromedp.Navigate(scopeURL),
+		chromedp.Poll(markerPollExpr(marker), &rendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	)
+	if navErr != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("scoped render wait failed: %v", navErr)
+	}
+	if !rendered {
+		t.Fatal("scoped render poll returned without error but rendered=false")
+	}
+
+	// Focus the listbox so its own keydown model (ResultsList.svelte) sees
+	// Shift+S rather than a browser-native no-op.
+	if err := chromedp.Run(runCtx, chromedp.Focus(`[role="listbox"]`, chromedp.ByQuery)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("focus listbox: %v", err)
+	}
+	if err := chromedp.Run(runCtx, chromedp.KeyEvent("S", chromedp.KeyModifiers(input.ModifierShift))); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("send Shift+S: %v", err)
+	}
+
+	var dialogShown bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("Supersede 1 records into one"), &dialogShown,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("supersede dialog wait failed: %v", err)
+	}
+	if !dialogShown {
+		t.Fatal("supersede dialog poll returned without error but dialogShown=false")
+	}
+
+	// Appends a unique suffix to the prefilled content textarea. Position
+	// within the field is irrelevant — the assertion below only checks the
+	// successor's content CONTAINS the suffix.
+	suffix := mintFixtureMarker(t)
+	if err := chromedp.Run(runCtx, chromedp.SendKeys(`textarea[aria-label="content"]`, " "+suffix, chromedp.ByQuery)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("append content suffix: %v", err)
+	}
+
+	// canSubmit gates on the debounced validate_only preview answering, not
+	// merely on the dialog being open — wait for the button to actually
+	// enable before clicking it.
+	var submitEnabled bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(submitButtonEnabledPollExpr("Supersede 1 → 1"), &submitEnabled,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("supersede submit-enabled wait failed: %v", err)
+	}
+	if !submitEnabled {
+		t.Fatal("supersede submit-enabled poll returned without error but submitEnabled=false")
+	}
+
+	if err := chromedp.Run(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Supersede 1 → 1"]`, chromedp.BySearch)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("click Supersede: %v", err)
+	}
+
+	var noUndo bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("No undo."), &noUndo,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("supersede result wait failed: %v", err)
+	}
+	if !noUndo {
+		t.Fatal("supersede result poll returned without error but noUndo=false")
+	}
+
+	predecessor := getMemoryAsFixture(context.Background(), t, fixture, id)
+	if predecessor.GetSupersededBy() == "" {
+		t.Fatalf("supersede result: SupersededBy is empty for %s after superseding through the console", id)
+	}
+	successor := getMemoryAsFixture(context.Background(), t, fixture, predecessor.GetSupersededBy())
+	if !strings.Contains(successor.GetContent(), suffix) {
+		t.Fatalf("supersede result: successor %s content %q does not contain suffix %q", successor.GetId(), successor.GetContent(), suffix)
+	}
+
+	obs.assertClean(t)
+}
+
+// entryScope is TestConsoleEntryPointResolution's own scope — a fresh marker
+// under a scope no other chromedp test writes to (DSYS-04 ordering).
+const entryScope = "repo:e2e-console-entry"
+
+// TestConsoleEntryPointResolution drives a REAL headless Chrome against the
+// REAL engram binary and Qdrant (D-18, CUR-01): resolves a seeded record by
+// full UUID and by short_id through /ui/search?q=, and by short_id typed
+// into the header search and entered from the root route — each time
+// rendering the record in the detail pane with the matching resolution
+// line.
+func TestConsoleEntryPointResolution(t *testing.T) {
+	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
+	fixture := startConsoleServer(t)
+
+	marker := mintFixtureMarker(t)
+	id, shortID := seedFixtureRecord(context.Background(), t, fixture, entryScope, marker) // BEFORE navigation, so the record exists when the SPA's first getMemory fires.
+
+	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
+		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
+		chromedp.ExecPath(chromePath),
+		chromedp.WindowSize(1280, 1000), // the default headless window is short enough to put a dialog's footer buttons below the fold, off a raw-coordinate click's reach.
+	)
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	t.Cleanup(allocCancel)
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	t.Cleanup(browserCancel)
+
+	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
+	defer runCancel()
+
+	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
+		return setConsoleCookies(ctx, fixture)
+	})
+
+	obs := newBrowserObserver()
+	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
+
+	if err := chromedp.Run(runCtx, setCookies); err != nil {
+		t.Fatalf("set console cookies: %v", err)
+	}
+
+	// (1) Resolve by full UUID via /ui/search?q=<uuid>.
+	idURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape(id)
+	var idRendered bool
+	if err := chromedp.Run(runCtx,
+		chromedp.Navigate(idURL),
+		chromedp.Poll(detailPaneMarkerPollExpr(marker), &idRendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("id-resolved pane render wait failed: %v", err)
+	}
+	if !idRendered {
+		t.Fatal("id-resolved pane render poll returned without error but idRendered=false")
+	}
+	var idResolutionShown bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(fmt.Sprintf("Resolved id %s → 1 memory", id)), &idResolutionShown,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("id resolution line wait failed: %v", err)
+	}
+	if !idResolutionShown {
+		t.Fatal("id resolution line poll returned without error but idResolutionShown=false")
+	}
+
+	// (2) Resolve by short_id via /ui/search?q=<short_id>.
+	shortIDURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape(shortID)
+	var shortIDRendered bool
+	if err := chromedp.Run(runCtx,
+		chromedp.Navigate(shortIDURL),
+		chromedp.Poll(detailPaneMarkerPollExpr(marker), &shortIDRendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("short_id-resolved pane render wait failed: %v", err)
+	}
+	if !shortIDRendered {
+		t.Fatal("short_id-resolved pane render poll returned without error but shortIDRendered=false")
+	}
+	var shortIDResolutionShown bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(fmt.Sprintf("Resolved short_id %s → 1 memory", shortID)), &shortIDResolutionShown,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("short_id resolution line wait failed: %v", err)
+	}
+	if !shortIDResolutionShown {
+		t.Fatal("short_id resolution line poll returned without error but shortIDResolutionShown=false")
+	}
+
+	// (3) From the root route, type the short_id into the header search and
+	// press Enter, resolving it through HeaderSearch's own "Memories" item
+	// (the single command-item its getMemory-by-id/short_id lookup renders).
+	rootURL := fixture.srv.baseURL() + "/ui/"
+	var rootHydrated bool
+	if err := chromedp.Run(runCtx,
+		chromedp.Navigate(rootURL),
+		chromedp.Poll(hydrationPollExpr, &rootHydrated,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("root route hydration wait failed: %v", err)
+	}
+	if !rootHydrated {
+		t.Fatal("root route hydration poll returned without error but rootHydrated=false")
+	}
+	// Hydration landing (data-state="open" et al) is synchronous once the
+	// <h1> hook fires, but bind:value's reactive sync to headerSearch.text
+	// can still race a focus+type performed in the same instant — typing
+	// into the pre-hydration DOM node risks Svelte immediately resetting
+	// .value back to the (empty) component state right after. The <h1> poll
+	// above already proves hydration completed; that ordering is what makes
+	// the following focus+type land on the live, bound input.
+	//
+	// A real click, not chromedp.Focus (dom.Focus): HeaderSearch opens its
+	// popover from an onfocus prop on CommandPrimitive.Input, and CDP's raw
+	// DOM.focus() command does not reliably trigger that Svelte listener the
+	// way a genuine dispatched mouse click (mousedown → focus → click, the
+	// browser's own native click-to-focus path) does — confirmed live: after
+	// chromedp.Focus alone the popover never mounted, but a click opens it.
+	if err := chromedp.Run(runCtx, chromedp.Click(`[aria-label="Search memories"]`, chromedp.ByQuery)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("click header search: %v", err)
+	}
+	// Sets the input's value directly and dispatches a real 'input' event —
+	// bits-ui's Command root re-focuses its own input on every list update
+	// via an internal afterSleep(10, () => node.focus()) (command.svelte.js);
+	// typing character-by-character via real key events races that steal
+	// across CDP's per-keystroke round trips and can lose keystrokes. A
+	// single value write + one 'input' event lands atomically, same as
+	// Svelte's bind:value reads it, with nothing to race against.
+	setValueJS, _ := json.Marshal(shortID)
+	if err := chromedp.Run(runCtx, chromedp.Evaluate(fmt.Sprintf(`(() => {
+		const el = document.querySelector('[aria-label="Search memories"]');
+		if (!el) return false;
+		const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+		setter.call(el, %s);
+		el.dispatchEvent(new Event('input', { bubbles: true }));
+		return true;
+	})()`, setValueJS), nil)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("set header search value: %v", err)
+	}
+	var headerResolved bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("→ 1 memory"), &headerResolved,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("header search resolution wait failed: %v", err)
+	}
+	if !headerResolved {
+		t.Fatal("header search resolution poll returned without error but headerResolved=false")
+	}
+	// Re-focus before Enter: the list re-render triggered by the value
+	// write above may have moved DOM focus away from the input (the same
+	// bits-ui behavior noted above), and cmdk's Enter-selects-highlighted-
+	// item handling is wired to the input's own keydown.
+	if err := chromedp.Run(runCtx, chromedp.Focus(`[aria-label="Search memories"]`, chromedp.ByQuery)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("re-focus header search before Enter: %v", err)
+	}
+	if err := chromedp.Run(runCtx, chromedp.KeyEvent(kb.Enter)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("send Enter: %v", err)
+	}
+	var enterRendered bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(detailPaneMarkerPollExpr(marker), &enterRendered,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("header search Enter render wait failed: %v", err)
+	}
+	if !enterRendered {
+		t.Fatal("header search Enter render poll returned without error but enterRendered=false")
+	}
+
+	obs.assertClean(t)
 }
