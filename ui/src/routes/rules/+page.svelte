@@ -4,11 +4,15 @@
   // full text on demand via GetMemory. Mirrors /search's route composition
   // (RecallSplit + ResultsList + DetailPane) — see 04-07-SUMMARY.md for the
   // groupKey/rowTrailing plumbing this route consumes.
+  import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+  import { ConnectError, Code } from '@connectrpc/connect';
   import { engram } from '$lib/client';
+  import { useDeleteMemory } from '$lib/mutations/memory';
+  import { persistResume, redirectToLogin, peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import { parseRulesParams, encodeRulesParams, type RulesParams } from '$lib/search/rules-params';
   import { rulesHeaderParts, rulesEmptyHeading, type HeaderPart } from '$lib/search/recall-header';
@@ -17,6 +21,7 @@
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
   import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
+  import DeleteConfirmDialog from '$lib/components/DeleteConfirmDialog.svelte';
   import { Badge } from '$lib/components/ui/badge';
 
   const params = $derived(parseRulesParams(page.url.searchParams));
@@ -99,6 +104,89 @@
   function onRecallRetry() {
     rulesQ.refetch();
   }
+
+  // D-12: the only action on /rules is Delete (through the confirm, kind
+  // 'rule') plus copying ids — no edit, no visibility toggle, no archive, no
+  // supersede, no row toolbar and no selection column. Host-authoritative
+  // closure (mirrors WriteSurfaces' confirmDelete): the target (and thus the
+  // dialog) is cleared ONLY on success or NotFound — a terminal
+  // Unauthenticated/PermissionDenied RETAINS the target so the dialog stays
+  // visibly open with the re-auth CTA.
+  const deleteMemoryMutation = useDeleteMemory();
+  let deleteTarget = $state<string | undefined>(undefined);
+  let deleteOpen = $state(false);
+  let deleteAuthFailure = $state(false);
+  let deleteNotice = $state<string | undefined>(undefined);
+
+  function requestDelete(id: string) {
+    deleteAuthFailure = false;
+    deleteTarget = id;
+    deleteOpen = true;
+  }
+
+  function clearDeleteTarget() {
+    deleteTarget = undefined;
+    deleteAuthFailure = false;
+    deleteOpen = false;
+    deleteNotice = undefined;
+  }
+
+  async function confirmDelete(): Promise<void> {
+    if (!deleteTarget) return;
+    const id = deleteTarget;
+    await new Promise<void>((resolve) => {
+      deleteMemoryMutation.mutate(
+        { id },
+        {
+          onSuccess: () => {
+            clearDeleteTarget();
+            if (id === params.sel) navigate({ sel: '' });
+            resolve();
+          },
+          onError: (err: unknown) => {
+            const ce = err instanceof ConnectError ? err : ConnectError.from(err);
+            if (ce.code === Code.Unauthenticated || ce.code === Code.PermissionDenied) {
+              deleteAuthFailure = true;
+            } else if (ce.code === Code.NotFound) {
+              clearDeleteTarget();
+              if (id === params.sel) navigate({ sel: '' });
+            }
+            resolve();
+          }
+        }
+      );
+    });
+  }
+
+  function cancelDelete(): void {
+    clearDeleteTarget();
+  }
+
+  // D-15/CUR-05: persist a v2 delete resume envelope before the redirect, so
+  // the /ui/ landing can route back here and this route can reopen the
+  // confirm for the same target after the OIDC round trip.
+  function onDeleteReauth(): void {
+    if (!deleteTarget) return;
+    persistResume({
+      returnPath: normalizeReturnPath(page.url.pathname + page.url.search),
+      kind: 'delete',
+      id: deleteTarget
+    });
+    redirectToLogin();
+  }
+
+  // The route is the SOLE peek/consume owner for the 'delete' resume kind —
+  // reopens the confirm for the resumed id with the review-and-resend
+  // notice; nothing deletes until the operator clicks Delete again, and the
+  // envelope is consumed exactly once.
+  onMount(() => {
+    const env = peekResume();
+    if (env && env.kind === 'delete') {
+      requestDelete(env.id);
+      deleteNotice = 'Signed in again — review and resend';
+      consumeResume();
+    }
+  });
 </script>
 
 {#snippet sharedChip()}
@@ -131,6 +219,7 @@
             {busy}
             onopen={toggleOpen}
             onescape={closeSel}
+            ondelete={requestDelete}
             groupKey={(m) => m.scope}
             groupHeader={scopeGroupHeader}
             rowTrailing={sharedChip}
@@ -146,11 +235,22 @@
           {inResults}
           onclose={closeSel}
           onselect={(id) => navigate({ sel: id })}
+          ondelete={requestDelete}
         />
       {/snippet}
     </RecallSplit>
   </div>
 </div>
+
+<DeleteConfirmDialog
+  bind:open={deleteOpen}
+  kind="rule"
+  notice={deleteNotice}
+  onconfirm={confirmDelete}
+  oncancel={cancelDelete}
+  authFailure={deleteAuthFailure}
+  onreauth={onDeleteReauth}
+/>
 
 <style>
   .rules-page {
