@@ -788,7 +788,7 @@ changed since `internal/verdict` (Phase 2 of this milestone... actually 2026-08-
 this session (cited inline with `path:line`). The three items above are the only places this
 research extrapolated beyond what was directly read.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `understandingAudit`'s validation need to be gated at all, or always-unconditional like `RerankAudit`?**
    - What we know: D-16 says Validate "rejects a non-boolean" and the flag "warns when set while
@@ -804,6 +804,8 @@ research extrapolated beyond what was directly read.
      instead of at startup config validation. Confirm this reading with the user/planner before
      locking the Validate implementation, since D-01a's own text ("Validate rejects a non-positive
      value **while understanding is on**") is ambiguous between "explicitly on" and "effectively on."
+   - RESOLVED (06-04-PLAN.md): validate whenever understanding is *effectively* on — explicit `jev`
+     and unset-with-provider-jev.
 
 2. **Where does `internal/understand`'s test suite construct its fixture `caller`/`Subject` values?**
    - What we know: `internal/server/tags.go`/`related.go` both take a `caller` struct
@@ -821,6 +823,8 @@ research extrapolated beyond what was directly read.
      `Subject` or store reference itself. This keeps the new package testable with zero store
      dependency, matching `internal/relevance`'s and `internal/verdict`'s existing test suites
      (neither constructs a `store.Store` or Qdrant fixture).
+   - RESOLVED (06-01/06-02-PLAN.md): zero-I/O — `Input.Scopes []string` / `Input.Tags []string`,
+     no store or Subject import.
 
 ## Environment Availability
 

@@ -610,7 +610,7 @@ Plans:
 
 ### Phase 6: Query Understanding
 
-**Goal**: An operator can opt into NL-query-understanding filter chips that never change results
+**Goal**: An operator gets NL-query-understanding filter chips (on by default when a decisions provider is configured, explicitly disableable) that never change results
 until confirmed, with zero behavioral or logging change when the capability is off. The Choice/Noul
 question-batching shape for query-to-filter parsing has no direct precedent in `internal/decide`'s
 existing consumers and is flagged for a research pass at plan time.
@@ -623,8 +623,27 @@ existing consumers and is flagged for a research pass at plan time.
   3. A test proves search results are unchanged until a suggested chip is clicked, and an accepted chip is indistinguishable from a manually added one
   4. A test proves no query text appears in logs unless the explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set
 
-**Plans:** 0/? plans (not yet planned)
+**Plans:** 6 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — UnderstandQuery wire contract (decision gate) and the end-to-end category slice: config resolution, dedicated no-retry client, internal/understand, core, Connect handler (D-01..D-06; NLQ-01, NLQ-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-02-PLAN.md — scope Choice over the caller's own scopes, day-aligned time window, local tag matching, zero-suggestion fallbacks within a bounded budget (D-05..D-09; NLQ-02)
+- [ ] 06-03-PLAN.md — console Suggested row: unapplied chips that accept through the facet path, hide/dismiss rules, trigger gate, latch, roving toolbar, AA audit (D-10..D-13; NLQ-03)
+- [ ] 06-04-PLAN.md — Config.Validate for the three keys, the startup egress disclosure, the audit flag's config half (D-01, D-01a, D-15, D-16; NLQ-01, NLQ-04)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-05-PLAN.md — opt-in audit line and always-on engram.understand.* span telemetry, with the no-query-text sweep (D-14, D-16, D-17; NLQ-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 06-06-PLAN.md — live-server chromedp round trip, vendored SPA, Helm explicit-off values, configure/upgrade/deploy docs and the phase gates (NLQ-01, NLQ-03, NLQ-04)
 
 ## Progress
 
