@@ -608,6 +608,7 @@
             onarchive={(ids) => curation?.openArchive(ids)}
             onrestore={(ids) => curation?.openRestore(ids)}
             onchain={(id) => curation?.openChain(id)}
+            onrelated={openRelated}
           />
           {#if classified.kind === 'text' && memories.length === effective.k && nextK(effective.k) !== undefined}
             <div class="show-more-row">
