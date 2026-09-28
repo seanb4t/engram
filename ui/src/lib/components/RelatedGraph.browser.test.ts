@@ -6,6 +6,7 @@ import '../../app.css';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
+import { tick } from 'svelte';
 import RelatedGraph from './RelatedGraph.svelte';
 import { EDGE_STYLE, LABEL_ALL_MAX, type GraphNode, type GraphEdge } from '$lib/related/graph';
 
@@ -29,6 +30,13 @@ function mkAnchor(overrides: Partial<GraphNode> = {}): GraphNode {
 
 function anchorPlus(rest: GraphNode[]): GraphNode[] {
   return [mkAnchor(), ...rest];
+}
+
+// Mirrors ResultsList.browser.test.ts's own fireKey helper — dispatches a
+// real keydown on the already-focused element so modifier flags (ctrlKey,
+// metaKey) can be asserted precisely.
+function fireKey(el: Element, key: string, opts: Partial<KeyboardEventInit> = {}) {
+  el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 }
 
 function renderGraph(nodes: GraphNode[], edges: GraphEdge[], extra: Record<string, unknown> = {}) {
@@ -170,6 +178,127 @@ describe('RelatedGraph — click and dblclick', () => {
     onselect.mockClear();
     screen.container.querySelector('#gn-anchor-id')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(onselect).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('RelatedGraph — keyboard traversal (GRAPH-02, D-10)', () => {
+  function laneNodes(): GraphNode[] {
+    return anchorPlus([
+      mkNode('sup', { types: ['supersession'] }),
+      mkNode('cit', { types: ['citation'] }),
+      mkNode('tag', { types: ['tag'] }),
+      mkNode('vec', { types: ['vector'] })
+    ]);
+  }
+
+  it('focusing the svg sets aria-activedescendant to the anchor', async () => {
+    const screen = await renderGraph(laneNodes(), []);
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
+  });
+
+  it('ArrowDown/ArrowRight walk forward in lane order, ArrowUp/ArrowLeft walk back, both clamp at the ends, focus stays on the svg', async () => {
+    const screen = await renderGraph(laneNodes(), []);
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
+
+    fireKey(svg, 'ArrowDown');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-sup');
+    fireKey(svg, 'ArrowDown');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-cit');
+    fireKey(svg, 'ArrowRight');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-tag');
+    fireKey(svg, 'ArrowRight');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-vec');
+    // clamp at the end
+    fireKey(svg, 'ArrowDown');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-vec');
+
+    fireKey(svg, 'ArrowUp');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-tag');
+    fireKey(svg, 'ArrowLeft');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-cit');
+    fireKey(svg, 'ArrowLeft');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-sup');
+    fireKey(svg, 'ArrowUp');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
+    // clamp at the start
+    fireKey(svg, 'ArrowUp');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
+
+    expect(document.activeElement).toBe(svg);
+  });
+
+  it('End/Home jump to the last/first node', async () => {
+    const screen = await renderGraph(laneNodes(), []);
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+
+    fireKey(svg, 'End');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-vec');
+    fireKey(svg, 'Home');
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
+  });
+
+  it('Space on a candidate calls onselect(its id); Space on the anchor calls onselect(null)', async () => {
+    const onselect = vi.fn();
+    const screen = await renderGraph(laneNodes(), [], { onselect });
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+
+    fireKey(svg, 'ArrowDown');
+    fireKey(svg, ' ');
+    expect(onselect).toHaveBeenCalledWith('sup');
+
+    onselect.mockClear();
+    fireKey(svg, 'Home');
+    fireKey(svg, ' ');
+    expect(onselect).toHaveBeenCalledWith(null);
+  });
+
+  it('Enter on a candidate calls onrecenter(its id); Enter on the anchor does nothing', async () => {
+    const onrecenter = vi.fn();
+    const screen = await renderGraph(laneNodes(), [], { onrecenter });
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+
+    fireKey(svg, 'ArrowDown');
+    fireKey(svg, 'Enter');
+    expect(onrecenter).toHaveBeenCalledWith('sup');
+
+    onrecenter.mockClear();
+    fireKey(svg, 'Home');
+    fireKey(svg, 'Enter');
+    expect(onrecenter).not.toHaveBeenCalled();
+  });
+
+  it('ArrowDown with ctrlKey does not move', async () => {
+    const screen = await renderGraph(laneNodes(), []);
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
+
+    fireKey(svg, 'ArrowDown', { ctrlKey: true });
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
   });
 });
 

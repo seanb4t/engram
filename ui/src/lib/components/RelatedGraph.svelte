@@ -50,6 +50,79 @@
   // the selected node keep a label (D-20).
   const dense = $derived(nodes.length > LABEL_ALL_MAX);
 
+  // D-10 roving-focus keyboard model: the svg is the ONE tab stop
+  // (role=listbox, tabindex=0); activeId walks `nodes` in lane order (the
+  // prop's own order -- anchor first, then supersession > citation > tag >
+  // vector, strength within lane) exactly as ResultsList.svelte's listbox
+  // walks its own array. Focusing the svg seeds activeId to the anchor when
+  // unset; an $effect mirrors activeId into aria-activedescendant, mirroring
+  // ResultsList's own pattern.
+  let svgEl: SVGSVGElement | undefined = $state();
+  let activeId = $state<string | null>(null);
+
+  $effect(() => {
+    if (!svgEl) return;
+    if (activeId !== null) {
+      svgEl.setAttribute('aria-activedescendant', `gn-${activeId}`);
+    } else {
+      svgEl.removeAttribute('aria-activedescendant');
+    }
+  });
+
+  function activeIndex(): number {
+    if (activeId === null) return -1;
+    return nodes.findIndex((n) => n.id === activeId);
+  }
+
+  function setActiveIndex(idx: number) {
+    if (nodes.length === 0) return;
+    const clamped = Math.max(0, Math.min(nodes.length - 1, idx));
+    activeId = nodes[clamped]?.id ?? null;
+  }
+
+  function onGraphFocus() {
+    if (activeId === null) activeId = anchor?.id ?? nodes[0]?.id ?? null;
+  }
+
+  function onGraphKeydown(e: KeyboardEvent) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const current = activeIndex();
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowRight':
+        e.preventDefault();
+        setActiveIndex((current < 0 ? -1 : current) + 1);
+        break;
+      case 'ArrowUp':
+      case 'ArrowLeft':
+        e.preventDefault();
+        setActiveIndex((current < 0 ? 1 : current) - 1);
+        break;
+      case 'Home':
+        e.preventDefault();
+        setActiveIndex(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        setActiveIndex(nodes.length - 1);
+        break;
+      case ' ': {
+        e.preventDefault();
+        const n = current >= 0 ? nodes[current] : undefined;
+        if (n) onselect(n.isAnchor ? null : n.id);
+        break;
+      }
+      case 'Enter': {
+        e.preventDefault();
+        const n = current >= 0 ? nodes[current] : undefined;
+        if (n && !n.isAnchor) onrecenter(n.id);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   function edgePath(e: GraphEdge): string {
     const s = positions.get(e.source);
     const t = positions.get(e.target);
@@ -77,6 +150,8 @@
   }
 
   function nodeClick(n: GraphNode) {
+    activeId = n.id;
+    svgEl?.focus({ preventScroll: true });
     onselect(n.isAnchor ? null : n.id);
   }
 
@@ -86,12 +161,15 @@
 </script>
 
 <svg
+  bind:this={svgEl}
   class="graph"
   class:has-sel={selectedId !== null}
   viewBox="-220 -190 440 380"
   role="listbox"
   tabindex="0"
-  aria-label={`Related graph for ${anchor?.shortId ?? anchorId}: ${Math.max(nodes.length - 1, 0)} neighbours`}
+  aria-label={`Related graph for ${anchor?.shortId ?? anchorId}: ${Math.max(nodes.length - 1, 0)} neighbours. Arrows move, Space selects, Enter re-centres, Escape returns.`}
+  onfocus={onGraphFocus}
+  onkeydown={onGraphKeydown}
 >
   <defs>
     <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
@@ -133,6 +211,7 @@
         class:sel={selectedId === n.id}
         class:fdim={dimmedIds?.has(n.id)}
         class:hidden-state={n.states.length > 0}
+        class:kfocus={activeId === n.id}
         id="gn-{n.id}"
         role="option"
         aria-selected={selectedId === n.id}
