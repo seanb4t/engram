@@ -6,6 +6,7 @@
   import type { SearchParams } from '$lib/search/params';
   import type { ListScopesResponse } from '$lib/gen/engram_pb';
   import ScopeCombobox from './ScopeCombobox.svelte';
+  import TagCombobox from './TagCombobox.svelte';
 
   // ROW-05/ROW-06/E4/E5: one horizontally scrollable line of URL-persisted
   // filter chips. Every chip maps to a real SearchMemoriesRequest field —
@@ -154,6 +155,11 @@
         <button type="button" aria-label={`remove #${t}`} onclick={() => removeTag(t)}>✕</button>
       </span>
     {/each}
+
+    <TagCombobox
+      scope={params.scope}
+      onadd={(t) => onchange({ tags: params.tags.includes(t) ? params.tags : [...params.tags, t] })}
+    />
 
     <Popover.Root bind:open={createdOpen}>
       <Popover.Trigger>
