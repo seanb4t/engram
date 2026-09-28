@@ -8,6 +8,8 @@ import {
   MemorySchema,
   ArchiveOutcome,
   RelatedMemoriesResponseSchema,
+  UnderstandQueryResponseSchema,
+  SuggestionSource,
   type Memory,
   type SupersedeMemoryRequest
 } from '$lib/gen/engram_pb';
@@ -31,7 +33,8 @@ const {
   archiveMemorySpy,
   restoreMemorySpy,
   supersedeMemorySpy,
-  relatedMemoriesSpy
+  relatedMemoriesSpy,
+  understandQuerySpy
 } = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/search');
@@ -52,7 +55,8 @@ const {
     archiveMemorySpy: vi.fn(),
     restoreMemorySpy: vi.fn(),
     supersedeMemorySpy: vi.fn(),
-    relatedMemoriesSpy: vi.fn()
+    relatedMemoriesSpy: vi.fn(),
+    understandQuerySpy: vi.fn()
   };
 });
 
@@ -71,7 +75,8 @@ vi.mock('$lib/client', async (importOriginal) => {
       listScopes: listScopesSpy,
       listMemories: listMemoriesSpy,
       listTags: listTagsSpy,
-      relatedMemories: relatedMemoriesSpy
+      relatedMemories: relatedMemoriesSpy,
+      understandQuery: understandQuerySpy
     },
     engramWrite: {
       ...actual.engramWrite,
@@ -140,6 +145,7 @@ beforeEach(() => {
   restoreMemorySpy.mockReset();
   supersedeMemorySpy.mockReset();
   relatedMemoriesSpy.mockReset();
+  understandQuerySpy.mockReset().mockResolvedValue({ enabled: false, suggestions: [] });
   sessionStorage.clear();
   pageState.url.href = 'http://localhost/search';
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1324,5 +1330,62 @@ describe('search route — Tags panel shares the slot with the detail pane, narr
     document.documentElement.classList.add('dark');
     await page.screenshot();
     document.documentElement.classList.remove('dark');
+  });
+});
+
+describe('search route — suggested filters (NLQ-03)', () => {
+  it('accepts a suggested category chip to the same URL and SearchMemories calls the manual FacetStrip chip produces', async () => {
+    const startUrl = 'http://localhost/search?q=what%20did%20we%20decide';
+    const understandResponse = create(UnderstandQueryResponseSchema, {
+      enabled: true,
+      suggestions: [{ kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED }]
+    });
+    understandQuerySpy.mockReset().mockResolvedValue(understandResponse);
+    pageState.url.href = startUrl;
+
+    const screen = await renderSearch();
+    const chip = screen.getByRole('button', { name: 'Suggested filter, not applied: decision' });
+    await expect.element(chip).toBeInTheDocument();
+
+    // D-10/D-11: nothing changes on arrival — the suggested chip renders but
+    // the SearchMemories request is unchanged until an explicit accept.
+    const callsBeforeAccept = searchMemoriesSpy.mock.calls.length;
+    expect(searchMemoriesSpy.mock.calls.every((c) => c[0].categories.length === 0)).toBe(true);
+    expect(understandQuerySpy).toHaveBeenCalledTimes(1);
+    const [understandReq, understandOpts] = understandQuerySpy.mock.calls[0];
+    expect(understandReq).toEqual(
+      expect.objectContaining({
+        query: 'what did we decide',
+        categories: [],
+        tags: [],
+        scope: '',
+        crossSpine: true,
+        createdAfter: '',
+        createdBefore: ''
+      })
+    );
+    expect(understandOpts?.signal).toBeInstanceOf(AbortSignal);
+
+    await chip.click();
+    await expect.poll(() => pageState.url.searchParams.get('cat')).toBe('decision');
+    const suggestedHref = pageState.url.href;
+    const suggestedCalls = searchMemoriesSpy.mock.calls.slice(callsBeforeAccept);
+
+    await screen.unmount();
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    pageState.url.href = startUrl;
+    searchMemoriesSpy.mockReset().mockResolvedValue(emptySearchResult());
+    understandQuerySpy.mockReset().mockResolvedValue(understandResponse);
+
+    const screen2 = await renderSearch();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const manualCallsBefore = searchMemoriesSpy.mock.calls.length;
+    await screen2.getByRole('button', { name: /^decision \d+$/ }).click();
+    await expect.poll(() => pageState.url.searchParams.get('cat')).toBe('decision');
+    const manualHref = pageState.url.href;
+    const manualCalls = searchMemoriesSpy.mock.calls.slice(manualCallsBefore);
+
+    expect(suggestedHref).toBe(manualHref);
+    expect(suggestedCalls).toEqual(manualCalls);
   });
 });

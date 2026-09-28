@@ -29,6 +29,7 @@
     type SearchParams
   } from '$lib/search/params';
   import { classifyInput, type OperatorChip } from '$lib/search/classify';
+  import { understandEligible, understandQueryKey, understandQueryRequest } from '$lib/search/understand';
   import { relatedPath } from '$lib/search/related-params';
   import {
     rankedHeaderParts,
@@ -43,6 +44,7 @@
   } from '$lib/search/recall-header';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import FacetStrip from '$lib/components/FacetStrip.svelte';
+  import SuggestedRow from '$lib/components/SuggestedRow.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
@@ -163,6 +165,30 @@
     queryFn: ({ signal }) => engram.listScopes({}, { signal }),
     meta: { silent: true }
   }));
+
+  // NLQ-03/D-04/D-10: the Suggested row's UnderstandQuery. Keyed by bare q
+  // (never `effective` — the query-key pitfall note in 06-UI-SPEC.md), no
+  // placeholderData (a previous q's chips must never show for a new q), and
+  // latched off for the rest of the page session once a response reports
+  // enabled: false.
+  let understandingOff = $state(false);
+  const understandQ = createQuery(() => ({
+    queryKey: understandQueryKey(params.q),
+    queryFn: ({ signal }) =>
+      engram.understandQuery(
+        understandQueryRequest(classified.kind === 'text' ? classified.text : '', effective),
+        { signal }
+      ),
+    enabled: understandEligible(classified) && !understandingOff,
+    staleTime: Infinity,
+    meta: { silent: true }
+  }));
+  $effect(() => {
+    if (understandQ.data?.enabled === false) understandingOff = true;
+  });
+  const visibleSuggested = $derived(
+    understandEligible(classified) && understandQ.data?.enabled ? understandQ.data.suggestions : []
+  );
 
   // D-09: operator-only input (no free text — e.g. `scope:x #tag is:gotcha`)
   // is an unranked ListMemories cursor listing that infinite-scrolls, never a
@@ -553,6 +579,13 @@
     {tagsPanelOpen}
     ontagspanel={() => (tagsPanelOpen = !tagsPanelOpen)}
   />
+  {#if visibleSuggested.length > 0}
+    <SuggestedRow
+      suggestions={visibleSuggested}
+      params={effective}
+      onchange={(partial) => navigate({ ...partial, sel: '' })}
+    />
+  {/if}
   <ResultsHeader
     parts={headerParts}
     {scopeHits}
