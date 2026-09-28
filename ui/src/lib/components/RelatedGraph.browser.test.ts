@@ -8,7 +8,7 @@ import { page } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
 import { tick } from 'svelte';
 import RelatedGraph from './RelatedGraph.svelte';
-import { EDGE_STYLE, LABEL_ALL_MAX, type GraphNode, type GraphEdge } from '$lib/related/graph';
+import { EDGE_STYLE, LABEL_ALL_MAX, neighbourhoodSummary, type GraphNode, type GraphEdge } from '$lib/related/graph';
 
 function mkNode(id: string, overrides: Partial<GraphNode> = {}): GraphNode {
   return {
@@ -299,6 +299,177 @@ describe('RelatedGraph — keyboard traversal (GRAPH-02, D-10)', () => {
     fireKey(svg, 'ArrowDown', { ctrlKey: true });
     await tick();
     expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
+  });
+});
+
+describe('RelatedGraph — screen-reader list and live summary (D-11)', () => {
+  function laneNodes(): GraphNode[] {
+    return anchorPlus([
+      mkNode('sup', { types: ['supersession'] }),
+      mkNode('cit', { types: ['citation'] }),
+      mkNode('tag', { types: ['tag'] }),
+      mkNode('vec', { types: ['vector'] })
+    ]);
+  }
+
+  it('the hidden list has one item per node in lane order with each accessible name, and the active item carries aria-current', async () => {
+    const screen = await renderGraph(laneNodes(), []);
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+    fireKey(svg, 'ArrowDown');
+    await tick();
+
+    const items = screen.container.querySelectorAll('ul.sr-only li');
+    expect(items.length).toBe(5);
+    expect(items[0]?.textContent).toBe('anchor-id name');
+    expect(items[1]?.textContent).toBe('sup name');
+    expect(items[1]?.getAttribute('aria-current')).toBe('true');
+    expect(items[0]?.getAttribute('aria-current')).not.toBe('true');
+  });
+
+  it('the aria-live region reads neighbourhoodSummary(nodes) by default and updates when nodes changes', async () => {
+    const nodes = laneNodes();
+    const screen = await renderGraph(nodes, []);
+    const live = screen.container.querySelector('p.sr-only[aria-live="polite"]');
+    expect(live?.textContent).toBe(neighbourhoodSummary(nodes));
+
+    await screen.rerender({ anchorId: 'anchor-id', nodes: anchorPlus([mkNode('vec', { types: ['vector'] })]), edges: [], onselect: vi.fn(), onrecenter: vi.fn() });
+    const nextNodes = anchorPlus([mkNode('vec', { types: ['vector'] })]);
+    expect(live?.textContent).toBe(neighbourhoodSummary(nextNodes));
+  });
+
+  it('the summary prop overrides the default neighbourhoodSummary text', async () => {
+    const screen = await renderGraph(laneNodes(), [], { summary: 'custom announcement' });
+    const live = screen.container.querySelector('p.sr-only[aria-live="polite"]');
+    expect(live?.textContent).toBe('custom announcement');
+  });
+});
+
+describe('RelatedGraph — Escape tiers (D-04)', () => {
+  it('Escape with a selection calls onselect(null), not onleave, and stops propagation', async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const onselect = vi.fn();
+    const onleave = vi.fn();
+    const windowKeydown = vi.fn();
+    window.addEventListener('keydown', windowKeydown);
+    const screen = await renderGraph(nodes, [], { selectedId: 'n1', onselect, onleave });
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+
+    fireKey(svg, 'Escape');
+    expect(onselect).toHaveBeenCalledWith(null);
+    expect(onleave).not.toHaveBeenCalled();
+    expect(windowKeydown).not.toHaveBeenCalled();
+    window.removeEventListener('keydown', windowKeydown);
+  });
+
+  it('Escape with no selection calls onleave, and stops propagation', async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const onselect = vi.fn();
+    const onleave = vi.fn();
+    const windowKeydown = vi.fn();
+    window.addEventListener('keydown', windowKeydown);
+    const screen = await renderGraph(nodes, [], { onselect, onleave });
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+
+    fireKey(svg, 'Escape');
+    expect(onleave).toHaveBeenCalledOnce();
+    expect(onselect).not.toHaveBeenCalled();
+    expect(windowKeydown).not.toHaveBeenCalled();
+    window.removeEventListener('keydown', windowKeydown);
+  });
+});
+
+describe('RelatedGraph — focus ring and floating focus card (D-20)', () => {
+  function laneNodes(): GraphNode[] {
+    return anchorPlus([
+      mkNode('sup', { types: ['supersession'], summary: 'a supersession candidate' }),
+      mkNode('cit', { types: ['citation'] })
+    ]);
+  }
+
+  it('ArrowDown shows the focus card with the active node short_id and summary', async () => {
+    const screen = await renderGraph(laneNodes(), []);
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+    fireKey(svg, 'ArrowDown');
+    await tick();
+
+    const card = screen.container.querySelector('.flabel.show');
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain('sup0000000'); // shortId
+    expect(card?.textContent).toContain('a supersession candidate');
+  });
+
+  it('hovering another node shows its card', async () => {
+    const nodes = laneNodes();
+    const screen = await renderGraph(nodes, []);
+    const citEl = screen.container.querySelector('#gn-cit')!;
+    citEl.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    await tick();
+
+    const card = screen.container.querySelector('.flabel.show');
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain('cit name');
+
+    citEl.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+    await tick();
+    expect(screen.container.querySelector('.flabel.show')).toBeNull();
+  });
+
+  it('the card is absent for the selected node', async () => {
+    const nodes = laneNodes();
+    const screen = await renderGraph(nodes, [], { selectedId: 'sup' });
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+    fireKey(svg, 'ArrowDown'); // moves activeId to 'sup', which is selected
+    await tick();
+
+    expect(screen.container.querySelector('.flabel.show')).toBeNull();
+  });
+
+  it('with 30 nodes, the focused node label renders past LABEL_ALL_MAX', async () => {
+    const many: GraphNode[] = [];
+    for (let i = 0; i < LABEL_ALL_MAX + 3; i++) many.push(mkNode(`n${i}`, { types: ['vector'] }));
+    const nodes = anchorPlus(many);
+    expect(nodes.length).toBe(30);
+    const screen = await renderGraph(nodes, []);
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+    fireKey(svg, 'ArrowDown');
+    await tick();
+    fireKey(svg, 'ArrowDown');
+    await tick();
+
+    const focusedLabel = screen.container.querySelector('#gn-n1 text.lbl');
+    expect(focusedLabel).not.toBeNull();
+  });
+
+  it('a refetch that drops the focused node shows the not-found message, and the next arrow key resumes from the anchor', async () => {
+    const nodes = laneNodes();
+    const screen = await renderGraph(nodes, []);
+    const svg = screen.container.querySelector('svg')!;
+    (svg as HTMLElement).focus();
+    await tick();
+    fireKey(svg, 'ArrowDown'); // activeId = 'sup'
+    await tick();
+
+    const nextNodes = anchorPlus([mkNode('cit', { types: ['citation'] })]); // 'sup' dropped
+    await screen.rerender({ anchorId: 'anchor-id', nodes: nextNodes, edges: [], onselect: vi.fn(), onrecenter: vi.fn() });
+    await tick();
+
+    const card = screen.container.querySelector('.flabel.show');
+    expect(card?.textContent).toContain('No memory with id');
+    expect(card?.textContent).toContain('that you can read');
+
+    fireKey(svg, 'ArrowDown'); // resumes from the anchor -> lands on the first candidate
+    await tick();
+    expect(svg.getAttribute('aria-activedescendant')).toBe('gn-cit');
   });
 });
 
