@@ -156,6 +156,16 @@ memory:
     ranker: lexical # ENGRAM_SEARCH_RANKER; "lexical" (default) or "jev"
     rerankTimeout: "" # ENGRAM_SEARCH_RERANK_TIMEOUT; empty means the binary default of 2s. One attempt, no retry — on timeout or error the search falls back to lexical order.
     rerankAudit: "" # ENGRAM_SEARCH_RERANK_AUDIT; "true" logs every reranked search's QUERY TEXT and candidate ids (never content) for offline grading. Time-box it — see the configure guide's "Telemetry" subsection. Empty means off.
+    # Query understanding (Jev, milestone 2026-09-25.01 Phase 6). Empty (the
+    # default) renders no variable and the server FOLLOWS
+    # memory.decisions.provider — with provider "jev", the console's /search
+    # query text is sent to that provider for advisory filter suggestions.
+    # "off" opts out even with a provider configured; "jev" turns it on
+    # explicitly. Read the configure guide's "Query understanding (Jev)"
+    # section before enabling or disabling it.
+    understanding: "" # ENGRAM_SEARCH_UNDERSTANDING; "" (default) follows memory.decisions.provider, "off", or "jev"
+    understandingTimeout: "" # ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT; empty means the binary default of 2s — one attempt, no retry
+    understandingAudit: "" # ENGRAM_SEARCH_UNDERSTANDING_AUDIT; "true" logs each understood console query's TEXT and suggestion labels, never content; empty means off
   qdrant:
     collection: "memory"
   oidc:
