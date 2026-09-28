@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
+import { ConnectError, Code } from '@connectrpc/connect';
 import {
   MemorySchema,
   ArchiveOutcome,
@@ -20,21 +21,28 @@ import {
   RelatedMemorySchema,
   RelatedEdgeSchema,
   SupersessionEvidenceSchema,
+  TagEvidenceSchema,
+  WeightedTagSchema,
+  ListTagsResponseSchema,
   EdgeType,
   SupersessionDirection,
   type Memory
 } from '$lib/gen/engram_pb';
+import { headerSearch } from '$lib/search/header-search.svelte';
 import type { ArchiveSubmitOutcome, SupersedeFields } from '$lib/mutations/curation';
 import { auditAA, formatViolations } from './axe';
 import SearchPage from '../../routes/search/+page.svelte';
 import RulesPage from '../../routes/rules/+page.svelte';
 import ScheduledPage from '../../routes/scheduled/+page.svelte';
+import RelatedPage from '../../routes/related/[id]/+page.svelte';
 import ArchiveConfirmDialog from '../components/ArchiveConfirmDialog.svelte';
 import SupersedeDialog from '../components/SupersedeDialog.svelte';
 import ChainDialog from '../components/ChainDialog.svelte';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog.svelte';
 import ResultsHeader from '../components/ResultsHeader.svelte';
 import ResultsList from '../components/ResultsList.svelte';
+import TagCombobox from '../components/TagCombobox.svelte';
+import HeaderSearch from '../components/HeaderSearch.svelte';
 
 // `vi.hoisted` runs before this module's own imports are linked, so a
 // dynamic `import()` inside the (awaited) factory is used for SvelteURL --
@@ -54,13 +62,24 @@ const {
   relatedMemoriesSpy,
   listRulesSpy,
   listScheduledSpy,
+  listTagsSpy,
   deleteMemorySpy,
   peekResumeSpy,
   redirectToLoginSpy
 } = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/search');
-  const pageState = { url };
+  // /related/[id] reads page.params.id (no SvelteKit router in this harness,
+  // same convention as related.browser.test.ts) -- a getter parsed from the
+  // reactive url.pathname so every other route (flat URLSearchParams, never
+  // reading params) is unaffected.
+  const pageState = {
+    url,
+    get params() {
+      const m = /\/related\/([^/]+)/.exec(url.pathname);
+      return { id: m ? m[1] : '' };
+    }
+  };
   const gotoSpy = vi.fn((href: string) => {
     const next = new URL(href, 'http://localhost');
     pageState.url.href = next.href;
@@ -79,6 +98,7 @@ const {
     relatedMemoriesSpy: vi.fn(),
     listRulesSpy: vi.fn(),
     listScheduledSpy: vi.fn(),
+    listTagsSpy: vi.fn(),
     deleteMemorySpy: vi.fn(),
     peekResumeSpy: vi.fn(() => null),
     redirectToLoginSpy: vi.fn()
@@ -104,7 +124,8 @@ vi.mock('$lib/client', async (importOriginal) => {
       listMemories: listMemoriesSpy,
       relatedMemories: relatedMemoriesSpy,
       listRules: listRulesSpy,
-      listScheduled: listScheduledSpy
+      listScheduled: listScheduledSpy,
+      listTags: listTagsSpy
     },
     engramWrite: {
       ...actual.engramWrite,
@@ -132,6 +153,9 @@ vi.mock('$lib/resume', async (importOriginal) => {
 let qc: QueryClient;
 function renderSearch() {
   return render(SearchPage, {}, { wrapper: QueryClientProvider, wrapperProps: { client: qc } });
+}
+function renderRelated() {
+  return render(RelatedPage, {}, { wrapper: QueryClientProvider, wrapperProps: { client: qc } });
 }
 
 function makeMemory(overrides: MessageInitShape<typeof MemorySchema> = {}): Memory {
@@ -190,11 +214,16 @@ beforeEach(() => {
   relatedMemoriesSpy.mockReset();
   listRulesSpy.mockReset().mockResolvedValue({ rules: [], advisory: '', searchedScopes: [], scopesTruncated: false, scopesUnknown: false });
   listScheduledSpy.mockReset().mockResolvedValue({ memories: [], nextPageToken: '', searchedScopes: [], scopesTruncated: false, scopesUnknown: false });
+  listTagsSpy.mockReset().mockResolvedValue(create(ListTagsResponseSchema, { tags: [], more: false }));
   deleteMemorySpy.mockReset();
   peekResumeSpy.mockReset().mockReturnValue(null);
   redirectToLoginSpy.mockReset();
   sessionStorage.clear();
   pageState.url.href = 'http://localhost/search';
+  // headerSearch is a module-level singleton (the ⌘K hand-off point, D-11) --
+  // reset it so one test's typed text never leaks into another.
+  headerSearch.text = '';
+  headerSearch.focusSeq = 0;
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 
@@ -702,5 +731,201 @@ describe('curation dialog keyboard model (D-17)', () => {
     expect(document.activeElement).toBe(firstAction.element());
     const style = getComputedStyle(firstAction.element());
     expect(style.outlineStyle === 'none' && style.boxShadow === 'none').toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 2 (GRAPH-03, TAGS-01, TAGS-02): the /related route and the tag
+// surfaces this phase ships, AA-audited in both themes with zero violations.
+// ---------------------------------------------------------------------------
+
+function relatedMemory(id: string, overrides: MessageInitShape<typeof MemorySchema> = {}): Memory {
+  return create(MemorySchema, {
+    id,
+    shortId: `${id.slice(0, 8).toUpperCase().padEnd(8, '0')}01`,
+    category: 'convention',
+    summary: `summary for ${id}`,
+    content: '',
+    tags: [],
+    scope: 'repo:test',
+    visibility: 'private',
+    owner: 'me',
+    ...overrides
+  });
+}
+
+// Anchor plus one tag candidate sharing a tag -- enough to select a node,
+// open the evidence section under the graph, filter the Tags tab by that
+// tag, and land a real second node for the arrow-key focus card.
+function relatedFixtureResponse() {
+  const anchor = relatedMemory('aa-anchor', {
+    shortId: 'aaanchor001',
+    category: 'decision',
+    summary: 'AA anchor',
+    tags: ['qdrant']
+  });
+  const candidate = relatedMemory('aa-cand', {
+    shortId: 'aacand00001',
+    category: 'preference',
+    summary: 'AA candidate',
+    tags: ['qdrant']
+  });
+  const tagEdge = create(RelatedEdgeSchema, {
+    type: EdgeType.TAG,
+    evidence: {
+      case: 'tag',
+      value: create(TagEvidenceSchema, { sharedTags: [create(WeightedTagSchema, { tag: 'qdrant', weight: 1.1 })], tagWeight: 1.1 })
+    }
+  });
+  return create(RelatedMemoriesResponseSchema, {
+    anchor,
+    truncated: false,
+    related: [create(RelatedMemorySchema, { memory: candidate, edges: [tagEdge] })]
+  });
+}
+
+function relatedTagsResponse() {
+  return create(ListTagsResponseSchema, { tags: [{ tag: 'qdrant', count: 2n }], more: false });
+}
+
+describe('/related — AA audit', () => {
+  it('the populated view with a selected node and its evidence passes the AA audit in both themes', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(relatedFixtureResponse());
+    listTagsSpy.mockReset().mockResolvedValue(relatedTagsResponse());
+    pageState.url.href = 'http://localhost/related/aa-anchor';
+
+    const screen = await renderRelated();
+    await expect.element(screen.getByTestId('lane-row-tag-aa-cand')).toBeInTheDocument();
+
+    await screen.getByTestId('lane-row-tag-aa-cand').click();
+    await expect.element(screen.getByRole('region', { name: 'Why aacand00001 is related' })).toBeInTheDocument();
+
+    await page.screenshot({ element: document.body });
+    await auditBothThemes(document.body, '/related — populated + selected + evidence');
+  });
+
+  it('the floating focus card shown after an arrow key passes the AA audit in both themes', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(relatedFixtureResponse());
+    listTagsSpy.mockReset().mockResolvedValue(relatedTagsResponse());
+    pageState.url.href = 'http://localhost/related/aa-anchor';
+
+    const screen = await renderRelated();
+    await expect.poll(() => screen.container.querySelectorAll('[role="option"]').length).toBe(2);
+
+    const graph = screen.container.querySelector('svg[role="listbox"]') as HTMLElement;
+    graph.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    await expect.poll(() => screen.container.querySelector('.flabel.show')?.textContent ?? '').toContain('AA candidate');
+
+    await page.screenshot({ element: document.body });
+    await auditBothThemes(document.body, '/related — focus card');
+  });
+
+  it('the Tags tab with an active filter passes the AA audit in both themes', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(relatedFixtureResponse());
+    listTagsSpy.mockReset().mockResolvedValue(relatedTagsResponse());
+    pageState.url.href = 'http://localhost/related/aa-anchor';
+
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    const qdrantRow = screen.container.querySelector('[role="option"][aria-label^="#qdrant"]') as HTMLElement;
+    qdrantRow.click();
+    await expect.element(screen.getByTestId('tag-filter-chip')).toBeInTheDocument();
+
+    await page.screenshot({ element: document.body });
+    await auditBothThemes(document.body, '/related — Tags tab + active filter');
+  });
+
+  it('the not-found state passes the AA audit in both themes', async () => {
+    relatedMemoriesSpy.mockReset().mockRejectedValue(new ConnectError('not found', Code.NotFound));
+    pageState.url.href = 'http://localhost/related/aa-anchor';
+
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('No memory with id aa-anchor that you can read')).toBeInTheDocument();
+
+    await page.screenshot({ element: document.body });
+    await auditBothThemes(document.body, '/related — not-found');
+  });
+});
+
+describe('/search Tags panel — AA audit', () => {
+  it('the docked panel open with an active tag passes the AA audit in both themes', async () => {
+    pageState.url.href = 'http://localhost/search?q=github&tag=qdrant';
+    searchMemoriesSpy.mockResolvedValue({
+      memories: [makeMemory({ id: 'sp1', summary: 'panel hit', shortId: 's0000000040', tags: ['qdrant'] })],
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    listTagsSpy.mockReset().mockResolvedValue(create(ListTagsResponseSchema, { tags: [{ tag: 'qdrant', count: 3n }], more: false }));
+
+    const screen = await renderSearch();
+    // Docked mode (vs. the narrow bottom-sheet) needs a wide container --
+    // same convention as search.browser.test.ts's own Tags panel describes.
+    screen.container.style.width = '1200px';
+    await expect.element(screen.getByText('panel hit')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+    await expect.poll(() => listTagsSpy.mock.calls.length).toBeGreaterThan(0);
+    await expect.poll(() => screen.container.querySelector('.marked')).not.toBeNull();
+
+    await page.screenshot({ element: document.body });
+    await auditBothThemes(document.body, '/search Tags panel');
+  });
+});
+
+describe('tag picker — AA audit', () => {
+  it('TagCombobox open with matches and an unknown-tag row passes the AA audit in both themes', async () => {
+    listTagsSpy.mockReset().mockResolvedValue(
+      create(ListTagsResponseSchema, {
+        tags: [
+          { tag: 'qdrant', count: 9n },
+          { tag: 'qdr-ops', count: 2n }
+        ],
+        more: false
+      })
+    );
+
+    const screen = await render(
+      TagCombobox,
+      { scope: 'repo:acme/x', onadd: vi.fn() },
+      { wrapper: QueryClientProvider, wrapperProps: { client: qc } }
+    );
+    await screen.getByRole('button', { name: '+ tag' }).click();
+    await expect.poll(() => listTagsSpy.mock.calls.length).toBeGreaterThan(0);
+
+    const input = screen.getByRole('combobox', { name: 'Filter tags' });
+    await input.fill('qd');
+    await expect.element(screen.getByText('Add #qd')).toBeInTheDocument();
+
+    // TagCombobox's popover content is portaled to document.body (per
+    // TagCombobox.browser.test.ts), so the audit root must be document.body,
+    // not screen.container.
+    await page.screenshot({ element: document.body });
+    await auditBothThemes(document.body, 'tag picker (TagCombobox)');
+  });
+});
+
+describe('header Tags group — AA audit', () => {
+  it('typing "#qd" shows the ranked Tags group and passes the AA audit in both themes', async () => {
+    listTagsSpy.mockReset().mockResolvedValue(
+      create(ListTagsResponseSchema, {
+        tags: [
+          { tag: 'qdrant', count: 9n },
+          { tag: 'qdr-ops', count: 2n }
+        ],
+        more: false
+      })
+    );
+
+    const screen = await render(HeaderSearch, {}, { wrapper: QueryClientProvider, wrapperProps: { client: qc } });
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    await input.fill('#qd');
+    await expect.element(screen.getByText(/Tags · counts in/)).toBeInTheDocument();
+
+    await page.screenshot({ element: document.body });
+    await auditBothThemes(document.body, 'header Tags group');
   });
 });

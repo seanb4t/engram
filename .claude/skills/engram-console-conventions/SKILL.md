@@ -52,6 +52,9 @@ is written as `calc(N * var(--u))` (N px at the 13px baseline). `--ui-font` is 1
 `installDisplayShortcuts` for `⌘+`/`⌘-`/`⌘0`). **Never hardcode a `px` value on a product
 dimension** — it breaks at 12px and 16px. The one exception is the Display popover's own control,
 which stays fixed-size so it does not jump under the pointer; only its preview row scales.
+**`--text-2xs`/`--radius-sm` are not defined** in `app.css` — the related view's micro mono text
+(the call line, edge glyphs, tag rarity) is written `calc(11 * var(--u))` like every other small
+mono size in the console, not a token that does not exist.
 
 ## State words
 
@@ -169,9 +172,10 @@ with `aria-activedescendant` tracking the active one (`ui/src/lib/components/Res
 | `#` | Delete the active row (through the existing confirm dialog) |
 | `c` | Copy the active row's `short_id` |
 | `⇧C` | Copy the active row's full id |
+| `r` | Open the active row's related view — `/search`, `/rules`, `/scheduled` (D-03, Phase 5) |
 | `⌘+` / `⌘-` / `⌘0` | Step / reset the site-wide text-size preference |
 
-Row-action keys (`e`/`s`/`#`/`c`/`⇧C`/`x`/`⇧X`/`a`/`⇧A`/`⇧S`) and every navigation key are ignored
+Row-action keys (`e`/`s`/`#`/`c`/`⇧C`/`x`/`⇧X`/`a`/`⇧A`/`⇧S`/`r`) and every navigation key are ignored
 while `event.metaKey || event.ctrlKey || event.altKey` (`ResultsList.svelte`'s `onKeydown` guard)
 — Shift is never in that set, so `event.key`'s native uppercase form (`S`/`A`/`X` for
 `⇧s`/`⇧a`/`⇧x`) reaches the same `switch` as every bare key, each bound as its own distinct case;
@@ -180,6 +184,41 @@ ignored while a text field has focus (`isTypingTarget`) — navigation keys are 
 visible shortcut is shown as a `<kbd>` hint in the listbox legend, and a hint renders only for a
 key the host actually bound (e.g. the `⇧S` hint appears only when the route supplied
 `onsupersede`).
+
+### `/related` keyboard model (Phase 5)
+
+`r` (above) and the ⌘K "Related to `<short_id>`" item are the two entry points from any listbox;
+the third is `DetailPane`'s inline "Related" button. Inside `/related/<id>`:
+
+| Key(s) | Action |
+|---|---|
+| `g` | Toggle the rail's Graph/Tabs tabs; remembered per viewer in `localStorage["engram.console.relatedRailTab"]` (D-01) |
+| `[` | Walk back one step along the trail (D-04); browser Back does the same |
+| `Tab` | The graph is **one** Tab stop — arrows move inside it, not repeated Tabs |
+| `↑`/`↓`/`←`/`→` | Move the active graph node in **lane order**: supersession › citation › tag › vector, then strength within the lane (D-10) |
+| `Home` / `End` | Jump to the first/last graph node |
+| `Space` | Select the active node — lights it everywhere (lanes, graph, chain cards) and opens its evidence section directly under the graph (D-05, D-10) |
+| `Enter` | Re-centre on the active/selected node — navigates to `/related/<new-id>`, pushes a trail crumb, clears the selection (D-04) |
+| `Escape` | **Tiered** (D-04): clears the selection first, then leaves the graph region, then — outside the graph — returns to where the view was opened from (`from`) |
+| `⌘/Ctrl` + wheel | Zoom the graph (scale 0.5–4); a **plain wheel scrolls the page** (the rail is sticky) and flashes a "hold ⌘ to zoom" hint for `WHEEL_HINT_MS` (D-20) |
+
+Corner `+`/`−`/`fit` buttons and a zoom readout are the pointer-only equivalent of ⌘/Ctrl+wheel
+and Home/End/fit; double-click a node re-centres (never zooms). A dragged node springs back on
+release — dragging never pins. The graph refits on any membership change (expand/collapse, type
+toggle, re-centre) but keeps its zoom across selection, focus and drag alone. Past 26 drawn nodes
+only the anchor, focused and selected nodes are labelled, and nodes shrink. Keyboard focus (and
+hover) shows a floating focus card (short_id, edge-type glyphs, two-line summary) — hidden for the
+selected node, whose evidence already renders under the graph. The screen-reader equivalent is a
+visually hidden neighbourhood list plus a `polite` `aria-live` summary line (e.g. "14 related ·
+supersession 3 · citation 2 · tag 6 · vector 8"), updated on re-centre, toggle and filter (D-11).
+Legend toggles (`GraphLegend.svelte`) are the same switches as each lane's hide button, sharing one
+`hiddenTypes` source of truth, and show `n/cap` counts.
+
+D-14's in-view tag filter (click a tag row on the Tags tab) applies a shared `dimmedIds` set to
+every lane row, chain card and graph node lacking that tag — the same AA-safe dim rule the State
+words section describes (`opacity: 0.3` on non-text marks, `var(--muted-foreground)` on summary
+text, never a raw opacity on text) — and shows a `#tag N of M carry it ×` chip. It never changes
+graph/lane membership and is not GRAPH-05 (a cross-surface highlight stays v2).
 
 ## Where the code lives
 
@@ -207,6 +246,20 @@ key the host actually bound (e.g. the `⇧S` hint appears only when the route su
 | Empty/error rendering | `ui/src/lib/components/RecallState.svelte` |
 | Site-wide text size | `ui/src/lib/display.svelte.ts` |
 | WCAG 2.2 AA audit helper (test-only) | `ui/src/lib/a11y/axe.ts` |
+| Related view route (D-01..D-05) | `ui/src/routes/related/[id]/+page.svelte`, `ui/src/lib/search/related-params.ts` |
+| Related pure model (edges → nodes/links, lane order, settle) | `ui/src/lib/related/graph.ts` |
+| Related lane copy/glyphs (empty/truncation text, `LANE_GLYPH`) | `ui/src/lib/related/lanes.ts` |
+| Related graph zoom/pan (`wheelZoomFilter`, extents) | `ui/src/lib/related/zoom.ts` |
+| Rail overview graph (d3-force/drag/zoom, Svelte-owned SVG) | `ui/src/lib/components/RelatedGraph.svelte` |
+| Vector/citation/tag edge-type lane | `ui/src/lib/components/EdgeLane.svelte` |
+| Supersession chain lane (timeline, hidden-state members) | `ui/src/lib/components/SupersessionLane.svelte` |
+| Evidence section under the graph (D-05, per-type "why related") | `ui/src/lib/components/EvidenceSection.svelte` |
+| Graph legend (per-type toggles, `n/cap` counts) | `ui/src/lib/components/GraphLegend.svelte` |
+| Cached `ListTags` query (shared by TagBars/TagCombobox/header) | `ui/src/lib/tags/query.ts` |
+| Tag bar rows, ranking, footer copy (pure) | `ui/src/lib/tags/tags.ts` |
+| Tag popularity bar list (`/search` panel, `/related` rail Tags tab) | `ui/src/lib/components/TagBars.svelte` |
+| "+ tag" autocomplete picker (TAGS-02) | `ui/src/lib/components/TagCombobox.svelte` |
+| One tag match row (bolded hit, mini bar, count) | `ui/src/lib/components/TagMatchRow.svelte` |
 
 For the design rationale behind these choices — why 28px rows, why 250ms hover delay, what
 layouts were tried and rejected — see `Skill("sketch-findings-engram")`.

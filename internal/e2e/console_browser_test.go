@@ -1165,3 +1165,180 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 
 	obs.assertClean(t)
 }
+
+// relatedScope is TestConsoleRelatedView's own scope — fresh, so its two
+// seeded records are guaranteed to be each other's sole vector neighbour
+// (no score floor on the vector edge in internal/store/relatedmemories.go,
+// and a fresh per-test Qdrant collection via testCollection(port) in
+// startServer); DSYS-04 ordering: no other chromedp test writes to this
+// scope.
+const relatedScope = "repo:e2e-console-related"
+
+// locationPathPrefixPollExpr is satisfied once the live page's URL path
+// starts with prefix — used to prove a client-side SvelteKit navigation
+// (goto) actually landed on the /ui/related/ route, not merely that a
+// button was clicked.
+func locationPathPrefixPollExpr(prefix string) string {
+	prefixJSON, _ := json.Marshal(prefix)
+	return fmt.Sprintf(`(() => location.pathname.startsWith(%s))()`, prefixJSON)
+}
+
+// graphOptionCountPollExpr is satisfied once the rail graph
+// (RelatedGraph.svelte) has rendered at least minCount role="option" nodes
+// inside its role="listbox" svg — the anchor plus at least one candidate.
+// Scoped to svg[role="listbox"] specifically so it can never be satisfied
+// by an unrelated listbox elsewhere on the page (e.g. the results list).
+func graphOptionCountPollExpr(minCount int) string {
+	return fmt.Sprintf(`(() => document.querySelectorAll('svg[role="listbox"] [role="option"]').length >= %d)()`, minCount)
+}
+
+// TestConsoleRelatedView drives a REAL headless Chrome against the REAL
+// engram binary and Qdrant (GRAPH-01, D-01, D-03): from a seeded record's
+// detail pane, clicking "Related" navigates to /ui/related/<id> and renders
+// the rail graph with the anchor and its vector neighbour, naming the
+// anchor's short_id in the call line and the neighbour's short_id in the
+// vector lane. A direct deep link to /ui/related/<neighbour short_id>
+// renders that record's own view the same way — proving both the Go static
+// handler's SPA fallback (internal/webauth/static.go) and short_id
+// resolution (relatedMemories's ResolvePointID) for the console's first
+// path-segment route.
+func TestConsoleRelatedView(t *testing.T) {
+	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
+	fixture := startConsoleServer(t)
+
+	anchorMarker := mintFixtureMarker(t)
+	neighbourMarker := mintFixtureMarker(t)
+	// Both seeded BEFORE navigation, so the anchor's vector neighbour
+	// already exists when the SPA's first RelatedMemories call fires.
+	anchorID, anchorShortID := seedFixtureRecord(context.Background(), t, fixture, relatedScope, anchorMarker)
+	_, neighbourShortID := seedFixtureRecord(context.Background(), t, fixture, relatedScope, neighbourMarker)
+
+	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
+		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
+		chromedp.ExecPath(chromePath),
+		chromedp.WindowSize(1280, 1000),
+	)
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	t.Cleanup(allocCancel)
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	t.Cleanup(browserCancel)
+
+	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
+	defer runCancel()
+
+	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
+		return setConsoleCookies(ctx, fixture)
+	})
+
+	obs := newBrowserObserver()
+	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
+
+	if err := chromedp.Run(runCtx, setCookies); err != nil {
+		t.Fatalf("set console cookies: %v", err)
+	}
+
+	// Step 1: open the anchor's detail pane via /ui/search?sel=<id>, click
+	// its "Related" button, and prove the rail graph renders the anchor
+	// plus its vector neighbour with the correct call line.
+	selURL := fixture.srv.baseURL() + "/ui/search?sel=" + url.QueryEscape(anchorID)
+	var paneRendered bool
+	if err := chromedp.Run(runCtx,
+		chromedp.Navigate(selURL),
+		chromedp.Poll(detailPaneMarkerPollExpr(anchorMarker), &paneRendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("anchor detail pane render wait failed: %v", err)
+	}
+	if !paneRendered {
+		t.Fatal("anchor detail pane render poll returned without error but paneRendered=false")
+	}
+
+	if err := chromedp.Run(runCtx, chromedp.Click(`//button[normalize-space()="Related"]`, chromedp.BySearch)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("click Related button: %v", err)
+	}
+
+	var onRelatedRoute bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(locationPathPrefixPollExpr("/ui/related/"), &onRelatedRoute,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("wait for /ui/related/ navigation failed: %v", err)
+	}
+	if !onRelatedRoute {
+		t.Fatal("navigation poll returned without error but onRelatedRoute=false")
+	}
+
+	var graphRendered bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(graphOptionCountPollExpr(2), &graphRendered,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("wait for graph nodes failed: %v", err)
+	}
+	if !graphRendered {
+		t.Fatal("graph node poll returned without error but graphRendered=false")
+	}
+
+	var callLineShown bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(fmt.Sprintf(`RelatedMemories(subj, "%s"`, anchorShortID)), &callLineShown,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("call line wait failed: %v", err)
+	}
+	if !callLineShown {
+		t.Fatal("call line poll returned without error but callLineShown=false")
+	}
+
+	var vectorLaneShown bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(neighbourShortID), &vectorLaneShown,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("vector lane short_id wait failed: %v", err)
+	}
+	if !vectorLaneShown {
+		t.Fatal("vector lane short_id poll returned without error but vectorLaneShown=false")
+	}
+
+	// Step 2: a direct deep link to the neighbour's short_id renders that
+	// record's own related view — the Go static handler's SPA fallback
+	// plus short_id resolution, with no prior SPA navigation.
+	deepLinkURL := fixture.srv.baseURL() + "/ui/related/" + url.PathEscape(neighbourShortID)
+	var deepLinkGraphRendered bool
+	if err := chromedp.Run(runCtx,
+		chromedp.Navigate(deepLinkURL),
+		chromedp.Poll(graphOptionCountPollExpr(2), &deepLinkGraphRendered,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("deep link graph render wait failed: %v", err)
+	}
+	if !deepLinkGraphRendered {
+		t.Fatal("deep link graph poll returned without error but deepLinkGraphRendered=false")
+	}
+
+	var deepLinkCallLineShown bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(fmt.Sprintf(`RelatedMemories(subj, "%s"`, neighbourShortID)), &deepLinkCallLineShown,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("deep link call line wait failed: %v", err)
+	}
+	if !deepLinkCallLineShown {
+		t.Fatal("deep link call line poll returned without error but deepLinkCallLineShown=false")
+	}
+
+	obs.assertClean(t)
+}

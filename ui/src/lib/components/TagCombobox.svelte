@@ -14,6 +14,14 @@
 
   let { scope, onadd }: { scope: string; onadd: (tag: string) => void } = $props();
 
+  // WCAG 4.1.2 (aria-required-attr): bits-ui's Command.Input sets
+  // role="combobox" and aria-expanded, but its aria-controls only populates
+  // from an (unused here) Command.Viewport -- an explicit id/aria-controls
+  // pair closes the gap without adopting Viewport (mergeProps keeps our
+  // aria-controls since bits-ui's own value is undefined without one).
+  const uid = $props.id();
+  const listId = `${uid}-list`;
+
   const q = createQuery(() => listTagsQuery(scope));
 
   let open = $state(false);
@@ -42,9 +50,9 @@
     <Command.Root shouldFilter={false} label="Filter tags">
       <div class="input-row">
         <span class="prefix mono">#</span>
-        <Command.Input aria-label="Filter tags" bind:value={filterValue} />
+        <Command.Input aria-label="Filter tags" aria-controls={listId} bind:value={filterValue} />
       </div>
-      <Command.List class="max-h-[calc(320*var(--u))] overflow-y-auto">
+      <Command.List id={listId} class="max-h-[calc(320*var(--u))] overflow-y-auto">
         {#if q.isLoading}
           <div class="status mono">{tagsLoadingLine(scope)}</div>
         {:else if q.isError}
