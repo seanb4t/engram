@@ -818,22 +818,97 @@ hygiene (rumdl exclude, Phase-11 residuals, Renovate self-heal).
 - Notable: Phase 5 was planned without research, so its VALIDATION.md was reconstructed at close
   (State B, 0 gaps) — every requirement already had a named test.
 
+## Milestone: 2026-09-25.01 — Console Overhaul
+
+**Completed:** 2026-09-28 (on `feat/2026-09-25.01`; ship PR and release pending)
+**Phases:** 7 (1–6 plus inserted 01.1) | **Plans:** 48 | **Tasks:** 131 | **Requirements:** 40/40
+**Git range:** base `3acb2308` — 401 commits; 255 non-planning, non-generated files, +52,253 / −1,360
+**Timeline:** 2026-09-25 → 2026-09-28 (4 days) · sixth CalVer-labeled milestone
+
+### What Was Built
+
+- **Store prerequisites** — owner-gated `ArchiveAs`/`RestoreAs` on a distinct Cedar action, a
+  four-edge `RelatedMemories`, and exact recall-visible `ListTags` facet counts. Nothing above the
+  store was built until they existed.
+- **Recall-first search** — one id/short_id/text classifier behind the header search, ⌘K and
+  `/search`; cross-spine by default; honest outcomes including `recall_gate_hidden` on every lane.
+  This fixed the "the entry point must not lie" palette bug at its root.
+- **Seven curation Connect RPCs** with MCP parity over shared cores, CSRF-gated writes, and additive
+  proto.
+- **A curation workbench** — supersede-with-chain, archive/restore with undo, `/rules`,
+  `/scheduled`, and a v2 re-auth resume. The WCAG 2.2 AA sweep found and fixed nine real
+  contrast/target-size defects.
+- **`/related/<id>`** — lanes plus a d3-force graph and linear tag bars, fully keyboard- and
+  ARIA-equivalent.
+- **NL query understanding** — advisory Suggested chips from a Connect-only `UnderstandQuery`,
+  accepted through FacetStrip's own path.
+
+### What Worked
+
+- **Sketch before spec.** Inserted Phase 01.1 picked a visual direction that every later UI-SPEC
+  cited, and the sketch-findings skill kept those decisions loaded across four UI phases.
+- **One codec, one classifier.** `params.ts` and `classify.ts` gave every entry point the same
+  behaviour. The integration checker could trace tag-chip parity across three surfaces
+  mechanically.
+- **Surfacing one-way doors before code.** Wire contracts (Phase 3 option-a, Phase 6 option-a) were
+  confirmed at a checkpoint before any proto edit, so `buf breaking` never had to be argued with.
+- **The code-review fix loop closed a real verification gap.** Phase 6's `AddDate` month-end
+  overflow (WR-01) was found by review, fixed with overflow-date tests, and re-verified before
+  close.
+
+### What Was Inefficient
+
+- **Cross-phase staleness again.** Phases 1–5 all went `verification: stale`, mostly because later
+  UI phases edited `/search` files. All six were re-verified in parallel at close. This is the same
+  lesson as 2026-09-22.01 and still not caught per phase.
+- **The traceability table was seeded `Mapped`.** `requirements mark-complete` rejected every ID for
+  the whole milestone, and executors logged it in five places instead of fixing it once. It was
+  resolved at audit (40/40), and future milestones should seed `Pending`.
+- **A known browser-test flake was carried, not fixed.** The Chain-button test was first seen in
+  Phase 5 and failed most full-suite runs by Phase 6 (#641).
+- **A sketch-only phase reads "empty" to GSD's `init.manager`.** There is no PLAN or SUMMARY by
+  design, so it needs a tool-side carve-out.
+
+### Patterns Established
+
+- Advisory model output reaches the console only as unapplied suggestions that enter through the
+  same path as a manual action. An accepted suggestion is indistinguishable from a manual one.
+- A capability that sends user text to a provider by default discloses the egress at startup and
+  keeps an explicit off switch (D-01/D-15).
+- No open broken window or deferred item lives only in GSD state; each one is tracked by a GitHub
+  issue (`canxmmw447`). At this close that meant #641–#663.
+
+### Key Lessons
+
+- Seed REQUIREMENTS.md traceability with the tool's vocabulary (`Pending`), or `mark-complete`
+  silently no-ops for the whole milestone.
+- When a phase edits a shared route (`/search`), re-verify every earlier phase that covered it in
+  the same wave, not at audit time.
+- Fix a known flake the phase it gets worse, before it becomes the one test that blocks CI.
+
+### Cost / Process Observations
+
+- Model mix: opus orchestrator and planner; sonnet executors, verifiers, reviewers, auditors and the
+  integration checker.
+- Notable: parallel re-verification of six stale phases took roughly one verifier wall-clock
+  (about 17 min).
+
 ## Cross-Milestone Trends
 
 Populated as milestones accumulate.
 
-| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | 2026-08-23.01 | 2026-09-13.01 |2026-09-18.01 | 2026-09-22.01 | Notes |
-|-------|--------|---------|---------|---------|---------------|---------------|---------------|-------------- | --------------- |-------|
-| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | 0 (but 2 research risks retired live before roadmapping) | 0 |0 (#347 bound already shipped in v0.12.x — scoped as close-only at research) | 0 (spike 004's "lexical hurts paraphrase" overturned by the blind eval) | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
-| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | ok; reopened-phase branch trap instead (`q51bxfmwvp`) | ok (sentinel re-armed before every dispatch) |ok | degraded (base-check) → sequential on main tree; sentinel re-forced before every dispatch | Stacked unmerged branch each time; cleared post-merge |
-| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | fake-HOME-only verification, own-config-is-in-scope, known-survivor control for comment strippers, forward-the-collision-set | total-parse scanner, redaction-by-construction, observation records (`NN-OBSERVATIONS`/`NN-RELEASE`), renovate `gitIgnoredAuthors` |derive-page-size-from-enforced-caps, name-your-own-limit, absence-vs-empty wire signal, zero-means-ceiling | pre-committed eval decision rule, blind tool-less authoring, fallback-is-the-old-path hook seam, query-verification-by-directory | Applied within-milestone and captured for reuse |
-| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 25/25 | 23/23 (1 release-gated, observed on v0.17.0) |20/20 | 22/22 | 3-source cross-referenced |
-| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | gaps_found → tech_debt (B01 closed by 04-05; 12/12 seams, 8/8 flows) | tech_debt → tech_debt → **passed** (Nyquist + release observation reconciled) |tech_debt (0 blockers; 6/6 seams, 7/7 flows) | tech_debt (0 blockers; 10/10 seams, 3/3 flows) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
-| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | 1 squashed PR (#557) + docs PR (#558) + closeout branch | 1 squashed PR (#569) + 3 planning PRs + closeout |1 squashed PR (#603), released v0.19.0 (#604) | pending (single branch `feat/2026-09-22.01`) | v0.13.x did not split per-phase |
-| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | 1 by the milestone audit's integration checker (B01), 0 by review | 2 warnings fixed (04 WR-01/WR-02), 3 info accepted |04 CR-01 (silent pagination truncation) + WR-01/WR-02; 07 CR-01 + WR-01 | 03 WR-01 (disclosure overstated), 04 IN-01 (aliased pointer), 05 WR-01/WR-02 (incomplete fixes) | Both v0.13.x cases were prose contradicting the code it described |
-| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | 2/6 at first audit → 6/6 COMPLIANT (3 Phase 1 gaps → Go tests) | 0/5 at first audit (hooks never fired) → 5/5 COMPLIANT retroactively |6/7 at audit (07 hook lapse) → 7/7 COMPLIANT retroactively | 4/5 at audit (05 had no research, so no seed) → 5/5 COMPLIANT retroactively | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
-| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | 3 stale Phase 2 checkboxes + 7 progress-table misfires during execution | 5 draft VALIDATION.md + 5 missing SECURITY.md (hook lapse); 1 cross-ref rot (T-03-10) |completed_phases one short; 07 VALIDATION/SECURITY missing | phases 1–4 VERIFICATION stale (cross-phase edits) → all re-verified; gofmt drift in 3 files | New trend — all four would have frozen into the immutable archive a day later |
-| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
+| Trend | v0.9.x | v0.10.x | v0.11.x | v0.13.x | 2026-08-12.01 | 2026-08-23.01 | 2026-09-13.01 |2026-09-18.01 | 2026-09-22.01 | 2026-09-25.01 | Notes |
+|-------|--------|---------|---------|---------|---------------|---------------|---------------|-------------- | --------------- | --------------- |-------|
+| Already-shipped surprises | 1 (Phase 10) | 0 | 0 | 0 | 0 | 0 (but 2 research risks retired live before roadmapping) | 0 |0 (#347 bound already shipped in v0.12.x — scoped as close-only at research) | 0 (spike 004's "lexical hurts paraphrase" overturned by the blind eval) | 0 | v0.9.x also had Phase 8 in the baseline — baseline-verify before planning |
+| Worktree isolation | degraded (#683) | degraded (#683) | degraded (#683) | degraded (#683) | **harness-level denial** (all external binaries) | ok; reopened-phase branch trap instead (`q51bxfmwvp`) | ok (sentinel re-armed before every dispatch) |ok | degraded (base-check) → sequential on main tree; sentinel re-forced before every dispatch | ok (harness worktrees, sentinel re-recorded per plan) | Stacked unmerged branch each time; cleared post-merge |
+| Reusable kernels extracted | 2 (CR-01 shutdown, `*time.Time`) | App-token self-push, `set -e` sub-swallow, post-merge-defer | PDP-decides/store-enforces, options-struct-before-2nd-same-type, targeted-SetPayload, explicit-field-list upkeep | derive-applicability-from-fields, unexported-marker-as-compile-gate, pin-both-ends-of-a-diff-range, walk-the-live-tree-not-a-list | gate-on-zero-not-N, control-every-derived-set-gate, one-serialization-plus-a-view, stamp-then-sweep | fake-HOME-only verification, own-config-is-in-scope, known-survivor control for comment strippers, forward-the-collision-set | total-parse scanner, redaction-by-construction, observation records (`NN-OBSERVATIONS`/`NN-RELEASE`), renovate `gitIgnoredAuthors` |derive-page-size-from-enforced-caps, name-your-own-limit, absence-vs-empty wire signal, zero-means-ceiling | pre-committed eval decision rule, blind tool-less authoring, fallback-is-the-old-path hook seam, query-verification-by-directory | one-codec-one-classifier, suggestion-enters-the-manual-path, disclose-default-egress, issue-per-deferred-item | Applied within-milestone and captured for reuse |
+| Requirements satisfied | 6/6 | 19/20 (1 post-merge-deferred) | 11/11 | 23/24 (1 genuinely unmet) | 27/27 | 25/25 | 23/23 (1 release-gated, observed on v0.17.0) |20/20 | 22/22 | 40/40 | 3-source cross-referenced |
+| Audit verdict | PASSED | tech_debt (0 blockers) | PASSED (0 blockers) | tech_debt (0 blockers) | tech_debt (0 blockers) | gaps_found → tech_debt (B01 closed by 04-05; 12/12 seams, 8/8 flows) | tech_debt → tech_debt → **passed** (Nyquist + release observation reconciled) |tech_debt (0 blockers; 6/6 seams, 7/7 flows) | tech_debt (0 blockers; 10/10 seams, 3/3 flows) | tech_debt (0 blockers; 19/19 seams, 8/8 flows) | v0.13.x: 6/6 integration seams, 4/4 E2E flows |
+| Merge shape | 1 PR (all phases) | per-phase PRs | per-phase PRs (22+23 combined) | single branch `feat/v0.13` | 1 squashed PR (#498) + docs tail | 1 squashed PR (#557) + docs PR (#558) + closeout branch | 1 squashed PR (#569) + 3 planning PRs + closeout |1 squashed PR (#603), released v0.19.0 (#604) | pending (single branch `feat/2026-09-22.01`) | pending (single branch `feat/2026-09-25.01`) | v0.13.x did not split per-phase |
+| Defects caught by review, not tests | — | — | 3 (phases 23, 25, 26) | 2 (`defaultK` attribution, `toolclass.go` rationale) | 2 false positives (`migrate-set-owner` alias called false twice) | 1 by the milestone audit's integration checker (B01), 0 by review | 2 warnings fixed (04 WR-01/WR-02), 3 info accepted |04 CR-01 (silent pagination truncation) + WR-01/WR-02; 07 CR-01 + WR-01 | 03 WR-01 (disclosure overstated), 04 IN-01 (aliased pointer), 05 WR-01/WR-02 (incomplete fixes) | 06 WR-01 (`AddDate` month-end overflow), 06 WR-02; 10 open Phase 4/5 warnings filed (#642/#643) | Both v0.13.x cases were prose contradicting the code it described |
+| Nyquist coverage | — | 9/9 | 3/5 at close → 5/5 reconciled | 6/6 validated, 5/6 compliant | 9/9 COMPLIANT | 2/6 at first audit → 6/6 COMPLIANT (3 Phase 1 gaps → Go tests) | 0/5 at first audit (hooks never fired) → 5/5 COMPLIANT retroactively |6/7 at audit (07 hook lapse) → 7/7 COMPLIANT retroactively | 4/5 at audit (05 had no research, so no seed) → 5/5 COMPLIANT retroactively | 3/6 COMPLIANT (01, 02, 06), 3 NOT-VALIDATED (#649) | v0.13.x cleared v0.12.x's inherited 6-row debt; 04 PARTIAL by design |
+| Planning-artifact drift found at audit | — | — | — | 4 defects, all under-reporting | 3 (stale ROADMAP progress rows 6–8, no Phase 9 row) | 3 stale Phase 2 checkboxes + 7 progress-table misfires during execution | 5 draft VALIDATION.md + 5 missing SECURITY.md (hook lapse); 1 cross-ref rot (T-03-10) |completed_phases one short; 07 VALIDATION/SECURITY missing | phases 1–4 VERIFICATION stale (cross-phase edits) → all re-verified; gofmt drift in 3 files | phases 1–5 VERIFICATION stale → re-verified; traceability `Mapped` vocabulary → 40/40 fixed | New trend — all four would have frozen into the immutable archive a day later |
+| Retrospective written at close | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |✓ | ✓ | ✓ | **v0.12.x skipped** — the only gap in the series |
 
 ---
 
