@@ -194,7 +194,7 @@ describe('RelatedGraph — keyboard traversal (GRAPH-02, D-10)', () => {
   it('focusing the svg sets aria-activedescendant to the anchor', async () => {
     const screen = await renderGraph(laneNodes(), []);
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
     expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
   });
@@ -202,7 +202,7 @@ describe('RelatedGraph — keyboard traversal (GRAPH-02, D-10)', () => {
   it('ArrowDown/ArrowRight walk forward in lane order, ArrowUp/ArrowLeft walk back, both clamp at the ends, focus stays on the svg', async () => {
     const screen = await renderGraph(laneNodes(), []);
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
     expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
 
@@ -246,7 +246,7 @@ describe('RelatedGraph — keyboard traversal (GRAPH-02, D-10)', () => {
   it('End/Home jump to the last/first node', async () => {
     const screen = await renderGraph(laneNodes(), []);
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
 
     fireKey(svg, 'End');
@@ -261,7 +261,7 @@ describe('RelatedGraph — keyboard traversal (GRAPH-02, D-10)', () => {
     const onselect = vi.fn();
     const screen = await renderGraph(laneNodes(), [], { onselect });
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
 
     fireKey(svg, 'ArrowDown');
     fireKey(svg, ' ');
@@ -277,7 +277,7 @@ describe('RelatedGraph — keyboard traversal (GRAPH-02, D-10)', () => {
     const onrecenter = vi.fn();
     const screen = await renderGraph(laneNodes(), [], { onrecenter });
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
 
     fireKey(svg, 'ArrowDown');
     fireKey(svg, 'Enter');
@@ -292,7 +292,7 @@ describe('RelatedGraph — keyboard traversal (GRAPH-02, D-10)', () => {
   it('ArrowDown with ctrlKey does not move', async () => {
     const screen = await renderGraph(laneNodes(), []);
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
     expect(svg.getAttribute('aria-activedescendant')).toBe('gn-anchor-id');
 
@@ -315,7 +315,7 @@ describe('RelatedGraph — screen-reader list and live summary (D-11)', () => {
   it('the hidden list has one item per node in lane order with each accessible name, and the active item carries aria-current', async () => {
     const screen = await renderGraph(laneNodes(), []);
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
     fireKey(svg, 'ArrowDown');
     await tick();
@@ -355,7 +355,7 @@ describe('RelatedGraph — Escape tiers (D-04)', () => {
     window.addEventListener('keydown', windowKeydown);
     const screen = await renderGraph(nodes, [], { selectedId: 'n1', onselect, onleave });
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
 
     fireKey(svg, 'Escape');
     expect(onselect).toHaveBeenCalledWith(null);
@@ -372,7 +372,7 @@ describe('RelatedGraph — Escape tiers (D-04)', () => {
     window.addEventListener('keydown', windowKeydown);
     const screen = await renderGraph(nodes, [], { onselect, onleave });
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
 
     fireKey(svg, 'Escape');
     expect(onleave).toHaveBeenCalledOnce();
@@ -393,7 +393,7 @@ describe('RelatedGraph — focus ring and floating focus card (D-20)', () => {
   it('ArrowDown shows the focus card with the active node short_id and summary', async () => {
     const screen = await renderGraph(laneNodes(), []);
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
     fireKey(svg, 'ArrowDown');
     await tick();
@@ -413,7 +413,7 @@ describe('RelatedGraph — focus ring and floating focus card (D-20)', () => {
 
     const card = screen.container.querySelector('.flabel.show');
     expect(card).not.toBeNull();
-    expect(card?.textContent).toContain('cit name');
+    expect(card?.textContent).toContain('cit0000000');
 
     citEl.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
     await tick();
@@ -424,7 +424,7 @@ describe('RelatedGraph — focus ring and floating focus card (D-20)', () => {
     const nodes = laneNodes();
     const screen = await renderGraph(nodes, [], { selectedId: 'sup' });
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
     fireKey(svg, 'ArrowDown'); // moves activeId to 'sup', which is selected
     await tick();
@@ -439,7 +439,7 @@ describe('RelatedGraph — focus ring and floating focus card (D-20)', () => {
     expect(nodes.length).toBe(30);
     const screen = await renderGraph(nodes, []);
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
     fireKey(svg, 'ArrowDown');
     await tick();
@@ -454,7 +454,7 @@ describe('RelatedGraph — focus ring and floating focus card (D-20)', () => {
     const nodes = laneNodes();
     const screen = await renderGraph(nodes, []);
     const svg = screen.container.querySelector('svg')!;
-    (svg as HTMLElement).focus();
+    svg.focus();
     await tick();
     fireKey(svg, 'ArrowDown'); // activeId = 'sup'
     await tick();
