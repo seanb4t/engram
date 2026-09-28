@@ -17,6 +17,7 @@
     selectedId,
     selectedLane,
     collapsed = null,
+    dimmedIds,
     onselect,
     ontogglehidden
   }: {
@@ -27,6 +28,7 @@
     selectedId: string | null;
     selectedLane: LaneType | 'graph' | null;
     collapsed?: { shown: number; total: number; k: number; truncated: boolean; onexpand: () => void } | null;
+    dimmedIds?: ReadonlySet<string>;
     onselect: (id: string, lane: LaneType) => void;
     ontogglehidden: () => void;
   } = $props();
@@ -94,6 +96,7 @@
             class="row"
             class:sel={selectedId === c.id}
             class:sel-here={selectedId === c.id && selectedLane === type}
+            class:fdim={dimmedIds?.has(c.id)}
             data-testid={`lane-row-${type}-${c.id}`}
             onclick={() => onselect(c.id, type)}
           >
@@ -218,6 +221,18 @@
   }
   .row.sel-here {
     box-shadow: inset calc(3 * var(--u)) 0 0 var(--primary);
+  }
+  /* D-14: a row whose candidate fails the in-view tag filter dims to 30% on
+     its non-text marks (category dot, evidence pills/bars, x-N badge) --
+     never a raw opacity on text, which failed WCAG 2.2 AA 4.5:1 (see the
+     conventions skill's dim rule). */
+  .row.fdim .dot,
+  .row.fdim .row-ev,
+  .row.fdim .x {
+    opacity: 0.3;
+  }
+  .row.fdim .sum {
+    color: var(--muted-foreground);
   }
   .id {
     display: inline-flex;

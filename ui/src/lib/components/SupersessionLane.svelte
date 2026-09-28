@@ -16,6 +16,7 @@
     hidden,
     selectedId,
     selectedLane,
+    dimmedIds,
     onselect,
     ontogglehidden
   }: {
@@ -23,6 +24,7 @@
     hidden: boolean;
     selectedId: string | null;
     selectedLane: LaneType | 'graph' | null;
+    dimmedIds?: ReadonlySet<string>;
     onselect: (id: string, lane: LaneType) => void;
     ontogglehidden: () => void;
   } = $props();
@@ -62,6 +64,7 @@
                     class:hidden-state={card.states.length > 0}
                     class:sel={selectedId === card.id}
                     class:sel-here={selectedId === card.id && selectedLane === 'supersession'}
+                    class:fdim={dimmedIds?.has(card.id)}
                     data-testid={`chain-card-${card.id}`}
                     onclick={() => onselect(card.id, 'supersession')}
                   >
@@ -189,6 +192,16 @@
   }
   .chain-card.sel-here {
     box-shadow: inset calc(3 * var(--u)) 0 0 var(--primary);
+  }
+  /* D-14: a chain card whose candidate fails the in-view tag filter dims to
+     30% on its non-text marks (dot, x-N badge), never a raw opacity on text
+     (see EdgeLane's identical rule and the conventions skill's dim rule). */
+  .chain-card.fdim .dot,
+  .chain-card.fdim .x {
+    opacity: 0.3;
+  }
+  .chain-card.fdim .ch-sum {
+    color: var(--muted-foreground);
   }
   .ch-meta {
     display: flex;

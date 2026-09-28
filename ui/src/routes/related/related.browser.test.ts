@@ -14,6 +14,7 @@ import {
   TagEvidenceSchema,
   SupersessionEvidenceSchema,
   WeightedTagSchema,
+  ListTagsResponseSchema,
   EdgeType,
   SupersessionDirection,
   type Memory
@@ -25,7 +26,7 @@ import RelatedPage from './[id]/+page.svelte';
 // scheduled.browser.test.ts's identical ordering constraint. pageState.params
 // is a getter parsed from the reactive url.pathname (no SvelteKit router in
 // this test harness, unlike the flat-searchParams routes).
-const { gotoSpy, pageState, relatedMemoriesSpy } = await vi.hoisted(async () => {
+const { gotoSpy, pageState, relatedMemoriesSpy, listTagsSpy } = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/related/anchor-uuid');
   const pageState = {
@@ -39,7 +40,7 @@ const { gotoSpy, pageState, relatedMemoriesSpy } = await vi.hoisted(async () => 
     const next = new URL(href, 'http://localhost');
     pageState.url.href = next.href;
   });
-  return { gotoSpy, pageState, relatedMemoriesSpy: vi.fn() };
+  return { gotoSpy, pageState, relatedMemoriesSpy: vi.fn(), listTagsSpy: vi.fn() };
 });
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
@@ -50,7 +51,7 @@ vi.mock('$lib/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('$lib/client')>();
   return {
     ...actual,
-    engram: { ...actual.engram, relatedMemories: relatedMemoriesSpy }
+    engram: { ...actual.engram, relatedMemories: relatedMemoriesSpy, listTags: listTagsSpy }
   };
 });
 
@@ -118,9 +119,14 @@ function fixtureResponse() {
   });
 }
 
+function emptyTagsResponse() {
+  return create(ListTagsResponseSchema, { tags: [], more: false });
+}
+
 beforeEach(() => {
   gotoSpy.mockClear();
   relatedMemoriesSpy.mockReset().mockResolvedValue(fixtureResponse());
+  listTagsSpy.mockReset().mockResolvedValue(emptyTagsResponse());
   pageState.url.href = 'http://localhost/related/anchor-uuid';
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -508,5 +514,341 @@ describe('/related/[id] — vector "show all" mirrored in the graph, and legend/
     await screen.getByRole('button', { name: 'Re-centre ↵' }).click();
 
     await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(8);
+  });
+});
+
+// Fixture: an anchor plus 5 candidates -- 2 carrying #qdrant (one of them
+// also a supersession predecessor, for a chain-card dim check), 3 carrying
+// #other (one of them also a supersession predecessor). Lets the tag filter
+// on #qdrant dim exactly the 3 #other candidates across lane rows, a chain
+// card and graph nodes, never the anchor and never a #qdrant carrier.
+function tagFilterFixtureResponse() {
+  const anchor = makeMemory({ id: 'anchor-uuid', shortId: 'anchor00001', category: 'decision', summary: 'Anchor summary', tags: ['engram'] });
+
+  function tagEdge(tag: string, weight: number) {
+    return create(RelatedEdgeSchema, {
+      type: EdgeType.TAG,
+      evidence: { case: 'tag', value: create(TagEvidenceSchema, { sharedTags: [create(WeightedTagSchema, { tag, weight })], tagWeight: weight }) }
+    });
+  }
+  function supersessionEdge(depth: number) {
+    return create(RelatedEdgeSchema, {
+      type: EdgeType.SUPERSESSION,
+      evidence: { case: 'supersession', value: create(SupersessionEvidenceSchema, { direction: SupersessionDirection.PREDECESSOR, depth }) }
+    });
+  }
+
+  const qa = makeMemory({ id: 'qa-uuid', shortId: 'qacand00001', category: 'gotcha', summary: 'Qdrant candidate A', tags: ['qdrant'] });
+  const qb = makeMemory({ id: 'qb-uuid', shortId: 'qbcand00001', category: 'preference', summary: 'Qdrant candidate B', tags: ['qdrant'] });
+  const oa = makeMemory({ id: 'oa-uuid', shortId: 'oacand00001', category: 'discovery', summary: 'Other candidate A', tags: ['other'] });
+  const ob = makeMemory({ id: 'ob-uuid', shortId: 'obcand00001', category: 'discovery', summary: 'Other candidate B', tags: ['other'] });
+  const oc = makeMemory({ id: 'oc-uuid', shortId: 'occand00001', category: 'discovery', summary: 'Other candidate C', tags: ['other'] });
+
+  return create(RelatedMemoriesResponseSchema, {
+    anchor,
+    truncated: false,
+    related: [
+      create(RelatedMemorySchema, { memory: qa, edges: [tagEdge('qdrant', 1.1), supersessionEdge(1)] }),
+      create(RelatedMemorySchema, { memory: qb, edges: [tagEdge('qdrant', 1.1)] }),
+      create(RelatedMemorySchema, { memory: oa, edges: [tagEdge('other', 0.85)] }),
+      create(RelatedMemorySchema, { memory: ob, edges: [tagEdge('other', 0.85)] }),
+      create(RelatedMemorySchema, { memory: oc, edges: [tagEdge('other', 0.85), supersessionEdge(2)] })
+    ]
+  });
+}
+
+function tagFilterTagsResponse() {
+  return create(ListTagsResponseSchema, {
+    tags: [
+      { tag: 'engram', count: 1n },
+      { tag: 'qdrant', count: 2n },
+      { tag: 'other', count: 3n },
+      { tag: 'unrelated', count: 50n }
+    ],
+    more: false
+  });
+}
+
+const RAIL_TAB_KEY = 'engram.console.relatedRailTab';
+
+describe('/related/[id] — rail Tags tab and the in-view tag filter (Task 1, D-13/D-14/D-15/D-11)', () => {
+  beforeEach(() => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(tagFilterFixtureResponse());
+    listTagsSpy.mockReset().mockResolvedValue(tagFilterTagsResponse());
+    // D-01: the rail tab is remembered per viewer via localStorage, which
+    // persists across tests sharing this browser page -- clear it so every
+    // test here starts from the true default (Graph) regardless of run
+    // order or what an earlier test (this file or another) last wrote.
+    localStorage.removeItem(RAIL_TAB_KEY);
+  });
+
+  it('shows Graph and Tags rail tabs, defaulting to Graph', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('the Tags tab renders bars from listTags({ scope: "", limit: 1000n }) with the anchor tag marked ●', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+
+    await expect.poll(() => listTagsSpy).toHaveBeenCalledTimes(1);
+    expect(listTagsSpy).toHaveBeenCalledWith({ scope: '', limit: 1000n }, expect.anything());
+
+    const rows = screen.container.querySelectorAll('[role="option"][aria-label]');
+    const engramRow = Array.from(rows).find((r) => r.textContent?.includes('engram'));
+    expect(engramRow?.classList.contains('marked')).toBe(true);
+    expect(engramRow?.textContent).toContain('●');
+  });
+
+  it('clicking a tag shows the chip and dims lane rows, a chain card and graph nodes lacking it -- never the anchor, never a carrier', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    const qdrantRow = screen.container.querySelector('[role="option"][aria-label^="#qdrant"]') as HTMLElement;
+    qdrantRow.click();
+
+    await expect.element(screen.getByTestId('tag-filter-chip')).toHaveTextContent('#qdrant 2 of 5 carry it');
+
+    // Lane rows: #other candidates dim, #qdrant candidates do not.
+    await expect.poll(() => screen.container.querySelector('[data-testid="lane-row-tag-oa-uuid"]')?.classList.contains('fdim')).toBe(true);
+    expect(screen.container.querySelector('[data-testid="lane-row-tag-ob-uuid"]')?.classList.contains('fdim')).toBe(true);
+    expect(screen.container.querySelector('[data-testid="lane-row-tag-qa-uuid"]')?.classList.contains('fdim')).toBe(false);
+    expect(screen.container.querySelector('[data-testid="lane-row-tag-qb-uuid"]')?.classList.contains('fdim')).toBe(false);
+
+    // Chain cards: oc-uuid (#other) dims, qa-uuid (#qdrant) does not.
+    expect(screen.container.querySelector('[data-testid="chain-card-oc-uuid"]')?.classList.contains('fdim')).toBe(true);
+    expect(screen.container.querySelector('[data-testid="chain-card-qa-uuid"]')?.classList.contains('fdim')).toBe(false);
+    expect(screen.container.querySelector('[data-testid="chain-card-anchor-uuid"]')?.classList.contains('fdim')).toBe(false);
+
+    // Graph nodes: switch back to Graph to inspect them.
+    await screen.getByRole('tab', { name: 'Graph' }).click();
+    expect(screen.container.querySelector('#gn-oa-uuid')?.classList.contains('fdim')).toBe(true);
+    expect(screen.container.querySelector('#gn-qa-uuid')?.classList.contains('fdim')).toBe(false);
+    expect(screen.container.querySelector('#gn-anchor-uuid')?.classList.contains('fdim')).toBe(false);
+  });
+
+  it("sets the graph's live summary to end with the filter clause", async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    (screen.container.querySelector('[role="option"][aria-label^="#qdrant"]') as HTMLElement).click();
+    await screen.getByRole('tab', { name: 'Graph' }).click();
+
+    // p.sr-only[aria-live] is the neighbourhood-summary line; the zoom
+    // readout is a DIFFERENT aria-live element (div.pct), so the selector
+    // must stay tag-specific rather than matching the first [aria-live].
+    const live = screen.container.querySelector('p.sr-only[aria-live="polite"]');
+    await expect.poll(() => live?.textContent ?? '').toContain('· #qdrant 2 of 5 carry it');
+  });
+
+  it('clicking × clears the filter and removes every .fdim', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    (screen.container.querySelector('[role="option"][aria-label^="#qdrant"]') as HTMLElement).click();
+    await expect.element(screen.getByTestId('tag-filter-chip')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Clear tag filter' }).click();
+
+    await expect.poll(() => screen.container.querySelector('[data-testid="tag-filter-chip"]')).toBeNull();
+    expect(screen.container.querySelectorAll('.fdim').length).toBe(0);
+  });
+
+  it('clicking the same tag twice clears the filter', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    const qdrantRow = () => screen.container.querySelector('[role="option"][aria-label^="#qdrant"]') as HTMLElement;
+    qdrantRow().click();
+    await expect.element(screen.getByTestId('tag-filter-chip')).toBeInTheDocument();
+
+    qdrantRow().click();
+    await expect.poll(() => screen.container.querySelector('[data-testid="tag-filter-chip"]')).toBeNull();
+  });
+
+  it('the tag filter never changes membership -- role=option count is unaffected', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    // The rail tab remembers its last value across tests in this shared
+    // browser page (D-01) -- force Graph explicitly rather than assuming
+    // the default, so `before` is never measured against an empty Tags
+    // panel left over from a prior test.
+    await screen.getByRole('tab', { name: 'Graph' }).click();
+    const before = screen.container.querySelectorAll('svg.graph [role="option"]').length;
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    (screen.container.querySelector('[role="option"][aria-label^="#qdrant"]') as HTMLElement).click();
+    await screen.getByRole('tab', { name: 'Graph' }).click();
+
+    expect(screen.container.querySelectorAll('svg.graph [role="option"]').length).toBe(before);
+  });
+
+  it('a tag present in tag-edge evidence shows a rarity line matching the server weight; a tag absent from evidence shows count only', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    const qdrantRow = screen.container.querySelector('[role="option"][aria-label^="#qdrant"]') as HTMLElement;
+    const unrelatedRow = screen.container.querySelector('[role="option"][aria-label^="#unrelated"]') as HTMLElement;
+
+    expect(qdrantRow.getAttribute('title')).toBe('count 2\nrarity ln(n/df) 1.10');
+    expect(unrelatedRow.getAttribute('title')).toBe('count 50');
+  });
+
+  it('selecting a lane row while the Tags tab is showing switches the rail to Graph and shows evidence', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+
+    await screen.getByTestId('lane-row-tag-oa-uuid').click();
+
+    await expect.element(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+    await expect.element(screen.getByRole('region', { name: 'Why oacand00001 is related' })).toBeInTheDocument();
+  });
+});
+
+describe('/related/[id] — g, remembered tab, trail crumbs, back and Escape tiers (Task 2, D-01/D-04)', () => {
+  beforeEach(() => {
+    localStorage.removeItem(RAIL_TAB_KEY);
+  });
+
+  it('pressing g toggles the rail tab between Graph and Tags and persists it to localStorage', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true, cancelable: true }));
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => localStorage.getItem(RAIL_TAB_KEY)).toBe('tags');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true, cancelable: true }));
+    await expect.element(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => localStorage.getItem(RAIL_TAB_KEY)).toBe('graph');
+  });
+
+  it('mounting with "tags" stored opens on the Tags tab', async () => {
+    localStorage.setItem(RAIL_TAB_KEY, 'tags');
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('mounting with an unrecognized stored value ("bogus") falls back to Graph', async () => {
+    localStorage.setItem(RAIL_TAB_KEY, 'bogus');
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('g typed in the tag filter box does nothing', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+
+    await screen.getByRole('textbox', { name: 'Filter tags' }).fill('g');
+
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the anchor bar shows "trail", two crumbs and the current short_id when ?trail carries two entries', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?trail=aaaaaaaaaa,bbbbbbbbbb&from=%2Fsearch';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await expect.element(screen.getByText('trail')).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'aaaaaaaaaa' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'bbbbbbbbbb' })).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.crumbs .cur')?.textContent).toBe('anchor00001');
+  });
+
+  it('clicking the first crumb navigates to it, cutting the trail before it and carrying `from` forward', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?trail=aaaaaaaaaa,bbbbbbbbbb&from=%2Fsearch';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'aaaaaaaaaa' }).click();
+
+    expect(gotoSpy).toHaveBeenCalledTimes(1);
+    const target = gotoSpy.mock.calls[0][0] as string;
+    expect(target.startsWith('/ui/related/aaaaaaaaaa')).toBe(true);
+    expect(target).not.toContain('trail=');
+    expect(target).toContain('from=');
+  });
+
+  it('"← back [" and the [ key call history.back() when the trail is non-empty', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?trail=aaaaaaaaaa,bbbbbbbbbb&from=%2Fsearch';
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: /← back/ }).click();
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    expect(gotoSpy).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true, cancelable: true }));
+    expect(backSpy).toHaveBeenCalledTimes(2);
+
+    backSpy.mockRestore();
+  });
+
+  it('back exits to the `from` path when the trail is empty', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?from=%2Fsearch';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: /← back/ }).click();
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search');
+  });
+
+  it('back exits to /search?sel={anchor id} when both the trail and `from` are empty', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: /← back/ }).click();
+
+    expect(gotoSpy).toHaveBeenCalledTimes(1);
+    const target = gotoSpy.mock.calls[0][0] as string;
+    expect(target.startsWith('/ui/search?')).toBe(true);
+    expect(target).toContain('sel=anchor-uuid');
+  });
+
+  it('Escape clears the selection first (without navigating), then a second Escape navigates to the origin', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?from=%2Fsearch';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await screen.getByTestId('lane-row-tag-tagvec-uuid').click();
+    await expect.element(screen.getByRole('region', { name: 'Why tagv0000001 is related' })).toBeInTheDocument();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await expect.poll(() => screen.container.querySelectorAll('.ev').length).toBe(0);
+    expect(gotoSpy).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search');
+  });
+
+  it("the graph's onleave moves focus to the lanes region", async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    const svg = screen.container.querySelector('svg.graph') as SVGSVGElement;
+    svg.focus();
+    svg.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+
+    await expect.poll(() => document.activeElement === screen.container.querySelector('.lanes')).toBe(true);
+    expect(gotoSpy).not.toHaveBeenCalled();
   });
 });
