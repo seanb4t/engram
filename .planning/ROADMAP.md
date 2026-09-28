@@ -618,7 +618,7 @@ existing consumers and is flagged for a research pass at plan time.
 **Requirements**: NLQ-01, NLQ-02, NLQ-03, NLQ-04
 **Success Criteria** (what must be TRUE):
 
-  1. With query understanding off, no decision call is made and search behavior and config are byte-identical to before this phase
+  1. Query understanding defaults on when `ENGRAM_DECISIONS_PROVIDER=jev` (explicit `off` disables it, and startup discloses when it is on); with it off, no decision call is made and search behavior and config are byte-identical to before this phase
   2. With it on, a prose query yields suggested filter chips (categories, time window, tags, scope) from a server-side `UnderstandQuery` RPC within a bounded no-retry timeout; a decision failure or timeout yields zero suggestions and never fails or delays the search beyond the budget
   3. A test proves search results are unchanged until a suggested chip is clicked, and an accepted chip is indistinguishable from a manually added one
   4. A test proves no query text appears in logs unless the explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set

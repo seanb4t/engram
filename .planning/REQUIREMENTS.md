@@ -72,7 +72,7 @@ Tailwind 4, TanStack Query 6), with the missing Connect RPCs added rather than l
 
 ### Query understanding
 
-- [ ] **NLQ-01**: An operator can enable query understanding through `ENGRAM_` config on top of `ENGRAM_DECISIONS_PROVIDER`; it is off by default, and with it off no decision call is made and search behaviour is byte-identical.
+- [ ] **NLQ-01**: Query understanding is controlled by `ENGRAM_SEARCH_UNDERSTANDING` on top of `ENGRAM_DECISIONS_PROVIDER`; unset, it follows the provider (on when `ENGRAM_DECISIONS_PROVIDER=jev`, off otherwise) and an explicit `off` disables it; when on, startup discloses that console query text is sent to the provider; with it off no decision call is made and search behaviour is byte-identical. (Amended 2026-09-28, Phase 6 D-01: default follows the provider.)
 - [ ] **NLQ-02**: With it on, a prose query yields suggested filter chips (categories, time window, tags, scope) produced by a server-side `UnderstandQuery` RPC through `internal/decide` under a bounded no-retry timeout; a decision failure yields zero suggestions and never fails or delays the search beyond the budget.
 - [ ] **NLQ-03**: Suggested chips are rendered as unapplied suggestions the user confirms or dismisses; results never change until a chip is accepted, and an accepted chip is indistinguishable from a manually added one.
 - [ ] **NLQ-04**: Query text is never logged or exported by the understanding path unless an explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set; content is never logged.
