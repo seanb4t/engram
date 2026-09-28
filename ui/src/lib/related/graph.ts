@@ -11,6 +11,9 @@
 // collapse, hidden-type filtering, chain arrows and node accessible names.
 import type { Memory, RelatedMemoriesResponse, RelatedEdge } from '$lib/gen/engram_pb';
 import { EdgeType, SupersessionDirection } from '$lib/gen/engram_pb';
+import { compareChainNodes, type ChainNode } from '$lib/curation/chain';
+import { memoryStateWords, type RecordStateWord } from '$lib/memorystate';
+import { timestampDate } from '@bufbuild/protobuf/wkt';
 import {
   forceSimulation,
   forceLink,
@@ -78,7 +81,7 @@ export interface GraphNode {
   isAnchor: boolean;
   // visible types only
   types: LaneType[];
-  states: string[];
+  states: RecordStateWord[];
   name: string;
   score?: number;
 }
@@ -267,14 +270,106 @@ export function settleLayout(nodes: readonly GraphNode[], edges: readonly GraphE
   return { simulation, simNodes };
 }
 
-// visibleMembership -- Task 1's unfiltered pass-through: every candidate is
-// drawn, in response order. Task 2 replaces the node/lane ordering with
-// laneRows' canonical strength ordering, adds the vector-lane collapse,
-// hidden-type filtering and chain arrows.
+// laneRows sorts one lane by its own strength: supersession by signedDepth
+// ascending (oldest predecessor first, then successors), ties broken by
+// compareChainNodes (createdAt ascending, then id ascending) -- the same
+// chronological tiebreak the supersession chain dialog uses. Every other
+// lane sorts by strength descending (highest first), ties by id ascending.
+// Scores are never compared across lanes (Phase 1 D-06..D-16).
+export function laneRows(model: RelatedModel, type: LaneType): Candidate[] {
+  const rows = model.candidates.filter((c) => c.types.includes(type));
+  if (type === 'supersession') {
+    return rows.slice().sort((a, b) => {
+      const ad = a.signedDepth ?? 0;
+      const bd = b.signedDepth ?? 0;
+      if (ad !== bd) return ad - bd;
+      const an: Pick<ChainNode, 'id' | 'createdAt'> = { id: a.id, createdAt: a.memory.createdAt ? timestampDate(a.memory.createdAt) : undefined };
+      const bn: Pick<ChainNode, 'id' | 'createdAt'> = { id: b.id, createdAt: b.memory.createdAt ? timestampDate(b.memory.createdAt) : undefined };
+      return compareChainNodes(an as ChainNode, bn as ChainNode);
+    });
+  }
+  return rows.slice().sort((a, b) => {
+    const as = a.strength[type] ?? 0;
+    const bs = b.strength[type] ?? 0;
+    if (as !== bs) return bs - as;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+// nodeAccessibleName is the single source of a node's accessible name,
+// shared by the graph's role="option" aria-label and the visually hidden
+// neighbourhood list (D-11): "{short_id}, {category}, {types joined by
+// ' and '}[, {states}]"; the anchor form omits the types list in favour of
+// the literal word "anchor".
+export function nodeAccessibleName(input: {
+  shortId: string;
+  category: string;
+  isAnchor: boolean;
+  types: LaneType[];
+  states: readonly string[];
+}): string {
+  const statesPart = input.states.length > 0 ? `, ${input.states.join(', ')}` : '';
+  const middle = input.isAnchor ? 'anchor' : input.types.join(' and ');
+  return `${input.shortId}, ${input.category}, ${middle}${statesPart}`;
+}
+
+// neighbourhoodSummary is the aria-live announcement text (D-11): counts
+// every non-anchor node's VISIBLE types (post hidden-type/vector-collapse
+// filtering), never the raw model counts -- it describes what is actually
+// drawn, not what the server returned.
+export function neighbourhoodSummary(nodes: readonly GraphNode[]): string {
+  const nonAnchor = nodes.filter((n) => !n.isAnchor);
+  const counts: Record<LaneType, number> = { supersession: 0, citation: 0, tag: 0, vector: 0 };
+  for (const n of nonAnchor) {
+    for (const t of n.types) counts[t]++;
+  }
+  return (
+    `${nonAnchor.length} related · supersession ${counts.supersession} · citation ${counts.citation}` +
+    ` · tag ${counts.tag} · vector ${counts.vector}`
+  );
+}
+
+// visibleMembership is the single membership result the lanes, the graph
+// and the aria-live summary all read (D-07: "graph and lanes always show
+// the same membership"). Hidden types empty their lane entirely; the vector
+// lane additionally collapses to VECTOR_COLLAPSE candidates unless
+// vectorExpanded. A candidate with no visible lane is dropped from `nodes`
+// by construction (it never appears in any lanes[] array). Chain
+// (superseded_by) arrows are added between two DRAWN non-anchor candidates
+// only -- never touching the anchor, which is already covered by the star.
 export function visibleMembership(
   model: RelatedModel,
-  _opts: { hiddenTypes: ReadonlySet<LaneType>; vectorExpanded: boolean }
+  opts: { hiddenTypes: ReadonlySet<LaneType>; vectorExpanded: boolean }
 ): Membership {
+  const vectorAll = laneRows(model, 'vector');
+  const vectorHidden = opts.hiddenTypes.has('vector');
+  const vectorTotal = vectorAll.length;
+  const vectorCollapsed = !vectorHidden && !opts.vectorExpanded && vectorTotal > VECTOR_COLLAPSE;
+  const vectorRows = vectorHidden ? [] : opts.vectorExpanded ? vectorAll : vectorAll.slice(0, VECTOR_COLLAPSE);
+
+  const lanes: Record<LaneType, Candidate[]> = {
+    supersession: opts.hiddenTypes.has('supersession') ? [] : laneRows(model, 'supersession'),
+    citation: opts.hiddenTypes.has('citation') ? [] : laneRows(model, 'citation'),
+    tag: opts.hiddenTypes.has('tag') ? [] : laneRows(model, 'tag'),
+    vector: vectorRows
+  };
+
+  const seen = new Set<string>();
+  const orderedCandidates: Candidate[] = [];
+  for (const type of LANE_ORDER) {
+    for (const c of lanes[type]) {
+      if (!seen.has(c.id)) {
+        seen.add(c.id);
+        orderedCandidates.push(c);
+      }
+    }
+  }
+
+  function visibleTypesFor(id: string): LaneType[] {
+    return LANE_ORDER.filter((t) => lanes[t].some((c) => c.id === id));
+  }
+
+  const anchorStates = memoryStateWords(model.anchor);
   const anchorNode: GraphNode = {
     id: model.anchor.id,
     shortId: model.anchor.shortId,
@@ -282,30 +377,55 @@ export function visibleMembership(
     summary: model.anchor.summary,
     isAnchor: true,
     types: [],
-    states: [],
-    name: `${model.anchor.shortId}, ${model.anchor.category}, anchor`
+    states: anchorStates,
+    name: nodeAccessibleName({ shortId: model.anchor.shortId, category: model.anchor.category, isAnchor: true, types: [], states: anchorStates })
   };
-  const candidateNodes: GraphNode[] = model.candidates.map((c) => ({
-    id: c.id,
-    shortId: c.shortId,
-    category: c.memory.category,
-    summary: c.memory.summary,
-    isAnchor: false,
-    types: c.types,
-    states: [],
-    name: `${c.shortId}, ${c.memory.category}, ${c.types.join(' and ')}`,
-    score: c.strength.vector
-  }));
-  const lanes: Record<LaneType, Candidate[]> = { supersession: [], citation: [], tag: [], vector: [] };
-  for (const c of model.candidates) {
-    for (const t of c.types) lanes[t].push(c);
+
+  const candidateNodes: GraphNode[] = orderedCandidates.map((c) => {
+    const types = visibleTypesFor(c.id);
+    const states = memoryStateWords(c.memory);
+    return {
+      id: c.id,
+      shortId: c.shortId,
+      category: c.memory.category,
+      summary: c.memory.summary,
+      isAnchor: false,
+      types,
+      states,
+      name: nodeAccessibleName({ shortId: c.shortId, category: c.memory.category, isAnchor: false, types, states }),
+      score: c.strength.vector
+    };
+  });
+
+  // Star edges: recompute per-candidate offsets from the VISIBLE type set
+  // only, so hiding one of a multi-type candidate's edges also collapses
+  // its offset back to 0 when only one type remains visible.
+  const visibleCandidatesForEdges: Candidate[] = orderedCandidates.map((c) => ({ ...c, types: visibleTypesFor(c.id) }));
+  const starEdges = graphEdges(model.anchor.id, visibleCandidatesForEdges);
+
+  const drawnIds = new Set(orderedCandidates.map((c) => c.id));
+  const chainEdges: GraphEdge[] = [];
+  for (const c of orderedCandidates) {
+    const supersededBy = c.memory.supersededBy;
+    if (supersededBy && drawnIds.has(supersededBy)) {
+      chainEdges.push({
+        key: `${c.id}:${supersededBy}:supersession:chain`,
+        source: c.id,
+        target: supersededBy,
+        type: 'supersession',
+        offset: 0,
+        arrow: true,
+        chain: true
+      });
+    }
   }
+
   return {
     lanes,
-    vectorTotal: lanes.vector.length,
-    vectorCollapsed: false,
+    vectorTotal,
+    vectorCollapsed,
     nodes: [anchorNode, ...candidateNodes],
-    edges: graphEdges(model.anchor.id, model.candidates)
+    edges: [...starEdges, ...chainEdges]
   };
 }
 
@@ -313,7 +433,8 @@ export function visibleMembership(
 // colour the `truncated=` word in the warning token without string
 // matching: `RelatedMemories(subj, "{short_id}", k={k}) →
 // {before}{truncatedText}{after}`. `ms` is the measured request duration
-// (Task 3); omitted, `after` is empty.
+// (Task 3); omitted, `after` is empty. Counts are the raw model totals from
+// the server response, never the UI-filtered membership.
 export function callLineParts(model: RelatedModel, ms?: number): CallLineParts {
   const before =
     `RelatedMemories(subj, "${model.anchor.shortId}", k=${model.k}) → ${model.candidates.length} related` +
@@ -322,33 +443,4 @@ export function callLineParts(model: RelatedModel, ms?: number): CallLineParts {
   const truncatedText = `truncated=${model.truncated}`;
   const after = ms === undefined ? '' : ` · ${ms}ms`;
   return { before, truncatedText, after };
-}
-
-// TODO(Task 2 GREEN): laneRows must sort each lane by its own strength
-// (supersession: signedDepth ascending then compareChainNodes; every other
-// lane: strength descending, ties by id ascending). This stub only filters
-// so graph.test.ts's RED phase fails on genuine ordering assertions rather
-// than a missing-export module error.
-export function laneRows(model: RelatedModel, type: LaneType): Candidate[] {
-  return model.candidates.filter((c) => c.types.includes(type));
-}
-
-// TODO(Task 2 GREEN): nodeAccessibleName must return
-// "{shortId}, {category}, {types joined by ' and '}[, {states joined by ', '}]"
-// (anchor form: "{shortId}, {category}, anchor[, {states}]").
-export function nodeAccessibleName(_input: {
-  shortId: string;
-  category: string;
-  isAnchor: boolean;
-  types: LaneType[];
-  states: readonly string[];
-}): string {
-  return '';
-}
-
-// TODO(Task 2 GREEN): neighbourhoodSummary must return
-// "{n} related · supersession {a} · citation {b} · tag {c} · vector {d}"
-// over the non-anchor nodes' visible types.
-export function neighbourhoodSummary(_nodes: readonly GraphNode[]): string {
-  return '';
 }

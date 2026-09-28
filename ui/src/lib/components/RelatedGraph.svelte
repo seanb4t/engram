@@ -1,10 +1,19 @@
 <script lang="ts">
-  // The related-neighbourhood graph (GRAPH-01, D-06, D-09): a Svelte-owned
-  // inline SVG. Every <g>/<circle>/<path>/<text> comes from an {#each} --
-  // d3-force supplies only the settled positions (graph.ts:settleLayout);
-  // d3-selection/d3-zoom/d3-drag are not used in this task (roving keyboard,
-  // pan/zoom and drag land in a later plan per the read_first note).
-  import { ANCHOR_R, NODE_R, settleLayout, type GraphNode, type GraphEdge } from '$lib/related/graph';
+  // The related-neighbourhood graph (GRAPH-01, GRAPH-03, D-06, D-09, D-20
+  // label half): a Svelte-owned inline SVG. Every <g>/<circle>/<path>/<text>
+  // comes from an {#each} -- d3-force supplies only the settled positions
+  // (graph.ts:settleLayout); d3-selection/d3-zoom/d3-drag are not used in
+  // this plan (roving keyboard, pan/zoom and drag land in a later plan).
+  import {
+    ANCHOR_R,
+    NODE_R,
+    NODE_R_DENSE,
+    LABEL_ALL_MAX,
+    EDGE_STYLE,
+    settleLayout,
+    type GraphNode,
+    type GraphEdge
+  } from '$lib/related/graph';
 
   let {
     anchorId,
@@ -37,6 +46,9 @@
   });
 
   const anchor = $derived(nodes.find((n) => n.isAnchor));
+  // Past LABEL_ALL_MAX drawn nodes, radius shrinks and only the anchor and
+  // the selected node keep a label (D-20).
+  const dense = $derived(nodes.length > LABEL_ALL_MAX);
 
   function edgePath(e: GraphEdge): string {
     const s = positions.get(e.source);
@@ -52,7 +64,16 @@
   }
 
   function radiusFor(n: GraphNode): number {
-    return n.isAnchor ? ANCHOR_R : NODE_R;
+    if (n.isAnchor) return ANCHOR_R;
+    return dense ? NODE_R_DENSE : NODE_R;
+  }
+
+  function showLabel(n: GraphNode): boolean {
+    return !dense || n.isAnchor || selectedId === n.id;
+  }
+
+  function edgeConnectsSelection(e: GraphEdge): boolean {
+    return selectedId !== null && (e.source === selectedId || e.target === selectedId);
   }
 
   function nodeClick(n: GraphNode) {
@@ -66,19 +87,40 @@
 
 <svg
   class="graph"
+  class:has-sel={selectedId !== null}
   viewBox="-220 -190 440 380"
   role="listbox"
   tabindex="0"
   aria-label={`Related graph for ${anchor?.shortId ?? anchorId}: ${Math.max(nodes.length - 1, 0)} neighbours`}
 >
+  <defs>
+    <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path class="arrow" d="M0,0 L8,4 L0,8 z" />
+    </marker>
+    <marker id="arr-sel" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path class="arrow-sel" d="M0,0 L8,4 L0,8 z" />
+    </marker>
+  </defs>
   <g class="edges">
     {#each edges as e (e.key)}
-      <path class="edge t-{e.type}" d={edgePath(e)} fill="none" />
+      {@const style = EDGE_STYLE[e.type]}
+      {@const onSel = edgeConnectsSelection(e)}
+      <path
+        class="edge t-{e.type}"
+        class:selon={onSel}
+        d={edgePath(e)}
+        fill="none"
+        stroke-width={style.width}
+        stroke-dasharray={style.dash || null}
+        stroke-linecap={style.cap ?? null}
+        marker-end={e.arrow ? (onSel ? 'url(#arr-sel)' : 'url(#arr)') : null}
+      />
     {/each}
   </g>
   <g class="nodes">
     {#each nodes as n (n.id)}
       {@const pos = positions.get(n.id)}
+      {@const r = radiusFor(n)}
       <!-- WAI-ARIA APG listbox: options are NOT tab stops and take no
            keyboard handler of their own -- the container (role="listbox")
            owns all keyboard interaction via aria-activedescendant, added in
@@ -88,6 +130,9 @@
       <g
         class="node"
         class:anchor={n.isAnchor}
+        class:sel={selectedId === n.id}
+        class:fdim={dimmedIds?.has(n.id)}
+        class:hidden-state={n.states.length > 0}
         id="gn-{n.id}"
         role="option"
         aria-selected={selectedId === n.id}
@@ -96,8 +141,15 @@
         onclick={() => nodeClick(n)}
         ondblclick={() => nodeDblClick(n)}
       >
-        <circle class="body" r={radiusFor(n)} fill="var(--cat-{n.category})" />
-        <text class="lbl" text-anchor="middle" y={radiusFor(n) + 10}>{n.shortId}</text>
+        <circle class="halo" r={r + 4} />
+        {#if n.isAnchor}
+          <circle class="ring-b" r={r + 5} />
+          <circle class="ring-a" r={r + 2.5} />
+        {/if}
+        <circle class="body" r={r} fill="var(--cat-{n.category})" />
+        {#if showLabel(n)}
+          <text class="lbl" text-anchor="middle" y={r + 10}>{n.shortId}</text>
+        {/if}
       </g>
     {/each}
   </g>
@@ -115,8 +167,61 @@
   .node.anchor {
     cursor: default;
   }
+
+  /* edges: grey, type carried by line style only -- selection is the only
+     thing allowed to colour an edge (violet). */
+  .edge {
+    stroke: var(--muted-foreground);
+    transition:
+      opacity 0.15s ease,
+      stroke 0.15s ease;
+  }
+  .edge.t-vector {
+    stroke-opacity: 0.55;
+  }
+  .edge.selon {
+    stroke: var(--primary);
+  }
+  .arrow {
+    fill: var(--muted-foreground);
+  }
+  .arrow-sel {
+    fill: var(--primary);
+  }
+
+  /* selection halo + dim */
+  .halo {
+    fill: none;
+    stroke: none;
+  }
+  .node.sel .halo {
+    stroke: var(--primary);
+  }
+  svg.has-sel .node:not(.sel):not(.anchor) {
+    opacity: 0.45;
+  }
+  .fdim {
+    opacity: 0.3;
+  }
+
+  /* anchor double ring */
+  .ring-a,
+  .ring-b {
+    fill: none;
+    stroke: var(--primary);
+  }
+
+  /* a chain member whose record carries state words (archived, superseded,
+     expired, scheduled) renders dashed and faded, matching the
+     supersession-lane chain-card convention. */
+  .node.hidden-state circle {
+    opacity: 0.45;
+    stroke-dasharray: 2 2;
+  }
+
   .lbl {
-    font: var(--text-2xs, calc(11 * var(--u))) / 1 var(--font-mono, monospace);
+    font-size: 9px;
+    font-family: var(--font-mono, monospace);
     fill: var(--muted-foreground);
     paint-order: stroke;
     stroke: var(--card);
