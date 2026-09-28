@@ -212,6 +212,8 @@
           {:else if outcome.parsed.kind === 'not-found'}
             <span>not found</span>
             <div class="acd-rejected-note">{NOT_FOUND_NOTE}</div>
+          {:else if outcome.parsed.kind === 'ambiguous-short-id'}
+            <span>short_id {outcome.parsed.shortId} is ambiguous — paste the full id to be exact</span>
           {:else}
             <span>Could not archive — {outcome.parsed.codeName}</span>
             <div class="acd-detail">{outcome.parsed.detail}</div>

@@ -1,7 +1,7 @@
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
-import { create } from '@bufbuild/protobuf';
+import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { MemorySchema, ArchiveOutcome, type Memory, type ArchiveResult } from '$lib/gen/engram_pb';
 import { parseConnectError, type ParsedConnectError } from '$lib/errors/connect-error';
@@ -14,7 +14,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function makeMemory(overrides: Partial<Memory> = {}): Memory {
+function makeMemory(overrides: MessageInitShape<typeof MemorySchema> = {}): Memory {
   return create(MemorySchema, {
     id: 'm1',
     category: 'convention',
@@ -163,6 +163,18 @@ describe('ArchiveConfirmDialog — rejected envelope (E2 error)', () => {
     await expect.element(screen.getByText(/too many ids/)).toBeInTheDocument();
     // The chips stay in place -- a rejected call never drops a record.
     await expect.element(screen.getByText('s0000000001')).toBeInTheDocument();
+  });
+
+  it('names an ambiguous short id instead of an undefined code', async () => {
+    const parsed = parseConnectError(new ConnectError('ambiguous short id: s0000000001', Code.FailedPrecondition));
+    const onsubmit = vi.fn(() => Promise.resolve<ArchiveSubmitOutcome>({ kind: 'rejected', parsed }));
+    const screen = await render(ArchiveConfirmDialog, baseProps({ onsubmit }));
+    await screen.getByRole('button', { name: 'Archive' }).click();
+
+    await expect
+      .element(screen.getByText('short_id s0000000001 is ambiguous — paste the full id to be exact'))
+      .toBeInTheDocument();
+    await expect.element(screen.getByText(/Could not archive/)).not.toBeInTheDocument();
   });
 });
 
