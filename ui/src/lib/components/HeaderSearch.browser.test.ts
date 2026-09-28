@@ -56,6 +56,13 @@ function fakeTags(more = false) {
   });
 }
 
+function tagsOfSize(n: number, more = false, prefix = 'tag') {
+  return create(ListTagsResponseSchema, {
+    tags: Array.from({ length: n }, (_, i) => ({ tag: `${prefix}${String(i).padStart(4, '0')}`, count: BigInt(n - i) })),
+    more
+  });
+}
+
 function fakeMemory(
   overrides: Partial<{ id: string; summary: string; category: string; scope: string }> = {}
 ): Memory {
@@ -441,6 +448,93 @@ describe('HeaderSearch — Tags autocomplete group (TAGS-02, D-16)', () => {
     await expect
       .element(screen.getByText('Tags · counts in all readable scopes'))
       .not.toBeInTheDocument();
+  });
+
+  it('"scope:repo:acme/x tag:q" calls listTags scoped to the chip and labels the group with it', async () => {
+    listMemoriesSpy.mockResolvedValue({ memories: [], total: 0n });
+    const screen = await renderHeaderSearch();
+    await screen.getByRole('combobox', { name: 'Search memories' }).fill('scope:repo:acme/x tag:q');
+
+    await expect.poll(() => listTagsSpy.mock.calls.length).toBe(1);
+    expect(listTagsSpy.mock.calls[0][0]).toMatchObject({ scope: 'repo:acme/x', limit: 1000n });
+    await expect.element(screen.getByText('Tags · counts in repo:acme/x')).toBeInTheDocument();
+  });
+
+  it('"#zzz" (list complete) shows no match rows and an honest "Add #zzz" row; selecting it completes the chip', async () => {
+    listTagsSpy.mockReset().mockResolvedValue(fakeTags(false));
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    await input.fill('#zzz');
+
+    await expect.poll(() => listTagsSpy.mock.calls.length).toBe(1);
+    expect(screen.container.querySelectorAll('.opt').length).toBe(0);
+    await expect.element(screen.getByText('Add #zzz')).toBeInTheDocument();
+    await expect.element(screen.getByText('#zzz — 0 recall-visible records')).toBeInTheDocument();
+
+    await screen.getByText('Add #zzz').click();
+    await expect.element(input).toHaveValue('#zzz ');
+  });
+
+  it('"#zzz" (more true) names the reason "not among the loaded tags" and warns the footer at 1,000 loaded', async () => {
+    listTagsSpy.mockReset().mockResolvedValue(tagsOfSize(1000, true));
+    const screen = await renderHeaderSearch();
+    await screen.getByRole('combobox', { name: 'Search memories' }).fill('#zzz');
+
+    await expect.poll(() => listTagsSpy.mock.calls.length).toBe(1);
+    await expect.element(screen.getByText('#zzz — not among the loaded tags')).toBeInTheDocument();
+    await expect.element(screen.getByText('matching among the 1,000 most-used tags')).toBeInTheDocument();
+  });
+
+  it('twelve matching tags show 8 rows and the true match count in the footer', async () => {
+    listTagsSpy.mockReset().mockResolvedValue(tagsOfSize(12, false, 'alpha'));
+    const screen = await renderHeaderSearch();
+    await screen.getByRole('combobox', { name: 'Search memories' }).fill('#alpha');
+
+    await expect.poll(() => listTagsSpy.mock.calls.length).toBe(1);
+    expect(screen.container.querySelectorAll('.opt').length).toBe(8);
+    await expect.element(screen.getByText('12 matches · top 8 shown')).toBeInTheDocument();
+  });
+
+  it('a pending listTags shows the in-flight line', async () => {
+    let resolveFetch!: (v: ReturnType<typeof fakeTags>) => void;
+    listTagsSpy.mockReset().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+    const screen = await renderHeaderSearch();
+    await screen.getByRole('combobox', { name: 'Search memories' }).fill('#qd');
+
+    await expect
+      .element(screen.getByText('ListTags(scope="", limit=1000) in flight▍'))
+      .toBeInTheDocument();
+    resolveFetch(fakeTags());
+    await expect.poll(() => listTagsSpy.mock.calls.length).toBe(1);
+  });
+
+  it('a rejected listTags shows the envelope copy and no match rows', async () => {
+    listTagsSpy.mockReset().mockRejectedValue(
+      new ConnectError('field=scope hint=invalid: scope is malformed', Code.FailedPrecondition)
+    );
+    const screen = await renderHeaderSearch();
+    await screen.getByRole('combobox', { name: 'Search memories' }).fill('#qd');
+
+    await expect.element(screen.getByText('Server rejected the request')).toBeInTheDocument();
+    await expect.element(screen.getByText('field=scope hint=invalid: scope is malformed')).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('.opt').length).toBe(0);
+  });
+
+  it('typing "#qd" again after a cached load makes no second listTags call', async () => {
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    await input.fill('#qd');
+    await expect.poll(() => listTagsSpy.mock.calls.length).toBe(1);
+
+    await input.fill('');
+    await input.fill('#qd');
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).toBeInTheDocument();
+    expect(listTagsSpy).toHaveBeenCalledTimes(1);
   });
 });
 
