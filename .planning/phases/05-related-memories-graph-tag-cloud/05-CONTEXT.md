@@ -36,8 +36,8 @@ change, NL query understanding (Phase 6), and client-tier CLI verbs (#630).
   - a sticky right rail with **Graph | Tags** tabs (`g` toggles; last tab remembered per viewer
     in local storage, safe to lose).
 
-  Below 900px the rail stacks under the lanes and the evidence drawer becomes a bottom sheet
-  (max 62vh), as in the sketch.
+  Below 900px the rail stacks under the lanes, with the evidence section still directly under
+  the graph (D-05).
 - **D-02:** **Lanes are the primary body, and the graph is the rail overview.** GRAPH-01..03
   are met by the rail graph. The graph is not the primary evidence surface (sketch avoid-note).
 - **D-03:** Three entry points:
@@ -45,30 +45,34 @@ change, NL query understanding (Phase 6), and client-tier CLI verbs (#630).
   2. a **row key `r`** on the active row, shown in the listbox legend and added to the
      `engram-console-conventions` keyboard table (`r` and `g` are unbound today);
   3. a **⌘K item** "Related to `<short_id>`" when a record is selected.
-- **D-04:** **Re-centre** (Enter, double-click, or the drawer's "Re-centre on … ↵") navigates to
+- **D-04:** **Re-centre** (Enter, double-click, or the evidence section's "Re-centre ↵") navigates to
   `/related/<new-id>`. It pushes a history entry and a crumb, and it clears the selection. `[`
-  and browser Back walk back through the trail. **Escape** closes the evidence drawer and clears
-  the selection first. A second Escape leaves the graph region. Escape outside the graph returns
+  and browser Back walk back through the trail. **Escape** clears the selection (and its evidence)
+  first. A second Escape leaves the graph region. Escape outside the graph returns
   to where the view was opened from.
-- **D-05:** **The evidence drawer is GRAPH-03's "detail pane"** on this route. It is the same
-  surface for a node click, a lane-row click, and a chain-card click. It holds:
+- **D-05:** **Evidence goes in a section directly under the graph in the rail, never over it**
+  (sketch 006 winner A1, Sean 2026-09-27). This **replaces** the sketch 004 slide-over evidence
+  drawer. In sketch 006 the drawer covered the node the user had just clicked, which was
+  rejected as bad UX. The graph stays whole and visible, with the selection lit, and the rail
+  scrolls when the section is tall. The section is the same surface for a node click, a
+  lane-row click, and a chain-card click. It holds:
   - the candidate header (category, short_id, date, summary, tags with shared ones highlighted,
-    state chips);
-  - per-type "Why it is related" blocks, ending with "Evidence is per type; there is no blended
-    score.";
+    state chips) and a clear `esc ×`;
+  - per-type "Why it is related" lines (glyph, type, evidence), ending with "Evidence is per
+    type; there is no blended score.";
   - **Re-centre ↵**;
   - an **"Open record"** link to `/search?sel=<id>` for the full `DetailPane` and its curation
     actions.
 
   The REQUIREMENTS/ROADMAP wording ("selects it in the detail pane") is satisfied by this
-  drawer. Verification should read it that way.
+  evidence section. Verification should read it that way.
 
 ### Graph: edges, caps, layout, keyboard
 - **D-06:** The edge set is a **star plus chain arrows**. Every drawn edge comes from the one
   `RelatedMemories` response: one edge per type between the anchor and each candidate (offset
   curves when a candidate has several types), plus `superseded_by` arrows between chain members
   when both are drawn. There are **no neighbour-to-neighbour edges**, whether computed in the
-  browser or on the server. Every edge has server evidence in the drawer.
+  browser or on the server. Every edge has server evidence in the evidence section (D-05).
 - **D-07:** **"Capped edge count per node" means the server's per-type caps** (about 8 per type;
   chain 8 hops / 16 members; total ceiling 64; Phase 1 D-12). There is no new client
   scoring heuristic. That settles the ROADMAP's "no precedent" flag. The graph **mirrors the
@@ -89,7 +93,7 @@ change, NL query understanding (Phase 6), and client-tier CLI verbs (#630).
   - The SVG region takes focus and uses `aria-activedescendant`.
   - Arrows move in **lane order**: supersession › citation › tag › vector, then strength within
     the lane.
-  - Home and End jump to the ends. Space or click selects and opens the drawer. Enter
+  - Home and End jump to the ends. Space or click selects and shows its evidence under the graph. Enter
     re-centres. Escape follows D-04.
   - Each node has an accessible name: short_id, category, edge types, and state words.
   - Legend toggles are the **same switches** as the lane hide buttons, with `n/cap` counts.
@@ -98,6 +102,24 @@ change, NL query understanding (Phase 6), and client-tier CLI verbs (#630).
   edge types, state). The summary line announces re-centre, toggle and filter results, for
   example "14 related · supersession 3 · citation 2 · tag 6 · vector 8". The lanes remain the
   visible text equivalent.
+- **D-20:** **Graph controls follow sketch 006 A** (Sean, 2026-09-27):
+  - Corner **+ / − / fit** buttons with a zoom readout. Scale is 0.5–4 and translation is
+    bounded to the graph extent.
+  - A **plain wheel scrolls the page**, because the rail is sticky. **⌘/Ctrl+wheel zooms**, and a
+    short hint says so when a plain wheel lands on the graph. Double-click is re-centre, never
+    zoom.
+  - Keyboard focus shows a **dashed violet ring plus a floating focus card** (short_id, edge
+    glyphs, two-line summary). The same card appears on hover. It is hidden for the selected
+    node, whose evidence is already under the graph.
+  - Past **26 drawn nodes**, only the anchor, focused and selected nodes are labelled, and nodes
+    shrink.
+  - A **dragged node springs back** on release; it is not pinned.
+  - **Refit when lane membership changes** (expand/collapse, type toggles, re-centre). Keep the
+    zoom only across selection, focus and drag. A retained zoom clipped the new nodes in the
+    sketch.
+  - **Auto-pan** to a keyboard-focused node that is outside the viewport.
+  - Rejected (sketch 006 B): chrome-free keyboard-only zoom, a free wheel zoom, pin-on-drag, and
+    a radial "halo band" for vector-only nodes.
 
 ### Tag popularity surface
 - **D-12:** The surface is **linear bars, and TAGS-01 is amended.** The sketch 004 bar list
@@ -107,18 +129,27 @@ change, NL query understanding (Phase 6), and client-tier CLI verbs (#630).
   name stays as is.
   — **Reversibility:** reversible — presentation only; the data (`ListTags`) is unchanged.
 - **D-13:** Two hosts share **one tag-bars component**:
-  - **`/search`**: a "Tags" button in `FacetStrip` opens a panel/popover. Counts are for the
-    current scope chip when exactly one is set, and for all readable scopes otherwise. Clicking
-    a bar **adds a `#tag` facet chip**.
+  - **`/search`**: a **docked Tags panel** (sketch 005 winner C, Sean 2026-09-27) that **shares
+    the right slot with `DetailPane`**, so opening a record replaces it. A "▦ Tags panel" toggle
+    sits at the right end of `FacetStrip`. The panel has a filter box, and the bars mark active
+    tags `●` in violet, so the selection stays visible while the user reads results. It becomes a
+    bottom sheet below the narrow breakpoint. Counts are for the current scope chip when exactly
+    one is set, and for all readable scopes otherwise. Clicking a bar **toggles a `#tag` facet
+    chip**. The compact "+ tag" picker (D-16) sits beside the chips.
   - **`/related` rail Tags tab**: counts are for **all readable scopes** (neighbours are
     cross-spine, Phase 1 D-10). The anchor's own tags are marked `●` with a violet bar.
 - **D-14:** In the `/related` rail, clicking a tag **filters the lanes in place**. Lane rows and
   graph nodes that lack the tag dim to 30%, and a chip reads "#qdrant 3 of 14 carry it ×". This
   is the view's own filter chip (TAGS-01). It is not GRAPH-05, which stays deferred.
-- **D-15:** The list shows the **top 30 by default**. "Load all" refetches at the 1000 maximum.
-  When `more` is true, the header says "showing the N most-used tags". A filter box narrows the
-  loaded set and says when nothing in it matches. Each tag's tooltip shows popularity and rarity
-  separately (`count 400 · rarity ln(n/df) 1.10`), never merged.
+- **D-15:** The list shows the **top 30 by default**, taken from the **same cached
+  ListTags(limit=1000) response** the autocomplete uses (D-18). "Show all" reveals the rest
+  without a second request. ListTags carries **no total**, so when `more` is true the copy says
+  "showing the 30 most-used tags" or "more exist beyond 1,000", never "of N". A filter box
+  narrows the loaded set and says when nothing in it matches. Each tag's tooltip shows
+  popularity and rarity separately (`count 400 · rarity ln(n/df) 1.10`), never merged.
+  **Open for research:** rarity needs `n`, the recall-visible record count. The sketch assumes
+  it comes from ListScopes counts. If that is not exact, drop rarity from the `/search` tooltip
+  and keep it only in `/related` tag-edge evidence.
 
 ### Tag chip autocomplete (TAGS-02)
 - **D-16:** Autocomplete appears in **two places, backed by one `ListTags` query per scope key**:
@@ -137,9 +168,9 @@ change, NL query understanding (Phase 6), and client-tier CLI verbs (#630).
   exists.
 
 ### Carried forward (decided earlier, do not re-ask)
-- Sketch winner `6akjphx3k7`: related view = lanes (004 B) + compact graph and evidence drawer
-  (004 C) synthesis. One shared selection lights every appearance of a candidate across lanes,
-  graph and chain. `×N` is a count, not a jump link. State chips sit along the bottom of cards
+- Sketch winner `6akjphx3k7`: related view = lanes (004 B) + compact graph (004 C) synthesis.
+  Its evidence drawer is **overridden by D-05** (sketch 006). One shared selection lights every
+  appearance of a candidate across lanes, graph and chain. `×N` is a count, not a jump link. State chips sit along the bottom of cards
   and nodes.
 - Edge encoding (sketch): edges are grey, and type is shown by **line style plus a letter
   glyph** (S solid 2px with an arrowhead, C dashed `6 3`, T dotted `1.5 3.5`, V thin and faint).
@@ -190,10 +221,14 @@ change, NL query understanding (Phase 6), and client-tier CLI verbs (#630).
 
 ### Design direction (locked by Phase 01.1 sketches)
 - `.claude/skills/sketch-findings-engram/references/related-and-tags.md`: lanes, rail, graph,
-  evidence drawer, edge encoding, truncation, tag bars, what to avoid (**primary design
-  source**)
+  evidence drawer (**superseded by D-05**), edge encoding, truncation, tag bars, what to avoid
+  (**primary design source**)
 - `.claude/skills/sketch-findings-engram/sources/004-related-and-tags/index.html`: runnable
   synthesis winner (`drawGraph`, `forceGraph`, `evidenceBlock`)
+- `.planning/sketches/005-tag-entry-points/` (winner C) and
+  `.planning/sketches/006-graph-interaction-density/` (winner A1): the README and runnable
+  `index.html` for the `/search` tag panel and picker, and for the graph controls and evidence
+  placement. They are packaged into `sketch-findings-engram` at wrap-up.
 - `.claude/skills/sketch-findings-engram/references/foundations.md`: tokens, state chips,
   timings, text-size scale
 - `.claude/skills/engram-console-conventions/SKILL.md`: keyboard model (add `r`, `g`, graph
