@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { tick } from 'svelte';
 import RelatedGraph from './RelatedGraph.svelte';
 import { EDGE_STYLE, LABEL_ALL_MAX, neighbourhoodSummary, type GraphNode, type GraphEdge } from '$lib/related/graph';
+import { WHEEL_HINT } from '$lib/related/zoom';
 
 function mkNode(id: string, overrides: Partial<GraphNode> = {}): GraphNode {
   return {
@@ -470,6 +471,153 @@ describe('RelatedGraph — focus ring and floating focus card (D-20)', () => {
     fireKey(svg, 'ArrowDown'); // resumes from the anchor -> lands on the first candidate
     await tick();
     expect(svg.getAttribute('aria-activedescendant')).toBe('gn-cit');
+  });
+});
+
+describe('RelatedGraph — zoom controls and wheel gate (GRAPH-01, D-20)', () => {
+  it('a plain wheel event shows the hint, is not defaultPrevented, and leaves the readout unchanged', async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const screen = await renderGraph(nodes, []);
+    const svg = screen.container.querySelector('svg')!;
+    await tick();
+    const before = screen.container.querySelector('.pct')?.textContent;
+
+    const evt = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 10 });
+    svg.dispatchEvent(evt);
+    await tick();
+
+    expect(evt.defaultPrevented).toBe(false);
+    expect(screen.container.querySelector('.wheel-hint.show')?.textContent).toBe(WHEEL_HINT);
+    expect(screen.container.querySelector('.pct')?.textContent).toBe(before);
+  });
+
+  it('a ctrlKey wheel shows no hint', async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const screen = await renderGraph(nodes, []);
+    const svg = screen.container.querySelector('svg')!;
+    await tick();
+
+    svg.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY: -10 }));
+    await tick();
+
+    expect(screen.container.querySelector('.wheel-hint.show')).toBeNull();
+  });
+
+  it("'Zoom in' changes the readout and becomes disabled within 10 clicks, as 'Zoom out' does at the lower limit", async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const screen = await renderGraph(nodes, []);
+    await tick();
+    const zoomIn = screen.getByRole('button', { name: 'Zoom in' });
+    const zoomOut = screen.getByRole('button', { name: 'Zoom out' });
+    const readout = () => screen.container.querySelector('.pct')?.textContent;
+
+    const start = readout();
+    await zoomIn.click();
+    await tick();
+    expect(readout()).not.toBe(start);
+
+    for (let i = 0; i < 10; i++) {
+      await zoomIn.click();
+      await tick();
+    }
+    await expect.element(zoomIn).toBeDisabled();
+
+    for (let i = 0; i < 20; i++) {
+      await zoomOut.click();
+      await tick();
+    }
+    await expect.element(zoomOut).toBeDisabled();
+  });
+
+  it("the readout's accessible text matches 'Zoom {N}%'", async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const screen = await renderGraph(nodes, []);
+    await tick();
+    const pct = screen.container.querySelector('.pct')!;
+    expect(pct.textContent?.replace(/\s+/g, ' ').trim()).toMatch(/^Zoom \d+%$/);
+  });
+
+  it('after Zoom in, changing selectedId keeps the readout, and changing the nodes prop returns it to the fit value', async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const screen = await renderGraph(nodes, []);
+    await tick();
+    const zoomIn = screen.getByRole('button', { name: 'Zoom in' });
+    await zoomIn.click();
+    await tick();
+    const zoomed = screen.container.querySelector('.pct')?.textContent;
+
+    await screen.rerender({
+      anchorId: 'anchor-id',
+      nodes,
+      edges: [],
+      onselect: vi.fn(),
+      onrecenter: vi.fn(),
+      selectedId: 'n1'
+    });
+    await tick();
+    expect(screen.container.querySelector('.pct')?.textContent).toBe(zoomed);
+
+    const nextNodes = anchorPlus([mkNode('n2', { types: ['vector'] })]);
+    await screen.rerender({ anchorId: 'anchor-id', nodes: nextNodes, edges: [], onselect: vi.fn(), onrecenter: vi.fn() });
+    await tick();
+    expect(screen.container.querySelector('.pct')?.textContent).not.toBe(zoomed);
+  });
+
+  it('a double-click on a candidate calls onrecenter and leaves the readout unchanged', async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const onrecenter = vi.fn();
+    const screen = await renderGraph(nodes, [], { onrecenter });
+    await tick();
+    const before = screen.container.querySelector('.pct')?.textContent;
+
+    screen.container.querySelector('#gn-n1')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await tick();
+
+    expect(onrecenter).toHaveBeenCalledWith('n1');
+    expect(screen.container.querySelector('.pct')?.textContent).toBe(before);
+  });
+});
+
+describe('RelatedGraph — spring-back drag under reduced motion (D-09)', () => {
+  it('a drag on a candidate moves it, then springs back to its pre-drag transform on release, under reducedMotion', async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const screen = await renderGraph(nodes, [], { reducedMotion: true });
+    await tick();
+    const nodeEl = screen.container.querySelector('#gn-n1')!;
+    const before = nodeEl.getAttribute('transform');
+
+    const rect = nodeEl.getBoundingClientRect();
+    const startX = rect.x + rect.width / 2;
+    const startY = rect.y + rect.height / 2;
+    nodeEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: startX, clientY: startY, button: 0 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: startX + 40, clientY: startY + 40 }));
+    await tick();
+    // Mid-drag: the node must actually have moved under the pointer --
+    // proves drag pickup happened, not just that nothing moved at all.
+    expect(nodeEl.getAttribute('transform')).not.toBe(before);
+
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: startX + 40, clientY: startY + 40 }));
+    await tick();
+
+    expect(nodeEl.getAttribute('transform')).toBe(before);
+  });
+
+  it('the anchor ignores drag', async () => {
+    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const screen = await renderGraph(nodes, [], { reducedMotion: true });
+    await tick();
+    const anchorEl = screen.container.querySelector('#gn-anchor-id')!;
+    const before = anchorEl.getAttribute('transform');
+
+    const rect = anchorEl.getBoundingClientRect();
+    const startX = rect.x + rect.width / 2;
+    const startY = rect.y + rect.height / 2;
+    anchorEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: startX, clientY: startY, button: 0 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: startX + 40, clientY: startY + 40 }));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: startX + 40, clientY: startY + 40 }));
+    await tick();
+
+    expect(anchorEl.getAttribute('transform')).toBe(before);
   });
 });
 
