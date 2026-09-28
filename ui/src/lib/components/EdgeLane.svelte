@@ -6,7 +6,7 @@
   // query `lane` swaps --cols and drops the evidence cell below 520px.
   import type { Candidate, LaneType, RelatedModel } from '$lib/related/graph';
   import { EDGE_STYLE } from '$lib/related/graph';
-  import { emptyLaneReason, formatCosine, formatWeight, laneCaption, laneCountLabel } from '$lib/related/lanes';
+  import { collapsedRowCopy, emptyLaneReason, formatCosine, formatWeight, laneCaption, laneCountLabel } from '$lib/related/lanes';
   import { memoryStateWords } from '$lib/memorystate';
 
   let {
@@ -16,6 +16,7 @@
     hidden,
     selectedId,
     selectedLane,
+    collapsed = null,
     onselect,
     ontogglehidden
   }: {
@@ -25,6 +26,7 @@
     hidden: boolean;
     selectedId: string | null;
     selectedLane: LaneType | 'graph' | null;
+    collapsed?: { shown: number; total: number; k: number; truncated: boolean; onexpand: () => void } | null;
     onselect: (id: string, lane: LaneType) => void;
     ontogglehidden: () => void;
   } = $props();
@@ -55,7 +57,7 @@
   }
 </script>
 
-<section class="card lane">
+<section class="card lane" class:off={hidden}>
   <div class="lane-h">
     <svg class="swatch" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <line
@@ -72,7 +74,13 @@
     <span class="name">{type}</span>
     <span class="cnt">{laneCountLabel(type, model)}</span>
     <span class="cap">{laneCaption(type, model.k)}</span>
-    <button type="button" class="eye" aria-pressed={!hidden} onclick={ontogglehidden}>{hidden ? 'show' : 'hide'}</button>
+    <button
+      type="button"
+      class="eye"
+      aria-pressed={!hidden}
+      data-testid={`lane-toggle-${type}`}
+      onclick={ontogglehidden}>{hidden ? 'show' : 'hide'}</button
+    >
   </div>
   {#if !hidden}
     <div class="lane-body">
@@ -116,6 +124,9 @@
             </span>
           </button>
         {/each}
+        {#if collapsed}
+          <button type="button" class="more" onclick={collapsed.onexpand}>{collapsedRowCopy(collapsed)}</button>
+        {/if}
       {/if}
     </div>
   {/if}
@@ -165,6 +176,11 @@
     border-radius: calc(4 * var(--u));
     padding: 0 calc(6 * var(--u));
   }
+  /* D-10: a hidden lane keeps its header visible (dimmed), only the body
+     is removed -- the same switch as the legend checkbox. */
+  .lane.off .lane-h {
+    opacity: 0.6;
+  }
   .lane-body {
     display: flex;
     flex-direction: column;
@@ -173,6 +189,15 @@
     padding: calc(8 * var(--u));
     font-size: calc(12 * var(--u));
     color: var(--text-faint);
+  }
+  .more {
+    width: 100%;
+    text-align: left;
+    padding: calc(4 * var(--u)) calc(8 * var(--u));
+    font-family: var(--font-mono, monospace);
+    font-size: calc(11 * var(--u));
+    color: var(--muted-foreground);
+    background: none;
   }
   .row {
     --cols: calc(96 * var(--u)) minmax(0, 1fr) auto auto auto;

@@ -22,6 +22,7 @@
   import EdgeLane from '$lib/components/EdgeLane.svelte';
   import SupersessionLane from '$lib/components/SupersessionLane.svelte';
   import EvidenceSection from '$lib/components/EvidenceSection.svelte';
+  import GraphLegend from '$lib/components/GraphLegend.svelte';
   import { noNeighboursLines, TRUNCATION_BANNER } from '$lib/related/lanes';
   import { Skeleton } from '$lib/components/ui/skeleton';
   import { Button } from '$lib/components/ui/button';
@@ -45,10 +46,9 @@
     meta: { silent: true }
   }));
 
-  // buildRelatedModel/visibleMembership are lifted to the top level (not
-  // computed inline in the template) so recenter() and the evidence-section
-  // lookup below can read them too -- the ONE membership result the lanes,
-  // the graph and (later) the aria-live summary all share (D-07).
+  // The model and its membership projection are lifted to the top level
+  // (not computed inline in the template) so recenter() and the
+  // evidence-section lookup below can read them too.
   const model = $derived(relatedQ.data ? buildRelatedModel(relatedQ.data, RELATED_K) : undefined);
 
   let selection = $state<{ id: string; lane: LaneType | 'graph' } | null>(null);
@@ -227,6 +227,15 @@
               hidden={hiddenTypes.has(laneType)}
               selectedId={selection?.id ?? null}
               selectedLane={selection?.lane ?? null}
+              collapsed={laneType === 'vector' && membership.vectorCollapsed
+                ? {
+                    shown: membership.lanes.vector.length,
+                    total: membership.vectorTotal,
+                    k: model.k,
+                    truncated: model.truncated,
+                    onexpand: () => (vectorExpanded = true)
+                  }
+                : null}
               onselect={selectFromLane}
               ontogglehidden={() => toggleHidden(laneType)}
             />
@@ -251,6 +260,7 @@
             onrecenter={() => recenter(selectedCandidate.id)}
           />
         {/if}
+        <GraphLegend {model} {hiddenTypes} ontoggle={toggleHidden} />
       </aside>
     </div>
   {/if}
