@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 16
+open_count: 17
 waived_count: 0
 fixed_count: 7
-total_count: 23
-last_updated: 2026-09-27T20:17:06.822Z
+total_count: 24
+last_updated: 2026-09-28T03:23:16.265Z
 ---
 
 # Broken Windows Ledger
@@ -38,6 +38,7 @@ last_updated: 2026-09-27T20:17:06.822Z
 | 21 | 04 | stub | ui/src/lib/components/CurationSurfaces.svelte |  | resolveRecordsKeepAll's placeholder chip for a resume-envelope target GetMemory cannot resolve renders as a plain chip (summary text 'not found: {id}') rather than SupersedeDialog's styled server-rejection issue treatment -- visible and never dropped, but cosmetically un-flagged | open |  | 2026-09-27T15:02:29.671Z |  |
 | 22 | 04 | deviation | .planning/REQUIREMENTS.md |  | Traceability table Status column parked at 'Mapped' for every Phase 4 row (and every other phase); requirements.mark-complete only accepts Pending/Gaps Found and cannot flip any of them -- milestone-wide, pre-existing, not caused by plan 04-09 | open |  | 2026-09-27T17:28:55.623Z |  |
 | 23 | 04 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete rejects DSYS-04/CUR-01/CUR-02 (and every other v1 requirement): traceability Status column reads Mapped repo-wide, not the tool's Pending/Complete vocabulary | open |  | 2026-09-27T20:17:06.822Z |  |
+| 24 | 05 | deviation | ui/src/routes/rules/rules.browser.test.ts |  | Updated delete-only legend/action-button assertions after wiring the D-03 Related entry point onto /rules (Rule 1 auto-fix, not a defect) | open |  | 2026-09-28T03:23:16.265Z |  |
 
 ````json
 [
@@ -328,6 +329,19 @@ last_updated: 2026-09-27T20:17:06.822Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-27T20:17:06.822Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 24,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "ui/src/routes/rules/rules.browser.test.ts",
+    "line": null,
+    "description": "Updated delete-only legend/action-button assertions after wiring the D-03 Related entry point onto /rules (Rule 1 auto-fix, not a defect)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-28T03:23:16.265Z",
     "resolved_at": null,
     "milestone": null
   }
