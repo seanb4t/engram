@@ -26,6 +26,7 @@ const {
   getMemorySpy,
   listScopesSpy,
   listMemoriesSpy,
+  listTagsSpy,
   consumeResumeSpy,
   archiveMemorySpy,
   restoreMemorySpy,
@@ -46,6 +47,7 @@ const {
     getMemorySpy: vi.fn(),
     listScopesSpy: vi.fn(),
     listMemoriesSpy: vi.fn(),
+    listTagsSpy: vi.fn(),
     consumeResumeSpy: vi.fn(),
     archiveMemorySpy: vi.fn(),
     restoreMemorySpy: vi.fn(),
@@ -68,6 +70,7 @@ vi.mock('$lib/client', async (importOriginal) => {
       getMemory: getMemorySpy,
       listScopes: listScopesSpy,
       listMemories: listMemoriesSpy,
+      listTags: listTagsSpy,
       relatedMemories: relatedMemoriesSpy
     },
     engramWrite: {
@@ -125,6 +128,13 @@ beforeEach(() => {
   getMemorySpy.mockReset();
   listScopesSpy.mockReset().mockResolvedValue({ scopes: [], approximate: false });
   listMemoriesSpy.mockReset().mockResolvedValue(emptyListResult());
+  listTagsSpy.mockReset().mockResolvedValue({
+    tags: [
+      { tag: 'qdrant', count: 400n },
+      { tag: 'mcp', count: 200n }
+    ],
+    more: false
+  });
   consumeResumeSpy.mockReset();
   archiveMemorySpy.mockReset();
   restoreMemorySpy.mockReset();
@@ -1175,5 +1185,50 @@ describe('search route — bulk-bar busy during a pending curation call (E4)', (
     // entirely rather than staying visibly re-enabled.
     resolveArchive({ results: [{ requested: 'm1', id: 'm1', outcome: ArchiveOutcome.ARCHIVED }] });
     await expect.element(bulkToolbar).not.toBeInTheDocument();
+  });
+});
+
+describe('search route — docked Tags panel toggle (TAGS-01, D-13)', () => {
+  it('starts closed; clicking "▦ Tags panel" opens it and draws bars from ListTags(scope="", limit=1000)', async () => {
+    pageState.url.href = 'http://localhost/search';
+    const screen = await renderSearch();
+
+    const toggle = screen.getByRole('button', { name: '▦ Tags panel' });
+    await expect.element(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    await toggle.click();
+    await expect.element(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    await expect.poll(() => listTagsSpy).toHaveBeenCalledTimes(1);
+    expect(listTagsSpy).toHaveBeenCalledWith({ scope: '', limit: 1000n }, expect.anything());
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).toBeInTheDocument();
+    await expect.element(screen.getByText('qdrant')).toBeInTheDocument();
+  });
+
+  it('with ?scope=repo:acme/x set, the panel calls ListTags with that scope and names it in the header', async () => {
+    pageState.url.href = 'http://localhost/search?scope=repo:acme/x';
+    const screen = await renderSearch();
+
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+
+    await expect.poll(() => listTagsSpy).toHaveBeenCalledTimes(1);
+    expect(listTagsSpy).toHaveBeenCalledWith({ scope: 'repo:acme/x', limit: 1000n }, expect.anything());
+    await expect.element(screen.getByText('Tags · counts in repo:acme/x')).toBeInTheDocument();
+  });
+
+  it('clicking the "qdrant" bar adds it as a #tag URL filter with sel cleared; clicking it again removes it', async () => {
+    pageState.url.href = 'http://localhost/search';
+    const screen = await renderSearch();
+
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+    await expect.element(screen.getByText('qdrant')).toBeInTheDocument();
+
+    screen.getByRole('option', { name: /qdrant/ }).element().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await expect.poll(() => pageState.url.searchParams.getAll('tag')).toEqual(['qdrant']);
+    expect(pageState.url.searchParams.get('sel')).toBe(null);
+    expect(gotoSpy.mock.calls.at(-1)?.[0]).toMatch(/^\/ui\/search\?/);
+
+    screen.getByRole('option', { name: /qdrant/ }).element().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await expect.poll(() => pageState.url.searchParams.getAll('tag')).toEqual([]);
   });
 });

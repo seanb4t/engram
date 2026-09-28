@@ -18,7 +18,9 @@
     scopesLoading,
     scopesError,
     onchange,
-    onretry
+    onretry,
+    tagsPanelOpen,
+    ontagspanel
   }: {
     params: SearchParams;
     categoryCounts?: Record<string, number>;
@@ -27,6 +29,8 @@
     scopesError: unknown;
     onchange: (next: Partial<SearchParams>) => void;
     onretry?: () => void;
+    tagsPanelOpen?: boolean;
+    ontagspanel?: () => void;
   } = $props();
 
   const totalHits = $derived(categoryCounts ? Object.values(categoryCounts).reduce((a, b) => a + b, 0) : undefined);
@@ -181,6 +185,12 @@
         </button>
       </Popover.Content>
     </Popover.Root>
+
+    {#if ontagspanel}
+      <button type="button" class="facet-chip fbtn" aria-pressed={tagsPanelOpen ?? false} onclick={() => ontagspanel?.()}>
+        ▦ Tags panel
+      </button>
+    {/if}
   </div>
 </ScrollArea.Root>
 
@@ -237,6 +247,16 @@
      --muted-foreground is the same fix ResultRow's dim cells use. */
   .facet-chip-zero {
     color: var(--muted-foreground);
+  }
+  .fbtn {
+    border-style: dashed;
+    background: transparent;
+  }
+  .fbtn[aria-pressed='true'],
+  .fbtn[aria-expanded='true'] {
+    border-style: solid;
+    border-color: var(--primary);
+    background: var(--primary-soft, color-mix(in srgb, var(--primary) 16%, transparent));
   }
   .facet-chip-removable button {
     background: none;

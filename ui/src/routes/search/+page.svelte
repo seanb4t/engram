@@ -46,6 +46,7 @@
   import ResultsList from '$lib/components/ResultsList.svelte';
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
+  import TagBars from '$lib/components/TagBars.svelte';
   import WriteSurfaces from '$lib/components/WriteSurfaces.svelte';
   import CurationSurfaces from '$lib/components/CurationSurfaces.svelte';
   import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
@@ -72,6 +73,17 @@
 
   function navigate(next: Partial<SearchParams>) {
     goto(`${base}/search?${encodeSearchParams({ ...params, ...next })}`, { keepFocus: true, noScroll: true });
+  }
+
+  // TAGS-01/D-13: the docked Tags panel's open state is page-local, not URL
+  // state (a shared /search?... link keeps its tag filters, not the panel).
+  let tagsPanelOpen = $state(false);
+
+  // A bar click in the panel toggles that tag's URL facet chip (params.tags)
+  // — an inline #tag token typed into the query is still shown as active via
+  // `effective.tags` but is removed by editing the query, not by the bar.
+  function toggleTag(tag: string) {
+    navigate({ tags: params.tags.includes(tag) ? params.tags.filter((t) => t !== tag) : [...params.tags, tag], sel: '' });
   }
 
   // The page's own query input (debounced 160ms into the URL, replaceState so
@@ -532,6 +544,8 @@
     scopesError={scopesQ.error}
     onchange={(partial) => navigate({ ...partial, sel: '' })}
     onretry={() => scopesQ.refetch()}
+    {tagsPanelOpen}
+    ontagspanel={() => (tagsPanelOpen = !tagsPanelOpen)}
   />
   <ResultsHeader
     parts={headerParts}
@@ -579,7 +593,7 @@
     />
   </div>
   <div class="search-body">
-    <RecallSplit open={!!effectiveSel} onclose={closeSel} autoSaveId="engram-search-split">
+    <RecallSplit open={!!effectiveSel || tagsPanelOpen} onclose={closeSel} autoSaveId="engram-search-split">
       {#snippet list()}
         {#if recallState}
           <RecallState state={recallState} onfix={onRecallFix} onretry={onRecallRetry} />
@@ -618,27 +632,37 @@
         {/if}
       {/snippet}
       {#snippet detail()}
-        <DetailPane
-          memory={selectedMemory}
-          loading={detailQ.isLoading}
-          error={detailQ.error}
-          requestedId={effectiveSel}
-          {inResults}
-          hit={selectedMemory ? { score: selectedMemory.score, relevance: selectedMemory.relevance } : undefined}
-          onclose={closeSel}
-          onselect={(id) => navigate({ sel: id })}
-          onedit={(id) => writeSurfaces?.openEdit(id)}
-          onvisibility={(m) =>
-            normalizeVisibility(m.visibility) === 'shared'
-              ? writeSurfaces?.requestMakePrivate(m, 'memory')
-              : writeSurfaces?.requestShare(m, 'memory')}
-          ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
-          onsupersede={(id) => curation?.openSupersede([id])}
-          onarchive={(id) => curation?.openArchive([id])}
-          onrestore={(id) => curation?.openRestore([id])}
-          onchain={(id) => curation?.openChain(id)}
-          onrelated={openRelated}
-        />
+        {#if effectiveSel}
+          <DetailPane
+            memory={selectedMemory}
+            loading={detailQ.isLoading}
+            error={detailQ.error}
+            requestedId={effectiveSel}
+            {inResults}
+            hit={selectedMemory ? { score: selectedMemory.score, relevance: selectedMemory.relevance } : undefined}
+            onclose={closeSel}
+            onselect={(id) => navigate({ sel: id })}
+            onedit={(id) => writeSurfaces?.openEdit(id)}
+            onvisibility={(m) =>
+              normalizeVisibility(m.visibility) === 'shared'
+                ? writeSurfaces?.requestMakePrivate(m, 'memory')
+                : writeSurfaces?.requestShare(m, 'memory')}
+            ondelete={(id) => writeSurfaces?.requestDelete(id, 'memory')}
+            onsupersede={(id) => curation?.openSupersede([id])}
+            onarchive={(id) => curation?.openArchive([id])}
+            onrestore={(id) => curation?.openRestore([id])}
+            onchain={(id) => curation?.openChain(id)}
+            onrelated={openRelated}
+          />
+        {:else if tagsPanelOpen}
+          <TagBars
+            mode="panel"
+            scope={effective.scope}
+            markedTags={new Set(effective.tags)}
+            selectedTags={new Set(effective.tags)}
+            ontoggle={toggleTag}
+          />
+        {/if}
       {/snippet}
     </RecallSplit>
   </div>
