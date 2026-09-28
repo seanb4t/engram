@@ -120,6 +120,13 @@ chips and timings.
 - **Active memory row** shows a second line with category, all `#tags`, date, full UUID and
   `shared`. Matches in the summary are highlighted with `--color-primary-soft`.
 
+### Tags on `/search` (see related-and-tags.md)
+
+The docked **Tags panel** (sketch 005 C) shares the right slot with the detail pane: opening a
+record replaces it. The facet strip gains a compact "+ tag" picker, and the header search shows
+a Tags group on `#` / `tag:`. The full spec is in `related-and-tags.md` → "Tag entry points on
+`/search`".
+
 ### Keyboard model (listbox)
 
 The results list is a WAI-ARIA listbox: DOM focus stays on the list container

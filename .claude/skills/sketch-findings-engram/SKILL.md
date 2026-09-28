@@ -1,6 +1,6 @@
 ---
 name: sketch-findings-engram
-description: Validated design decisions, CSS patterns, and visual direction from engram console sketch experiments — recall results list with hover card and resizable detail pane, header search that resolves UUID / short_id / text honestly, supersede and archive dialogs, related-memories lanes with graph overview and tag bars, and the site-wide text-size preference. Auto-loaded during UI implementation on engram (ui/, Svelte 5 + shadcn-svelte console).
+description: Validated design decisions, CSS patterns, and visual direction from engram console sketch experiments — recall results list with hover card and resizable detail pane, header search that resolves UUID / short_id / text honestly, supersede and archive dialogs, related-memories lanes with a graph overview (corner zoom controls, evidence under the graph) and tag bars, the /search docked Tags panel and tag picker, and the site-wide text-size preference. Auto-loaded during UI implementation on engram (ui/, Svelte 5 + shadcn-svelte console).
 ---
 
 <context>
@@ -21,7 +21,7 @@ Reference points: Linear (issue-list density, hover affordances, command menu), 
 (Svelte 5.57, SvelteKit adapter-static, shadcn-svelte 1.7 + bits-ui 2.x, Tailwind 4,
 TanStack Query 6, paneforge, svelte-sonner, mode-watcher; tokens in `ui/src/app.css`).
 
-Sketch sessions wrapped: 2026-09-26
+Sketch sessions wrapped: 2026-09-26 (001–004), 2026-09-27 (005–006)
 </context>
 
 <design_direction>
@@ -42,7 +42,9 @@ Sketch sessions wrapped: 2026-09-26
 - **Layout:** header with inline search → facet strip → honest results header → fixed-height
   row list with an overlay hover card → pinned, resizable right detail pane that a second click
   on the open row closes. Related view: edge-type lanes as the body, right rail with Graph |
-  Tags. Curation happens in modal dialogs.
+  Tags, with evidence stacked **under** the graph, never over it. On `/search`, tags live in a
+  docked Tags panel that shares the right slot with the detail pane. Curation happens in modal
+  dialogs.
 - **Interaction:** keyboard-first listbox (`aria-activedescendant`), 0.15s ease transitions,
   250ms hover delay (instant on keyboard focus), no flash-to-empty on re-query, every rejection
   shown as `field=<f> hint=<code>: <text>`, state chips in canonical order
@@ -58,7 +60,7 @@ Sketch sessions wrapped: 2026-09-26
 | Foundations | references/foundations.md | Dense dev-tool direction, token map onto `app.css`, site-wide text size (12–16, default 15, `display.js` contract), state-word chips, keyboard conventions, timings |
 | Recall surface | references/recall-surface.md | Fixed one-line rows + 250ms overlay hover card + resizable right pane (second click closes); header search classifies UUID / short_id / text, shows "interpreted as" chips, defaults to cross_spine, and reports coverage honestly |
 | Curation | references/curation.md | Supersede in a modal with per-target validation chips, prefilled correcting record and live chain preview; archive/restore via a small confirm with Undo on the result |
-| Related and tags | references/related-and-tags.md | Edge-type lanes as the body, rail Graph (linked overview) \| Tags (linear bars), one shared selection, evidence drawer; edge type by line style + glyph, never a blended score |
+| Related and tags | references/related-and-tags.md | Edge-type lanes as the body, rail Graph (linked overview, corner +/−/fit, ⌘-wheel zoom, focus ring + card) \| Tags (linear bars), one shared selection, evidence **under the graph** (004 drawer superseded); `/search` docked Tags panel + "+ tag" picker + header `#` group; edge type by line style + glyph, never a blended score |
 
 Each reference has Design Decisions, CSS Patterns, HTML Structures, What to Avoid (the losing
 variants and why), and a stack mapping onto shadcn-svelte / bits-ui / paneforge / TanStack
@@ -84,4 +86,6 @@ Original sketch HTML files (all variants, winner tab opens by default) are prese
 - 002-command-palette
 - 003-curation-dialogs
 - 004-related-and-tags
+- 005-tag-entry-points
+- 006-graph-interaction-density
 </metadata>

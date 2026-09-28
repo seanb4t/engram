@@ -117,7 +117,7 @@ Either is fine; mixing them is not. Do not leave any product dimension in fixed 
 | `/` | focus the header search from anywhere that is not a text field |
 | `j` / `k`, `↓` / `↑` | move the active item; `Home` / `End` jump |
 | `Enter` | primary action of the active item (open, toggle the pane, run, re-centre) |
-| `Esc` | close the topmost layer only (popover, then hover card, then pane or drawer), then blur |
+| `Esc` | close the topmost layer only (popover, then hover card, then selection, then pane), then blur |
 | `Tab` | inside a result dropdown: next section |
 | `⌘↵` | submit a dialog |
 | `⌘+` / `⌘-` / `⌘0` | text size |

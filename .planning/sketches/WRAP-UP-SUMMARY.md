@@ -1,7 +1,7 @@
 # Sketch Wrap-Up Summary
 
-**Date:** 2026-09-26
-**Sketches processed:** 4 (4 included, 0 excluded)
+**Date:** 2026-09-26 (001–004); 2026-09-27 (005–006, append)
+**Sketches processed:** 6 (6 included, 0 excluded)
 **Design areas:** Foundations, Recall surface, Curation, Related and tags
 **Skill output:** `./.claude/skills/sketch-findings-engram/`
 
@@ -12,7 +12,9 @@
 | 001 | results-surface | B′ — fixed rows + 250ms overlay hover card + resizable right pane; second click on the open row closes the pane | Recall surface (+ Foundations: text size) |
 | 002 | command-palette | B — top-bar inline search with anchored dropdown; Enter on free text opens /search | Recall surface |
 | 003 | curation-dialogs | A — modal dialog with per-target validation chips, prefilled correcting record, live chain preview; small confirm for archive/restore | Curation |
-| 004 | related-and-tags | Synthesis — B's edge-type lanes + right rail Graph (C's linked overview) \| Tags; shared selection; C's evidence drawer | Related and tags (+ Foundations: state chips) |
+| 004 | related-and-tags | Synthesis — B's edge-type lanes + right rail Graph (C's linked overview) \| Tags; shared selection; C's evidence drawer (**superseded by 006**) | Related and tags (+ Foundations: state chips) |
+| 005 | tag-entry-points | C — docked Tags panel on /search sharing the detail pane's slot + compact "+ tag" picker + header `#`/`tag:` group; one ListTags(1000) fetch; no totals in copy | Related and tags (+ Recall surface pointer) |
+| 006 | graph-interaction-density | A1 — corner +/−/fit, ⌘-wheel zoom, dashed focus ring + focus card, drag springs back, refit on membership change; evidence **under the graph** (drawer rejected) | Related and tags |
 
 ## Excluded Sketches
 
@@ -34,8 +36,10 @@ number. Dark-first with a light theme.
 
 - **Layout:** header search (anchored dropdown) → facet strip → honest results header →
   fixed-height listbox rows → right pane (paneforge) that toggles closed on a second click;
-  column drop-out by container width. Related view = edge-type lanes plus a Graph | Tags rail
-  with a slide-over evidence drawer. Curation in modal dialogs sized to risk.
+  column drop-out by container width. Related view = edge-type lanes plus a Graph | Tags rail,
+  with evidence stacked under the graph (sketch 006; the slide-over drawer was rejected for
+  covering the clicked node). `/search` tags = docked Tags panel in the detail pane's slot +
+  "+ tag" picker + header `#` group (sketch 005). Curation in modal dialogs sized to risk.
 - **Palette:** existing `app.css` tokens plus new surface-2, hover, selected, border-subtle,
   text-faint, primary-soft, warning, success, and the missing `--cat-rule`.
 - **Typography:** sans prose, mono identifiers; one site-wide text size preference (12–16px,

@@ -1,8 +1,13 @@
 # Related memories and tag popularity
 
 How a record's related neighbourhood (`RelatedMemories`) and the store's tag counts
-(`ListTags`) are shown (sketch 004, winner Synthesis). Read `foundations.md` for tokens, state
-chips and keys.
+(`ListTags`) are shown: sketch 004 (winner Synthesis) for the layout, sketch 006 (winner A1)
+for graph controls and where evidence goes, and sketch 005 (winner C) for the tag entry points
+on `/search`. Read `foundations.md` for tokens, state chips and keys.
+
+> **Superseded (sketch 006):** 004's slide-over **evidence drawer** is rejected. It covered the
+> node the user had just clicked. Evidence now stacks **under the graph** in the rail (see
+> "Evidence section" below).
 
 ## Design Decisions
 
@@ -59,20 +64,23 @@ lane only contains recall-visible records.
   candidate across lanes and the graph (violet-soft background; the lane where you clicked gets
   a 3px violet bar; the node gets a violet halo and its edges turn violet; unrelated nodes drop
   to 45%). In the synthesis `×N` is a **count, not a jump link**.
-- **Evidence drawer.** Selection slides C's evidence panel over the rail (0.2s): header
-  "Evidence · supersession › citation › tag › vector · Esc ×", the candidate (category,
-  short_id, date, summary, tags with shared ones highlighted, state chips, primary
-  **"Re-centre on q7kf… ↵"**), then **"Why it is related · N edge types"** with one block per
-  edge type:
-  - tag: a table `shared tag | df | ln(1200/df)` with a `tag_weight` total row
-  - vector: `cosine 0.781` with a 0–1 scale marker
-  - citation: kind + ref per line
-  - supersession: the path from anchor with direction and depth
+- **Evidence section (sketch 006 A1), directly under the graph in the rail, never over it.**
+  Selecting a node, lane row or chain card leaves the graph whole. The selection is lit and the
+  evidence stacks beneath the graph, above the legend; the rail scrolls
+  (`max-height: calc(100vh − header)`, `overflow-y: auto`). Contents:
+  - the candidate header (category dot, category, short_id, date) with `esc ×`, the summary, and
+    state chips;
+  - "Why it is related · N edge types", then one line per edge type: glyph · type · evidence
+    (`cosine 0.819` / `#tag … · Σ 3.05` / `file internal/…` / `predecessor · depth 2`);
+  - **Re-centre ↵** (primary) and **Open record ↗** (hands off to `/search?sel=<id>` for the full
+    detail pane and its curation actions);
+  - "Evidence is per type; there is no blended score."
 
-  closing with "Evidence is per type; there is no blended score." Below 900px the drawer
-  becomes a bottom sheet (max 62vh).
-- **Re-centre** loads the neighbourhood of the selected record, pushes it onto the trail, and
-  clears the selection. Loading shows a skeleton anchor card with
+  The same content serves as GRAPH-03's "detail pane" on this route. The deeper tag table from
+  004 (`shared tag | df | ln(n/df)`) may expand inside the tag line. Below 900px the rail stacks
+  under the lanes and the section stays under the graph.
+- **Re-centre** navigates to `/related/<id>` for the selected record, pushes it onto the trail
+  and browser history, and clears the selection. Loading shows a skeleton anchor card with
   `RelatedMemories(subj, "…", k=8) — resolving anchor, 4 typed sub-queries in flight▍`.
 
 ### Edge encoding: never colour alone
@@ -88,6 +96,44 @@ uses the same style, so edge types are nameable in greyscale and at small sizes.
 | vector | thin solid 1px, fainter | `V`, faint border |
 
 Selection is the only thing allowed to colour an edge (violet).
+
+### Graph controls and keyboard (sketch 006 A)
+
+- Edges are a **star plus chain arrows**, all from one `RelatedMemories` response: anchor ↔
+  candidate once per edge type (offset quadratic curves, ±12, when a candidate has several), plus
+  `superseded_by` arrows between chain members. There are no neighbour-to-neighbour edges.
+- **Corner controls**, top-right of the canvas: `+`, `−`, `⤢` fit, and a mono zoom readout
+  (`132%`). Scale runs 0.5–4 and translation is bounded to the graph extent. `+` and `−` disable
+  at the limits.
+- **Plain wheel scrolls the page** (the rail is sticky). **⌘/Ctrl+wheel zooms.** A plain wheel
+  over the graph flashes a centred hint, "hold ⌘ to zoom with the wheel", for about 0.9s.
+  Double-click is re-centre, never zoom.
+- **One Tab stop.** The SVG is `role="listbox" tabindex="0"` with `aria-activedescendant` on
+  `role="option"` node groups. Arrows move in **lane order** (anchor first, then supersession ›
+  citation › tag › vector, strength within the lane), and Home/End jump to the ends. Space or
+  click selects and shows the evidence section. Enter re-centres. Escape clears the selection,
+  then leaves the graph.
+- **Focus look:** a dashed violet ring (`stroke-dasharray: 3 2.5`, r + 6) plus a **floating focus
+  card** (short_id, edge glyphs, two-line summary, state chips). The same card appears on
+  hover. It flips to the node's left near the rail edge, and it is hidden for the selected node,
+  whose evidence is already under the graph.
+- **Auto-pan:** when arrow focus lands on a node outside the viewport, `translateTo` it.
+- **Labels:** at 26 drawn nodes or fewer, every node has a short_id label under it. Beyond 26,
+  only the anchor, focused and selected nodes are labelled, and node radius drops from 6 to about
+  4.2 (anchor 10).
+- **Drag springs back:** the node is fixed while dragged, the simulation briefly reheats
+  (`alphaTarget(0.25)`), and the node is released on drop. There is no pinning. Under
+  `prefers-reduced-motion` the node moves with no reheat and zoom transitions are instant.
+- **Settle:** a fixed 300 ticks run synchronously before first paint with a seeded
+  `randomSource`, then the layout stays static. The anchor is fixed at the origin.
+- **Refit when lane membership changes** (expand/collapse the vector lane, type toggles,
+  re-centre). Keep the zoom only across selection, focus and drag.
+- **The vector collapse is client-side.** The lane shows 8 rows of one `k=64` response, and the
+  graph mirrors exactly the lane's membership. Expanding needs no refetch. With about 11 typed
+  neighbours, more than about 53 distinct vector hits reaches the 64 total ceiling.
+- **Screen-reader equivalent:** a visually hidden list in lane order (`short_id, category, edge
+  types, states`; the focused item is `aria-current`) plus a polite `aria-live` line
+  ("4 of 17: jbagp95vmc, discovery, supersession", "vector lane expanded…").
 
 ### Truncation and ceilings
 
@@ -105,8 +151,40 @@ Selection is the only thing allowed to colour an edge (violet).
 - **Rarity is the inverse of popularity.** Tag-edge weight is `ln(n/df)`, so small tags make
   strong edges; the tag tooltip shows `count 400 · rarity ln(n/df) 1.10`. Popularity helps pick a
   filter; rarity explains a tag edge. Keep both visible, never merge them.
-- Show the top ~30 by default with a "load all" control; the filter box states when a query
+- Show the top 30 by default with a "show all" control; the filter box states when a query
   matches nothing in the loaded set.
+- **One fetch.** `ListTags(scope, limit=1000)` is fetched once per scope key and cached. It
+  feeds the bars (first 30, then show all with no refetch), the "+ tag" picker, and the header
+  search Tags group.
+- **ListTags has no total.** With `more=true`, say "showing the 30 most-used tags" or
+  "matching among the 1,000 most-used tags — more exist" (warning colour). Never write "of N".
+- The rarity half of the tooltip needs `n` (the recall-visible record count), which the sketch
+  takes from ListScopes counts. If no exact `n` is available, show rarity only in `/related`
+  tag-edge evidence.
+
+### Tag entry points on `/search` (sketch 005 C)
+
+- **Docked Tags panel.** A "▦ Tags panel" toggle (`aria-pressed`) sits at the right end of the
+  facet strip. The panel (about 340px) takes the **right slot shared with the detail pane**:
+  opening a record replaces it. The panel has a header, a filter box, and the bar list with
+  footer honesty copy. Active filter tags keep `●` and a violet bar, so the selection stays
+  visible while the user reads results. Clicking a bar **toggles** its `#tag` chip; ↑/↓, Home/End
+  and ↵ work on the listbox. It becomes a bottom sheet (62vh) at narrow widths.
+- **Compact "+ tag" picker** beside the chips, a dashed pill that turns solid when open. Its
+  popover holds a `#`-prefixed mono input with `esc` and a match list: `#tag` with the match
+  bolded in violet, a faint mini bar, and the count. Matching is a substring search ranked
+  prefix-first, then by count, top 8 shown with "N matches · top 8 shown". A final **unknown-tag
+  row**, "Add #foo", gives its reason in warning mono: "not among the 1,000 loaded tags" when
+  `more`, "0 recall-visible records" when the list is complete. ↵ adds the tag and closes.
+- **Header search Tags group.** Typing `#` or `tag:` in the header search swaps the dropdown to
+  a "Tags · counts in <scope>" group with the same rows, the same unknown-tag row and the same
+  footer. ↵ adds the chip and clears the input. Free text still shows "Search memories for …".
+- **Counts follow the scope chip** (exactly one scope chip → that scope; otherwise all
+  readable). The scope label appears in the panel header and in the picker and dropdown
+  footers.
+- **States:** loading shows `ListTags(scope="…", limit=1000) in flight▍` with skeleton bars.
+  Empty explains that tags on archived, superseded, expired or not-yet-active records are not
+  counted, and that a `#tag` can still be typed.
 
 ### Stack mapping
 
@@ -114,14 +192,17 @@ Selection is the only thing allowed to colour an edge (violet).
 |---|---|
 | Lanes, rows, chain timeline | plain Svelte components; Card styling from shadcn-svelte |
 | Rail tabs | shadcn-svelte `Tabs`; persist the tab in the viewer's local storage (a convenience, safe to lose) |
-| Graph | a small SVG component with a precomputed or lightweight force layout (the sketch hand-rolls ~40 lines); no graph library is required at 64 nodes |
-| Evidence drawer | an absolutely positioned panel inside the rail (not a modal); `Sheet` side="bottom" below 900px |
+| Graph | a Svelte-owned SVG component driven by d3-force / d3-zoom / d3-drag / d3-selection (`.planning/research/STACK.md`, rule `xvqj44e5mk`); 004's hand-rolled layout is superseded |
+| Evidence section | a plain section under the graph inside the scrolling rail (never an overlay) |
+| Graph controls | d3-zoom (`scaleExtent`, `translateExtent`, wheel filter for ⌘/Ctrl) + d3-drag; buttons are plain Svelte |
+| `/search` Tags panel | a docked panel in the right slot `DetailPane` uses (paneforge pane), `Sheet` side="bottom" when narrow |
+| "+ tag" picker, header Tags group | bits-ui `Command` in a `Popover` (`shouldFilter={false}`, portal disabled), as `ScopeCombobox` |
 | Tag tooltip, `×N` tooltip, state-chip tooltip | shadcn-svelte `Tooltip` |
 | Data | new Connect read RPCs `RelatedMemories(id)` and `ListTags(scope)` with counts |
 | Chart styling | load the `dataviz` skill before building bars or the scale marker |
 
 Apply selection in place (toggle classes / reactive state per item) rather than re-rendering the
-lanes, so focus, scroll position and the drawer transition survive.
+lanes, so focus, scroll position and the evidence section survive.
 
 ## CSS Patterns
 
@@ -166,14 +247,30 @@ svg.has-sel .node:not(.sel):not(.anchor) { opacity: .45; }
 .node.sel .halo { stroke: var(--color-primary); }
 .node.hidden-state circle { opacity: .45; stroke-dasharray: 2 2; }
 
-/* evidence drawer over the rail; bottom sheet when narrow */
-.drawer { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: var(--color-surface);
-  border-left: 1px solid var(--color-border); box-shadow: var(--shadow-md); transform: translateX(104%); visibility: hidden;
-  transition: transform .2s ease, visibility .2s ease; }
-.drawer.open { transform: none; visibility: visible; }
-@container frame (max-width: 900px) {
-  .drawer { position: fixed; inset: auto 0 0 0; max-height: 62vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; transform: translateY(104%); }
-}
+/* evidence section under the graph (006 A1) — the rail scrolls, nothing overlays the graph */
+.rail { position: sticky; top: 56px; max-height: calc(100vh - 66px); overflow-y: auto; }
+.ev-below:empty { display: none; }
+.ev { display: flex; flex-direction: column; gap: calc(6*var(--u)); padding: calc(8*var(--u)) calc(10*var(--u)); border-top: 1px solid var(--color-border-subtle); }
+.ev-line { display: grid; grid-template-columns: auto calc(78*var(--u)) minmax(0,1fr); gap: calc(6*var(--u)); align-items: baseline;
+  font: var(--text-2xs)/1.5 var(--font-mono); color: var(--color-text-muted); }
+
+/* graph controls (006 A) */
+.zctl { position: absolute; top: calc(8*var(--u)); right: calc(8*var(--u)); display: flex; flex-direction: column; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.zctl button { width: calc(26*var(--u)); height: calc(24*var(--u)); font: 600 var(--text-xs) var(--font-mono); color: var(--color-text-muted); }
+.zctl .pct { font: var(--text-2xs) var(--font-mono); color: var(--color-text-faint); border-top: 1px solid var(--color-border-subtle); text-align: center; }
+.node.kfocus .focus { stroke: var(--color-primary); stroke-width: 1.5; stroke-dasharray: 3 2.5; fill: none; }   /* r + 6 */
+.flabel { position: absolute; pointer-events: none; max-width: calc(230*var(--u)); background: var(--color-surface-2);
+  border: 1px solid var(--color-primary); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+.node .lbl { paint-order: stroke; stroke: var(--color-surface); stroke-width: 3px; }  /* legible over edges */
+
+/* /search tag picker rows (005 C) */
+.opt { display: grid; grid-template-columns: minmax(0,1fr) calc(80*var(--u)) calc(44*var(--u)); gap: calc(8*var(--u)); align-items: center; min-height: var(--row-h); }
+.opt .nm b { color: var(--color-primary); }                 /* matched substring */
+.opt .mini { height: calc(4*var(--u)); background: var(--color-text-faint); opacity: .6; }
+.opt.unknown .why { color: var(--color-warning); font-family: var(--font-mono); font-size: var(--text-2xs); }
+.fbtn { border: 1px dashed var(--color-border); border-radius: var(--radius-full); }
+.fbtn[aria-expanded="true"], .fbtn[aria-pressed="true"] { border-style: solid; border-color: var(--color-primary); background: var(--color-primary-soft); }
 
 /* tag bars: linear from zero */
 .bar-row { display: grid; grid-template-columns: calc(132*var(--u)) 1fr calc(36*var(--u)); gap: calc(8*var(--u)); align-items: center; }
@@ -226,7 +323,11 @@ const ES = {
     <div class="rail-tabs" role="tablist"><button role="tab" aria-selected="true" class="rail-tab on">Graph</button>
       <button role="tab" aria-selected="false" class="rail-tab">Tags</button><kbd>g</kbd></div>
     <div class="rail-body"><!-- graph + legend toggles, or tag filter + bars --></div>
-    <div class="drawer open" role="dialog" aria-label="evidence">…Why it is related · 2 edge types…</div>
+    <div class="gwrap"><svg class="graph" role="listbox" tabindex="0" aria-activedescendant="n-…">…</svg>
+      <div class="zctl"><button aria-label="Zoom in">+</button><button aria-label="Zoom out">−</button><button aria-label="Fit to view">⤢</button><div class="pct">100%</div></div></div>
+    <div class="ev-below"><div class="ev" role="region" aria-label="Why … is related">…Why it is related · 2 edge types…</div></div>
+    <div class="legend">…</div>
+    <div class="sr-only">…neighbourhood list…</div><div class="sr-only" aria-live="polite"></div>
   </aside>
 </div>
 ```
@@ -245,6 +346,19 @@ const ES = {
 - **The graph as the primary evidence surface (004 C alone).** A compact graph answers "how many,
   of which type, how clustered"; reading *why* needs per-type evidence in text. Keep the graph as
   the overview.
+- **An evidence drawer or card over the graph (004 synthesis, 006 A3).** The slide-over drawer
+  covered the node just clicked. A card on the far half of a 340px rail still hid half the
+  graph. Keep evidence under the graph.
+- **Evidence inline in the lane (006 A2).** It works for lane clicks, but for a graph click it
+  scrolls the page away from the graph and leaves only a pointer in the rail.
+- **Free wheel zoom in a sticky rail (006 B).** It hijacks page scrolling; require ⌘/Ctrl.
+- **Chrome-free, keyboard-only zoom (006 B).** Undiscoverable. Pin-on-drag leaves stray state
+  that needs an unpin key. A radial halo band for vector-only nodes was not needed.
+- **Keeping the zoom across a membership change.** It clipped newly drawn nodes at 132%.
+- **Two tag controls (005 A)** (a picker plus a separate Tags popover) and a **merged picker
+  whose empty state is the bars (005 B)**: A crowds the strip and hides the bars when closed; B
+  hides popularity behind "+ tag". The docked panel keeps the selection visible.
+- **Totals in tag copy.** ListTags returns `more`, not a count; "of 1,340" would be invented.
 - **`×N` as a jump link** in the synthesis. Shared selection already lights every appearance.
 - **One blended relevance score across edge types.** Evidence is per type; say so.
 - **Colour-coded edges.** Line style and glyphs carry type; colour is for selection only.
@@ -253,6 +367,10 @@ const ES = {
 
 ## Origin
 
-Synthesized from sketches: 004 (winner Synthesis: B lanes + C graph/evidence, state chips on the
-bottom of cards and nodes).
-Source files available in: `sources/004-related-and-tags/index.html`.
+Synthesized from sketches: 004 (winner Synthesis: B lanes + C graph, state chips on the bottom of
+cards and nodes; its evidence drawer superseded), 006 (winner A1: corner controls, ⌘-wheel zoom,
+focus ring + card, evidence under the graph), 005 (winner C: docked Tags panel + compact picker +
+header Tags group).
+Source files available in: `sources/004-related-and-tags/index.html`,
+`sources/006-graph-interaction-density/index.html` (needs network: d3 7.9.0 from jsDelivr),
+`sources/005-tag-entry-points/index.html`.
