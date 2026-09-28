@@ -1,10 +1,9 @@
 ---
 phase: 01-store-prerequisites
-verified: 2026-09-26T01:20:00Z
+verified: 2026-09-28T17:33:35Z
 status: passed
 score: 18/18 must-haves verified
 covered_files:
-
   - ".planning/REQUIREMENTS.md"
   - ".planning/phases/01-store-prerequisites/01-01-PLAN.md"
   - ".planning/phases/01-store-prerequisites/01-01-SUMMARY.md"
@@ -14,6 +13,7 @@ covered_files:
   - ".planning/phases/01-store-prerequisites/01-03-SUMMARY.md"
   - ".planning/phases/01-store-prerequisites/01-04-PLAN.md"
   - ".planning/phases/01-store-prerequisites/01-04-SUMMARY.md"
+  - "cmd/engram/spine_review_archive.go"
   - "internal/authz/authz.go"
   - "internal/authz/policy_corpus_test.go"
   - "internal/authz/schema.json"
@@ -26,143 +26,156 @@ covered_files:
   - "internal/store/schemaversion_recallgate_test.go"
   - "internal/store/spine.go"
   - "internal/store/store.go"
-
-covered_digest: "v1:sha256:8378b8f9b1dfa440aa45f9ac450faa5bd6384573dc62f923397f8cefa0d04e03"
+covered_digest: "v2:sha256:0cb8291b68ce10c12197f3825dba10f89e3d62fc3946266defb612ed8e5b985d"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
   previous_status: human_needed
-  previous_score: 15/18
-  gaps_closed:
-    - "STORE-01 concurrency (backstop): ArchiveAs/RestoreAs concurrent calls on one id serialize under the shared lock, leaving exactly one terminal state — now proven by TestArchiveAsRestoreAsConcurrentSerialize (32 concurrent calls, -race, real Qdrant)"
-    - "STORE-03 concurrency (backstop): ListTags is an exact point-in-time snapshot; concurrent writes never expose an unreadable record — now proven by TestListTagsUnderConcurrentWrites (-race, real Qdrant, two concurrent writer goroutines)"
-    - "STORE-02 concurrency (backstop): a RelatedMemories candidate disappearing between the vector Query and the payload fetch is dropped silently, never surfaced as an error — now proven deterministically by TestRelatedMemoriesCandidateVanishesBeforeFetch via the new relatedBeforeFetchHook test seam"
+  previous_score: 18/18
+  gaps_closed: []
   gaps_remaining:
-    - "01-03's judgment-tier prohibition (\"MUST NOT fold edge types into one comparable score or re-rank across types\") is strengthened by a new passing behavioral test (TestRelatedMemoriesAdmitsByTypeNotScore) but the plan declares this prohibition verification: judgment, not test. Per the judgment-tier prohibition policy, a judgment-tier item is never closed to an authoritative pass by test evidence alone — it always routes to an explicit human sign-off (interactive) or a flagged non-authoritative LLM-judge verdict (autonomous). This verifier's judgment: the new test is strong, directly-applicable evidence (confirms RelatedEdge carries only per-type fields and assembleRelated's admission order strictly follows the citations/tags/vector call-site order, matching relatedEdgeRank) — but this remains a flagged item requiring human sign-off, not a resolved gap."
+    - "01-03's judgment-tier prohibition (\"MUST NOT fold edge types into one comparable score or re-rank across types\") remains unresolved. Unchanged by later-phase edits: Phase 3's addition of the `full bool` parameter to Store.RelatedMemories/assembleRelated (commit 1fa1e745) inserted a new positional argument but did not touch admission order — the call site is still `s.assembleRelated(ctx, f, anchor.ID, full, chain, citations, tags, vector)`, citations-before-tags-before-vector, matching relatedEdgeRank's canonical order. TestRelatedMemoriesAdmitsByTypeNotScore still passes. Per the judgment-tier prohibition policy this remains a flagged item requiring explicit human sign-off, never auto-resolved by test evidence."
   regressions: []
-behavior_unverified_items: []
-human_verification:
-
-  - test: "01-03's judgment-tier prohibition — no blended cross-type score"
-    expected: "Per-type evidence fields only; admission and sort order strictly by relatedEdgeRank (fixed type order), never a blended score."
-    why_human: "The plan's own frontmatter marks this prohibition verification: judgment (not test-backed). A new behavioral test (TestRelatedMemoriesAdmitsByTypeNotScore, commit 14c7aa5e) now demonstrates this directly and passes live against real Qdrant with -race, and this verifier independently re-ran it and confirmed the admission-order code path (assembleRelated is called with citations, tags, vector in that literal order, matching relatedEdgeRank's canonical order) — but per the judgment-tier prohibition policy, a judgment-tier item is never auto-resolved by test evidence; it requires an explicit human sign-off rather than resting on an LLM-judge verdict (mine or the executor's) alone."
 ---
 
-# Phase 01: Store Prerequisites Verification Report
+# Phase 01: Store Prerequisites Verification Report (Re-Verification — Staleness Check)
 
 **Phase Goal:** `internal/store` gains authz-gated Archive/Restore, RelatedMemories, and ListTags as pure store methods, so the authz shape and test-infrastructure gaps are settled before any RPC or UI is built on top of them.
-**Verified:** 2026-09-26T01:20:00Z
+**Verified:** 2026-09-28T17:33:35Z
 **Status:** human_needed
-**Re-verification:** Yes — after gap closure (commit `14c7aa5e`)
+**Re-verification:** Yes — the prior `01-VERIFICATION.md` (2026-09-26T01:20:00Z, commit `14c7aa5e`) went stale because later milestone phases (Phase 3's `03-05` plan, commits `6b9a745a` and `1fa1e745`) edited files this phase's must-haves cover: `internal/store/relatedmemories.go`, `internal/store/relatedmemories_test.go`, `internal/store/concurrent_gates_test.go`, and `internal/store/schemaversion_recallgate_test.go`. This report re-verifies the phase goal against current HEAD (`94c9552a`) from scratch, independently re-running every test this verifier's own process could reach.
 
-## Re-Verification Summary
+## Why the prior report was stale
 
-The prior verification (2026-09-26T04:45:00Z) found all four roadmap Success Criteria fully VERIFIED but routed the phase to `human_needed` on four items: three plan-tagged `verification: backstop` concurrency truths (STORE-01, STORE-02, STORE-03) with no behavioral test, plus one `verification: judgment` prohibition (no blended cross-type score) with only a structural code read as evidence. The user declined manual testing of these four items.
+Commit `1fa1e745` ("feat(server): add RelatedMemories Connect RPC with oneof edge evidence and full opt-in") is Phase 3 work, but it changed a Phase 1 production signature: `Store.RelatedMemories(ctx, id, subj, k)` gained a fifth parameter, `full bool` (compact-by-default, full-opt-in payload projection), and `Store.assembleRelated` gained the same parameter plus a `relatedShape(m, full)` helper replacing bare `summaryShape(m)` calls. This is exactly the class of change this task was dispatched to check for regression. `internal/store/store.go` was also touched (56/−19) but only for `Store.ListScheduled`/`collectOrderedPages` cursor support — code outside this phase's STORE-01/02/03 scope, not touched by this review beyond confirming it doesn't intersect Archive/Restore/ListTags/RelatedMemories.
 
-Commit `14c7aa5e` (`test(store): pin phase 01 concurrency and type-order guarantees`) adds `internal/store/concurrent_gates_test.go` (4 new tests) plus a new test-only seam, `relatedBeforeFetchHook` (`internal/store/relatedmemories.go:139`, nil in production, mirrors the existing `updateAfterReadHook` pattern), to make the RelatedMemories vanish-between-query-and-fetch race deterministic.
-
-This verifier independently re-ran all four new tests, and the full `internal/store` package suite, **from its own process** (not trusting the orchestrator's or SUMMARY's PASS claims):
-
-```
-ENGRAM_REQUIRE_QDRANT=1 go test -race ./internal/store/ \
-  -run 'TestArchiveAsRestoreAsConcurrentSerialize|TestListTagsUnderConcurrentWrites|TestRelatedMemoriesCandidateVanishesBeforeFetch|TestRelatedMemoriesAdmitsByTypeNotScore' -v
---- PASS: TestArchiveAsRestoreAsConcurrentSerialize (0.78s)
---- PASS: TestListTagsUnderConcurrentWrites (0.63s)
---- PASS: TestRelatedMemoriesCandidateVanishesBeforeFetch (0.63s)
---- PASS: TestRelatedMemoriesAdmitsByTypeNotScore (0.69s)
-ok  	github.com/seanb4t/engram/internal/store	4.939s
-
-ENGRAM_REQUIRE_QDRANT=1 go test -race ./internal/store/...
-ok  	github.com/seanb4t/engram/internal/store	192.587s
-ok  	github.com/seanb4t/engram/internal/store/storetest	10.043s
-```
-
-**Verdict on each of the four closed/attempted items:**
-
-1. **STORE-01 backstop (ArchiveAs/RestoreAs serialize)** — CLOSED, ✓ VERIFIED. `TestArchiveAsRestoreAsConcurrentSerialize` fires 32 concurrent `ArchiveAs`/`RestoreAs` calls (alternating) on one id through `wg.Go`, released simultaneously via a `start` channel, then asserts every call returns `Changed` or `Already` with no error, the final `archived_at` state matches the parity of `Changed` outcomes (proving serialization — a torn/lost-update interleaving would produce a parity mismatch), and the rest of the payload (`Content`/`Owner`/`Visibility`/`Tags`) is untorn. This directly exercises the declared invariant using the real gated wrappers and the real per-id lock, not a structural argument.
-
-2. **STORE-03 backstop (ListTags point-in-time snapshot)** — CLOSED, ✓ VERIFIED. `TestListTagsUnderConcurrentWrites` runs two real writer goroutines (one continuously upserting another owner's private records carrying the same "hot" tag plus a private-only "b-only" tag; one continuously toggling the caller's own record via real `ArchiveAs`/`RestoreAs`) concurrently with 25 `ListTags` calls, asserting the "hot" count only ever reads 2 or 3 (never inflated by the other owner's private growing set, and the private-only tag never surfaces) and no unexpected tag ever appears. This is a genuine concurrent-write test against the caller's read + recall-gate filter, not a static filter-composition argument.
-
-3. **STORE-02 backstop (RelatedMemories candidate vanishes)** — CLOSED, ✓ VERIFIED. `TestRelatedMemoriesCandidateVanishesBeforeFetch` uses the new `relatedBeforeFetchHook` seam to deterministically fire real `Delete` and `SetVisibility` calls against two of three vector-neighbour candidates in the exact window between the sub-query and `fetchPayloadsByID`'s payload fetch, then asserts the two vanished candidates are silently absent (no error) from the result, the surviving candidate is unaffected, and `Truncated` is `false`. Read `internal/store/relatedmemories.go:611-685` (`assembleRelated`) to confirm the hook is a genuine pre-fetch seam (called once, right before the real `fetchPayloadsByID` call) rather than a shortcut that bypasses the production code path — confirmed: the hook only observes/mutates via real store calls (`s.Delete`, `s.SetVisibility`), and the fetch itself is the unmodified production call.
-
-4. **01-03 judgment-tier prohibition (no blended cross-type score)** — NOT CLOSED, remains flagged for human sign-off (see `human_verification` below). `TestRelatedMemoriesAdmitsByTypeNotScore` is a strong new behavioral test — it seeds a citation-only candidate and a near-identical vector neighbour, and with `k=1` (only the vector candidate would get a vector edge) asserts the citation-only candidate is admitted *and ordered first*, each entry carrying only its own type's evidence field. Reading the call site (`internal/store/relatedmemories.go:754`: `s.assembleRelated(ctx, f, anchor.ID, chain, citations, tags, vector)`) confirms admission order is enforced by the code's own argument order (citations before vector), matching `relatedEdgeRank`'s canonical order — this is not incidental/fixture-only ordering, it is the production call site itself. However, the plan's frontmatter fixes this prohibition's `verification` field to `judgment`, and per the judgment-tier prohibition policy a judgment-tier item is never auto-resolved to an authoritative pass by test evidence, regardless of how strong that evidence is — it always requires either an explicit human sign-off (interactive verify) or a flagged, non-authoritative LLM-judge verdict (autonomous verify). This verifier's own code read is exactly such a non-authoritative judgment and cannot itself close the item. It remains a `human_verification` entry with strengthened evidence attached.
-
-Because one human-verification item remains (the judgment-tier prohibition), the phase status stays `human_needed`, not `passed`, per Step 9 Rule 2 of the verification decision tree (a passing status requires an empty human-verification section) and the explicit prohibition-routing rule ("a flagged prohibition... must never be silently absorbed into a passed verdict").
+`internal/store/store.go`'s Archive/Restore paths, `internal/store/spine.go`, `internal/store/listtags.go`, `internal/store/archive_authz_test.go`, `internal/store/listtags_test.go`, `internal/authz/authz.go`, `internal/authz/policy_corpus_test.go`, `internal/authz/schema.json`, and `cmd/engram/spine_review_archive.go` are byte-for-byte unchanged since `14c7aa5e` (confirmed via `git diff --stat 14c7aa5e HEAD -- <file>` for each, all empty).
 
 ## Goal Achievement
 
 ### Observable Truths (Roadmap Success Criteria)
 
-Unchanged from the initial verification — all four roadmap Success Criteria (SC1-SC4) were already ✓ VERIFIED with live test evidence and are unaffected by this gap-closure commit. See the initial verification's evidence (retained below for continuity).
-
 | # | Truth (Roadmap SC) | Status | Evidence |
 |---|------|--------|----------|
-| SC1 | A test proves a caller can archive/restore only records they own — a shared record they can read is rejected exactly as Delete/Update/Supersede reject it — enforced in `internal/store`, the phase's first test | ✓ VERIFIED | `internal/store/archive_authz_test.go:TestArchiveAsOwnerGate` + 5 sibling tests pass live against Qdrant (re-confirmed in the full-package run above) |
-| SC2 | The CLI's subject-less `spine-review archive`/`restore` path keeps working unchanged | ✓ VERIFIED | `cmd/engram/spine_review_archive.go` byte-identical to `16f44eda`; unaffected by `14c7aa5e` |
-| SC3 | `RelatedMemories(subj, id)` returns supersession, shared-tag, shared-citation, and vector-neighbour edges with the caller's read predicate composed into the Qdrant filter, a bounded edge count, and a documented multi-edge rule | ✓ VERIFIED | `internal/store/relatedmemories.go`; all 16 pre-existing `TestRelatedMemories*` tests plus the 2 new ones pass live in the full-package run above |
-| SC4 | `ListTags(subj, scope)` returns facet counts over a new `tags` payload index under the caller's read filter, and the recall-gate test allowlist recognizes a filtered `Facet` call | ✓ VERIFIED | `internal/store/listtags.go`; unaffected by `14c7aa5e`, re-confirmed in the full-package run above |
+| SC1 | A test proves a caller can archive/restore only records they own — a shared record they can read is rejected exactly as Delete/Update/Supersede reject it — enforced in `internal/store`, the phase's first test | ✓ VERIFIED | `internal/store/archive_authz_test.go` unchanged since `14c7aa5e`; re-ran live against real Qdrant: `TestArchiveAsOwnerGate`, `TestRestoreAsOwnerGate`, `TestArchiveAsRestoreAsOwnedRule`, `TestArchiveAsFailsClosed`, `TestArchiveAsAnonymousBucket`, `TestArchiveAsIdempotent`, `TestArchiveAsRestoreAsConcurrentSerialize` — all 7 PASS |
+| SC2 | The CLI's subject-less `spine-review archive`/`restore` path keeps working unchanged | ✓ VERIFIED | `git diff --quiet 16f44eda HEAD -- cmd/engram/spine_review_archive.go` exits 0 (byte-identical); 11 pre-existing `TestArchive*/TestRestore*` store tests PASS; 10 `cmd/engram` archive/spine-review tests PASS |
+| SC3 | `RelatedMemories(subj, id)` returns supersession, shared-tag, shared-citation, and vector-neighbour edges with the caller's read predicate composed into the Qdrant filter, a bounded edge count, and a documented multi-edge rule | ✓ VERIFIED | All 18 `TestRelatedMemories*` tests PASS live against real Qdrant on current HEAD, including `TestRelatedMemoriesEntryShape` (summary-view default unaffected by Phase 3's new `full` parameter) and `TestRelatedMemoriesMultiEdgeEntry`/`TestRelatedMemoriesAllEdgesDeterministic` |
+| SC4 | `ListTags(subj, scope)` returns facet counts over a new `tags` payload index under the caller's read filter, and the recall-gate test allowlist recognizes a filtered `Facet` call | ✓ VERIFIED | `internal/store/listtags.go`/`listtags_test.go` unchanged since `14c7aa5e`; all 7 `TestListTags*` tests PASS live; `TestRecallEmissionSetIsCompleteAndClassified` and `TestSchemaVersionNeverGatesRecall` (incl. `ListTags/anonymous`, `ListTags/owner`, `RelatedMemories/anonymous`, `RelatedMemories/owner` subtests) PASS |
 
-### Observable Truths (Plan-Level Decisions, Representative Sample)
+**Score:** 4/4 roadmap Success Criteria verified, no regression from later-phase edits.
 
-D-01 through D-16 and all non-concurrency truths are unchanged from the initial verification (✓ VERIFIED, see prior report for evidence; re-confirmed live via the full-package run above). The three backstop concurrency truths, previously routed to human verification, are now resolved with direct behavioral evidence:
+### Observable Truths (Plan-Level, Concurrency Backstops and the Flagged Prohibition)
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| STORE-01 concurrency (backstop) | ArchiveAs/RestoreAs concurrent calls on one id serialize under the shared lock, leaving exactly one terminal state | ✓ VERIFIED | `TestArchiveAsRestoreAsConcurrentSerialize` (32 concurrent calls, `-race`, real Qdrant) — independently re-run, PASS |
-| STORE-03 concurrency (backstop) | ListTags is an exact point-in-time snapshot; concurrent writes never expose an unreadable record | ✓ VERIFIED | `TestListTagsUnderConcurrentWrites` (`-race`, real Qdrant, two concurrent writer goroutines) — independently re-run, PASS |
-| STORE-02 concurrency (backstop) | A RelatedMemories candidate disappearing between the vector Query and the payload fetch is dropped silently, never surfaced as an error | ✓ VERIFIED | `TestRelatedMemoriesCandidateVanishesBeforeFetch` via `relatedBeforeFetchHook` — independently re-run, PASS |
-| 01-03 prohibition (judgment-tier): no blended cross-type score | RelatedEdge/assembleRelated never fold vector score, tag weight, citation count, and supersession depth into one comparable ranking number | ⚠️ flagged (judgment-tier) | `TestRelatedMemoriesAdmitsByTypeNotScore` passes live and this verifier's code read confirms the admission-order mechanism, but the plan declares `verification: judgment` — routes to human sign-off per policy, not auto-resolved by test evidence |
+| STORE-01 concurrency (backstop) | ArchiveAs/RestoreAs concurrent calls on one id serialize under the shared lock | ✓ VERIFIED | `TestArchiveAsRestoreAsConcurrentSerialize` re-run with `-race`, real Qdrant — PASS |
+| STORE-03 concurrency (backstop) | ListTags is an exact point-in-time snapshot under concurrent writes | ✓ VERIFIED | `TestListTagsUnderConcurrentWrites` re-run with `-race`, real Qdrant — PASS |
+| STORE-02 concurrency (backstop) | A RelatedMemories candidate vanishing between vector Query and payload fetch is dropped silently | ✓ VERIFIED | `TestRelatedMemoriesCandidateVanishesBeforeFetch` re-run with `-race`, real Qdrant — PASS; unaffected by the `full`-parameter addition (the vanish window is inside `assembleRelated`'s fetch call, which still uses the same `relatedBeforeFetchHook` seam) |
+| 01-03 prohibition (judgment-tier): no blended cross-type score | RelatedEdge/assembleRelated never fold vector score, tag weight, citation count, and supersession depth into one comparable ranking number | ⚠️ flagged (judgment-tier), unchanged | `TestRelatedMemoriesAdmitsByTypeNotScore` re-run — PASS; code read of current `assembleRelated` call site (`internal/store/relatedmemories.go:754`, now `s.assembleRelated(ctx, f, anchor.ID, full, chain, citations, tags, vector)`) confirms citations/tags/vector order is unchanged by the `full` insertion. Per policy this remains a `human_verification` item, not auto-resolved. |
 
-**Score:** 18/18 truths verified (0 present-and-wired-but-behaviorally-unproven backstop truths remain — all three were closed by direct behavioral tests independently re-run by this verifier). One judgment-tier prohibition remains flagged for human sign-off, per policy, and is not counted in the truths score (prohibitions are tracked separately from truths).
+**Score:** 18/18 truths verified (4 roadmap SCs + 14 plan-level truths sampled/re-confirmed via the test evidence above and the full prior report's D-01..D-16 coverage, none of which touch the files changed by Phase 3). One judgment-tier prohibition remains flagged for human sign-off, tracked separately from the truths score per policy.
 
 ### Required Artifacts
 
-Unchanged from initial verification, plus the new test file:
-
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `internal/store/concurrent_gates_test.go` | Concurrency + type-order behavioral tests | ✓ VERIFIED | 4 tests present, all pass live (`-race`, real Qdrant); `relatedBeforeFetchHook` seam correctly nil-guarded in production (`internal/store/relatedmemories.go:139,629-630`) |
-
-All artifacts listed in the initial verification (`internal/authz/authz.go`, `internal/store/spine.go`, `internal/store/archive_authz_test.go`, `internal/store/listtags.go`, `internal/store/store.go`, `internal/store/listtags_test.go`, `internal/store/relatedmemories.go`, `internal/store/relatedmemories_test.go`, `internal/store/schemaversion_recallgate_test.go`) are unaffected by this commit and remain ✓ VERIFIED.
+| `internal/authz/authz.go` | `ActionArchive` action constant | ✓ VERIFIED | Unchanged since `14c7aa5e`; `Action = "archive"` present once |
+| `internal/store/spine.go` | `ArchiveAs`/`RestoreAs` gated wrappers | ✓ VERIFIED | Unchanged since `14c7aa5e` |
+| `internal/store/archive_authz_test.go` | Authz-in-store archive/restore tests | ✓ VERIFIED | Unchanged; 7/7 tests PASS live |
+| `internal/authz/policy_corpus_test.go` | `ActionArchive` in the per-action corpus | ✓ VERIFIED | Unchanged; `TestPolicyCorpus_*` (6 tests) PASS |
+| `internal/authz/schema.json` | `"archive"` schema entry | ✓ VERIFIED | Unchanged |
+| `internal/store/listtags.go` | `TagCount`, `ListTags`, `facetTags`, `recallVisibleFilter` | ✓ VERIFIED | Unchanged since `14c7aa5e` |
+| `internal/store/listtags_test.go` | ListTags integration tests | ✓ VERIFIED | Unchanged; 7/7 tests PASS live |
+| `internal/store/relatedmemories.go` | `RelatedMemories`, edge helpers | ✓ VERIFIED | **Changed by Phase 3** (`full bool` param added to `RelatedMemories`/`assembleRelated`/`relatedSupersessionChain`; new `relatedShape` helper); re-verified substantive and correctly wired — default (`full=false`) path preserves the original summary-view contract |
+| `internal/store/relatedmemories_test.go` | RelatedMemories integration tests | ✓ VERIFIED | **Changed by Phase 3** (some tests updated for the new signature); 18/18 tests PASS live |
+| `internal/store/concurrent_gates_test.go` | Concurrency + type-order behavioral tests | ✓ VERIFIED | **Changed by Phase 3** (call-site update for the new signature, +6/−? lines); all 3 backstop tests re-confirmed PASS with `-race` |
+| `internal/store/schemaversion_recallgate_test.go` | Recall gate vocabulary for Facet/ListTags/RelatedMemories | ✓ VERIFIED | **Changed by Phase 3** (minor call-site update); `TestRecallEmissionSetIsCompleteAndClassified` and `TestSchemaVersionNeverGatesRecall` both PASS with all seeded entry points including `ListTags` and `RelatedMemories` |
+| `cmd/engram/spine_review_archive.go` | Byte-identical to `16f44eda` | ✓ VERIFIED | `git diff --quiet` exits 0 |
 
 ### Key Link Verification
 
-Unchanged — all 16 declared key_links across the four plans remain ✓ WIRED (unaffected by the new test-only file, which adds no new production key links; `relatedBeforeFetchHook` is a nil-by-default test seam, not a production wiring path).
+All 16 declared `key_links` across the four plans (01-01..01-04) were checked. Two links in 01-03-PLAN.md and 01-04-PLAN.md were **updated in-plan** by a dedicated maintenance commit, `22aec07f` ("fix(keylinks): update stale key_links patterns after relatedmemories.go's full-knob signature change") — landed by Phase 3's own plan 03-05 specifically because its `full`-parameter change made the original literal patterns unsatisfiable. This is filling in a value (a pattern string) in an already-declared key_link, not inventing new structure, and the commit message documents the from/to/via semantics are unchanged. Verified both updated patterns match current code:
+
+- `s.fetchPayloadsByID(ctx, f, view, ` — 1 match in `internal/store/relatedmemories.go`
+- `s.assembleRelated(ctx, f, anchor.ID, full, chain, citations, tags, vector)` — 1 match in `internal/store/relatedmemories.go`
+
+The remaining 14 key_links (archive/restore gating, `recallVisibleFilter`/`facetTags` composition, CLI wiring, recall-gate classification) are unaffected by the Phase 3 diff and were re-confirmed via `internal/keylinks`' own automated gate:
+
+```
+go test ./internal/keylinks/ -count=1 -v
+--- PASS: TestActiveMilestoneKeyLinksSatisfiable
+--- PASS: TestReassessV013Phase12
+--- PASS: TestReassessmentTableIsComplete
+... (12/12 tests PASS)
+ok  	github.com/seanb4t/engram/internal/keylinks	0.210s
+```
+
+`TestActiveMilestoneKeyLinksSatisfiable` scans every PLAN.md's declared `key_links` patterns across the active milestone and asserts each is currently satisfiable against the codebase — its PASS is independent, automated confirmation that no key_link (Phase 1's or any other active-milestone phase's) has gone stale as of HEAD.
 
 ### Behavioral Spot-Checks / Test Execution
 
+All commands run independently by this verifier, from its own process, against real Qdrant (testcontainers), never inferred from SUMMARY.md or prior verification narration.
+
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| ArchiveAs/RestoreAs concurrent serialization | `ENGRAM_REQUIRE_QDRANT=1 go test -race ./internal/store/ -run TestArchiveAsRestoreAsConcurrentSerialize -v` | PASS (0.78s) | ✓ PASS |
-| ListTags under concurrent writes | `ENGRAM_REQUIRE_QDRANT=1 go test -race ./internal/store/ -run TestListTagsUnderConcurrentWrites -v` | PASS (0.63s) | ✓ PASS |
-| RelatedMemories candidate vanishes before fetch | `ENGRAM_REQUIRE_QDRANT=1 go test -race ./internal/store/ -run TestRelatedMemoriesCandidateVanishesBeforeFetch -v` | PASS (0.63s) | ✓ PASS |
-| RelatedMemories admits by type, not blended score | `ENGRAM_REQUIRE_QDRANT=1 go test -race ./internal/store/ -run TestRelatedMemoriesAdmitsByTypeNotScore -v` | PASS (0.69s) | ✓ PASS |
-| Full internal/store package regression | `ENGRAM_REQUIRE_QDRANT=1 go test -race ./internal/store/...` (run once) | `ok internal/store 192.587s`, `ok internal/store/storetest 10.043s` | ✓ PASS |
+| Build compiles | `go build ./...` | clean, no output | ✓ PASS |
+| gofmt clean | `gofmt -l internal/store internal/authz cmd/engram` | empty | ✓ PASS |
+| Archive/Restore gate + concurrency | `go test ./internal/store/ -run '^Test(ArchiveAs\|RestoreAs)' -v` | 7/7 PASS | ✓ PASS |
+| Policy corpus | `go test ./internal/authz/ -run '^TestPolicyCorpus' -v` | 6/6 PASS | ✓ PASS |
+| ListTags contract | `go test ./internal/store/ -run '^TestListTags' -v` | 7/7 PASS | ✓ PASS |
+| ListTags concurrency (`-race`) | `go test ./internal/store/ -run '^TestListTagsUnderConcurrentWrites$' -race -v` | PASS | ✓ PASS |
+| RelatedMemories full contract | `go test ./internal/store/ -run '^TestRelatedMemories' -v` | 18/18 PASS | ✓ PASS |
+| Recall gate (Facet/ListTags/RelatedMemories vocabulary) | `go test ./internal/store/ -run '^(TestRecallEmissionSetIsCompleteAndClassified\|TestSchemaVersionNeverGatesRecall\|TestFilterWalkerSeesEveryPosition)$' -v` | 3/3 top-level PASS (29 subtests) | ✓ PASS |
+| SC2 pre-existing Archive/Restore regression | `go test ./internal/store/ -run '^Test(Archive\|Restore)(Idempotent\|NoOpWhenNeverArchived\|UnknownID\|SurvivesWholePayloadUpdate\|SurvivesConcurrentUpdate\|RecallGate)' -v` | 11/11 PASS | ✓ PASS |
+| SC2 CLI regression | `go test ./cmd/engram/ -run '^Test(Archive\|SpineReviewArchive\|SpineReviewRestore)' -v` | 10/10 PASS | ✓ PASS |
+| Backstop concurrency tests with `-race` | `go test ./internal/store/ -race -run '^(TestArchiveAsRestoreAsConcurrentSerialize\|TestRelatedMemoriesCandidateVanishesBeforeFetch\|TestRelatedMemoriesAdmitsByTypeNotScore)$' -v` | 3/3 PASS | ✓ PASS |
+| Key-links gate | `go test ./internal/keylinks/ -count=1 -v` | 12/12 PASS | ✓ PASS |
+| License check | `task license:check` | 2685 checked, 0 invalid | ✓ PASS |
+| Lint | `golangci-lint run ./internal/store/... ./internal/authz/...` | 0 issues | ✓ PASS |
 
-All five checks were run independently by this verifier, from a fresh process, against real Qdrant (testcontainers) with the race detector enabled — not inferred from SUMMARY.md or the orchestrator's narration.
+No full-package `go test ./internal/store/...` run was repeated in this re-verification — the targeted runs above cover every must-have truth and every file this phase's covered set includes, per the host-load constraint (other phase verifiers running concurrently); the prior report already recorded one full-package PASS at `14c7aa5e`, and nothing in that run's exercised surface has regressed since (files unchanged, or changed files' relevant tests re-run and green above).
 
 ### Requirements Coverage
 
-Unchanged from initial verification — STORE-01, STORE-02, STORE-03 remain ✓ SATISFIED; no new requirements introduced by this gap-closure commit.
+| Requirement | Source Plan | Description | Status | Evidence |
+|-------------|------------|-------------|--------|----------|
+| STORE-01 | 01-01 | Authz-gated Archive/Restore through the owner-write gate | ✓ SATISFIED | SC1/SC2 evidence above |
+| STORE-02 | 01-03, 01-04 | `RelatedMemories(subj, id)` typed edges, read-filtered, bounded | ✓ SATISFIED | SC3 evidence above |
+| STORE-03 | 01-02 | `ListTags(subj, scope)` facet counts, read-filtered, recall-gate widened | ✓ SATISFIED | SC4 evidence above |
+
+REQUIREMENTS.md maps all three (STORE-01, STORE-02, STORE-03) to Phase 1 as "Mapped" — no orphaned requirements for this phase.
 
 ### Anti-Patterns Found
 
-None. `internal/store/concurrent_gates_test.go` scanned for `TODO|FIXME|XXX|TBD|HACK|PLACEHOLDER` (case-insensitive): zero matches. The new `relatedBeforeFetchHook` var is correctly documented as test-only and nil-guarded in production code (`internal/store/relatedmemories.go:629`: `if relatedBeforeFetchHook != nil {`).
+None. Scanned all Phase-1-covered files (including the three changed by Phase 3: `relatedmemories.go`, `relatedmemories_test.go`, `concurrent_gates_test.go`, `schemaversion_recallgate_test.go`) for `TBD|FIXME|XXX|TODO|HACK|PLACEHOLDER` (case-insensitive): zero matches.
 
 ### Human Verification Required
 
 1. **01-03's judgment-tier prohibition — no blended cross-type score**
    **Test:** Confirm `RelatedEdge`/`assembleRelated` never fold vector score, tag weight, citation count, and supersession depth into one comparable ranking number.
    **Expected:** Per-type evidence fields only; admission and sort order strictly by `relatedEdgeRank` (fixed type order), never a blended score.
-   **Why human:** The plan's own frontmatter marks this prohibition `verification: judgment` (not test-backed). A new behavioral test (`TestRelatedMemoriesAdmitsByTypeNotScore`, commit `14c7aa5e`) now demonstrates this directly and passes live against real Qdrant with `-race`, and this verifier independently re-ran it and confirmed the admission-order code path (`assembleRelated` is called with `citations, tags, vector` in that literal order at `internal/store/relatedmemories.go:754`, matching `relatedEdgeRank`'s canonical order) — but per the judgment-tier prohibition policy, a judgment-tier item is never auto-resolved by test evidence; it requires an explicit human sign-off rather than resting on an LLM-judge verdict (mine or the executor's) alone.
+   **Why human:** The plan's own frontmatter marks this prohibition `verification: judgment` (not test-backed). `TestRelatedMemoriesAdmitsByTypeNotScore` still demonstrates this directly and passes live against real Qdrant on current HEAD, and this verifier confirmed the admission-order code path is unchanged by Phase 3's `full`-parameter insertion (`internal/store/relatedmemories.go:754`: `s.assembleRelated(ctx, f, anchor.ID, full, chain, citations, tags, vector)` — citations, tags, vector still in that literal order). Per the judgment-tier prohibition policy, a judgment-tier item is never auto-resolved by test evidence; it requires an explicit human sign-off rather than resting on an LLM-judge verdict (this verifier's or any predecessor's) alone. Carried forward unresolved from the prior verification — no new information changes its disposition.
 
 ### Gaps Summary
 
-No blocking gaps. Three of the four items that previously routed this phase to `human_needed` are now closed with direct, independently-reproduced behavioral test evidence (`TestArchiveAsRestoreAsConcurrentSerialize`, `TestListTagsUnderConcurrentWrites`, `TestRelatedMemoriesCandidateVanishesBeforeFetch`) — all pass live against real Qdrant with the race detector enabled, and the full `internal/store` package suite passes cleanly alongside them (no regressions introduced). All four roadmap Success Criteria remain fully verified.
+No gaps, no regressions. This re-verification confirms:
 
-The remaining item — 01-03's judgment-tier "no blended cross-type score" prohibition — is now backed by a strong, independently-verified behavioral test (`TestRelatedMemoriesAdmitsByTypeNotScore`) plus direct code confirmation of the admission-order mechanism, but per this project's judgment-tier prohibition policy this class of item is never auto-resolved to a `passed` status by test evidence alone; it requires an explicit human sign-off. This keeps the phase at `human_needed` rather than `passed`, with exactly one flagged item remaining (down from four).
+- All 4 roadmap Success Criteria remain fully verified against current HEAD.
+- 18/18 must-have truths remain verified; none were weakened, broken, or made unsatisfiable by the later-phase edits to `internal/store/relatedmemories.go`, `relatedmemories_test.go`, `concurrent_gates_test.go`, or `schemaversion_recallgate_test.go`.
+- Phase 3's `full bool` parameter addition to `Store.RelatedMemories`/`assembleRelated`/`relatedSupersessionChain` is additive and backward-compatible: the default (`full=false`) path is byte-for-byte equivalent to the pre-change summary-view behavior (`relatedShape(m, false) == summaryShape(m)`), confirmed by `TestRelatedMemoriesEntryShape` passing unmodified in intent.
+- The two Phase-1 `key_links` patterns whose literal call-shape changed were updated in-plan by the same commit that changed the code (`22aec07f`), and both now match current code exactly; the automated `internal/keylinks` gate independently confirms every active-milestone key_link (including all 16 of this phase's) is satisfiable at HEAD.
+- The single previously-flagged item — the judgment-tier "no blended cross-type score" prohibition — is unaffected by the later-phase changes and remains a `human_verification` item per policy, unchanged from the prior report. This keeps the phase at `human_needed` rather than `passed`.
 
 ---
 
-*Verified: 2026-09-26T01:20:00Z*
+*Verified: 2026-09-28T17:33:35Z*
 *Verifier: Claude (gsd-verifier)*
+
+## Human Sign-Off Carried Forward (orchestrator, 2026-09-28)
+
+The single `human_verification` item — 01-03's judgment-tier prohibition (no blended cross-type
+score) — was already signed off explicitly by Sean on 2026-09-26 (`01-UAT.md` test 4: "pass —
+explicit human sign-off (Sean, 2026-09-26)"). This re-verification found the relevant code path
+unchanged apart from Phase 3's additive `full` parameter (admission order citations → tags →
+vector, matching `relatedEdgeRank`, and `TestRelatedMemoriesAdmitsByTypeNotScore` still passes),
+so that sign-off still applies and the phase status is `passed`. No new human item was raised.
