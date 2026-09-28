@@ -109,6 +109,19 @@
         "pnpm"
       ],
       "enabled": false
+    },
+    {
+      "description": "Hold the ui/ `typescript` dependency at major 6. svelte-check 4.x refuses TypeScript 7 as `typescript` and runs TS 7 only through `--tsgo`, with TS 7 installed under the `@typescript/native` npm alias beside TS 6 (svelte-check README). A lone typescript 6->7 bump (measured: #383, 2026-07-17) silently disabled `pnpm check` for two months because no CI step ran it. Matches the real `typescript` dep by depName only, so the `@typescript/native` alias (packageName `typescript`) still receives TS 7 updates. Remove once svelte-check accepts TS 7 as `typescript`.",
+      "matchFileNames": [
+        "ui/package.json"
+      ],
+      "matchDepNames": [
+        "typescript"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
     }
   ],
   "lockFileMaintenance": {

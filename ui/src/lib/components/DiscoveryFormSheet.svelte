@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { ConnectError, Code } from '@connectrpc/connect';
   import { describeError } from '$lib/errors';
   import { persistResume, normalizeReturnPath, redirectToLogin } from '$lib/resume';
@@ -30,7 +31,7 @@
 
   let content = $state('');
   let kind = $state<'map' | 'fact'>('map');
-  let scopeVal = $state(defaultScope);
+  let scopeVal = $state(untrack(() => defaultScope));
   let citations = $state<DiscoveryCitationInput[]>([{ kind: 'file', ref: '' }]);
   let tags = $state<string[]>([]);
   let tagInput = $state('');
@@ -192,13 +193,13 @@
     </Sheet.Header>
     <div class="flex-1 flex flex-col gap-3 px-4 overflow-y-auto min-h-0">
       <div class="flex flex-col gap-1">
-        <label for="dfs-content" class="text-[10.5px] uppercase text-muted-foreground">content</label>
+        <label for="dfs-content" class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">content</label>
         <Textarea id="dfs-content" bind:value={content} placeholder="write the discovery…" rows={6} />
-        {#if contentError}<span class="text-[11px] text-cat-gotcha">{contentError}</span>{/if}
+        {#if contentError}<span class="text-[calc(11*var(--u))] text-cat-gotcha">{contentError}</span>{/if}
       </div>
 
       <div class="flex flex-col gap-1">
-        <span class="text-[10.5px] uppercase text-muted-foreground">kind</span>
+        <span class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">kind</span>
         <Select
           value={kind}
           options={[
@@ -211,13 +212,13 @@
       </div>
 
       <div class="flex flex-col gap-1">
-        <span id="dfs-scope-label" class="text-[10.5px] uppercase text-muted-foreground">scope</span>
+        <span id="dfs-scope-label" class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">scope</span>
         <Input aria-labelledby="dfs-scope-label" bind:value={scopeVal} placeholder="discovery:repo:..." />
-        {#if scopeError}<span class="text-[11px] text-cat-gotcha">{scopeError}</span>{/if}
+        {#if scopeError}<span class="text-[calc(11*var(--u))] text-cat-gotcha">{scopeError}</span>{/if}
       </div>
 
       <div class="flex flex-col gap-2">
-        <span class="text-[10.5px] uppercase text-muted-foreground">citations</span>
+        <span class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">citations</span>
         {#each citations as c, i (i)}
           <div class="flex gap-1.5 items-center" data-testid="citation-row">
             <Select
@@ -251,14 +252,14 @@
           </div>
         {/each}
         <Button variant="outline" size="sm" type="button" class="self-start" onclick={addCitation}>add citation</Button>
-        {#if citationsError}<span class="text-[11px] text-cat-gotcha">{citationsError}</span>{/if}
+        {#if citationsError}<span class="text-[calc(11*var(--u))] text-cat-gotcha">{citationsError}</span>{/if}
       </div>
 
       <div class="flex flex-col gap-1">
-        <span class="text-[10.5px] uppercase text-muted-foreground">tags</span>
+        <span class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">tags</span>
         <div class="flex flex-wrap gap-1.5 items-center">
           {#each tags as t (t)}
-            <Badge variant="outline" class="bg-muted font-mono text-[10.5px] gap-1">
+            <Badge variant="outline" class="bg-muted font-mono text-[calc(10.5*var(--u))] gap-1">
               {t}
               <button type="button" aria-label={`remove tag ${t}`} onclick={() => removeTag(t)}>×</button>
             </Badge>
@@ -274,7 +275,7 @@
       </div>
 
       <div class="flex flex-col gap-1">
-        <span class="text-[10.5px] uppercase text-muted-foreground">visibility</span>
+        <span class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">visibility</span>
         <Select
           value={visibility}
           options={[
@@ -290,17 +291,17 @@
       </div>
 
       <div class="flex flex-col gap-1">
-        <label for="dfs-summary" class="text-[10.5px] uppercase text-muted-foreground">summary (optional)</label>
+        <label for="dfs-summary" class="text-[calc(10.5*var(--u))] uppercase text-muted-foreground">summary (optional)</label>
         <Textarea id="dfs-summary" bind:value={summary} rows={2} />
       </div>
 
       {#if hardAuthFailure}
-        <div role="alert" class="flex flex-col gap-2 p-3 text-cat-gotcha bg-card border border-cat-gotcha rounded text-[12px]">
+        <div role="alert" class="flex flex-col gap-2 p-3 text-cat-gotcha bg-card border border-cat-gotcha rounded text-[calc(12*var(--u))]">
           <span>write failed — session expired. re-authenticate to continue.</span>
           <Button variant="outline" size="sm" class="self-start" onclick={handleReauthenticate}>Re-authenticate</Button>
         </div>
       {:else if genericError}
-        <div role="alert" class="text-cat-gotcha text-[12px]">{genericError}</div>
+        <div role="alert" class="text-cat-gotcha text-[calc(12*var(--u))]">{genericError}</div>
       {/if}
     </div>
 

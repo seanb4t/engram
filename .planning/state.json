@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "2026-09-22.01 — Typed Decisions & Recall Ranking",
+  "milestone": "2026-09-25.01 — Console Overhaul",
   "phases": [
     {
       "number": "9",
@@ -311,18 +311,53 @@
     {
       "number": "4",
       "name": "Jev Reranker & Per-Hit Relevance Signal",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "5",
       "name": "Operator Correctness",
-      "status": "pending"
+      "status": "complete"
+    },
+    {
+      "number": "1",
+      "name": "Store Prerequisites",
+      "status": "complete"
+    },
+    {
+      "number": "01.1",
+      "name": "Console Sketches (INSERTED)",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Recall-First Search",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Curation RPCs & MCP Tools",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Curation Surfaces",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Related-Memories Graph & Tag Cloud",
+      "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "Query Understanding",
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 4 of 5 · 60% · ready to verify"
+    "command": "/gsd:progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
   },
-  "updated_at": "2026-09-24T16:00:14.255Z"
+  "updated_at": "2026-09-28T18:25:20.557Z"
 }

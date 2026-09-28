@@ -22,14 +22,27 @@ import (
 // disposition: no bloat beyond the deps.* surface; the three TEST call sites
 // that used to pass d.st to them now use testDepsWithStore instead).
 type memStore interface {
+	// ArchiveAs/RestoreAs are the owner-gated (authz.ActionArchive) verbs for
+	// the caller-facing lanes (ArchiveMemory/RestoreMemory Connect RPCs, the
+	// archive_memory/restore_memory MCP tools; milestone 2026-09-25.01 Phase
+	// 3, D-16). The subject-less operator-tier siblings (Archive/Restore) are
+	// deliberately NOT on this interface, so no handler reachable through
+	// deps.* can bypass the Cedar ActionArchive gate.
+	ArchiveAs(ctx context.Context, id string, subj store.Subject) (store.ArchiveResult, error)
 	Delete(ctx context.Context, id string, subj store.Subject) error
 	DeleteAll(ctx context.Context, scope string, subj store.Subject) error
 	FetchForUpdate(ctx context.Context, id string, subj store.Subject) (store.Memory, error)
 	Get(ctx context.Context, id string) (store.Memory, error)
 	GetReadable(ctx context.Context, id string, subj store.Subject) (store.Memory, error)
 	List(ctx context.Context, scope string, subj store.Subject, opts store.ListOptions) (items []store.Memory, total uint64, nextCursor string, err error)
-	ListScheduled(ctx context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) ([]store.Memory, error)
+	ListScheduled(ctx context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) (items []store.Memory, nextCursor string, err error)
 	ListScopes(ctx context.Context, subj store.Subject) ([]store.ScopeCount, bool, error)
+	// ListTags is the scope tag-count read (milestone 2026-09-25.01 Phase 3,
+	// RPC-04): the shared core both the Connect ListTags RPC and the
+	// list_tags MCP tool call. No post-filter above this call — the Subject
+	// IS the enforcement point (Pitfall 4, DEC-cgb). An empty scope means
+	// every scope the caller can read (D-14).
+	ListTags(ctx context.Context, subj store.Subject, scope string, limit uint64) ([]store.TagCount, bool, error)
 	// MigrateStatus is the handler-error test seam for the Connect
 	// MigrateStatus RPC (07-06): one method added to this EXISTING,
 	// already-eighteen-strong interface — not a new interface. Whole-
@@ -39,6 +52,20 @@ type memStore interface {
 	MintShortID(ctx context.Context, seen map[string]struct{}) (string, error)
 	OwnedOrAbsent(ctx context.Context, id string, subj store.Subject) error
 	ResolvePointID(ctx context.Context, idOrShort string) (string, error)
+	// RelatedMemories is the id's-neighbourhood read (milestone 2026-09-25.01
+	// Phase 3, RPC-04): the shared core both the Connect RelatedMemories RPC
+	// and the related_memories MCP tool call. No post-filter above this call
+	// — the Subject IS the enforcement point (Pitfall 4, DEC-cgb).
+	RelatedMemories(ctx context.Context, id string, subj store.Subject, k uint64, full bool) (store.RelatedResult, error)
+	// RestoreAs is ArchiveAs's owner-gated sibling — see the doc comment above.
+	RestoreAs(ctx context.Context, id string, subj store.Subject) (store.ArchiveResult, error)
+	// Search is the plain vector-order read (D-02, phase 02-recall-first-search
+	// plan 02-01) — used ONLY for the recall-gate hidden-count comparison
+	// (hiddencount.go's searchRecallHidden), never as a substitute for the
+	// caller's own ranked results. Never SearchReranked: a second rerank pass
+	// for a count that only needs ids and state fields would double the Jev
+	// decision cost and audit volume.
+	Search(ctx context.Context, scope string, subj store.Subject, vec []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error)
 	SearchDiscovery(ctx context.Context, scope, kind string, subj store.Subject, vec []float32, k uint64) ([]store.Memory, error)
 	SearchDiscoveryReranked(ctx context.Context, scope, kind string, subj store.Subject, query string, vec []float32, k uint64, hook store.RankHook, audit bool) ([]store.Memory, error)
 	SearchReranked(ctx context.Context, scope string, subj store.Subject, query string, vec []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error)

@@ -28,13 +28,21 @@ const searchSectionHeading = "## Search reranking (Jev)"
 const searchNextHeadingPrefix = "\n## "
 
 // searchRegistryEnvNames returns every registry Env carrying the
-// ENGRAM_SEARCH_ prefix, in registry order.
+// ENGRAM_SEARCH_ prefix, in registry order — EXCLUDING the
+// ENGRAM_SEARCH_UNDERSTANDING* keys (milestone 2026-09-25.01 Phase 6): query
+// understanding is documented in its own docs-site section and gated
+// separately (plan 06-06), so this reranking-focused gate must not demand a
+// row for it here.
 func searchRegistryEnvNames() []string {
 	var envs []string
 	for _, r := range registry {
-		if strings.HasPrefix(r.Env, "ENGRAM_SEARCH_") {
-			envs = append(envs, r.Env)
+		if !strings.HasPrefix(r.Env, "ENGRAM_SEARCH_") {
+			continue
 		}
+		if strings.HasPrefix(r.Env, "ENGRAM_SEARCH_UNDERSTANDING") {
+			continue
+		}
+		envs = append(envs, r.Env)
 	}
 	return envs
 }

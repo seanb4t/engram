@@ -138,6 +138,15 @@ var registry = []field{
 	{Key: "search.ranker", Env: "ENGRAM_SEARCH_RANKER", Default: "lexical"},
 	{Key: "search.rerank_timeout", Env: "ENGRAM_SEARCH_RERANK_TIMEOUT", Default: "2s"},
 	{Key: "search.rerank_audit", Env: "ENGRAM_SEARCH_RERANK_AUDIT", Default: "false"},
+	// search.understanding* (milestone 2026-09-25.01 Phase 6, D-01): brand
+	// new, env-only keys. search.understanding deliberately carries NO
+	// Default — an empty value means "unset" and is resolved by
+	// internal/server's understandingEnabled (follows
+	// ENGRAM_DECISIONS_PROVIDER), never a static registry default, which
+	// cannot express "follow another key's value."
+	{Key: "search.understanding", Env: "ENGRAM_SEARCH_UNDERSTANDING"},
+	{Key: "search.understanding_timeout", Env: "ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT", Default: "2s"},
+	{Key: "search.understanding_audit", Env: "ENGRAM_SEARCH_UNDERSTANDING_AUDIT", Default: "false"},
 	{Key: "oidc.issuer", Env: "ENGRAM_OIDC_ISSUER", Legacy: "MEM_OIDC_ISSUER", Flag: "oidc-issuer"},
 	{Key: "oidc.audience", Env: "ENGRAM_OIDC_AUDIENCE", Legacy: "MEM_OIDC_AUDIENCE", Flag: "oidc-audience"},
 	{Key: "oidc.client_id", Env: "ENGRAM_OIDC_CLIENT_ID", Legacy: "MEM_OIDC_CLIENT_ID", Flag: "oidc-client-id"},

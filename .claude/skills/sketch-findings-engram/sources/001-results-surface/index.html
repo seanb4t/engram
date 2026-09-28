@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>001 Results Surface</title>
+<link id="theme-link" rel="stylesheet" href="../themes/default.css">
+<script src="../themes/display.js"></script>
+<style>
+*{box-sizing:border-box}
+:root{--u:1px}
+html,body{margin:0;height:100%}
+body{background:var(--color-bg);color:var(--color-text);font-family:var(--font-sans);font-size:var(--text-sm);line-height:1.4;padding-top:40px;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+code,.mono{font-family:var(--font-mono)}
+.sum code{font-size:.92em;color:var(--color-text);background:var(--color-surface-2);padding:0 3px;border-radius:3px}
+
+/* ---------- variant nav ---------- */
+#variant-nav{position:fixed;top:0;left:0;right:0;height:40px;z-index:9998;background:var(--color-surface);border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:4px;padding:0 12px;overflow-x:auto;scrollbar-width:none}
+.variant-tab{flex:none;background:transparent;border:1px solid transparent;border-radius:var(--radius-md);padding:4px 10px;color:var(--color-text-muted);cursor:pointer;transition:all .15s ease;font-size:var(--text-xs);white-space:nowrap}
+.variant-tab:hover{background:var(--color-hover);color:var(--color-text)}
+.variant-tab.active{background:var(--color-primary-soft);color:var(--color-text);border-color:color-mix(in srgb,var(--color-primary) 45%,transparent)}
+.nav-spacer{flex:1;min-width:12px}
+.nav-label{flex:none;font-size:var(--text-2xs);color:var(--color-text-faint);margin-right:4px;text-transform:uppercase;letter-spacing:.06em}
+.seg{flex:none;display:inline-flex;border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden}
+.seg button{background:transparent;border:0;border-right:1px solid var(--color-border);padding:3px 9px;font-size:var(--text-2xs);color:var(--color-text-muted);cursor:pointer;transition:all .15s ease}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:var(--color-hover);color:var(--color-text)}
+.seg button.on{background:var(--color-primary-soft);color:var(--color-text)}
+
+/* ---------- frame ---------- */
+#sketch-root{height:calc(100vh - 40px);margin:0 auto;position:relative;transition:max-width .15s ease}
+body.framed #sketch-root{border-left:1px dashed var(--color-border);border-right:1px dashed var(--color-border)}
+.variant{height:100%;display:flex;flex-direction:column;container:v / inline-size}
+
+/* ---------- head ---------- */
+.v-head{flex:none;display:flex;align-items:center;gap:calc(12*var(--u));height:calc(40*var(--u));padding:0 calc(12*var(--u));border-bottom:1px solid var(--color-border-subtle)}
+.search{flex:none;display:flex;align-items:center;gap:calc(6*var(--u));width:calc(320*var(--u));height:calc(28*var(--u));padding:0 calc(8*var(--u));background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);transition:all .15s ease;cursor:text}
+.search:hover{border-color:var(--color-text-faint)}
+.search:focus-within{border-color:var(--color-primary);box-shadow:0 0 0 calc(3*var(--u)) var(--color-primary-soft)}
+.search svg{flex:none;color:var(--color-text-faint)}
+.search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--color-text);font-family:inherit;font-size:var(--text-sm)}
+.search input::placeholder{color:var(--color-text-faint)}
+kbd{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint);border:1px solid var(--color-border);border-bottom-width:2px;border-radius:calc(3*var(--u));padding:0 calc(4*var(--u));line-height:calc(14*var(--u))}
+.rhead{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text-muted);font-size:var(--text-xs)}
+.rhead strong{color:var(--color-text);font-weight:600}
+.rhead code{color:var(--color-text);background:var(--color-surface-2);padding:0 calc(4*var(--u));border-radius:calc(3*var(--u));font-size:var(--text-2xs)}
+.rhead .warn{color:var(--color-warning)}
+.rhead .err{color:var(--color-danger)}
+.link{background:none;border:0;padding:0;color:var(--color-text);text-decoration:underline dotted var(--color-text-faint);text-underline-offset:calc(3*var(--u));cursor:pointer;transition:all .15s ease}
+.link:hover{color:var(--color-primary);text-decoration-color:var(--color-primary)}
+.legend{flex:none;display:flex;gap:calc(10*var(--u));color:var(--color-text-faint);font-size:var(--text-2xs)}
+.legend span{display:inline-flex;gap:calc(4*var(--u));align-items:center}
+
+/* ---------- facets ---------- */
+.facets{flex:none;display:flex;align-items:center;gap:calc(6*var(--u));height:calc(32*var(--u));padding:0 calc(12*var(--u));border-bottom:1px solid var(--color-border);overflow-x:auto;scrollbar-width:none}
+.chip{flex:none;display:inline-flex;align-items:center;gap:calc(5*var(--u));height:calc(22*var(--u));padding:0 calc(8*var(--u));border-radius:var(--radius-full);border:1px solid var(--color-border-subtle);background:transparent;color:var(--color-text-muted);font-size:var(--text-2xs);cursor:pointer;white-space:nowrap;transition:all .15s ease}
+.chip:hover{background:var(--color-hover);color:var(--color-text);border-color:var(--color-border)}
+.chip.on{background:var(--color-primary-soft);color:var(--color-text);border-color:color-mix(in srgb,var(--color-primary) 45%,transparent)}
+.chip .dot{width:calc(6*var(--u));height:calc(6*var(--u));border-radius:50%;background:var(--c)}
+.chip .n{font-family:var(--font-mono);color:var(--color-text-faint)}
+.chip.zero{opacity:.45}
+.chip.mono{font-family:var(--font-mono)}
+.chip .box{width:calc(9*var(--u));height:calc(9*var(--u));border:1px solid var(--color-text-faint);border-radius:2px;transition:all .15s ease}
+.chip.on .box{background:var(--color-primary);border-color:var(--color-primary)}
+.chip .caret{color:var(--color-text-faint)}
+.sep{flex:none;width:1px;height:calc(16*var(--u));background:var(--color-border);margin:0 calc(4*var(--u))}
+.scopes-line{flex:none;display:flex;flex-wrap:wrap;gap:calc(6*var(--u));padding:calc(6*var(--u)) calc(12*var(--u));border-bottom:1px solid var(--color-border-subtle);background:var(--color-surface);font-size:var(--text-2xs);color:var(--color-text-muted)}
+.scopes-line .sc{font-family:var(--font-mono);border:1px solid var(--color-border-subtle);border-radius:calc(3*var(--u));padding:0 calc(5*var(--u))}
+.scopes-line .sc b{font-weight:400;color:var(--color-text-faint);margin-left:calc(4*var(--u))}
+.scopes-line .sc.miss{border-style:dashed;color:var(--color-warning)}
+.menu{position:fixed;z-index:60;min-width:calc(300*var(--u));background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:calc(4*var(--u));display:none}
+.menu.show{display:block}
+.menu button{display:flex;width:100%;gap:calc(8*var(--u));align-items:center;background:none;border:0;border-radius:var(--radius-sm);padding:calc(5*var(--u)) calc(8*var(--u));font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-muted);cursor:pointer;text-align:left;transition:all .15s ease}
+.menu button:hover{background:var(--color-hover);color:var(--color-text)}
+.menu button.on{color:var(--color-text)}
+.menu button.on::before{content:'';width:calc(5*var(--u));height:calc(5*var(--u));border-radius:50%;background:var(--color-primary)}
+
+/* ---------- body / list ---------- */
+.v-body{flex:1;min-height:0;display:flex;position:relative}
+.list-wrap{flex:1;min-width:0;overflow-y:auto;position:relative;container:list / inline-size}
+.loadbar{position:sticky;top:0;height:2px;z-index:3;overflow:hidden;opacity:0;transition:opacity .15s ease}
+.loadbar::after{content:'';position:absolute;top:0;bottom:0;width:30%;background:var(--color-primary);animation:lb 0.9s ease-in-out infinite}
+.list-wrap.busy .loadbar{opacity:1}
+.list-wrap.busy .list{opacity:.55}
+@keyframes lb{from{left:-30%}to{left:100%}}
+.list{outline:none;padding:0 0 calc(48*var(--u));margin-top:-2px;transition:opacity .15s ease;min-height:100%}
+.list:focus-visible{box-shadow:inset 0 0 0 1px var(--color-primary-soft)}
+.list{--cols:calc(96*var(--u)) minmax(0,1fr) auto calc(172*var(--u)) calc(132*var(--u)) calc(34*var(--u)) calc(70*var(--u))}
+.list.jev{--cols-x:calc(56*var(--u))}
+.row{position:relative;cursor:pointer;transition:background .15s ease;border-bottom:1px solid transparent}
+.row .line{display:grid;grid-template-columns:var(--cols);align-items:center;column-gap:calc(10*var(--u));height:var(--row-h);padding:0 calc(12*var(--u)) 0 calc(14*var(--u))}
+.list.jev .row .line{grid-template-columns:var(--cols) var(--cols-x)}
+.row:hover{background:var(--color-hover)}
+.row.active{background:var(--color-selected)}
+.row.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--color-text-faint);transition:background .15s ease}
+.list:focus .row.active::before{background:var(--color-primary)}
+.row.opened .cat::after{content:'';width:calc(5*var(--u));height:calc(5*var(--u));border-radius:50%;background:var(--color-primary);margin-left:2px}
+.cat{display:inline-flex;align-items:center;gap:calc(6*var(--u));color:var(--c);font-size:var(--text-2xs);white-space:nowrap;overflow:hidden}
+.cat i{flex:none;width:calc(7*var(--u));height:calc(7*var(--u));border-radius:2px;background:var(--c)}
+.sum{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--color-text)}
+.states{display:flex;gap:calc(4*var(--u))}
+.st{font-family:var(--font-mono);font-size:var(--text-2xs);line-height:calc(15*var(--u));padding:0 calc(5*var(--u));border-radius:calc(3*var(--u));border:1px solid var(--color-border);color:var(--color-text-faint);white-space:nowrap}
+.st.superseded{color:var(--color-text-muted)}
+.st.expired{color:var(--color-warning);border-color:color-mix(in srgb,var(--color-warning) 45%,transparent)}
+.st.scheduled{color:var(--color-primary);border-color:color-mix(in srgb,var(--color-primary) 45%,transparent)}
+.tags{display:flex;gap:calc(4*var(--u));overflow:hidden;min-width:0}
+.tag{flex:none;font-family:var(--font-mono);font-size:var(--text-2xs);line-height:calc(16*var(--u));color:var(--color-text-muted);background:var(--color-surface-2);border-radius:calc(3*var(--u));padding:0 calc(5*var(--u));white-space:nowrap}
+.tag.more{background:transparent;color:var(--color-text-faint);padding:0 2px}
+button.tag{border:0;cursor:pointer;transition:all .15s ease}
+button.tag:hover{color:var(--color-text);background:var(--color-hover);box-shadow:inset 0 0 0 1px var(--color-border)}
+.scope{font-family:var(--font-mono);font-size:var(--text-2xs);line-height:calc(16*var(--u));color:var(--color-text-muted);border:1px solid var(--color-border-subtle);border-radius:calc(3*var(--u));padding:0 calc(5*var(--u));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;justify-self:start;max-width:100%}
+.scope em{font-style:normal;color:var(--color-text-faint)}
+.age{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint);text-align:right}
+.score{display:flex;align-items:center;gap:calc(6*var(--u));justify-content:flex-end}
+.score .num{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-muted)}
+.score .bar{width:calc(28*var(--u));height:calc(3*var(--u));border-radius:2px;background:var(--color-border-subtle);overflow:hidden}
+.score .bar b{display:block;height:100%;background:var(--color-primary)}
+.score.none .num{color:var(--color-text-faint)}
+.rel{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text);text-align:right;white-space:nowrap}
+.rel em{font-style:normal;color:var(--color-text-faint);margin-right:calc(3*var(--u))}
+.list:not(.jev) .rel{display:none}
+.row.dim .sum,.row.dim .cat,.row.dim .tags,.row.dim .scope,.row.dim .snip{opacity:.5}
+.row.dim .sum{text-decoration:none}
+
+/* expansion (A + C) */
+.exp{display:grid;grid-template-rows:0fr;transition:grid-template-rows .15s ease}
+.exp>div{overflow:hidden;min-height:0}
+.row.expanded .exp{grid-template-rows:1fr}
+.exp .in{padding:0 calc(12*var(--u)) calc(8*var(--u)) calc(120*var(--u));display:flex;flex-direction:column;gap:calc(5*var(--u))}
+.exp .meta{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint);display:flex;gap:calc(10*var(--u));flex-wrap:wrap}
+.exp .meta b{font-weight:400;color:var(--color-text-muted)}
+.exp .prev{font-size:var(--text-xs);color:var(--color-text-muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
+.exp .alltags{display:flex;flex-wrap:wrap;gap:calc(4*var(--u))}
+
+/* C: second line */
+.snip{padding:0 calc(12*var(--u)) calc(7*var(--u)) calc(120*var(--u));margin-top:calc(-5*var(--u));font-size:var(--text-xs);color:var(--color-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#variant-c .exp .in{padding-top:0}
+
+@container list (max-width: 860px){ .list{--cols:calc(96*var(--u)) minmax(0,1fr) auto calc(128*var(--u)) calc(34*var(--u)) calc(70*var(--u))} .line .tags{display:none} }
+@container list (max-width: 560px){ .list{--cols:calc(10*var(--u)) minmax(0,1fr) auto calc(30*var(--u)) calc(40*var(--u))} .line .tags,.line .scope{display:none} .cat{font-size:0;gap:0} .score .bar{display:none} .exp .in,.snip{padding-left:calc(36*var(--u))} }
+
+/* skeleton */
+.sk{display:grid;grid-template-columns:var(--cols);column-gap:calc(10*var(--u));align-items:center;height:var(--row-h);padding:0 calc(12*var(--u)) 0 calc(14*var(--u))}
+.sk i{display:block;height:calc(8*var(--u));border-radius:calc(3*var(--u));background:linear-gradient(90deg,var(--color-surface-2) 0%,var(--color-hover) 50%,var(--color-surface-2) 100%);background-size:200% 100%;animation:sh 1.2s linear infinite}
+@keyframes sh{from{background-position:200% 0}to{background-position:-200% 0}}
+@container list (max-width: 860px){ .sk i:nth-child(4){display:none} }
+@container list (max-width: 560px){ .sk i:nth-child(4),.sk i:nth-child(5){display:none} }
+
+/* empty / error */
+.state-box{max-width:calc(520*var(--u));margin:calc(56*var(--u)) auto;padding:0 calc(16*var(--u));text-align:center;color:var(--color-text-muted);font-size:var(--text-xs)}
+.state-box h3{margin:0 0 calc(6*var(--u));font-size:var(--text-base);font-weight:600;color:var(--color-text)}
+.state-box h3 code{background:var(--color-surface-2);padding:0 calc(5*var(--u));border-radius:calc(3*var(--u));font-size:.9em}
+.state-box .scs{margin:calc(10*var(--u)) 0 calc(14*var(--u));display:flex;flex-wrap:wrap;gap:calc(4*var(--u));justify-content:center}
+.state-box .scs span{font-family:var(--font-mono);font-size:var(--text-2xs);border:1px solid var(--color-border-subtle);border-radius:calc(3*var(--u));padding:0 calc(5*var(--u))}
+.state-box .acts{display:flex;gap:calc(6*var(--u));justify-content:center;flex-wrap:wrap}
+.state-box.error h3{color:var(--color-danger)}
+.state-box pre{text-align:left;font-size:var(--text-2xs);background:var(--color-surface);border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);padding:calc(8*var(--u)) calc(10*var(--u));color:var(--color-text-muted);white-space:pre-wrap}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:calc(6*var(--u));height:calc(24*var(--u));padding:0 calc(9*var(--u));border:1px solid var(--color-border);background:var(--color-surface-2);color:var(--color-text);border-radius:var(--radius-sm);font-size:var(--text-xs);cursor:pointer;transition:all .15s ease;white-space:nowrap}
+.btn:hover{background:var(--color-hover);border-color:var(--color-text-faint)}
+.btn.primary{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-bg)}
+.btn.primary:hover{background:var(--color-primary-hover)}
+.btn.danger{color:var(--color-danger)}
+.btn.loading{opacity:.7;pointer-events:none}
+.btn.loading::before{content:'';width:calc(9*var(--u));height:calc(9*var(--u));border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:calc(24*var(--u));height:calc(24*var(--u));border:0;border-radius:var(--radius-sm);background:transparent;color:var(--color-text-muted);cursor:pointer;transition:all .15s ease}
+.icon-btn:hover{background:var(--color-hover);color:var(--color-text)}
+
+/* ---------- detail pane ---------- */
+.resizer{flex:none;width:calc(5*var(--u));cursor:col-resize;position:relative;display:none;outline:none}
+.resizer::after{content:'';position:absolute;top:0;bottom:0;left:2px;width:1px;background:var(--color-border);transition:all .15s ease}
+.resizer:hover::after,.resizer.drag::after,.resizer:focus-visible::after{background:var(--color-primary);width:calc(3*var(--u));left:1px}
+.detail{flex:none;width:calc(440*var(--u));background:var(--color-surface);overflow-y:auto;display:none;outline:none;transition:box-shadow .15s ease}
+.v-body.open .detail,.v-body.open .resizer{display:block}
+#variant-c .detail{display:block;flex:1 1 0;width:auto;border-left:1px solid var(--color-border)}
+#variant-c .list-wrap{flex:1 1 0}
+#variant-c .detail.focused{box-shadow:inset 2px 0 0 var(--color-primary)}
+.d-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:calc(8*var(--u));height:calc(36*var(--u));padding:0 calc(8*var(--u)) 0 calc(16*var(--u));background:var(--color-surface);border-bottom:1px solid var(--color-border-subtle)}
+.d-head .sid{font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text)}
+.d-head .grow{flex:1}
+.badge{display:inline-flex;align-items:center;gap:calc(5*var(--u));font-size:var(--text-2xs);padding:0 calc(6*var(--u));line-height:calc(16*var(--u));border-radius:calc(3*var(--u));color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}
+.badge i{width:calc(6*var(--u));height:calc(6*var(--u));border-radius:2px;background:var(--c)}
+.vis{font-size:var(--text-2xs);color:var(--color-text-faint);border:1px solid var(--color-border-subtle);border-radius:calc(3*var(--u));padding:0 calc(5*var(--u));line-height:calc(15*var(--u))}
+.d-body{padding:calc(14*var(--u)) calc(16*var(--u)) calc(40*var(--u))}
+.d-title{margin:0 0 calc(10*var(--u));font-size:var(--text-lg);font-weight:600;line-height:1.35}
+.d-title code{font-size:.85em;background:var(--color-surface-2);padding:0 calc(4*var(--u));border-radius:calc(3*var(--u))}
+.d-actions{display:flex;gap:calc(6*var(--u));flex-wrap:wrap;margin-bottom:calc(14*var(--u))}
+.d-sec{margin:0 0 calc(14*var(--u))}
+.d-sec h4{margin:0 0 calc(6*var(--u));font-size:var(--text-2xs);font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)}
+.d-note{font-size:var(--text-2xs);color:var(--color-warning);border:1px dashed color-mix(in srgb,var(--color-warning) 50%,transparent);border-radius:var(--radius-sm);padding:calc(4*var(--u)) calc(8*var(--u));margin-bottom:calc(12*var(--u))}
+dl.grid{display:grid;grid-template-columns:calc(104*var(--u)) minmax(0,1fr);gap:calc(3*var(--u)) calc(10*var(--u));margin:0;font-size:var(--text-xs)}
+dl.grid dt{color:var(--color-text-faint)}
+dl.grid dd{margin:0;color:var(--color-text);overflow-wrap:anywhere}
+dl.grid dd.m{font-family:var(--font-mono);font-size:var(--text-2xs);line-height:calc(18*var(--u))}
+.statelist{display:flex;flex-direction:column;gap:calc(3*var(--u));font-size:var(--text-xs);color:var(--color-text-muted)}
+.statelist div{display:flex;gap:calc(8*var(--u));align-items:center}
+.statelist .when{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint)}
+.alltags{display:flex;flex-wrap:wrap;gap:calc(4*var(--u))}
+.md{font-size:var(--text-sm);color:var(--color-text);line-height:1.55}
+.md p{margin:0 0 calc(9*var(--u))}
+.md code{font-size:.9em;background:var(--color-surface-2);padding:0 calc(4*var(--u));border-radius:calc(3*var(--u))}
+.md pre{margin:0 0 calc(9*var(--u));background:var(--color-bg);border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);padding:calc(8*var(--u)) calc(10*var(--u));overflow-x:auto;font-size:var(--text-xs);line-height:1.5}
+.md pre code{background:none;padding:0}
+.md strong{font-weight:600}
+.d-empty{padding:calc(48*var(--u)) calc(16*var(--u));text-align:center;color:var(--color-text-faint);font-size:var(--text-xs)}
+
+@container v (max-width: 760px){
+  .detail{position:absolute;inset:0;width:auto!important;z-index:6;box-shadow:var(--shadow-lg)}
+  .resizer{display:none!important}
+  #variant-c .detail{display:none;border-left:0}
+  #variant-c .v-body.open .detail{display:block}
+}
+@container v (max-width: 620px){
+  .v-head{flex-wrap:wrap;height:auto;padding:calc(6*var(--u)) calc(12*var(--u));row-gap:calc(4*var(--u))}
+  .search{width:100%}
+  .legend{display:none}
+}
+
+/* ---------- B hover card ---------- */
+.hcard{position:fixed;z-index:50;width:calc(480*var(--u));max-width:calc(100vw - calc(24*var(--u)));background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:calc(10*var(--u)) calc(12*var(--u)) calc(12*var(--u));opacity:0;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease;pointer-events:none;display:flex;flex-direction:column;gap:calc(7*var(--u))}
+.hcard.show{opacity:1;transform:none;pointer-events:auto}
+.hcard .hc-top{display:flex;gap:calc(8*var(--u));align-items:center;font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint)}
+.hcard .hc-top .sid{color:var(--color-text)}
+.hcard .hc-sum{font-weight:600;font-size:var(--text-sm)}
+.hcard .hc-sum code{font-size:.9em;background:var(--color-bg);padding:0 calc(3*var(--u));border-radius:calc(3*var(--u))}
+.hcard .hc-prev{font-size:var(--text-xs);color:var(--color-text-muted);white-space:pre-line;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+.hcard .hc-foot{font-size:var(--text-2xs);color:var(--color-text-faint);display:flex;justify-content:space-between}
+.hcard .tag{background:var(--color-bg)}
+
+/* ---------- console-wide text size ----------
+   --ui-font (12–16px, default 15) is set on <html> by themes/display.js and shared by every console page.
+   --u = --ui-font/13, so every size above written calc(N*var(--u)) resolves to N px at 13px.
+   .scaled marks the product surface (all variants, hover card, menus, toast); sketch chrome stays at --u:1px. */
+.scaled{--u:calc(var(--ui-font) / 13);--text-2xs:calc(11*var(--u));--text-xs:calc(12*var(--u));--text-sm:var(--ui-font);--text-base:calc(14*var(--u));--text-lg:calc(16*var(--u));--row-h:calc(28*var(--u));font-size:var(--text-sm)}
+.search svg{width:calc(13*var(--u));height:calc(13*var(--u))}
+.ui-scaled .row{border-bottom:0}
+.ui-scaled .scopes-line[hidden]{display:none}
+.ui-scaled .row.opened{background:color-mix(in srgb,var(--color-primary) 10%,var(--color-selected));box-shadow:inset 3px 0 0 var(--color-primary)}
+.ui-scaled .row.opened::before{display:none}
+.ui-scaled .detail{display:block;visibility:visible;transition:width .15s ease,box-shadow .15s ease}
+.ui-scaled .detail>*{min-width:calc(280*var(--u))}
+.ui-scaled .v-body:not(.open) .detail{width:0!important;overflow:hidden;visibility:hidden;transition:width .15s ease,visibility 0s .15s}
+.ui-scaled .v-body.dragging .detail{transition:none}
+.aa{width:auto;padding:0 calc(6*var(--u));font-size:var(--text-xs);font-weight:600;letter-spacing:.02em;border:1px solid transparent}
+.aa[aria-expanded=true]{background:var(--color-primary-soft);color:var(--color-text);border-color:color-mix(in srgb,var(--color-primary) 45%,transparent)}
+.avatar{flex:none;display:inline-flex;align-items:center;justify-content:center;width:calc(24*var(--u));height:calc(24*var(--u));border-radius:50%;background:var(--color-surface-2);border:1px solid var(--color-border);font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-muted)}
+.v-head .aa{margin-left:auto}
+.v-head .legend+.aa{margin-left:0}
+
+/* Display popover (fixed px on purpose: the control does not resize itself; only its preview does) */
+.dpop{position:fixed;z-index:70;width:320px;background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:10px 12px 12px;font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;gap:8px}
+.dpop[hidden]{display:none}
+.dpop h3{margin:0;font-size:13px;font-weight:600;color:var(--color-text)}
+.dpop .lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)}
+.dpop .lbl .mono{text-transform:none;letter-spacing:0;color:var(--color-text)}
+.ts-seg{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden}
+.ts-seg button{background:transparent;border:0;border-right:1px solid var(--color-border);height:28px;font-family:var(--font-mono);color:var(--color-text-muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:baseline;justify-content:center;gap:1px;padding-top:6px}
+.ts-seg button:last-child{border-right:0}
+.ts-seg button:hover{background:var(--color-hover);color:var(--color-text)}
+.ts-seg button[aria-checked=true]{background:var(--color-primary-soft);color:var(--color-text);box-shadow:inset 0 -2px 0 var(--color-primary)}
+.ts-seg button:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}
+.ts-seg small{font-size:9px;color:var(--color-text-faint)}
+.dpop .keys{font-size:11px;color:var(--color-text-faint);display:flex;gap:8px;flex-wrap:wrap}
+.pv{background:var(--color-bg);border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);overflow:hidden}
+.pv-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;column-gap:calc(8*var(--u));align-items:center;height:var(--row-h);padding:0 calc(10*var(--u));color:var(--color-text)}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,8px);z-index:9997;background:var(--color-surface-2);color:var(--color-text);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:calc(6*var(--u)) calc(12*var(--u));font-size:var(--text-xs);opacity:0;transition:opacity .15s ease,transform .15s ease;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast code{font-size:.92em}
+
+/* ---------- sketch toolbar (hardcoded dark, theme-independent) ---------- */
+#sketch-tools{position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui,sans-serif;font-size:11px;background:rgba(12,12,16,.82);color:#fff;padding:6px 8px;border-radius:8px;opacity:.45;transition:opacity .15s ease;display:flex;gap:8px;align-items:center;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+#sketch-tools:hover{opacity:1}
+#sketch-tools select,#sketch-tools button{font:inherit;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:5px;padding:2px 6px;cursor:pointer;transition:all .15s ease}
+#sketch-tools button:hover,#sketch-tools select:hover{background:rgba(255,255,255,.18)}
+#sketch-tools button.on{background:#fff;color:#111}
+#sketch-tools .grp{display:flex;gap:3px;align-items:center}
+#sketch-tools .lbl{color:rgba(255,255,255,.55)}
+#annot-tip{position:fixed;z-index:10000;pointer-events:none;display:none;background:rgba(12,12,16,.94);color:#fff;font:11px/1.45 ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;max-width:340px;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+#annot-tip b{color:#c4b5fd;font-weight:500}
+#annot-box{position:fixed;z-index:9996;pointer-events:none;display:none;outline:1px dashed #f472b6;outline-offset:0}
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <button class="variant-tab" onclick="showVariant('a', this)">A: Inline expand + right pane</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Overlay hover card + right pane</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Two-line row + split view</button>
+  <button class="variant-tab active" onclick="showVariant('bp', this)">B′: B + toggle-close + font size ★ Selected</button>
+  <span class="nav-spacer"></span>
+  <span class="nav-label">State</span>
+  <div class="seg" id="mode-seg">
+    <button data-mode="populated" class="on">Populated</button>
+    <button data-mode="loading">Loading</button>
+    <button data-mode="empty">Empty</button>
+    <button data-mode="error">Error</button>
+  </div>
+</div>
+
+<div id="sketch-root">
+  <div id="variant-a" class="variant scaled" style="display:none"></div>
+  <div id="variant-b" class="variant scaled" style="display:none"></div>
+  <div id="variant-c" class="variant scaled" style="display:none"></div>
+  <div id="variant-bp" class="variant scaled ui-scaled"></div>
+</div>
+
+<div class="hcard scaled" id="hcard" role="tooltip"></div>
+<div class="menu scaled" id="scope-menu"></div>
+<div class="toast scaled" id="toast"></div>
+<div class="dpop" id="display-pop" role="dialog" aria-label="Display" hidden>
+  <h3>Display</h3>
+  <div class="lbl"><span id="ts-lbl">Text size</span><span class="mono" id="ts-val">15px</span></div>
+  <div class="ts-seg" id="ts-seg" role="radiogroup" aria-labelledby="ts-lbl">
+    <button role="radio" data-ts="12">12<small>px</small></button><button role="radio" data-ts="13">13<small>px</small></button><button role="radio" data-ts="14">14<small>px</small></button><button role="radio" data-ts="15">15<small>px</small></button><button role="radio" data-ts="16">16<small>px</small></button>
+  </div>
+  <div class="keys" id="ts-keys"></div>
+  <div class="lbl"><span>Preview</span><span>saved per viewer</span></div>
+  <div class="pv scaled" id="ts-preview"><div class="pv-row"><span class="cat" style="--c:var(--cat-gotcha)"><i></i>gotcha</span><span class="sum">gofmt drift is NOT caught by <code>golangci-lint</code></span><span class="age">12d</span><span class="score"><span class="num">0.81</span></span></div></div>
+  <div class="keys">Applies to every console page, not just this list.</div>
+</div>
+
+<div id="sketch-tools">
+  <div class="grp"><span class="lbl">theme</span>
+    <select id="theme-switcher" aria-label="Theme">
+      <option value="default">default</option>
+      <option value="light">light</option>
+    </select>
+  </div>
+  <div class="grp" id="vp-grp"><span class="lbl">vp</span>
+    <button data-w="375">375</button><button data-w="768">768</button><button data-w="1280">1280</button><button data-w="full" class="on">full</button>
+  </div>
+  <button id="annot-btn" title="Hover any element to see computed font / colour / padding">annotate</button>
+</div>
+<div id="annot-tip"></div>
+<div id="annot-box"></div>
+
+<script>
+/* ======================= data ======================= */
+const NOW = Date.parse('2026-09-26T15:00:00Z');
+const DAY = 86400000;
+const SCOPES = {
+  E:'repo:github.com/seanb4t/engram',
+  R:'rule:repo:github.com/seanb4t/engram',
+  D:'discovery:repo:github.com/seanb4t/engram',
+  W:'workspace:github.com/seanb4t/engram/feat-2026-09-25.01',
+  S:'repo:github.com/seanb4t/selfhosted-cluster',
+  SR:'rule:repo:github.com/seanb4t/selfhosted-cluster',
+  SD:'discovery:repo:github.com/seanb4t/selfhosted-cluster',
+  P:'repo:github.com/seanb4t/dotfiles',
+  F:'repo:github.com/seanb4t/fzymgc-house-skills'
+};
+const PRIMARY = { E:['E','R','D'], S:['S','SR','SD'], P:['P'] };
+const CROSS_SEARCHED = ['E','R','D','W','S','SR','P'];   // cap = 7
+const CROSS_READABLE = ['E','R','D','W','S','SR','P','F']; // 8 readable -> scopes_truncated
+const CATS = ['decision','gotcha','convention','preference','discovery','rule'];
+const STATE_ORDER = ['archived','superseded','expired','scheduled'];
+
+// [category, scopeKey, daysAgo, summary, tags, content, opts]
+const RAW = [
+ ['gotcha','E',12,"gofmt drift is NOT caught by golangci-lint or `task` — only CI's repo-wide `gofmt -l .`",['ci','gofmt','lint','taskfile'],
+  "`golangci-lint run` in this repo does not enable the gofmt linter, and `task` only runs lint + test. CI runs `gofmt -l .` across the whole tree and fails on any output.\n\nRun `task fmt` (or `gofmt -w` on the touched files) before pushing. A green local `task` is not proof of a green CI."],
+ ['decision','E',2,"DECIDED: Jev rerank telemetry is two-tier — always-on bounded attrs + opt-in audit log",['jev','rerank','telemetry','otel','privacy','search','audit-log','milestone-2026-09-25.01','decisions-provider','spans','observability','config'],
+  "Rerank spans always carry a bounded attribute set: `jev.model`, `jev.latency_ms`, `jev.fallback` (bool), `jev.hits_in`, `jev.hits_out`. No query text and no record content.\n\nThe full per-hit probability vector goes to an audit log only when `ENGRAM_JEV_AUDIT_LOG` is set. It is off by default because it contains query text.\n\nSupersedes the earlier always-on-only decision.",{vis:'shared'}],
+ ['convention','E',20,"Phase numbering restarts at 1 per milestone: ALWAYS pass --reset-phase-numbers",['gsd','planning','roadmap','milestones'],
+  "GSD phase numbers restart at 1 for every milestone. `/gsd-new-milestone` must be run with `--reset-phase-numbers`; without it the roadmap continues from the previous milestone's last phase and the phase directories collide with archived ones."],
+ ['discovery','D',34,"MEASURED: qdrant client has grpc-go's default 4 MiB receive cap",['qdrant','grpc','limits','pagination'],
+  "A `list_memory` page of 1000 records with full content returned `ResourceExhausted: grpc: received message larger than max (5112874 vs. 4194304)`.\n\nThe qdrant Go client dials with default options, so the 4 MiB receive cap applies. Fix: raise it at dial time.\n\n```go\nconn, err := grpc.NewClient(addr,\n    grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(32 << 20)))\n```\n\nCitations: internal/store/qdrant.go:61 (pin 3f9c2e1)."],
+ ['rule','R',60,"Never auto-apply a payload migration — preview by default, mutate only under --apply",['migrate','safety'],
+  "No migration ever applies automatically — not on startup, not on failure. Every mutating `engram migrate` verb previews by default and mutates only under `--apply`.",{vis:'shared'}],
+ ['decision','E',45,"Recall gate hides superseded + archived records; get_memory by id bypasses the gate",['recall-gate','supersede','archive','search'],
+  "search_memory, list_memory, search_discovery and list_scheduled drop any record carrying `superseded_by` or `archived_at`. get_memory is fetch-by-id and deliberately skips the gate so history stays reachable.\n\nThe console must say so when it hides records; silent hiding reads as data loss."],
+ ['gotcha','E',25,"SPDX header above YAML frontmatter makes VERIFICATION.md read as `missing`",['license','gsd','frontmatter','spdx'],
+  "GSD parses the first line of `.planning/**` files as YAML frontmatter. With an SPDX comment above `---`, a passed VERIFICATION.md parses as status `missing` and the phase is re-dispatched.\n\n`.licenserc.yaml` excludes `.planning/**`, `skill/**/SKILL.md` and `docs-site/**`. If `task license:check` is green, the file does not need a header."],
+ ['preference','E',70,"Prefer update_memory for in-place refinement; supersede only for reversals",['curating','supersede','update'],
+  "Use update_memory to refine wording, fix a typo or add tags. Use supersede_memory only when the fact itself was wrong or reversed; it preserves history via `superseded_by`. Delete junk outright."],
+ ['discovery','D',15,"Map: internal/store owns every Qdrant filter; handlers never build filters directly",['architecture','qdrant','store','recall-gate'],
+  "All Qdrant `Filter` construction lives in `internal/store/filter.go`: owner gate, visibility grant, recall gate, tag AND pre-filter, created_at window. Handlers in `internal/mcp` and `internal/connect` pass a typed `Query` struct.\n\nCitations: internal/store/filter.go:41, internal/mcp/search.go:88."],
+ ['gotcha','S',90,"Longhorn on Talos needs the iscsi-tools + util-linux-tools extensions on every node",['longhorn','talos','storage','extensions'],
+  "Talos nodes need the `siderolabs/iscsi-tools` and `siderolabs/util-linux-tools` system extensions for Longhorn volumes to attach.\n\nSuperseded: the newer record pins the exact extension set per Talos 1.11.",{st:[['superseded',-40]]}],
+ ['decision','E',110,"short_id is 10-char Crockford base32, minted server-side, accepted wherever an id is",['short-id','api','ids'],
+  "Minted at write time: 10 characters of lowercase Crockford base32 (no i, l, o, u). Every tool that accepts an `id` also accepts a short_id.\n\nAmbiguous short ids are rejected with `hint=ambiguous_id`, indistinguishable from not-found for non-owned records. Legacy records gain one via `engram backfill-short-ids`."],
+ ['convention','E',40,"Conventional Commit types drive release-please bumps — milestone labels never feed it",['release-please','semver','ci','calver'],
+  "release-please reads commit types since the last tag: `feat` → minor, `fix` → patch, `!` → major. The CalVer milestone label is a planning label only and never appears in a release version."],
+ ['gotcha','E',8,"list_memory limit above 1000 is rejected, not clamped — the error names field=limit",['pagination','limits','errors','list-memory'],
+  "`list_memory` with `limit: 5000` returns `field=limit hint=out_of_range: limit must be <= 1000`. There is no silent clamp.\n\nThe console should page with `cursor` instead of asking for more."],
+ ['rule','R',100,"Rules are user-blessed only: propose a candidate, never call store_rule unilaterally",['rules','curating'],
+  "An agent that notices a MUST / NEVER / ALWAYS pattern proposes it as a rule candidate in conversation. store_rule is called only after the user explicitly blesses the wording.",{vis:'shared'}],
+ ['decision','E',30,"Async summaries: bounded worker pool, never on the synchronous write path",['summary','async','worker-pool','store-memory'],
+  "With `ENGRAM_SUMMARY_ON_WRITE=true`, summaries are filled by a bounded worker pool after store_memory returns. A full queue drops the job; `engram summarize-missing` reclaims unfilled records later.\n\nThe write path never waits on the summarizer."],
+ ['discovery','D',5,"Fact: cross_spine enumerates readable scopes first; enumeration failure sets scopes_unknown",['cross-spine','search','scopes'],
+  "search_memory with `cross_spine: true` first enumerates every scope the caller can read (capped), then searches them. If enumeration fails after hits were found, the response sets `scopes_unknown` and omits `searched_scopes` rather than returning an empty list.\n\nCitations: internal/search/cross.go:57 (pin a1d07bb)."],
+ ['gotcha','E',3,"vite dev proxy drops the Authorization header on /connect/* unless changeOrigin is set",['ui','vite','auth','connect','dev-server'],
+  "In `ui/vite.config.ts` the `/connect` proxy needs `changeOrigin: true`. Without it the dev server forwards the request but the Go server rejects it as unauthenticated.\n\nProduction (embed.FS, same origin) is unaffected."],
+ ['preference','E',1,"Console: dense rows, keyboard-first, monospace for ids / scores / scopes",['ui','console','design','density','keyboard','linear','raycast','monospace','accent','violet','category-colours','dark-first','light-theme','recall-first','search','hover-expand','detail-pane','a11y','listbox','shadcn-svelte','paneforge','milestone-2026-09-25.01'],
+  "One line per memory, ~30 rows on a laptop screen. Keyboard drives everything: `j`/`k`, `/`, `Enter`, `Esc`.\n\nMonospace for ids, short_ids, scores and scopes. Single violet accent; category colours are the only other hue. Every entry point says what it searched.",{vis:'shared'}],
+ ['decision','E',50,"Tags filter is AND on search_memory and applied as a hard pre-filter before ranking",['tags','search','qdrant','filters'],
+  "`tags: [\"qdrant\", \"gotcha\"]` returns only records carrying both. On search_memory the tag filter is a Qdrant must-clause applied before vector ranking, so it narrows the candidate set rather than re-sorting it."],
+ ['gotcha','S',130,"Flux reconcile loops when a HelmRelease values file ends with a document separator",['flux','helm','gitops'],
+  "A trailing `---` at the end of a values file produced an empty YAML document; helm-controller treated it as a values change on every reconcile and upgraded the release every 10 minutes.\n\nArchived: values moved inline into the HelmRelease in 2026-06.",{st:[['archived',-60]]}],
+ ['convention','E',55,"Every rejected call returns `field=<name> hint=<code>: <text>` in one envelope",['errors','api','hints'],
+  "Rejections read `field=<name> hint=<code>: <text>`. `hint` codes are machine-stable and documented in docs-site `reference/errors.md`; the text is for humans and may change."],
+ ['discovery','D',22,"Map: ui/ is SvelteKit adapter-static, embedded in the Go binary via embed.FS",['ui','embed','sveltekit','architecture'],
+  "SvelteKit with adapter-static builds into `ui/build`; `internal/web` embeds it with `//go:embed all:build` and serves it with an SPA fallback to index.html. Connect RPC is mounted under `/connect/` on the same mux.\n\nCitations: internal/web/embed.go:12, ui/svelte.config.js:8."],
+ ['decision','E',140,"Owner claim defaults to email; ENGRAM_OWNER_CLAIM switches it",['auth','oidc','owner','authz'],
+  "The authz key is the configured owner claim, `email` by default. Changing `ENGRAM_OWNER_CLAIM` (for example to `sub`) orphans existing records until `engram migrate-remap-owner --from <old> --to <new>` re-stamps them."],
+ ['gotcha','E',18,"Qdrant payload index on created_at must be datetime-typed or range filters silently scan",['qdrant','index','performance','created-at'],
+  "A keyword-typed index on `created_at` does not serve range filters. Qdrant falls back to a full scan and `created_after` queries went from 4 ms to 900 ms at 200k points.\n\nCreate the index with `field_schema: datetime`."],
+ ['rule','R',150,"Never add auto-extraction: every memory is an explicit, attributable write",['design-intent','curating'],
+  "engram stores only what an agent or user explicitly writes. No background extraction from transcripts, no write-through from similarity. Explicit, zero-junk, correctable.",{vis:'shared'}],
+ ['decision','E',35,"Schedule window is half-open [not_before, not_after); expired suppresses scheduled",['schedule','recall-gate','not-before','not-after'],
+  "`not_before` hides a record until that instant; `not_after` drops it from recall at that instant. The window is half-open.\n\nA record whose `not_after` has passed renders `expired` and never also `scheduled`."],
+ ['preference','P',200,"fish is the interactive shell; commands for Sean to paste are plain bash",['shell','fish','bash'],
+  "The interactive shell is fish, but snippets meant for pasting must be plain bash; the terminal runs a pasted snippet through bash with alt-B."],
+ ['gotcha','E',28,"buf generate drift fails CI's buf job — always commit gen/ with the proto change",['buf','proto','ci','codegen'],
+  "The `buf` CI job regenerates `gen/` and fails on any diff. Run `task proto:gen` and commit the generated tree in the same commit as the `.proto` change."],
+ ['discovery','D',16,"Fact: MigrateStatus probe at startup is read-only and never gates boot",['migrate','startup','recall-gate'],
+  "At boot the server calls `MigrateStatus` read-only and logs a pending-migrations warning (and a future-version warning) when relevant. It never invokes the sweep and never blocks readiness.\n\nCitations: cmd/engram/serve.go:143."],
+ ['decision','E',0.3,"Revisit the 0.42 semantic-neighbour cut-off after the Jev A/B",['jev','search','threshold','score'],
+  "The cosine cut-off for semantic neighbours (0.42) was picked by eye. Revisit it once the Jev A/B has two weeks of audit-log data.\n\nHidden from recall until 2026-10-15 via `not_before`.",{st:[['scheduled',19]]}],
+ ['gotcha','E',4,"paneforge Resizable loses its layout on hydration unless autoSaveId is stable",['ui','paneforge','svelte','ssr'],
+  "paneforge's `PaneGroup` persists its layout under `autoSaveId`. When the id was derived from route params it changed between SSR and hydration and the panes snapped back to defaults.\n\nUse a static id per page."],
+ ['convention','E',45,"Milestone labels are CalVer start dates YYYY-MM-DD.NN; releases stay SemVer",['calver','milestones','gsd','semver'],
+  "Milestones are labelled `YYYY-MM-DD.NN` by their start date, stamped once and never rewritten. Releases remain SemVer because Helm and Go module tags require it."],
+ ['decision','S',75,"Talos upgrades go one control-plane node at a time behind an etcd health gate",['talos','etcd','upgrade'],
+  "Upgrade control-plane nodes one at a time: `talosctl upgrade --nodes cp-1 --preserve`, then wait for `talosctl etcd status` to show every member healthy before the next node."],
+ ['gotcha','E',38,"Superseding a rule is rejected — delete and re-store instead",['rules','supersede','errors'],
+  "supersede_memory on a rule returns `field=supersedes hint=rule_not_supersedable`. Rules are corrected by delete + store_rule with the user's blessing."],
+ ['discovery','D',26,"Map: internal/migrate registry — ordered, additive-only steps with declared reversibility",['migrate','architecture','schema-version'],
+  "`internal/migrate/registry.go` holds an ordered slice of steps. Each step bumps `schema_version` by one, is additive-only, and declares `Reversible`. `engram migrate status` prints a histogram of records by schema_version.\n\nCitations: internal/migrate/registry.go:20."],
+ ['decision','E',60,"TEMP: pin qdrant to 1.15.x until the snapshot restore regression is fixed",['qdrant','pin','upgrade','helm'],
+  "Qdrant 1.16.0 failed to restore snapshots taken on 1.15. Pinned the chart to 1.15.x with a `not_after` so the pin would lapse and force a re-check.\n\nLapsed on 2026-09-16; the regression was fixed in 1.16.2.",{st:[['expired',-10]]}],
+ ['gotcha','E',14,"search_memory score is raw cosine — never compare scores across embedder configs",['search','score','embedder','reindex'],
+  "`score` is raw Qdrant cosine similarity. Two embedder configs produce different score distributions, so 0.71 under one model is not comparable to 0.71 under another.\n\n`engram reindex` is required after changing the embedder."],
+ ['decision','W',0.6,"Overlay: sketch 001 winner pending — do not start 01.2 until one is picked",['console','sketch','milestone-2026-09-25.01'],
+  "Open question for Phase 01.1: inline push-down expansion, an overlay hover card, or a fixed two-line row. Decide after comparing sketch 001 at real density."],
+ ['gotcha','E',11,"Idempotency replay only fires when the fingerprint matches content and target set",['idempotency','supersede','retries'],
+  "A retry with the same `idempotency_key` replays the original response only when the fingerprint (content + target set) matches. A changed target set with the same key is rejected with `hint=idempotency_conflict`."],
+ ['decision','E',6,"Jev rerank timeouts fall back to cosine order and omit relevance — never fail the search",['jev','rerank','fallback','search','timeouts'],
+  "If the decision provider errors or exceeds `ENGRAM_JEV_TIMEOUT` (default 800 ms), search_memory returns cosine order and omits `relevance` on every hit.\n\nA decision failure never fails the search."],
+ ['decision','E',4,"DECIDED: Jev rerank telemetry emits every per-hit probability as span events",['jev','rerank','telemetry','otel'],
+  "Initial plan: emit every per-hit probability as span events on the search span.\n\nSuperseded two days later: span events carried query text into the tracing backend.",{st:[['superseded',-2]]}],
+ ['convention','E',160,"Console /memories uses a paginated table with sortable columns",['ui','console','table'],
+  "First console iteration: shadcn DataTable with sortable columns and 50-row pages.\n\nSuperseded by the recall-first dense list; archived after the 2026-09 overhaul.",{st:[['archived',-5],['superseded',-20]]}],
+ ['discovery','D',9,"Map: Connect handlers in internal/connect mirror the MCP tools one-to-one",['connect','mcp','architecture','proto'],
+  "Every MCP tool has a matching `EngramService` RPC. Handlers in `internal/connect` and `internal/mcp` both call the same `internal/memory` service methods, so authz and validation live in one place.\n\nCitations: internal/connect/service.go:30, proto/engram/v1/engram.proto:12."],
+ ['gotcha','E',21,"golangci-lint v2 reads .golangci.yaml — a stray .golangci.yml is silently ignored",['lint','golangci-lint','ci'],
+  "golangci-lint v2 picks the first config it finds by a fixed precedence. A leftover `.golangci.yml` next to `.golangci.yaml` meant the new linters never ran locally.",{vis:'shared',owner:'ci-bot'}],
+ ['preference','P',95,"Use rg for text search and sg (ast-grep) for structural search",['shell','rg','ast-grep','search'],
+  "`rg` is not flag-compatible with grep: Rust regex, recursive by default, .gitignore-aware. Use `sg` when the match is structural."],
+ ['decision','S',40,"Longhorn on Talos 1.11: pin the extension set in the machine config patch",['longhorn','talos','storage','extensions'],
+  "Pin `siderolabs/iscsi-tools`, `siderolabs/util-linux-tools` and `siderolabs/nfs-utils` in the image factory schematic; RWX volumes need the NFS client in the share-manager path."],
+];
+
+/* deterministic helpers */
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
+function rng(seed){let a=seed>>>0;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const CROCK='0123456789abcdefghjkmnpqrstvwxyz';
+function mkUuid(r){let s='';for(let i=0;i<32;i++)s+=Math.floor(r()*16).toString(16);return s.slice(0,8)+'-'+s.slice(8,12)+'-4'+s.slice(13,16)+'-'+'89ab'[Math.floor(r()*4)]+s.slice(17,20)+'-'+s.slice(20,32)}
+function mkShort(r){let s='';for(let i=0;i<10;i++)s+=CROCK[Math.floor(r()*32)];return s}
+
+const MEM = RAW.map((x,i)=>{
+  const [c,s,d,sum,tags,body,o={}] = x; const r=rng(i*7919+13);
+  const created = NOW - d*DAY - Math.floor(r()*6)*3600000;
+  let states = (o.st||[]).map(([w,off])=>({w,at:NOW+off*DAY}));
+  if(states.some(z=>z.w==='expired')) states=states.filter(z=>z.w!=='scheduled');
+  states.sort((a,b)=>STATE_ORDER.indexOf(a.w)-STATE_ORDER.indexOf(b.w));
+  return {id:mkUuid(r),short_id:i===0?'y0bzh06c11':mkShort(r),category:c,s,scope:SCOPES[s],summary:sum,tags,
+    content:body,created_at:created,states,dim:states.some(z=>z.at<NOW),
+    visibility:o.vis||(c==='rule'?'shared':'private'),owner:o.owner||'seanb4t',schema_version:i%9===0?2:3,
+    summary_source:i%3===0?'auto':'client',source:['claude-code','codex','engram-cli','claude-code'][i%4]};
+});
+
+/* ======================= utilities ======================= */
+const esc=s=>String(s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const inl=s=>esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+const plain=s=>s.replace(/```[\s\S]*?```/g,'[code]').replace(/`/g,'');
+function age(t){const m=(NOW-t)/60000;if(m<60)return Math.max(1,Math.round(m))+'m';const h=m/60;if(h<24)return Math.round(h)+'h';const d=h/24;if(d<30)return Math.round(d)+'d';if(d<365)return Math.round(d/30)+'mo';return Math.round(d/365)+'y'}
+function rel(t){const d=Math.round((t-NOW)/DAY);return d===0?'today':d>0?'in '+d+'d':Math.abs(d)+'d ago'}
+const iso=t=>new Date(t).toISOString().replace('.000','');
+function scopeChip(s){const k=s.split(':');const kind=k[0]==='discovery'?'disc':k[0]==='workspace'?'ws':k[0];const tail=s.split('/').slice(-1)[0];return `<em>${kind}·</em>${esc(tail)}`}
+function md(src){
+  const parts=src.split(/```/);let out='';
+  parts.forEach((p,i)=>{
+    if(i%2){const code=p.replace(/^\w*\n/,'');out+=`<pre><code>${esc(code.replace(/\n$/,''))}</code></pre>`}
+    else p.split(/\n{2,}/).map(x=>x.trim()).filter(Boolean).forEach(para=>{out+=`<p>${inl(para).replace(/\n/g,'<br>')}</p>`});
+  });
+  return out;
+}
+function statesHTML(m){return m.states.map(z=>`<span class="st ${z.w}" title="${z.w} ${z.at<NOW?'since':'until'} ${iso(z.at)}">${z.w}</span>`).join('')}
+function toast(html){const t=document.getElementById('toast');t.innerHTML=html;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1800)}
+const catVar=c=>`--c:var(--cat-${c})`;
+
+/* ======================= fake backend ======================= */
+function doSearch(st){
+  const searched = st.cross ? CROSS_SEARCHED : PRIMARY[st.scope];
+  const q = st.q.trim().toLowerCase(); const toks = q.split(/\s+/).filter(Boolean);
+  const pool = MEM.filter(m=>searched.includes(m.s));
+  let hits, ranked = toks.length>0;
+  if(!ranked){ hits = pool.map(m=>({m,score:null})).sort((a,b)=>b.m.created_at-a.m.created_at); }
+  else {
+    let anyLit=false;
+    hits = pool.map(m=>{
+      let lit=0; const sum=m.summary.toLowerCase(), rest=(m.content+' '+m.tags.join(' ')+' '+m.category).toLowerCase();
+      toks.forEach(t=>{ if(sum.includes(t)) lit+=0.2; else if(rest.includes(t)) lit+=0.09; });
+      if(lit) anyLit=true;
+      return {m,lit,score:Math.min(0.94,0.30+0.28*hash(m.id+q)+lit)};
+    });
+    hits = anyLit ? hits.filter(h=>h.lit||h.score>=0.36) : [];
+    hits.sort((a,b)=>b.score-a.score);
+  }
+  const hidden={archived:0,superseded:0,scheduled:0};
+  hits = hits.filter(({m})=>{
+    const w=m.states.map(z=>z.w);
+    if(w.includes('archived')&&!st.inc.archived){hidden.archived++;return false}
+    if(w.includes('superseded')&&!st.inc.superseded){hidden.superseded++;return false}
+    if((w.includes('scheduled')||w.includes('expired'))&&!st.inc.scheduled){hidden.scheduled++;return false}
+    return true;
+  });
+  const jev = ranked && st.jev;
+  if(jev){ hits.forEach(h=>{h.rel=Math.max(0.02,Math.min(0.99,h.score*1.05+(hash(h.m.id+'jev'+q)-0.5)*0.55))}); hits.sort((a,b)=>b.rel-a.rel); }
+  const catCounts={}; CATS.forEach(c=>catCounts[c]=0); hits.forEach(h=>catCounts[h.m.category]++);
+  const total=hits.length;
+  if(st.cats.size) hits=hits.filter(h=>st.cats.has(h.m.category));
+  const perScope={}; searched.forEach(k=>perScope[k]=0); hits.forEach(h=>perScope[h.m.s]++);
+  return {hits,searched,perScope,hidden,catCounts,total,ranked,jev,truncated:st.cross,q:st.q.trim()};
+}
+
+/* ======================= variants ======================= */
+const V = {}; let cur='bp'; let MODE='populated';
+const isB=k=>k==='b'||k==='bp';
+const DEFAULT_Q='recall gate';
+
+function shell(key){
+  return `
+  <div class="v-head">
+    <label class="search"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="5"/><path d="m11 11 3.5 3.5"/></svg>
+      <input class="q" type="text" value="${esc(DEFAULT_Q)}" placeholder="Search memories…" aria-label="Search memories" autocomplete="off" spellcheck="false"><kbd>/</kbd></label>
+    <div class="rhead" aria-live="polite"></div>
+    <div class="legend"><span><kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>↵</kbd> ${key==='c'?'focus detail':key==='bp'?'open / close':'open'}</span><span><kbd>esc</kbd> ${key==='c'?'back':'close'}</span></div>
+    ${key==='bp'?`<button class="icon-btn aa" data-act="display" aria-haspopup="dialog" aria-expanded="false" aria-controls="display-pop" title="Display: text size">Aa</button><span class="avatar" title="Account menu (not sketched)">sb</span>`:''}
+  </div>
+  <div class="facets"></div>
+  <div class="scopes-line" hidden></div>
+  <div class="v-body">
+    <div class="list-wrap"><div class="loadbar"></div><div class="list" role="listbox" tabindex="0" aria-label="Search results"></div></div>
+    <div class="resizer" role="separator" aria-orientation="vertical" aria-label="Resize detail pane" tabindex="0" aria-valuemin="280" aria-valuemax="900" aria-valuenow="440"></div>
+    <aside class="detail" tabindex="-1" aria-label="Memory detail"></aside>
+  </div>`;
+}
+
+function initVariant(key){
+  const root=document.getElementById('variant-'+key); root.innerHTML=shell(key);
+  const st=V[key]={key,root,q:DEFAULT_Q,cats:new Set(),inc:{archived:false,superseded:true,scheduled:true},cross:false,
+    jev:!isB(key),scope:'E',active:0,hover:null,openId:null,res:null,busy:false,showScopes:false,
+    input:root.querySelector('.q'),head:root.querySelector('.rhead'),facets:root.querySelector('.facets'),
+    scopesLine:root.querySelector('.scopes-line'),body:root.querySelector('.v-body'),wrap:root.querySelector('.list-wrap'),
+    list:root.querySelector('.list'),detail:root.querySelector('.detail'),rz:root.querySelector('.resizer')};
+
+  let deb; st.input.addEventListener('input',()=>{ clearTimeout(deb); deb=setTimeout(()=>{ st.q=st.input.value; runSearch(st); },160); });
+  root.addEventListener('click',e=>onAct(st,e));
+  st.list.addEventListener('click',e=>{const row=e.target.closest('.row');if(!row)return;st.active=+row.dataset.i;applyActive(st,false);if(key==='c'){renderDetail(st)}else if(key==='bp'){togglePane(st)}else openDetail(st)});
+  st.list.addEventListener('focus',()=>{ if(isB(key)&&st.kbd) showCard(st,st.active,true) });
+  // hover tracking by mousemove (scrollIntoView does not fire mousemove, so keyboard scrolling cannot steal hover)
+  let hovT;
+  st.list.addEventListener('mousemove',e=>{
+    const row=e.target.closest('.row'); const i=row?+row.dataset.i:null;
+    if(i===st.hover) return; st.hover=i; st.kbd=false; clearTimeout(hovT);
+    if(isB(key)){ hideCard(true); if(i!==null) showCard(st,i,false); return; }
+    hovT=setTimeout(updateExpand.bind(null,st),key==='a'?90:0);
+  });
+  st.wrap.addEventListener('mouseleave',()=>{ clearTimeout(hovT); st.hover=null; if(isB(key)) scheduleHide(); else updateExpand(st); });
+  st.wrap.addEventListener('scroll',()=>{ if(isB(key)) hideCard(true) },{passive:true});
+  initResizer(st);
+  runSearch(st,true);
+}
+
+function runSearch(st,instant){
+  if(MODE!=='populated'){ setMode('populated'); }
+  const go=()=>{ st.res=doSearch(st); st.busy=false; st.wrap.classList.remove('busy'); if(!st.keepActive) st.active=0; st.keepActive=false; st.hover=null; render(st); };
+  if(instant) return go();
+  st.busy=true; st.wrap.classList.add('busy'); renderHead(st);
+  clearTimeout(st._rt); st._rt=setTimeout(go,260);
+}
+
+function render(st){ renderHead(st); renderFacets(st); renderScopes(st); renderList(st); renderDetail(st); }
+
+function renderHead(st){
+  const r=st.res; if(!r) return; const n=r.searched.length; const q=esc(r.q);
+  const scopesBtn=`<button class="link" data-act="scopes">${n} scope${n>1?'s':''}</button>`;
+  const hiddenN=r.hidden.archived+r.hidden.superseded+r.hidden.scheduled;
+  const hiddenTxt=hiddenN?` · <span title="${Object.entries(r.hidden).filter(e=>e[1]).map(e=>e[1]+' '+e[0]).join(', ')}">${hiddenN} hidden by recall gate</span>`:'';
+  const trunc=r.truncated?` · <span class="warn">scopes_truncated: ${CROSS_READABLE.length-n} readable scope not searched</span>`:'';
+  let h;
+  if(MODE==='error') h=`<span class="err">Search failed — nothing was searched.</span> search_memory returned <code>code=unavailable</code>`;
+  else if(MODE==='loading'||st.busy) h=`Searching ${scopesBtn} for <code>${q||'…'}</code>…`;
+  else if(MODE==='empty'||!r.hits.length){
+    h = st.cross ? `No memories match <code>${q}</code> in any scope you can read${trunc}` : `No memories match <code>${q}</code> in the ${scopesBtn} searched${hiddenTxt}`;
+  }
+  else if(!r.ranked) h=`Latest <strong>${r.hits.length}</strong> memories across ${scopesBtn} · unranked (list — no score)${hiddenTxt}${trunc}`;
+  else h=`<strong>${r.hits.length} hit${r.hits.length>1?'s':''}</strong>${st.cats.size?` of ${r.total}`:''} across ${scopesBtn} for <code>${q}</code> · ${r.jev?'reranked by jev':'ranked by cosine'}${hiddenTxt}${trunc}`;
+  st.head.innerHTML=h;
+}
+
+function renderFacets(st){
+  const r=st.res; const all=st.cats.size===0;
+  let h=`<button class="chip ${all?'on':''}" data-act="cat" data-v="all">all <span class="n">${r.total}</span></button>`;
+  CATS.forEach(c=>{const n=r.catCounts[c];h+=`<button class="chip ${st.cats.has(c)?'on':''} ${n?'':'zero'}" style="${catVar(c)}" data-act="cat" data-v="${c}"><span class="dot"></span>${c} <span class="n">${n}</span></button>`});
+  h+=`<span class="sep"></span>`;
+  h+= st.cross ? `<button class="chip mono on" data-act="cross" title="cross_spine: every readable scope">cross_spine · ${r.searched.length}/${CROSS_READABLE.length} scopes</button>`
+               : `<button class="chip mono" data-act="scope" title="${esc(SCOPES[st.scope])}">${esc(SCOPES[st.scope])} <span class="caret">▾</span></button>
+                  <button class="chip mono" data-act="cross" title="Search every scope you can read"><span class="box"></span>cross_spine</button>`;
+  h+=`<span class="sep"></span>`;
+  ['archived','superseded','scheduled'].forEach(k=>{h+=`<button class="chip mono ${st.inc[k]?'on':''}" data-act="inc" data-v="${k}" title="${k==='scheduled'?'include scheduled + expired records':''}"><span class="box"></span>include_${k}</button>`});
+  h+=`<span class="sep"></span><button class="chip mono ${st.jev?'on':''}" data-act="jev" title="ENGRAM_SEARCH_RANKER=jev — adds per-hit relevance"><span class="box"></span>jev rerank</button>`;
+  st.facets.innerHTML=h;
+}
+
+function renderScopes(st){
+  st.scopesLine.hidden=!st.showScopes; if(!st.showScopes) return; const r=st.res;
+  let h='<span>searched_scopes:</span>'+r.searched.map(k=>`<span class="sc">${esc(SCOPES[k])}<b>${r.perScope[k]}</b></span>`).join('');
+  if(r.truncated) h+=CROSS_READABLE.filter(k=>!r.searched.includes(k)).map(k=>`<span class="sc miss" title="not searched — scopes_truncated">${esc(SCOPES[k])} (not searched)</span>`).join('');
+  st.scopesLine.innerHTML=h;
+}
+
+function rowHTML(st,h,i){
+  const m=h.m, k=st.key;
+  const tagsShown=m.tags.slice(0,2).map(t=>`<span class="tag">${esc(t)}</span>`).join('')+(m.tags.length>2?`<span class="tag more">+${m.tags.length-2}</span>`:'');
+  const score=h.score==null?`<span class="score none"><span class="num">—</span></span>`:`<span class="score" title="score (cosine)"><span class="num">${h.score.toFixed(2)}</span><span class="bar"><b style="width:${Math.round(h.score*100)}%"></b></span></span>`;
+  const relv=h.rel!=null?`<span class="rel" title="relevance (jev)"><em>rel</em>${h.rel.toFixed(2)}</span>`:`<span class="rel"></span>`;
+  const line=`<div class="line"><span class="cat" style="${catVar(m.category)}"><i></i>${m.category}</span><span class="sum">${inl(m.summary)}</span><span class="states">${statesHTML(m)}</span><span class="tags">${tagsShown}</span><span class="scope" title="${esc(m.scope)}">${scopeChip(m.scope)}</span><span class="age" title="${iso(m.created_at)}">${age(m.created_at)}</span>${score}${relv}</div>`;
+  const allTags=`<div class="alltags">${m.tags.map(t=>`<button class="tag" data-act="tag" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div>`;
+  let extra='';
+  if(k==='a') extra=`<div class="exp"><div><div class="in"><div class="meta"><b>${m.short_id}</b><span>${iso(m.created_at)}</span><span>${m.visibility}</span><span>owner ${esc(m.owner)}</span></div><div class="prev">${esc(plain(m.content))}</div>${allTags}</div></div></div>`;
+  if(k==='c') extra=`<div class="snip">${esc(plain(m.content).replace(/\n+/g,' '))}</div><div class="exp"><div><div class="in">${allTags}</div></div></div>`;
+  return `<div class="row ${m.dim?'dim':''} ${st.openId===m.id?'opened':''}" role="option" id="${k}-opt-${i}" data-i="${i}" aria-selected="false"${k==='bp'&&st.openId===m.id?` title="${OPEN_TITLE}"`:''}>${line}${extra}</div>`;
+}
+
+function renderList(st){
+  const list=st.list; const r=st.res;
+  list.classList.toggle('jev', !!(r&&r.jev) && MODE==='populated');
+  if(MODE==='loading'){ list.innerHTML=Array.from({length:st.key==='bp'?40:22},(_,i)=>`<div class="sk">${[60,55+((i*37)%35),30,70,60,40,70].map((w,j)=>`<i style="width:${j===1?w:w}%"></i>`).join('')}</div>`).join(''); list.removeAttribute('aria-activedescendant'); return; }
+  if(MODE==='error'){ list.innerHTML=`<div class="state-box error"><h3>Search failed</h3><p>Nothing was searched, so this is not an empty result.</p><pre>search_memory: code=unavailable
+qdrant: rpc error: connection refused (qdrant.engram.svc:6334)
+request_id=01J8Z3K4Q2 · 2026-09-26T15:00:04Z</pre><div class="acts"><button class="btn primary" data-act="retry">Retry</button><button class="btn" data-act="copyerr">Copy error</button></div></div>`; list.removeAttribute('aria-activedescendant'); return; }
+  const hits = MODE==='empty'?[]:r.hits;
+  if(!hits.length){
+    const q=esc(r.q); const hn=r.hidden.archived+r.hidden.superseded+r.hidden.scheduled;
+    list.innerHTML=`<div class="state-box"><h3>No memories match <code>${q}</code> ${st.cross?'in any scope you can read':'in these scopes'}</h3>
+      <div class="scs">${r.searched.map(k=>`<span>${esc(SCOPES[k])}</span>`).join('')}</div>
+      ${hn?`<p>${hn} matching record${hn>1?'s are':' is'} hidden by the recall gate.</p>`:''}
+      <div class="acts">${st.cross?'':'<button class="btn" data-act="sugg-cross">Search every readable scope (cross_spine)</button>'}
+      ${!st.inc.archived?'<button class="btn" data-act="sugg-inc" data-v="archived">Include archived</button>':''}
+      ${st.cats.size?'<button class="btn" data-act="cat" data-v="all">Clear category filter</button>':''}</div></div>`;
+    list.removeAttribute('aria-activedescendant'); return;
+  }
+  list.innerHTML=hits.map((h,i)=>rowHTML(st,h,i)).join('');
+  st.active=Math.max(0,Math.min(st.active,hits.length-1));
+  applyActive(st,false);
+}
+
+function curHits(st){ return MODE==='populated'&&st.res?st.res.hits:[] }
+
+function applyActive(st,scroll){
+  const rows=st.list.querySelectorAll('.row'); if(!rows.length) return;
+  rows.forEach((r,i)=>{const on=i===st.active;r.classList.toggle('active',on);r.setAttribute('aria-selected',on)});
+  const row=rows[st.active]; st.list.setAttribute('aria-activedescendant',row.id);
+  updateExpand(st);
+  if(scroll) row.scrollIntoView({block:'nearest'});
+  if(st.key==='a'&&scroll) setTimeout(()=>row.scrollIntoView({block:'nearest'}),170);
+}
+
+function updateExpand(st){
+  if(isB(st.key)) return;
+  const idx = st.hover!=null ? st.hover : st.active;
+  st.list.querySelectorAll('.row').forEach((r,i)=>r.classList.toggle('expanded',i===idx));
+}
+
+function move(st,d,abs){
+  const hits=curHits(st); if(!hits.length) return;
+  st.active = abs!=null ? abs : Math.max(0,Math.min(hits.length-1,st.active+d));
+  st.hover=null; st.kbd=true;
+  if(document.activeElement!==st.list) st.list.focus({preventScroll:true});
+  if(st.key==='c') st.detail.classList.remove('focused');
+  applyActive(st,true);
+  if(isB(st.key)) showCard(st,st.active,true);
+  if(st.key==='c') renderDetail(st);
+}
+
+function openDetail(st){
+  const h=curHits(st)[st.active]; if(!h) return;
+  if(st.key==='c'){ st.body.classList.add('open'); renderDetail(st); st.detail.classList.add('focused'); st.detail.focus(); return; }
+  st.openId=h.m.id; st.body.classList.add('open'); hideCard(true);
+  st.list.querySelectorAll('.row').forEach(r=>{const on=+r.dataset.i===st.active;r.classList.toggle('opened',on);if(st.key==='bp'){if(on)r.title=OPEN_TITLE;else r.removeAttribute('title')}});
+  renderDetail(st);
+}
+const OPEN_TITLE='Open in the detail pane: click or press ↵ again to close';
+// B′: a second click / Enter on the row already in the pane closes it; any other row switches the pane.
+function togglePane(st){
+  const h=curHits(st)[st.active]; if(!h) return;
+  if(st.openId===h.m.id) closePane(st); else openDetail(st);
+}
+function closeDetail(st){
+  if(st.key==='c'){ st.body.classList.remove('open'); st.detail.classList.remove('focused'); st.list.focus(); return; }
+  if(isB(st.key) && hcard.classList.contains('show')){ hideCard(true); return; }
+  closePane(st);
+}
+function closePane(st){
+  st.openId=null; st.body.classList.remove('open');
+  st.list.querySelectorAll('.row.opened').forEach(r=>{r.classList.remove('opened');r.removeAttribute('title')});
+  st.list.focus();
+}
+
+function renderDetail(st){
+  let m, h;
+  if(st.key==='c'){ h=curHits(st)[st.active]; m=h&&h.m; if(!m){ st.detail.innerHTML=`<div class="d-empty">${MODE==='loading'?'Loading…':'Nothing selected'}</div>`; return; } }
+  else { if(!st.openId){ st.detail.innerHTML=''; return; } m=MEM.find(x=>x.id===st.openId); h=curHits(st).find(x=>x.m.id===m.id); }
+  const inRes=!!h;
+  const archived=m.states.some(z=>z.w==='archived');
+  st.detail.innerHTML=`
+   <div class="d-head">
+     <span class="badge" style="${catVar(m.category)}"><i></i>${m.category}</span>
+     <span class="sid">${m.short_id}</span>
+     <button class="icon-btn" data-act="copy" data-v="${m.short_id}" title="Copy short_id">⧉</button>
+     <span class="grow"></span>
+     <span class="vis">${m.visibility}</span>
+     ${st.key==='c'?'<button class="icon-btn narrow-only" data-act="close" title="Back (Esc)">←</button>':'<button class="icon-btn" data-act="close" title="Close (Esc)">✕</button>'}
+   </div>
+   <div class="d-body">
+     ${inRes?'':'<div class="d-note">Not in the current results (filtered out or not matched). Showing it by id, like get_memory.</div>'}
+     <h2 class="d-title">${inl(m.summary)}</h2>
+     <div class="d-actions">
+       <button class="btn" data-act="action" data-v="Edit">Edit</button>
+       <button class="btn" data-act="action" data-v="Supersede">Supersede…</button>
+       <button class="btn" data-act="action" data-v="${archived?'Restore':'Archive'}">${archived?'Restore':'Archive'}</button>
+       <button class="btn" data-act="action" data-v="${m.visibility==='shared'?'Make private':'Share'}">${m.visibility==='shared'?'Make private':'Share'}</button>
+       <button class="btn danger" data-act="action" data-v="Delete">Delete</button>
+     </div>
+     ${m.states.length?`<div class="d-sec"><h4>State</h4><div class="statelist">${m.states.map(z=>`<div><span class="st ${z.w}">${z.w}</span><span class="when">${z.at<NOW?'since':'until'} ${iso(z.at)} · ${rel(z.at)}</span>${z.w==='superseded'?'<button class="link" data-act="action" data-v="Open successor">open successor</button>':''}</div>`).join('')}</div></div>`:''}
+     <div class="d-sec"><h4>Content</h4><div class="md">${md(m.content)}</div></div>
+     <div class="d-sec"><h4>Tags · ${m.tags.length}</h4><div class="alltags">${m.tags.map(t=>`<button class="tag" data-act="tag" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
+     <div class="d-sec"><h4>Metadata</h4><dl class="grid">
+       <dt>id</dt><dd class="m">${m.id}</dd>
+       <dt>short_id</dt><dd class="m">${m.short_id}</dd>
+       <dt>scope</dt><dd class="m">${esc(m.scope)}</dd>
+       <dt>created_at</dt><dd class="m">${iso(m.created_at)} (${age(m.created_at)} ago)</dd>
+       <dt>score</dt><dd class="m">${h&&h.score!=null?h.score.toFixed(4):'—'}</dd>
+       ${h&&h.rel!=null?`<dt>relevance</dt><dd class="m">${h.rel.toFixed(4)}</dd>`:''}
+       <dt>owner</dt><dd class="m">${esc(m.owner)}</dd>
+       <dt>actor</dt><dd class="m">${esc(m.owner)}</dd>
+       <dt>visibility</dt><dd class="m">${m.visibility}</dd>
+       <dt>summary_source</dt><dd class="m">${m.summary_source}</dd>
+       <dt>source</dt><dd class="m">${m.source}</dd>
+       <dt>schema_version</dt><dd class="m">${m.schema_version}</dd>
+     </dl></div>
+   </div>`;
+}
+
+/* actions via delegation */
+function onAct(st,e){
+  const el=e.target.closest('[data-act]'); if(!el) return; const a=el.dataset.act, v=el.dataset.v;
+  if(el.closest('.row')&&a==='tag'){ e.stopPropagation(); }
+  switch(a){
+    case 'cat': if(v==='all') st.cats.clear(); else st.cats.has(v)?st.cats.delete(v):st.cats.add(v); st.keepActive=false; runSearch(st,true); break;
+    case 'inc': st.inc[v]=!st.inc[v]; runSearch(st); break;
+    case 'sugg-inc': st.inc[v]=true; runSearch(st); break;
+    case 'cross': case 'sugg-cross': st.cross=!st.cross; if(a==='sugg-cross') st.cross=true; runSearch(st); break;
+    case 'jev': st.jev=!st.jev; runSearch(st); break;
+    case 'scope': openScopeMenu(st,el); break;
+    case 'scopes': st.showScopes=!st.showScopes; renderScopes(st); break;
+    case 'retry': el.classList.add('loading'); el.textContent='Retrying…'; setTimeout(()=>{setMode('populated')},700); break;
+    case 'copyerr': toast('Error copied (stub)'); break;
+    case 'close': closeDetail(st); break;
+    case 'display': dpop.hidden?openDisplay(el):closeDisplay(true); break;
+    case 'copy': try{navigator.clipboard&&navigator.clipboard.writeText(v)}catch(_){} toast(`Copied <code>${esc(v)}</code>`); break;
+    case 'tag': st.q=v; st.input.value=v; toast(`Would add <code>tags=[${esc(v)}]</code> filter — searching the tag for now`); runSearch(st); break;
+    case 'action': {
+      const label=el.textContent; el.classList.add('loading'); el.textContent=v.replace(/…$/,'')+'…';
+      setTimeout(()=>{ el.classList.remove('loading'); el.textContent=label; toast(`${esc(v)} — stub, nothing was written`); },650); break; }
+  }
+}
+
+const scopeMenu=document.getElementById('scope-menu');
+function openScopeMenu(st,chip){
+  const r=chip.getBoundingClientRect();
+  scopeMenu.innerHTML=Object.keys(PRIMARY).map(k=>`<button class="${st.scope===k?'on':''}" data-k="${k}">${esc(SCOPES[k])}</button>`).join('');
+  scopeMenu.classList.add('show'); scopeMenu.style.left=Math.max(8,Math.min(r.left,innerWidth-scopeMenu.offsetWidth-8))+'px'; scopeMenu.style.top=(r.bottom+4)+'px';
+  scopeMenu.onclick=e=>{const b=e.target.closest('button');if(!b)return;st.scope=b.dataset.k;scopeMenu.classList.remove('show');runSearch(st)};
+}
+document.addEventListener('mousedown',e=>{ if(!e.target.closest('#scope-menu')&&!e.target.closest('[data-act=scope]')) scopeMenu.classList.remove('show') });
+
+/* resizer */
+function initResizer(st){
+  const rz=st.rz; const setW=w=>{w=Math.round(Math.max(280,Math.min(st.body.clientWidth*0.72,w)));st.detail.style.width=w+'px';rz.setAttribute('aria-valuenow',w)};
+  rz.addEventListener('pointerdown',e=>{
+    e.preventDefault(); rz.setPointerCapture(e.pointerId); rz.classList.add('drag'); st.body.classList.add('dragging');
+    const right=st.body.getBoundingClientRect().right;
+    const mv=ev=>setW(right-ev.clientX);
+    rz.addEventListener('pointermove',mv);
+    rz.addEventListener('pointerup',()=>{rz.removeEventListener('pointermove',mv);rz.classList.remove('drag');st.body.classList.remove('dragging')},{once:true});
+  });
+  rz.addEventListener('keydown',e=>{ if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ e.preventDefault(); e.stopPropagation(); setW(st.detail.offsetWidth+(e.key==='ArrowLeft'?32:-32)); } });
+}
+
+/* B hover card */
+const hcard=document.getElementById('hcard'); let cardT, hideT, cardFor=null;
+function showCard(st,i,instant){
+  clearTimeout(cardT); clearTimeout(hideT);
+  const h=curHits(st)[i]; if(!h){ hideCard(true); return; }
+  if(st.openId===h.m.id){ hideCard(true); return; } // already in the pane
+  const go=()=>{
+    const row=st.list.querySelector(`#${st.key}-opt-${i}`); if(!row||cur!==st.key) return;
+    const m=h.m; cardFor=i;
+    hcard.innerHTML=`<div class="hc-top"><span class="badge" style="${catVar(m.category)}"><i></i>${m.category}</span><span class="sid">${m.short_id}</span><span>${esc(m.scope)}</span></div>
+      <div class="hc-sum">${inl(m.summary)}</div>${m.states.length?`<div class="states">${statesHTML(m)}</div>`:''}
+      <div class="hc-prev">${esc(plain(m.content))}</div>
+      <div class="alltags">${m.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
+      <div class="hc-foot"><span class="mono">${iso(m.created_at)} · ${m.visibility} · ${esc(m.owner)}</span><span><kbd>↵</kbd> open</span></div>`;
+    const rr=row.getBoundingClientRect(); const sr=row.querySelector('.sum').getBoundingClientRect();
+    hcard.style.left='0px'; hcard.style.top='0px'; hcard.classList.add('show');
+    const ch=hcard.offsetHeight, cw=hcard.offsetWidth;
+    let top=rr.bottom+4; if(top+ch>innerHeight-8) top=Math.max(48,rr.top-ch-4);
+    hcard.style.left=Math.max(8,Math.min(sr.left-12,innerWidth-cw-8))+'px'; hcard.style.top=top+'px';
+  };
+  instant?go():cardT=setTimeout(go,250);
+}
+function hideCard(now){ clearTimeout(cardT); clearTimeout(hideT); if(now){hcard.classList.remove('show');cardFor=null} else hideT=setTimeout(()=>hideCard(true),120) }
+function scheduleHide(){ hideCard(false) }
+hcard.addEventListener('mouseenter',()=>clearTimeout(hideT));
+hcard.addEventListener('mouseleave',()=>scheduleHide());
+
+/* Display popover: console-wide text size. themes/display.js owns the value, its persistence,
+   cross-page/tab sync and the global ⌘+ / ⌘- / ⌘0 shortcuts; this only renders and sets it. */
+const DISP=window.EngramDisplay;
+const MOD=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent)?'⌘':'Ctrl';
+const dpop=document.getElementById('display-pop'), tsSeg=document.getElementById('ts-seg');
+let textSize=DISP.get();
+document.getElementById('ts-keys').innerHTML=`<span><kbd>${MOD}</kbd><kbd>+</kbd> larger</span><span><kbd>${MOD}</kbd><kbd>−</kbd> smaller</span><span><kbd>${MOD}</kbd><kbd>0</kbd> reset to ${DISP.DEFAULT}</span>`;
+function paintTextSize(){
+  document.getElementById('ts-val').textContent=textSize+'px';
+  tsSeg.querySelectorAll('button').forEach(b=>{const on=+b.dataset.ts===textSize;b.setAttribute('aria-checked',on);b.tabIndex=on?0:-1});
+}
+window.addEventListener('engram:textsize',e=>{
+  const n=e.detail.size, changed=n!==textSize; textSize=n; paintTextSize(); hideCard(true);
+  const btn=document.querySelector('.aa[aria-expanded=true]'); if(btn&&!dpop.hidden) placeDisplay(btn);
+  toast(`Text size ${n}px${changed?'':n===DISP.MAX?' (max)':n===DISP.MIN?' (min)':''}`);
+});
+function placeDisplay(btn){
+  const r=btn.getBoundingClientRect();
+  dpop.style.left=Math.max(8,Math.min(r.right-dpop.offsetWidth,innerWidth-dpop.offsetWidth-8))+'px'; dpop.style.top=(r.bottom+6)+'px';
+}
+function openDisplay(btn){
+  dpop.hidden=false; placeDisplay(btn);
+  btn.setAttribute('aria-expanded','true'); hideCard(true);
+  (tsSeg.querySelector('[aria-checked=true]')||tsSeg.firstElementChild).focus();
+}
+function closeDisplay(refocus){
+  if(dpop.hidden) return; dpop.hidden=true;
+  const btn=document.querySelector('.aa[aria-expanded=true]'); if(btn){ btn.setAttribute('aria-expanded','false'); if(refocus) btn.focus(); }
+}
+tsSeg.addEventListener('click',e=>{const b=e.target.closest('button');if(b){DISP.set(+b.dataset.ts);b.focus()}});
+tsSeg.addEventListener('keydown',e=>{
+  const d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1}[e.key]; if(!d) return;
+  e.preventDefault(); e.stopPropagation(); DISP.step(d); tsSeg.querySelector('[aria-checked=true]').focus();
+});
+document.addEventListener('mousedown',e=>{ if(!e.target.closest('#display-pop')&&!e.target.closest('[data-act=display]')) closeDisplay(false) });
+paintTextSize();
+
+/* ======================= global: variants, mode, keys ======================= */
+function showVariant(id,btn){
+  document.querySelectorAll('.variant').forEach(v=>v.style.display='none');
+  document.querySelectorAll('.variant-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('variant-'+id).style.display='flex';
+  (btn||document.querySelectorAll('.variant-tab')[{a:0,b:1,c:2,bp:3}[id]]).classList.add('active');
+  cur=id; hideCard(true); closeDisplay(false); scopeMenu.classList.remove('show');
+  const st=V[id]; render(st); st.list.focus({preventScroll:true});
+}
+
+function setMode(m){
+  MODE=m; document.querySelectorAll('#mode-seg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  hideCard(true); Object.values(V).forEach(st=>{ if(st.res) render(st); });
+}
+document.getElementById('mode-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.mode)});
+
+document.addEventListener('keydown',e=>{
+  const st=V[cur]; const t=e.target;
+  if(e.key==='Escape' && !dpop.hidden){ e.preventDefault(); closeDisplay(true); return; }
+  if(t.matches('input,select,textarea')){
+    if(t.classList.contains('q')){
+      if(e.key==='Escape'){ e.preventDefault(); t.blur(); st.list.focus(); }
+      else if(e.key==='Enter'){ e.preventDefault(); clearTimeout(st._rt); st.q=t.value; runSearch(st,true); st.list.focus(); }
+      else if(e.key==='ArrowDown'){ e.preventDefault(); st.list.focus(); move(st,0); }
+    }
+    return;
+  }
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  if(e.key==='/'){ e.preventDefault(); st.input.focus(); st.input.select(); return; }
+  if(t.tagName==='BUTTON' && (e.key==='Enter'||e.key===' ')) return; // let buttons activate
+  switch(e.key){
+    case 'j': case 'ArrowDown': e.preventDefault(); move(st,1); break;
+    case 'k': case 'ArrowUp': e.preventDefault(); move(st,-1); break;
+    case 'Home': e.preventDefault(); move(st,0,0); break;
+    case 'End': e.preventDefault(); move(st,0,curHits(st).length-1); break;
+    case 'Enter': e.preventDefault(); st.key==='bp'?togglePane(st):openDetail(st); break;
+    case 'Escape': e.preventDefault(); scopeMenu.classList.remove('show'); closeDetail(st); break;
+  }
+});
+
+/* ======================= toolbar ======================= */
+document.getElementById('theme-switcher').addEventListener('change',e=>{document.getElementById('theme-link').href='../themes/'+e.target.value+'.css'});
+document.getElementById('vp-grp').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return; const w=b.dataset.w;
+  document.querySelectorAll('#vp-grp button').forEach(x=>x.classList.toggle('on',x===b));
+  document.getElementById('sketch-root').style.maxWidth=w==='full'?'none':w+'px';
+  document.body.classList.toggle('framed',w!=='full'); hideCard(true); closeDisplay(false);
+});
+let annot=false; const tip=document.getElementById('annot-tip'), abox=document.getElementById('annot-box');
+document.getElementById('annot-btn').addEventListener('click',e=>{annot=!annot;e.currentTarget.classList.toggle('on',annot);if(!annot){tip.style.display='none';abox.style.display='none'}});
+function hex(c){const m=c.match(/[\d.]+/g);if(!m)return c;let n=m.map(Number);if(c.startsWith('color('))n=n.map((v,i)=>i<3?v*255:v);if(n[3]===0)return 'transparent';const h='#'+n.slice(0,3).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');return n[3]!==undefined&&n[3]<1?h+' @'+Math.round(n[3]*100)+'%':h}
+document.addEventListener('mousemove',e=>{
+  if(!annot) return; const el=e.target;
+  if(el.closest('#sketch-tools')||el===document.body||el===document.documentElement){tip.style.display='none';abox.style.display='none';return}
+  const cs=getComputedStyle(el), r=el.getBoundingClientRect();
+  const cls=typeof el.className==='string'&&el.className.trim()?'.'+el.className.trim().split(/\s+/).join('.'):'';
+  tip.innerHTML=`<b>${el.tagName.toLowerCase()}${esc(cls)}</b><br>font ${cs.fontSize} / ${cs.fontWeight} · ${esc(cs.fontFamily.split(',')[0].replace(/"/g,''))}<br>color ${hex(cs.color)}<br>bg ${hex(cs.backgroundColor)}<br>padding ${cs.padding}<br>size ${Math.round(r.width)}×${Math.round(r.height)}`;
+  tip.style.display='block';
+  const tx=Math.min(e.clientX+14,innerWidth-tip.offsetWidth-8), ty=Math.min(e.clientY+14,innerHeight-tip.offsetHeight-8);
+  tip.style.left=tx+'px'; tip.style.top=ty+'px';
+  Object.assign(abox.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
+});
+
+/* boot */
+['a','b','c','bp'].forEach(initVariant);
+showVariant('bp');
+</script>
+</body>
+</html>

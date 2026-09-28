@@ -3,6 +3,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --ui-font: 15px;
+  --u: calc(1rem / 13);
   --background: #ffffff; --foreground: #1f2328;
   --card: #ffffff; --card-foreground: #1f2328;
   --popover: #ffffff; --popover-foreground: #1f2328;
@@ -16,6 +18,13 @@
   --cat-discovery: #0d9488;
   --code-bg: #f6f8fa;
   --destructive: var(--cat-gotcha); --destructive-foreground: var(--background);
+  --surface-2: #eef1f4; --hover: #f0f3f6; --selected: #e7e3fb; --border-subtle: #e6e9ed;
+  /* DSYS-03/D-17: the original #818b98 fell below 4.5:1 on --surface-2 and
+     --background alike (ages, kbd hints, hover-card meta) -- aliased to
+     --muted-foreground, which passes >5:1 against every background this
+     token is used on in both themes (verified by surfaces.browser.test.ts). */
+  --text-faint: var(--muted-foreground); --primary-soft: color-mix(in srgb, var(--primary) 12%, transparent);
+  --warning: #9a6700; --success: #1a7f37; --cat-rule: #9a6700;
 }
 .dark {
   --background: #0d1117; --foreground: #e6edf3;
@@ -30,6 +39,14 @@
   --cat-discovery: #2dd4bf;
   --code-bg: #1b2230;
   --destructive: var(--cat-gotcha); --destructive-foreground: var(--background);
+  /* DSYS-03/D-17: --selected darkened from #252d3d -- --muted-foreground
+     (the active-row category/score fallback text colour) cleared 4.5:1
+     against the old value by under 0.5%, failing in a real browser's
+     rendering even though the two are close enough that manual sRGB math
+     rounds to a pass; #1f2531 restores a >10% margin (surfaces.browser.test.ts). */
+  --surface-2: #1c2230; --hover: #1f2633; --selected: #1f2531; --border-subtle: #21262d;
+  --text-faint: var(--muted-foreground); --primary-soft: color-mix(in srgb, var(--primary) 16%, transparent);
+  --warning: #d29922; --success: #3fb950; --cat-rule: #f0b72f;
 }
 
 @theme inline {
@@ -44,11 +61,17 @@
   --color-cat-convention: var(--cat-convention); --color-cat-gotcha: var(--cat-gotcha);
   --color-cat-decision: var(--cat-decision); --color-cat-preference: var(--cat-preference);
   --color-cat-discovery: var(--cat-discovery);
+  --color-cat-rule: var(--cat-rule);
   --color-code-bg: var(--code-bg);
   --color-destructive: var(--destructive); --color-destructive-foreground: var(--destructive-foreground);
+  --color-surface-2: var(--surface-2); --color-hover: var(--hover); --color-selected: var(--selected);
+  --color-border-subtle: var(--border-subtle); --color-text-faint: var(--text-faint);
+  --color-primary-soft: var(--primary-soft); --color-warning: var(--warning); --color-success: var(--success);
   --radius-lg: var(--radius);
 }
 
-body { background: var(--background); color: var(--foreground); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 13px; }
+html { font-size: var(--ui-font); }
 
-.cat-dot { width: 8px; height: 8px; border-radius: 9999px; flex: none; }
+body { background: var(--background); color: var(--foreground); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 1rem; }
+
+.cat-dot { width: calc(8 * var(--u)); height: calc(8 * var(--u)); border-radius: 9999px; flex: none; }

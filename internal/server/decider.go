@@ -289,6 +289,153 @@ func SearchRankHookFromEnv() (store.RankHook, SearchRerankInfo, error) {
 	return relevance.Hook(dec, relevance.DefaultBudget()), info, nil
 }
 
+// understandingEnabled resolves ENGRAM_SEARCH_UNDERSTANDING (milestone
+// 2026-09-25.01 Phase 6 D-01): "off" turns query understanding off
+// explicitly; "jev" turns it on explicitly (Config.Validate, plan 06-04,
+// rejects "jev" when no decisions provider is configured); an empty value
+// follows cfg.Decisions.Provider — on when it is "jev", off otherwise; any
+// other value is treated as off with a Warn naming the bad value, never
+// egressing query text on an unrecognized setting. source reports whether
+// the result came from an explicit value or the default-following branch,
+// for the D-15 startup disclosure (plan 06-04). internal/config's own
+// Validate (plan 06-04) keeps an independent copy of this switch — the two
+// must stay in sync by hand.
+func understandingEnabled(cfg *config.Config) (enabled bool, source string) {
+	switch cfg.Search.Understanding {
+	case "off":
+		return false, "explicit"
+	case "jev":
+		return true, "explicit"
+	case "":
+		return cfg.Decisions.Provider == "jev", "default"
+	default:
+		slog.Warn("ENGRAM_SEARCH_UNDERSTANDING is set to an unknown value; query understanding stays off",
+			"value", cfg.Search.Understanding)
+		return false, "explicit"
+	}
+}
+
+// understandingTimeout parses the per-query understanding decision-call
+// timeout (ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT, D-01a), defaulting to 2s on
+// empty/invalid — structural copy of searchRerankTimeout: a non-positive
+// value is never honored, since a fallback to jev.WithMaxTimeout's 10m
+// ceiling is unacceptable on the synchronous understanding path.
+func understandingTimeout(cfg *config.Config) time.Duration {
+	d, err := time.ParseDuration(cfg.Search.UnderstandingTimeout)
+	if err != nil || d <= 0 {
+		if cfg.Search.UnderstandingTimeout != "" {
+			slog.Warn("ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT is set but unparseable or non-positive; using default 2s",
+				"value", cfg.Search.UnderstandingTimeout)
+		}
+		return 2 * time.Second
+	}
+	return d
+}
+
+// understandDeciderFromConfig builds the THIRD dedicated Jev client
+// (consolidate, search rerank, understanding — never shared): the same
+// base URL, key fallback, model, OTel transport, max-timeout ceiling and
+// drain bounds as deciderFromConfig/searchDeciderFromConfig, but its own
+// timeout (understandingTimeout) plus WithNoRetry() — the understanding
+// path must never share or double the sweep client's single retry. Gated
+// on cfg.Decisions.Provider, mirroring searchDeciderFromConfig.
+func understandDeciderFromConfig(cfg *config.Config) (decide.Decider, error) {
+	switch cfg.Decisions.Provider {
+	case "":
+		return nil, nil
+	case "jev":
+		apiKey := cmp.Or(cfg.Decisions.APIKey, cfg.OpenAI.APIKey)
+		return jev.New(cfg.Decisions.BaseURL, apiKey, cfg.Decisions.Model,
+			jev.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
+			jev.WithTimeout(understandingTimeout(cfg)),
+			jev.WithMaxTimeout(decisionsMaxTimeout(cfg)),
+			jev.WithDrainBytes(decisionsDrainBytes(cfg)),
+			jev.WithDrainTimeout(decisionsDrainTimeout(cfg)),
+			jev.WithNoRetry(),
+		), nil
+	default:
+		return nil, fmt.Errorf("ENGRAM_DECISIONS_PROVIDER %q: unknown provider (want \"\" or \"jev\")", cfg.Decisions.Provider)
+	}
+}
+
+// understandDecider builds the understanding Decider from cfg, returning
+// (nil, nil) when understanding resolves off (D-04) — understanding is on
+// only when this returns a non-nil Decider.
+func understandDecider(cfg *config.Config) (decide.Decider, error) {
+	if on, _ := understandingEnabled(cfg); !on {
+		return nil, nil
+	}
+	return understandDeciderFromConfig(cfg)
+}
+
+// logUnderstandingEnabled is the D-15 startup disclosure for query
+// understanding (milestone 2026-09-25.01 Phase 6, D-01's stated
+// mitigation): unlike most engram telemetry, console query text now leaves
+// the deployment to the decisions provider whenever understanding is on —
+// by default (provider=jev) or by an explicit ENGRAM_SEARCH_UNDERSTANDING
+// setting. Warn level on purpose, following logSearchRerankAuditEnabled: an
+// operator whose provider was configured only for spine-review consolidate
+// may not have consciously opted into this egress, and the log should keep
+// saying so at every startup. source is understandingEnabled's own result
+// ("default" or "explicit"), naming which branch turned it on. Host only —
+// never userinfo, path or query (T-06-18) — and the key's value is never a
+// log attribute, only which env var supplied it.
+func logUnderstandingEnabled(cfg *config.Config, source string) {
+	var host string
+	if u, err := url.Parse(cfg.Decisions.BaseURL); err == nil {
+		host = u.Host
+	}
+	apiKeySource := "none"
+	switch {
+	case cfg.Decisions.APIKey != "":
+		apiKeySource = "ENGRAM_DECISIONS_API_KEY"
+	case cfg.OpenAI.APIKey != "":
+		apiKeySource = "ENGRAM_OPENAI_API_KEY"
+	}
+	slog.Warn("search understanding enabled: console query text is sent to "+host,
+		"source", source,
+		"endpoint_host", host,
+		"model", cfg.Decisions.Model,
+		"understanding_timeout", understandingTimeout(cfg),
+		"api_key_source", apiKeySource,
+		"disable_with", "ENGRAM_SEARCH_UNDERSTANDING=off",
+	)
+}
+
+// understandingAudit parses ENGRAM_SEARCH_UNDERSTANDING_AUDIT (D-16),
+// defaulting to false on empty/invalid — Config.Validate already rejects a
+// non-boolean, so the warn branch only fires on an out-of-band call that
+// bypassed it. Structural copy of searchRerankAudit, but independent of it:
+// this reads ONLY cfg.Search.UnderstandingAudit, never RerankAudit — the two
+// audit flags gate unrelated features and must never consult each other.
+func understandingAudit(cfg *config.Config) bool {
+	b, err := strconv.ParseBool(cfg.Search.UnderstandingAudit)
+	if err != nil {
+		if cfg.Search.UnderstandingAudit != "" {
+			slog.Warn("ENGRAM_SEARCH_UNDERSTANDING_AUDIT is set but not a boolean; audit capture stays off",
+				"value", cfg.Search.UnderstandingAudit)
+		}
+		return false
+	}
+	return b
+}
+
+// logUnderstandingAuditEnabled is the loud startup disclosure for the
+// understanding audit capture (D-16): unlike every other engram telemetry
+// surface, each understood console query will now log its query text and
+// suggestion labels. Warn level on purpose — structural copy of
+// logSearchRerankAuditEnabled. enabled reports whether query understanding
+// is itself actually on; without it the flag does nothing, and the line
+// says that instead.
+func logUnderstandingAuditEnabled(enabled bool) {
+	if !enabled {
+		slog.Warn("ENGRAM_SEARCH_UNDERSTANDING_AUDIT is true but query understanding is off; nothing is suggested, so nothing is audited")
+		return
+	}
+	slog.Warn("search understanding audit capture enabled: every understood console query logs its query text and suggestion labels (never content) at info level",
+		"log_msg", "query understanding audit")
+}
+
 // logSearchRankerEnabled logs one Info line naming that search-path
 // reranking is enabled: the ranker, model, the base URL's host ONLY (never
 // any userinfo, path or query — T-04-01/T-04-07), the rerank timeout, and

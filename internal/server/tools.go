@@ -108,6 +108,20 @@ type deps struct {
 	// reranked search also logs its query text and candidate ids for an
 	// offline grading pass. Off by default; meaningless without rankHook.
 	rankAudit bool
+	// understandDec is the query-understanding Decider (milestone
+	// 2026-09-25.01 Phase 6, D-01/D-04): nil unless understanding resolves
+	// on AND a provider is configured. The only production source is
+	// understandDecider in buildDepsFromEnv. nil means UnderstandQuery
+	// answers {enabled:false} — no decision call, no store call.
+	understandDec decide.Decider
+	// understandAudit is ENGRAM_SEARCH_UNDERSTANDING_AUDIT (milestone
+	// 2026-09-25.01 Phase 6, D-16): when true, every understood query also
+	// logs its query text and suggestion labels for an offline grading
+	// pass. Off by default; meaningless without understandDec (an off
+	// understanding path never builds a Result to audit); independent of
+	// rankAudit — the two audit flags gate unrelated features and must
+	// never consult each other.
+	understandAudit bool
 }
 
 // memoryWriteCaps holds the always-enforced memory content/tags write
@@ -357,6 +371,18 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if audit {
 		logSearchRerankAuditEnabled(hook != nil)
 	}
+	udec, err := understandDecider(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if udec != nil {
+		_, source := understandingEnabled(cfg)
+		logUnderstandingEnabled(cfg, source)
+	}
+	uAudit := understandingAudit(cfg)
+	if uAudit {
+		logUnderstandingAuditEnabled(udec != nil)
+	}
 	return &deps{
 		st:               st,
 		em:               em,
@@ -369,6 +395,8 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		decider:          dec,
 		rankHook:         hook,
 		rankAudit:        audit,
+		understandDec:    udec,
+		understandAudit:  uAudit,
 	}, nil
 }
 
@@ -945,6 +973,11 @@ type supersedeArgs struct {
 	// array behaves exactly as the pre-phase single-target call). No maximum
 	// length is enforced or advertised (PD-07, 03.1-00-SUMMARY.md).
 	Supersedes []string `json:"supersedes,omitempty" jsonschema:"non-empty array of ids (full UUID or short_id) of the memories this new record corrects/replaces"`
+	// ValidateOnly (D-08/D-09, milestone 2026-09-25.01 Phase 3 plan 03-02): a
+	// caller-chosen control flag, never client-authored record content — it
+	// must NOT be added to contentFingerprint/mergeFingerprint, since it never
+	// reaches a write. See supersedepreview.go's supersede/validateSupersede.
+	ValidateOnly bool `json:"validate_only,omitempty" jsonschema:"optional; true runs the full preflight (ownership, single live head, rule and ambiguity checks) and names the resolved targets without writing anything; never consults or records idempotency_key"`
 }
 
 type searchArgs struct {
@@ -975,12 +1008,19 @@ type listArgs struct {
 
 type listScheduledArgs struct {
 	// Scope carries omitempty (D-06a); its presence check runs in
-	// deps.listScheduled, first.
-	Scope         string `json:"scope,omitempty" jsonschema:"the scope to list scheduled/expired memories from"`
+	// deps.listScheduled, first, via effectiveSearchScope (plan 03-03, D-11:
+	// scope is now required unless cross_spine).
+	Scope         string `json:"scope,omitempty" jsonschema:"the scope to list scheduled/expired memories from; required unless cross_spine"`
 	State         string `json:"state,omitempty" jsonschema:"scheduled (default, not yet active) | expired | all"`
 	Limit         uint64 `json:"limit,omitempty" jsonschema:"max memories to return (default 20)"`
 	CreatedAfter  string `json:"created_after,omitempty" jsonschema:"optional RFC3339; inclusive lower bound on created_at"`
 	CreatedBefore string `json:"created_before,omitempty" jsonschema:"optional RFC3339; exclusive upper bound on created_at"`
+	// CrossSpine and Cursor are additive (plan 03-03, D-11): CrossSpine lists
+	// across every scope the caller may read (still only their own records —
+	// ListScheduled stays owner-only even when it spans every scope);
+	// Cursor pages through the result via the returned next_cursor.
+	CrossSpine bool   `json:"cross_spine,omitempty" jsonschema:"list across every scope (still only your own records; ignores scope)"`
+	Cursor     string `json:"cursor,omitempty" jsonschema:"opaque pagination cursor from a prior next_cursor; omit for the first page"`
 }
 
 type idArgs struct {
@@ -1759,6 +1799,12 @@ type coreListResult struct {
 	Memories  []store.Memory
 	Total     uint64
 	NextToken string
+	// Hidden is the recall-gate hidden count (D-01/D-02/D-03, phase
+	// 02-recall-first-search plan 02-01), computed once here so both the
+	// Connect and MCP lanes read the same value. nil means the comparison
+	// call failed (degrade, never fabricate zeros) — see
+	// (*deps).listRecallHidden.
+	Hidden *recallHidden
 }
 
 // coreSearchRequest is the transport-neutral search request: a SUPERSET
@@ -1792,6 +1838,17 @@ type coreSearchRequest struct {
 	IncludeArchived   bool
 	IncludeSuperseded bool
 	IncludeScheduled  bool
+}
+
+// coreSearchResult is the typed search result: raw []store.Memory (no
+// MCP/Connect-specific shaping) plus Hidden, the recall-gate hidden count
+// (D-01/D-02/D-03, phase 02-recall-first-search plan 02-01) computed once
+// here so both the Connect and MCP lanes read the same value. nil means the
+// comparison call failed (degrade, never fabricate zeros) — see
+// (*deps).searchRecallHidden.
+type coreSearchResult struct {
+	Memories []store.Memory
+	Hidden   *recallHidden
 }
 
 // rejectOverMaximumCount is the published wire-boundary rejection for D-10: a
@@ -1843,7 +1900,7 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 	if err != nil {
 		return coreListResult{}, err
 	}
-	ms, total, next, err := d.st.List(ctx, scope, c.Subj, store.ListOptions{
+	opts := store.ListOptions{
 		Limit:             req.Limit,
 		Offset:            req.Offset,
 		Categories:        req.Categories,
@@ -1857,32 +1914,49 @@ func (d *deps) listMemory(ctx context.Context, c caller, req coreListRequest) (c
 		IncludeSuperseded: req.IncludeSuperseded,
 		IncludeScheduled:  req.IncludeScheduled,
 		Full:              req.Full,
-	})
+	}
+	ms, total, next, err := d.st.List(ctx, scope, c.Subj, opts)
 	if err != nil {
 		return coreListResult{}, err
 	}
-	return coreListResult{Memories: ms, Total: total, NextToken: next}, nil
+	return coreListResult{
+		Memories:  ms,
+		Total:     total,
+		NextToken: next,
+		Hidden:    d.listRecallHidden(ctx, c, scope, opts),
+	}, nil
 }
 
-func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs) ([]store.Memory, error) {
-	// D-06a: Scope carries omitempty now; this is the sole remaining guard
-	// (list_scheduled has no Connect RPC — MCP-only).
-	if a.Scope == "" {
-		return nil, argErrf(classMalformed, HintRequired, "scope", "scope is required")
+// coreScheduledResult is deps.listScheduled's transport-neutral return shape
+// (plan 03-03, D-11): Memories plus the opaque NextCursor both the Connect
+// ListScheduled handler and the MCP list_scheduled closure surface under
+// their own field names (next_page_token / next_cursor).
+type coreScheduledResult struct {
+	Memories   []store.Memory
+	NextCursor string
+}
+
+func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs) (coreScheduledResult, error) {
+	// D-11: scope is now required unless cross_spine — replaces the old
+	// unconditional required-scope check with the same conditional-rule
+	// envelope search_memory/list_memory already use.
+	scope, err := effectiveSearchScope(a.Scope, a.CrossSpine)
+	if err != nil {
+		return coreScheduledResult{}, err
 	}
 	if err := rejectOverMaximumCount("limit", a.Limit); err != nil {
-		return nil, err
+		return coreScheduledResult{}, err
 	}
 	if a.Limit == 0 {
 		a.Limit = 20
 	}
 	after, err := parseRFC3339(a.CreatedAfter)
 	if err != nil {
-		return nil, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
+		return coreScheduledResult{}, argErrf(classMalformed, HintFormat, "created_after", "created_after must be RFC3339")
 	}
 	before, err := parseRFC3339(a.CreatedBefore)
 	if err != nil {
-		return nil, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
+		return coreScheduledResult{}, argErrf(classMalformed, HintFormat, "created_before", "created_before must be RFC3339")
 	}
 	var state store.ScheduledState
 	switch a.State {
@@ -1893,10 +1967,14 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 	case "all":
 		state = store.ScheduledAll
 	default:
-		return nil, argErrf(classMalformed, HintEnum, "state", "state must be one of scheduled|expired|all")
+		return coreScheduledResult{}, argErrf(classMalformed, HintEnum, "state", "state must be one of scheduled|expired|all")
 	}
-	return d.st.ListScheduled(ctx, a.Scope, c.Subj, state,
-		store.ListOptions{Limit: a.Limit, CreatedAfter: after, CreatedBefore: before})
+	mems, next, err := d.st.ListScheduled(ctx, scope, c.Subj, state,
+		store.ListOptions{Limit: a.Limit, CreatedAfter: after, CreatedBefore: before, Cursor: a.Cursor})
+	if err != nil {
+		return coreScheduledResult{}, err
+	}
+	return coreScheduledResult{Memories: mems, NextCursor: next}, nil
 }
 
 // searchMemory runs the shared rerank search on the transport-neutral typed
@@ -1914,25 +1992,25 @@ func (d *deps) listScheduled(ctx context.Context, c caller, a listScheduledArgs)
 // scope means "everything readable" at the store layer, this is the last
 // chokepoint before a caller could reach that widened filter by forgetting
 // the guard.
-func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest) ([]store.Memory, error) {
+func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest) (coreSearchResult, error) {
 	// D-06a: searchArgs.Query carries omitempty now; this is the sole
 	// remaining guard, shared by both lanes (MCP search_memory and Connect
 	// SearchMemories both build coreSearchRequest before calling here).
 	if req.Query == "" {
-		return nil, argErrf(classMalformed, HintRequired, "query", "query is required")
+		return coreSearchResult{}, argErrf(classMalformed, HintRequired, "query", "query is required")
 	}
 	if err := rejectOverMaximumCount("k", req.K); err != nil {
-		return nil, err
+		return coreSearchResult{}, err
 	}
 	scope, err := effectiveSearchScope(req.Scope, req.CrossSpine)
 	if err != nil {
-		return nil, err
+		return coreSearchResult{}, err
 	}
 	vec, err := d.em.EmbedQuery(ctx, req.Query)
 	if err != nil {
-		return nil, err
+		return coreSearchResult{}, err
 	}
-	return d.st.SearchReranked(ctx, scope, c.Subj, req.Query, vec, req.K, store.SearchOptions{
+	opts := store.SearchOptions{
 		Tags:              req.Tags,
 		Categories:        req.Categories,
 		CreatedAfter:      req.CreatedAfter,
@@ -1942,7 +2020,15 @@ func (d *deps) searchMemory(ctx context.Context, c caller, req coreSearchRequest
 		IncludeScheduled:  req.IncludeScheduled,
 		RankHook:          d.rankHook,
 		RankAudit:         d.rankAudit,
-	})
+	}
+	ms, err := d.st.SearchReranked(ctx, scope, c.Subj, req.Query, vec, req.K, opts)
+	if err != nil {
+		return coreSearchResult{}, err
+	}
+	return coreSearchResult{
+		Memories: ms,
+		Hidden:   d.searchRecallHidden(ctx, c, scope, vec, req.K, opts),
+	}, nil
 }
 
 // effectiveDiscoveryScope resolves the scope filter for a discovery search:
@@ -2539,6 +2625,18 @@ func (d *deps) validateSupersedeTargetState(_ context.Context, _ caller, targets
 	return nil
 }
 
+// supersedeArgChecks (milestone 2026-09-25.01 Phase 3 plan 03-02) is the
+// argument-checking prefix supersedeMemory ran inline before this extraction
+// — validateStoreArgs then validateCitations, unchanged in order — factored
+// out so validateSupersede (supersedepreview.go) can run the IDENTICAL two
+// checks for a validate_only dry run without duplicating them.
+func (d *deps) supersedeArgChecks(a supersedeArgs) error {
+	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes, d.writeCaps); err != nil {
+		return err
+	}
+	return validateCitations(a.Citations, 0)
+}
+
 // supersedeMemory corrects a memory the caller owns by merging one or more
 // targets into a single new record (phase 03.1: promoted from one target to
 // a set — D-01 promote semantics, a one-element array behaves exactly as the
@@ -2561,10 +2659,7 @@ func (d *deps) validateSupersedeTargetState(_ context.Context, _ caller, targets
 // async summary-on-write like any other store_memory write, exactly once
 // regardless of target-set size.
 func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (string, string, error) {
-	if err := validateStoreArgs(a.storeArgs, d.maxSummaryBytes, d.writeCaps); err != nil {
-		return "", "", err
-	}
-	if err := validateCitations(a.Citations, 0); err != nil {
+	if err := d.supersedeArgChecks(a); err != nil {
 		return "", "", err
 	}
 
@@ -2816,7 +2911,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("scheduled %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score. When the operator enables Jev reranking, results are reordered by the provider's probability that each record answers the query, and each result carries `relevance` (0 to 1; values all near zero mean nothing returned answers the query); it is absent when reranking is off or fell back.", Annotations: annotationsFor("search_memory")},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Semantic search within a scope. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optionally pass `tags` to restrict to records carrying all listed tags (AND) before ranking. Returns compact summaries by default (id, summary, summary_source, scope, category, tags, created_at); pass `full=true` for full content, or fetch one record in full via get_memory. Each result carries a `score`: the raw Qdrant cosine similarity for this query (higher = closer), present when non-zero; unranked list_memory/get_memory results have a zero/omitted score. When the operator enables Jev reranking, results are reordered by the provider's probability that each record answers the query, and each result carries `relevance` (0 to 1; values all near zero mean nothing returned answers the query); it is absent when reranking is off or fell back. Results also carry `recall_gate_hidden` ({total, archived, superseded, expired, scheduled}): how many records the recall gate hid from this top-k — fetch a hidden record by id with get_memory.", Annotations: annotationsFor("search_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -2846,7 +2941,7 @@ func registerTools(s *mcp.Server, d *deps) error {
 				// mirrors deps.searchDiscovery's identical discipline (D-02).
 				slog.InfoContext(ctx, "search_memory: cross_spine=true; ignoring supplied scope")
 			}
-			ms, err := d.searchMemory(ctx, c, coreSearchRequest{
+			res, err := d.searchMemory(ctx, c, coreSearchRequest{
 				Scope: a.Scope, Query: a.Query, K: k, Tags: a.Tags, Categories: a.Categories,
 				CreatedAfter: after, CreatedBefore: before, CrossSpine: a.CrossSpine,
 			})
@@ -2856,12 +2951,12 @@ func registerTools(s *mcp.Server, d *deps) error {
 			cov := d.searchedScopes(ctx, c, a.CrossSpine)
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
-			hits := shapeRecall(ms, a.Full, d.summaryMaxChars)
-			result := recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, cov)
+			hits := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
+			result := withRecallHidden(recallResultMap(map[string]any{"memories": hits}, a.CrossSpine, cov), res.Hidden)
 			return nil, result, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content.", Annotations: annotationsFor("list_memory")},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_memory", Description: "List memories in a scope without a query. Most-recent first. " + scopeRule.Sentence + "; `cross_spine=true` spans every scope the caller can read (ignoring `scope` if supplied). Optional `created_after`/`created_before` (RFC3339) window and `cursor` for paging (use the returned next_cursor). Optional `tags` (AND). Returns {memories, next_cursor}; compact summaries by default, `full=true` for full content. Results also carry `recall_gate_hidden`: how many records the recall gate hid from this page.", Annotations: annotationsFor("list_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
@@ -2914,18 +3009,23 @@ func registerTools(s *mcp.Server, d *deps) error {
 			// MCP-specific recall shaping lives here, not in the shared core
 			// (D-07): the core returns raw []store.Memory.
 			mems := shapeRecall(res.Memories, a.Full, d.summaryMaxChars)
-			result := recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, cov)
+			result := withRecallHidden(recallResultMap(map[string]any{"memories": mems, "next_cursor": res.NextToken}, a.CrossSpine, cov), res.Hidden)
 			return nil, result, nil
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory.", Annotations: annotationsFor("list_scheduled")},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_scheduled", Description: "List your windowed memories the recall gate is hiding: state=scheduled (not yet active, default) | expired | all. Active memories surface via list_memory/search_memory. " + scopeRule.Sentence + "; `cross_spine=true` lists across every scope (still only your own records — ListScheduled stays owner-only; ignores `scope` if supplied), reporting searched_scopes/scopes_truncated (or scopes_unknown). `cursor` pages through results using the returned next_cursor (empty means the last page).", Annotations: annotationsFor("list_scheduled")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listScheduledArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			mems, err := d.listScheduled(ctx, c, a)
-			return nil, map[string]any{"memories": mems}, err
+			res, err := d.listScheduled(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			cov := d.searchedScopes(ctx, c, a.CrossSpine)
+			result := recallResultMap(map[string]any{"memories": res.Memories, "next_cursor": res.NextCursor}, a.CrossSpine, cov)
+			return nil, result, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "get_memory", Description: "Fetch one memory by id. Unlike search_memory/list_memory, fetch-by-id is NOT recall-gated: it returns every state recall hides — scheduled (not-yet-active), expired, superseded, and archived records too. The id may be the full UUID or the short_id.", Annotations: annotationsFor("get_memory")},
@@ -3012,14 +3112,43 @@ func registerTools(s *mcp.Server, d *deps) error {
 	if err != nil {
 		return fmt.Errorf("supersede_memory input schema: %w", err)
 	}
-	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding one or more targets: stores a single new record and marks each target superseded_by the new one. Targets are soft-hidden from search_memory/list_memory but remain fetchable via get_memory — history is preserved, nothing is deleted or overwritten. An invalid target set rejects the whole call once, naming every offending target of one failure class: a target you do not own, one that does not exist, and one whose short_id is ambiguous (matches more than one record) are all the same rejection — replace an ambiguous short_id with the target's full UUID. Rejects if any target is already superseded (single live head per chain) or is a rule (delete it instead). Each target id may be the full UUID or short_id.", InputSchema: supersedeSchema, Annotations: annotationsFor("supersede_memory")},
+	mcp.AddTool(s, &mcp.Tool{Name: "supersede_memory", Description: "Correct a memory you own by superseding one or more targets: stores a single new record and marks each target superseded_by the new one. Targets are soft-hidden from search_memory/list_memory but remain fetchable via get_memory — history is preserved, nothing is deleted or overwritten. An invalid target set rejects the whole call once, naming every offending target of one failure class: a target you do not own, one that does not exist, and one whose short_id is ambiguous (matches more than one record) are all the same rejection — replace an ambiguous short_id with the target's full UUID. Rejects if any target is already superseded (single live head per chain) or is a rule (delete it instead). Each target id may be the full UUID or short_id. Optionally pass validate_only=true to run the full preflight without writing: the result names every resolved target (validated, supersedes, targets), or the same rejection a real call would give; it never consults or records idempotency_key — useful before a multi-target merge, not a routine extra round trip.", InputSchema: supersedeSchema, Annotations: annotationsFor("supersede_memory")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a supersedeArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
-			id, sid, err := d.supersedeMemory(ctx, c, a)
-			return textResult(fmt.Sprintf("stored %s, superseding %s", id, strings.Join(a.Supersedes, ", "))), map[string]string{"id": id, "short_id": sid}, err
+			out, err := d.supersede(ctx, c, a)
+			if out.Validated {
+				return textResult("validated: would supersede " + strings.Join(out.Supersedes, ", ")), map[string]any{"validated": true, "supersedes": out.Supersedes, "targets": shapeRecall(out.Targets, false, d.summaryMaxChars)}, err
+			}
+			return textResult(fmt.Sprintf("stored %s, superseding %s", out.ID, strings.Join(a.Supersedes, ", "))), map[string]string{"id": out.ID, "short_id": out.ShortID}, err
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "archive_memory", Description: "Archive one or more memories you own (retire a record that is still true but no longer useful, reversibly): each stamps archived_at, so it drops out of search_memory/list_memory/search_discovery/list_scheduled but stays fetchable by id via get_memory. Never a delete — reversed by restore_memory. Call only after the user agrees to it in this conversation. Compare: delete_memory removes junk outright; supersede_memory records a correction/reversal; archive_memory retires without erasing. `ids` takes 1 to 1000 ids (full UUID or short_id). The result has one outcome per id, in order: archived | already_archived | not_found — a record you do not own reads identically to one that does not exist.", Annotations: annotationsFor("archive_memory")},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a archiveArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			rs, err := d.archiveMemory(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			return textResult(archiveSummaryText(rs)), map[string]any{"results": rs}, nil
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "restore_memory", Description: "Restore one or more memories you own, reversing archive_memory: each clears archived_at, so it reappears in search_memory/list_memory/search_discovery/list_scheduled. `ids` takes 1 to 1000 ids (full UUID or short_id). The result has one outcome per id, in order: restored | not_archived | not_found — a record you do not own reads identically to one that does not exist.", Annotations: annotationsFor("restore_memory")},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a archiveArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			rs, err := d.restoreMemory(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			return textResult(archiveSummaryText(rs)), map[string]any{"results": rs}, nil
 		})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "store_rule", Description: "Persist a NORMATIVE rule (ground truth) for a repo/project. Call ONLY on explicit user instruction — never promote a rule unilaterally; propose it to the user instead. scope=rule:repo:<repo> or rule:project:<project>. summary is REQUIRED and is the one-line index entry (single line). Rules are always shared and user-blessed. The result includes the rule's id and short_id.", Annotations: annotationsFor("store_rule")},
@@ -3032,25 +3161,58 @@ func registerTools(s *mcp.Server, d *deps) error {
 			return textResult(fmt.Sprintf("stored rule %s", id)), map[string]string{"id": id, "short_id": sid}, err
 		})
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: fmt.Sprintf("List the COMPLETE rule set for one or more rule:* scopes, up to %d per scope, oldest-first. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", store.MaxRecallLimit), Annotations: annotationsFor("list_rules")},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_rules", Description: fmt.Sprintf("List the COMPLETE rule set for one or more rule:* scopes, up to %d per scope, oldest-first; omit scopes to list every readable rule scope's rules (up to %d in total) with searched_scopes / scopes_truncated (or scopes_unknown) naming the rule scopes covered. Compact index shape by default (short_id, summary, tags); full=true adds content. Optional tags filter (AND). Rules are the repo/project's normative ground truth.", store.MaxRecallLimit, store.MaxRecallLimit), Annotations: annotationsFor("list_rules")},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a listRulesArgs) (*mcp.CallToolResult, any, error) {
 			c, err := callerFromContext(ctx)
 			if err != nil {
 				return nil, nil, err
 			}
 			rules, advisory, err := d.listRules(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
 			result := map[string]any{"rules": rules}
 			if advisory != "" {
 				result["advisory"] = advisory
 			}
-			return nil, result, err
+			// D-10: an empty/omitted Scopes list is the all-scopes read; coverage
+			// (searched_scopes/scopes_truncated/scopes_unknown) is added ONLY on
+			// that path, and names rule:* scopes only (ruleScopeCoverage).
+			allScopes := len(a.Scopes) == 0
+			return nil, recallResultMap(result, allScopes, d.ruleScopeCoverage(ctx, c, allScopes)), nil
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "related_memories", Description: "Fetch the neighbourhood of one memory you can read: its supersession chain (both directions, including soft-hidden members), records sharing a citation (kind + ref), records sharing rarity-weighted tags, and its nearest vector neighbours — one entry per related record, listing every edge that reached it with its evidence. Call it only on demand — when curating (dedup before a store, finding what a correction should supersede) or when the user asks — never at session start and never as an automatic follow-up to a search. `k` widens only the vector neighbours (default 8, maximum 1000). Compact summaries by default; `full=true` for full content. `truncated` reports that the result ceiling left a vector neighbour out. The id may be the full UUID or the short_id.", Annotations: annotationsFor("related_memories")},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a relatedArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			res, err := d.relatedMemories(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			return nil, relatedResultMap(res, a.Full, d.summaryMaxChars), nil
+		})
+
+	mcp.AddTool(s, &mcp.Tool{Name: "list_tags", Description: "List the tags on the records you can recall in a scope — or, with no scope, across every scope you can read — with exact counts, most-used first (default 100, maximum 1000), and `more` when more distinct tags exist. Before store_memory, check the scope's existing tags and reuse one rather than invent a near-duplicate; also useful for choosing a search_memory / list_memory `tags` filter. Counts cover only recall-visible records (no archived, superseded, expired, or not-yet-active ones).", Annotations: annotationsFor("list_tags")},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a listTagsArgs) (*mcp.CallToolResult, any, error) {
+			c, err := callerFromContext(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			ts, more, err := d.listTags(ctx, c, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			return nil, map[string]any{"tags": tagCountViews(ts), "more": more}, nil
 		})
 	return nil
 }
 
 // textResult gives a write tool its short confirmation text. The read tools
-// (search_memory, list_memory, list_scheduled, search_discovery, list_rules)
-// return a nil result instead, so go-sdk puts the structured result in a
+// (search_memory, list_memory, list_scheduled, search_discovery, list_rules,
+// related_memories, list_tags) return a nil result instead, so go-sdk puts the structured result in a
 // TextContent block as serialized JSON too, as MCP 2026-07-28 § Structured
 // Content says a tool SHOULD; a client that reads only `content` then still
 // gets the records rather than a count.

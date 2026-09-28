@@ -4,6 +4,8 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"reflect"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -706,5 +709,561 @@ func TestConnectMemoryFieldsPopulated(t *testing.T) {
 		if !msg.ProtoReflect().Has(summaryModelFD) {
 			t.Error("summary_model: Has() reports false for a zero-value source, want true (D-14 §3 assign-always)")
 		}
+	})
+}
+
+// mcpMemorySchedIDs and connectMemoryIDs extract ids from the two lanes'
+// respective Memory shapes ([]store.Memory vs []*engramv1.Memory) — the read-
+// lane parity analog of connectapi_test.go's local id-extraction closures,
+// promoted to package level so TestReadParity's rows can share one pair of
+// helpers instead of each row hand-rolling its own.
+func mcpMemorySchedIDs(ms []store.Memory) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.ID
+	}
+	return out
+}
+
+func connectMemoryIDs(ms []*engramv1.Memory) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.GetId()
+	}
+	return out
+}
+
+// relatedParityFixture builds a fresh store.RelatedResult scripted onto a
+// spyStore's `related` field (plan 03-05's TestReadParity/RelatedMemories
+// row, D-20): one entry per edge type, PLUS one entry carrying two edge
+// types (D-06's multi-edge merge rule), so the parity comparison exercises
+// every oneof case and the merge shape at once.
+func relatedParityFixture(anchorID string) store.RelatedResult {
+	return store.RelatedResult{
+		Anchor: store.Memory{ID: anchorID, Content: "anchor content", Summary: "anchor summary", Scope: "s", Category: "gotcha"},
+		Related: []store.RelatedMemory{
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000001", Content: "vector entry", Summary: "vector summary"},
+				Edges:  []store.RelatedEdge{{Type: store.RelatedEdgeVector, Score: 0.87}},
+			},
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000002", Content: "tag entry", Summary: "tag summary"},
+				Edges: []store.RelatedEdge{{
+					Type:       store.RelatedEdgeTag,
+					SharedTags: []store.WeightedTag{{Tag: "t1", Weight: 1.1}, {Tag: "t2", Weight: 0.5}},
+					TagWeight:  1.6,
+				}},
+			},
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000003", Content: "citation entry", Summary: "citation summary"},
+				Edges: []store.RelatedEdge{{
+					Type:            store.RelatedEdgeCitation,
+					SharedCitations: []store.CitationRef{{Kind: "file", Ref: "x.go"}},
+				}},
+			},
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000004", Content: "supersession entry", Summary: "supersession summary"},
+				Edges: []store.RelatedEdge{{
+					Type:      store.RelatedEdgeSupersession,
+					Direction: store.SupersessionPredecessor,
+					Depth:     2,
+				}},
+			},
+			{
+				Memory: store.Memory{ID: "e0000000-0000-0000-0000-000000000005", Content: "dual entry", Summary: "dual summary"},
+				Edges: []store.RelatedEdge{
+					{Type: store.RelatedEdgeCitation, SharedCitations: []store.CitationRef{{Kind: "url", Ref: "http://example.com"}}},
+					{Type: store.RelatedEdgeTag, SharedTags: []store.WeightedTag{{Tag: "t3", Weight: 0.9}}, TagWeight: 0.9},
+				},
+			},
+		},
+		Truncated: true,
+	}
+}
+
+// protoEdgeTypeToStoreForTest and protoSupersessionDirectionToStoreForTest
+// are relatedEdgeToProto/supersessionDirectionToProto's exact inverse, used
+// ONLY by the parity comparison below to normalize the Connect side onto
+// the same store.RelatedEdge shape the MCP side decodes into.
+func protoEdgeTypeToStoreForTest(et engramv1.EdgeType) store.RelatedEdgeType {
+	switch et {
+	case engramv1.EdgeType_EDGE_TYPE_SUPERSESSION:
+		return store.RelatedEdgeSupersession
+	case engramv1.EdgeType_EDGE_TYPE_CITATION:
+		return store.RelatedEdgeCitation
+	case engramv1.EdgeType_EDGE_TYPE_TAG:
+		return store.RelatedEdgeTag
+	case engramv1.EdgeType_EDGE_TYPE_VECTOR:
+		return store.RelatedEdgeVector
+	default:
+		return ""
+	}
+}
+
+func protoSupersessionDirectionToStoreForTest(d engramv1.SupersessionDirection) store.SupersessionDirection {
+	switch d {
+	case engramv1.SupersessionDirection_SUPERSESSION_DIRECTION_SUCCESSOR:
+		return store.SupersessionSuccessor
+	case engramv1.SupersessionDirection_SUPERSESSION_DIRECTION_PREDECESSOR:
+		return store.SupersessionPredecessor
+	default:
+		return ""
+	}
+}
+
+// protoEdgeToStoreForTest maps one Connect *engramv1.RelatedEdge back onto
+// store.RelatedEdge — the SAME flat shape json.Unmarshal produces on the MCP
+// side — so both lanes can be compared with reflect.DeepEqual.
+func protoEdgeToStoreForTest(e *engramv1.RelatedEdge) store.RelatedEdge {
+	out := store.RelatedEdge{Type: protoEdgeTypeToStoreForTest(e.GetType())}
+	switch v := e.GetEvidence().(type) {
+	case *engramv1.RelatedEdge_Vector:
+		out.Score = v.Vector.GetScore()
+	case *engramv1.RelatedEdge_Tag:
+		for _, t := range v.Tag.GetSharedTags() {
+			out.SharedTags = append(out.SharedTags, store.WeightedTag{Tag: t.GetTag(), Weight: t.GetWeight()})
+		}
+		out.TagWeight = v.Tag.GetTagWeight()
+	case *engramv1.RelatedEdge_Citation:
+		for _, c := range v.Citation.GetSharedCitations() {
+			out.SharedCitations = append(out.SharedCitations, store.CitationRef{Kind: c.GetKind(), Ref: c.GetRef()})
+		}
+	case *engramv1.RelatedEdge_Supersession:
+		out.Direction = protoSupersessionDirectionToStoreForTest(v.Supersession.GetDirection())
+		out.Depth = int(v.Supersession.GetDepth())
+	}
+	return out
+}
+
+// idOnly decodes just the "id" key from a JSON-encoded memory/recallView
+// value — both carry it under the same json tag.
+type idOnly struct {
+	ID string `json:"id"`
+}
+
+// TestReadParity is the read-lane sibling of TestWriteParity (D-20/D-22):
+// for each row, the direct MCP-lane deps.* call and the Connect handler call
+// — over the SAME spy-backed fixture — produce identical results (ids, a
+// paging token, coverage) on a successful call, and an identical rejection
+// code/message on a failing one, proven behaviourally rather than via a
+// call-graph assertion. Later plans add rows to this table; ListScheduled
+// (plan 03-03, D-19/D-20) is the first.
+func TestReadParity(t *testing.T) {
+	t.Run("ListScheduled", func(t *testing.T) {
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-listscheduled"
+			const mcpActor = "human-parity-listscheduled@example.com"
+			const scope1 = "parity:project:listscheduled-s1"
+			const scope2 = "parity:project:listscheduled-s2"
+
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+
+			// spyStore.ListScheduled compares against REAL wall-clock time
+			// (time.Now(), not a mockable clock), so the fixture's NotBefore
+			// must be genuinely in the future relative to it — fixedParityNow
+			// (a fixed 2026-03-01 date) will not do here.
+			base := time.Now().UTC().Truncate(time.Second)
+			future := base.Add(time.Hour)
+			seedOne := func(sp *spyStore, id, scope string, offset time.Duration) {
+				m := store.Memory{
+					ID: id, Content: "read-parity fixture", Scope: scope,
+					Category: "gotcha", Source: "user-said", Owner: owner,
+					CreatedAt: base.Add(-offset), NotBefore: &future,
+				}
+				if err := sp.Upsert(context.Background(), m, []float32{0.1, 0.2, 0.3}); err != nil {
+					t.Fatalf("seed %s: %v", id, err)
+				}
+			}
+			fixture := []struct {
+				id     string
+				scope  string
+				offset time.Duration
+			}{
+				{"f8888888-0000-0000-0000-000000000001", scope1, 0},
+				{"f8888888-0000-0000-0000-000000000002", scope1, time.Second},
+				{"f8888888-0000-0000-0000-000000000003", scope2, 2 * time.Second},
+			}
+			for _, r := range fixture {
+				seedOne(spMCP, r.id, r.scope, r.offset)
+				seedOne(spConn, r.id, r.scope, r.offset)
+			}
+			spMCP.resetCalls()
+			spConn.resetCalls()
+
+			mcpCaller := parityMCPCaller(t, owner, mcpActor)
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			// Page 1: cross_spine, state=all, limit=2 — same inputs on both lanes.
+			req1 := listScheduledArgs{CrossSpine: true, State: "all", Limit: 2}
+			mcpRes1, mcpErr1 := dMCP.listScheduled(ctx, mcpCaller, req1)
+			connResp1, connErr1 := api.ListScheduled(connCtx, connect.NewRequest(&engramv1.ListScheduledRequest{
+				CrossSpine: true, State: "all", Limit: 2,
+			}))
+			assertCodeParity(ctx, t, mcpErr1, connErr1)
+			if mcpErr1 != nil || connErr1 != nil {
+				t.Fatalf("expected success on both lanes (page 1): mcp=%v connect=%v", mcpErr1, connErr1)
+			}
+			mcpIDs1 := mcpMemorySchedIDs(mcpRes1.Memories)
+			connIDs1 := connectMemoryIDs(connResp1.Msg.GetMemories())
+			if !slices.Equal(mcpIDs1, connIDs1) {
+				t.Errorf("page 1 ids mismatch: mcp=%v connect=%v", mcpIDs1, connIDs1)
+			}
+			if mcpRes1.NextCursor != connResp1.Msg.GetNextPageToken() {
+				t.Errorf("page 1 next token mismatch: mcp=%q connect=%q", mcpRes1.NextCursor, connResp1.Msg.GetNextPageToken())
+			}
+			connCaller, err := callerFromConnectContext(connCtx)
+			if err != nil {
+				t.Fatalf("callerFromConnectContext: %v", err)
+			}
+			mcpCov1 := dMCP.searchedScopes(ctx, mcpCaller, true)
+			connCov1 := dConn.searchedScopes(connCtx, connCaller, true)
+			if !slices.Equal(mcpCov1.Scopes, connCov1.Scopes) || mcpCov1.Truncated != connCov1.Truncated || mcpCov1.Unknown != connCov1.Unknown {
+				t.Errorf("page 1 coverage mismatch: mcp=%+v connect=%+v", mcpCov1, connCov1)
+			}
+			if mcpRes1.NextCursor == "" {
+				t.Fatal("page 1 next token is empty, want a token to page 2 (fixture has 3 records, limit 2)")
+			}
+
+			// Page 2: same cursor on both lanes.
+			req2 := listScheduledArgs{CrossSpine: true, State: "all", Limit: 2, Cursor: mcpRes1.NextCursor}
+			mcpRes2, mcpErr2 := dMCP.listScheduled(ctx, mcpCaller, req2)
+			connResp2, connErr2 := api.ListScheduled(connCtx, connect.NewRequest(&engramv1.ListScheduledRequest{
+				CrossSpine: true, State: "all", Limit: 2, PageToken: connResp1.Msg.GetNextPageToken(),
+			}))
+			assertCodeParity(ctx, t, mcpErr2, connErr2)
+			if mcpErr2 != nil || connErr2 != nil {
+				t.Fatalf("expected success on both lanes (page 2): mcp=%v connect=%v", mcpErr2, connErr2)
+			}
+			mcpIDs2 := mcpMemorySchedIDs(mcpRes2.Memories)
+			connIDs2 := connectMemoryIDs(connResp2.Msg.GetMemories())
+			if !slices.Equal(mcpIDs2, connIDs2) {
+				t.Errorf("page 2 ids mismatch: mcp=%v connect=%v", mcpIDs2, connIDs2)
+			}
+			if mcpRes2.NextCursor != connResp2.Msg.GetNextPageToken() {
+				t.Errorf("page 2 next token mismatch: mcp=%q connect=%q", mcpRes2.NextCursor, connResp2.Msg.GetNextPageToken())
+			}
+			if mcpRes2.NextCursor != "" {
+				t.Errorf("page 2 next token = %q, want empty (fixture exhausted)", mcpRes2.NextCursor)
+			}
+		})
+
+		t.Run("rejection_envelope_parity", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-listscheduled-reject"
+			dMCP, _ := newSpyDeps()
+			dConn, _ := newSpyDeps()
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-listscheduled-reject@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			t.Run("invalid_state", func(t *testing.T) {
+				_, mcpErr := dMCP.listScheduled(ctx, mcpCaller, listScheduledArgs{Scope: "tool:project:x", State: "bogus"})
+				_, connErr := api.ListScheduled(connCtx, connect.NewRequest(&engramv1.ListScheduledRequest{Scope: "tool:project:x", State: "bogus"}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+
+			t.Run("missing_scope_without_cross_spine", func(t *testing.T) {
+				_, mcpErr := dMCP.listScheduled(ctx, mcpCaller, listScheduledArgs{})
+				_, connErr := api.ListScheduled(connCtx, connect.NewRequest(&engramv1.ListScheduledRequest{}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+		})
+	})
+
+	// ListRules (plan 03-04, D-19/D-20): explicit scopes and the all-scopes
+	// read give identical rule ids, order, advisory and coverage on the MCP
+	// core and the Connect handler; a non-rule scope gives an identical
+	// rejection envelope. The empty-scopes row seeds each lane's spy through
+	// a failingListScopesStore wrapper (crossspinecoverage_test.go) whose
+	// fixture scope is ruleScope — spyStore.List filters on exact scope
+	// equality, so an unwrapped empty-scopes call would match nothing.
+	t.Run("ListRules", func(t *testing.T) {
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-listrules"
+			const mcpActor = "human-parity-listrules@example.com"
+			ruleScope := "rule:repo:parity-listrules"
+
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			dMCP.st = &failingListScopesStore{spyStore: spMCP, scope: ruleScope}
+			dConn.st = &failingListScopesStore{spyStore: spConn, scope: ruleScope}
+
+			seedOne := func(sp *spyStore, id string, offset time.Duration) {
+				m := store.Memory{
+					ID: id, Content: "read-parity rule fixture", Summary: "read-parity rule fixture",
+					Scope: ruleScope, Category: "rule", Source: "user-said", Visibility: "shared",
+					Owner: owner, CreatedAt: fixedParityNow.Add(offset),
+				}
+				if err := sp.Upsert(context.Background(), m, []float32{0.1, 0.2, 0.3}); err != nil {
+					t.Fatalf("seed %s: %v", id, err)
+				}
+			}
+			const id1 = "f9999999-0000-0000-0000-000000000001"
+			const id2 = "f9999999-0000-0000-0000-000000000002"
+			seedOne(spMCP, id1, 0)
+			seedOne(spMCP, id2, time.Second)
+			seedOne(spConn, id1, 0)
+			seedOne(spConn, id2, time.Second)
+			spMCP.resetCalls()
+			spConn.resetCalls()
+
+			mcpCaller := parityMCPCaller(t, owner, mcpActor)
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			t.Run("explicit_scope", func(t *testing.T) {
+				mcpRules, mcpAdv, mcpErr := dMCP.listRules(ctx, mcpCaller, listRulesArgs{Scopes: []string{ruleScope}})
+				connResp, connErr := api.ListRules(connCtx, connect.NewRequest(&engramv1.ListRulesRequest{Scopes: []string{ruleScope}}))
+				assertCodeParity(ctx, t, mcpErr, connErr)
+				if mcpErr != nil || connErr != nil {
+					t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+				}
+				mcpIDs := ruleViewIDs(t, mcpRules)
+				connIDs := connectMemoryIDs(connResp.Msg.GetRules())
+				if !slices.Equal(mcpIDs, connIDs) {
+					t.Errorf("explicit scope ids mismatch: mcp=%v connect=%v", mcpIDs, connIDs)
+				}
+				if mcpAdv != connResp.Msg.GetAdvisory() {
+					t.Errorf("explicit scope advisory mismatch: mcp=%q connect=%q", mcpAdv, connResp.Msg.GetAdvisory())
+				}
+				if len(connResp.Msg.GetSearchedScopes()) != 0 {
+					t.Errorf("explicit scope: Connect SearchedScopes = %v, want empty", connResp.Msg.GetSearchedScopes())
+				}
+			})
+
+			t.Run("empty_scopes", func(t *testing.T) {
+				mcpRules, mcpAdv, mcpErr := dMCP.listRules(ctx, mcpCaller, listRulesArgs{})
+				connResp, connErr := api.ListRules(connCtx, connect.NewRequest(&engramv1.ListRulesRequest{}))
+				assertCodeParity(ctx, t, mcpErr, connErr)
+				if mcpErr != nil || connErr != nil {
+					t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+				}
+				mcpIDs := ruleViewIDs(t, mcpRules)
+				connIDs := connectMemoryIDs(connResp.Msg.GetRules())
+				if !slices.Equal(mcpIDs, connIDs) {
+					t.Errorf("empty scopes ids mismatch: mcp=%v connect=%v", mcpIDs, connIDs)
+				}
+				if mcpAdv != connResp.Msg.GetAdvisory() {
+					t.Errorf("empty scopes advisory mismatch: mcp=%q connect=%q", mcpAdv, connResp.Msg.GetAdvisory())
+				}
+				connCaller, err := callerFromConnectContext(connCtx)
+				if err != nil {
+					t.Fatalf("callerFromConnectContext: %v", err)
+				}
+				mcpCov := dMCP.ruleScopeCoverage(ctx, mcpCaller, true)
+				connCov := dConn.ruleScopeCoverage(connCtx, connCaller, true)
+				if !slices.Equal(mcpCov.Scopes, connCov.Scopes) || mcpCov.Truncated != connCov.Truncated || mcpCov.Unknown != connCov.Unknown {
+					t.Errorf("empty scopes coverage mismatch: mcp=%+v connect=%+v", mcpCov, connCov)
+				}
+			})
+		})
+
+		t.Run("rejection_envelope_parity", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-listrules-reject"
+			dMCP, _ := newSpyDeps()
+			dConn, _ := newSpyDeps()
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-listrules-reject@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			t.Run("non_rule_scope", func(t *testing.T) {
+				_, _, mcpErr := dMCP.listRules(ctx, mcpCaller, listRulesArgs{Scopes: []string{"tool:project:x"}})
+				_, connErr := api.ListRules(connCtx, connect.NewRequest(&engramv1.ListRulesRequest{Scopes: []string{"tool:project:x"}}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+		})
+	})
+
+	t.Run("RelatedMemories", func(t *testing.T) {
+		const owner = "actor-parity-related"
+		const mcpActor = "human-parity-related@example.com"
+		const anchorID = "d0000000-0000-0000-0000-000000000000"
+
+		dMCP, spMCP := newSpyDeps()
+		dConn, spConn := newSpyDeps()
+		spMCP.related = relatedParityFixture(anchorID)
+		spConn.related = relatedParityFixture(anchorID)
+
+		mcpCaller := parityMCPCaller(t, owner, mcpActor)
+		connCtx := parityConnectCtx(owner)
+		api := &engramAPI{d: dConn}
+
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			mcpRes, mcpErr := dMCP.relatedMemories(ctx, mcpCaller, relatedArgs{ID: anchorID})
+			connResp, connErr := api.RelatedMemories(connCtx, connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: anchorID}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+
+			mcpMap := relatedResultMap(mcpRes, false, dMCP.summaryMaxChars)
+			raw, err := json.Marshal(mcpMap)
+			if err != nil {
+				t.Fatalf("json.Marshal(relatedResultMap): %v", err)
+			}
+			var decoded struct {
+				Anchor  json.RawMessage `json:"anchor"`
+				Related []struct {
+					Memory json.RawMessage     `json:"memory"`
+					Edges  []store.RelatedEdge `json:"edges"`
+				} `json:"related"`
+				Truncated bool `json:"truncated"`
+			}
+			if err := json.Unmarshal(raw, &decoded); err != nil {
+				t.Fatalf("json.Unmarshal(relatedResultMap output): %v", err)
+			}
+
+			var mcpAnchor idOnly
+			if err := json.Unmarshal(decoded.Anchor, &mcpAnchor); err != nil {
+				t.Fatalf("json.Unmarshal(anchor): %v", err)
+			}
+			if mcpAnchor.ID != connResp.Msg.GetAnchor().GetId() {
+				t.Errorf("anchor id mismatch: mcp=%q connect=%q", mcpAnchor.ID, connResp.Msg.GetAnchor().GetId())
+			}
+			if decoded.Truncated != connResp.Msg.GetTruncated() {
+				t.Errorf("truncated mismatch: mcp=%v connect=%v", decoded.Truncated, connResp.Msg.GetTruncated())
+			}
+
+			connRelated := connResp.Msg.GetRelated()
+			if len(decoded.Related) != len(connRelated) {
+				t.Fatalf("related entry count mismatch: mcp=%d connect=%d", len(decoded.Related), len(connRelated))
+			}
+			for i, mcpEntry := range decoded.Related {
+				var mcpMem idOnly
+				if err := json.Unmarshal(mcpEntry.Memory, &mcpMem); err != nil {
+					t.Fatalf("json.Unmarshal(related[%d].memory): %v", i, err)
+				}
+				connEntry := connRelated[i]
+				if mcpMem.ID != connEntry.GetMemory().GetId() {
+					t.Errorf("related[%d] memory id mismatch: mcp=%q connect=%q", i, mcpMem.ID, connEntry.GetMemory().GetId())
+				}
+				connEdges := connEntry.GetEdges()
+				if len(mcpEntry.Edges) != len(connEdges) {
+					t.Fatalf("related[%d] edge count mismatch: mcp=%d connect=%d", i, len(mcpEntry.Edges), len(connEdges))
+				}
+				for j, mcpEdge := range mcpEntry.Edges {
+					connEdge := protoEdgeToStoreForTest(connEdges[j])
+					if !reflect.DeepEqual(mcpEdge, connEdge) {
+						t.Errorf("related[%d].edges[%d] mismatch:\nmcp:     %+v\nconnect: %+v", i, j, mcpEdge, connEdge)
+					}
+				}
+			}
+		})
+
+		t.Run("rejection_envelope_parity", func(t *testing.T) {
+			ctx := context.Background()
+
+			t.Run("empty_id", func(t *testing.T) {
+				_, mcpErr := dMCP.relatedMemories(ctx, mcpCaller, relatedArgs{ID: ""})
+				_, connErr := api.RelatedMemories(connCtx, connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: ""}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+
+			t.Run("k_over_maximum", func(t *testing.T) {
+				_, mcpErr := dMCP.relatedMemories(ctx, mcpCaller, relatedArgs{ID: anchorID, K: 1001})
+				_, connErr := api.RelatedMemories(connCtx, connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: anchorID, K: 1001}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+
+			t.Run("k_at_maximum_succeeds", func(t *testing.T) {
+				_, mcpErr := dMCP.relatedMemories(ctx, mcpCaller, relatedArgs{ID: anchorID, K: 1000})
+				_, connErr := api.RelatedMemories(connCtx, connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: anchorID, K: 1000}))
+				assertCodeParity(ctx, t, mcpErr, connErr)
+				if mcpErr != nil || connErr != nil {
+					t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+		})
+	})
+
+	t.Run("ListTags", func(t *testing.T) {
+		const owner = "actor-parity-listtags"
+		const mcpActor = "human-parity-listtags@example.com"
+		const scope = "parity:project:listtags"
+
+		// listTagsFixture (D-20): two tags share the same count (beta/gamma
+		// at 2) — the real-Qdrant round-trip test (tags_test.go) already
+		// proves count-desc/tag-asc ordering; this scripted row only proves
+		// the two lanes see the SAME scripted values, never re-derives it.
+		listTagsFixture := []store.TagCount{
+			{Tag: "alpha", Count: 5},
+			{Tag: "beta", Count: 2},
+			{Tag: "gamma", Count: 2},
+		}
+
+		dMCP, spMCP := newSpyDeps()
+		dConn, spConn := newSpyDeps()
+		spMCP.tags, spMCP.tagsMore = listTagsFixture, true
+		spConn.tags, spConn.tagsMore = listTagsFixture, true
+
+		mcpCaller := parityMCPCaller(t, owner, mcpActor)
+		connCtx := parityConnectCtx(owner)
+		api := &engramAPI{d: dConn}
+
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			mcpTags, mcpMore, mcpErr := dMCP.listTags(ctx, mcpCaller, listTagsArgs{Scope: scope})
+			connResp, connErr := api.ListTags(connCtx, connect.NewRequest(&engramv1.ListTagsRequest{Scope: scope}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			if mcpMore != connResp.Msg.GetMore() {
+				t.Errorf("more mismatch: mcp=%v connect=%v", mcpMore, connResp.Msg.GetMore())
+			}
+			mcpViews := tagCountViews(mcpTags)
+			connTags := connResp.Msg.GetTags()
+			if len(mcpViews) != len(connTags) {
+				t.Fatalf("tag count mismatch: mcp=%d connect=%d", len(mcpViews), len(connTags))
+			}
+			for i, v := range mcpViews {
+				if v.Tag != connTags[i].GetTag() || v.Count != connTags[i].GetCount() {
+					t.Errorf("tags[%d] mismatch: mcp=%+v connect={%s %d}", i, v, connTags[i].GetTag(), connTags[i].GetCount())
+				}
+			}
+		})
+
+		t.Run("rejection_envelope_parity", func(t *testing.T) {
+			ctx := context.Background()
+
+			t.Run("limit_over_maximum", func(t *testing.T) {
+				_, _, mcpErr := dMCP.listTags(ctx, mcpCaller, listTagsArgs{Scope: scope, Limit: 1001})
+				_, connErr := api.ListTags(connCtx, connect.NewRequest(&engramv1.ListTagsRequest{Scope: scope, Limit: 1001}))
+				assertEnvelopeParity(ctx, t, mcpErr, connErr)
+				if mcpErr == nil || connErr == nil {
+					t.Fatalf("expected both lanes to reject: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+
+			t.Run("limit_at_maximum_succeeds", func(t *testing.T) {
+				_, _, mcpErr := dMCP.listTags(ctx, mcpCaller, listTagsArgs{Scope: scope, Limit: 1000})
+				_, connErr := api.ListTags(connCtx, connect.NewRequest(&engramv1.ListTagsRequest{Scope: scope, Limit: 1000}))
+				assertCodeParity(ctx, t, mcpErr, connErr)
+				if mcpErr != nil || connErr != nil {
+					t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+				}
+			})
+		})
 	})
 }

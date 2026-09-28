@@ -5,8 +5,9 @@
   import { base } from '$app/paths';
   import { engram } from '$lib/client';
   import { PAGE_LIMIT, listMemoriesKey } from '$lib/queries';
+  import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
   import { peekResume, consumeResume, normalizeReturnPath, isAllowedDestination } from '$lib/resume';
-  import MemoryList from '$lib/components/MemoryList.svelte';
+  import ResultsList from '$lib/components/ResultsList.svelte';
   import ScopeChip from '$lib/components/ScopeChip.svelte';
   import { Button } from '$lib/components/ui/button';
   // svelte-query v6: options wrapped in a function; results are runes objects read directly (no $).
@@ -18,18 +19,27 @@
     queryKey: listMemoriesKey('', [], '', PAGE_LIMIT, 0, false, false, false, true),
     queryFn: () => engram.listMemories({ scope: '', limit: BigInt(PAGE_LIMIT), offset: 0n, categories: [], visibility: '', crossSpine: true })
   }));
-  function openRecord(id: string) { goto(`${base}/observe?sel=${encodeURIComponent(id)}`); }
+  // D-14: the Observe route is gone (redundant since Phase 2 -- /search
+  // with operator-only input is the same unranked ListMemories listing). Both a
+  // scope tile and a recent-row activation land on /search: a scope tile
+  // searches `scope:<x>` (classify.ts's operator-token syntax), a row
+  // activation searches the record's own id, which resolves via GetMemory
+  // and auto-opens the pane (ENTRY-01).
+  function openRecord(id: string) {
+    goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), q: id })}`);
+  }
 
   // D-09 re-auth landing (Codex round-3 HIGH): the OIDC callback always lands
   // here (/ui/, handlers.go:187), never the originating route. This root
   // page PEEKS the resume envelope and routes back to its returnPath WITHOUT
-  // deleting it -- the destination route (observe/search/discovery) still
-  // needs it to reopen the sheet and pass resumeValues in as props; it is
-  // the sole owner of consumeResume() (after the form's onresumeapplied
-  // acknowledgement). base + normalizeReturnPath guarantees the redirect
-  // never double-prefixes to /ui/ui/observe (base='/ui', svelte.config.js:9).
-  // A malformed/tampered returnPath that fails isAllowedDestination is
-  // rejected and the envelope discarded rather than followed.
+  // deleting it -- the destination route (search/discovery/rules/scheduled)
+  // still needs it to reopen the sheet/dialog and pass resumeValues in as
+  // props; it is the sole owner of consumeResume() (after the form's
+  // onresumeapplied acknowledgement). base + normalizeReturnPath guarantees
+  // the redirect never double-prefixes to /ui/ui/search (base='/ui',
+  // svelte.config.js:9). A malformed/tampered returnPath that fails
+  // isAllowedDestination is rejected and the envelope discarded rather than
+  // followed.
   onMount(() => {
     const env = peekResume();
     if (!env) return;
@@ -41,33 +51,42 @@
   });
 </script>
 
-<div class="p-4">
+<div class="p-4 h-full min-h-0 flex flex-col">
   <h1 class="mb-3 text-primary">engram — operator console</h1>
   {#if scopesQ.isLoading}
     <div class="text-muted-foreground">loading scopes…</div>
   {:else if scopesQ.error}
     <div class="text-cat-gotcha">failed to load scopes</div>
   {:else}
-    <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(215px,1fr))">
+    <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(calc(215*var(--u)),1fr))">
       {#each scopesQ.data?.scopes ?? [] as s (s.scope)}
-        <Button variant="surface" class="relative text-left p-3 h-auto block overflow-hidden" onclick={() => goto(`${base}/observe?scope=${encodeURIComponent(s.scope)}`)}>
-          <span class="absolute left-0 top-0 bottom-0 w-[3px] bg-primary"></span>
+        <Button
+          variant="surface"
+          class="relative text-left p-3 h-auto block overflow-hidden bg-[var(--surface-2)] border border-[var(--border-subtle,var(--border))]"
+          onclick={() =>
+            goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), q: `scope:${s.scope}` })}`)}
+        >
+          <span class="absolute left-0 top-0 bottom-0 w-[calc(3*var(--u))] bg-primary"></span>
           <ScopeChip scope={s.scope} mode="stacked" />
-          <div class="text-primary text-[24px] tabular-nums mt-1">{s.count}</div>
+          <div class="text-primary text-[calc(24*var(--u))] tabular-nums mt-1">{s.count}</div>
         </Button>
       {/each}
     </div>
     {#if scopesQ.data?.approximate}<div class="text-muted-foreground">counts approximate (scanCap)</div>{/if}
   {/if}
 
-  <div class="mt-4 text-[10px] uppercase text-muted-foreground">Recent memories</div>
-  <MemoryList
-    memories={recentQ.data?.memories ?? []}
-    total={recentQ.data?.total ?? 0n}
-    approximate={recentQ.data?.approximate ?? false}
-    loading={recentQ.isLoading}
-    error={recentQ.error}
-    selectedId=""
-    onselect={openRecord}
-  />
+  <div class="mt-4 text-[calc(10*var(--u))] uppercase text-muted-foreground">Recent memories</div>
+  <div class="flex-1 min-h-0 mt-2">
+    {#if recentQ.error}
+      <div class="text-cat-gotcha">Could not load recent memories</div>
+    {:else}
+      <ResultsList
+        memories={recentQ.data?.memories ?? []}
+        mode="unranked"
+        label="Recent memories"
+        loading={recentQ.isLoading}
+        onopen={openRecord}
+      />
+    {/if}
+  </div>
 </div>

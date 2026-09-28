@@ -16,17 +16,45 @@
         if (dark) document.documentElement.classList.add('dark');
       } catch {}
     </script>
-    <link href="/ui/_app/immutable/entry/start.Cs5na91F.js" rel="modulepreload">
-		<link href="/ui/_app/immutable/chunks/MNS-464-.js" rel="modulepreload">
-		<link href="/ui/_app/immutable/chunks/BadxnTf6.js" rel="modulepreload">
-		<link href="/ui/_app/immutable/entry/app.D3mud4wD.js" rel="modulepreload">
+    <script>
+      // engram:text-size anti-flash
+      // Applies the persisted console text-size preference (D-13) before
+      // first paint. Dependency-free by design (this script cannot import
+      // ui/src/lib/display.svelte.ts) -- keep its clamp behaviour in sync
+      // with that module by hand: integer, round, 12-16, else 15.
+      let size = 15;
+      try {
+        const v = parseInt(localStorage.getItem('engram.console.textSize'), 10);
+        size = Number.isFinite(v) ? Math.min(16, Math.max(12, Math.round(v))) : 15;
+      } catch {}
+      document.documentElement.style.setProperty('--ui-font', size + 'px');
+      document.documentElement.dataset.textSize = String(size);
+    </script>
+    <link href="/ui/_app/immutable/entry/start.D4S0ivOB.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/DET_kgaX.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/BkqEZKjd.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/entry/app.DohP4X18.js" rel="modulepreload">
 		<link href="/ui/_app/immutable/chunks/xihTtKlq.js" rel="modulepreload">
-		<link href="/ui/_app/immutable/nodes/0.DSo7wyq4.js" rel="modulepreload">
-		<link href="/ui/_app/immutable/chunks/CyXEcsoP.js" rel="modulepreload">
-		<link href="/ui/_app/immutable/chunks/a10r9FLn.js" rel="modulepreload">
-		<link href="/ui/_app/immutable/chunks/DKx6nXxu.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/nodes/0.Ct_OWTIG.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/B-Kh2jq2.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/MU7gitSd.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/DT2j2xpg.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/CCypUA00.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/DATuOYKQ.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/BR4afuNq.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/eEJMZDVL.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/CpqwT9Ke.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/CMR2R6qi.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/CHlPZPhO.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/Cqkmh7ft.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/B_wlx_3Z.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/BXPsSO_x.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/Dqzq4hfY.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/CnUJA5xn.js" rel="modulepreload">
+		<link href="/ui/_app/immutable/chunks/DmOB_pck.js" rel="modulepreload">
 		
-		<link href="/ui/_app/immutable/assets/0.CjNAYAKE.css" rel="stylesheet">
+		<link href="/ui/_app/immutable/assets/TagMatchRow.D-BO-sxP.css" rel="stylesheet">
+		<link href="/ui/_app/immutable/assets/0.DyeB4yin.css" rel="stylesheet">
   </head>
   <body data-sveltekit-preload-data="hover"><div>
 			<script>
@@ -39,8 +67,8 @@
 					const element = document.currentScript.parentElement;
 
 					Promise.all([
-						import("/ui/_app/immutable/entry/start.Cs5na91F.js"),
-						import("/ui/_app/immutable/entry/app.D3mud4wD.js")
+						import("/ui/_app/immutable/entry/start.D4S0ivOB.js"),
+						import("/ui/_app/immutable/entry/app.DohP4X18.js")
 					]).then(([kit, app]) => {
 						kit.start(app, element);
 					});

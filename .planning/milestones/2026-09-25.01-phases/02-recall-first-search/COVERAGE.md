@@ -1,0 +1,1 @@
+No external API integration: this phase changes engram's own Connect and MCP lanes (an additive recall-gate count on existing RPCs) and the console SPA that calls them; its one new npm package, @humanspeak/svelte-virtual-list, is an in-bundle UI component library, not an external service.

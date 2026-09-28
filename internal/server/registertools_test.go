@@ -13,18 +13,21 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// wantRegisteredToolNames is the full-set inventory this test pins: the 15
-// tool registrations already live on main (memory contract in CLAUDE.md).
-// This is a deliberate, single, reviewable inventory assertion on tool
-// IDENTIFIERS — it does NOT retype any tool's Description or Annotations
-// (the values plan 02-02/02-04's conformance gates read from THIS test's
-// registeredTools helper, from the live registration, never from a second
-// hand-typed copy here).
+// wantRegisteredToolNames is the full-set inventory this test pins: 19 tool
+// registrations (the 15 that already lived on main plus milestone
+// 2026-09-25.01 Phase 3's archive_memory/restore_memory/related_memories,
+// and plan 03-06's list_tags; memory contract in CLAUDE.md). This is a
+// deliberate, single, reviewable inventory assertion on tool IDENTIFIERS —
+// it does NOT retype any tool's Description or Annotations (the values plan
+// 02-02/02-04's conformance gates read from THIS test's registeredTools
+// helper, from the live registration, never from a second hand-typed copy
+// here).
 var wantRegisteredToolNames = []string{
 	"store_memory", "schedule_memory", "search_memory", "list_memory",
 	"list_scheduled", "get_memory", "update_memory", "delete_memory",
 	"delete_all", "store_discovery", "search_discovery", "set_visibility",
 	"supersede_memory", "store_rule", "list_rules",
+	"archive_memory", "restore_memory", "related_memories", "list_tags",
 }
 
 // registeredTools connects an in-memory MCP client to a server built by
@@ -69,7 +72,7 @@ func registeredTools(t *testing.T) []*mcp.Tool {
 }
 
 // TestRegisterToolsEnumerable proves registerTools registers the real,
-// full 15-tool set — with real, non-empty Descriptions — against a bare
+// full 17-tool set — with real, non-empty Descriptions — against a bare
 // &deps{} literal with no live Qdrant, no live embedder, and no ENGRAM_*
 // environment configuration. This is the seam every later conformance gate
 // in this phase needs: without it, no test can read the real MCP tool

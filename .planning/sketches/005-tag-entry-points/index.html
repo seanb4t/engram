@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>005 · Tag entry points</title>
+<link rel="stylesheet" href="../themes/default.css">
+<script src="../themes/display.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding-top: 44px; background: var(--color-bg); color: var(--color-text); font: 13px/1.45 var(--font-sans); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+  input { font: inherit; color: inherit; }
+  .mono { font-family: var(--font-mono); }
+  .muted { color: var(--color-text-muted); }
+  .faint { color: var(--color-text-faint); }
+  button, .opt, .bar-row, .chip, .row { transition: all 0.15s ease; }
+
+  /* ---------- sketch chrome (fixed size) ---------- */
+  #variant-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 12px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); overflow-x: auto; }
+  .variant-tab { padding: 5px 10px; border-radius: var(--radius-md); color: var(--color-text-muted); font-size: 13px; white-space: nowrap; }
+  .variant-tab:hover { background: var(--color-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-primary-soft); color: var(--color-primary); }
+  .nav-spacer { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; flex: none; }
+  .seg button { white-space: nowrap; padding: 3px 8px; font-size: 12px; color: var(--color-text-muted); border-right: 1px solid var(--color-border); }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: var(--color-hover); color: var(--color-text); }
+  .seg button.on { background: var(--color-selected); color: var(--color-text); }
+  .seg-label { font-size: 11px; color: var(--color-text-faint); margin: 0 6px 0 10px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+
+  /* ---------- console-wide text size: N px at 13px = calc(N*var(--u)) ---------- */
+  .ui-scaled { --u: calc(var(--ui-font, 15px) / 13);
+    --text-2xs: calc(11*var(--u)); --text-xs: calc(12*var(--u)); --text-sm: calc(13*var(--u)); --text-base: calc(14*var(--u)); --text-lg: calc(16*var(--u)); --row-h: calc(28*var(--u));
+    font-size: var(--text-sm); }
+  #frame { container: frame / inline-size; margin: 0 auto; max-width: 100%; transition: max-width .15s ease; }
+  #frame.constrained { border-left: 1px dashed var(--color-border); border-right: 1px dashed var(--color-border); }
+
+  /* ---------- app shell ---------- */
+  .app-h { position: sticky; top: 44px; z-index: 30; display: flex; align-items: center; gap: calc(12*var(--u)); height: calc(48*var(--u)); padding: 0 calc(16*var(--u)); background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+  .brand { font-weight: 600; letter-spacing: .02em; display: flex; align-items: center; gap: calc(6*var(--u)); }
+  .brand i { width: calc(14*var(--u)); height: calc(14*var(--u)); border-radius: 4px; background: var(--color-primary); display: inline-block; }
+  .nav a { color: var(--color-text-muted); text-decoration: none; font-size: var(--text-xs); padding: calc(4*var(--u)) calc(6*var(--u)); border-radius: var(--radius-sm); }
+  .nav a.on { color: var(--color-text); background: var(--color-surface-2); }
+  .hs { position: relative; flex: 1; max-width: calc(560*var(--u)); }
+  .hs input { width: 100%; height: calc(30*var(--u)); padding: 0 calc(10*var(--u)) 0 calc(28*var(--u)); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; font-size: var(--text-sm); }
+  .hs input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+  .hs .glass { position: absolute; left: calc(9*var(--u)); top: 50%; transform: translateY(-50%); color: var(--color-text-faint); font-size: var(--text-xs); }
+  .hs .kbd-hint { position: absolute; right: calc(8*var(--u)); top: 50%; transform: translateY(-50%); }
+  .aa { margin-left: auto; font-weight: 600; color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: calc(2*var(--u)) calc(8*var(--u)); }
+  kbd { font-family: var(--font-mono); font-size: var(--text-2xs); border: 1px solid var(--color-border); border-bottom-width: 2px; border-radius: calc(3*var(--u)); padding: 0 calc(4*var(--u)); color: var(--color-text-muted); }
+
+  /* dropdown / popover surfaces */
+  .pop { position: absolute; z-index: 40; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; overflow: hidden;
+    opacity: 0; visibility: hidden; transform: translateY(calc(-4*var(--u))); transition: opacity .15s ease, transform .15s ease, visibility 0s .15s; }
+  .pop.open { opacity: 1; visibility: visible; transform: none; transition: opacity .15s ease, transform .15s ease; }
+  .hs .pop { top: calc(100% + 6*var(--u)); left: 0; right: 0; max-height: calc(460*var(--u)); }
+  .grp-h { display: flex; align-items: baseline; gap: calc(6*var(--u)); padding: calc(8*var(--u)) calc(12*var(--u)) calc(4*var(--u)); font-size: var(--text-2xs); color: var(--color-text-faint); text-transform: uppercase; letter-spacing: .06em; }
+  .grp-h .r { margin-left: auto; text-transform: none; letter-spacing: 0; font-family: var(--font-mono); }
+  .opts { overflow-y: auto; padding: 0 calc(4*var(--u)) calc(4*var(--u)); }
+  .opt { display: grid; grid-template-columns: minmax(0,1fr) calc(80*var(--u)) calc(44*var(--u)); gap: calc(8*var(--u)); align-items: center; min-height: var(--row-h); padding: 0 calc(8*var(--u)); border-radius: var(--radius-sm); cursor: pointer; }
+  .opt .nm { font-family: var(--font-mono); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .opt .nm b { color: var(--color-primary); font-weight: 600; }
+  .opt .ct { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); text-align: right; }
+  .opt .mini { height: calc(4*var(--u)); background: var(--color-text-faint); border-radius: 0 2px 2px 0; min-width: 2px; opacity: .6; }
+  .opt:hover { background: var(--color-hover); }
+  .opt.active { background: var(--color-primary-soft); }
+  .opt.in-filter .nm::after { content: ' ✓'; color: var(--color-primary); }
+  .opt.unknown { grid-template-columns: minmax(0,1fr) auto; color: var(--color-text-muted); }
+  .opt.unknown .why { font-size: var(--text-2xs); color: var(--color-warning); font-family: var(--font-mono); }
+  .opt.search-row { grid-template-columns: minmax(0,1fr) auto; }
+  .pop-f { display: flex; flex-wrap: wrap; align-items: center; gap: calc(8*var(--u)); padding: calc(6*var(--u)) calc(12*var(--u)); border-top: 1px solid var(--color-border-subtle); font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .pop-f .warn { color: var(--color-warning); }
+  .pop-f .r { margin-left: auto; display: flex; gap: calc(8*var(--u)); white-space: nowrap; }
+
+  /* facet strip */
+  .facets { display: flex; flex-wrap: wrap; align-items: center; gap: calc(6*var(--u)); min-height: calc(40*var(--u)); padding: calc(6*var(--u)) calc(16*var(--u)); border-bottom: 1px solid var(--color-border-subtle); position: relative; }
+  .chip { display: inline-flex; align-items: center; gap: calc(4*var(--u)); height: calc(22*var(--u)); padding: 0 calc(4*var(--u)) 0 calc(8*var(--u)); border-radius: var(--radius-full); border: 1px solid var(--color-border); background: var(--color-surface-2); font: var(--text-xs)/1 var(--font-mono); white-space: nowrap; }
+  .chip .k { color: var(--color-text-faint); }
+  .chip .x { width: calc(16*var(--u)); height: calc(16*var(--u)); border-radius: 50%; color: var(--color-text-faint); display: inline-flex; align-items: center; justify-content: center; }
+  .chip .x:hover { background: var(--color-hover); color: var(--color-text); }
+  .chip.tag { border-color: var(--color-primary); background: var(--color-primary-soft); }
+  .chip.flash { box-shadow: 0 0 0 3px var(--color-primary-soft); }
+  .fbtn { display: inline-flex; align-items: center; gap: calc(5*var(--u)); height: calc(24*var(--u)); padding: 0 calc(8*var(--u)); border: 1px dashed var(--color-border); border-radius: var(--radius-full); color: var(--color-text-muted); font-size: var(--text-xs); white-space: nowrap; }
+  .fbtn:hover, .fbtn[aria-expanded="true"], .fbtn[aria-pressed="true"] { border-style: solid; border-color: var(--color-primary); color: var(--color-text); background: var(--color-primary-soft); }
+  .fbtn .ic { font-family: var(--font-mono); }
+  .facets .spacer { flex: 1; }
+  .facets .pop { top: calc(100% - 2*var(--u)); }
+
+  /* combobox input inside popovers */
+  .cb-in { display: flex; align-items: center; gap: calc(6*var(--u)); padding: calc(8*var(--u)) calc(10*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .cb-in input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; font-family: var(--font-mono); font-size: var(--text-sm); }
+  .cb-in .hash { color: var(--color-text-faint); font-family: var(--font-mono); }
+
+  /* tag bars (shared component) */
+  .bars-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: calc(6*var(--u)); padding: calc(8*var(--u)) calc(12*var(--u)) calc(6*var(--u)); }
+  .bars-h .t { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .bars-h .s { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .bars { overflow-y: auto; padding: 0 calc(4*var(--u)) calc(4*var(--u)); outline: none; }
+  .bars:focus-visible { box-shadow: inset 0 0 0 2px var(--color-primary); border-radius: var(--radius-sm); }
+  .bar-row { display: grid; grid-template-columns: calc(150*var(--u)) minmax(0,1fr) calc(40*var(--u)); gap: calc(8*var(--u)); align-items: center; min-height: calc(24*var(--u)); padding: 0 calc(8*var(--u)); border-radius: var(--radius-sm); cursor: pointer; }
+  .bar-row .nm { font-family: var(--font-mono); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-row .nm b { color: var(--color-primary); font-weight: 600; }
+  .bar-row .fill { height: calc(8*var(--u)); background: var(--color-text-faint); border-radius: 0 calc(4*var(--u)) calc(4*var(--u)) 0; min-width: 2px; }
+  .bar-row .ct { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); text-align: right; }
+  .bar-row:hover { background: var(--color-hover); }
+  .bar-row.active { background: var(--color-primary-soft); }
+  .bar-row.in-filter .fill { background: var(--color-primary); }
+  .bar-row.in-filter .nm::before { content: '● '; color: var(--color-primary); }
+  .bars-f { display: flex; flex-wrap: wrap; align-items: center; gap: calc(8*var(--u)); padding: calc(6*var(--u)) calc(12*var(--u)); border-top: 1px solid var(--color-border-subtle); font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .bars-f .warn { color: var(--color-warning); font-family: var(--font-mono); }
+  .link { color: var(--color-primary); font-size: var(--text-2xs); }
+  .link:hover { text-decoration: underline; }
+  .skel { height: calc(10*var(--u)); margin: calc(8*var(--u)) calc(8*var(--u)); border-radius: 3px; background: linear-gradient(90deg, var(--color-surface-2), var(--color-hover), var(--color-surface-2)); background-size: 200% 100%; animation: sh 1.2s linear infinite; }
+  @keyframes sh { to { background-position: -200% 0; } }
+  .empty { padding: calc(14*var(--u)) calc(12*var(--u)); color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.6; }
+  .empty .mono { color: var(--color-text); }
+
+  /* results */
+  .main { display: grid; grid-template-columns: minmax(0,1fr); }
+  .main.with-panel { grid-template-columns: minmax(0,1fr) calc(340*var(--u)); }
+  .res-h { display: flex; flex-wrap: wrap; gap: calc(8*var(--u)); align-items: baseline; padding: calc(8*var(--u)) calc(16*var(--u)); font-size: var(--text-xs); color: var(--color-text-muted); border-bottom: 1px solid var(--color-border-subtle); }
+  .res-h b { color: var(--color-text); font-family: var(--font-mono); }
+  .row { display: grid; grid-template-columns: calc(104*var(--u)) minmax(0,1fr) auto; gap: calc(10*var(--u)); align-items: center; height: var(--row-h); padding: 0 calc(16*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .row:hover { background: var(--color-hover); }
+  .row .id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); display: flex; gap: calc(6*var(--u)); align-items: center; }
+  .dot { width: calc(7*var(--u)); height: calc(7*var(--u)); border-radius: 50%; display: inline-block; flex: none; }
+  .row .sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .tags { display: flex; gap: calc(4*var(--u)); overflow: hidden; max-width: calc(300*var(--u)); }
+  .tagc { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); background: var(--color-surface-2); padding: 1px calc(5*var(--u)); border-radius: var(--radius-sm); white-space: nowrap; cursor: pointer; }
+  .tagc:hover { color: var(--color-text); }
+  .tagc.hit { color: var(--color-primary); background: var(--color-primary-soft); }
+  .res-empty { padding: calc(24*var(--u)) calc(16*var(--u)); color: var(--color-text-muted); }
+
+  /* docked panel (variant C) */
+  .panel { border-left: 1px solid var(--color-border); background: var(--color-surface); position: sticky; top: calc(44px + 48*var(--u)); height: calc(100vh - 44px - 48*var(--u)); display: flex; flex-direction: column; min-width: 0; }
+  .panel-h { display: flex; align-items: center; gap: calc(8*var(--u)); padding: calc(8*var(--u)) calc(12*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .panel-h .t { font-weight: 600; }
+  .panel-h .x { margin-left: auto; color: var(--color-text-faint); }
+  .filter-in { margin: calc(8*var(--u)) calc(12*var(--u)) 0; display: flex; align-items: center; gap: calc(6*var(--u)); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 calc(8*var(--u)); height: calc(28*var(--u)); background: var(--color-bg); }
+  .filter-in:focus-within { border-color: var(--color-primary); }
+  .filter-in input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; font-family: var(--font-mono); font-size: var(--text-xs); }
+
+  #tip { position: fixed; z-index: 60; pointer-events: none; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: calc(5*var(--u)) calc(8*var(--u)); font: var(--text-2xs)/1.5 var(--font-mono); color: var(--color-text); opacity: 0; transition: opacity .1s ease; max-width: 320px; }
+  #tip.show { opacity: 1; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 6px 12px; font-size: 12px; opacity: 0; transition: all .2s ease; z-index: 70; box-shadow: var(--shadow-md); }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+  .note { margin: calc(10*var(--u)) calc(16*var(--u)); padding: calc(8*var(--u)) calc(10*var(--u)); border: 1px dashed var(--color-border); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.55; }
+  .note b { color: var(--color-text); }
+  @container frame (max-width: 760px) { .main.with-panel { grid-template-columns: 1fr; } .panel { position: fixed; inset: auto 0 0 0; height: 62vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-top: 1px solid var(--color-border); z-index: 45; } .nav, .row .tags { display: none; } .row { grid-template-columns: calc(96*var(--u)) minmax(0,1fr); } }
+  #anno-tip { position: fixed; z-index: 10000; pointer-events: none; background: #000; color: #fff; font: 11px/1.4 ui-monospace, monospace; padding: 4px 6px; border-radius: 4px; display: none; }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <button class="variant-tab active" data-v="a">A: Tags popover + "+ tag" picker</button>
+  <button class="variant-tab" data-v="b">B: One "+ tag" picker — empty state is the bars</button>
+  <button class="variant-tab" data-v="c">C: Docked Tags panel + "+ tag" picker ★ Selected</button>
+  <span class="nav-spacer"></span>
+  <span class="seg-label">ListTags</span>
+  <div class="seg" id="state-seg">
+    <button data-s="more" class="on">more=true</button>
+    <button data-s="complete">complete</button>
+    <button data-s="loading">loading</button>
+    <button data-s="empty">no tags</button>
+  </div>
+  <span class="seg-label">scope</span>
+  <div class="seg" id="scope-seg">
+    <button data-sc="" class="on">all readable</button>
+    <button data-sc="repo:github.com/seanb4t/engram">one scope chip</button>
+  </div>
+</div>
+
+<div id="frame" class="ui-scaled">
+  <header class="app-h">
+    <span class="brand"><i></i>engram</span>
+    <nav class="nav"><a class="on">Search</a><a>Rules</a><a>Scheduled</a><a>Discovery</a></nav>
+    <div class="hs" id="hs">
+      <span class="glass">⌕</span>
+      <input id="hs-in" placeholder="Search memories, paste an id, or type #tag…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="hs-pop" aria-autocomplete="list">
+      <span class="kbd-hint"><kbd>/</kbd></span>
+      <div class="pop" id="hs-pop" role="listbox" aria-label="Header search suggestions"></div>
+    </div>
+    <button class="aa" title="Display">Aa</button>
+  </header>
+
+  <div class="facets" id="facets"></div>
+
+  <div class="main" id="main">
+    <section>
+      <div class="note" id="vnote"></div>
+      <div class="res-h" id="res-h"></div>
+      <div id="rows"></div>
+    </section>
+    <aside class="panel" id="panel" hidden></aside>
+  </div>
+</div>
+
+<div id="tip"></div>
+<div class="toast" id="toast"></div>
+<div id="anno-tip"></div>
+
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui,sans-serif;font-size:12px;background:rgba(0,0,0,0.78);color:#fff;padding:8px 10px;border-radius:8px;opacity:0.45;transition:opacity 0.15s ease;display:flex;gap:10px;align-items:center;flex-wrap:wrap;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.45'">
+  <label style="display:flex;gap:4px;align-items:center;">theme
+    <select id="theme-switcher" style="background:#222;color:#fff;border:1px solid #555;border-radius:4px;font-size:11px;"><option value="default">default</option><option value="light">light</option></select>
+  </label>
+  <span style="display:flex;gap:2px;" id="vp-btns">
+    <button data-vp="375" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">375</button>
+    <button data-vp="768" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">768</button>
+    <button data-vp="1280" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">1280</button>
+    <button data-vp="full" style="color:#fff;background:#6a5acd;border:1px solid #888;border-radius:4px;padding:1px 6px;font-size:11px;">full</button>
+  </span>
+  <label style="display:flex;gap:4px;align-items:center;cursor:pointer;"><input type="checkbox" id="anno-toggle"> annotate</label>
+  <span style="display:flex;gap:2px;">text
+    <button id="ts-dn" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:0 6px;">−</button><span id="ts-v">15</span><button id="ts-up" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:0 6px;">+</button>
+  </span>
+</div>
+
+<script>
+/* ===================================================================
+   Fake data. Shapes mirror proto ListTagsResponse { tags:[{tag,count}], more }.
+   ListTags carries NO total — copy may say "more exist", never "of 1,340".
+   One fetch per scope key at limit=1000 (D-18) feeds header, picker and bars.
+   =================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const REAL = ['engram','decision','gotcha','convention','user-said','console','ui','milestone-2026-09-25.01','qdrant','gsd','phase-04','phase-03','phase-05','related-memories','recall-gate','list-tags','supersede-memory','archive','search','keyboard','svelte-5','bits-ui','connect','proto','wire-contract','mcp-parity','testing','reusable-technique','cedar','authz','owner','shared','scheduled','expired','jev','rerank','discovery','citations','rules','migrate','schema-version','reindex','embedder','oidc','csrf','resume-envelope','tanstack-query','virtual-list','hover-card','detail-pane','command-menu','header-search','tag-reuse','rarity-weighted-tags','cross-spine','short-id','idempotency-key','validate-only','chromedp','vitest-browser','wcag-2.2-aa','dark-mode','text-size','container-queries','css-grid','octopus-review','release-please','calver','helm','goreleaser','koanf','cobra','buf','facet','payload-index'];
+function buildTags(scope) {
+  const out = [];
+  const scale = scope ? 0.58 : 1;
+  REAL.forEach((t, i) => { if (scope && i % 7 === 5) return; out.push({ tag: t, count: Math.max(1, Math.round(420 * scale / Math.pow(i + 1, 0.92))) }); });
+  // long tail: issue / commit / plan tags, count 1–3
+  for (let i = 0; out.length < 1000; i++) {
+    const kind = i % 4;
+    const name = kind === 0 ? `gh-${400 + i}` : kind === 1 ? `commit-${(0x1a2b3c + i * 7919).toString(16).slice(0, 8)}` : kind === 2 ? `plan-0${1 + (i % 9)}-${String(1 + (i % 12)).padStart(2, '0')}-${i}` : `related-${(i * 2654435761 >>> 0).toString(32).slice(0, 10)}`;
+    out.push({ tag: name, count: 1 + (i % 3 === 0 ? 2 : i % 5 === 0 ? 1 : 0) });
+  }
+  out.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  return out;
+}
+const COMPLETE_N = 38;
+
+const MEMS = [
+  ['q7kf2m9x0c', 'decision', 'Related view is a route /related/<id>; lanes body, rail Graph | Tags', ['engram','decision','related-memories','console','phase-05']],
+  ['h2vd8r1pk4', 'gotcha', 'Qdrant Facet has no prefix match on a keyword index — filter tags on the client', ['engram','gotcha','qdrant','list-tags','facet']],
+  ['m0x3tq7az9', 'convention', 'Tag counts cover recall-visible records only; a tag showing N yields N results', ['engram','convention','list-tags','recall-gate']],
+  ['p4nz6c2yw1', 'decision', 'ListTags empty scope = all readable scopes, reusing the cross-spine read filter', ['engram','decision','list-tags','cross-spine','phase-03']],
+  ['c8rw1e5jm3', 'gotcha', 'bits-ui Command: shouldFilter={false} or a forceMount group silently empties', ['engram','gotcha','bits-ui','svelte-5','console','reusable-technique']],
+  ['t5yb9k0vx2', 'decision', 'Tag-edge weight is ln(n/df): rare tags make strong edges', ['engram','decision','related-memories','rarity-weighted-tags']],
+  ['a1gq4w8nd6', 'convention', 'Before store_memory, check list_tags and reuse an existing tag', ['engram','convention','tag-reuse','list-tags','mcp-parity']],
+  ['w9ke3p2rz7', 'preference', 'Lane symmetry: a field useful on one lane goes on both', ['engram','preference','mcp-parity','connect','user-said']],
+  ['j6mh0s4tc8', 'gotcha', 'ResultRow container queries must swap --cols, not hide cells', ['engram','gotcha','css-grid','container-queries','console','ui']],
+  ['e3fx7b1ql5', 'decision', 'Supersede preview comes from validate_only so it cannot disagree with commit', ['engram','decision','supersede-memory','validate-only','phase-04']],
+  ['r2cu5n9ho0', 'convention', 'Every rejection renders field=<f> hint=<code>: <text>', ['engram','convention','console','wire-contract']],
+  ['y8dt6g3ma4', 'decision', 'Archive + restore always confirm; undo in result body and a sonner toast', ['engram','decision','archive','phase-04','console']],
+  ['k4ws2j7fe9', 'gotcha', 'Octopus Review skips >350k changed chars; .octopusignore read from PR base', ['engram','gotcha','octopus-review','reusable-technique']],
+  ['n7pa1v5lb3', 'decision', 'Recall gate hidden count ships on all lanes, output-only', ['engram','decision','recall-gate','mcp-parity','phase-03']],
+  ['s0qe8y2ux6', 'convention', 'Milestone labels are CalVer; releases stay SemVer via release-please', ['engram','convention','calver','release-please','gsd']],
+  ['b5ln3r6wi1', 'gotcha', 'Pre-isolation records need migrate-remap-owner before any read sees them', ['engram','gotcha','owner','migrate','authz']],
+];
+const CAT = c => `var(--cat-${c})`;
+
+const S = {
+  v: 'a', state: 'more', scope: '', chips: [], showAll: false,
+  panelOpen: true, popOpen: null, hsIdx: 0, cbIdx: 0, barIdx: 0, barFilter: '', cbQuery: '',
+};
+function tagData() {
+  if (S.state === 'loading') return null;
+  if (S.state === 'empty') return { tags: [], more: false };
+  const all = buildTags(S.scope);
+  if (S.state === 'complete') return { tags: all.slice(0, COMPLETE_N), more: false };
+  return { tags: all, more: true };
+}
+const scopeLabel = () => S.scope ? `scope:${S.scope}` : 'all readable scopes';
+const hasChip = t => S.chips.includes(t);
+
+/* matching: substring, prefix-first, then count (D-18) */
+function match(q, data, n = 8) {
+  const needle = q.toLowerCase();
+  const hits = data.tags.filter(t => t.tag.includes(needle));
+  hits.sort((a, b) => (b.tag.startsWith(needle) - a.tag.startsWith(needle)) || b.count - a.count || a.tag.localeCompare(b.tag));
+  return { shown: hits.slice(0, n), total: hits.length };
+}
+const hl = (tag, q) => { if (!q) return esc(tag); const i = tag.indexOf(q.toLowerCase()); return i < 0 ? esc(tag) : esc(tag.slice(0, i)) + '<b>' + esc(tag.slice(i, i + q.length)) + '</b>' + esc(tag.slice(i + q.length)); };
+function unknownWhy(data) { return data.more ? 'not among the 1,000 loaded tags' : '0 recall-visible records'; }
+
+function optRows(q, data, idx, kind) {
+  const { shown, total } = match(q, data);
+  const max = Math.max(1, ...data.tags.slice(0, 1).map(t => t.count));
+  let html = shown.map((t, i) => `<div class="opt ${i === idx ? 'active' : ''} ${hasChip(t.tag) ? 'in-filter' : ''}" role="option" id="${kind}-o${i}" aria-selected="${i === idx}" data-tag="${esc(t.tag)}" data-count="${t.count}">
+      <span class="nm">#${hl(t.tag, q)}</span><span class="mini" style="width:${Math.max(2, 100 * t.count / max).toFixed(1)}%"></span><span class="ct">${t.count}</span></div>`).join('');
+  const exact = data.tags.some(t => t.tag === q.toLowerCase());
+  if (q && !exact) {
+    const i = shown.length;
+    html += `<div class="opt unknown ${i === idx ? 'active' : ''}" role="option" id="${kind}-o${i}" data-tag="${esc(q.toLowerCase())}" data-unknown="1"><span class="nm">Add #${esc(q.toLowerCase())}</span><span class="why">${unknownWhy(data)}</span></div>`;
+  }
+  return { html, count: shown.length + (q && !exact ? 1 : 0), total };
+}
+function honestFoot(data, q, total) {
+  const cnt = q ? `${total} match${total === 1 ? '' : 'es'}${total > 8 ? ' · top 8 shown' : ''}` : '';
+  const scope = `<span class="mono">${esc(scopeLabel())}</span>`;
+  if (data.more) return `<span>${cnt}</span><span class="warn">matching among the 1,000 most-used tags — more exist</span><span class="r">${scope}</span>`;
+  return `<span>${cnt}</span><span>all ${data.tags.length} tags loaded</span><span class="r">${scope}</span>`;
+}
+function loadingBlock() {
+  return `<div class="grp-h">ListTags(scope=${S.scope ? '"' + esc(S.scope) + '"' : '""'}, limit=1000) in flight▍</div><div class="skel" style="width:70%"></div><div class="skel" style="width:52%"></div><div class="skel" style="width:61%"></div>`;
+}
+function emptyBlock() {
+  return `<div class="empty">No tags on recall-visible records in <span class="mono">${esc(scopeLabel())}</span>.<br>Tags on archived, superseded, expired or not-yet-active records are not counted. You can still add a <span class="mono">#tag</span> filter by typing it.</div>`;
+}
+
+/* ---------- tag bars component (shared: popover A, picker B, panel C) ---------- */
+function barsHTML(opts) {
+  const data = tagData();
+  if (!data) return loadingBlock();
+  if (!data.tags.length) return emptyBlock();
+  const q = (opts.filter || '').toLowerCase();
+  let list = q ? match(q, data, 1000).shown : data.tags;
+  const limit = S.showAll || q ? list.length : 30;
+  const shown = list.slice(0, limit);
+  const max = data.tags[0].count;
+  const head = `<div class="bars-h"><span class="t">Tags</span><span class="s">${esc(scopeLabel())} · by count · linear from 0</span></div>`;
+  const rows = shown.length ? shown.map((t, i) => `<div class="bar-row ${i === opts.idx ? 'active' : ''} ${hasChip(t.tag) ? 'in-filter' : ''}" role="option" id="${opts.id}-b${i}" aria-selected="${hasChip(t.tag)}" data-tag="${esc(t.tag)}" data-count="${t.count}">
+      <span class="nm">${hl(t.tag, q)}</span><span><div class="fill" style="width:${Math.max(0.4, 100 * t.count / max).toFixed(2)}%"></div></span><span class="ct">${t.count}</span></div>`).join('')
+    : `<div class="empty">Nothing in the loaded ${data.more ? '1,000 most-used tags' : data.tags.length + ' tags'} contains <span class="mono">${esc(q)}</span>.${data.more ? ' It may exist beyond them.' : ''}</div>`;
+  let foot;
+  if (q) foot = `<span>${list.length} match${list.length === 1 ? '' : 'es'} in the loaded set</span>${data.more ? '<span class="warn">loaded = the 1,000 most-used</span>' : ''}`;
+  else if (!S.showAll && data.tags.length > 30) foot = `<span>showing the 30 most-used tags</span><button class="link" data-act="show-all">show all ${data.more ? '1,000 loaded' : data.tags.length} ▸</button>${data.more ? '<span class="warn">more exist beyond 1,000</span>' : ''}`;
+  else foot = data.more ? `<span class="warn">showing the 1,000 most-used tags — more exist</span>${S.showAll ? '<button class="link" data-act="show-top">top 30 ▴</button>' : ''}` : `<span>all ${data.tags.length} tags</span>${S.showAll && data.tags.length > 30 ? '<button class="link" data-act="show-top">top 30 ▴</button>' : ''}`;
+  return `${opts.noHead ? '' : head}<div class="bars" id="${opts.id}" role="listbox" tabindex="0" aria-label="Tags by count" aria-activedescendant="${opts.id}-b${opts.idx}" style="max-height:${opts.maxH || 'none'}">${rows}</div><div class="bars-f">${foot}</div>`;
+}
+
+/* ---------- facet strip per variant ---------- */
+function renderFacets() {
+  const f = $('#facets');
+  const scopeChip = S.scope ? `<span class="chip"><span class="k">scope:</span>${esc(S.scope.replace('repo:github.com/', ''))}<button class="x" data-act="rm-scope" aria-label="Remove scope filter">×</button></span>` : `<span class="chip"><span class="k">in:</span>all readable<span style="width:4px"></span></span>`;
+  const tagChips = S.chips.map(t => `<span class="chip tag" data-chip="${esc(t)}"><span class="k">#</span>${esc(t)}<button class="x" data-act="rm-tag" data-tag="${esc(t)}" aria-label="Remove tag ${esc(t)}">×</button></span>`).join('');
+  const cat = `<span class="chip"><span class="k">is:</span>any<span style="width:4px"></span></span>`;
+  const plus = `<button class="fbtn" id="plus-tag" aria-haspopup="listbox" aria-expanded="${S.popOpen === 'cb'}"><span class="ic">#</span> + tag</button>`;
+  let right = '';
+  if (S.v === 'a') right = `<span class="spacer"></span><button class="fbtn" id="tags-btn" aria-haspopup="dialog" aria-expanded="${S.popOpen === 'bars'}"><span class="ic">▦</span> Tags</button>`;
+  if (S.v === 'c') right = `<span class="spacer"></span><button class="fbtn" id="panel-btn" aria-pressed="${S.panelOpen}"><span class="ic">▦</span> Tags panel</button>`;
+  f.innerHTML = scopeChip + cat + tagChips + plus + right + popHTML();
+  wirePops();
+}
+function popHTML() {
+  // A/C: compact picker; B: picker whose empty state is the bars
+  let cb = '';
+  if (S.popOpen === 'cb') {
+    const data = tagData();
+    const style = `left:${plusLeft()}px;width:calc(${S.v === 'b' ? 400 : 340}*var(--u));`;
+    const input = `<div class="cb-in"><span class="hash">#</span><input id="cb-in" value="${esc(S.cbQuery)}" placeholder="${S.v === 'b' ? 'filter or add a tag' : 'tag name'}" role="combobox" aria-controls="cb-list" aria-expanded="true" autocomplete="off"><kbd>esc</kbd></div>`;
+    let body;
+    if (!data) body = loadingBlock();
+    else if (S.v === 'b' && !S.cbQuery) body = barsHTML({ id: 'cbbars', idx: S.cbIdx, maxH: 'calc(330*var(--u))', noHead: false });
+    else if (!data.tags.length && !S.cbQuery) body = emptyBlock();
+    else {
+      const r = optRows(S.cbQuery, data, S.cbIdx, 'cb');
+      body = `<div class="opts" id="cb-list" role="listbox" style="max-height:calc(300*var(--u))">${r.html || '<div class="empty">Type a tag name.</div>'}</div><div class="pop-f">${honestFoot(data, S.cbQuery, r.total)}</div>`;
+      if (S.v === 'b') body = body.replace('<div class="opts"', '<div class="grp-h">Matches · prefix first, then count</div><div class="opts"');
+    }
+    cb = `<div class="pop open" id="cb-pop" style="${style}">${input}${body}</div>`;
+  }
+  let bars = '';
+  if (S.popOpen === 'bars') {
+    bars = `<div class="pop open" id="bars-pop" role="dialog" aria-label="Tags" style="right:calc(16*var(--u));width:calc(420*var(--u));">
+      <div class="filter-in" style="margin:calc(10*var(--u)) calc(12*var(--u)) 0"><span class="faint mono">⌕</span><input id="bars-filter" value="${esc(S.barFilter)}" placeholder="filter loaded tags" autocomplete="off"></div>
+      ${barsHTML({ id: 'popbars', idx: S.barIdx, filter: S.barFilter, maxH: 'calc(360*var(--u))' })}</div>`;
+  }
+  return cb + bars;
+}
+function plusLeft() { const b = $('#plus-tag'); if (!b) return 16; const fr = $('#facets').getBoundingClientRect(); return Math.max(8, b.getBoundingClientRect().left - fr.left); }
+
+function renderPanel() {
+  const p = $('#panel'), m = $('#main');
+  const on = S.v === 'c' && S.panelOpen;
+  p.hidden = !on; m.classList.toggle('with-panel', on);
+  if (!on) return;
+  p.innerHTML = `<div class="panel-h"><span class="t">Tags</span><span class="faint mono" style="font-size:var(--text-2xs)">shares the right slot with the detail pane</span><button class="x" data-act="close-panel" aria-label="Close tags panel">×</button></div>
+    <div class="filter-in"><span class="faint mono">⌕</span><input id="panel-filter" value="${esc(S.barFilter)}" placeholder="filter loaded tags" autocomplete="off"></div>
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">${barsHTML({ id: 'panelbars', idx: S.barIdx, filter: S.barFilter, maxH: 'calc(100vh - 44px - 190*var(--u))' })}</div>`;
+  const pf = $('#panel-filter');
+  pf.addEventListener('input', e => { S.barFilter = e.target.value; S.barIdx = 0; const pos = e.target.selectionStart; renderPanel(); const n = $('#panel-filter'); n.focus(); n.setSelectionRange(pos, pos); });
+  pf.addEventListener('keydown', e => barKeys(e, 'panelbars'));
+  wireBars(p);
+}
+
+/* ---------- results ---------- */
+function renderRows() {
+  const rows = MEMS.filter(m => S.chips.every(t => m[3].includes(t)));
+  const chipTxt = S.chips.length ? ' · ' + S.chips.map(t => `<span class="mono">#${esc(t)}</span>`).join(' ') : '';
+  $('#res-h').innerHTML = `<span><b>${rows.length}</b> latest memories</span><span>across ${esc(scopeLabel())}${chipTxt}</span><span class="faint">· unranked (list — no score)</span>`;
+  $('#rows').innerHTML = rows.length ? rows.map(m => `<div class="row"><span class="id"><i class="dot" style="background:${CAT(m[1])}"></i>${m[0]}</span><span class="sum">${esc(m[2])}</span><span class="tags">${m[3].map(t => `<span class="tagc ${hasChip(t) ? 'hit' : ''}" data-act="row-tag" data-tag="${esc(t)}">#${esc(t)}</span>`).join('')}</span></div>`).join('')
+    : `<div class="res-empty">0 records carry ${S.chips.map(t => '<span class="mono">#' + esc(t) + '</span>').join(' and ')}. <button class="link" data-act="clear-tags">clear tag filters</button></div>`;
+}
+const NOTES = {
+  a: '<b>A · two controls.</b> <span class="mono">+ tag</span> is a compact picker (autocomplete, counts, prefix-first, unknown-tag row). <span class="mono">▦ Tags</span> opens the bars popover (top 30, show all, filter box). Both read one cached ListTags(limit=1000) per scope key. Try: type <span class="mono">#qd</span> in the header, click a bar, click a row tag.',
+  b: '<b>B · one control.</b> <span class="mono">+ tag</span> opens with the top-30 bars; typing turns it into ranked matches with counts. The popover stays open for several adds (<kbd>↵</kbd> toggles, <kbd>esc</kbd> closes). No separate Tags button — the strip stays one control lighter.',
+  c: '<b>C · docked panel.</b> The bars live in a right panel that shares the slot with the detail pane (opening a record would replace it). Selected tags stay visible with ● while you read results. <span class="mono">+ tag</span> is the same compact picker as A. Below 760px the panel becomes a bottom sheet.',
+};
+function render() {
+  $$('.variant-tab').forEach(t => t.classList.toggle('active', t.dataset.v === S.v));
+  $('#vnote').innerHTML = NOTES[S.v];
+  renderFacets(); renderPanel(); renderRows(); renderHS();
+}
+
+/* ---------- chips ---------- */
+function toggleTag(tag, how = 'toggle') {
+  if (hasChip(tag) && how !== 'add') S.chips = S.chips.filter(t => t !== tag);
+  else if (!hasChip(tag)) { S.chips = [...S.chips, tag]; toast(`#${tag} added as a filter chip`); }
+  const keep = S.popOpen;
+  render();
+  const c = $(`.chip[data-chip="${CSS.escape(tag)}"]`); if (c) { c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 600); }
+  return keep;
+}
+
+/* ---------- header search (shared across variants) ---------- */
+function hsQuery() {
+  const v = $('#hs-in').value;
+  if (v.startsWith('#')) return { mode: 'tag', q: v.slice(1) };
+  if (v.startsWith('tag:')) return { mode: 'tag', q: v.slice(4) };
+  return { mode: v.trim() ? 'text' : 'none', q: v };
+}
+function renderHS() {
+  const pop = $('#hs-pop'), inp = $('#hs-in');
+  const open = document.activeElement === inp && inp.value.length > 0;
+  pop.classList.toggle('open', open); inp.setAttribute('aria-expanded', open);
+  if (!open) return;
+  const { mode, q } = hsQuery();
+  if (mode === 'text') {
+    pop.innerHTML = `<div class="grp-h">Memories</div><div class="opts"><div class="opt search-row active" id="hs-o0"><span>Search memories for “${esc(q)}”</span><kbd>↵</kbd></div></div><div class="pop-f"><span>Tip: start with <span class="mono">#</span> or <span class="mono">tag:</span> to pick a tag filter</span></div>`;
+    return;
+  }
+  const data = tagData();
+  if (!data) { pop.innerHTML = loadingBlock(); return; }
+  if (!data.tags.length && !q) { pop.innerHTML = `<div class="grp-h">Tags</div>${emptyBlock()}`; return; }
+  const r = optRows(q, data, S.hsIdx, 'hs');
+  S._hsCount = r.count;
+  pop.innerHTML = `<div class="grp-h">Tags<span class="r">counts in ${esc(scopeLabel())}</span></div><div class="opts">${r.html || '<div class="empty">Keep typing a tag name.</div>'}</div><div class="pop-f">${honestFoot(data, q, r.total)}</div>`;
+  inp.setAttribute('aria-activedescendant', `hs-o${S.hsIdx}`);
+}
+$('#hs-in').addEventListener('input', () => { S.hsIdx = 0; renderHS(); });
+$('#hs-in').addEventListener('focus', renderHS);
+$('#hs-in').addEventListener('blur', () => setTimeout(renderHS, 120));
+$('#hs-in').addEventListener('keydown', e => {
+  const { mode } = hsQuery();
+  if (e.key === 'Escape') { e.target.value = ''; renderHS(); e.target.blur(); return; }
+  if (mode !== 'tag') { if (e.key === 'Enter' && mode === 'text') { toast('→ /search?q=' + e.target.value); e.target.value = ''; renderHS(); } return; }
+  const n = S._hsCount || 0;
+  if (e.key === 'ArrowDown') { e.preventDefault(); S.hsIdx = Math.min(n - 1, S.hsIdx + 1); renderHS(); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); S.hsIdx = Math.max(0, S.hsIdx - 1); renderHS(); }
+  if (e.key === 'Enter') { const o = $(`#hs-o${S.hsIdx}`); if (o) { e.target.value = ''; toggleTag(o.dataset.tag, 'add'); $('#hs-in').focus(); } }
+});
+$('#hs-pop').addEventListener('mousedown', e => { const o = e.target.closest('.opt[data-tag]'); if (!o) return; e.preventDefault(); $('#hs-in').value = ''; toggleTag(o.dataset.tag, 'add'); $('#hs-in').focus(); });
+$('#hs-pop').addEventListener('mousemove', tipMove);
+$('#hs-pop').addEventListener('mouseleave', tipHide);
+
+/* ---------- popovers ---------- */
+function wirePops() {
+  const plus = $('#plus-tag');
+  plus.addEventListener('click', () => { S.popOpen = S.popOpen === 'cb' ? null : 'cb'; S.cbQuery = ''; S.cbIdx = 0; renderFacets(); focusCb(); });
+  const tb = $('#tags-btn'); if (tb) tb.addEventListener('click', () => { S.popOpen = S.popOpen === 'bars' ? null : 'bars'; S.barIdx = 0; renderFacets(); const bl = $('#popbars'); if (bl) bl.focus(); });
+  const pb = $('#panel-btn'); if (pb) pb.addEventListener('click', () => { S.panelOpen = !S.panelOpen; render(); });
+  const cbIn = $('#cb-in');
+  if (cbIn) {
+    cbIn.addEventListener('input', e => { S.cbQuery = e.target.value.replace(/^#/, ''); S.cbIdx = 0; renderFacets(); focusCb(); });
+    cbIn.addEventListener('keydown', e => {
+      const list = $$('#cb-pop [role="option"]');
+      if (e.key === 'Escape') { S.popOpen = null; renderFacets(); plusFocus(); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); S.cbIdx = Math.min(list.length - 1, S.cbIdx + 1); renderFacets(); focusCb(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); S.cbIdx = Math.max(0, S.cbIdx - 1); renderFacets(); focusCb(); }
+      if (e.key === 'Enter') { e.preventDefault(); const o = list[S.cbIdx]; if (o) pickFromCb(o.dataset.tag); }
+    });
+  }
+  const cbp = $('#cb-pop');
+  if (cbp) { cbp.addEventListener('mousedown', e => { const o = e.target.closest('[data-tag]'); if (o) { e.preventDefault(); pickFromCb(o.dataset.tag); } const a = e.target.closest('[data-act]'); if (a) { e.preventDefault(); act(a); focusCb(); } }); cbp.addEventListener('mousemove', tipMove); cbp.addEventListener('mouseleave', tipHide); }
+  const bp = $('#bars-pop');
+  if (bp) {
+    wireBars(bp);
+    const bf = $('#bars-filter');
+    bf.addEventListener('input', e => { S.barFilter = e.target.value; S.barIdx = 0; const pos = e.target.selectionStart; renderFacets(); const n = $('#bars-filter'); n.focus(); n.setSelectionRange(pos, pos); });
+    bf.addEventListener('keydown', e => barKeys(e, 'popbars'));
+  }
+}
+function focusCb() { const i = $('#cb-in'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+function plusFocus() { const p = $('#plus-tag'); if (p) p.focus(); }
+function pickFromCb(tag) {
+  if (S.v === 'b') { toggleTag(tag); S.popOpen = 'cb'; S.cbQuery = ''; renderFacets(); focusCb(); }
+  else { S.popOpen = null; toggleTag(tag, 'add'); plusFocus(); }
+}
+function wireBars(root) {
+  root.addEventListener('click', e => { const r = e.target.closest('.bar-row'); if (r) { toggleTag(r.dataset.tag); refocusBars(); } const a = e.target.closest('[data-act]'); if (a && root.contains(a)) act(a); });
+  root.addEventListener('mousemove', tipMove); root.addEventListener('mouseleave', tipHide);
+  $$('.bars', root).forEach(b => b.addEventListener('keydown', e => barKeys(e, b.id)));
+}
+function barKeys(e, id) {
+  const rows = $$(`#${id} .bar-row`);
+  if (!rows.length) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); S.barIdx = Math.min(rows.length - 1, S.barIdx + 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); S.barIdx = Math.max(0, S.barIdx - 1); }
+  else if (e.key === 'Home') { e.preventDefault(); S.barIdx = 0; }
+  else if (e.key === 'End') { e.preventDefault(); S.barIdx = rows.length - 1; }
+  else if (e.key === 'Enter' || (e.key === ' ' && e.target.tagName !== 'INPUT')) { e.preventDefault(); toggleTag(rows[S.barIdx].dataset.tag); refocus(e.target); return; }
+  else if (e.key === 'Escape') { S.popOpen = null; renderFacets(); return; }
+  else return;
+  rows.forEach((r, i) => r.classList.toggle('active', i === S.barIdx));
+  $(`#${id}`).setAttribute('aria-activedescendant', `${id}-b${S.barIdx}`);
+  rows[S.barIdx].scrollIntoView({ block: 'nearest' });
+}
+function refocus(el) { const id = el.id; const n = id && $('#' + id); if (n) n.focus(); }
+function refocusBars() { const b = $('#popbars') || $('#panelbars'); if (b && S.v !== 'b') b.focus({ preventScroll: true }); }
+
+function act(a) {
+  switch (a.dataset.act) {
+    case 'rm-tag': toggleTag(a.dataset.tag); break;
+    case 'rm-scope': S.scope = ''; syncSeg(); render(); break;
+    case 'row-tag': toggleTag(a.dataset.tag, 'add'); break;
+    case 'clear-tags': S.chips = []; render(); break;
+    case 'show-all': S.showAll = true; rerenderOpen(); break;
+    case 'show-top': S.showAll = false; rerenderOpen(); break;
+    case 'close-panel': S.panelOpen = false; render(); break;
+  }
+}
+function rerenderOpen() { renderFacets(); renderPanel(); if (S.popOpen === 'cb') focusCb(); }
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act]');
+  if (a && !a.closest('.pop') && !a.closest('.panel')) act(a);
+  if (S.popOpen && !e.target.closest('.pop') && !e.target.closest('#plus-tag') && !e.target.closest('#tags-btn') && !e.target.closest('.chip')) { S.popOpen = null; renderFacets(); }
+});
+
+/* tooltip: popularity + rarity kept separate (D-15). n comes from ListScopes counts — flagged in README. */
+const N_STORE = 1200;
+function tipMove(e) {
+  const r = e.target.closest('[data-count]'); const tip = $('#tip');
+  if (!r) return tipHide();
+  const c = +r.dataset.count;
+  tip.innerHTML = `#${esc(r.dataset.tag)}<br>count ${c} · rarity ln(n/df) ${Math.log(N_STORE / c).toFixed(2)}<br><span style="opacity:.6">n = ${N_STORE} recall-visible records (ListScopes)</span>`;
+  tip.classList.add('show'); tip.style.left = Math.min(innerWidth - 330, e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 16) + 'px';
+}
+function tipHide() { $('#tip').classList.remove('show'); }
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1600); }
+
+/* ---------- chrome ---------- */
+$$('.variant-tab').forEach(b => b.addEventListener('click', () => { S.v = b.dataset.v; S.popOpen = null; S.showAll = false; S.barFilter = ''; render(); }));
+function syncSeg() { $$('#scope-seg button').forEach(b => b.classList.toggle('on', b.dataset.sc === S.scope)); $$('#state-seg button').forEach(b => b.classList.toggle('on', b.dataset.s === S.state)); }
+$$('#state-seg button').forEach(b => b.addEventListener('click', () => { S.state = b.dataset.s; S.showAll = false; syncSeg(); const o = S.popOpen; render(); S.popOpen = o; renderFacets(); if (o === 'cb') focusCb(); }));
+$$('#scope-seg button').forEach(b => b.addEventListener('click', () => { S.scope = b.dataset.sc; syncSeg(); render(); }));
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); $('#hs-in').focus(); }
+  if (e.key === 'Escape' && S.popOpen) { S.popOpen = null; renderFacets(); }
+});
+$('#theme-switcher').addEventListener('change', e => { document.querySelector('link[href*=themes]').href = '../themes/' + e.target.value + '.css'; });
+$$('#vp-btns button').forEach(b => b.addEventListener('click', () => {
+  const f = $('#frame'); const v = b.dataset.vp;
+  f.style.maxWidth = v === 'full' ? '100%' : v + 'px'; f.classList.toggle('constrained', v !== 'full');
+  $$('#vp-btns button').forEach(x => x.style.background = x === b ? '#6a5acd' : '#333');
+}));
+const tsSync = () => { $('#ts-v').textContent = EngramDisplay.get(); };
+$('#ts-up').addEventListener('click', () => { EngramDisplay.step(1); tsSync(); });
+$('#ts-dn').addEventListener('click', () => { EngramDisplay.step(-1); tsSync(); });
+window.addEventListener('engram:textsize', tsSync); tsSync();
+let anno = false;
+$('#anno-toggle').addEventListener('change', e => { anno = e.target.checked; if (!anno) $('#anno-tip').style.display = 'none'; });
+document.addEventListener('mousemove', e => {
+  if (!anno) return; const el = e.target; const at = $('#anno-tip');
+  if (!el || el.closest('#sketch-tools')) { at.style.display = 'none'; return; }
+  const cs = getComputedStyle(el);
+  at.textContent = `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : ''} · ${cs.fontSize} · pad ${cs.padding} · ${cs.color}`;
+  at.style.display = 'block'; at.style.left = (e.clientX + 12) + 'px'; at.style.top = (e.clientY + 12) + 'px';
+});
+
+render();
+</script>
+</body>
+</html>

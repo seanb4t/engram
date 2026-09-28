@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { ConnectError, Code } from '@connectrpc/connect';
   import { toast } from 'svelte-sonner';
   import type { Memory } from '$lib/gen/engram_pb';
   import { engram } from '$lib/client';
   import { describeError } from '$lib/errors';
-  import { redirectToLogin, type ResumeEnvelope } from '$lib/resume';
+  import { redirectToLogin, type FormResumeEnvelope } from '$lib/resume';
   import { useDeleteMemory, useSetMemoryVisibility, normalizeVisibility } from '$lib/mutations/memory';
   import { useDeleteDiscovery, useSetDiscoveryVisibility } from '$lib/mutations/discovery';
   import { Button } from '$lib/components/ui/button';
@@ -44,7 +45,7 @@
   let sheetMode = $state<'create' | 'edit'>('create');
   let sheetOpen = $state(false);
   let editMemory = $state<Memory | undefined>(undefined);
-  let createScope = $state(scope);
+  let createScope = $state(untrack(() => scope));
   let sheetInstanceKey = $state(0);
   const sheetKey = $derived(`${sheetMode}-${editMemory?.id ?? 'none'}-${sheetInstanceKey}`);
 
@@ -126,12 +127,38 @@
     shareTarget = { id: memory.id, kind: targetKind };
   }
 
+  // D-15 (Phase 2): the reverse of Share for the detail pane and the `s`
+  // row key -- private is a reduction of exposure, so unlike requestShare
+  // there is no confirmation banner, just a direct mutation. No-op when the
+  // record is already private (double no-op layer, same shape as
+  // requestShare's already-shared no-op). MemoryFormSheet's read-only shared
+  // control (D-07, one-way share) is intentionally UNCHANGED by this --
+  // that surface still never lets an edit-mode form unshare a record; this
+  // is a separate, narrower reversal scoped to the detail pane only.
+  export function requestMakePrivate(memory: Memory, targetKind: 'memory' | 'discovery'): void {
+    if (normalizeVisibility(memory.visibility) === 'private') return;
+    const mutation = targetKind === 'memory' ? setMemoryVisibilityMutation : setDiscoveryVisibilityMutation;
+    mutation.mutate(
+      { id: memory.id, visibility: 'private' },
+      {
+        onError: (err: unknown) => {
+          const ce = err instanceof ConnectError ? err : ConnectError.from(err);
+          if (ce.code === Code.Unauthenticated || ce.code === Code.PermissionDenied) {
+            toast.error('Sign in again to change visibility', {
+              action: { label: 'Sign in', onClick: redirectToLogin }
+            });
+          }
+        }
+      }
+    );
+  }
+
   // Re-auth resume consumption (Codex round-3 HIGH): reopens the correct
   // sheet and passes the restored values in as PROPS -- WriteSurfaces never
   // peeks/deletes the envelope itself, the route is the sole owner (Task
   // 2). Guarded on env.kind matching this host's kind as defense-in-depth
   // (the route already checks this before calling).
-  export async function reopenFromResume(env: ResumeEnvelope): Promise<void> {
+  export async function reopenFromResume(env: FormResumeEnvelope): Promise<void> {
     if (env.kind !== kind) return;
     if (env.mode === 'edit' && env.recordId) {
       await openEdit(env.recordId);

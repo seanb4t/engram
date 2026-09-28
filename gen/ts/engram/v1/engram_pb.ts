@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file engram/v1/engram.proto.
  */
 export const file_engram_v1_engram: GenFile = /*@__PURE__*/
-  fileDesc("ChZlbmdyYW0vdjEvZW5ncmFtLnByb3RvEgllbmdyYW0udjEi5AYKBk1lbW9yeRIKCgJpZBgBIAEoCRIPCgdjb250ZW50GAIgASgJEg0KBXNjb3BlGAMgASgJEgwKBHJlcG8YBCABKAkSEQoJd29ya3NwYWNlGAUgASgJEhAKCHdvcmt0cmVlGAYgASgJEhAKCGJhc2VfZGlyGAcgASgJEg4KBnNvdXJjZRgIIAEoCRIQCghjYXRlZ29yeRgJIAEoCRIMCgR0YWdzGAogAygJEg0KBWFjdG9yGAsgASgJEg0KBW93bmVyGAwgASgJEhIKCnZpc2liaWxpdHkYDSABKAkSLgoKY3JlYXRlZF9hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHc3VtbWFyeRgPIAEoCRIWCg5zdW1tYXJ5X3NvdXJjZRgQIAEoCRINCgVzY29yZRgRIAEoAhIQCghzaG9ydF9pZBgSIAEoCRIUCgxhY2Nlc3NfY291bnQYEyABKAQSNAoQbGFzdF9hY2Nlc3NlZF9hdBgUIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoEa2luZBgVIAEoCRImCgljaXRhdGlvbnMYFiADKAsyEy5lbmdyYW0udjEuQ2l0YXRpb24SGgoNc3VwZXJzZWRlZF9ieRgXIAEoCUgAiAEBEhIKCnN1cGVyc2VkZXMYGCADKAkSLgoKbm90X2JlZm9yZRgZIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLQoJbm90X2FmdGVyGBogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIvCgthcmNoaXZlZF9hdBgbIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASGwoOc2NoZW1hX3ZlcnNpb24YHCABKA1IAYgBARIaCg1zdW1tYXJ5X21vZGVsGB0gASgJSAKIAQESNQoRc3VtbWFyeV9lZ3Jlc3NfYXQYHiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhYKCXJlbGV2YW5jZRgfIAEoAUgDiAEBQhAKDl9zdXBlcnNlZGVkX2J5QhEKD19zY2hlbWFfdmVyc2lvbkIQCg5fc3VtbWFyeV9tb2RlbEIMCgpfcmVsZXZhbmNlIioKClNjb3BlQ291bnQSDQoFc2NvcGUYASABKAkSDQoFY291bnQYAiABKAQiEwoRTGlzdFNjb3Blc1JlcXVlc3QiUAoSTGlzdFNjb3Blc1Jlc3BvbnNlEiUKBnNjb3BlcxgBIAMoCzIVLmVuZ3JhbS52MS5TY29wZUNvdW50EhMKC2FwcHJveGltYXRlGAIgASgIIsUCChNMaXN0TWVtb3JpZXNSZXF1ZXN0Eg0KBXNjb3BlGAEgASgJEg0KBWxpbWl0GAIgASgEEg4KBm9mZnNldBgDIAEoBBISCgpjYXRlZ29yaWVzGAQgAygJEhIKCnZpc2liaWxpdHkYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRmdWxsGAcgASgIEhUKDWNyZWF0ZWRfYWZ0ZXIYCCABKAkSFgoOY3JlYXRlZF9iZWZvcmUYCSABKAkSEgoKcGFnZV90b2tlbhgKIAEoCRITCgtjdXJzb3JfbW9kZRgLIAEoCBITCgtjcm9zc19zcGluZRgMIAEoCBIYChBpbmNsdWRlX2FyY2hpdmVkGA0gASgIEhoKEmluY2x1ZGVfc3VwZXJzZWRlZBgOIAEoCBIZChFpbmNsdWRlX3NjaGVkdWxlZBgPIAEoCCLHAQoUTGlzdE1lbW9yaWVzUmVzcG9uc2USIwoIbWVtb3JpZXMYASADKAsyES5lbmdyYW0udjEuTWVtb3J5Eg0KBXRvdGFsGAIgASgEEhcKC2FwcHJveGltYXRlGAMgASgIQgIYARIXCg9uZXh0X3BhZ2VfdG9rZW4YBCABKAkSFwoPc2VhcmNoZWRfc2NvcGVzGAUgAygJEhgKEHNjb3Blc190cnVuY2F0ZWQYBiABKAgSFgoOc2NvcGVzX3Vua25vd24YByABKAgihQIKFVNlYXJjaE1lbW9yaWVzUmVxdWVzdBINCgVxdWVyeRgBIAEoCRINCgVzY29wZRgCIAEoCRIJCgFrGAMgASgEEgwKBHRhZ3MYBCADKAkSDAoEZnVsbBgFIAEoCBIVCg1jcmVhdGVkX2FmdGVyGAYgASgJEhYKDmNyZWF0ZWRfYmVmb3JlGAcgASgJEhIKCmNhdGVnb3JpZXMYCCADKAkSEwoLY3Jvc3Nfc3BpbmUYCSABKAgSGAoQaW5jbHVkZV9hcmNoaXZlZBgKIAEoCBIaChJpbmNsdWRlX3N1cGVyc2VkZWQYCyABKAgSGQoRaW5jbHVkZV9zY2hlZHVsZWQYDCABKAgiiAEKFlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USIwoIbWVtb3JpZXMYASADKAsyES5lbmdyYW0udjEuTWVtb3J5EhcKD3NlYXJjaGVkX3Njb3BlcxgCIAMoCRIYChBzY29wZXNfdHJ1bmNhdGVkGAMgASgIEhYKDnNjb3Blc191bmtub3duGAQgASgIIh4KEEdldE1lbW9yeVJlcXVlc3QSCgoCaWQYASABKAkiNgoRR2V0TWVtb3J5UmVzcG9uc2USIQoGbWVtb3J5GAEgASgLMhEuZW5ncmFtLnYxLk1lbW9yeSJDChhTZWFyY2hEaXNjb3Zlcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBCJDChlTZWFyY2hEaXNjb3Zlcmllc1Jlc3BvbnNlEiYKC2Rpc2NvdmVyaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeSI1ChNTY2hlbWFWZXJzaW9uQnVja2V0Eg8KB3ZlcnNpb24YASABKAUSDQoFY291bnQYAiABKAQiFgoUTWlncmF0ZVN0YXR1c1JlcXVlc3Qi1wEKFU1pZ3JhdGVTdGF0dXNSZXNwb25zZRIvCgdidWNrZXRzGAEgAygLMh4uZW5ncmFtLnYxLlNjaGVtYVZlcnNpb25CdWNrZXQSDgoGYWJzZW50GAIgASgEEi4KBmZ1dHVyZRgDIAMoCzIeLmVuZ3JhbS52MS5TY2hlbWFWZXJzaW9uQnVja2V0EhQKDGZ1dHVyZV90b3RhbBgEIAEoBBINCgV0b3RhbBgFIAEoBBIXCg9jdXJyZW50X3ZlcnNpb24YBiABKAUSDwoHcGVuZGluZxgHIAEoBCL9AQoSU3RvcmVNZW1vcnlSZXF1ZXN0EhgKB2NvbnRlbnQYASABKAlCB7pIBHICEAESFgoFc2NvcGUYAiABKAlCB7pIBHICEAESDgoGc291cmNlGAMgASgJEkEKCGNhdGVnb3J5GAQgASgJQi+6SCxyKlIIZGVjaXNpb25SCnByZWZlcmVuY2VSCmNvbnZlbnRpb25SBmdvdGNoYRIMCgR0YWdzGAUgAygJEgwKBHJlcG8YBiABKAkSEQoJd29ya3NwYWNlGAcgASgJEhAKCHdvcmt0cmVlGAggASgJEhAKCGJhc2VfZGlyGAkgASgJEg8KB3N1bW1hcnkYCiABKAkiMwoTU3RvcmVNZW1vcnlSZXNwb25zZRIKCgJpZBgBIAEoCRIQCghzaG9ydF9pZBgCIAEoCSKIAQoIQ2l0YXRpb24SLAoEa2luZBgBIAEoCUIeukgbchlSBGZpbGVSBmNvbW1pdFIDdXJsUgRyZXBvEhQKA3JlZhgCIAEoCUIHukgEcgIQARIPCgdsb2NhdG9yGAMgASgJEgsKA3BpbhgEIAEoCRIaCgdleGNlcnB0GAUgASgJQgm6SAZyBCiAgAEi1gEKFVN0b3JlRGlzY292ZXJ5UmVxdWVzdBIcCgdjb250ZW50GAEgASgJQgu6SAhyBhABKICABBIeCgRraW5kGAIgASgJQhC6SA1yC1IDbWFwUgRmYWN0EjIKCWNpdGF0aW9ucxgDIAMoCzITLmVuZ3JhbS52MS5DaXRhdGlvbkIKukgHkgEECAEQMhIgCgVzY29wZRgEIAEoCUIRukgOcgw6CmRpc2NvdmVyeToSDAoEdGFncxgFIAMoCRIPCgdzdW1tYXJ5GAYgASgJEgoKAmlkGAcgASgJIjYKFlN0b3JlRGlzY292ZXJ5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkiogMKE1VwZGF0ZU1lbW9yeVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAESDwoHY29udGVudBgCIAEoCRIOCgZzaGFyZWQYAyABKAgSDAoEdGFncxgEIAMoCRIPCgdzdW1tYXJ5GAUgASgJEjcKC3VwZGF0ZV9tYXNrGAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLkZpZWxkTWFza0IGukgDyAEBOvwBukj4ARr1AQoSdXBkYXRlX21lbW9yeS5tYXNrElN1cGRhdGVfbWFzayBtdXN0IGNvbnRhaW4gYXQgbGVhc3Qgb25lIHBhdGgsIGVhY2ggb2Y6IGNvbnRlbnQsIHNoYXJlZCwgdGFncywgc3VtbWFyeRqJAWhhcyh0aGlzLnVwZGF0ZV9tYXNrKSAmJiBzaXplKHRoaXMudXBkYXRlX21hc2sucGF0aHMpID4gMCAmJiB0aGlzLnVwZGF0ZV9tYXNrLnBhdGhzLmFsbChwLCBwIGluIFsnY29udGVudCcsICdzaGFyZWQnLCAndGFncycsICdzdW1tYXJ5J10pIjQKFFVwZGF0ZU1lbW9yeVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJIioKE0RlbGV0ZU1lbW9yeVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAEiFgoURGVsZXRlTWVtb3J5UmVzcG9uc2UiYAoUU2V0VmlzaWJpbGl0eVJlcXVlc3QSEwoCaWQYASABKAlCB7pIBHICEAESMwoKdmlzaWJpbGl0eRgCIAEoDjIVLmVuZ3JhbS52MS5WaXNpYmlsaXR5Qgi6SAWCAQIgACI1ChVTZXRWaXNpYmlsaXR5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkigQUKFVNjaGVkdWxlTWVtb3J5UmVxdWVzdBIYCgdjb250ZW50GAEgASgJQge6SARyAhABEhYKBXNjb3BlGAIgASgJQge6SARyAhABEg4KBnNvdXJjZRgDIAEoCRJBCghjYXRlZ29yeRgEIAEoCUIvukgscipSCGRlY2lzaW9uUgpwcmVmZXJlbmNlUgpjb252ZW50aW9uUgZnb3RjaGESDAoEdGFncxgFIAMoCRIMCgRyZXBvGAYgASgJEhEKCXdvcmtzcGFjZRgHIAEoCRIQCgh3b3JrdHJlZRgIIAEoCRIQCghiYXNlX2RpchgJIAEoCRIPCgdzdW1tYXJ5GAogASgJEi4KCm5vdF9iZWZvcmUYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi0KCW5vdF9hZnRlchgMIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXA6nwK6SJsCGpgCChZzY2hlZHVsZV9tZW1vcnkud2luZG93EndzY2hlZHVsZV9tZW1vcnkgcmVxdWlyZXMgbm90X2JlZm9yZSBhbmQvb3Igbm90X2FmdGVyLCBhbmQgbm90X2FmdGVyIG11c3QgYmUgc3RyaWN0bHkgYWZ0ZXIgbm90X2JlZm9yZSB3aGVuIGJvdGggYXJlIHNldBqEAShoYXModGhpcy5ub3RfYmVmb3JlKSB8fCBoYXModGhpcy5ub3RfYWZ0ZXIpKSAmJiAoIWhhcyh0aGlzLm5vdF9iZWZvcmUpIHx8ICFoYXModGhpcy5ub3RfYWZ0ZXIpIHx8IHRoaXMubm90X2FmdGVyID4gdGhpcy5ub3RfYmVmb3JlKSI2ChZTY2hlZHVsZU1lbW9yeVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJKlcKClZpc2liaWxpdHkSGgoWVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhYKElZJU0lCSUxJVFlfUFJJVkFURRABEhUKEVZJU0lCSUxJVFlfU0hBUkVEEAIy8AcKDUVuZ3JhbVNlcnZpY2USSQoKTGlzdFNjb3BlcxIcLmVuZ3JhbS52MS5MaXN0U2NvcGVzUmVxdWVzdBodLmVuZ3JhbS52MS5MaXN0U2NvcGVzUmVzcG9uc2USTwoMTGlzdE1lbW9yaWVzEh4uZW5ncmFtLnYxLkxpc3RNZW1vcmllc1JlcXVlc3QaHy5lbmdyYW0udjEuTGlzdE1lbW9yaWVzUmVzcG9uc2USVQoOU2VhcmNoTWVtb3JpZXMSIC5lbmdyYW0udjEuU2VhcmNoTWVtb3JpZXNSZXF1ZXN0GiEuZW5ncmFtLnYxLlNlYXJjaE1lbW9yaWVzUmVzcG9uc2USRgoJR2V0TWVtb3J5EhsuZW5ncmFtLnYxLkdldE1lbW9yeVJlcXVlc3QaHC5lbmdyYW0udjEuR2V0TWVtb3J5UmVzcG9uc2USXgoRU2VhcmNoRGlzY292ZXJpZXMSIy5lbmdyYW0udjEuU2VhcmNoRGlzY292ZXJpZXNSZXF1ZXN0GiQuZW5ncmFtLnYxLlNlYXJjaERpc2NvdmVyaWVzUmVzcG9uc2USUgoNTWlncmF0ZVN0YXR1cxIfLmVuZ3JhbS52MS5NaWdyYXRlU3RhdHVzUmVxdWVzdBogLmVuZ3JhbS52MS5NaWdyYXRlU3RhdHVzUmVzcG9uc2USTAoLU3RvcmVNZW1vcnkSHS5lbmdyYW0udjEuU3RvcmVNZW1vcnlSZXF1ZXN0Gh4uZW5ncmFtLnYxLlN0b3JlTWVtb3J5UmVzcG9uc2USVQoOU3RvcmVEaXNjb3ZlcnkSIC5lbmdyYW0udjEuU3RvcmVEaXNjb3ZlcnlSZXF1ZXN0GiEuZW5ncmFtLnYxLlN0b3JlRGlzY292ZXJ5UmVzcG9uc2USTwoMVXBkYXRlTWVtb3J5Eh4uZW5ncmFtLnYxLlVwZGF0ZU1lbW9yeVJlcXVlc3QaHy5lbmdyYW0udjEuVXBkYXRlTWVtb3J5UmVzcG9uc2USTwoMRGVsZXRlTWVtb3J5Eh4uZW5ncmFtLnYxLkRlbGV0ZU1lbW9yeVJlcXVlc3QaHy5lbmdyYW0udjEuRGVsZXRlTWVtb3J5UmVzcG9uc2USUgoNU2V0VmlzaWJpbGl0eRIfLmVuZ3JhbS52MS5TZXRWaXNpYmlsaXR5UmVxdWVzdBogLmVuZ3JhbS52MS5TZXRWaXNpYmlsaXR5UmVzcG9uc2USVQoOU2NoZWR1bGVNZW1vcnkSIC5lbmdyYW0udjEuU2NoZWR1bGVNZW1vcnlSZXF1ZXN0GiEuZW5ncmFtLnYxLlNjaGVkdWxlTWVtb3J5UmVzcG9uc2VClgEKDWNvbS5lbmdyYW0udjFCC0VuZ3JhbVByb3RvUAFaM2dpdGh1Yi5jb20vc2VhbmI0dC9lbmdyYW0vZ2VuL2dvL2VuZ3JhbS92MTtlbmdyYW12MaICA0VYWKoCCUVuZ3JhbS5WMcoCCUVuZ3JhbVxWMeICFUVuZ3JhbVxWMVxHUEJNZXRhZGF0YeoCCkVuZ3JhbTo6VjFiBnByb3RvMw", [file_google_protobuf_field_mask, file_google_protobuf_timestamp, file_buf_validate_validate]);
+  fileDesc("ChZlbmdyYW0vdjEvZW5ncmFtLnByb3RvEgllbmdyYW0udjEi5AYKBk1lbW9yeRIKCgJpZBgBIAEoCRIPCgdjb250ZW50GAIgASgJEg0KBXNjb3BlGAMgASgJEgwKBHJlcG8YBCABKAkSEQoJd29ya3NwYWNlGAUgASgJEhAKCHdvcmt0cmVlGAYgASgJEhAKCGJhc2VfZGlyGAcgASgJEg4KBnNvdXJjZRgIIAEoCRIQCghjYXRlZ29yeRgJIAEoCRIMCgR0YWdzGAogAygJEg0KBWFjdG9yGAsgASgJEg0KBW93bmVyGAwgASgJEhIKCnZpc2liaWxpdHkYDSABKAkSLgoKY3JlYXRlZF9hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHc3VtbWFyeRgPIAEoCRIWCg5zdW1tYXJ5X3NvdXJjZRgQIAEoCRINCgVzY29yZRgRIAEoAhIQCghzaG9ydF9pZBgSIAEoCRIUCgxhY2Nlc3NfY291bnQYEyABKAQSNAoQbGFzdF9hY2Nlc3NlZF9hdBgUIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoEa2luZBgVIAEoCRImCgljaXRhdGlvbnMYFiADKAsyEy5lbmdyYW0udjEuQ2l0YXRpb24SGgoNc3VwZXJzZWRlZF9ieRgXIAEoCUgAiAEBEhIKCnN1cGVyc2VkZXMYGCADKAkSLgoKbm90X2JlZm9yZRgZIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLQoJbm90X2FmdGVyGBogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIvCgthcmNoaXZlZF9hdBgbIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASGwoOc2NoZW1hX3ZlcnNpb24YHCABKA1IAYgBARIaCg1zdW1tYXJ5X21vZGVsGB0gASgJSAKIAQESNQoRc3VtbWFyeV9lZ3Jlc3NfYXQYHiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhYKCXJlbGV2YW5jZRgfIAEoAUgDiAEBQhAKDl9zdXBlcnNlZGVkX2J5QhEKD19zY2hlbWFfdmVyc2lvbkIQCg5fc3VtbWFyeV9tb2RlbEIMCgpfcmVsZXZhbmNlIioKClNjb3BlQ291bnQSDQoFc2NvcGUYASABKAkSDQoFY291bnQYAiABKAQiEwoRTGlzdFNjb3Blc1JlcXVlc3QiUAoSTGlzdFNjb3Blc1Jlc3BvbnNlEiUKBnNjb3BlcxgBIAMoCzIVLmVuZ3JhbS52MS5TY29wZUNvdW50EhMKC2FwcHJveGltYXRlGAIgASgIIsUCChNMaXN0TWVtb3JpZXNSZXF1ZXN0Eg0KBXNjb3BlGAEgASgJEg0KBWxpbWl0GAIgASgEEg4KBm9mZnNldBgDIAEoBBISCgpjYXRlZ29yaWVzGAQgAygJEhIKCnZpc2liaWxpdHkYBSABKAkSDAoEdGFncxgGIAMoCRIMCgRmdWxsGAcgASgIEhUKDWNyZWF0ZWRfYWZ0ZXIYCCABKAkSFgoOY3JlYXRlZF9iZWZvcmUYCSABKAkSEgoKcGFnZV90b2tlbhgKIAEoCRITCgtjdXJzb3JfbW9kZRgLIAEoCBITCgtjcm9zc19zcGluZRgMIAEoCBIYChBpbmNsdWRlX2FyY2hpdmVkGA0gASgIEhoKEmluY2x1ZGVfc3VwZXJzZWRlZBgOIAEoCBIZChFpbmNsdWRlX3NjaGVkdWxlZBgPIAEoCCKAAgoUTGlzdE1lbW9yaWVzUmVzcG9uc2USIwoIbWVtb3JpZXMYASADKAsyES5lbmdyYW0udjEuTWVtb3J5Eg0KBXRvdGFsGAIgASgEEhcKC2FwcHJveGltYXRlGAMgASgIQgIYARIXCg9uZXh0X3BhZ2VfdG9rZW4YBCABKAkSFwoPc2VhcmNoZWRfc2NvcGVzGAUgAygJEhgKEHNjb3Blc190cnVuY2F0ZWQYBiABKAgSFgoOc2NvcGVzX3Vua25vd24YByABKAgSNwoScmVjYWxsX2dhdGVfaGlkZGVuGAggASgLMhsuZW5ncmFtLnYxLlJlY2FsbEdhdGVIaWRkZW4iawoQUmVjYWxsR2F0ZUhpZGRlbhINCgV0b3RhbBgBIAEoBBIQCghhcmNoaXZlZBgCIAEoBBISCgpzdXBlcnNlZGVkGAMgASgEEg8KB2V4cGlyZWQYBCABKAQSEQoJc2NoZWR1bGVkGAUgASgEIoUCChVTZWFyY2hNZW1vcmllc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFc2NvcGUYAiABKAkSCQoBaxgDIAEoBBIMCgR0YWdzGAQgAygJEgwKBGZ1bGwYBSABKAgSFQoNY3JlYXRlZF9hZnRlchgGIAEoCRIWCg5jcmVhdGVkX2JlZm9yZRgHIAEoCRISCgpjYXRlZ29yaWVzGAggAygJEhMKC2Nyb3NzX3NwaW5lGAkgASgIEhgKEGluY2x1ZGVfYXJjaGl2ZWQYCiABKAgSGgoSaW5jbHVkZV9zdXBlcnNlZGVkGAsgASgIEhkKEWluY2x1ZGVfc2NoZWR1bGVkGAwgASgIIsEBChZTZWFyY2hNZW1vcmllc1Jlc3BvbnNlEiMKCG1lbW9yaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeRIXCg9zZWFyY2hlZF9zY29wZXMYAiADKAkSGAoQc2NvcGVzX3RydW5jYXRlZBgDIAEoCBIWCg5zY29wZXNfdW5rbm93bhgEIAEoCBI3ChJyZWNhbGxfZ2F0ZV9oaWRkZW4YBSABKAsyGy5lbmdyYW0udjEuUmVjYWxsR2F0ZUhpZGRlbiIeChBHZXRNZW1vcnlSZXF1ZXN0EgoKAmlkGAEgASgJIjYKEUdldE1lbW9yeVJlc3BvbnNlEiEKBm1lbW9yeRgBIAEoCzIRLmVuZ3JhbS52MS5NZW1vcnkiQwoYU2VhcmNoRGlzY292ZXJpZXNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg0KBXNjb3BlGAIgASgJEgkKAWsYAyABKAQiQwoZU2VhcmNoRGlzY292ZXJpZXNSZXNwb25zZRImCgtkaXNjb3ZlcmllcxgBIAMoCzIRLmVuZ3JhbS52MS5NZW1vcnkiNQoTU2NoZW1hVmVyc2lvbkJ1Y2tldBIPCgd2ZXJzaW9uGAEgASgFEg0KBWNvdW50GAIgASgEIhYKFE1pZ3JhdGVTdGF0dXNSZXF1ZXN0ItcBChVNaWdyYXRlU3RhdHVzUmVzcG9uc2USLwoHYnVja2V0cxgBIAMoCzIeLmVuZ3JhbS52MS5TY2hlbWFWZXJzaW9uQnVja2V0Eg4KBmFic2VudBgCIAEoBBIuCgZmdXR1cmUYAyADKAsyHi5lbmdyYW0udjEuU2NoZW1hVmVyc2lvbkJ1Y2tldBIUCgxmdXR1cmVfdG90YWwYBCABKAQSDQoFdG90YWwYBSABKAQSFwoPY3VycmVudF92ZXJzaW9uGAYgASgFEg8KB3BlbmRpbmcYByABKAQi/QEKElN0b3JlTWVtb3J5UmVxdWVzdBIYCgdjb250ZW50GAEgASgJQge6SARyAhABEhYKBXNjb3BlGAIgASgJQge6SARyAhABEg4KBnNvdXJjZRgDIAEoCRJBCghjYXRlZ29yeRgEIAEoCUIvukgscipSCGRlY2lzaW9uUgpwcmVmZXJlbmNlUgpjb252ZW50aW9uUgZnb3RjaGESDAoEdGFncxgFIAMoCRIMCgRyZXBvGAYgASgJEhEKCXdvcmtzcGFjZRgHIAEoCRIQCgh3b3JrdHJlZRgIIAEoCRIQCghiYXNlX2RpchgJIAEoCRIPCgdzdW1tYXJ5GAogASgJIjMKE1N0b3JlTWVtb3J5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkiiAEKCENpdGF0aW9uEiwKBGtpbmQYASABKAlCHrpIG3IZUgRmaWxlUgZjb21taXRSA3VybFIEcmVwbxIUCgNyZWYYAiABKAlCB7pIBHICEAESDwoHbG9jYXRvchgDIAEoCRILCgNwaW4YBCABKAkSGgoHZXhjZXJwdBgFIAEoCUIJukgGcgQogIABItYBChVTdG9yZURpc2NvdmVyeVJlcXVlc3QSHAoHY29udGVudBgBIAEoCUILukgIcgYQASiAgAQSHgoEa2luZBgCIAEoCUIQukgNcgtSA21hcFIEZmFjdBIyCgljaXRhdGlvbnMYAyADKAsyEy5lbmdyYW0udjEuQ2l0YXRpb25CCrpIB5IBBAgBEDISIAoFc2NvcGUYBCABKAlCEbpIDnIMOgpkaXNjb3Zlcnk6EgwKBHRhZ3MYBSADKAkSDwoHc3VtbWFyeRgGIAEoCRIKCgJpZBgHIAEoCSI2ChZTdG9yZURpc2NvdmVyeVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJIqIDChNVcGRhdGVNZW1vcnlSZXF1ZXN0EhMKAmlkGAEgASgJQge6SARyAhABEg8KB2NvbnRlbnQYAiABKAkSDgoGc2hhcmVkGAMgASgIEgwKBHRhZ3MYBCADKAkSDwoHc3VtbWFyeRgFIAEoCRI3Cgt1cGRhdGVfbWFzaxgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5GaWVsZE1hc2tCBrpIA8gBATr8AbpI+AEa9QEKEnVwZGF0ZV9tZW1vcnkubWFzaxJTdXBkYXRlX21hc2sgbXVzdCBjb250YWluIGF0IGxlYXN0IG9uZSBwYXRoLCBlYWNoIG9mOiBjb250ZW50LCBzaGFyZWQsIHRhZ3MsIHN1bW1hcnkaiQFoYXModGhpcy51cGRhdGVfbWFzaykgJiYgc2l6ZSh0aGlzLnVwZGF0ZV9tYXNrLnBhdGhzKSA+IDAgJiYgdGhpcy51cGRhdGVfbWFzay5wYXRocy5hbGwocCwgcCBpbiBbJ2NvbnRlbnQnLCAnc2hhcmVkJywgJ3RhZ3MnLCAnc3VtbWFyeSddKSI0ChRVcGRhdGVNZW1vcnlSZXNwb25zZRIKCgJpZBgBIAEoCRIQCghzaG9ydF9pZBgCIAEoCSIqChNEZWxldGVNZW1vcnlSZXF1ZXN0EhMKAmlkGAEgASgJQge6SARyAhABIhYKFERlbGV0ZU1lbW9yeVJlc3BvbnNlImAKFFNldFZpc2liaWxpdHlSZXF1ZXN0EhMKAmlkGAEgASgJQge6SARyAhABEjMKCnZpc2liaWxpdHkYAiABKA4yFS5lbmdyYW0udjEuVmlzaWJpbGl0eUIIukgFggECIAAiNQoVU2V0VmlzaWJpbGl0eVJlc3BvbnNlEgoKAmlkGAEgASgJEhAKCHNob3J0X2lkGAIgASgJIoEFChVTY2hlZHVsZU1lbW9yeVJlcXVlc3QSGAoHY29udGVudBgBIAEoCUIHukgEcgIQARIWCgVzY29wZRgCIAEoCUIHukgEcgIQARIOCgZzb3VyY2UYAyABKAkSQQoIY2F0ZWdvcnkYBCABKAlCL7pILHIqUghkZWNpc2lvblIKcHJlZmVyZW5jZVIKY29udmVudGlvblIGZ290Y2hhEgwKBHRhZ3MYBSADKAkSDAoEcmVwbxgGIAEoCRIRCgl3b3Jrc3BhY2UYByABKAkSEAoId29ya3RyZWUYCCABKAkSEAoIYmFzZV9kaXIYCSABKAkSDwoHc3VtbWFyeRgKIAEoCRIuCgpub3RfYmVmb3JlGAsgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBItCglub3RfYWZ0ZXIYDCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wOp8CukibAhqYAgoWc2NoZWR1bGVfbWVtb3J5LndpbmRvdxJ3c2NoZWR1bGVfbWVtb3J5IHJlcXVpcmVzIG5vdF9iZWZvcmUgYW5kL29yIG5vdF9hZnRlciwgYW5kIG5vdF9hZnRlciBtdXN0IGJlIHN0cmljdGx5IGFmdGVyIG5vdF9iZWZvcmUgd2hlbiBib3RoIGFyZSBzZXQahAEoaGFzKHRoaXMubm90X2JlZm9yZSkgfHwgaGFzKHRoaXMubm90X2FmdGVyKSkgJiYgKCFoYXModGhpcy5ub3RfYmVmb3JlKSB8fCAhaGFzKHRoaXMubm90X2FmdGVyKSB8fCB0aGlzLm5vdF9hZnRlciA+IHRoaXMubm90X2JlZm9yZSkiNgoWU2NoZWR1bGVNZW1vcnlSZXNwb25zZRIKCgJpZBgBIAEoCRIQCghzaG9ydF9pZBgCIAEoCSJaCg1BcmNoaXZlUmVzdWx0EhEKCXJlcXVlc3RlZBgBIAEoCRIKCgJpZBgCIAEoCRIqCgdvdXRjb21lGAMgASgOMhkuZW5ncmFtLnYxLkFyY2hpdmVPdXRjb21lIiMKFEFyY2hpdmVNZW1vcnlSZXF1ZXN0EgsKA2lkcxgBIAMoCSJCChVBcmNoaXZlTWVtb3J5UmVzcG9uc2USKQoHcmVzdWx0cxgBIAMoCzIYLmVuZ3JhbS52MS5BcmNoaXZlUmVzdWx0IiMKFFJlc3RvcmVNZW1vcnlSZXF1ZXN0EgsKA2lkcxgBIAMoCSJCChVSZXN0b3JlTWVtb3J5UmVzcG9uc2USKQoHcmVzdWx0cxgBIAMoCzIYLmVuZ3JhbS52MS5BcmNoaXZlUmVzdWx0IqoCChZTdXBlcnNlZGVNZW1vcnlSZXF1ZXN0Eg8KB2NvbnRlbnQYASABKAkSDQoFc2NvcGUYAiABKAkSDgoGc291cmNlGAMgASgJEhAKCGNhdGVnb3J5GAQgASgJEgwKBHRhZ3MYBSADKAkSDAoEcmVwbxgGIAEoCRIRCgl3b3Jrc3BhY2UYByABKAkSEAoId29ya3RyZWUYCCABKAkSEAoIYmFzZV9kaXIYCSABKAkSDwoHc3VtbWFyeRgKIAEoCRImCgljaXRhdGlvbnMYCyADKAsyEy5lbmdyYW0udjEuQ2l0YXRpb24SEgoKc3VwZXJzZWRlcxgMIAMoCRIXCg9pZGVtcG90ZW5jeV9rZXkYDSABKAkSFQoNdmFsaWRhdGVfb25seRgOIAEoCCKCAQoXU3VwZXJzZWRlTWVtb3J5UmVzcG9uc2USCgoCaWQYASABKAkSEAoIc2hvcnRfaWQYAiABKAkSEQoJdmFsaWRhdGVkGAMgASgIEhIKCnN1cGVyc2VkZXMYBCADKAkSIgoHdGFyZ2V0cxgFIAMoCzIRLmVuZ3JhbS52MS5NZW1vcnkimwEKFExpc3RTY2hlZHVsZWRSZXF1ZXN0Eg0KBXNjb3BlGAEgASgJEg0KBXN0YXRlGAIgASgJEg0KBWxpbWl0GAMgASgEEhUKDWNyZWF0ZWRfYWZ0ZXIYBCABKAkSFgoOY3JlYXRlZF9iZWZvcmUYBSABKAkSEwoLY3Jvc3Nfc3BpbmUYBiABKAgSEgoKcGFnZV90b2tlbhgHIAEoCSKgAQoVTGlzdFNjaGVkdWxlZFJlc3BvbnNlEiMKCG1lbW9yaWVzGAEgAygLMhEuZW5ncmFtLnYxLk1lbW9yeRIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkSFwoPc2VhcmNoZWRfc2NvcGVzGAMgAygJEhgKEHNjb3Blc190cnVuY2F0ZWQYBCABKAgSFgoOc2NvcGVzX3Vua25vd24YBSABKAgiPgoQTGlzdFJ1bGVzUmVxdWVzdBIOCgZzY29wZXMYASADKAkSDAoEdGFncxgCIAMoCRIMCgRmdWxsGAMgASgIIpIBChFMaXN0UnVsZXNSZXNwb25zZRIgCgVydWxlcxgBIAMoCzIRLmVuZ3JhbS52MS5NZW1vcnkSEAoIYWR2aXNvcnkYAiABKAkSFwoPc2VhcmNoZWRfc2NvcGVzGAMgAygJEhgKEHNjb3Blc190cnVuY2F0ZWQYBCABKAgSFgoOc2NvcGVzX3Vua25vd24YBSABKAgiKgoLV2VpZ2h0ZWRUYWcSCwoDdGFnGAEgASgJEg4KBndlaWdodBgCIAEoASIoCgtDaXRhdGlvblJlZhIMCgRraW5kGAEgASgJEgsKA3JlZhgCIAEoCSIfCg5WZWN0b3JFdmlkZW5jZRINCgVzY29yZRgBIAEoAiJOCgtUYWdFdmlkZW5jZRIrCgtzaGFyZWRfdGFncxgBIAMoCzIWLmVuZ3JhbS52MS5XZWlnaHRlZFRhZxISCgp0YWdfd2VpZ2h0GAIgASgBIkQKEENpdGF0aW9uRXZpZGVuY2USMAoQc2hhcmVkX2NpdGF0aW9ucxgBIAMoCzIWLmVuZ3JhbS52MS5DaXRhdGlvblJlZiJaChRTdXBlcnNlc3Npb25FdmlkZW5jZRIzCglkaXJlY3Rpb24YASABKA4yIC5lbmdyYW0udjEuU3VwZXJzZXNzaW9uRGlyZWN0aW9uEg0KBWRlcHRoGAIgASgNIvoBCgtSZWxhdGVkRWRnZRIhCgR0eXBlGAEgASgOMhMuZW5ncmFtLnYxLkVkZ2VUeXBlEisKBnZlY3RvchgCIAEoCzIZLmVuZ3JhbS52MS5WZWN0b3JFdmlkZW5jZUgAEiUKA3RhZxgDIAEoCzIWLmVuZ3JhbS52MS5UYWdFdmlkZW5jZUgAEi8KCGNpdGF0aW9uGAQgASgLMhsuZW5ncmFtLnYxLkNpdGF0aW9uRXZpZGVuY2VIABI3CgxzdXBlcnNlc3Npb24YBSABKAsyHy5lbmdyYW0udjEuU3VwZXJzZXNzaW9uRXZpZGVuY2VIAEIKCghldmlkZW5jZSJZCg1SZWxhdGVkTWVtb3J5EiEKBm1lbW9yeRgBIAEoCzIRLmVuZ3JhbS52MS5NZW1vcnkSJQoFZWRnZXMYAiADKAsyFi5lbmdyYW0udjEuUmVsYXRlZEVkZ2UiPQoWUmVsYXRlZE1lbW9yaWVzUmVxdWVzdBIKCgJpZBgBIAEoCRIJCgFrGAIgASgEEgwKBGZ1bGwYAyABKAgiegoXUmVsYXRlZE1lbW9yaWVzUmVzcG9uc2USIQoGYW5jaG9yGAEgASgLMhEuZW5ncmFtLnYxLk1lbW9yeRIpCgdyZWxhdGVkGAIgAygLMhguZW5ncmFtLnYxLlJlbGF0ZWRNZW1vcnkSEQoJdHJ1bmNhdGVkGAMgASgIIiYKCFRhZ0NvdW50EgsKA3RhZxgBIAEoCRINCgVjb3VudBgCIAEoBCIvCg9MaXN0VGFnc1JlcXVlc3QSDQoFc2NvcGUYASABKAkSDQoFbGltaXQYAiABKAQiQwoQTGlzdFRhZ3NSZXNwb25zZRIhCgR0YWdzGAEgAygLMhMuZW5ncmFtLnYxLlRhZ0NvdW50EgwKBG1vcmUYAiABKAgiVAoUVGltZVdpbmRvd1N1Z2dlc3Rpb24SFQoNY3JlYXRlZF9hZnRlchgBIAEoCRIWCg5jcmVhdGVkX2JlZm9yZRgCIAEoCRINCgVsYWJlbBgDIAEoCSKzAQoQRmlsdGVyU3VnZ2VzdGlvbhISCghjYXRlZ29yeRgBIAEoCUgAEjYKC3RpbWVfd2luZG93GAIgASgLMh8uZW5ncmFtLnYxLlRpbWVXaW5kb3dTdWdnZXN0aW9uSAASDwoFc2NvcGUYAyABKAlIABINCgN0YWcYBCABKAlIABIrCgZzb3VyY2UYBSABKA4yGy5lbmdyYW0udjEuU3VnZ2VzdGlvblNvdXJjZUIGCgRraW5kIpwBChZVbmRlcnN0YW5kUXVlcnlSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg0KBXNjb3BlGAIgASgJEhMKC2Nyb3NzX3NwaW5lGAMgASgIEhIKCmNhdGVnb3JpZXMYBCADKAkSDAoEdGFncxgFIAMoCRIVCg1jcmVhdGVkX2FmdGVyGAYgASgJEhYKDmNyZWF0ZWRfYmVmb3JlGAcgASgJIlwKF1VuZGVyc3RhbmRRdWVyeVJlc3BvbnNlEg8KB2VuYWJsZWQYASABKAgSMAoLc3VnZ2VzdGlvbnMYAiADKAsyGy5lbmdyYW0udjEuRmlsdGVyU3VnZ2VzdGlvbipXCgpWaXNpYmlsaXR5EhoKFlZJU0lCSUxJVFlfVU5TUEVDSUZJRUQQABIWChJWSVNJQklMSVRZX1BSSVZBVEUQARIVChFWSVNJQklMSVRZX1NIQVJFRBACKtQBCg5BcmNoaXZlT3V0Y29tZRIfChtBUkNISVZFX09VVENPTUVfVU5TUEVDSUZJRUQQABIcChhBUkNISVZFX09VVENPTUVfQVJDSElWRUQQARIkCiBBUkNISVZFX09VVENPTUVfQUxSRUFEWV9BUkNISVZFRBACEhwKGEFSQ0hJVkVfT1VUQ09NRV9SRVNUT1JFRBADEiAKHEFSQ0hJVkVfT1VUQ09NRV9OT1RfQVJDSElWRUQQBBIdChlBUkNISVZFX09VVENPTUVfTk9UX0ZPVU5EEAUqggEKCEVkZ2VUeXBlEhkKFUVER0VfVFlQRV9VTlNQRUNJRklFRBAAEhoKFkVER0VfVFlQRV9TVVBFUlNFU1NJT04QARIWChJFREdFX1RZUEVfQ0lUQVRJT04QAhIRCg1FREdFX1RZUEVfVEFHEAMSFAoQRURHRV9UWVBFX1ZFQ1RPUhAEKo0BChVTdXBlcnNlc3Npb25EaXJlY3Rpb24SJgoiU1VQRVJTRVNTSU9OX0RJUkVDVElPTl9VTlNQRUNJRklFRBAAEiQKIFNVUEVSU0VTU0lPTl9ESVJFQ1RJT05fU1VDQ0VTU09SEAESJgoiU1VQRVJTRVNTSU9OX0RJUkVDVElPTl9QUkVERUNFU1NPUhACKnMKEFN1Z2dlc3Rpb25Tb3VyY2USIQodU1VHR0VTVElPTl9TT1VSQ0VfVU5TUEVDSUZJRUQQABIdChlTVUdHRVNUSU9OX1NPVVJDRV9ERUNJREVEEAESHQoZU1VHR0VTVElPTl9TT1VSQ0VfTUFUQ0hFRBACMocNCg1FbmdyYW1TZXJ2aWNlEkkKCkxpc3RTY29wZXMSHC5lbmdyYW0udjEuTGlzdFNjb3Blc1JlcXVlc3QaHS5lbmdyYW0udjEuTGlzdFNjb3Blc1Jlc3BvbnNlEk8KDExpc3RNZW1vcmllcxIeLmVuZ3JhbS52MS5MaXN0TWVtb3JpZXNSZXF1ZXN0Gh8uZW5ncmFtLnYxLkxpc3RNZW1vcmllc1Jlc3BvbnNlElUKDlNlYXJjaE1lbW9yaWVzEiAuZW5ncmFtLnYxLlNlYXJjaE1lbW9yaWVzUmVxdWVzdBohLmVuZ3JhbS52MS5TZWFyY2hNZW1vcmllc1Jlc3BvbnNlEkYKCUdldE1lbW9yeRIbLmVuZ3JhbS52MS5HZXRNZW1vcnlSZXF1ZXN0GhwuZW5ncmFtLnYxLkdldE1lbW9yeVJlc3BvbnNlEl4KEVNlYXJjaERpc2NvdmVyaWVzEiMuZW5ncmFtLnYxLlNlYXJjaERpc2NvdmVyaWVzUmVxdWVzdBokLmVuZ3JhbS52MS5TZWFyY2hEaXNjb3Zlcmllc1Jlc3BvbnNlElIKDU1pZ3JhdGVTdGF0dXMSHy5lbmdyYW0udjEuTWlncmF0ZVN0YXR1c1JlcXVlc3QaIC5lbmdyYW0udjEuTWlncmF0ZVN0YXR1c1Jlc3BvbnNlEkwKC1N0b3JlTWVtb3J5Eh0uZW5ncmFtLnYxLlN0b3JlTWVtb3J5UmVxdWVzdBoeLmVuZ3JhbS52MS5TdG9yZU1lbW9yeVJlc3BvbnNlElUKDlN0b3JlRGlzY292ZXJ5EiAuZW5ncmFtLnYxLlN0b3JlRGlzY292ZXJ5UmVxdWVzdBohLmVuZ3JhbS52MS5TdG9yZURpc2NvdmVyeVJlc3BvbnNlEk8KDFVwZGF0ZU1lbW9yeRIeLmVuZ3JhbS52MS5VcGRhdGVNZW1vcnlSZXF1ZXN0Gh8uZW5ncmFtLnYxLlVwZGF0ZU1lbW9yeVJlc3BvbnNlEk8KDERlbGV0ZU1lbW9yeRIeLmVuZ3JhbS52MS5EZWxldGVNZW1vcnlSZXF1ZXN0Gh8uZW5ncmFtLnYxLkRlbGV0ZU1lbW9yeVJlc3BvbnNlElIKDVNldFZpc2liaWxpdHkSHy5lbmdyYW0udjEuU2V0VmlzaWJpbGl0eVJlcXVlc3QaIC5lbmdyYW0udjEuU2V0VmlzaWJpbGl0eVJlc3BvbnNlElUKDlNjaGVkdWxlTWVtb3J5EiAuZW5ncmFtLnYxLlNjaGVkdWxlTWVtb3J5UmVxdWVzdBohLmVuZ3JhbS52MS5TY2hlZHVsZU1lbW9yeVJlc3BvbnNlElIKDUFyY2hpdmVNZW1vcnkSHy5lbmdyYW0udjEuQXJjaGl2ZU1lbW9yeVJlcXVlc3QaIC5lbmdyYW0udjEuQXJjaGl2ZU1lbW9yeVJlc3BvbnNlElIKDVJlc3RvcmVNZW1vcnkSHy5lbmdyYW0udjEuUmVzdG9yZU1lbW9yeVJlcXVlc3QaIC5lbmdyYW0udjEuUmVzdG9yZU1lbW9yeVJlc3BvbnNlElgKD1N1cGVyc2VkZU1lbW9yeRIhLmVuZ3JhbS52MS5TdXBlcnNlZGVNZW1vcnlSZXF1ZXN0GiIuZW5ncmFtLnYxLlN1cGVyc2VkZU1lbW9yeVJlc3BvbnNlElIKDUxpc3RTY2hlZHVsZWQSHy5lbmdyYW0udjEuTGlzdFNjaGVkdWxlZFJlcXVlc3QaIC5lbmdyYW0udjEuTGlzdFNjaGVkdWxlZFJlc3BvbnNlEkYKCUxpc3RSdWxlcxIbLmVuZ3JhbS52MS5MaXN0UnVsZXNSZXF1ZXN0GhwuZW5ncmFtLnYxLkxpc3RSdWxlc1Jlc3BvbnNlElgKD1JlbGF0ZWRNZW1vcmllcxIhLmVuZ3JhbS52MS5SZWxhdGVkTWVtb3JpZXNSZXF1ZXN0GiIuZW5ncmFtLnYxLlJlbGF0ZWRNZW1vcmllc1Jlc3BvbnNlEkMKCExpc3RUYWdzEhouZW5ncmFtLnYxLkxpc3RUYWdzUmVxdWVzdBobLmVuZ3JhbS52MS5MaXN0VGFnc1Jlc3BvbnNlElgKD1VuZGVyc3RhbmRRdWVyeRIhLmVuZ3JhbS52MS5VbmRlcnN0YW5kUXVlcnlSZXF1ZXN0GiIuZW5ncmFtLnYxLlVuZGVyc3RhbmRRdWVyeVJlc3BvbnNlQpYBCg1jb20uZW5ncmFtLnYxQgtFbmdyYW1Qcm90b1ABWjNnaXRodWIuY29tL3NlYW5iNHQvZW5ncmFtL2dlbi9nby9lbmdyYW0vdjE7ZW5ncmFtdjGiAgNFWFiqAglFbmdyYW0uVjHKAglFbmdyYW1cVjHiAhVFbmdyYW1cVjFcR1BCTWV0YWRhdGHqAgpFbmdyYW06OlYxYgZwcm90bzM", [file_google_protobuf_field_mask, file_google_protobuf_timestamp, file_buf_validate_validate]);
 
 /**
  * A single memory record (mirrors internal/store.Memory's readable fields).
@@ -464,6 +464,25 @@ export type ListMemoriesResponse = Message<"engram.v1.ListMemoriesResponse"> & {
    * @generated from field: bool scopes_unknown = 7;
    */
   scopesUnknown: boolean;
+
+  /**
+   * recall_gate_hidden is the per-state count of records the recall gate hid
+   * from this response's page window that would otherwise have appeared
+   * (D-01/D-02, phase 02-recall-first-search plan 02-01). The window is the
+   * SAME page request (limit, offset or page_token, every filter) re-run
+   * with the recall gate lifted, bounded by the page limit. total counts
+   * distinct hidden records; each per-state field counts records carrying
+   * that state — a record with several states counts once in each, so the
+   * per-state fields may sum to more than total. Counts only states this
+   * request itself gated (include_archived/include_superseded/
+   * include_scheduled false). ABSENT when the comparison could not be
+   * computed (the underlying store call failed); PRESENT with every field
+   * zero when nothing was hidden. Introduced by milestone 2026-09-25.01
+   * Phase 2 D-01/D-02.
+   *
+   * @generated from field: engram.v1.RecallGateHidden recall_gate_hidden = 8;
+   */
+  recallGateHidden?: RecallGateHidden | undefined;
 };
 
 /**
@@ -472,6 +491,51 @@ export type ListMemoriesResponse = Message<"engram.v1.ListMemoriesResponse"> & {
  */
 export const ListMemoriesResponseSchema: GenMessage<ListMemoriesResponse> = /*@__PURE__*/
   messageDesc(file_engram_v1_engram, 5);
+
+/**
+ * RecallGateHidden is the per-state count of records the recall gate hid
+ * from a search/list response that would otherwise have appeared
+ * (D-01/D-02, phase 02-recall-first-search plan 02-01). Reused verbatim on
+ * both SearchMemoriesResponse and ListMemoriesResponse — one message, two
+ * independent field-number sequences (buf breaking: breaking.use: [FILE]).
+ * Counts only, never ids or content: computed under the caller's own read
+ * predicate, so a caller learns nothing about records they cannot read.
+ *
+ * @generated from message engram.v1.RecallGateHidden
+ */
+export type RecallGateHidden = Message<"engram.v1.RecallGateHidden"> & {
+  /**
+   * @generated from field: uint64 total = 1;
+   */
+  total: bigint;
+
+  /**
+   * @generated from field: uint64 archived = 2;
+   */
+  archived: bigint;
+
+  /**
+   * @generated from field: uint64 superseded = 3;
+   */
+  superseded: bigint;
+
+  /**
+   * @generated from field: uint64 expired = 4;
+   */
+  expired: bigint;
+
+  /**
+   * @generated from field: uint64 scheduled = 5;
+   */
+  scheduled: bigint;
+};
+
+/**
+ * Describes the message engram.v1.RecallGateHidden.
+ * Use `create(RecallGateHiddenSchema)` to create a new message.
+ */
+export const RecallGateHiddenSchema: GenMessage<RecallGateHidden> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 6);
 
 /**
  * @generated from message engram.v1.SearchMemoriesRequest
@@ -578,7 +642,7 @@ export type SearchMemoriesRequest = Message<"engram.v1.SearchMemoriesRequest"> &
  * Use `create(SearchMemoriesRequestSchema)` to create a new message.
  */
 export const SearchMemoriesRequestSchema: GenMessage<SearchMemoriesRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 6);
+  messageDesc(file_engram_v1_engram, 7);
 
 /**
  * @generated from message engram.v1.SearchMemoriesResponse
@@ -616,6 +680,17 @@ export type SearchMemoriesResponse = Message<"engram.v1.SearchMemoriesResponse">
    * @generated from field: bool scopes_unknown = 4;
    */
   scopesUnknown: boolean;
+
+  /**
+   * recall_gate_hidden — see ListMemoriesResponse.recall_gate_hidden;
+   * identical semantics, sibling field number scheme (next free number in
+   * THIS message, not shared with ListMemoriesResponse's field 8). Here the
+   * window is the same vector query at the same k with the recall gate
+   * lifted, bounded by k.
+   *
+   * @generated from field: engram.v1.RecallGateHidden recall_gate_hidden = 5;
+   */
+  recallGateHidden?: RecallGateHidden | undefined;
 };
 
 /**
@@ -623,7 +698,7 @@ export type SearchMemoriesResponse = Message<"engram.v1.SearchMemoriesResponse">
  * Use `create(SearchMemoriesResponseSchema)` to create a new message.
  */
 export const SearchMemoriesResponseSchema: GenMessage<SearchMemoriesResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 7);
+  messageDesc(file_engram_v1_engram, 8);
 
 /**
  * @generated from message engram.v1.GetMemoryRequest
@@ -640,7 +715,7 @@ export type GetMemoryRequest = Message<"engram.v1.GetMemoryRequest"> & {
  * Use `create(GetMemoryRequestSchema)` to create a new message.
  */
 export const GetMemoryRequestSchema: GenMessage<GetMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 8);
+  messageDesc(file_engram_v1_engram, 9);
 
 /**
  * @generated from message engram.v1.GetMemoryResponse
@@ -657,7 +732,7 @@ export type GetMemoryResponse = Message<"engram.v1.GetMemoryResponse"> & {
  * Use `create(GetMemoryResponseSchema)` to create a new message.
  */
 export const GetMemoryResponseSchema: GenMessage<GetMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 9);
+  messageDesc(file_engram_v1_engram, 10);
 
 /**
  * @generated from message engram.v1.SearchDiscoveriesRequest
@@ -686,7 +761,7 @@ export type SearchDiscoveriesRequest = Message<"engram.v1.SearchDiscoveriesReque
  * Use `create(SearchDiscoveriesRequestSchema)` to create a new message.
  */
 export const SearchDiscoveriesRequestSchema: GenMessage<SearchDiscoveriesRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 10);
+  messageDesc(file_engram_v1_engram, 11);
 
 /**
  * @generated from message engram.v1.SearchDiscoveriesResponse
@@ -703,7 +778,7 @@ export type SearchDiscoveriesResponse = Message<"engram.v1.SearchDiscoveriesResp
  * Use `create(SearchDiscoveriesResponseSchema)` to create a new message.
  */
 export const SearchDiscoveriesResponseSchema: GenMessage<SearchDiscoveriesResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 11);
+  messageDesc(file_engram_v1_engram, 12);
 
 /**
  * SchemaVersionBucket is one {version, count} pair in the migration-status
@@ -728,7 +803,7 @@ export type SchemaVersionBucket = Message<"engram.v1.SchemaVersionBucket"> & {
  * Use `create(SchemaVersionBucketSchema)` to create a new message.
  */
 export const SchemaVersionBucketSchema: GenMessage<SchemaVersionBucket> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 12);
+  messageDesc(file_engram_v1_engram, 13);
 
 /**
  * MigrateStatusRequest is deliberately empty: the histogram is a
@@ -744,7 +819,7 @@ export type MigrateStatusRequest = Message<"engram.v1.MigrateStatusRequest"> & {
  * Use `create(MigrateStatusRequestSchema)` to create a new message.
  */
 export const MigrateStatusRequestSchema: GenMessage<MigrateStatusRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 13);
+  messageDesc(file_engram_v1_engram, 14);
 
 /**
  * MigrateStatusResponse mirrors internal/store.MigrateStatusResult plus one
@@ -796,7 +871,7 @@ export type MigrateStatusResponse = Message<"engram.v1.MigrateStatusResponse"> &
  * Use `create(MigrateStatusResponseSchema)` to create a new message.
  */
 export const MigrateStatusResponseSchema: GenMessage<MigrateStatusResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 14);
+  messageDesc(file_engram_v1_engram, 15);
 
 /**
  * @generated from message engram.v1.StoreMemoryRequest
@@ -858,7 +933,7 @@ export type StoreMemoryRequest = Message<"engram.v1.StoreMemoryRequest"> & {
  * Use `create(StoreMemoryRequestSchema)` to create a new message.
  */
 export const StoreMemoryRequestSchema: GenMessage<StoreMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 15);
+  messageDesc(file_engram_v1_engram, 16);
 
 /**
  * @generated from message engram.v1.StoreMemoryResponse
@@ -880,7 +955,7 @@ export type StoreMemoryResponse = Message<"engram.v1.StoreMemoryResponse"> & {
  * Use `create(StoreMemoryResponseSchema)` to create a new message.
  */
 export const StoreMemoryResponseSchema: GenMessage<StoreMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 16);
+  messageDesc(file_engram_v1_engram, 17);
 
 /**
  * Citation mirrors internal/server/tools.go's citationArg (a store_discovery source anchor).
@@ -919,7 +994,7 @@ export type Citation = Message<"engram.v1.Citation"> & {
  * Use `create(CitationSchema)` to create a new message.
  */
 export const CitationSchema: GenMessage<Citation> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 17);
+  messageDesc(file_engram_v1_engram, 18);
 
 /**
  * @generated from message engram.v1.StoreDiscoveryRequest
@@ -968,7 +1043,7 @@ export type StoreDiscoveryRequest = Message<"engram.v1.StoreDiscoveryRequest"> &
  * Use `create(StoreDiscoveryRequestSchema)` to create a new message.
  */
 export const StoreDiscoveryRequestSchema: GenMessage<StoreDiscoveryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 18);
+  messageDesc(file_engram_v1_engram, 19);
 
 /**
  * @generated from message engram.v1.StoreDiscoveryResponse
@@ -990,7 +1065,7 @@ export type StoreDiscoveryResponse = Message<"engram.v1.StoreDiscoveryResponse">
  * Use `create(StoreDiscoveryResponseSchema)` to create a new message.
  */
 export const StoreDiscoveryResponseSchema: GenMessage<StoreDiscoveryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 19);
+  messageDesc(file_engram_v1_engram, 20);
 
 /**
  * UpdateMemoryRequest.update_mask is the sole presence mechanism (D-01/D-02): no
@@ -1047,7 +1122,7 @@ export type UpdateMemoryRequest = Message<"engram.v1.UpdateMemoryRequest"> & {
  * Use `create(UpdateMemoryRequestSchema)` to create a new message.
  */
 export const UpdateMemoryRequestSchema: GenMessage<UpdateMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 20);
+  messageDesc(file_engram_v1_engram, 21);
 
 /**
  * @generated from message engram.v1.UpdateMemoryResponse
@@ -1069,7 +1144,7 @@ export type UpdateMemoryResponse = Message<"engram.v1.UpdateMemoryResponse"> & {
  * Use `create(UpdateMemoryResponseSchema)` to create a new message.
  */
 export const UpdateMemoryResponseSchema: GenMessage<UpdateMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 21);
+  messageDesc(file_engram_v1_engram, 22);
 
 /**
  * @generated from message engram.v1.DeleteMemoryRequest
@@ -1086,7 +1161,7 @@ export type DeleteMemoryRequest = Message<"engram.v1.DeleteMemoryRequest"> & {
  * Use `create(DeleteMemoryRequestSchema)` to create a new message.
  */
 export const DeleteMemoryRequestSchema: GenMessage<DeleteMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 22);
+  messageDesc(file_engram_v1_engram, 23);
 
 /**
  * @generated from message engram.v1.DeleteMemoryResponse
@@ -1099,7 +1174,7 @@ export type DeleteMemoryResponse = Message<"engram.v1.DeleteMemoryResponse"> & {
  * Use `create(DeleteMemoryResponseSchema)` to create a new message.
  */
 export const DeleteMemoryResponseSchema: GenMessage<DeleteMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 23);
+  messageDesc(file_engram_v1_engram, 24);
 
 /**
  * @generated from message engram.v1.SetVisibilityRequest
@@ -1121,7 +1196,7 @@ export type SetVisibilityRequest = Message<"engram.v1.SetVisibilityRequest"> & {
  * Use `create(SetVisibilityRequestSchema)` to create a new message.
  */
 export const SetVisibilityRequestSchema: GenMessage<SetVisibilityRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 24);
+  messageDesc(file_engram_v1_engram, 25);
 
 /**
  * @generated from message engram.v1.SetVisibilityResponse
@@ -1143,7 +1218,7 @@ export type SetVisibilityResponse = Message<"engram.v1.SetVisibilityResponse"> &
  * Use `create(SetVisibilityResponseSchema)` to create a new message.
  */
 export const SetVisibilityResponseSchema: GenMessage<SetVisibilityResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 25);
+  messageDesc(file_engram_v1_engram, 26);
 
 /**
  * ScheduleMemoryRequest is FLATTENED (D-05: no nested StoreMemoryRequest) — it
@@ -1234,7 +1309,7 @@ export type ScheduleMemoryRequest = Message<"engram.v1.ScheduleMemoryRequest"> &
  * Use `create(ScheduleMemoryRequestSchema)` to create a new message.
  */
 export const ScheduleMemoryRequestSchema: GenMessage<ScheduleMemoryRequest> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 26);
+  messageDesc(file_engram_v1_engram, 27);
 
 /**
  * @generated from message engram.v1.ScheduleMemoryResponse
@@ -1256,7 +1331,1020 @@ export type ScheduleMemoryResponse = Message<"engram.v1.ScheduleMemoryResponse">
  * Use `create(ScheduleMemoryResponseSchema)` to create a new message.
  */
 export const ScheduleMemoryResponseSchema: GenMessage<ScheduleMemoryResponse> = /*@__PURE__*/
-  messageDesc(file_engram_v1_engram, 27);
+  messageDesc(file_engram_v1_engram, 28);
+
+/**
+ * ArchiveResult is ArchiveMemory/RestoreMemory's per-id report, reused
+ * verbatim across both response messages — one message, two independent
+ * field-number sequences (buf breaking: breaking.use: [FILE]), mirroring the
+ * RecallGateHidden precedent above.
+ *
+ * @generated from message engram.v1.ArchiveResult
+ */
+export type ArchiveResult = Message<"engram.v1.ArchiveResult"> & {
+  /**
+   * requested is the token the caller actually supplied (a short_id or a
+   * UUID), set on EVERY row including NOT_FOUND, so a caller can correlate
+   * each row back to its input (results[i] always answers ids[i]; a
+   * duplicate token is reported once per occurrence, never merged).
+   *
+   * @generated from field: string requested = 1;
+   */
+  requested: string;
+
+  /**
+   * id is the canonical UUID, set once the target resolved. It is ALWAYS
+   * EMPTY on ARCHIVE_OUTCOME_NOT_FOUND (D-07, DEC-xa6) — a caller learns
+   * nothing about a record it cannot write, even one it addressed by a
+   * guessed short_id that happens to resolve.
+   *
+   * @generated from field: string id = 2;
+   */
+  id: string;
+
+  /**
+   * @generated from field: engram.v1.ArchiveOutcome outcome = 3;
+   */
+  outcome: ArchiveOutcome;
+};
+
+/**
+ * Describes the message engram.v1.ArchiveResult.
+ * Use `create(ArchiveResultSchema)` to create a new message.
+ */
+export const ArchiveResultSchema: GenMessage<ArchiveResult> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 29);
+
+/**
+ * ArchiveMemoryRequest/RestoreMemoryRequest take a batch of ids (full UUID
+ * or short_id, D-06). The whole call is rejected only for an empty list,
+ * more than 1000 ids, or a blank or over-256-byte entry — never for an
+ * individual id that does not resolve or is not owned, which reports
+ * ARCHIVE_OUTCOME_NOT_FOUND in the response instead (D-06/D-07). There is
+ * no cross-record atomicity: a store failure part-way through aborts the
+ * call and ids already processed keep their new state — each per-id
+ * operation is independently idempotent and reversible (D-06). No
+ * buf.validate rule is attached to either request message: the single
+ * shared server-side core validates, so both the MCP and Connect lanes
+ * return the byte-identical field=/hint= rejection envelope (D-17/D-20).
+ *
+ * @generated from message engram.v1.ArchiveMemoryRequest
+ */
+export type ArchiveMemoryRequest = Message<"engram.v1.ArchiveMemoryRequest"> & {
+  /**
+   * @generated from field: repeated string ids = 1;
+   */
+  ids: string[];
+};
+
+/**
+ * Describes the message engram.v1.ArchiveMemoryRequest.
+ * Use `create(ArchiveMemoryRequestSchema)` to create a new message.
+ */
+export const ArchiveMemoryRequestSchema: GenMessage<ArchiveMemoryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 30);
+
+/**
+ * @generated from message engram.v1.ArchiveMemoryResponse
+ */
+export type ArchiveMemoryResponse = Message<"engram.v1.ArchiveMemoryResponse"> & {
+  /**
+   * @generated from field: repeated engram.v1.ArchiveResult results = 1;
+   */
+  results: ArchiveResult[];
+};
+
+/**
+ * Describes the message engram.v1.ArchiveMemoryResponse.
+ * Use `create(ArchiveMemoryResponseSchema)` to create a new message.
+ */
+export const ArchiveMemoryResponseSchema: GenMessage<ArchiveMemoryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 31);
+
+/**
+ * @generated from message engram.v1.RestoreMemoryRequest
+ */
+export type RestoreMemoryRequest = Message<"engram.v1.RestoreMemoryRequest"> & {
+  /**
+   * @generated from field: repeated string ids = 1;
+   */
+  ids: string[];
+};
+
+/**
+ * Describes the message engram.v1.RestoreMemoryRequest.
+ * Use `create(RestoreMemoryRequestSchema)` to create a new message.
+ */
+export const RestoreMemoryRequestSchema: GenMessage<RestoreMemoryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 32);
+
+/**
+ * @generated from message engram.v1.RestoreMemoryResponse
+ */
+export type RestoreMemoryResponse = Message<"engram.v1.RestoreMemoryResponse"> & {
+  /**
+   * @generated from field: repeated engram.v1.ArchiveResult results = 1;
+   */
+  results: ArchiveResult[];
+};
+
+/**
+ * Describes the message engram.v1.RestoreMemoryResponse.
+ * Use `create(RestoreMemoryResponseSchema)` to create a new message.
+ */
+export const RestoreMemoryResponseSchema: GenMessage<RestoreMemoryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 33);
+
+/**
+ * SupersedeMemoryRequest takes the store_memory field set (content through
+ * summary) plus citations, supersedes (one or more ids of the memories this
+ * new record corrects/replaces, each a full UUID or short_id) and
+ * idempotency_key (fingerprint covers content and the resolved target set,
+ * D-08/D-09). validate_only, when set, runs the identical preflight a real
+ * call runs (argument checks, ownership and addressability, rule rejection,
+ * single live head, ambiguous short_id) and names every offending target
+ * exactly as a real call would, but writes nothing: no record, no
+ * superseded_by stamp, no idempotency ledger entry, no embed, no short-id
+ * mint. It never consults or records idempotency_key, so it never reports a
+ * replay. It is still a call on this write RPC, so CSRF applies. No
+ * buf.validate rule is attached to this message: the single shared
+ * server-side core validates, so both the MCP and Connect lanes return the
+ * byte-identical field=/hint= rejection envelope (D-17/D-20).
+ *
+ * @generated from message engram.v1.SupersedeMemoryRequest
+ */
+export type SupersedeMemoryRequest = Message<"engram.v1.SupersedeMemoryRequest"> & {
+  /**
+   * @generated from field: string content = 1;
+   */
+  content: string;
+
+  /**
+   * @generated from field: string scope = 2;
+   */
+  scope: string;
+
+  /**
+   * @generated from field: string source = 3;
+   */
+  source: string;
+
+  /**
+   * @generated from field: string category = 4;
+   */
+  category: string;
+
+  /**
+   * @generated from field: repeated string tags = 5;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: string repo = 6;
+   */
+  repo: string;
+
+  /**
+   * @generated from field: string workspace = 7;
+   */
+  workspace: string;
+
+  /**
+   * @generated from field: string worktree = 8;
+   */
+  worktree: string;
+
+  /**
+   * @generated from field: string base_dir = 9;
+   */
+  baseDir: string;
+
+  /**
+   * @generated from field: string summary = 10;
+   */
+  summary: string;
+
+  /**
+   * @generated from field: repeated engram.v1.Citation citations = 11;
+   */
+  citations: Citation[];
+
+  /**
+   * @generated from field: repeated string supersedes = 12;
+   */
+  supersedes: string[];
+
+  /**
+   * @generated from field: string idempotency_key = 13;
+   */
+  idempotencyKey: string;
+
+  /**
+   * @generated from field: bool validate_only = 14;
+   */
+  validateOnly: boolean;
+};
+
+/**
+ * Describes the message engram.v1.SupersedeMemoryRequest.
+ * Use `create(SupersedeMemoryRequestSchema)` to create a new message.
+ */
+export const SupersedeMemoryRequestSchema: GenMessage<SupersedeMemoryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 34);
+
+/**
+ * SupersedeMemoryResponse: id/short_id are set on a real call
+ * (validate_only false). validated, supersedes (the resolved canonical
+ * target ids in caller order, deduplicated — the exact list a commit would
+ * write) and targets (compact summary view) are set only when validated is
+ * true (D-08/D-09).
+ *
+ * @generated from message engram.v1.SupersedeMemoryResponse
+ */
+export type SupersedeMemoryResponse = Message<"engram.v1.SupersedeMemoryResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string short_id = 2;
+   */
+  shortId: string;
+
+  /**
+   * @generated from field: bool validated = 3;
+   */
+  validated: boolean;
+
+  /**
+   * @generated from field: repeated string supersedes = 4;
+   */
+  supersedes: string[];
+
+  /**
+   * @generated from field: repeated engram.v1.Memory targets = 5;
+   */
+  targets: Memory[];
+};
+
+/**
+ * Describes the message engram.v1.SupersedeMemoryResponse.
+ * Use `create(SupersedeMemoryResponseSchema)` to create a new message.
+ */
+export const SupersedeMemoryResponseSchema: GenMessage<SupersedeMemoryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 35);
+
+/**
+ * ListScheduledRequest widens list_scheduled's contract onto Connect (plan
+ * 03-03, D-11): cross_spine and an opaque page_token/next_page_token join
+ * the existing scope/state/limit/window fields. No buf.validate rule is
+ * attached: the single shared server-side core validates, so both lanes
+ * return the byte-identical field=/hint= rejection envelope (D-17/D-20).
+ *
+ * @generated from message engram.v1.ListScheduledRequest
+ */
+export type ListScheduledRequest = Message<"engram.v1.ListScheduledRequest"> & {
+  /**
+   * required unless cross_spine
+   *
+   * @generated from field: string scope = 1;
+   */
+  scope: string;
+
+  /**
+   * scheduled (default, not yet active) | expired | all
+   *
+   * @generated from field: string state = 2;
+   */
+  state: string;
+
+  /**
+   * 0 resolves to the page default 20; a larger value is rejected
+   *
+   * @generated from field: uint64 limit = 3;
+   */
+  limit: bigint;
+
+  /**
+   * RFC3339; inclusive lower bound on created_at
+   *
+   * @generated from field: string created_after = 4;
+   */
+  createdAfter: string;
+
+  /**
+   * RFC3339; exclusive upper bound on created_at
+   *
+   * @generated from field: string created_before = 5;
+   */
+  createdBefore: string;
+
+  /**
+   * cross_spine lists across every scope, still returning only the caller's
+   * own records, ignoring `scope` when true.
+   * engram:rule:start scope-required-unless-cross-spine
+   * scope is required unless cross_spine is true
+   * engram:rule:end scope-required-unless-cross-spine
+   *
+   * @generated from field: bool cross_spine = 6;
+   */
+  crossSpine: boolean;
+
+  /**
+   * opaque cursor; when set, resumes from a prior next_page_token
+   *
+   * @generated from field: string page_token = 7;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message engram.v1.ListScheduledRequest.
+ * Use `create(ListScheduledRequestSchema)` to create a new message.
+ */
+export const ListScheduledRequestSchema: GenMessage<ListScheduledRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 36);
+
+/**
+ * @generated from message engram.v1.ListScheduledResponse
+ */
+export type ListScheduledResponse = Message<"engram.v1.ListScheduledResponse"> & {
+  /**
+   * @generated from field: repeated engram.v1.Memory memories = 1;
+   */
+  memories: Memory[];
+
+  /**
+   * empty when no further pages
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+
+  /**
+   * searched_scopes/scopes_truncated/scopes_unknown: see
+   * ListMemoriesResponse.searched_scopes; identical semantics, present only
+   * on a cross_spine request.
+   *
+   * @generated from field: repeated string searched_scopes = 3;
+   */
+  searchedScopes: string[];
+
+  /**
+   * @generated from field: bool scopes_truncated = 4;
+   */
+  scopesTruncated: boolean;
+
+  /**
+   * @generated from field: bool scopes_unknown = 5;
+   */
+  scopesUnknown: boolean;
+};
+
+/**
+ * Describes the message engram.v1.ListScheduledResponse.
+ * Use `create(ListScheduledResponseSchema)` to create a new message.
+ */
+export const ListScheduledResponseSchema: GenMessage<ListScheduledResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 37);
+
+/**
+ * ListRulesRequest widens list_rules' contract onto Connect (plan 03-04,
+ * D-10): scopes empty (proto3 default for a repeated field) is now the
+ * all-scopes read — one cross-scope read of every readable rule:* scope, up
+ * to 1000 rules IN TOTAL, oldest-first across the whole result — rather than
+ * a rejection; explicit scopes keep today's contract, up to 1000 rules PER
+ * SCOPE, oldest-first within each, in the order supplied. No buf.validate
+ * rule is attached: the single shared server-side core (listRuleRecords)
+ * validates a blank or non-rule scope entry, so both lanes return the
+ * byte-identical field=/hint= rejection envelope.
+ *
+ * @generated from message engram.v1.ListRulesRequest
+ */
+export type ListRulesRequest = Message<"engram.v1.ListRulesRequest"> & {
+  /**
+   * empty = every readable rule:* scope, one read up to 1000 rules in total
+   *
+   * @generated from field: repeated string scopes = 1;
+   */
+  scopes: string[];
+
+  /**
+   * empty = all; non-empty = rules carrying ALL listed tags (AND)
+   *
+   * @generated from field: repeated string tags = 2;
+   */
+  tags: string[];
+
+  /**
+   * false (default) returns compact (content cleared) rules; true returns full content
+   *
+   * @generated from field: bool full = 3;
+   */
+  full: boolean;
+};
+
+/**
+ * Describes the message engram.v1.ListRulesRequest.
+ * Use `create(ListRulesRequestSchema)` to create a new message.
+ */
+export const ListRulesRequestSchema: GenMessage<ListRulesRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 38);
+
+/**
+ * @generated from message engram.v1.ListRulesResponse
+ */
+export type ListRulesResponse = Message<"engram.v1.ListRulesResponse"> & {
+  /**
+   * @generated from field: repeated engram.v1.Memory rules = 1;
+   */
+  rules: Memory[];
+
+  /**
+   * advisory is the curation-smell note (empty when no scope in the result
+   * is over the soft per-scope threshold); it never changes which rules are
+   * returned.
+   *
+   * @generated from field: string advisory = 2;
+   */
+  advisory: string;
+
+  /**
+   * searched_scopes/scopes_truncated/scopes_unknown: present only on the
+   * all-scopes read (an empty scopes list on the request) — see
+   * ListMemoriesResponse.searched_scopes for the shared three-state
+   * semantics. Unlike ListMemoriesResponse, these name ONLY rule:* scopes —
+   * never a non-rule scope the same caller can also read (D-10).
+   *
+   * @generated from field: repeated string searched_scopes = 3;
+   */
+  searchedScopes: string[];
+
+  /**
+   * @generated from field: bool scopes_truncated = 4;
+   */
+  scopesTruncated: boolean;
+
+  /**
+   * @generated from field: bool scopes_unknown = 5;
+   */
+  scopesUnknown: boolean;
+};
+
+/**
+ * Describes the message engram.v1.ListRulesResponse.
+ * Use `create(ListRulesResponseSchema)` to create a new message.
+ */
+export const ListRulesResponseSchema: GenMessage<ListRulesResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 39);
+
+/**
+ * WeightedTag is one tag the anchor and a candidate share, plus its rarity
+ * weight (Phase 1 D-07).
+ *
+ * @generated from message engram.v1.WeightedTag
+ */
+export type WeightedTag = Message<"engram.v1.WeightedTag"> & {
+  /**
+   * @generated from field: string tag = 1;
+   */
+  tag: string;
+
+  /**
+   * @generated from field: double weight = 2;
+   */
+  weight: number;
+};
+
+/**
+ * Describes the message engram.v1.WeightedTag.
+ * Use `create(WeightedTagSchema)` to create a new message.
+ */
+export const WeightedTagSchema: GenMessage<WeightedTag> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 40);
+
+/**
+ * CitationRef is one citation kind+ref the anchor and a candidate share
+ * (Phase 1 D-08) — locator, pin, and excerpt are excluded from the identity
+ * comparison.
+ *
+ * @generated from message engram.v1.CitationRef
+ */
+export type CitationRef = Message<"engram.v1.CitationRef"> & {
+  /**
+   * @generated from field: string kind = 1;
+   */
+  kind: string;
+
+  /**
+   * @generated from field: string ref = 2;
+   */
+  ref: string;
+};
+
+/**
+ * Describes the message engram.v1.CitationRef.
+ * Use `create(CitationRefSchema)` to create a new message.
+ */
+export const CitationRefSchema: GenMessage<CitationRef> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 41);
+
+/**
+ * VectorEvidence is the vector edge's evidence: the raw Qdrant cosine
+ * similarity.
+ *
+ * @generated from message engram.v1.VectorEvidence
+ */
+export type VectorEvidence = Message<"engram.v1.VectorEvidence"> & {
+  /**
+   * @generated from field: float score = 1;
+   */
+  score: number;
+};
+
+/**
+ * Describes the message engram.v1.VectorEvidence.
+ * Use `create(VectorEvidenceSchema)` to create a new message.
+ */
+export const VectorEvidenceSchema: GenMessage<VectorEvidence> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 42);
+
+/**
+ * TagEvidence is the tag edge's evidence: the shared tags with their rarity
+ * weight, and the sum of those weights.
+ *
+ * @generated from message engram.v1.TagEvidence
+ */
+export type TagEvidence = Message<"engram.v1.TagEvidence"> & {
+  /**
+   * @generated from field: repeated engram.v1.WeightedTag shared_tags = 1;
+   */
+  sharedTags: WeightedTag[];
+
+  /**
+   * @generated from field: double tag_weight = 2;
+   */
+  tagWeight: number;
+};
+
+/**
+ * Describes the message engram.v1.TagEvidence.
+ * Use `create(TagEvidenceSchema)` to create a new message.
+ */
+export const TagEvidenceSchema: GenMessage<TagEvidence> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 43);
+
+/**
+ * CitationEvidence is the citation edge's evidence: the shared kind+ref
+ * pairs.
+ *
+ * @generated from message engram.v1.CitationEvidence
+ */
+export type CitationEvidence = Message<"engram.v1.CitationEvidence"> & {
+  /**
+   * @generated from field: repeated engram.v1.CitationRef shared_citations = 1;
+   */
+  sharedCitations: CitationRef[];
+};
+
+/**
+ * Describes the message engram.v1.CitationEvidence.
+ * Use `create(CitationEvidenceSchema)` to create a new message.
+ */
+export const CitationEvidenceSchema: GenMessage<CitationEvidence> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 44);
+
+/**
+ * SupersessionEvidence is the supersession edge's evidence: which pointer
+ * was followed, and how many hops from the anchor (1 = direct link).
+ *
+ * @generated from message engram.v1.SupersessionEvidence
+ */
+export type SupersessionEvidence = Message<"engram.v1.SupersessionEvidence"> & {
+  /**
+   * @generated from field: engram.v1.SupersessionDirection direction = 1;
+   */
+  direction: SupersessionDirection;
+
+  /**
+   * @generated from field: uint32 depth = 2;
+   */
+  depth: number;
+};
+
+/**
+ * Describes the message engram.v1.SupersessionEvidence.
+ * Use `create(SupersessionEvidenceSchema)` to create a new message.
+ */
+export const SupersessionEvidenceSchema: GenMessage<SupersessionEvidence> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 45);
+
+/**
+ * RelatedEdge is one piece of per-type evidence for why a candidate appeared
+ * in a RelatedMemory's edges (D-12). type and the oneof evidence case always
+ * match exactly: vector -> VectorEvidence, tag -> TagEvidence,
+ * citation -> CitationEvidence, supersession -> SupersessionEvidence.
+ * Evidence is never comparable across types — a vector score and a
+ * supersession depth measure different things.
+ *
+ * @generated from message engram.v1.RelatedEdge
+ */
+export type RelatedEdge = Message<"engram.v1.RelatedEdge"> & {
+  /**
+   * @generated from field: engram.v1.EdgeType type = 1;
+   */
+  type: EdgeType;
+
+  /**
+   * @generated from oneof engram.v1.RelatedEdge.evidence
+   */
+  evidence: {
+    /**
+     * @generated from field: engram.v1.VectorEvidence vector = 2;
+     */
+    value: VectorEvidence;
+    case: "vector";
+  } | {
+    /**
+     * @generated from field: engram.v1.TagEvidence tag = 3;
+     */
+    value: TagEvidence;
+    case: "tag";
+  } | {
+    /**
+     * @generated from field: engram.v1.CitationEvidence citation = 4;
+     */
+    value: CitationEvidence;
+    case: "citation";
+  } | {
+    /**
+     * @generated from field: engram.v1.SupersessionEvidence supersession = 5;
+     */
+    value: SupersessionEvidence;
+    case: "supersession";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message engram.v1.RelatedEdge.
+ * Use `create(RelatedEdgeSchema)` to create a new message.
+ */
+export const RelatedEdgeSchema: GenMessage<RelatedEdge> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 46);
+
+/**
+ * RelatedMemory is one candidate record plus every edge type that reached
+ * it (Phase 1 D-06's documented multi-edge rule): a candidate reachable by
+ * more than one edge type is ONE entry, never returned twice. memory is
+ * compact unless RelatedMemoriesRequest.full is set (D-13).
+ *
+ * @generated from message engram.v1.RelatedMemory
+ */
+export type RelatedMemory = Message<"engram.v1.RelatedMemory"> & {
+  /**
+   * @generated from field: engram.v1.Memory memory = 1;
+   */
+  memory?: Memory | undefined;
+
+  /**
+   * @generated from field: repeated engram.v1.RelatedEdge edges = 2;
+   */
+  edges: RelatedEdge[];
+};
+
+/**
+ * Describes the message engram.v1.RelatedMemory.
+ * Use `create(RelatedMemorySchema)` to create a new message.
+ */
+export const RelatedMemorySchema: GenMessage<RelatedMemory> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 47);
+
+/**
+ * RelatedMemoriesRequest requests the neighbourhood of one memory the
+ * caller can read (RPC-04). id is a full UUID or short_id. k widens ONLY
+ * the vector edge (0 resolves to the default of 8 vector neighbours; a
+ * value above 1000 is rejected). full requests full content instead of
+ * compact summaries for the anchor and every entry's memory (D-13). No
+ * buf.validate rule is attached: the single shared server-side core
+ * validates, so both lanes return the byte-identical field=/hint= rejection
+ * envelope (D-17/D-20).
+ *
+ * @generated from message engram.v1.RelatedMemoriesRequest
+ */
+export type RelatedMemoriesRequest = Message<"engram.v1.RelatedMemoriesRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: uint64 k = 2;
+   */
+  k: bigint;
+
+  /**
+   * @generated from field: bool full = 3;
+   */
+  full: boolean;
+};
+
+/**
+ * Describes the message engram.v1.RelatedMemoriesRequest.
+ * Use `create(RelatedMemoriesRequestSchema)` to create a new message.
+ */
+export const RelatedMemoriesRequestSchema: GenMessage<RelatedMemoriesRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 48);
+
+/**
+ * RelatedMemoriesResponse is RelatedMemories' return shape: the resolved
+ * anchor, its neighbourhood, and whether the result ceiling left a fetched
+ * vector candidate out (truncated). An unreadable or nonexistent anchor
+ * reads not_found, echoing only the caller's original input (matching every
+ * other per-id gate on this service).
+ *
+ * @generated from message engram.v1.RelatedMemoriesResponse
+ */
+export type RelatedMemoriesResponse = Message<"engram.v1.RelatedMemoriesResponse"> & {
+  /**
+   * @generated from field: engram.v1.Memory anchor = 1;
+   */
+  anchor?: Memory | undefined;
+
+  /**
+   * @generated from field: repeated engram.v1.RelatedMemory related = 2;
+   */
+  related: RelatedMemory[];
+
+  /**
+   * @generated from field: bool truncated = 3;
+   */
+  truncated: boolean;
+};
+
+/**
+ * Describes the message engram.v1.RelatedMemoriesResponse.
+ * Use `create(RelatedMemoriesResponseSchema)` to create a new message.
+ */
+export const RelatedMemoriesResponseSchema: GenMessage<RelatedMemoriesResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 49);
+
+/**
+ * TagCount is one tag plus the exact number of the caller's recall-visible
+ * records that carry it (2026-09-25.01 Phase 1 D-13), wrapped onto Connect
+ * by milestone 2026-09-25.01 Phase 3 (RPC-04).
+ *
+ * @generated from message engram.v1.TagCount
+ */
+export type TagCount = Message<"engram.v1.TagCount"> & {
+  /**
+   * @generated from field: string tag = 1;
+   */
+  tag: string;
+
+  /**
+   * @generated from field: uint64 count = 2;
+   */
+  count: bigint;
+};
+
+/**
+ * Describes the message engram.v1.TagCount.
+ * Use `create(TagCountSchema)` to create a new message.
+ */
+export const TagCountSchema: GenMessage<TagCount> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 50);
+
+/**
+ * ListTagsRequest lists the tags on the records the caller can recall in
+ * scope, or across every readable scope when scope is empty (2026-09-25.01
+ * Phase 1 D-14, Phase 3 D-14). limit 0 resolves to 100; a value above the
+ * maximum, 1000, is rejected. No buf.validate rule is attached: the single
+ * shared server-side core validates, so both lanes return the byte-identical
+ * field=/hint= rejection envelope. No server-side prefix filter is offered
+ * by design (Phase 3 D-14) — filter the returned list on the client; Qdrant
+ * Facet has no prefix match on a keyword index.
+ *
+ * @generated from message engram.v1.ListTagsRequest
+ */
+export type ListTagsRequest = Message<"engram.v1.ListTagsRequest"> & {
+  /**
+   * empty = every scope the caller can read
+   *
+   * @generated from field: string scope = 1;
+   */
+  scope: string;
+
+  /**
+   * 0 resolves to 100; above 1000 is rejected
+   *
+   * @generated from field: uint64 limit = 2;
+   */
+  limit: bigint;
+};
+
+/**
+ * Describes the message engram.v1.ListTagsRequest.
+ * Use `create(ListTagsRequestSchema)` to create a new message.
+ */
+export const ListTagsRequestSchema: GenMessage<ListTagsRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 51);
+
+/**
+ * ListTagsResponse is ListTags' return shape: counts are exact over
+ * recall-visible records only (no archived, superseded, expired, or
+ * not-yet-active ones), ordered by count descending then tag ascending.
+ * more reports that more distinct tags exist beyond limit — never a silent
+ * truncation.
+ *
+ * @generated from message engram.v1.ListTagsResponse
+ */
+export type ListTagsResponse = Message<"engram.v1.ListTagsResponse"> & {
+  /**
+   * @generated from field: repeated engram.v1.TagCount tags = 1;
+   */
+  tags: TagCount[];
+
+  /**
+   * @generated from field: bool more = 2;
+   */
+  more: boolean;
+};
+
+/**
+ * Describes the message engram.v1.ListTagsResponse.
+ * Use `create(ListTagsResponseSchema)` to create a new message.
+ */
+export const ListTagsResponseSchema: GenMessage<ListTagsResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 52);
+
+/**
+ * TimeWindowSuggestion is a suggested time-window chip: created_after and
+ * created_before are RFC3339 UTC day-aligned midnights (Task 1 option-a —
+ * created_before is always empty for this phase's buckets), and label
+ * names the bucket ("today", "past week", "past month", "past year") for
+ * the chip's own text.
+ *
+ * @generated from message engram.v1.TimeWindowSuggestion
+ */
+export type TimeWindowSuggestion = Message<"engram.v1.TimeWindowSuggestion"> & {
+  /**
+   * @generated from field: string created_after = 1;
+   */
+  createdAfter: string;
+
+  /**
+   * @generated from field: string created_before = 2;
+   */
+  createdBefore: string;
+
+  /**
+   * @generated from field: string label = 3;
+   */
+  label: string;
+};
+
+/**
+ * Describes the message engram.v1.TimeWindowSuggestion.
+ * Use `create(TimeWindowSuggestionSchema)` to create a new message.
+ */
+export const TimeWindowSuggestionSchema: GenMessage<TimeWindowSuggestion> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 53);
+
+/**
+ * FilterSuggestion is one suggested, unapplied filter chip (milestone
+ * 2026-09-25.01 Phase 6, D-03/D-11): suggestions are advisory and never
+ * change search results until the user accepts one by clicking the chip.
+ * source is DECIDED when a typed-decision answer reached the 0.9
+ * probability threshold (D-05), or MATCHED when the query named an
+ * existing tag from the caller's own vocabulary (D-09).
+ *
+ * @generated from message engram.v1.FilterSuggestion
+ */
+export type FilterSuggestion = Message<"engram.v1.FilterSuggestion"> & {
+  /**
+   * @generated from oneof engram.v1.FilterSuggestion.kind
+   */
+  kind: {
+    /**
+     * @generated from field: string category = 1;
+     */
+    value: string;
+    case: "category";
+  } | {
+    /**
+     * @generated from field: engram.v1.TimeWindowSuggestion time_window = 2;
+     */
+    value: TimeWindowSuggestion;
+    case: "timeWindow";
+  } | {
+    /**
+     * @generated from field: string scope = 3;
+     */
+    value: string;
+    case: "scope";
+  } | {
+    /**
+     * @generated from field: string tag = 4;
+     */
+    value: string;
+    case: "tag";
+  } | { case: undefined; value?: undefined };
+
+  /**
+   * @generated from field: engram.v1.SuggestionSource source = 5;
+   */
+  source: SuggestionSource;
+};
+
+/**
+ * Describes the message engram.v1.FilterSuggestion.
+ * Use `create(FilterSuggestionSchema)` to create a new message.
+ */
+export const FilterSuggestionSchema: GenMessage<FilterSuggestion> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 54);
+
+/**
+ * UnderstandQueryRequest asks the server to suggest filter chips for query
+ * (milestone 2026-09-25.01 Phase 6, D-02/D-03): a prose search string plus
+ * the filters currently applied to the console's search, so the server can
+ * skip a question whose answer is already applied. No buf.validate rule is
+ * attached: the single shared server-side core validates, so both the
+ * envelope and the core stay single.
+ *
+ * @generated from message engram.v1.UnderstandQueryRequest
+ */
+export type UnderstandQueryRequest = Message<"engram.v1.UnderstandQueryRequest"> & {
+  /**
+   * @generated from field: string query = 1;
+   */
+  query: string;
+
+  /**
+   * @generated from field: string scope = 2;
+   */
+  scope: string;
+
+  /**
+   * @generated from field: bool cross_spine = 3;
+   */
+  crossSpine: boolean;
+
+  /**
+   * @generated from field: repeated string categories = 4;
+   */
+  categories: string[];
+
+  /**
+   * @generated from field: repeated string tags = 5;
+   */
+  tags: string[];
+
+  /**
+   * @generated from field: string created_after = 6;
+   */
+  createdAfter: string;
+
+  /**
+   * @generated from field: string created_before = 7;
+   */
+  createdBefore: string;
+};
+
+/**
+ * Describes the message engram.v1.UnderstandQueryRequest.
+ * Use `create(UnderstandQueryRequestSchema)` to create a new message.
+ */
+export const UnderstandQueryRequestSchema: GenMessage<UnderstandQueryRequest> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 55);
+
+/**
+ * UnderstandQueryResponse is UnderstandQuery's return shape (D-04): enabled
+ * is false when query understanding is off for this deployment — the
+ * caller should stop calling UnderstandQuery for the rest of the session —
+ * and true otherwise, even when suggestions is empty. A decision failure or
+ * timeout yields zero decided suggestions, never an RPC error (D-05).
+ *
+ * @generated from message engram.v1.UnderstandQueryResponse
+ */
+export type UnderstandQueryResponse = Message<"engram.v1.UnderstandQueryResponse"> & {
+  /**
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+
+  /**
+   * @generated from field: repeated engram.v1.FilterSuggestion suggestions = 2;
+   */
+  suggestions: FilterSuggestion[];
+};
+
+/**
+ * Describes the message engram.v1.UnderstandQueryResponse.
+ * Use `create(UnderstandQueryResponseSchema)` to create a new message.
+ */
+export const UnderstandQueryResponseSchema: GenMessage<UnderstandQueryResponse> = /*@__PURE__*/
+  messageDesc(file_engram_v1_engram, 56);
 
 /**
  * Visibility mirrors the Memory.visibility string enum ("private"/"shared") as a
@@ -1287,6 +2375,155 @@ export enum Visibility {
  */
 export const VisibilitySchema: GenEnum<Visibility> = /*@__PURE__*/
   enumDesc(file_engram_v1_engram, 0);
+
+/**
+ * ArchiveOutcome enumerates the per-id result ArchiveMemory/RestoreMemory
+ * report for one requested id (D-06/D-07). The zero value is never a real
+ * outcome — every response entry sets one of the other five explicitly.
+ *
+ * @generated from enum engram.v1.ArchiveOutcome
+ */
+export enum ArchiveOutcome {
+  /**
+   * @generated from enum value: ARCHIVE_OUTCOME_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: ARCHIVE_OUTCOME_ARCHIVED = 1;
+   */
+  ARCHIVED = 1,
+
+  /**
+   * @generated from enum value: ARCHIVE_OUTCOME_ALREADY_ARCHIVED = 2;
+   */
+  ALREADY_ARCHIVED = 2,
+
+  /**
+   * @generated from enum value: ARCHIVE_OUTCOME_RESTORED = 3;
+   */
+  RESTORED = 3,
+
+  /**
+   * @generated from enum value: ARCHIVE_OUTCOME_NOT_ARCHIVED = 4;
+   */
+  NOT_ARCHIVED = 4,
+
+  /**
+   * ARCHIVE_OUTCOME_NOT_FOUND covers a nonexistent id, an id the caller does
+   * not own, and an ambiguous short_id alike (D-07, DEC-xa6) —
+   * indistinguishable by design.
+   *
+   * @generated from enum value: ARCHIVE_OUTCOME_NOT_FOUND = 5;
+   */
+  NOT_FOUND = 5,
+}
+
+/**
+ * Describes the enum engram.v1.ArchiveOutcome.
+ */
+export const ArchiveOutcomeSchema: GenEnum<ArchiveOutcome> = /*@__PURE__*/
+  enumDesc(file_engram_v1_engram, 1);
+
+/**
+ * EdgeType names the kind of relationship a RelatedEdge was reached by
+ * (D-12). The zero value is never a real edge — every RelatedEdge sets one
+ * of the other four explicitly, and its oneof evidence case always matches
+ * this field.
+ *
+ * @generated from enum engram.v1.EdgeType
+ */
+export enum EdgeType {
+  /**
+   * @generated from enum value: EDGE_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: EDGE_TYPE_SUPERSESSION = 1;
+   */
+  SUPERSESSION = 1,
+
+  /**
+   * @generated from enum value: EDGE_TYPE_CITATION = 2;
+   */
+  CITATION = 2,
+
+  /**
+   * @generated from enum value: EDGE_TYPE_TAG = 3;
+   */
+  TAG = 3,
+
+  /**
+   * @generated from enum value: EDGE_TYPE_VECTOR = 4;
+   */
+  VECTOR = 4,
+}
+
+/**
+ * Describes the enum engram.v1.EdgeType.
+ */
+export const EdgeTypeSchema: GenEnum<EdgeType> = /*@__PURE__*/
+  enumDesc(file_engram_v1_engram, 2);
+
+/**
+ * SupersessionDirection names which pointer a supersession edge was reached
+ * through, relative to the anchor.
+ *
+ * @generated from enum engram.v1.SupersessionDirection
+ */
+export enum SupersessionDirection {
+  /**
+   * @generated from enum value: SUPERSESSION_DIRECTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SUPERSESSION_DIRECTION_SUCCESSOR = 1;
+   */
+  SUCCESSOR = 1,
+
+  /**
+   * @generated from enum value: SUPERSESSION_DIRECTION_PREDECESSOR = 2;
+   */
+  PREDECESSOR = 2,
+}
+
+/**
+ * Describes the enum engram.v1.SupersessionDirection.
+ */
+export const SupersessionDirectionSchema: GenEnum<SupersessionDirection> = /*@__PURE__*/
+  enumDesc(file_engram_v1_engram, 3);
+
+/**
+ * SuggestionSource marks whether a FilterSuggestion came from a typed
+ * decision (DECIDED) or from local tag matching (MATCHED); see
+ * UnderstandQueryResponse for the D-09/D-05 distinction.
+ *
+ * @generated from enum engram.v1.SuggestionSource
+ */
+export enum SuggestionSource {
+  /**
+   * @generated from enum value: SUGGESTION_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SUGGESTION_SOURCE_DECIDED = 1;
+   */
+  DECIDED = 1,
+
+  /**
+   * @generated from enum value: SUGGESTION_SOURCE_MATCHED = 2;
+   */
+  MATCHED = 2,
+}
+
+/**
+ * Describes the enum engram.v1.SuggestionSource.
+ */
+export const SuggestionSourceSchema: GenEnum<SuggestionSource> = /*@__PURE__*/
+  enumDesc(file_engram_v1_engram, 4);
 
 /**
  * @generated from service engram.v1.EngramService
@@ -1389,6 +2626,84 @@ export const EngramService: GenService<{
     methodKind: "unary";
     input: typeof ScheduleMemoryRequestSchema;
     output: typeof ScheduleMemoryResponseSchema;
+  },
+  /**
+   * --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
+   *
+   * @generated from rpc engram.v1.EngramService.ArchiveMemory
+   */
+  archiveMemory: {
+    methodKind: "unary";
+    input: typeof ArchiveMemoryRequestSchema;
+    output: typeof ArchiveMemoryResponseSchema;
+  },
+  /**
+   * @generated from rpc engram.v1.EngramService.RestoreMemory
+   */
+  restoreMemory: {
+    methodKind: "unary";
+    input: typeof RestoreMemoryRequestSchema;
+    output: typeof RestoreMemoryResponseSchema;
+  },
+  /**
+   * --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-02) ---
+   *
+   * @generated from rpc engram.v1.EngramService.SupersedeMemory
+   */
+  supersedeMemory: {
+    methodKind: "unary";
+    input: typeof SupersedeMemoryRequestSchema;
+    output: typeof SupersedeMemoryResponseSchema;
+  },
+  /**
+   * --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-03) ---
+   *
+   * @generated from rpc engram.v1.EngramService.ListScheduled
+   */
+  listScheduled: {
+    methodKind: "unary";
+    input: typeof ListScheduledRequestSchema;
+    output: typeof ListScheduledResponseSchema;
+  },
+  /**
+   * --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-04) ---
+   *
+   * @generated from rpc engram.v1.EngramService.ListRules
+   */
+  listRules: {
+    methodKind: "unary";
+    input: typeof ListRulesRequestSchema;
+    output: typeof ListRulesResponseSchema;
+  },
+  /**
+   * --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
+   *
+   * @generated from rpc engram.v1.EngramService.RelatedMemories
+   */
+  relatedMemories: {
+    methodKind: "unary";
+    input: typeof RelatedMemoriesRequestSchema;
+    output: typeof RelatedMemoriesResponseSchema;
+  },
+  /**
+   * --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-06) ---
+   *
+   * @generated from rpc engram.v1.EngramService.ListTags
+   */
+  listTags: {
+    methodKind: "unary";
+    input: typeof ListTagsRequestSchema;
+    output: typeof ListTagsResponseSchema;
+  },
+  /**
+   * --- query understanding (milestone 2026-09-25.01 Phase 6, D-02: Connect-only, no MCP tool or CLI verb) ---
+   *
+   * @generated from rpc engram.v1.EngramService.UnderstandQuery
+   */
+  understandQuery: {
+    methodKind: "unary";
+    input: typeof UnderstandQueryRequestSchema;
+    output: typeof UnderstandQueryResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_engram_v1_engram, 0);

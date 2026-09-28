@@ -68,12 +68,16 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
   histogram.
 - **Not used here:** viper, cocogitto.
 - **Spike findings for engram** (implementation patterns, constraints, gotchas) → `Skill("spike-findings-engram")`
+- **Sketch findings for engram** (console design decisions, CSS patterns, visual direction) → `Skill("sketch-findings-engram")`
+- **Console conventions for engram** (tokens, state words, classifier, honest feedback, keyboard) → `Skill("engram-console-conventions")`
+- **SPA ↔ Connect client for engram** (clients, CSRF, query keys, resume, per-RPC contract) → `Skill("engram-connect-client")`
 
 ## Memory contract (stable)
 
 Tools: `store_memory` / `schedule_memory` / `search_memory` / `list_memory` /
 `list_scheduled` / `get_memory` / `supersede_memory` / `update_memory` /
-`delete_memory` / `delete_all`. A record carries `content`,
+`delete_memory` / `delete_all` / `archive_memory` / `restore_memory` /
+`related_memories` / `list_tags`. A record carries `content`,
 `scope`, repo/workspace/worktree/base_dir, `source`, `category`, `tags`,
 `summary`/`summary_source` (client-authored or auto-generated digest; omit for none),
 `actor` (verified caller — server-set, never client-supplied), `owner` (caller's
@@ -126,6 +130,13 @@ scope the caller can read, with the response reporting `searched_scopes` and
 were already found, `scopes_unknown` (the call still succeeds; `searched_scopes`
 is then absent rather than an empty list); the `engram search`/`engram list`
 CLI verbs reach the same capability and report the same three fields.
+`search_memory` and `list_memory` results (and Connect `SearchMemories`/`ListMemories`,
+`engram search`/`engram list`) also carry `recall_gate_hidden` — `{total, archived,
+superseded, expired, scheduled}` counts of records the recall gate hid from the
+returned window (the same top-k for search, the same page for list), counting only
+states the request did not include; a record with several states counts once in
+`total` and once per state; absent when the count could not be computed; counts
+only, never ids — the recall gate itself and the MCP input schemas are unchanged.
 Pre-isolation records (missing
 `owner` key) are invisible to every read until you backfill them with `engram
 migrate-remap-owner --from-missing --to <owner>` (the `migrate-set-owner` command
@@ -138,7 +149,10 @@ and/or `not_after` (RFC3339; expiry: dropped from recall at then). `list_schedul
 surfaces windowed records the recall gate is hiding (`state` = `scheduled` default
 | `expired` | `all`); active windowed records surface normally via
 `search_memory`/`list_memory`. Recall is gated; fetch-by-id (`get_memory`) is not.
-Operators reclaim lapsed records with `engram prune-expired --apply` (preview
+`list_scheduled` also accepts `cross_spine` (bool; still only the caller's own
+records — deferred reveal holds across every scope) and paginates via an opaque
+`cursor`/`next_cursor`, the same shape `list_memory` uses. Operators reclaim
+lapsed records with `engram prune-expired --apply` (preview
 by default without `--apply`; add `--older-than DUR` for a grace period).
 
 Supersession: `supersede_memory` corrects a record without losing history.
@@ -161,13 +175,25 @@ similarity or write-through path); rules cannot be superseded (delete instead);
 `idempotency_key` is accepted on this verb — the fingerprint covers content and
 the target set, and a retry after an ambiguous failure replays instead of
 duplicating. Use it for *reversals* — prefer `update_memory` for in-place
-refinement and `delete_memory` for junk. Agent-facing guidance lives in the
+refinement and `delete_memory` for junk. `validate_only` (bool) runs the same
+preflight (ownership, single-live-head, rule rejection, ambiguous short_id)
+without writing anything, naming the resolved targets or the exact rejection a
+real call would produce — optional, useful before a multi-target merge, never
+consulting `idempotency_key`. Agent-facing guidance lives in the
 `curating-memory` skill.
 
 Archived state: `engram spine-review archive` stamps `archived_at` on one or
 more records by id; `engram spine-review restore` deletes it, returning the
 record to normal recall — always reversible, and never a delete, content
-erasure, or vector removal. `archived_at` shares supersession's soft-hidden-
+erasure, or vector removal. The MCP `archive_memory` / `restore_memory` tools
+and the Connect `ArchiveMemory` / `RestoreMemory` RPCs reach the identical
+effect: `ids` (1 to 1000, each a full UUID or `short_id`), one outcome per id
+in caller-supplied order (`archived` / `already_archived` / `restored` /
+`not_archived` / `not_found`), owner-only — a record you do not own reads
+`not_found`, indistinguishable from a nonexistent id, and never echoes its
+UUID. Agent use is gated on the user agreeing to it in the conversation, never
+on the agent's own judgment; `engram spine-review archive` / `restore` remain
+the operator-tier path, unchanged. `archived_at` shares supersession's soft-hidden-
 but-still-fetchable-by-id contract: an archived record drops out of
 `search_memory`/`list_memory`/`search_discovery`/`list_scheduled` but stays reachable by id via `get_memory`.
 Archiving is an orthogonal key — it never writes an expiry and never writes a
@@ -191,10 +217,32 @@ one; `store_rule` is invoked only after the user blesses it (never promoted
 unilaterally); its `summary` must be a single line (the index entry). `list_rules` returns the complete set — up to 1000
 rules per scope, the same shared recall maximum — for one or more `rule:*`
 scopes, oldest-first, compact index shape by default (`full` for
-content). Rules surface at session start as a progressive-disclosure index (one
+content); omitting `scopes` lists every readable rule scope's rules in one
+cross-scope read (up to 1000 rules in total rather than per scope), reporting
+the covered rule scopes the same way a cross-spine recall reports
+`searched_scopes`. Rules surface at session start as a progressive-disclosure index (one
 line per rule; full text fetched on demand via `get_memory`). `set_visibility`
 is rejected for rules — delete the rule instead. Design intent unchanged:
 explicit, user-blessed, no auto-extraction.
+
+Related-memories and tags: `related_memories` returns one record's
+neighbourhood — supersession chain, shared tags, shared citations, and vector
+neighbours, each edge typed with its evidence — on demand only: curating
+(dedup before a store, finding what a correction should supersede) or an
+explicit user ask, never at session start and never as an automatic search
+follow-up. `list_tags` returns exact, recall-visible tag counts for a scope or
+(scope omitted) every readable scope — default 100, maximum 1000, most-used
+first, `more` when truncated, no server-side prefix filter — used to reuse an
+existing tag before `store_memory` rather than inventing a near-duplicate, and
+to choose a `tags` filter. Both are reads; agent-facing guidance for all seven
+curation capabilities lives in the `curating-memory` skill.
+
+All seven curation capabilities above (`archive_memory`/`restore_memory`,
+`supersede_memory`'s `validate_only`, the `list_rules`/`list_scheduled`
+widenings, `related_memories`, `list_tags`) also exist on Connect
+(`ArchiveMemory`/`RestoreMemory`/`SupersedeMemory` are CSRF-gated writes;
+`ListRules`/`ListScheduled`/`RelatedMemories`/`ListTags` are reads), delegating
+to the same core as their MCP tool.
 
 ## Auth
 

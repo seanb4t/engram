@@ -355,6 +355,36 @@ func renderCoverageFooter(w io.Writer, crossSpine bool, searchedScopes []string,
 	return err
 }
 
+// renderRecallHiddenFooter writes the D-03 recall-gate hidden-count footer
+// to w: how many records the recall gate hid from the response's own window
+// (the same top-k for search, the same page for list), bucketed per state.
+// The gate lives INSIDE this helper, exactly like renderCoverageFooter, so
+// no call site can forget it.
+//
+// Unlike renderCoverageFooter, this footer is NOT gated on --cross-spine —
+// a scope-confined call can hide records too (D-03), so the gate here is
+// solely on whether the server reported anything to say: nil (the
+// comparison call could not be made, or failed) or a zero total both print
+// nothing, because an absent field means the count could not be computed
+// and a fabricated zero would be a claim the server never made.
+//
+// Keys are the proto field names verbatim (recall_gate_hidden's own
+// total/archived/superseded/expired/scheduled), so the text lane and the
+// JSON lane agree about what this count is called — the JSON lane needs no
+// extra rendering code at all, since protojson already emits the field.
+//
+// Per-state numbers can sum to more than total: a record hidden for
+// multiple reasons (e.g. both superseded and outside its schedule window)
+// counts once in total and once per state it carries.
+func renderRecallHiddenFooter(w io.Writer, hidden *engramv1.RecallGateHidden) error {
+	if hidden == nil || hidden.GetTotal() == 0 {
+		return nil
+	}
+	_, err := fmt.Fprintf(w, "recall_gate_hidden: %d  archived: %d  superseded: %d  expired: %d  scheduled: %d\n",
+		hidden.GetTotal(), hidden.GetArchived(), hidden.GetSuperseded(), hidden.GetExpired(), hidden.GetScheduled())
+	return err
+}
+
 // footerLookupBudget bounds the migration-advisory footer's lookup latency
 // (07-06, T-07-19): the ceiling min(resolvedTimeout, footerLookupBudget) is
 // applied against, never the caller's full resolved --timeout, which could

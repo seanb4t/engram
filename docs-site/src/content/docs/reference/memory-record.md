@@ -21,7 +21,7 @@ documents every field, its serialized JSON name, allowed values, and who sets it
 | Base dir | `base_dir` | string | client | Base directory for the project (optional context) |
 | Source | `source` | string | client | How the memory was produced — see [Source values](#source-values) |
 | Category | `category` | string | client | What kind of memory — see [Category values](#category-values) |
-| Tags | `tags` | string[] | client | Free-form labels |
+| Tags | `tags` | string[] | client | Free-form labels; [`list_tags`](/reference/tools/#list_tags) reports exact, recall-visible per-tag counts for a scope or every readable scope |
 | Summary | `summary` | string | client/server | Short human-readable summary; omit or empty for none — see [Summary fields](#summary-fields) |
 | Summary Source | `summary_source` | string | client/server | How the summary was produced: `client` (caller-authored), `auto` (offline-generated), or `""` (none) |
 | Summary Model | `summary_model` | string | server | Name of the model used when `summary_source=auto` (e.g. `gpt-4o-mini`); empty when source is `client` or none |
@@ -58,7 +58,9 @@ that has never participated in a supersession — pre-feature records are unaffe
 
 Chains still run forward (C supersedes B supersedes A) with exactly one live head
 per chain: superseding an already-superseded record is rejected, which makes
-cycles and self-supersession structurally impossible. See
+cycles and self-supersession structurally impossible. `validate_only=true`
+runs this same preflight and previews the resolved chain **without writing**
+— no new record, no `supersedes`/`superseded_by` link on either side. See
 [`supersede_memory`](/reference/tools/#supersede_memory) for the full contract.
 
 ### Archiving
@@ -67,7 +69,11 @@ cycles and self-supersession structurally impossible. See
 `archived_at`, an entirely **new, orthogonal** key — distinct from both `not_after`
 expiry and `superseded_by` supersession. Archiving never writes `not_after` and
 never writes `superseded_by`; a record can be archived, expired, and superseded
-independently, and each state is cleared independently of the others.
+independently, and each state is cleared independently of the others. The MCP
+[`archive_memory`](/reference/tools/#archive_memory) /
+[`restore_memory`](/reference/tools/#restore_memory) tools and the Connect
+`ArchiveMemory` / `RestoreMemory` RPCs reach the identical effect over a batch
+of ids, owner-gated the same way the CLI verbs are.
 
 A record carrying `archived_at` is **soft-hidden from recall** (`search_memory`,
 `list_memory`, `search_discovery`, `list_scheduled`) but remains **fetchable by id**

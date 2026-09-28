@@ -110,6 +110,29 @@ func assertCodeParity(ctx context.Context, t *testing.T, mcpErr, connErr error) 
 	}
 }
 
+// assertEnvelopeParity (milestone 2026-09-25.01 Phase 3, D-20) extends
+// assertCodeParity with a message-text comparison: when both lanes reject,
+// the direct MCP-lane deps.* error's Error() text (the exact string a real
+// MCP client would see in the tool result's TextContent) must equal the
+// Connect error's Message() (via errors.As to *connect.Error) — not just
+// the same code. This is the stronger proof D-17/D-20 need for a
+// shape-violation rejection, where the rendered field=/hint= envelope
+// itself must be byte-identical across lanes, not merely same-classed.
+func assertEnvelopeParity(ctx context.Context, t *testing.T, mcpErr, connErr error) {
+	t.Helper()
+	assertCodeParity(ctx, t, mcpErr, connErr)
+	if mcpErr == nil || connErr == nil {
+		return
+	}
+	var ce *connect.Error
+	if !errors.As(connErr, &ce) {
+		t.Fatalf("connect error is %T, want *connect.Error", connErr)
+	}
+	if mcpErr.Error() != ce.Message() {
+		t.Errorf("message mismatch: mcp=%q connect=%q", mcpErr.Error(), ce.Message())
+	}
+}
+
 // traceKey is the store-trace SHAPE unit: the method invoked and the
 // caller's resolved owner. Deliberately excludes Args: a CREATE row (e.g.
 // StoreMemory) mints a fresh UUID per lane by design, so the recorded Upsert
@@ -634,6 +657,316 @@ func TestWriteParity(t *testing.T) {
 			}
 			if !errors.Is(mcpErr, store.ErrNotFound) {
 				t.Errorf("mcp error = %v, want store.ErrNotFound", mcpErr)
+			}
+		})
+	})
+
+	// ArchiveMemory/RestoreMemory (milestone 2026-09-25.01 Phase 3, D-20):
+	// unlike the by-id rows above, archiveMemory/restoreMemory take a
+	// BATCH (archiveArgs{IDs}), so each row asserts on the full per-id
+	// result slice, not a single mutationResult.
+	t.Run("ArchiveMemory", func(t *testing.T) {
+		t.Run("owned_success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-archive"
+			seed := store.Memory{
+				ID: "f5555555-0000-0000-0000-000000000001", ShortID: "PARITY0009",
+				Content: "to be archived", Scope: "parity:project:archive",
+				Category: "gotcha", Source: "user-said", Owner: owner, CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-archive@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			mcpRows, mcpErr := dMCP.archiveMemory(ctx, mcpCaller, archiveArgs{IDs: []string{seed.ID}})
+			connResp, connErr := api.ArchiveMemory(connCtx, connect.NewRequest(&engramv1.ArchiveMemoryRequest{Ids: []string{seed.ID}}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTraceExact(t, spMCP, spConn) // ResolvePointID, ArchiveAs
+			if len(mcpRows) != 1 || mcpRows[0].Outcome != outcomeArchived || mcpRows[0].ID != seed.ID {
+				t.Errorf("mcp rows = %+v, want one archived row for %s", mcpRows, seed.ID)
+			}
+			connRows := connResp.Msg.GetResults()
+			if len(connRows) != 1 || connRows[0].GetOutcome() != engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_ARCHIVED || connRows[0].GetId() != seed.ID {
+				t.Errorf("connect rows = %+v, want one ARCHIVED row for %s", connRows, seed.ID)
+			}
+		})
+
+		t.Run("cross_owner_not_found", func(t *testing.T) {
+			ctx := context.Background()
+			const ownerA = "actor-parity-archive-a"
+			const ownerB = "actor-parity-archive-b"
+			seed := store.Memory{
+				ID: "f5555555-0000-0000-0000-000000000002", ShortID: "PARITY0010",
+				Content: "owned by A", Scope: "parity:project:archive-xowner",
+				Category: "gotcha", Source: "user-said", Visibility: "shared", Owner: ownerA, CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, ownerB, "human-parity-archive-b@example.com")
+			connCtx := parityConnectCtx(ownerB)
+			api := &engramAPI{d: dConn}
+
+			mcpRows, mcpErr := dMCP.archiveMemory(ctx, mcpCaller, archiveArgs{IDs: []string{seed.ID}})
+			connResp, connErr := api.ArchiveMemory(connCtx, connect.NewRequest(&engramv1.ArchiveMemoryRequest{Ids: []string{seed.ID}}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success (per-id not_found, never a call-level error, D-06/D-07): mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTraceExact(t, spMCP, spConn)
+			if len(mcpRows) != 1 || mcpRows[0].Outcome != outcomeNotFound || mcpRows[0].ID != "" {
+				t.Errorf("mcp rows = %+v, want one not_found row with empty id", mcpRows)
+			}
+			connRows := connResp.Msg.GetResults()
+			if len(connRows) != 1 || connRows[0].GetOutcome() != engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_NOT_FOUND || connRows[0].GetId() != "" {
+				t.Errorf("connect rows = %+v, want one NOT_FOUND row with empty id", connRows)
+			}
+			if spMCP.records[seed.ID].ArchivedAt != nil {
+				t.Error("A's record archived by B's rejected call")
+			}
+		})
+
+		t.Run("empty_list_rejected", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-archive-empty"
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-archive-empty@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			_, mcpErr := dMCP.archiveMemory(ctx, mcpCaller, archiveArgs{IDs: nil})
+			_, connErr := api.ArchiveMemory(connCtx, connect.NewRequest(&engramv1.ArchiveMemoryRequest{Ids: nil}))
+			assertEnvelopeParity(ctx, t, mcpErr, connErr)
+			if len(spMCP.callLog()) != 0 || len(spConn.callLog()) != 0 {
+				t.Errorf("expected zero store calls on an empty-list rejection: mcp=%+v connect=%+v", spMCP.callLog(), spConn.callLog())
+			}
+		})
+	})
+
+	t.Run("RestoreMemory", func(t *testing.T) {
+		t.Run("owned_success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-restore"
+			archivedAt := fixedParityNow
+			seed := store.Memory{
+				ID: "f6666666-0000-0000-0000-000000000001", ShortID: "PARITY0011",
+				Content: "pre-archived", Scope: "parity:project:restore",
+				Category: "gotcha", Source: "user-said", Owner: owner, CreatedAt: fixedParityNow,
+				ArchivedAt: &archivedAt,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-restore@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			mcpRows, mcpErr := dMCP.restoreMemory(ctx, mcpCaller, archiveArgs{IDs: []string{seed.ID}})
+			connResp, connErr := api.RestoreMemory(connCtx, connect.NewRequest(&engramv1.RestoreMemoryRequest{Ids: []string{seed.ID}}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTraceExact(t, spMCP, spConn) // ResolvePointID, RestoreAs
+			if len(mcpRows) != 1 || mcpRows[0].Outcome != outcomeRestored || mcpRows[0].ID != seed.ID {
+				t.Errorf("mcp rows = %+v, want one restored row for %s", mcpRows, seed.ID)
+			}
+			connRows := connResp.Msg.GetResults()
+			if len(connRows) != 1 || connRows[0].GetOutcome() != engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_RESTORED || connRows[0].GetId() != seed.ID {
+				t.Errorf("connect rows = %+v, want one RESTORED row for %s", connRows, seed.ID)
+			}
+		})
+
+		t.Run("cross_owner_not_found", func(t *testing.T) {
+			ctx := context.Background()
+			const ownerA = "actor-parity-restore-a"
+			const ownerB = "actor-parity-restore-b"
+			archivedAt := fixedParityNow
+			seed := store.Memory{
+				ID: "f6666666-0000-0000-0000-000000000002", ShortID: "PARITY0012",
+				Content: "owned by A, pre-archived", Scope: "parity:project:restore-xowner",
+				Category: "gotcha", Source: "user-said", Visibility: "shared", Owner: ownerA, CreatedAt: fixedParityNow,
+				ArchivedAt: &archivedAt,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, ownerB, "human-parity-restore-b@example.com")
+			connCtx := parityConnectCtx(ownerB)
+			api := &engramAPI{d: dConn}
+
+			mcpRows, mcpErr := dMCP.restoreMemory(ctx, mcpCaller, archiveArgs{IDs: []string{seed.ID}})
+			connResp, connErr := api.RestoreMemory(connCtx, connect.NewRequest(&engramv1.RestoreMemoryRequest{Ids: []string{seed.ID}}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success (per-id not_found, never a call-level error, D-06/D-07): mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTraceExact(t, spMCP, spConn)
+			if len(mcpRows) != 1 || mcpRows[0].Outcome != outcomeNotFound || mcpRows[0].ID != "" {
+				t.Errorf("mcp rows = %+v, want one not_found row with empty id", mcpRows)
+			}
+			connRows := connResp.Msg.GetResults()
+			if len(connRows) != 1 || connRows[0].GetOutcome() != engramv1.ArchiveOutcome_ARCHIVE_OUTCOME_NOT_FOUND || connRows[0].GetId() != "" {
+				t.Errorf("connect rows = %+v, want one NOT_FOUND row with empty id", connRows)
+			}
+			if spMCP.records[seed.ID].ArchivedAt == nil {
+				t.Error("A's record restored by B's rejected call")
+			}
+		})
+
+		t.Run("empty_list_rejected", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-restore-empty"
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-restore-empty@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			_, mcpErr := dMCP.restoreMemory(ctx, mcpCaller, archiveArgs{IDs: nil})
+			_, connErr := api.RestoreMemory(connCtx, connect.NewRequest(&engramv1.RestoreMemoryRequest{Ids: nil}))
+			assertEnvelopeParity(ctx, t, mcpErr, connErr)
+			if len(spMCP.callLog()) != 0 || len(spConn.callLog()) != 0 {
+				t.Errorf("expected zero store calls on an empty-list rejection: mcp=%+v connect=%+v", spMCP.callLog(), spConn.callLog())
+			}
+		})
+	})
+
+	// SupersedeMemory (milestone 2026-09-25.01 Phase 3 plan 03-02, D-20):
+	// unlike StoreMemory, both lanes call the ONE deps.supersede dispatch
+	// (never deps.supersedeMemory/deps.validateSupersede directly), so the
+	// "validate_only" subtest additionally asserts the store trace carries
+	// no Upsert/Supersede/MintShortID call.
+	t.Run("SupersedeMemory", func(t *testing.T) {
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-supersede"
+			const mcpActor = "human-parity-supersede@example.com"
+			const scope = "parity:project:supersede"
+			seed := store.Memory{
+				ID: "f7777777-0000-0000-0000-000000000001", ShortID: "PARITY0013",
+				Content: "to be superseded", Scope: scope,
+				Category: "gotcha", Source: "user-said", Owner: owner, CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, owner, mcpActor)
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			mcpOut, mcpErr := dMCP.supersede(ctx, mcpCaller, supersedeArgs{
+				storeArgs:  storeArgs{Content: "corrected", Scope: scope, Category: "gotcha", Source: "user-said"},
+				Supersedes: []string{seed.ID},
+			})
+			connResp, connErr := api.SupersedeMemory(connCtx, connect.NewRequest(&engramv1.SupersedeMemoryRequest{
+				Content: "corrected", Scope: scope, Category: "gotcha", Source: "user-said",
+				Supersedes: []string{seed.ID},
+			}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTrace(t, spMCP, spConn) // sequence: MintShortID, Upsert, Supersede — CREATE row, ids differ
+			if mcpOut.ID == "" || connResp.Msg.GetId() == "" {
+				t.Errorf("expected a minted id on both lanes: mcp=%q connect=%q", mcpOut.ID, connResp.Msg.GetId())
+			}
+		})
+
+		t.Run("cross_owner_target_rejected", func(t *testing.T) {
+			ctx := context.Background()
+			const ownerA = "actor-parity-supersede-a"
+			const ownerB = "actor-parity-supersede-b"
+			const scope = "parity:project:supersede-xowner"
+			seed := store.Memory{
+				ID: "f7777777-0000-0000-0000-000000000002", ShortID: "PARITY0014",
+				Content: "owned by A", Scope: scope,
+				Category: "gotcha", Source: "user-said", Visibility: "shared", Owner: ownerA, CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, ownerB, "human-parity-supersede-b@example.com")
+			connCtx := parityConnectCtx(ownerB)
+			api := &engramAPI{d: dConn}
+
+			args := supersedeArgs{
+				storeArgs:  storeArgs{Content: "attacker merge", Scope: scope, Category: "gotcha", Source: "user-said"},
+				Supersedes: []string{seed.ID},
+			}
+			_, mcpErr := dMCP.supersede(ctx, mcpCaller, args)
+			connResp, connErr := api.SupersedeMemory(connCtx, connect.NewRequest(&engramv1.SupersedeMemoryRequest{
+				Content: args.Content, Scope: args.Scope, Category: args.Category, Source: args.Source,
+				Supersedes: args.Supersedes,
+			}))
+			assertEnvelopeParity(ctx, t, mcpErr, connErr)
+			if connResp != nil {
+				t.Errorf("expected no response on rejection, got %+v", connResp.Msg)
+			}
+			assertSameStoreTrace(t, spMCP, spConn)
+			if spMCP.records[seed.ID].SupersededBy != nil {
+				t.Error("A's record superseded by B's rejected call")
+			}
+		})
+
+		t.Run("validate_only", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-supersede-validate"
+			const scope = "parity:project:supersede-validate"
+			seed := store.Memory{
+				ID: "f7777777-0000-0000-0000-000000000003", ShortID: "PARITY0015",
+				Content: "would be superseded", Scope: scope,
+				Category: "gotcha", Source: "user-said", Owner: owner, CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-supersede-validate@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			args := supersedeArgs{
+				storeArgs:  storeArgs{Content: "would-be merge", Scope: scope, Category: "gotcha", Source: "user-said"},
+				Supersedes: []string{seed.ID}, ValidateOnly: true,
+			}
+			mcpOut, mcpErr := dMCP.supersede(ctx, mcpCaller, args)
+			connResp, connErr := api.SupersedeMemory(connCtx, connect.NewRequest(&engramv1.SupersedeMemoryRequest{
+				Content: args.Content, Scope: args.Scope, Category: args.Category, Source: args.Source,
+				Supersedes: args.Supersedes, ValidateOnly: true,
+			}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTraceExact(t, spMCP, spConn) // identical target id, no freshly minted UUID in play
+			if !mcpOut.Validated || len(mcpOut.Supersedes) != 1 || mcpOut.Supersedes[0] != seed.ID {
+				t.Errorf("mcp preview = %+v, want validated true and supersedes [%s]", mcpOut, seed.ID)
+			}
+			if !connResp.Msg.GetValidated() || len(connResp.Msg.GetSupersedes()) != 1 || connResp.Msg.GetSupersedes()[0] != seed.ID {
+				t.Errorf("connect preview = %+v, want validated true and supersedes [%s]", connResp.Msg, seed.ID)
+			}
+			for _, lane := range [][]spyCall{spMCP.callLog(), spConn.callLog()} {
+				for _, call := range lane {
+					if call.Method == "Upsert" || call.Method == "Supersede" || call.Method == "MintShortID" {
+						t.Errorf("store trace contains a write call during validate_only: %+v", call)
+					}
+				}
 			}
 		})
 	})

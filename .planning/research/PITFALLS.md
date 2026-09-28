@@ -1,738 +1,597 @@
-# Pitfalls Research — Bounded Reads (2026-09-18.01)
+# Pitfalls Research
 
-**Domain:** Adding size-bounded paging to a Qdrant-backed list/search store layer
-(`internal/store`), mapping `ResourceExhausted` to a clear error, and bounding
-provider HTTP error bodies (`internal/embed`, `internal/summarize`) — engram
-(/Volumes/Code/github.com/seanb4t/engram).
-
-**Researched:** 2026-09-18
-**Confidence:** HIGH for anything cited against this repo's own shipped code
-(`internal/store/store.go`, `internal/store/migrate.go`, `internal/store/store_test.go`)
-and against grpc-go's and Qdrant's own documented/issue-tracked behavior (cited
-inline with sources). MEDIUM for the testcontainer flakiness root cause (#497),
-since the issue itself states "not investigated" and the leading theory (runner
-resource pressure from N parallel Qdrant containers) is inferred from timestamps,
-not proven. LOW/speculative flagged inline for anything this milestone has not
-yet decided (e.g., whether `ListMemories` moves off `limit:0`=all — PROJECT.md
-"Open for discuss-phase").
+**Domain:** Recall-first search UX + curation workbench + related-memories graph, added to an existing
+SvelteKit 2 / Svelte 5 / shadcn-svelte / bits-ui / Tailwind 4 / TanStack Query 6 operator console
+vendored as a static SPA into a Go binary, over a ConnectRPC API backed by Qdrant with
+store-layer-enforced authz (Cedar) and provider-neutral, advisory-only typed decisions (Jev).
+**Researched:** 2026-09-25
+**Confidence:** HIGH for engram-specific/repo-grounded findings (direct file:line evidence); MEDIUM
+for external library specifics not confirmed against first-party version-pinned docs (flagged inline)
 
 ## Critical Pitfalls
 
-### Pitfall 1: Fixing the *known* 4 MiB overflow sites while missing a sibling one — this bug class recurs by construction, not by surprise
+### Pitfall 1: The command palette lies — client-side filtering masquerading as search
 
 **What goes wrong:**
-#583 fixed `Store.ListScopes`'s full-payload Scroll. #585 immediately found the
-*same* overflow in `Store.List`'s three modes (offset `Limit:0`=all, deep offset,
-1000-record cursor pages). The milestone also names `ListScheduled` and the
-256-batch operator sweeps (`migrate`/`revert`/`summarize-missing`/`spine-review`/
-`reindex`) as siblings that request full payloads with no page-size ceiling tied
-to payload size. Every one of these call sites shares the identical root cause
-(`internal/server/tools.go:123`'s `qdrant.NewClient` sets no
-`MaxCallRecvMsgSize`, so grpc-go's 4 MiB default applies uniformly), so fixing
-one call site and calling the milestone done reproduces the #583→#585 sequence
-a third time.
+The palette shows "no matches" for a query the store actually has thousands of hits for, because
+it is filtering a small static list of menu items against the typed text instead of asking the
+server anything.
 
 **Why it happens:**
-The overflow is a property of (page size × per-record payload size), not of any
-one function. Each call site was written independently, at different times, by
-different phases, so a fix scoped to "the path that broke in prod" naturally
-stops at that one function instead of walking every `WithPayload(true)` Scroll/
-Get/Query call in the store layer.
+bits-ui's `Command.Root` defaults `shouldFilter` to `true` (confirmed against bits-ui docs,
+2026-09-25) — every `Command.Item` is scored against the input text with `computeCommandScore`
+and hidden if it doesn't match. `CommandPalette.svelte` never sets `shouldFilter`, so it inherits
+`true`. The single "Search memories for …" item's label is computed once at mount
+(`Search memories for "{q}"` snapshots `q` while it's still `''`), so with any typed text the
+label no longer scores against the input and the item itself gets filtered out — the exact live
+bug logged in `notes/console-overhaul-exploration.md` ("Palette says 'no matches' for `github`").
+This is a general bits-ui/cmdk trap, not engram-specific: any `Command.Root` wrapping
+server-driven or dynamically-labelled items needs filtering disabled explicitly.
 
 **How to avoid:**
-Before closing this milestone, enumerate every store-layer call that sets
-`WithPayload(true)`/`qdrant.NewWithPayload(true)` or omits a payload-size-aware
-limit, not just the five named in PROJECT.md. Grep once
-(`rg -n 'WithPayload\(true\)|NewWithPayload\(true\)' internal/store/*.go`) and
-treat every hit as in-scope until proven otherwise — this catches
-`Store.Search`'s full-payload `k`-sized Query (#585 names it explicitly) and
-`Store.Get`'s single-point full payload (safe: one record, bounded by
-`ENGRAM_MEMORY_MAX_CONTENT_BYTES`-class caps if any exist, but verify — it is
-not obviously safe just because it is "only one point," since memory `content`
-is currently unbounded per PROJECT.md's "Open for discuss-phase").
+Set `Command.Root shouldFilter={false}` on every palette/combobox that drives results from a
+server call, and feed `Command.List` from the live `SearchMemories`/`ListTags`/`ListScopes`
+response, never from a static item array scored against the query text. Any item whose visible
+label depends on reactive state (`q`) must be a `$derived`, not a value read once at mount.
 
 **Warning signs:**
-A fix PR whose regression test only covers the exact function named in the
-issue, with no test asserting the *other* four named call sites also hold under
-an equivalent oversized fixture.
+- A palette/combobox "shows no results" for a term that manual `search_memory` calls confirm the
+  store has.
+- `Command.Empty` renders while a network request for the same term is still in flight or was
+  never fired (check devtools Network tab, not just the UI).
+- Any `Command.Item` whose `onSelect`/label references a variable captured before `bind:value`
+  updates it.
 
 **Phase to address:**
-An early phase should do the full-inventory sweep and land the recall-gate/
-paging fix as one coherent mechanism (e.g., a shared "bounded scroll" helper)
-rather than five independent per-function patches — the repeated-defect pattern
-above is itself evidence that per-function patching under-generalizes here.
+Recall-first search phase (first phase per the milestone's stated build order) — this is the bug
+that motivated the milestone; a regression test that types text unlikely to match any static
+label and asserts a real Connect call fired is the first test to write.
 
 ---
 
-### Pitfall 2: Bounding page size alone does not bound response size — record `content` is unbounded, so a *small* page can still overflow
+### Pitfall 2: Search-box race — a stale response overwrites a newer query
 
 **What goes wrong:**
-`maxListLimit = 1000` (store.go:1458) bounds record *count*, not bytes. #585's
-own PR notes "an average payload above about 4 KiB overflows" at 1000 records —
-but there is no floor preventing a single record's `content` from being far
-larger than 4 KiB. engram's memory `content` field is explicitly called out in
-PROJECT.md as unbounded today (unlike the summary field, which already has
-`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`, default 512 bytes). A page of just 4 records
-each holding 1.5 MiB of `content` overflows the same 4 MiB cap that a 1000-record
-page of tiny records would not.
+User types `git`, then `github`; the `git` response (broader, arrives late) lands after the
+`github` response and overwrites it, so the visible results don't match the visible input.
 
 **Why it happens:**
-Count-based limits (`maxListLimit`, `reindexBatch = 256`, `migrateBatch = 256`)
-were designed as reasonable *pagination* ergonomics, not as a defense against
-this specific gRPC ceiling — they predate the discovery that payload size, not
-record count, is the actual constraint.
+`createQuery` keys must encode every input that changes the response, and in-flight requests for
+an abandoned key must be cancelled — neither happens automatically. `search/+page.svelte` already
+does the query-key part correctly (`queryKey: ['searchMemories', query, scope]` at
+`ui/src/routes/search/+page.svelte:18` — the raw text is IN the key, so a new keystroke is a new
+cache entry, not a mutation of the old one), but it does **not** thread an `AbortSignal` into
+`engram.searchMemories`. TanStack Query passes each `queryFn` an `AbortSignal` that fires when the
+query becomes stale/inactive; connect-web's generated client methods accept `signal` in their
+`CallOptions` second argument. Without wiring it through, an abandoned request for `git` keeps
+running server-side and its promise can still resolve and (depending on cache/key nuances, e.g. a
+debounced key that coalesces near-identical text) clobber fresher state. This gets materially more
+dangerous once the palette/entry point starts debouncing free text server-side (Pitfall 1's fix) —
+debounced input means more overlapping in-flight requests, not fewer.
 
 **How to avoid:**
-Treat "cap page size" and "cap content size" as two independent, complementary
-fixes, and do not let landing one read as having landed the other. PROJECT.md
-already flags the `ENGRAM_MEMORY_MAX_CONTENT_BYTES` question as open for
-discuss-phase — resolve it explicitly (even if the resolution is "not this
-milestone, tracked as a follow-up issue") rather than letting the paging fix
-implicitly stand in for it. If content stays unbounded, the paging fix must be
-resilient to a single record's payload alone exceeding the cap (i.e., page size
-1 can still fail, and that failure must map to a clear error, not `internal`).
+`queryFn: ({ signal }) => engram.searchMemories(req, { signal })` on every server-driven
+search/facet/autocomplete query. Keep the full query text (and every filter chip, facet selection,
+`cross_spine` flag) in the query key — never key on a debounced/throttled proxy that can alias two
+different inputs to the same cache entry.
 
 **Warning signs:**
-A regression test fixture that proves the count-based cap works (e.g., "1000
-tiny records still fit") without a companion test proving a small page of large
-records is handled (either succeeds via smaller effective page size, or fails
-with a clear, named error rather than `internal`).
+- Results visibly "flicker back" to an earlier state after the input has moved on.
+- Network tab shows overlapping in-flight requests for the same query family with no cancellation.
+- A `queryFn` that ignores its `{ signal }` argument entirely.
 
 **Phase to address:**
-Same phase as Pitfall 1's inventory — the "done means" bar in PROJECT.md
-("every exposed path carries a real-Qdrant regression test holding more than
-4 MiB of payload") should be read as requiring both a many-small-records
-fixture AND a few-large-records fixture per path, not just one shape.
+Recall-first search phase — write the race test (fire two overlapping queries, resolve the first
+after the second, assert final rendered state matches the second) before building facets/palette
+on top of the same query function.
 
 ---
 
-### Pitfall 3: Order-by-ties + concurrent inserts break keyset (cursor) paging silently — duplicates or skips with no error
+### Pitfall 3: Flash-to-empty and "no results" shown while still loading
 
 **What goes wrong:**
-`listByCursor` (store.go:1463) resumes via `qdrant.NewStartFromDatetime(c.C)`
-plus a `seen` id set for records exactly at the boundary timestamp. This is
-correct *only* if `created_at` collisions are rare enough that the `seen` set
-(capped at `maxListLimit = 1000`, store.go:1479) never needs to hold more ids
-than that. Two failure shapes exist today, both silent (no error returned):
-1. **Tie overflow:** if more than 1000 records share the exact same `created_at`
-   boundary, `decodeCursor` rejects a *client-replayed* oversized cursor
-   (`ErrInvalidArgument`), but the *server* never detects that it under-counted
-   `seen` on the page that produced the cursor — some boundary records are
-   silently skipped rather than surfaced on the next page.
-2. **Concurrent insert at/before the cursor boundary:** a new record inserted
-   with a `created_at` earlier than a page already served, but before the
-   in-flight next-page fetch runs, is invisible to the resumed scan by
-   construction (keyset paging over a mutable, non-append-only key is
-   inherently vulnerable to this) — this is expected/acceptable for created_at-
-   keyed pagination in general, but it must not be *conflated* with the size-
-   bounding work in this milestone as if fixing size bounds also fixed
-   pagination correctness.
+Between keystrokes the result list flashes to an empty/"no matches" state before the new results
+arrive, reading as "nothing found" for a beat even though the server hasn't answered yet — the
+opposite of the milestone's stated honesty rule ("report honestly what it searched").
 
 **Why it happens:**
-Keyset pagination assumes the ordering key changes rarely relative to page
-size. `created_at` has millisecond (or coarser, depending on stamp precision)
-granularity, so bulk operations (a migration backfill, a bulk import, or many
-records written in the same request-handling tick) can produce more same-
-timestamp records than any one page's `seen` budget anticipates.
+Default `createQuery` behavior treats every new query key as a fresh fetch: `data` is `undefined`
+and `isLoading` is `true` until the first result for *that specific key* arrives, so a naive
+`{#if data.memories.length === 0}` empty-state check fires on every keystroke. TanStack Query v5
+retired `keepPreviousData`/`isPreviousData` in favor of `placeholderData` accepting an identity
+function (confirmed via TanStack's v5 migration guide and GitHub discussion #6460) —
+`placeholderData: keepPreviousData` (importing the `keepPreviousData` helper) keeps the prior
+page's data visible while the new one loads, with `isPlaceholderData` distinguishing "this is
+stale" from "this is fresh." **v6-specific confirmation gap (MEDIUM confidence):** engram's stack
+is already on the v6 Svelte adapter (`@tanstack/svelte-query: ^6.1.34`), which the official
+migrate-from-v5-to-v6 guide describes as dropping stores in favor of a rune-returning thunk
+(`createQuery(() => ({...}))`, already the pattern in `search/+page.svelte:15-19`); the guide does
+not document a further rename of `placeholderData`, so treat it as carried forward but verify
+against the pinned 6.1.34 changelog before relying on it.
 
 **How to avoid:**
-Do not treat "bound the page byte size" and "keyset paging is correct under
-ties/concurrent writes" as the same problem — this milestone's stated scope is
-the former. If the phase touches `listByCursor` at all (e.g., to add a
-byte-size-aware page shrink), add an explicit regression test for >1000
-same-`created_at` records proving the *documented* behavior (skip-with-no-error
-today, or a named error after the fix) rather than silently changing behavior
-as a side effect of the size fix. If out of scope, say so explicitly in the
-phase's SPEC/PLAN so a future auditor does not assume this milestone also
-proved cursor correctness under ties.
+`placeholderData: keepPreviousData` on the search query; render an explicit "searching…" state
+keyed off `isFetching && !isPlaceholderData` (not off `data` presence) distinct from the honest
+"no memories match `X` in any scope you can read" empty state, which must only render once
+`isFetching` is false. Never let `memories.length === 0` alone decide the empty state.
 
 **Warning signs:**
-A "done" claim for cursor paging that cites only the 4 MiB fixture (many
-records, one `created_at` each) with no same-timestamp tie fixture — the
-existing `TestListScopesFullPayloadsOverGRPCLimit`-style fixture (store.go
-uses distinct sequential UUIDs but a shared `time.Now()` at upsert time — check
-whether all 40 records in that pattern actually share one truncated
-`created_at`, which would make it an accidental tie-fixture already).
+- Visual flash of "no results" on every keystroke in manual testing.
+- An empty state that renders identically whether the query errored, is loading, or genuinely
+  found nothing (the honesty rule requires these to say different things).
 
 **Phase to address:**
-If `listByCursor` needs a byte-size-aware shrink (see Pitfall 5), do the shrink
-in a phase separate from, or explicitly scoped alongside, any change to the
-`seen`-set/boundary logic — and add the tie-overflow regression test in
-whichever phase touches this function, since it is adjacent code that is easy
-to perturb without noticing.
+Recall-first search phase — this is the same phase as Pitfall 1/2; the "truthful result feedback"
+requirement in `PROJECT.md`'s target-features list depends on getting all three (filtering,
+races, flash) right together.
 
 ---
 
-### Pitfall 4: A two-phase ids→payload read reintroduces TOCTOU that the current one-shot Scroll does not have
+### Pitfall 4: Focus loss and a mixed keyboard model on hover-expand rows
 
 **What goes wrong:**
-#585 lists "fetch only the ids with `WithPayload(false)` and then load payloads
-for just the returned page" as a candidate fix for offset-mode deep paging.
-This converts one atomic-per-page Scroll into two round trips: (1) resolve the
-ordered id window, (2) `Get`/`GetPoints` those ids' payloads. Between phase 1
-and phase 2, a record can be deleted, superseded (`superseded_by` set), or
-archived (`archived_at` set) — its id is still in the phase-1 window but
-`GetPoints` either 404s that id (silently dropping it, changing the page's
-count without adjusting `total`) or — worse — `Get` bypasses the recall gate
-entirely (per this repo's own documented contract: "Store.Get stays ungated,"
-repeated at every soft-hide condition in `store.go`, e.g. lines 1389, 1397,
-1630, 1635), so a record that became superseded/archived/expired between
-phase 1 and phase 2 could be returned to a *list* caller carrying gated state,
-via a path that was never meant to bypass the gate.
+`j`/`k` traversal moves the "selected" row visually, but real DOM focus is elsewhere (or nowhere),
+so screen readers announce nothing, browser find-in-page/extension shortcuts fight the app, and
+hovering a *different* row than the keyboard-selected one to read its expanded content silently
+steals the "current" row out from under the keyboard user.
 
 **Why it happens:**
-`Store.Get` is intentionally ungated (`get_memory` fetch-by-id is documented as
-not recall-gated — this is a **feature** for the existing single-id `get_memory`
-tool, where the caller already has the id and is explicitly asking for it
-regardless of state). Reusing `Get`/`GetPoints` as the payload-fetch half of a
-new two-phase *list* path silently imports that ungated behavior into a
-recall-gated surface, which is exactly the class of bug the repo's own
-"recall-gate AST test pins Scroll call sites" convention exists to prevent —
-and a `Get`/`GetPoints`-based fetch is invisible to a Scroll-call-site AST
-gate by construction.
+Two different WAI-ARIA APG-endorsed patterns solve "select one of many rows with the keyboard,"
+and mixing them is the classic trap: **roving tabindex** (DOM focus physically moves row to row,
+each row is a real tab stop) vs **`aria-activedescendant`** (DOM focus stays on one container
+element; the container's `aria-activedescendant` attribute points at the id of the "active" row,
+which gets a visual highlight only). engram's existing `MemoryRow.svelte` has no `tabindex`/focus
+management at all today — selection is driven entirely by `?sel=` in the URL and mouse `onclick`
+(`ui/src/lib/components/MemoryRow.svelte:62-65`), so `j`/`k` traversal is new keyboard-model
+surface, not a retrofit. Layering **hover**-driven expansion on top of either model is the second
+trap: if hover changes which row is "active" (as MemoryRow's `group-hover:opacity-100` action menu
+already hints at, line 82), a mouse resting on row 12 while `j`/`k` has logically selected row 3
+creates two different "current rows" simultaneously — assistive tech and the visible highlight can
+disagree about which one is which.
 
 **How to avoid:**
-If a two-phase ids→payload design is adopted: (a) re-derive the id set's
-current gate-relevant fields (or re-check the filter) in phase 2 rather than
-trusting phase-1 membership as still valid, or (b) keep the filter conditions
-applied in phase 1 as the sole gate and treat phase 2 strictly as a payload
-hydration step that must re-verify each returned id is still in the id set
-(diff against phase-1 ids; drop and adjust reported count for anything that
-vanished, rather than silently shrinking the page or leaking a gated record).
-Whichever approach is chosen, extend (or explicitly justify not extending) the
-recall-gate AST pin to cover the new `Get`/`GetPoints` call site, since that
-convention exists precisely to make "does this new Scroll/Get bypass the gate"
-mechanically checkable rather than a code-review judgment call each time.
+Follow WAI-ARIA APG's Listbox pattern (confirmed via exploration note, sourced from
+w3.org/WAI/ARIA/apg/patterns/listbox): keep real DOM focus on the list container, drive
+`aria-activedescendant` from `j`/`k` state only, and never let a `mouseenter`/`mouseleave`
+hover-expand handler mutate the same "active id" state `j`/`k` writes — hover expansion should be
+a purely visual/local affordance (e.g. a `:hover`/`focus-within` CSS reveal, matching the existing
+`opacity-0 group-hover:opacity-100` pattern already used for the row action menu) that never
+touches keyboard-selection state. Detail-pane content should follow keyboard selection, not mouse
+position.
 
 **Warning signs:**
-A phase 2 fetch that reuses `Store.Get` or a bare `qdrant.GetPoints` call
-without re-threading the same `Must` filter conditions (superseded/archived/
-scheduled/owner) that phase 1 applied — check the diff for any new `client.Get`
-call in a list/search path that does not also carry a `Filter` re-check.
+- Tab key moves focus through 30 individual row elements (roving tabindex leaking into a listbox
+  that should use activedescendant), or focus disappears entirely after a `j`/`k` press.
+- Moving the mouse over a different row than the one `j`/`k` selected changes what the detail pane
+  shows.
+- A screen reader announces nothing when `j`/`k` is pressed.
 
 **Phase to address:**
-Whichever phase implements the two-phase ids→payload approach for offset-mode
-deep paging (if that approach is chosen over an alternative — see Pitfall 1's
-"whatever mechanism" framing) must include this TOCTOU re-verification as an
-explicit acceptance criterion, not an implementation detail assumed correct by
-construction.
+Recall-first search phase — keyboard traversal and hover-expand are both target features of the
+same phase per `PROJECT.md`; write the activedescendant-vs-hover independence as an explicit
+assertion, not just a visual check.
 
 ---
 
-### Pitfall 5: `qdrant.Get`/`GetPoints` does not preserve requested-id order — a two-phase read silently reorders `created_at`-sorted pages
+### Pitfall 5: Variable-height hover-expanded rows break virtualization
 
 **What goes wrong:**
-Qdrant's own issue tracker and API documentation state that `GetPoints` does
-not guarantee response order matches the requested id list — the server may
-sort internally (e.g., by id) rather than by request order
-([qdrant/qdrant#5071](https://github.com/qdrant/qdrant/issues/5071); API
-reference notes "if the indices are not sorted, Qdrant will sort them
-internally"). Every list/search path in this store orders by `created_at`
-(store.go:1439, 1497, 1644). A two-phase design that resolves an ordered id
-window in phase 1 via Scroll+`order_by`, then fetches payloads for those ids
-via `GetPoints` in phase 2, will receive payloads back in an *unspecified*
-order — not the `created_at` order phase 1 established — and must not assume
-`GetPoints`'s response order is usable directly.
+A virtualized list of dense rows that expand to a taller size on hover/focus either mis-measures
+scroll position (jumping, overlapping rows, blank gaps) or silently renders nothing at all on
+first paint under Svelte 5.
 
 **Why it happens:**
-It is an easy, unstated assumption that "I asked for these N ids, I get back
-these N payloads in the same order" — true for many key-value style APIs, not
-guaranteed for Qdrant's batch point-retrieval API.
+Two independent problems compound. First, hover-expand rows are variable-height by definition (a
+collapsed row is one line; an expanded row shows content preview + full tag set), and virtualizers
+that assume fixed row height, or that measure height once and cache it, will mis-position rows the
+instant a hover toggles a neighbor's height — the expanding row is exactly the one whose
+measurement the virtualizer must re-run, not skip. Second, and more acute for this stack:
+`@tanstack/svelte-virtual` (3.13.39, already a documented candidate in
+`notes/console-overhaul-exploration.md`) has an **open, unresolved GitHub issue for Svelte 5**
+(TanStack/virtual#866, opened 2024-10-28, confirmed still open 2026-09-25): the virtualizer loses
+track of the initial scroll-element binding under runes mode and renders an empty list on first
+load; the documented workaround is manually tracking a `mounted` boolean and calling
+`$virtualizer._willUpdate()` — a private API, not a supported integration path. This is **not**
+a turnkey dependency add for this stack today.
 
 **How to avoid:**
-If phase 2 of a two-phase design uses `GetPoints`, re-sort the returned
-payloads client-side using the id order established in phase 1 (build an
-`id → Memory` map from the `GetPoints` response, then iterate the phase-1
-ordered id list to reconstruct output order) — never assume response order.
-Add a regression test with a page of records whose ids are NOT in `created_at`
-order when sorted lexically/by-id (the two orderings must diverge for the test
-to be meaningful), asserting the final returned order matches `created_at`.
+Decide virtualization need *before* adopting `@tanstack/svelte-virtual`: with "~30 rows on screen"
+as the stated dense-row target (`notes/console-overhaul-exploration.md`), a bounded page of ~30-50
+rows may not need virtualization at all if pagination/cursor limits keep the DOM list short — check
+this against the actual `k`/limit ceiling before reaching for a library carrying an open Svelte-5
+blocker. If virtualization is needed (e.g. an unbounded browse view later), either (a) pin to a
+version/commit with the `_willUpdate()` workaround applied and covered by a regression test proving
+first-paint renders rows, or (b) measure real row heights via `ResizeObserver` per row and feed
+them to `estimateSize`, re-measuring on hover/expand toggle rather than caching a static estimate.
 
 **Warning signs:**
-A two-phase implementation that appends directly to output from a `for _, p
-:= range pts` loop over a `GetPoints` response without an intermediate
-map-and-reorder step — this is the same `fromPayload(p.Id.GetUuid(), p.Payload)`
-loop shape already used elsewhere in this file (e.g., store.go:1446,
-1509, 1651) for *Scroll* results (which the codebase apparently treats as
-order-preserving in request/response — verify this assumption too if any of
-these loops is ever fed by a `GetPoints` call instead of `Scroll`).
+- Blank list on first load that only appears after a scroll event or window resize.
+- Rows overlapping or leaving gaps immediately after a hover expands/collapses a neighbor.
+- Any private/underscore-prefixed virtualizer method (`_willUpdate`, etc.) appearing in app code —
+  a sign the public API isn't sufficient yet for this Svelte version.
 
 **Phase to address:**
-Same phase as Pitfall 4 — order preservation is a correctness requirement of
-the same two-phase mechanism, not a separate concern, and should be proven by
-the same regression test suite (a test with non-monotonic ids interleaved with
-`created_at` order catches both TOCTOU-adjacent count issues and ordering bugs
-in one fixture).
+Recall-first search phase, as a design decision gate before implementation ("do we virtualize at
+all, given the ~30-row target") — do not silently add the dependency as a follow-on to a later
+phase without re-confirming issue #866's status at implementation time.
 
 ---
 
-### Pitfall 6: A regression test fixture "under 4 MiB" measured the wrong number — grpc-go enforces the *decompressed* size, and the existing fixture already gets this right by accident, not by stated intent
+### Pitfall 6: A new Connect RPC enforces authz in the handler instead of the store
 
 **What goes wrong:**
-grpc-go's `MaxRecvMsgSize`/`MaxCallRecvMsgSize` check applies to the message
-size *after decompression*, not the compressed wire size (confirmed against
-grpc-go's own issue tracker:
-[grpc/grpc-go#4761](https://github.com/grpc/grpc-go/issues/4761), and
-corroborated by community write-ups on the "received message after
-decompression larger than max" error text this repo's own #583/#585 issues
-quote verbatim). A test author who reasons "my fixture is highly compressible
-(e.g., `strings.Repeat("x", n)`), so gRPC-level compression will keep the wire
-message under 4 MiB, so this won't reproduce the bug" has the causality
-backwards: compression (if enabled) would make the WIRE transfer smaller, but
-the RECEIVE-SIZE check still fires because it re-measures after decompressing
-back to the full logical size. The inverse mistake is equally real: assuming a
-fixture's *logical* (decompressed) byte count is what must exceed 4 MiB, and
-then padding it with a compressible filler in a way that happens to convince a
-reviewer the fixture is "smaller than it looks" — it is the decompressed size
-that must exceed the cap, full stop, regardless of compressibility.
+`SupersedeMemory`/`ArchiveMemory`/`RestoreMemory`/`RelatedMemories` get a quick permission check
+in `internal/server`'s handler function (e.g. "if owner != caller, reject") that looks correct in
+every test written against it, but diverges from every other read/write path's enforcement and
+eventually admits a bypass some other caller (MCP, CLI, a future RPC) doesn't share.
 
 **Why it happens:**
-"Compression" and "message size limit" are easy to conflate — many engineers'
-mental model is "compression makes messages smaller, so it should help avoid
-size-limit errors," which is true for the *wire* size but false for a receiver
-that checks decompressed size (which is exactly what protects a receiver from
-a decompression-bomb-style attack — checking pre-decompression size would
-defeat that protection entirely).
+This is a **locked** architectural invariant, not a style preference: DEC-cgb
+(`docs/adr/engram-cgb-*.md`, `.planning/PROJECT.md:738,759-764`) requires per-actor authorization
+to be enforced *inside* `internal/store` via Qdrant read filters and owner-gate primitives, "never
+in handlers" — precisely because handler-level checks drift out of sync across surfaces (MCP tool,
+Connect RPC, CLI) that all need the same guarantee. `RelatedMemories` is explicitly scoped to reuse
+`qdrant.NewQueryID` sub-queries already living in `internal/store/spine.go:640`, and
+`SupersedeMemory`/archive/restore are explicitly scoped to reuse existing MCP `supersede_memory`
+and `spine-review archive/restore` **store** paths (`notes/console-overhaul-exploration.md`'s API
+gap table) — the intended shape already routes through the store; the pitfall is a well-meaning
+"quick guard" added in `connectapi.go` on top of that, which becomes a second, divergent
+enforcement point.
 
 **How to avoid:**
-This repo's shipped `TestListScopesFullPayloadsOverGRPCLimit`
-(store_test.go:1798) already gets this right, and its own guard comment
-(`if n*contentBytes <= 4<<20 { t.Fatalf(...) }`, store_test.go:1810) is the
-correct pattern: assert the *logical* fixture size (`n * contentBytes`, the
-decompressed content size Qdrant will actually return) exceeds the cap, not
-some measured wire/gzip size. New regression tests for `Store.List`,
-`ListScheduled`, and the operator sweeps should copy this exact guard-assert
-pattern rather than reasoning freshly about compression each time. Also
-verify (this repo does not appear to enable client-side gRPC compression
-today — no `grpc.UseCompressor`/`WithDefaultCallOptions(grpc.CallContentSubtype`
-hits found in `internal/`) that no future change silently enables compression
-without re-confirming this reasoning still holds.
+Every new Connect handler should be a thin `protoconv`-shaped translation that calls the *same*
+store method the corresponding MCP tool calls, with authorization living entirely inside that
+store method (owner/visibility gates, DEC-xa6's not-found-for-unauthorized rule). Code review gate:
+grep the new handler for any `if` referencing `caller`/`owner`/`visibility` that isn't just passing
+those values into a store call — that's the smell.
 
 **Warning signs:**
-A new fixture that sizes its content based on an estimated *compressed* size,
-or a fixture that uses low-entropy filler content specifically because "it'll
-transmit fast" (compression speed/ratio should never be a factor in choosing
-fixture content — use whatever is simplest, since decompressed size is the
-only thing that matters).
+- A Connect handler contains its own owner/visibility comparison instead of delegating entirely to
+  `internal/store`.
+- The MCP tool and the new Connect RPC for the same operation return different errors (one 404,
+  one 403) for the same unauthorized-id case — DEC-xa6 requires both to be indistinguishable
+  not-found.
+- A test exists for the Connect RPC's authz behavior that does **not** also exist, byte-identical
+  in intent, for the underlying store method.
 
 **Phase to address:**
-Whichever phase writes new regression tests for `Store.List`/`ListScheduled`/
-operator sweeps should explicitly reuse (or extract into a shared helper) the
-`store_test.go:1810`-style guard-assert, so the reasoning is enforced by a
-compile-time-adjacent check rather than re-derived per test file.
+Curation RPCs phase (new Connect write/read RPCs) — gate this with the existing
+`internal/server/connectapi_write_parity_test.go` pattern (see Pitfall 11) extended to cover the
+new RPCs, plus a targeted unauthorized-id-returns-404 test per new RPC.
 
 ---
 
-### Pitfall 7: A test client that sets its own `MaxCallRecvMsgSize` (or a different default) stops proving anything about production
+### Pitfall 7: A new mutating RPC ships CSRF-unprotected (or unusable) because the allowlist is two-sided
 
 **What goes wrong:**
-Today, both the production client (`internal/server/tools.go:123`,
-`qdrant.NewClient(&qdrant.Config{...})`) and the test clients (e.g.,
-`internal/store/store_test.go:190`, `internal/e2e/spine_review_test.go:73`) set
-no `MaxCallRecvMsgSize`, so both inherit grpc-go's identical 4 MiB default —
-this is precisely why `TestListScopesFullPayloadsOverGRPCLimit` is a valid
-regression test for the production bug. The milestone's own "done means" bar
-(PROJECT.md: "Raising `MaxCallRecvMsgSize` alone only moves the ceiling — #583
-rejected it as a fix; it is defense in depth at most") already names the
-danger of adopting that mitigation in production. The less obvious version of
-the same mistake: if a future PR adds `MaxCallRecvMsgSize` as defense-in-depth
-to the *production* client (`tools.go:123`) without applying the identical
-value to every test-client construction site (there are at least 9 separate
-`qdrant.NewClient(&qdrant.Config{...})` call sites across
-`internal/store/*_test.go`, `internal/e2e/*_test.go`, `internal/server/*_test.go`,
-and `internal/retrievaleval/*_test.go`), the test suite's receive limit drifts
-from production's, and every existing/new 4 MiB-boundary regression test
-silently stops proving anything about the deployed binary.
+Either (a) the new RPC (`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`) is wired through the
+UI's default `engram` client and every call fails with a confusing `Unauthenticated`/network error
+because it's missing the session-bound CSRF header, or (b) it's wired correctly on the client but
+the server never enforces CSRF on it, silently shipping a same-origin forgeable mutation.
 
 **Why it happens:**
-There is no single shared client-construction helper in this repo today for
-test-side Qdrant clients — each test file independently calls
-`qdrant.NewClient(&qdrant.Config{Host: host, Port: port})`, so a change to the
-one production call site (`tools.go`) has no structural mechanism forcing a
-matching update everywhere else.
+This repo's CSRF contract is split across **two independent allowlists that must be updated
+together**, and neither failure mode is obviously connected to "I forgot to register a new RPC":
+- **Client side:** `ui/src/lib/client.ts` exports two separate Connect clients — `engram` (read,
+  plain transport, `ui/src/lib/client.ts:12-14`) and `engramWrite` (write-only,
+  `[retryOnce, attachCsrf]` interceptors, `ui/src/lib/client.ts:16-24`). A new mutating call made
+  through `engram` instead of `engramWrite` never attaches the `X-CSRF-Token` header at all.
+- **Server side:** `internal/server/connectcsrf.go:33`'s `csrfWriteProcedures` map is a hardcoded,
+  by-name allowlist of exactly the write Procedures the CSRF interceptor checks
+  (`if !csrfWriteProcedures[req.Spec().Procedure] { ...skip... }`, line 62) — every other
+  Procedure, including any new one, is CSRF-**exempt by default** unless explicitly added. Silence
+  here is the dangerous direction: a forgotten entry doesn't fail loudly, it just leaves the new
+  mutation forgeable.
 
 **How to avoid:**
-If this milestone adds `MaxCallRecvMsgSize` (or any other gRPC dial option) as
-defense-in-depth to the production client, either (a) extract a single shared
-client-construction function that both production and every test call site
-use (closing the drift risk structurally, matching this repo's own stated
-preference for correct-by-construction gates over per-site vigilance — see
-CLAUDE.md's `internal/surfaces` conformance-gate pattern), or (b) explicitly
-add a test (an AST/grep gate, in the spirit of the existing recall-gate AST
-test) asserting every `qdrant.NewClient` call site in the tree uses the same
-dial-option set. Do not rely on manual "remember to update the other 9 files"
-discipline.
+Treat "add a mutating Connect RPC" as a two-line checklist, not one: (1) client call goes through
+`engramWrite`, never `engram`; (2) the new Procedure constant is added to
+`csrfWriteProcedures` in `connectcsrf.go`. Write a test in the spirit of
+`internal/server/connectcsrf_test.go` that asserts the new procedure is present in the map (a
+positive assertion, not just "existing tests still pass" — the map's whole failure mode is a
+*missing* entry that no existing test would catch).
 
 **Warning signs:**
-A PR diff that touches `tools.go`'s `qdrant.NewClient` call but no test file —
-or a regression test that starts passing not because the underlying fetch
-shrank but because the test client's own limit was quietly raised somewhere in
-its construction path.
+- A new mutation "works in dev" (same browser session, cookies already fresh) but the manual
+  double-submit contract was never exercised because `engram` (not `engramWrite`) happened to
+  still succeed on a GET-shaped read-only test harness.
+- `csrfWriteProcedures` in `connectcsrf.go` has not grown a new entry in the same PR that added a
+  new `rpc … returns (…)` write method to `engram.proto`.
 
 **Phase to address:**
-Whichever phase adds any gRPC dial-option defense-in-depth to the production
-client must, in the same phase, either unify client construction or add the
-drift-detecting gate — this is exactly the kind of gap the "regression tests
-that don't actually go RED" quality gate in this research task is meant to
-catch, and it will not be caught by `task test` passing (all clients agree with
-each other; they just no longer agree with what's shipped, and there's no way
-today to notice that from a green test run).
+Curation RPCs phase — this is the single highest-leverage first test to write in that phase, before
+any UI is built against the new RPCs: prove every new mutating Procedure is both CSRF-registered
+server-side and routed through `engramWrite` client-side.
 
 ---
 
-### Pitfall 8: `total`/count semantics silently change meaning when paging becomes multi-round-trip or gains a byte-size-aware page shrink
+### Pitfall 8: The related-memories graph is decorative, not useful
 
 **What goes wrong:**
-`Store.List` currently returns an *exact* `total` via `Count` with
-`Exact: qdrant.PtrOf(true)` (store.go:1407) — a real count over the full
-filtered set, computed once, independent of the page-fetch mechanism. Two
-plausible fixes threaten this contract: (1) if offset-mode "all" (`Limit: 0`)
-moves to internally-paged batches to stay under the byte cap, `total` must
-still reflect the *whole* filtered set, not just what fits in memory across the
-batches actually fetched before a caller-visible limit is reached — an easy
-bug is computing `total` as "however many I managed to page through" instead
-of the pre-existing exact `Count` call. (2) If a page's size is *shrunk*
-dynamically because its records are unusually large (a byte-size-aware
-response to Pitfall 2), the *returned item count* for that page becomes
-smaller than the caller's requested `Limit` even though more matching records
-exist and were not filtered out — this is a new, currently-nonexistent
-semantic ("I asked for 50, I got 12, but there's no error and `total` says
-500") that every caller (Connect API, console, `engram list` CLI, MCP
-`list_memory`) needs to handle correctly, especially cursor-based paging logic
-that decides "is this the last page" partly from `len(out) < limit`
-(store.go:1521) — a page shrunk for byte reasons, not exhaustion reasons, must
-not be mistaken by that check for "no next page."
+A force-directed node-link diagram renders on the detail pane, looks impressive in a screenshot,
+and is immediately useless: it's a hairball at any real record count, never settles (nodes drift
+forever), has no click-to-focus/expand-neighbor interaction, is canvas-rendered with zero keyboard
+or screen-reader path, and its edge/node colors are unreadable in dark mode.
 
 **Why it happens:**
-`total` and per-page `len(items)` are currently orthogonal by construction
-(one is an independent `Count` call; the other is whatever a single Scroll
-returned). Any fix that couples fetch behavior to *payload size* rather than
-purely to *filter results* breaks that independence unless deliberately
-re-established.
+The milestone explicitly wants "a visual (non-text) view of related memories" using edge types the
+store already knows — supersession chain, shared tags, shared citations, vector neighbours
+(`notes/console-overhaul-exploration.md`) — but a naive implementation (drop all edges from
+`RelatedMemories(id)` into a generic force-layout library with default settings) produces exactly
+the decorative failure mode: every record sharing a tag becomes an edge, so a popular tag creates a
+hub with dozens of crossing lines; force simulations without a `alphaDecay`/settle threshold or a
+fixed iteration budget never visually stabilize; and force-layout libraries are near-universally
+canvas or SVG-transform based with no semantic DOM structure, so they're invisible to
+assistive tech by default.
 
 **How to avoid:**
-Keep the `total` computation (the `Count` call) entirely independent of
-whatever page-fetch strategy is chosen for size-bounding — do not let it
-become "the count of what I actually paged through." For cursor mode, if a
-page can legitimately come back shorter than `limit` for a reason *other than*
-exhaustion (byte-size shrink), either (a) do not expose that shrink to the
-caller at all — internally keep fetching in smaller sub-batches until `limit`
-distinct records are assembled or the filtered set really is exhausted (this
-preserves the existing `len(out) < limit` ⇒ no-next-page invariant exactly),
-or (b) if (a) is infeasible under the byte cap, introduce an explicit signal
-(distinct from `nextCursor == ""`) that this page was truncated for size
-reasons and more data is available at the same cursor position — never overload
-`nextCursor == ""`/short-page to mean two different things.
+Bound the graph deliberately: cap edges per node (e.g. top-N by Jev's advisory `same_subject`
+score where available, else recency/score), distinguish edge *types* visually (supersession vs
+shared-tag vs vector-neighbour must not look identical), give the layout a fixed settle
+budget/iteration cap so it visibly stops, and require every node to be reachable and actionable via
+keyboard (Tab/arrow to a node, Enter to focus/expand it, matching the same activedescendant
+discipline as Pitfall 4) with an off-canvas or `aria-live` textual equivalent ("supersedes 2
+records, shares tags with 5") for anyone not using the pointer. Theme every edge/node color through
+the same CSS custom-property mechanism `MemoryRow.svelte` already uses for category color
+(`style="--c:var(--cat-{memory.category})"`, line 58) so dark mode isn't a second unthemed pass.
 
 **Warning signs:**
-A page-shrink implementation that changes the meaning of `len(out) < limit`
-without updating every one of that function's callers (the offset-mode "last
-page" check at store.go:1449, the cursor-mode exhaustion check at store.go:1521,
-and anything downstream in `connectapi.go`/console/CLI that infers "done
-paging" from an empty or short next-cursor).
+- The graph has no interaction beyond pan/zoom — clicking a node does nothing.
+- Node/edge count grows unbounded with the record's tag popularity rather than being capped.
+- The graph is unusable/untestable via `agent-browser`/keyboard-only exploration.
+- Dark mode toggling changes the page chrome but not the graph's canvas colors.
 
 **Phase to address:**
-Whichever phase implements the actual size-bounding mechanism must treat
-`total`/exhaustion-signal preservation as an explicit acceptance criterion with
-its own test (assert `total` is unchanged by whatever internal batching
-happens; assert a size-forced partial fetch does not present as "last page"
-unless it truly is).
+Graph/discovery phase (per the milestone's stated third build priority — "developer recall first,
+operator curation second, newcomer browsing third," and the graph is explicitly "beyond search").
+Ship the edge-capping and keyboard-equivalence decisions in the phase's design/UI-spec step, before
+any rendering library is chosen — a library choice made before these constraints are set tends to
+lock in the hairball.
 
 ---
 
-### Pitfall 9: `ResourceExhausted → clear error` becomes an information-leaking or over-generic error-mapping site if done casually
+### Pitfall 9: Advisory NL query understanding quietly stops being advisory
 
 **What goes wrong:**
-The milestone requires mapping Qdrant's `ResourceExhausted` (currently
-surfaced by `connectError` as an opaque Connect `internal`, per #585's
-reproduction) to "a clear error." Two opposite failure modes are both easy to
-introduce here: (1) **leaking internals** — echoing the raw gRPC error text
-(`"rpc error: code = ResourceExhausted desc = grpc: received message after
-decompression larger than max 4194304"`) verbatim to an API caller exposes
-implementation details (the exact byte ceiling, the fact that the backing
-store is gRPC-based at all, an internal collection/point-count hint) that this
-repo's own existing error-envelope convention (`field=<name> hint=<code>:
-<text>`, documented in CLAUDE.md and `reference/errors.md`) is designed to
-avoid — every other validator on both wires uses a bounded, named hint code,
-not raw upstream text. (2) **over-broad catch** — a naive `strings.Contains(err.Error(), "ResourceExhausted")` or blanket gRPC-status-code
-switch could also catch *legitimate* resource-exhaustion signals unrelated to
-this bug (e.g., a genuine Qdrant memory/disk pressure `ResourceExhausted` that
-has nothing to do with the 4 MiB receive cap), mapping them to a message that
-falsely implies "your request was too large" when the real problem is
-server-side capacity.
+A natural-language query gets parsed into filter chips that are applied to the actual search
+*before* the user sees or confirms them (silent auto-apply), the parse step adds enough latency
+that the search itself feels broken, or the raw query text ends up in a log/trace/telemetry
+attribute — any of which contradicts a standing, already-enforced project rule for exactly this
+class of feature.
 
 **Why it happens:**
-The fastest fix to "surface a clear error" is often "just pass the upstream
-error string through with a nicer HTTP-ish code," which satisfies "not
-`internal`" without satisfying "clear and safe."
+The milestone is explicit that NL query understanding must render as "removable, user-confirmed
+filter chips — provider-neutral, off by default, advisory only," matching the same standing rule
+that already governs Jev typed decisions (`.planning/PROJECT.md:759-781` and memory `rwtzp3m7y8`:
+a decision/verdict never mutates or auto-applies, and a reranker failure never fails a search). The
+repo already has the concrete precedent to mirror and the concrete failure to avoid re-introducing:
+`ENGRAM_SEARCH_RERANK_AUDIT` (`internal/config/registry.go:140`, `internal/server/decider.go:168`)
+is an **opt-in, off-by-default** audit flag that logs query text plus candidate ids —
+**explicitly never content** — specifically so query-text logging stays an operator's deliberate
+choice, not a default. The `internal/decide` package also already enforces a bounded latency
+contract for this class of call: `DecideMany` runs through a bounded worker pool
+(`internal/decide/many.go:21`) under an explicit `ErrDecisionTimeout` (`internal/decide/errors.go:34`)
+and the search reranker's own budget is a documented "2s no-retry" ceiling — an NL-query-understanding
+call sitting in front of search needs the identical shape (bounded, timed-out, never blocking the
+underlying search on failure) or it becomes the slowest part of every search.
 
 **How to avoid:**
-Introduce a new named hint code (matching the existing `field=<name>
-hint=<code>` envelope convention, e.g. `hint=result_too_large` or similar) for
-the specific *receive-size* `ResourceExhausted` case, distinguished by
-matching on the gRPC status code (`codes.ResourceExhausted`) AND ideally the
-specific message shape (`"received message after decompression larger than
-max"`) rather than the code alone, so a genuine server-capacity
-`ResourceExhausted` is not mislabeled. The client-facing text should name the
-*actionable* fact (e.g., "the result set is too large for one request; use a
-smaller limit or narrower filter") without echoing the raw byte-count/gRPC
-internals. Add this new hint to `reference/errors.md` per the existing
-`internal/surfaces` conformance-gate convention (CLAUDE.md: "each server-side
-conditional rule is declared once and machine-proven present on every surface
-that advertises it") rather than a one-off `fmt.Errorf` that only one wire
-happens to catch.
+Reuse, don't reinvent: gate query-text logging behind an explicit, off-by-default flag in the same
+family as `ENGRAM_SEARCH_RERANK_AUDIT` (never log content, ever); emit a `decide`-shaped span with
+status/cost/latency attributes and no raw text, mirroring `internal/decide/jev/jev.go:230-277`;
+render inferred filters as inert chips the user must click to apply — the underlying
+`SearchMemories` call must be unaffected until that click; and put a hard client-side timeout on
+the NL-parse call so a slow/unavailable provider degrades to "no chips suggested," never a blocked
+search.
 
 **Warning signs:**
-An error-mapping change whose test asserts only "the HTTP status is no longer
-500" without asserting the response body does NOT contain the raw upstream
-error string, the literal byte ceiling, or the word "grpc"/"Qdrant" verbatim.
+- A filter chip changes the visible result set before the user interacted with it.
+- Query text appears in any log line, span attribute, or telemetry payload with no accompanying
+  audit-flag gate.
+- Typing a query feels slower with NL understanding enabled than with it disabled, because the
+  search request itself is waiting on the parse step rather than running in parallel.
 
 **Phase to address:**
-The `ResourceExhausted`-mapping phase must land the hint code through the
-`internal/surfaces` declare-once mechanism (if that mechanism covers error
-hints — verify) or an equivalent single-declaration site, with a test
-asserting the response text is scrubbed, not just re-coded.
+Query-understanding phase (the milestone's stated last-priority, advisory-only capability) — but
+the *logging* and *latency-budget* conventions it must follow should be written down as house rules
+(in the planned `engram-console-conventions` skill) during the recall-first phase, since
+`ENGRAM_SEARCH_RERANK_AUDIT` and `internal/decide`'s bounded-pool pattern already exist and should
+be referenced, not rediscovered, when this phase starts.
 
 ---
 
-### Pitfall 10: Bounding a provider error-body drain (#347/#457) with a limit that doesn't match reality, or that reintroduces the exact hang it fixes
+### Pitfall 10: New curation surfaces silently fall outside the re-auth resume envelope
 
 **What goes wrong:**
-#457's own fix suggestion — `io.Copy(io.Discard, io.LimitReader(resp.Body, N))`
-— is correct in shape, but two implementation mistakes are easy: (1) choosing
-`N` so small that legitimate provider error bodies (which can be verbose JSON
-with nested validation detail) get truncated mid-structure in a way that makes
-the surfaced snippet *look* correct but is actually cut off mid-field,
-producing a misleading partial error to operators; (2) forgetting that
-`io.LimitReader` bounds *bytes read*, not *time* — a slow-loris-style provider
-that dribbles bytes one at a time up to the limit N over an arbitrarily long
-duration is not bounded by `LimitReader` alone. #457 explicitly names
-`WithTimeout(0)` as the scenario this protects against — a `LimitReader`-only
-fix does not actually protect that scenario if the provider trickles the
-allowed N bytes slowly forever; the drain call itself needs either a
-`context.WithTimeout` wrapped around the copy, or a deadline set independent
-of `http.Client.Timeout`, to actually close the gap #457 describes.
+A user editing a rule, or mid-supersede on a curation dialog, gets bounced to `/auth/login` (401)
+and back — and their in-progress edit is gone, with no error, because the resume mechanism quietly
+declined to restore it.
 
 **Why it happens:**
-"Bound the read" and "bound the time" are different axes, and `io.LimitReader`
-only ever addresses the first. The fix's own text ("Draining a bounded prefix
-still enables connection reuse... abandoning the connection when the remainder
-exceeds N is strictly better than blocking") is correct for the *size* axis
-but does not by itself close the *time* axis that motivated filing the issue
-(`WithTimeout(0)` removing the only existing bound).
+`ui/src/lib/resume.ts` implements a single, deliberately narrow resume envelope for the D-09
+re-auth flow: `ALLOWED_DESTINATIONS = ['/observe', '/search', '/discovery']`
+(`ui/src/lib/resume.ts:52`) and `kind: 'memory' | 'discovery'`
+(`ui/src/lib/resume.ts:32`) are both closed unions, and `isAllowedDestination` rejects anything not
+matching (an intentional open-redirect defense, per the surrounding comment). Both are exhaustive
+by construction — exactly the "MUST NOT invent structure" hazard in reverse: this is a
+tool-*adjacent* app-owned contract, and extending it correctly means widening the union, not
+routing around it. A new curation surface (rules editor, scheduled-memory editor, a
+supersede-with-history-chain dialog) that persists a resume draft with a `kind`/`returnPath` not in
+these unions will have `persistResume` succeed silently (it only stamps `v`/`ts`, it doesn't
+validate against the allowlist) but `peekResume`/`isAllowedDestination` on the other end will
+reject it just as silently — the form's draft is gone with zero user-visible signal, and no test
+written against the *existing* two kinds would catch a regression in a *new* one.
 
 **How to avoid:**
-Pair the byte-size `LimitReader` with an explicit per-drain deadline (e.g., a
-short `context.WithTimeout` scoped to just the error-body drain, independent
-of the overall request's `http.Client.Timeout`) so that even under
-`WithTimeout(0)`, a slow/hostile body cannot hold the goroutine open
-indefinitely. Choose `N` (the byte prefix) generously enough to capture
-realistic provider error payloads (a few KiB, matching the existing
-`ENGRAM_MEMORY_MAX_SUMMARY_BYTES`-style precedent of ~512 bytes to a few KiB
-for "enough to be useful, not enough to be a vector") and add a test asserting
-a body larger than N is truncated with an explicit "(truncated)"-style marker,
-not silently cut.
+Any new write surface (rule editor, scheduled-memory editor, supersede dialog) that can trigger a
+re-auth mid-edit must (1) add its route to `ALLOWED_DESTINATIONS`, (2) extend the `kind` union in
+`ResumeEnvelope`/`ResumeDraft`, and (3) have the route/host that calls `peekResume`/`consumeResume`
+(currently only `search`/`observe`/`discovery` pages, per `resume.ts`'s doc comment on ownership)
+extended to handle the new `kind`. Write the resume round-trip test for the new kind explicitly —
+don't assume the existing memory/discovery tests generalize.
 
 **Warning signs:**
-A fix that adds `io.LimitReader` to the drain but does not touch how/whether a
-deadline applies to that specific `io.Copy` call — check whether the fix PR's
-regression test actually exercises `WithTimeout(0)` plus a slow/large body
-(the exact scenario #457 names), or only exercises a body that's merely large
-but returns instantly (which `LimitReader` alone already handles fine, making
-the test pass without proving the harder case).
+- A curation form's draft disappears after a session-expiry redirect with no toast/error.
+- `persistResume` is called with a `kind` or `returnPath` that isn't yet in the two unions above (a
+  TypeScript error should catch this at compile time if the unions are widened correctly — if it
+  doesn't, the union wasn't actually widened, just the call site was cast around it).
 
 **Phase to address:**
-The embed/summarize bounded-error-body phase should test both axes
-independently: a large-but-fast body (proves the byte bound) and a
-slow-trickle body under `WithTimeout(0)` (proves the time bound) — landing
-only the first test would look done but leave #457's actual concern open.
-
----
-
-### Pitfall 11: Fixing `ListScopes`'s "discards successful hits on failure" (#456) by making `ListScopes` never fail, instead of making its caller resilient
-
-**What goes wrong:**
-#456 describes `cross_spine=true` recall discarding valid `search_memory`/
-`list_memory` hits when the follow-up `Store.ListScopes` call (used only to
-populate `searched_scopes`) fails. A tempting shortcut is to make
-`ListScopes` itself more defensive (e.g., swallow its own errors and return an
-empty scope list) rather than changing the caller's (`tools.go:1592-1595`,
-`tools.go:1633-1636`) error-handling to distinguish "the actual recall failed"
-from "the coverage-reporting side-call failed." Swallowing the error inside
-`ListScopes` reintroduces exactly the ambiguity #456's own "why it is
-currently correct" section says the design deliberately avoids: an empty
-`searched_scopes` on error would be indistinguishable from a real "searched
-nothing," defeating `REQ-cross-spine-result-provenance`.
-
-**Why it happens:**
-The path of least resistance for "don't discard successful hits" is "make the
-failing sub-call not fail," which is simpler to write than "return hits AND a
-distinct sentinel for unknown-coverage," but is exactly the wrong simplification
-per this issue's own analysis.
-
-**How to avoid:**
-Implement the "third state" #456 itself proposes: return the already-computed
-hits plus an explicit sentinel distinguishing "coverage unknown" (the
-`ListScopes` side-call failed) from "coverage empty" (`scopes_truncated`
-already means something specific — a bounded sample — and must not be
-overloaded to also mean "unknown"). This requires a wire-visible field change
-(MCP tool response + Connect proto, mirroring how `searched_scopes`/
-`scopes_truncated` were added in a prior milestone) — plan for that surface
-area rather than assuming a store-layer-only fix suffices.
-
-**Warning signs:**
-A fix that only touches `internal/store/store.go`'s `ListScopes` and does not
-touch `tools.go`'s two call sites or the Connect/MCP response shape — #456's
-own two named sites are the actual bug location, not `ListScopes` itself.
-
-**Phase to address:**
-The cross-spine-resilience phase must include the wire-shape change (new
-sentinel field) as part of its scope, not just a store-layer retry/fallback,
-and should reuse the existing `searched_scopes`/`scopes_truncated` precedent
-for how a new field gets threaded through MCP + Connect + CLI consistently.
-
----
-
-### Pitfall 12: Treating #497's testcontainer flakiness as "add a retry" instead of addressing the actual resource-pressure root cause — and this milestone's regression tests make the failure MORE likely, not less
-
-**What goes wrong:**
-#497 documents `internal/store`'s Qdrant testcontainer dying mid-run
-(`connection refused`) 3 times in ~2 hours on 2026-08-12, including on a
-docs-only PR, with the leading theory being CI-runner resource pressure from
-several concurrent per-package Qdrant containers (`TestMain` in each
-Qdrant-backed package, store_test.go:117, provisions its own container) plus
-concurrent Go build/link load, not a code defect. This milestone's own "done
-means" bar requires "a real-Qdrant regression test holding more than 4 MiB of
-payload" for *every* exposed path — meaning this milestone adds several new
-tests that each write multiple MiB of payload into the `internal/store`
-container (mirroring `TestListScopesFullPayloadsOverGRPCLimit`'s existing ~5
-MiB write). Every new large-payload fixture increases exactly the kind of
-memory pressure #497's own theory blames for container death — a superficial
-"retry on failure" fix to #497 would not address that this milestone is about
-to make the underlying resource-pressure condition *worse*, right as CI
-depends on that container's stability more than before.
-
-**Why it happens:**
-#497 and this milestone were filed/scoped independently, so the compounding
-effect (more large fixtures → more memory pressure → more container deaths)
-is not obvious from either issue read alone.
-
-**How to avoid:**
-Address #497 as an explicit, early deliverable of this milestone (it is
-already named in PROJECT.md's target features, "since this milestone's
-regression tests load exactly that CI job") — not as an afterthought once the
-new large-payload tests are already flaking CI. Concretely: (a) mark the new
-large-payload regression tests `testing.Short()`-skippable (the existing
-pattern at store_test.go:1799-1801, `"writes about 5 MiB of payload; skipped
-in -short"`) so they do not run in every CI invocation; (b) consider whether
-`internal/store`'s container needs an explicit memory floor/reservation (or
-whether CI should serialize Qdrant-backed packages rather than running them
-in parallel, per #497's own "possible directions"); (c) capture container
-exit reason (`docker inspect`/container logs) on test-container-death so a
-future flake has evidence instead of inference, per #497's own suggestion.
-
-**Warning signs:**
-Any new 4 MiB-plus fixture test added to `internal/store/store_test.go`
-without a `testing.Short()` skip guard, and no CI job change addressing #497's
-container-lifetime/resource-pressure theory before those tests land.
-
-**Phase to address:**
-Address #497 (or at minimum its `testing.Short()` mitigation plus evidence-
-capture) in the SAME phase, or an earlier phase, that starts adding new
-4 MiB-plus regression fixtures — reversing that order (fixtures first,
-stability later) guarantees a CI-stability regression window during the
-milestone.
-
----
+Curation surfaces phase (rules, scheduled, supersede/archive/restore UI) — treat "does this form's
+resume round-trip survive a re-auth" as a UAT check for every new write surface in that phase, not
+just the two that already exist.
 
 ## Technical Debt Patterns
 
+Shortcuts that seem reasonable but create long-term problems.
+
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|-----------------|------------------|
-| Raise `MaxCallRecvMsgSize` on the Qdrant client without also bounding page size | Fast, one-line fix; unblocks the immediate `ResourceExhausted` | Moves the ceiling instead of removing it — #583 already rejected this as "the fix"; a bigger page or bigger record eventually re-triggers it, at a size that's harder to hit in tests | Only as an explicit, documented defense-in-depth LAYER alongside a real page/content-size bound — never as the sole fix (PROJECT.md states this outright) |
-| Swallow `ListScopes` errors inside the function to avoid discarding cross-spine hits (#456) | Simple, localized change | Reintroduces the exact "coverage unknown vs. coverage empty" ambiguity `searched_scopes`/`scopes_truncated` exist to prevent | Never — the issue's own analysis already rejects this |
-| Skip the byte-size-aware page shrink and just lower `maxListLimit`/`reindexBatch`/`migrateBatch` to a smaller fixed number | No code change beyond a constant | Still fails once average record size grows past whatever new fixed count was chosen (content is unbounded) — a numeric knob turn, not a fix | Acceptable ONLY as an interim mitigation shipped alongside, not instead of, a real fix, and only if content-size capping (`ENGRAM_MEMORY_MAX_CONTENT_BYTES`) is also resolved in the same milestone |
-| Add a retry-on-connection-refused wrapper around the testcontainer test suite instead of investigating #497's resource-pressure theory | Immediately reduces CI red builds | Masks a real future defect the same way #497 itself documents happening on #494's rerun ("the actual defect was a real assertion failure in internal/e2e... dominated the log and initially read as flaky infra") | Never as the only fix; acceptable as a short-term stopgap only alongside the evidence-capture and short-test-skip mitigations |
+|----------|-------------------|-----------------|-----------------|
+| Using `$effect` to compute a row's derived display value instead of `$derived` | Feels natural coming from `onMount`/lifecycle habits | Svelte 5's documented `$effect`-updates-state-it-reads infinite-loop trap, plus effects don't memoize the way `$derived` does across ~30+ list rows | Never for pure derivations (`memoryStateWords`, dim flags, tag overflow) — `MemoryRow.svelte` already does this correctly with `$derived` (lines 37-54); new row-level computed values must follow the same pattern |
+| Skipping `AbortSignal` wiring on a new query "since it's fast in dev" | Ships faster | Race conditions (Pitfall 2) only surface under real network latency/jitter, so they pass local dev and fail in CI/prod intermittently | Never on a text-search or facet query; acceptable only for a query that can never re-fire with a different key while a prior call is outstanding (rare) |
+| Treating Qdrant Facet's default `exact:false` approximate counts as ground truth in a UI label | Cheap, fast facet counts | Approximate counts can visibly disagree with the actual filtered result count, undermining "truthful result feedback" | Acceptable for a tag cloud's relative sizing; not acceptable for a facet count rendered next to an exact "N of M" total |
+| A quick per-handler authz check "just to be safe" alongside the store-layer gate | Feels like defense-in-depth | Two enforcement points drift (Pitfall 6); the DEC-cgb invariant exists precisely to prevent this pattern | Never — the ADR is locked precedence-0 |
 
 ## Integration Gotchas
 
+Common mistakes when connecting to external services/libraries newly pulled into this milestone.
+
 | Integration | Common Mistake | Correct Approach |
 |-------------|-----------------|-------------------|
-| Qdrant `Scroll`/`Query`/`Get` via `qdrant-go-client` | Assuming `WithPayload(true)` full-payload fetches are "safe" below some record count, when the real constraint is bytes | Compute/bound by estimated payload bytes (or content length), not solely by record count; treat `maxListLimit`/`reindexBatch`/`migrateBatch` as ergonomics, not safety bounds, until content size is also capped |
-| Qdrant `GetPoints` | Assuming response order matches requested id order | Re-sort client-side by the id order established upstream (e.g., from a prior ordered Scroll); never rely on `GetPoints` response order (confirmed non-guaranteed: [qdrant/qdrant#5071](https://github.com/qdrant/qdrant/issues/5071)) |
-| grpc-go `MaxRecvMsgSize`/`MaxCallRecvMsgSize` | Assuming compression reduces exposure to the receive-size cap | The cap applies to the DECOMPRESSED size ([grpc/grpc-go#4761](https://github.com/grpc/grpc-go/issues/4761)); compression changes wire size only, never the enforced limit |
-| Connect error mapping (`connectError`) | Passing a Qdrant/gRPC error's raw text straight through on the new `ResourceExhausted` clear-error path | Map to a new named hint code in the existing `field=<name> hint=<code>` envelope; never echo raw gRPC/Qdrant error text to a caller |
-| Embed/summarize provider HTTP clients | Bounding the error-body drain by bytes only (`io.LimitReader`) and treating that as closing #457 | Bound bytes AND time independently — `io.LimitReader` alone does not protect against a slow trickle under `WithTimeout(0)` |
-| testcontainers-go Qdrant module | Adding large-payload regression fixtures to `internal/store` without accounting for #497's container-death pattern | Gate new multi-MiB fixtures behind `testing.Short()` (existing precedent at store_test.go:1799) and address #497's stability question in the same milestone, not after |
+| Qdrant Facet API (`ListTags`) | Assuming facet counts ignore the active search/scope filter | Facet requests accept a `filter` field and the computation respects it (confirmed via Qdrant API reference, 2026-09-25) — always pass the same authz+scope filter the search itself uses, or tag counts will include records the caller can't even read |
+| Qdrant Facet API | Requesting facets on an unindexed/non-keyword payload field | Facet counting only works on fields supporting match conditions (keyword-indexed); `tags` and `category` need a payload index before `ListTags` can facet on them — verify the index exists rather than assuming |
+| buf breaking (`buf.yaml`: `breaking.use: [FILE]`) | Reusing a proto field number, or adding a field without checking the *whole file's* number history, assuming per-message isolation | `FILE`-level breaking detection catches cross-message renumbering too; always append new fields at the next unused number and let `task proto:lint`/`buf breaking` gate the PR — don't hand-pick a number that "looks free" |
+| MCP↔Connect parity (`internal/server/connectapi_write_parity_test.go`) | Adding a new Connect write RPC (`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`) without a corresponding parity-table row | This repo already has an explicit MCP-vs-Connect-vs-direct-store parity harness (`newParityLane`, `parityMCPCaller`) proving the two lanes agree; a new write RPC needs a new row, not just handler-level tests |
+| Vendored-SPA drift gate (`ui-drift` CI job, `.github/workflows/ci.yaml:302`) | Editing `ui/src` and forgetting the built SPA under `internal/webauth/static/` is a **committed, CI-diffed artifact** | `pnpm build` output must be regenerated and committed alongside any `ui/src` change touching new routes/RPC calls, or CI fails on drift (self-heals only on Renovate branches, not normal feature work) |
+| `gen/ts` regeneration (`task surfaces:gen` / `interface-surface drift` CI step) | Hand-editing generated TS types in `ui/src/lib/gen` after adding a new RPC to `engram.proto` | The CI drift step does `go tool buf generate` then `cp -R gen/ts/. ui/src/lib/gen/` — any manual edit under `ui/src/lib/gen` is guaranteed to be overwritten/flagged; regenerate via `task proto:gen`/`task surfaces:gen`, never hand-patch |
+| TanStack Query v6 Svelte adapter | Assuming v5 React-ecosystem docs/blog posts apply verbatim | v6's Svelte adapter dropped the store-based API in favor of runes (`createQuery(() => ({...}))`, no `$` prefix needed) — already the pattern in `search/+page.svelte:15`; verify any v5-sourced snippet (including `placeholderData`/`keepPreviousData` specifics) against the pinned `6.1.34` behavior before trusting it |
 
 ## Performance Traps
 
+Patterns that work at small scale but fail as the console's usage grows.
+
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|-----------------|
-| Two-phase ids→payload reads for deep offset paging | Extra Qdrant round trip per page; latency roughly doubles for deep-offset console/CLI paging even when the byte cap was never at risk | Only apply the two-phase path when the single-Scroll approach would actually risk the byte cap (e.g., large offsets specifically, not every page); consider whether a numeric-offset-free redesign (cursor-only) is cheaper overall than patching offset mode | Becomes visible as soon as the console's deep-offset paging (already flagged in #585 as "gets heavier with every page" even before this fix) is used interactively — the two-phase fix does not remove that O(offset) cost, it just avoids failing outright |
-| Byte-size-aware page shrink implemented as "fetch max page, then locally truncate to fit under a byte estimate" | Wastes the fetch already done — the oversized fetch itself is what triggers `ResourceExhausted`, so truncating AFTER the fetch never avoids the failure it's meant to prevent | The shrink must happen BEFORE the Qdrant call (e.g., request a smaller `Limit`, or use `WithPayloadInclude` to shed fields, not truncate a response that already 4-MiB-overflowed on the wire) | Immediately — this is not a scale threshold, it's a logic error: you cannot locally truncate a response that already failed to arrive |
-| 256-batch operator sweeps (`migrateBatch`, `reindexBatch`) re-deriving the backlog each pass under concurrent writes (#501 precedent) | A sweep that never converges, or double-processes records, under sustained concurrent writes during a long sweep | Any size-bounding change to these sweeps must preserve the existing re-derive-each-pass convergence property (`internal/migrate` design) rather than introducing a stale offset/cursor that concurrent writes can invalidate | At collection sizes large enough that a sweep takes multiple passes while writes continue — already a known/handled case (#501); a size-bounding patch must not silently regress it |
+| Unvirtualized dense list rendering every hit | Fine at ~30 rows; scroll jank and high Interaction to Next Paint (INP) once a browse view or a wide `k`/limit returns hundreds | Confirm the actual row-count ceiling for each view before deciding whether to virtualize at all (see Pitfall 5); if unbounded, virtualize deliberately rather than letting a "just show everything" list grow unnoticed | Beyond roughly 100-200 simultaneously-mounted interactive rows (each with hover listeners, dropdown menus, badges) |
+| Force-directed graph layout with no settle/iteration cap | Looks fine with 5-10 nodes; CPU-pegs and never stops animating once a popular tag's related-memories set grows | Cap edges per node and set a fixed simulation iteration budget (Pitfall 8) | Any node with more than a handful of shared-tag/vector-neighbour edges |
+| `exact:true` Qdrant facet counts on a large collection | Fast in a dev seed dataset; slow/blocking on a production-sized collection | Default to `exact:false` (approximate) for UI-facing tag clouds/facets; reserve `exact:true` for an explicit operator "recount" action, not the default render path | Collections large enough that exact per-value counting becomes a full scan-shaped cost |
+| Hover listeners on every dense row (expand-on-hover) | Smooth with 30 rows; jank with hundreds if virtualization is added later without also scoping listeners to visible rows | Attach hover/expand listeners only to mounted (visible) rows — virtualization should already guarantee this, but a "quick fix" that renders all rows off-screen to avoid Pitfall 5 defeats it | Same threshold as the unvirtualized-list trap above |
 
 ## Security Mistakes
 
+Domain-specific security issues beyond general web security, tied to this milestone's new surfaces.
+
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Echoing raw Qdrant/gRPC error text (including the literal byte ceiling, "grpc", collection internals) in the new `ResourceExhausted` clear-error response | Leaks internal architecture (backing store is gRPC-based, exact size ceiling, potentially collection/point-count hints) to any authenticated caller, aiding reconnaissance | Map to a bounded, named hint code with operator-actionable but implementation-silent text, per the existing `field=<name> hint=<code>` envelope convention |
-| Provider (embed/summarize) error-body surfacing (#347) exposing the FULL non-2xx body, including any secrets a misconfigured self-hosted gateway might echo back (e.g., a reflected Authorization header in a verbose error page) | A bounded-prefix fix that is bounded in size but not in WHAT is captured could still leak a credential fragment if a gateway's error page echoes request headers | Bound the byte count (#347/#457 already specify this) AND consider whether the captured prefix should be scanned/redacted for header-echo patterns, or documented as "operator's own gateway's responsibility to not echo secrets in error bodies" — pick one explicitly rather than leaving it undecided |
-| Two-phase ids→payload read bypassing the recall gate via `Store.Get`/`GetPoints` (Pitfall 4) | A superseded/archived/expired record briefly visible through a list surface that is supposed to hide it — a real authz-adjacent correctness bug, not just a UX glitch, since some of these states exist specifically to hide corrected-away or expired content | Re-verify gate-relevant filter conditions in phase 2 of any two-phase design; extend the recall-gate AST pin to cover any new `Get`/`GetPoints` call site introduced by this milestone |
+| Authz check duplicated in a Connect handler instead of solely in `internal/store` | Enforcement drifts across MCP/Connect/CLI surfaces over time; a future change to the store's owner gate silently stops covering the handler's parallel check | DEC-cgb: store-layer-only enforcement (Pitfall 6) |
+| New mutating RPC missing from `csrfWriteProcedures` | Same-origin forgeable mutation (no CSRF protection) on a write endpoint, shipped silently — no error, no test failure, just an unprotected RPC | Positive-assertion test that every write RPC name is present in the allowlist (Pitfall 7) |
+| NL query text logged without the existing audit-flag gate | Query text can carry sensitive operator intent/content fragments; the project's own convention (`ENGRAM_SEARCH_RERANK_AUDIT`) already treats this as opt-in-only, never-content | Mirror the existing audit-flag pattern exactly; never add a second, ungated logging path for query text (Pitfall 9) |
+| Resume envelope's `returnPath`/`kind` unions widened carelessly for a new curation surface | `isAllowedDestination`'s open-redirect defense (`resume.ts:64-70`) only protects the destinations it enumerates; widening it to a route pattern instead of exact routes could reopen the same class of issue it was built to close | Extend the allowlist with exact new routes, not a wildcard/pattern match (Pitfall 10) |
 
 ## UX Pitfalls
 
+Common user experience mistakes specific to this console overhaul.
+
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-------------------|
-| A byte-size-forced page shrink silently returning fewer records than the caller's `Limit` with no indication why | Console/CLI users see an unexplained, seemingly-arbitrary page size that doesn't match what they asked for, and may assume it's a bug or that they've reached the end when they haven't | Surface an explicit signal (new field or documented convention) distinguishing "fewer than requested because the set is exhausted" from "fewer than requested because of a size bound," mirroring how `scopes_truncated` already communicates a bounded-sample condition |
-| `ResourceExhausted` mapped to a generic "internal server error"-flavored message that's merely a differently-coded 500 | Operators still can't tell whether to retry, narrow their filter, or file a bug — trading one opaque error for another | The clear-error text should name the actionable remediation (narrow the filter, use a smaller limit/date range) directly, matching the existing hint-code convention's intent |
-| Deep offset-mode paging in the console silently getting slower page-by-page (already true today per #585) with no visible indication | Users clicking "next page" repeatedly see increasing latency with no explanation, may assume the app is broken | Independent of this milestone's core scope, but worth flagging: if the two-phase fix is adopted, consider whether the console should nudge deep-offset users toward cursor-based paging instead of silently absorbing the O(offset) cost |
+| Losing URL-as-state when adding new panels (facets, related-memories graph, tag cloud) | Back/forward navigation and shareable/bookmarkable search state breaks; a refresh loses the user's current filter/selection | Every new filter/facet/selection state should be a URL search param, following the existing `?q=`/`?scope=`/`?sel=`/`observeSearch`/`parseObserveParams` pattern (`ui/src/lib/queries.ts:18-44`) rather than component-local `$state` |
+| New nested panes omitting `min-h-0` somewhere in the flex chain | The pane's inner content scrolls the whole page instead of just itself — jarring, breaks the fixed app shell | The existing chain is `AppShell.svelte:22` (`h-dvh`) → route's outer `flex h-full min-h-0` (`search/+page.svelte:41`) → `Resizable.Pane ... min-h-0` → any nested `Tabs.Content`/`ScrollArea` (`MemoryDetail.svelte:105,129`); every new nested scrollable region (graph pane, tag cloud, facet sidebar) must repeat `min-h-0` at each flex ancestor, not just the outermost one |
+| Badge/state-word text is lowercase in the DOM but visually uppercase via CSS | Confuses both accessibility tooling (screen readers may or may not apply text-transform to speech) and test authors who assert on visible-looking text | `MemoryRow.svelte:75` already does this (`class="text-[10px] uppercase"` wrapping literal `{word}`, e.g. `archived`) — DOM/testing-library queries must match the lowercase source text (`archived`), not the rendered `ARCHIVED`; any new badge/graph-label copying this `uppercase` utility class inherits the same trap |
+| `opacity-60` dim-iff-past treatment applied to text that also needs to pass contrast | A dimmed past-state row (archived/superseded/expired) can drop below WCAG contrast minimums, especially stacked with muted-foreground colors already in use | `MemoryRow.svelte`'s existing carve-out (badges stay full opacity even inside a dimmed row, `dimCls` applied per-element not to a shared ancestor, lines 48-54) is the model to extend — any new dimmable UI (graph nodes for archived records, tag-cloud entries) needs the same per-element opacity discipline and a contrast check against the actual rendered color, not just the un-dimmed one |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **`Store.List` full-payload fix:** Verify a fixture with a SMALL number of LARGE records (not just many tiny records) also passes — count-based caps alone do not prove byte-size safety (Pitfall 2).
-- [ ] **Two-phase ids→payload read (if adopted):** Verify a test proves output order matches the original `created_at` ordering when phase-2 `GetPoints` ids are NOT naturally id-sorted in that order (Pitfall 5) — a fixture where lexical id order happens to match `created_at` order would pass even with a real ordering bug.
-- [ ] **Two-phase ids→payload read (if adopted):** Verify a test proves a record deleted/superseded/archived between phase 1 and phase 2 is handled correctly (dropped with adjusted count, not silently gate-bypassed) (Pitfall 4).
-- [ ] **`ResourceExhausted` clear-error mapping:** Verify the response body does NOT contain the raw upstream gRPC error string, byte ceiling, or "grpc"/"Qdrant" literal (Pitfall 9) — not just that the HTTP status changed.
-- [ ] **Bounded provider error-body drain (#347/#457):** Verify a test exercises `WithTimeout(0)` combined with a slow-trickle body, not just a large-but-fast body (Pitfall 10).
-- [ ] **Cross-spine `ListScopes` resilience (#456):** Verify the fix changes the wire shape (a new coverage-unknown sentinel) rather than only retrying/softening the store-layer call (Pitfall 11).
-- [ ] **New 4 MiB-plus regression fixtures:** Verify each is gated behind `testing.Short()` per the existing precedent, and that #497's container-stability question was addressed before or alongside adding them (Pitfall 12).
-- [ ] **Any new gRPC dial-option defense-in-depth (e.g., `MaxCallRecvMsgSize`) on the production client:** Verify every test-side `qdrant.NewClient` call site either shares the change or there's an explicit gate proving they can't silently drift (Pitfall 7).
-- [ ] **`total`/exhaustion semantics:** Verify `total` is computed identically before and after whatever paging mechanism changed, and that "short page" still means "last page" everywhere it's checked (offset mode store.go:1449, cursor mode store.go:1521, and any Connect/console/CLI caller inferring done-ness from an empty next-cursor) (Pitfall 8).
+Things that appear complete but are missing critical pieces for this milestone.
+
+- [ ] **Command palette "search works":** Often missing a real server call — verify by typing a
+  term with zero matching static menu-item labels and confirming a `SearchMemories` network
+  request fires (Pitfall 1).
+- [ ] **Keyboard `j`/`k` traversal "works":** Often missing activedescendant/focus discipline —
+  verify with a screen reader or accessibility tree inspector that the announced "current" row
+  matches the visually highlighted one after both a keypress and an unrelated mouse hover
+  elsewhere (Pitfall 4).
+- [ ] **New mutating RPC "works" (manual click-through in dev):** Often missing the server-side
+  CSRF allowlist entry — verify by checking `csrfWriteProcedures` contains the new Procedure name,
+  not just that a browser session with fresh cookies succeeded (Pitfall 7).
+- [ ] **Facet/tag counts "look right":** Often missing the active filter — verify counts change
+  when a scope/category filter is applied, not just when nothing is filtered (Integration
+  Gotchas: Qdrant Facet).
+- [ ] **NL query chips "are helpful":** Often missing the confirm-before-apply gate — verify the
+  underlying search results are unchanged until a suggested chip is explicitly clicked (Pitfall 9).
+- [ ] **Related-memories graph "renders":** Often missing any keyboard or screen-reader path —
+  verify every node is reachable via Tab/arrow keys and has a text equivalent, not just that it
+  paints on canvas (Pitfall 8).
+- [ ] **Curation form "handles re-auth":** Often missing from the resume envelope's unions —
+  verify a session-expiry redirect mid-edit on the *new* form restores the draft, not just on the
+  existing memory/discovery forms (Pitfall 10).
 
 ## Recovery Strategies
 
+When pitfalls occur despite prevention, how to recover.
+
 | Pitfall | Recovery Cost | Recovery Steps |
-|---------|-----------------|-------------------|
-| A sibling overflow site missed in this milestone (Pitfall 1) surfaces in production later | MEDIUM | File a new issue following the exact #583→#585 template (mechanism, live log excerpt if available, regression test pattern to reuse); the fix mechanism from this milestone should generalize directly since the root cause is identical |
-| A two-phase read's TOCTOU gap (Pitfall 4) lets a superseded/archived record leak through a list surface | MEDIUM-HIGH | Treat as a recall-gate defect (same severity class as the repo's existing recall-gate AST test protects against); patch the specific call site to re-verify filter membership in phase 2, then retroactively extend the AST pin to cover it so the class of bug can't recur silently |
-| `total`/exhaustion semantics regressed (Pitfall 8) and shipped, causing console/CLI to report wrong page counts or stop paging early | LOW-MEDIUM | Since `total` is derived from an independent `Count` call, a fix is typically a revert-and-reapply of just the page-fetch change without touching the count path; add the missing regression test before re-landing |
-| #497-class testcontainer flakiness reappears mid-milestone because new large fixtures compounded the resource-pressure condition (Pitfall 12) | LOW | `gh run rerun --failed` clears it short-term (established precedent); the durable fix is retroactively adding `testing.Short()` gates to the offending new fixtures and/or serializing Qdrant-backed packages in CI |
+|---------|----------------|------------------|
+| Command palette client-side filtering shipped | LOW | Set `shouldFilter={false}` and wire the list to the real query — isolated to `CommandPalette.svelte`, no data-model change |
+| CSRF allowlist entry missing in production | MEDIUM | Add the Procedure to `csrfWriteProcedures`, ship a patch release; audit whether the exposure window saw any forged same-origin write (check access logs for the Procedure with no prior legitimate session activity) |
+| Authz duplicated/drifted between handler and store | MEDIUM | Delete the handler-level check, route the handler through the existing store method entirely, add the missing store-layer test coverage; audit for any behavior gap the handler check was silently covering that the store doesn't |
+| Virtualization library breaks on Svelte 5 after adoption | MEDIUM-HIGH | Fall back to unvirtualized rendering bounded by a hard page-size limit while re-evaluating the library's issue tracker, or invest in the manual `ResizeObserver`-based measurement approach (Pitfall 5) |
+| Graph view ships as a hairball with no keyboard path | HIGH | Requires a UI-spec redo (edge capping, interaction model, accessible equivalent) — treat as a design defect, not a bug fix; budget it as new phase work rather than a quick patch |
 
 ## Pitfall-to-Phase Mapping
 
+How roadmap phases should address these pitfalls, following the milestone's stated build order
+(developer recall first, operator curation second, newcomer browsing/graph/NL third).
+
 | Pitfall | Prevention Phase | Verification |
 |---------|-------------------|----------------|
-| 1. Sibling overflow sites missed | Early phase: full-inventory sweep of `WithPayload(true)`/unbounded-scroll call sites, landed as one mechanism | A single grep-derived checklist of every call site, each with its own oversized-fixture regression test, tracked to 100% before phase close |
-| 2. Content-size vs. page-size conflation | Same early phase, paired with an explicit discuss-phase resolution of `ENGRAM_MEMORY_MAX_CONTENT_BYTES` | A few-large-records fixture test alongside the many-small-records fixture, for every fixed path |
-| 3. Cursor paging ties/concurrent inserts | Whichever phase touches `listByCursor`'s internals for byte-bounding; explicitly scoped in/out | A >1000-same-`created_at` tie fixture with documented (not accidental) behavior |
-| 4 & 5. Two-phase read TOCTOU + GetPoints ordering | Phase implementing offset-mode deep-paging fix, IF a two-phase design is chosen | Delete/supersede-mid-fetch fixture; non-monotonic-id ordering fixture |
-| 6. Fixture-size reasoning (compression) | Every phase writing a new oversized-payload regression test | Reuse/extend the `store_test.go:1810` guard-assert pattern; code review checks for compression-based size reasoning |
-| 7. Test/prod client limit drift | Phase adding any gRPC dial-option defense-in-depth | Either unify client construction or add an explicit cross-file dial-option consistency gate |
-| 8. `total`/exhaustion semantics | Phase implementing the actual size-bounding mechanism | Test asserting `total` unchanged; test asserting short-page-but-not-exhausted is distinguishable from real exhaustion |
-| 9. `ResourceExhausted` error-mapping leaks | Dedicated error-mapping phase (or folded into the fix phase) | Response-body content assertion (no raw upstream text), new hint code registered via `internal/surfaces`-equivalent single-declaration site |
-| 10. Provider error-body drain bound (byte + time) | Embed/summarize bounded-response phase | `WithTimeout(0)` + slow-trickle-body test, in addition to large-but-fast-body test |
-| 11. Cross-spine `ListScopes` failure discarding hits | Dedicated cross-spine resilience phase | Wire-shape change (new sentinel) verified end-to-end (store → tools.go → MCP/Connect response), not just a store-layer retry |
-| 12. Testcontainer flakiness (#497) | Same phase as, or before, the phase adding the first new multi-MiB fixture | `testing.Short()` gates present on all new large fixtures; evidence-capture (container logs/exit reason) added; CI green across at least a few real runs before declaring stable |
+| Command palette client-side filtering (1) | Recall-first search phase | Test asserts a real `SearchMemories` call for a term absent from static menu labels |
+| Search-box race / stale response (2) | Recall-first search phase | Test resolves an earlier query after a later one and asserts final state matches the later query |
+| Flash-to-empty / dishonest loading state (3) | Recall-first search phase | Test asserts distinct rendered states for loading, error, and genuine-empty-result |
+| Focus loss / roving-tabindex vs activedescendant (4) | Recall-first search phase | Accessibility-tree assertion that keyboard selection and hover are independent |
+| Virtualization measurement / svelte-virtual #866 (5) | Recall-first search phase (design gate before adoption) | First-paint test proves the row list renders without a scroll/resize trigger; re-check issue #866's status at implementation time |
+| Authz in handler vs store (6) | Curation RPCs phase | Extend `connectapi_write_parity_test.go`-style parity table to every new RPC; unauthorized-id-returns-404 test per new RPC |
+| CSRF allowlist omission (7) | Curation RPCs phase | Positive test enumerating `csrfWriteProcedures` against every write Procedure defined in the proto |
+| Decorative/hairball graph (8) | Graph/discovery phase | UI-spec sets edge-cap and keyboard-equivalence constraints before a layout library is chosen; keyboard-only walkthrough as UAT |
+| NL query understanding not staying advisory (9) | Query-understanding phase (conventions written earlier) | Test proves search results are unchanged until a chip is clicked; log-output test proves no query text appears without the audit flag set |
+| Resume envelope gaps for new curation surfaces (10) | Curation surfaces phase | Resume round-trip UAT check per new write surface (rules, scheduled, supersede) |
+| buf breaking / field-number reuse | Curation RPCs phase | `task proto:lint` / `buf breaking` in CI (already gates every proto change) |
+| MCP↔Connect parity drift | Curation RPCs phase | New row per new write RPC in the existing parity test file |
+| ui-drift / gen/ts regeneration | Curation RPCs phase | `task surfaces:gen` run and committed before opening the PR; CI `ui-drift`/`interface-surface drift` jobs as the backstop |
+| Qdrant Facet filter/cardinality/cost | Recall-first search phase (facets) / Graph-discovery phase (tag cloud) | Facet count changes when the active filter changes; `exact:false` default confirmed in the request payload |
+| URL-as-state loss on new panels | Every phase adding a new panel | New state lands in `page.url.searchParams`, following `queries.ts`'s parse/encode pattern, not component-local `$state` |
+| Height-chain (`min-h-0`) breakage | Every phase adding a nested scrollable pane | Manual scroll check: only the intended pane scrolls, never the whole page |
+| Badge uppercase-CSS / lowercase-DOM mismatch | Every phase adding a new badge/label | Tests assert against the lowercase source text, not the CSS-rendered case |
 
 ## Sources
 
-- This repo, read directly (HIGH confidence): `internal/store/store.go` (List, listByCursor, ListScheduled, ListScopes, Search, Get, Reindex — lines cited inline above), `internal/store/migrate.go` (`migrateBatch = 256`), `internal/store/store_test.go` (`TestMain` container lifecycle, `TestListScopesFullPayloadsOverGRPCLimit` fixture pattern), `internal/server/tools.go:123` (`qdrant.NewClient`, no `MaxCallRecvMsgSize` set), `.planning/PROJECT.md` (milestone scope and "done means" bar).
-- `gh issue view 497/585/583/456/347/457` (this repo's own issue tracker — HIGH confidence, primary source for the bug mechanisms and prior fix rationale).
-- grpc-go receive-size-after-decompression semantics: [grpc/grpc-go#4761 "Make MaxCallRecvMsgSize errors clear whether it's compressed or uncompressed"](https://github.com/grpc/grpc-go/issues/4761) (HIGH confidence — grpc-go's own issue tracker, cross-checked against multiple independent write-ups describing the same "received message after decompression larger than max" error text this repo's own logs show).
-- Qdrant `GetPoints` response-order non-guarantee: [qdrant/qdrant#5071 "GET points/<id> != POST points { ids: [<ids>] }"](https://github.com/qdrant/qdrant/issues/5071) and Qdrant's own API reference for Retrieve Points (HIGH confidence — primary-source issue tracker plus official API docs).
+**Repository evidence (HIGH confidence — direct file:line citations, read 2026-09-25):**
+- `notes/console-overhaul-exploration.md` — the two live bugs, research dispositions, API gap table, skills plan
+- `.planning/PROJECT.md:735-788` — Constraints and locked ADRs (DEC-cgb, DEC-xa6, DEC-kyz)
+- `ui/src/lib/components/CommandPalette.svelte:9-14`
+- `ui/src/lib/components/MemoryRow.svelte:37-82` (derived state, dim treatment, uppercase badge)
+- `ui/src/routes/search/+page.svelte:15-22` (query key shape, no AbortSignal)
+- `ui/src/lib/client.ts:1-31` (dual `engram`/`engramWrite` transport split)
+- `ui/src/lib/resume.ts:1-70` (ALLOWED_DESTINATIONS/kind unions, D-09 resume envelope)
+- `ui/src/lib/queries.ts:1-49` (URL-as-state parse/encode pattern)
+- `internal/server/connectcsrf.go:17-108` (`csrfWriteProcedures` allowlist, interceptor ordering)
+- `internal/server/connectapi_write_parity_test.go:1-60` (MCP↔Connect parity harness)
+- `internal/store/spine.go:553-640` (`qdrant.NewQueryID` neighbour sub-query, reused by `RelatedMemories`)
+- `internal/config/registry.go:140`, `internal/server/decider.go:168-191` (`ENGRAM_SEARCH_RERANK_AUDIT`)
+- `internal/decide/jev/jev.go:230-277`, `internal/decide/many.go:12-21`, `internal/decide/errors.go:34` (`decide` span, bounded pool, timeout sentinel)
+- `.github/workflows/ci.yaml:280-392` (`interface-surface drift` and `ui-drift` CI jobs)
+- `buf.yaml` (`breaking.use: [FILE]`)
+- `ui/package.json` (pinned versions: svelte 5.57.1, `@tanstack/svelte-query` ^6.1.34, bits-ui ^2.18.1; no `@tanstack/svelte-virtual` dependency present)
+- `ui/src/lib/components/MemoryList.svelte` (current unvirtualized `#each` rendering)
+
+**External sources (dates checked 2026-09-25):**
+- bits-ui Command docs — `shouldFilter` defaults to `true` (https://www.bits-ui.com/docs/components/command)
+- TanStack Query v5 migration guide + discussion #6460 — `keepPreviousData` → `placeholderData: keepPreviousData` (https://tanstack.com/query/latest/docs/framework/react/guides/migrating-to-v5, https://github.com/TanStack/query/discussions/6460)
+- TanStack Query Svelte v5→v6 migration guide — store API dropped in favor of runes thunk (https://tanstack.com/query/latest/docs/framework/svelte/migrate-from-v5-to-v6) — MEDIUM confidence on `placeholderData` carrying forward unchanged into v6; not explicitly re-confirmed in this guide
+- TanStack/virtual issue #866 — open Svelte 5 support gap, confirmed still open (https://github.com/TanStack/virtual/issues/866)
+- WAI-ARIA APG Listbox pattern — activedescendant vs roving tabindex (https://www.w3.org/WAI/ARIA/apg/patterns/listbox), as cited in `notes/console-overhaul-exploration.md`
+- Qdrant Facet API reference — `filter` respected, default `limit: 10`, `exact` default `false` (https://api.qdrant.tech/api-reference/points/facet)
+- Svelte 5 `$effect` pitfalls (infinite loops on self-read state, `$derived` memory leaks in components) — multiple sveltejs/svelte GitHub issues (#16224, #11817, #18781) and svelte.dev `$effect` docs
 
 ---
-*Pitfalls research for: engram — milestone 2026-09-18.01 "Bounded Reads"*
-*Researched: 2026-09-18*
+*Pitfalls research for: engram operator console — recall-first search, curation, graph (milestone 2026-09-25.01)*
+*Researched: 2026-09-25*

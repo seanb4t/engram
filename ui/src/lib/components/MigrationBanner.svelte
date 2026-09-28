@@ -29,13 +29,13 @@
 </script>
 
 {#if pending > 0n}
-  <div class="px-3 py-2 text-[13px] flex items-center gap-2 border-b border-border bg-muted text-foreground">
+  <div class="px-3 py-2 text-[calc(13*var(--u))] flex items-center gap-2 border-b border-border bg-muted text-foreground">
     <ArrowUpCircleIcon aria-hidden="true" />
     <span>{pending} record{pending === 1n ? '' : 's'} pending migration — run <span class="font-mono">engram migrate</span></span>
   </div>
 {/if}
 {#if futureTotal > 0n}
-  <div class="px-3 py-2 text-[13px] flex items-center gap-2 border-b border-destructive/30 bg-destructive/10 text-destructive">
+  <div class="px-3 py-2 text-[calc(13*var(--u))] flex items-center gap-2 border-b border-destructive/30 bg-destructive/10 text-destructive">
     <TriangleAlertIcon aria-hidden="true" />
     <span>{futureTotal} record{futureTotal === 1n ? '' : 's'} at a newer schema version than this server — some data may not render correctly</span>
   </div>

@@ -2284,21 +2284,21 @@ func TestListScheduledStates(t *testing.T) {
 	mk("b0000000-0000-0000-0000-000000000002", nil, &past)     // expired
 	mk("b0000000-0000-0000-0000-000000000003", &past, &future) // active -> never listed
 
-	sched, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
+	sched, _, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("scheduled: %v", err)
 	}
 	if len(sched) != 1 || sched[0].ID != "b0000000-0000-0000-0000-000000000001" {
 		t.Errorf("ScheduledPending: got %d want 1 (the future record)", len(sched))
 	}
-	exp, err := s.ListScheduled(ctx, scope, subj, ScheduledExpired, ListOptions{Limit: 10})
+	exp, _, err := s.ListScheduled(ctx, scope, subj, ScheduledExpired, ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("expired: %v", err)
 	}
 	if len(exp) != 1 || exp[0].ID != "b0000000-0000-0000-0000-000000000002" {
 		t.Errorf("ScheduledExpired: got %d want 1 (the past record)", len(exp))
 	}
-	all, err := s.ListScheduled(ctx, scope, subj, ScheduledAll, ListOptions{Limit: 10})
+	all, _, err := s.ListScheduled(ctx, scope, subj, ScheduledAll, ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("all: %v", err)
 	}
@@ -2335,7 +2335,7 @@ func TestListScheduledSupersededHidden(t *testing.T) {
 	mk(supersededID, &future, nil, &newID) // scheduled but superseded -> excluded
 	mk(liveID, &future, nil, nil)          // scheduled, live -> included
 
-	sched, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
+	sched, _, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListScheduled: %v", err)
 	}
@@ -2352,7 +2352,7 @@ func TestListScheduledSupersededHidden(t *testing.T) {
 	// inline superseded_by condition and "completes" the 2-of-4 by accident.
 	// Even with all three include bools set true, the superseded record must
 	// STILL be absent.
-	schedAllFlags, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{
+	schedAllFlags, _, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{
 		Limit: 10, IncludeArchived: true, IncludeSuperseded: true, IncludeScheduled: true,
 	})
 	if err != nil {
@@ -2373,7 +2373,7 @@ func TestListScheduledSupersededHidden(t *testing.T) {
 func TestListScheduledRejectsInvalidState(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	_, err := s.ListScheduled(ctx, "any:project:x", Authenticated("sub-A"),
+	_, _, err := s.ListScheduled(ctx, "any:project:x", Authenticated("sub-A"),
 		ScheduledState("bogus"), ListOptions{Limit: 10})
 	if err == nil {
 		t.Fatal("ListScheduled with invalid state returned nil error; want a store-layer rejection")
@@ -2410,7 +2410,7 @@ func TestListScheduledOwnerIsolation(t *testing.T) {
 	// sub-B must see NONE of sub-A's windowed records via any state — owner-only.
 	subB := Authenticated("sub-B")
 	for _, st := range []ScheduledState{ScheduledPending, ScheduledExpired, ScheduledAll} {
-		got, err := s.ListScheduled(ctx, scope, subB, st, ListOptions{Limit: 10})
+		got, _, err := s.ListScheduled(ctx, scope, subB, st, ListOptions{Limit: 10})
 		if err != nil {
 			t.Fatalf("ListScheduled(%s) for sub-B: %v", st, err)
 		}
@@ -2419,7 +2419,7 @@ func TestListScheduledOwnerIsolation(t *testing.T) {
 		}
 	}
 	// sub-A still sees their own: 2 scheduled (pending) + 1 expired = 3 in `all`.
-	own, err := s.ListScheduled(ctx, scope, Authenticated("sub-A"), ScheduledAll, ListOptions{Limit: 10})
+	own, _, err := s.ListScheduled(ctx, scope, Authenticated("sub-A"), ScheduledAll, ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListScheduled(all) for sub-A: %v", err)
 	}
@@ -2463,7 +2463,7 @@ func TestNotAfterBoundaryInstant(t *testing.T) {
 	}
 
 	// ListScheduled(expired) includes it: Lte means not_after==now counts as expired.
-	exp, err := s.ListScheduled(ctx, scope, subj, ScheduledExpired, ListOptions{Limit: 10})
+	exp, _, err := s.ListScheduled(ctx, scope, subj, ScheduledExpired, ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListScheduled: %v", err)
 	}
@@ -5382,7 +5382,7 @@ func TestListScheduledDateWindow(t *testing.T) {
 	mk("e0000000-0000-0000-0000-000000000001", t0.Add(-time.Hour)) // before window
 	mk("e0000000-0000-0000-0000-000000000002", t0.Add(time.Hour))  // inside
 
-	got, err := s.ListScheduled(ctx, scope, Authenticated("sub-A"),
+	got, _, err := s.ListScheduled(ctx, scope, Authenticated("sub-A"),
 		ScheduledPending, ListOptions{Limit: 10, CreatedAfter: t0})
 	if err != nil {
 		t.Fatalf("ListScheduled: %v", err)
@@ -7110,7 +7110,7 @@ func TestArchiveRecallGateListScheduled(t *testing.T) {
 		t.Fatalf("Archive: %v", err)
 	}
 
-	sched, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
+	sched, _, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListScheduled: %v", err)
 	}
@@ -7130,7 +7130,7 @@ func TestArchiveRecallGateListScheduled(t *testing.T) {
 	// indistinguishable from that defect, so this label and this assertion
 	// are both load-bearing. Even with all three include bools set true, the
 	// archived record must STILL be absent.
-	schedAllFlags, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{
+	schedAllFlags, _, err := s.ListScheduled(ctx, scope, subj, ScheduledPending, ListOptions{
 		Limit: 10, IncludeArchived: true, IncludeSuperseded: true, IncludeScheduled: true,
 	})
 	if err != nil {

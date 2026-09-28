@@ -24,6 +24,10 @@ var jsonschemaArgStructs = map[string]reflect.Type{
 	"listArgs":            reflect.TypeOf(listArgs{}),
 	"searchDiscoveryArgs": reflect.TypeOf(searchDiscoveryArgs{}),
 	"scheduleArgs":        reflect.TypeOf(scheduleArgs{}),
+	// listScheduledArgs (plan 03-03, D-11): Scope became conditionally
+	// required (required unless cross_spine) — the same rule surface as the
+	// other structs above.
+	"listScheduledArgs": reflect.TypeOf(listScheduledArgs{}),
 }
 
 // jsonschemaExposedFields returns the json tag name (before the comma) for

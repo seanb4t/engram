@@ -1,9 +1,24 @@
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { create } from '@bufbuild/protobuf';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import { persistResume, RESUME_KEY } from '$lib/resume';
 import { listMemoriesKey, PAGE_LIMIT } from '$lib/queries';
 import RootPage from './+page.svelte';
+
+function fakeMemory(overrides: Partial<{ id: string; summary: string }> = {}): Memory {
+  return create(MemorySchema, {
+    id: 'm1',
+    content: '',
+    scope: 'repo:x',
+    category: 'convention',
+    tags: [],
+    summary: 'a recent memory',
+    visibility: 'private',
+    ...overrides
+  });
+}
 
 const { gotoSpy, listScopesSpy, listMemoriesSpy } = vi.hoisted(() => ({
   gotoSpy: vi.fn(),
@@ -42,7 +57,7 @@ beforeEach(() => {
 describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', () => {
   it('peeks the envelope and goto()s the base + base-relative returnPath WITHOUT deleting it first (peek-not-consume)', async () => {
     persistResume({
-      returnPath: '/observe?scope=repo%3Ax',
+      returnPath: '/search?scope=repo%3Ax',
       kind: 'memory',
       mode: 'create',
       recordId: null,
@@ -51,7 +66,7 @@ describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', 
 
     await renderRoot();
     await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
-    expect(gotoSpy).toHaveBeenCalledWith('/ui/observe?scope=repo%3Ax');
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?scope=repo%3Ax');
     // Peek-not-consume: the envelope must still be present after the
     // redirect fires -- the destination route is the one that consumes it,
     // only after its form acknowledges applying the restored values.
@@ -60,7 +75,7 @@ describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', 
 
   it('normalizes a returnPath mistakenly stored WITH the /ui base prefix to a single /ui (no /ui/ui/ double-prefix)', async () => {
     persistResume({
-      returnPath: '/ui/observe?scope=repo%3Ax',
+      returnPath: '/ui/search?scope=repo%3Ax',
       kind: 'memory',
       mode: 'create',
       recordId: null,
@@ -69,7 +84,36 @@ describe('/ui/ root landing — resume envelope redirect (Codex round-3 HIGH)', 
 
     await renderRoot();
     await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
-    expect(gotoSpy).toHaveBeenCalledWith('/ui/observe?scope=repo%3Ax');
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?scope=repo%3Ax');
+  });
+
+  it('makes a persisted v2 archive envelope with returnPath /scheduled?state=expired goto /ui/scheduled?state=expired and leaves the envelope in sessionStorage', async () => {
+    persistResume({
+      returnPath: '/scheduled?state=expired',
+      kind: 'archive',
+      mode: 'archive',
+      ids: ['a', 'b']
+    });
+
+    await renderRoot();
+    await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/scheduled?state=expired');
+    expect(sessionStorage.getItem(RESUME_KEY)).not.toBeNull();
+  });
+
+  it('consumes and does not navigate for an envelope whose returnPath is the deleted /observe route', async () => {
+    persistResume({
+      returnPath: '/observe?sel=abc',
+      kind: 'memory',
+      mode: 'create',
+      recordId: null,
+      values: {}
+    });
+
+    await renderRoot();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gotoSpy).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(RESUME_KEY)).toBeNull();
   });
 
   it('routes back to /ui/discovery for a discovery-kind envelope', async () => {
@@ -128,5 +172,61 @@ describe('/ui/ root — Recent memories cross-spine feed (#500)', () => {
     expect(key[3]).toBe('');
     expect(key[9]).toBe(true);
     expect(key).toEqual(listMemoriesKey('', [], '', PAGE_LIMIT, 0, false, false, false, true));
+  });
+});
+
+// D-10: / adopts the shared ResultsList for its recent feed instead of the
+// tabbed MemoryList/MemoryRow markup.
+describe('/ui/ root — recent feed on the shared ResultsList (D-10)', () => {
+  it('shows the heading "engram — operator console" and "loading scopes…" while scopes load', async () => {
+    listScopesSpy.mockReturnValue(new Promise(() => {})); // never resolves -- scopes stay loading
+    const screen = await renderRoot();
+    await expect.element(screen.getByRole('heading', { name: 'engram — operator console' })).toBeInTheDocument();
+    await expect.element(screen.getByText('loading scopes…')).toBeInTheDocument();
+  });
+
+  it('renders a listbox named "Recent memories" with one option per returned memory', async () => {
+    listMemoriesSpy.mockResolvedValue({
+      memories: [fakeMemory({ id: 'm1', summary: 'first recent' }), fakeMemory({ id: 'm2', summary: 'second recent' })],
+      total: 2n,
+      approximate: false
+    });
+
+    const screen = await renderRoot();
+    const listbox = screen.getByRole('listbox', { name: 'Recent memories' });
+    await expect.element(listbox).toBeInTheDocument();
+    await expect.element(screen.getByText('first recent')).toBeInTheDocument();
+    await expect.element(screen.getByText('second recent')).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('[role="option"]').length).toBe(2);
+  });
+
+  it('activating a row navigates to /ui/search?q=<uuid> (D-14: /observe is gone, id resolves via GetMemory, ENTRY-01)', async () => {
+    const id = '11111111-2222-3333-4444-555555555555';
+    listMemoriesSpy.mockResolvedValue({
+      memories: [fakeMemory({ id, summary: 'open me' })],
+      total: 1n,
+      approximate: false
+    });
+
+    const screen = await renderRoot();
+    await expect.element(screen.getByText('open me')).toBeInTheDocument();
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.poll(() => gotoSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(gotoSpy).toHaveBeenCalledWith(`/ui/search?q=${id}`);
+  });
+});
+
+// D-14: a scope tile lands on /search with a `scope:<x>` operator-token
+// query instead of the deleted /observe?scope=<x>.
+describe('/ui/ root — scope tile navigates to /search?q=scope:<scope> (D-14)', () => {
+  it('navigates to the encoded scope: query on tile click', async () => {
+    listScopesSpy.mockResolvedValue({ scopes: [{ scope: 'repo:x', count: 3 }], approximate: false });
+
+    const screen = await renderRoot();
+    const tile = screen.container.querySelector('button');
+    await expect.element(screen.getByText('3')).toBeInTheDocument();
+    (tile as HTMLElement).click();
+    await expect.poll(() => gotoSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?q=scope%3Arepo%3Ax');
   });
 });

@@ -3,10 +3,11 @@
 
 // This file proves ROADMAP success criterion 4: schema_version never appears
 // in any Qdrant recall or authz filter condition transmitted by Search,
-// SearchReranked, SearchDiscovery, List, ListScheduled or ListScopes.
+// SearchReranked, SearchDiscovery, List, ListScheduled, ListScopes, (as
+// of plan 01-02) ListTags, or (as of plan 01-03) RelatedMemories.
 //
 // THE AUTHORITATIVE PROOF is TestSchemaVersionNeverGatesRecall (Task 3): a
-// gRPC unary interceptor captures the *qdrant.Filter objects the six
+// gRPC unary interceptor captures the *qdrant.Filter objects the eight
 // caller-facing recall entry points actually TRANSMIT to a real Qdrant, and
 // a recursive walker (Task 1, walkFilterKeys) proves schema_version is
 // absent from every one of them. This is evidence, not inference: the
@@ -15,8 +16,8 @@
 //
 // TestRecallEmissionSetIsCompleteAndClassified (Task 2) is a SECONDARY,
 // static layer: a go/ast derivation of every place internal/store transmits
-// a Query/QueryBatch/Scroll/ScrollAndOffset/Count call, closed over a
-// same-package call graph from the six recall entry points, with every
+// a Query/QueryBatch/Scroll/ScrollAndOffset/Count/Facet call, closed over a
+// same-package call graph from the eight recall entry points, with every
 // emission site landing in exactly one of three explicitly justified
 // categories. Its job is to catch TOMORROW'S new write path — not today's,
 // which Task 3 already proves directly — and it is stated at exactly the
@@ -30,10 +31,10 @@
 //     justification. The failure mode is an active, reviewable
 //     misclassification, never silence.
 //  2. The method vocabulary ({Query, QueryBatch, Scroll, ScrollAndOffset,
-//     Count}) is a MAINTAINED LIST, and the classification CANNOT backstop
-//     it: an emission behind an unenumerated method name produces no
-//     subject at all, reaches none of the three lists, and causes no set
-//     difference. ScrollAndOffset was exactly this case until this
+//     Count, Facet}) is a MAINTAINED LIST, and the classification CANNOT
+//     backstop it: an emission behind an unenumerated method name produces
+//     no subject at all, reaches none of the three lists, and causes no set
+//     difference. ScrollAndOffset was exactly this case until a prior
 //     revision — see prove-RED direction B below, the regression guard
 //     that proves the widening actually took effect.
 //  3. No type identity: go/ast alone cannot verify a matched selector call
@@ -337,9 +338,13 @@ var recallEmissionMethods = map[string]bool{
 	"Scroll":          true,
 	"ScrollAndOffset": true,
 	"Count":           true,
+	// The filtered Facet in Store.facetTags (ListTags, plan 01-02) is a
+	// recall emission; Store.MigrateStatus's unfiltered Facet stays
+	// operator-tier (see its operatorMigrationEmitters row below).
+	"Facet": true,
 }
 
-// recallEntryPointSeeds is the six caller-facing recall entry points this
+// recallEntryPointSeeds is the eight caller-facing recall entry points this
 // whole gate is anchored on — declared ONCE, here, and shared with
 // TestSchemaVersionNeverGatesRecall's invocation table (Task 3) via each
 // row's entryPoint field. The classification-coverage linkage subtest below
@@ -352,6 +357,15 @@ var recallEmissionMethods = map[string]bool{
 // D-16's operator-tier exclusion rationale does not reach it — a
 // schema_version condition here would narrow what a user can see, exactly
 // what criterion 4 forbids.
+//
+// ListTags is IN (plan 01-02) for the identical reason: Phase 3 serves it
+// through BOTH Connect and MCP (RPC-04), so the operator-tier exclusion
+// rationale does not reach it either.
+//
+// RelatedMemories is IN (plan 01-03): Phase 3 serves it through both Connect
+// and MCP (RPC-04), and D-10 composes the caller's read predicate into every
+// sub-query it issues, so a schema_version condition there would narrow a
+// caller's own neighbourhood — exactly what criterion 4 forbids.
 var recallEntryPointSeeds = []string{
 	"Store.Search",
 	"Store.SearchReranked", // delegates to Store.Search; builds no filter of its own — see the subset assertion below
@@ -359,6 +373,8 @@ var recallEntryPointSeeds = []string{
 	"Store.List",
 	"Store.ListScheduled",
 	"Store.ListScopes",
+	"Store.ListTags",
+	"Store.RelatedMemories",
 }
 
 // buildSamePackageCallGraph walks every non-test .go file matching
@@ -479,7 +495,7 @@ type recallEmissionClassification struct {
 	justification string
 }
 
-// recallTransmitters — reachable from recallEntryPointSeeds, six entries.
+// recallTransmitters — reachable from recallEntryPointSeeds, eight entries.
 // Re-derived at revision time against current source (line numbers below
 // are as-observed, not the plan's — enclosing FUNCTION NAME is this gate's
 // identity key, never a line number, since lines shift on every edit).
@@ -502,11 +518,27 @@ var recallTransmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.scrollOrderedPage",
-		justification: "Emits Scroll (orderedpage.go), its own transmission. Reachable from the List seeds as of plan 04-02: Store.List's offset mode (via collectOrderedPages) and its cursor mode (via listByCursor) both compose this shared primitive instead of issuing a Scroll of their own (03-INVENTORY closing check (d)). Reachable from the ListScheduled seed as of plan 04-03: ListScheduled (via collectOrderedPages) now composes this same shared primitive instead of issuing a Scroll of its own, so it no longer has a classification row of its own below. Serves List's offset-mode and cursor-mode paths, and ListScheduled's single assembled page.",
+		justification: "Emits Scroll (orderedpage.go), its own transmission. Reachable from the List seeds as of plan 04-02: Store.List's offset mode (via collectOrderedPages) and its cursor mode (via listByCursor) both compose this shared primitive instead of issuing a Scroll of their own (03-INVENTORY closing check (d)). Reachable from the ListScheduled seed as of plan 04-03: ListScheduled (via collectOrderedPages) now composes this same shared primitive instead of issuing a Scroll of its own, so it no longer has a classification row of its own below. Serves List's offset-mode and cursor-mode paths, and — as of plan 03-03 (D-11) — ListScheduled's own cursor-resumed, all-scopes-capable assembled page.",
 	},
 	{
 		enclosingFunc: "Store.ListScopes",
 		justification: "Emits Scroll (store.go:1616), its own transmission. Serves ListScopes — exposed to callers through BOTH Connect (internal/server/connectapi.go) and MCP (internal/server/tools.go), so D-16's operator-tier exclusion rationale does not reach it.",
+	},
+	{
+		enclosingFunc: "Store.facetTags",
+		justification: "Emits Facet (listtags.go), its own transmission — the package's ONLY filtered Facet call. Reachable from both the Store.ListTags seed (Store.ListTags itself emits nothing directly, so it gets no row of its own) and, as of plan 01-04, the Store.RelatedMemories seed via Store.relatedTagEdges' rarity-weight lookup (D-07). Serves ListTags (exposed through BOTH Connect and MCP once Phase 3 lands, RPC-04) AND RelatedMemories' shared-tag edges — both read the same numbers from this one helper, so D-16's operator-tier exclusion rationale does not reach either. The filter it carries is recallVisibleFilter's composition: ownerScopeFilter plus the three recall-gate conditions.",
+	},
+	{
+		enclosingFunc: "Store.relatedTagEdges",
+		justification: "Emits Count (the visible-set size n, plus an exact df fallback Count when a rare anchor tag is missing from a truncated facet) and Scroll (one ids-only probe per rare anchor tag) — all under recallVisibleFilter (D-07, D-10, D-11). Reachable from the Store.RelatedMemories seed (Store.RelatedMemories and Store.assembleRelated emit nothing scanned directly, so neither gets a row of its own). Its rarity weights read Store.facetTags above.",
+	},
+	{
+		enclosingFunc: "Store.relatedCitationEdges",
+		justification: "Emits Scroll (relatedmemories.go), its own transmission — one ids-only probe per distinct anchor kind+ref pair, matched via a nested citations filter under edgeFilter over recallVisibleFilter (D-08, D-10, D-11). Reachable from the Store.RelatedMemories seed (Store.RelatedMemories and Store.assembleRelated emit nothing scanned directly, so neither gets a row of its own).",
+	},
+	{
+		enclosingFunc: "Store.relatedVectorEdges",
+		justification: "Emits Query (relatedmemories.go), its own transmission — the query-by-id vector sub-query under edgeFilter over recallVisibleFilter (D-10, D-11). Reachable from the Store.RelatedMemories seed (Store.RelatedMemories and Store.assembleRelated emit nothing scanned directly, so neither gets a row of its own). Its candidates' payloads arrive through Store.fetchPayloadBatch above under the same filter.",
 	},
 }
 
@@ -551,7 +583,7 @@ var operatorMigrationEmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.MigrateStatus",
-		justification: "Emits Count (internal/store/migrate_status.go, twice: an IsEmpty(schema_version) exact Count for the absent/legacy bucket, and an unfiltered exact Count for the whole-collection total). D-16 operator diagnostic behind `engram migrate status`; same Phase 3 rationale as Store.CountOwnerless — the histogram must be able to count by schema_version presence/absence to report the migration backlog's shape. Never reachable from any recallEntryPointSeeds member.",
+		justification: "Emits Count (internal/store/migrate_status.go, twice: an IsEmpty(schema_version) exact Count for the absent/legacy bucket, and an unfiltered exact Count for the whole-collection total) AND an unfiltered Facet (the schema_version version-distribution histogram) — now that plan 01-02 adds Facet to the scanned vocabulary, this site is classified too. D-16 operator diagnostic behind `engram migrate status`; same Phase 3 rationale as Store.CountOwnerless — the histogram must be able to count/facet by schema_version presence/absence to report the migration backlog's shape. Never reachable from any recallEntryPointSeeds member.",
 	},
 	{
 		enclosingFunc: "Store.revertWithSteps",
@@ -790,7 +822,7 @@ func TestRecallEmissionSetIsCompleteAndClassified(t *testing.T) {
 }
 
 // ============================================================================
-// Task 3: walk the filter actually transmitted to Qdrant by all six recall
+// Task 3: walk the filter actually transmitted to Qdrant by all eight recall
 // entry points
 // ============================================================================
 
@@ -832,8 +864,8 @@ func (c *recallCapture) snapshot() []capturedFilter {
 
 // filterCarryingRequest is implemented by any top-level gRPC request type
 // that carries a *qdrant.Filter directly (QueryPoints, ScrollPoints,
-// CountPoints, and several types this codebase never sends, e.g.
-// SearchPoints/RecommendPoints/DiscoverPoints). It is used ONLY by the
+// CountPoints, FacetCounts, and several types this codebase never sends,
+// e.g. SearchPoints/RecommendPoints/DiscoverPoints). It is used ONLY by the
 // interceptor's default branch to detect an unrecognized filter-carrying
 // request rather than silently dropping it — QueryBatchPoints (used by the
 // operator-tier Store.NearDuplicates, never a recall entry point) does NOT
@@ -853,7 +885,7 @@ type filterCarryingRequest interface {
 //
 // THIS JOIN IS NOT INDEPENDENT CORROBORATION (cycle-2 actionable #9):
 // recallTransmitters is itself derived from the same {Query, QueryBatch,
-// Scroll, ScrollAndOffset, Count} method vocabulary this type switch
+// Scroll, ScrollAndOffset, Count, Facet} method vocabulary this type switch
 // encodes, so the "interceptor recognized types cover every
 // recallTransmitters emission method" subtest below is a CONSISTENCY check
 // between two views of one enumeration — it cannot reveal an RPC family
@@ -869,6 +901,7 @@ var recognizedFilterCarryingRequestMethods = map[string]bool{
 	"Query":  true, // *qdrant.QueryPoints
 	"Scroll": true, // *qdrant.ScrollPoints (also covers ScrollAndOffset — see grpcMethodForEmission)
 	"Count":  true, // *qdrant.CountPoints
+	"Facet":  true, // *qdrant.FacetCounts
 }
 
 // grpcMethodForEmission maps an internal/store call-site method name (as
@@ -882,10 +915,10 @@ func grpcMethodForEmission(callSiteMethod string) string {
 }
 
 // recallCaptureInterceptor returns a grpc.UnaryClientInterceptor that
-// type-switches req over the three recognized filter-carrying request
+// type-switches req over the four recognized filter-carrying request
 // types, records the *qdrant.Filter (possibly nil) plus a normalized method
 // name into capture, and fails the test loudly via t.Fatalf if req carries
-// a *qdrant.Filter (per filterCarryingRequest) but is not one of the three
+// a *qdrant.Filter (per filterCarryingRequest) but is not one of the four
 // recognized types — never dropping an unrecognized filter-carrying
 // request silently.
 func recallCaptureInterceptor(t *testing.T, capture *recallCapture) grpc.UnaryClientInterceptor {
@@ -897,6 +930,8 @@ func recallCaptureInterceptor(t *testing.T, capture *recallCapture) grpc.UnaryCl
 			capture.record("Scroll", r.GetFilter())
 		case *qdrant.CountPoints:
 			capture.record("Count", r.GetFilter())
+		case *qdrant.FacetCounts:
+			capture.record("Facet", r.GetFilter())
 		default:
 			if fc, ok := req.(filterCarryingRequest); ok && fc.GetFilter() != nil {
 				t.Fatalf("recallCaptureInterceptor: gRPC method %s (request type %T) carries a *qdrant.Filter but is not in the interceptor's recognized set — widen recognizedFilterCarryingRequestMethods and this type switch", method, req)
@@ -952,6 +987,84 @@ var recallGateListCursorOptions = ListOptions{
 var recallGateAnonymousSubject = Anonymous()
 var recallGateOwnerSubject = Authenticated("schemaversion-recallgate-owner")
 
+// recallGateRelatedScope is the scope seedRecallGateRelatedFixtures seeds
+// into — a scope no other recall-gate row reads, with no tag or category any
+// Search/List row filters on, so every pre-existing row's exact capture
+// count stays unchanged by these fixtures' presence.
+const recallGateRelatedScope = "schemaversion:project:recallgate-related"
+
+// Fixed ids seedRecallGateRelatedFixtures upserts — one anchor/neighbour
+// pair plus two filler records per representative subject, so the
+// RelatedMemories rows below always resolve to a live, readable anchor with
+// exactly one live neighbour, a probed tag, and a probed citation.
+const (
+	recallGateRelatedAnonAnchorID     = "5c411000-0000-0000-0000-000000000001"
+	recallGateRelatedAnonNeighbourID  = "5c411000-0000-0000-0000-000000000002"
+	recallGateRelatedAnonFiller1ID    = "5c411000-0000-0000-0000-000000000005"
+	recallGateRelatedAnonFiller2ID    = "5c411000-0000-0000-0000-000000000006"
+	recallGateRelatedOwnerAnchorID    = "5c411000-0000-0000-0000-000000000003"
+	recallGateRelatedOwnerNeighbourID = "5c411000-0000-0000-0000-000000000004"
+	recallGateRelatedOwnerFiller1ID   = "5c411000-0000-0000-0000-000000000007"
+	recallGateRelatedOwnerFiller2ID   = "5c411000-0000-0000-0000-000000000008"
+)
+
+// recallGateRelatedTag and recallGateRelatedCitation are the tag and
+// citation seedRecallGateRelatedFixtures gives each subject's anchor and
+// neighbour: shared by exactly those two of the subject's four records
+// (n=4, df=2 per subject), so 2*df <= n and the tag is probed rather than
+// treated as ubiquitous (D-07) — the RelatedMemories rows below rely on
+// this exact shape to derive their capture expectations.
+const recallGateRelatedTag = "recallgate-related-tag"
+
+var recallGateRelatedCitation = []Citation{{Kind: "file", Ref: "internal/store/recallgate-related.go"}}
+
+// seedRecallGateRelatedFixtures upserts, in recallGateRelatedScope, an
+// ownerless anchor/neighbour pair plus two ownerless filler records (for the
+// RelatedMemories/anonymous row) and an anchor/neighbour pair plus two
+// filler records owned by recallGateOwnerSubject.Owner() (for the
+// RelatedMemories/owner row). Every record carries a Summary (so
+// assembleRelated's no-summary backfill issues no extra Scroll); the anchor
+// and neighbour additionally carry recallGateRelatedTag and
+// recallGateRelatedCitation (plan 01-04: the tag and citation edges' live
+// capture), while the two filler records per subject carry neither — this
+// is what makes n=4/df=2 per subject and keeps the tag out of the
+// ubiquitous zone. No record carries a supersession link. Each subject can
+// see only its own four records.
+func seedRecallGateRelatedFixtures(ctx context.Context, t *testing.T, s *Store) {
+	t.Helper()
+	fixtures := []struct {
+		id       string
+		owner    string
+		vector   []float32
+		tagged   bool
+		Citation []Citation
+	}{
+		{recallGateRelatedAnonAnchorID, "", []float32{0.9, 0.1, 0.1}, true, recallGateRelatedCitation},
+		{recallGateRelatedAnonNeighbourID, "", []float32{0.8, 0.2, 0.1}, true, recallGateRelatedCitation},
+		{recallGateRelatedAnonFiller1ID, "", []float32{0.1, 0.9, 0.9}, false, nil},
+		{recallGateRelatedAnonFiller2ID, "", []float32{0.9, 0.9, 0.1}, false, nil},
+		{recallGateRelatedOwnerAnchorID, recallGateOwnerSubject.Owner(), []float32{0.1, 0.9, 0.1}, true, recallGateRelatedCitation},
+		{recallGateRelatedOwnerNeighbourID, recallGateOwnerSubject.Owner(), []float32{0.1, 0.8, 0.2}, true, recallGateRelatedCitation},
+		{recallGateRelatedOwnerFiller1ID, recallGateOwnerSubject.Owner(), []float32{0.9, 0.1, 0.9}, false, nil},
+		{recallGateRelatedOwnerFiller2ID, recallGateOwnerSubject.Owner(), []float32{0.9, 0.9, 0.9}, false, nil},
+	}
+	for _, fx := range fixtures {
+		m := Memory{
+			ID:      fx.id,
+			Scope:   recallGateRelatedScope,
+			Owner:   fx.owner,
+			Summary: "recall gate related fixture",
+		}
+		if fx.tagged {
+			m.Tags = []string{recallGateRelatedTag}
+			m.Citations = fx.Citation
+		}
+		if err := s.Upsert(ctx, m, fx.vector); err != nil {
+			t.Fatalf("seed related fixture %s: %v", fx.id, err)
+		}
+	}
+}
+
 // recallInvocationRow is one row of the invocation table: an entry point
 // (from recallEntryPointSeeds), a declared EXACT expected capture count and
 // gRPC method multiset (both derived from source, never a minimum or a
@@ -964,7 +1077,7 @@ type recallInvocationRow struct {
 	invoke        func(t *testing.T, ctx context.Context, s *Store)
 }
 
-// recallInvocationRows enumerates all FOURTEEN rows explicitly (seven
+// recallInvocationRows enumerates all EIGHTEEN rows explicitly (nine
 // invocation shapes crossed with two representative subjects), rather than
 // computing the cross product in code, so a reader can count them.
 var recallInvocationRows = []recallInvocationRow{
@@ -1079,7 +1192,7 @@ var recallInvocationRows = []recallInvocationRow{
 		expectCount: 1, expectMethods: []string{"Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
-			if _, err := s.ListScheduled(ctx, recallGateScope, recallGateAnonymousSubject, ScheduledPending, ListOptions{}); err != nil {
+			if _, _, err := s.ListScheduled(ctx, recallGateScope, recallGateAnonymousSubject, ScheduledPending, ListOptions{}); err != nil {
 				t.Fatalf("ListScheduled(anonymous): %v", err)
 			}
 		},
@@ -1089,7 +1202,7 @@ var recallInvocationRows = []recallInvocationRow{
 		expectCount: 1, expectMethods: []string{"Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
-			if _, err := s.ListScheduled(ctx, recallGateScope, recallGateOwnerSubject, ScheduledPending, ListOptions{}); err != nil {
+			if _, _, err := s.ListScheduled(ctx, recallGateScope, recallGateOwnerSubject, ScheduledPending, ListOptions{}); err != nil {
 				t.Fatalf("ListScheduled(owner): %v", err)
 			}
 		},
@@ -1114,11 +1227,58 @@ var recallInvocationRows = []recallInvocationRow{
 			}
 		},
 	},
+	{
+		name: "ListTags/anonymous", entryPoint: "Store.ListTags",
+		expectCount: 1, expectMethods: []string{"Facet"},
+		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+			t.Helper()
+			if _, _, err := s.ListTags(ctx, recallGateAnonymousSubject, recallGateScope, 0); err != nil {
+				t.Fatalf("ListTags(anonymous): %v", err)
+			}
+		},
+	},
+	{
+		name: "ListTags/owner", entryPoint: "Store.ListTags",
+		expectCount: 1, expectMethods: []string{"Facet"},
+		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+			t.Helper()
+			if _, _, err := s.ListTags(ctx, recallGateOwnerSubject, recallGateScope, 0); err != nil {
+				t.Fatalf("ListTags(owner): %v", err)
+			}
+		},
+	},
+	{
+		// Visible-set Count (relatedTagEdges), the facet (relatedTagEdges,
+		// via Store.facetTags — the tag is in the facet, so no fallback
+		// Count), the tag probe Scroll, the citation probe Scroll
+		// (relatedCitationEdges), the vector Query, and one payload-fetch
+		// Scroll batch (Store.fetchPayloadBatch) — six captures total.
+		name: "RelatedMemories/anonymous", entryPoint: "Store.RelatedMemories",
+		expectCount: 6, expectMethods: []string{"Count", "Facet", "Query", "Scroll", "Scroll", "Scroll"},
+		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+			t.Helper()
+			if _, err := s.RelatedMemories(ctx, recallGateRelatedAnonAnchorID, recallGateAnonymousSubject, 0, false); err != nil {
+				t.Fatalf("RelatedMemories(anonymous): %v", err)
+			}
+		},
+	},
+	{
+		// Same capture shape as the anonymous row above — the owner subject's
+		// fixtures are the identical n=4/df=2 shape.
+		name: "RelatedMemories/owner", entryPoint: "Store.RelatedMemories",
+		expectCount: 6, expectMethods: []string{"Count", "Facet", "Query", "Scroll", "Scroll", "Scroll"},
+		invoke: func(t *testing.T, ctx context.Context, s *Store) {
+			t.Helper()
+			if _, err := s.RelatedMemories(ctx, recallGateRelatedOwnerAnchorID, recallGateOwnerSubject, 0, false); err != nil {
+				t.Fatalf("RelatedMemories(owner): %v", err)
+			}
+		},
+	},
 }
 
 // TestSchemaVersionNeverGatesRecall is criterion 4's AUTHORITATIVE proof
 // (see this file's package doc comment): schema_version is absent from
-// every *qdrant.Filter the six caller-facing recall entry points actually
+// every *qdrant.Filter the eight caller-facing recall entry points actually
 // TRANSMIT to a real Qdrant, under two representative subjects, with
 // per-row exact capture counts and gRPC method multisets derived from
 // source.
@@ -1135,6 +1295,7 @@ func TestSchemaVersionNeverGatesRecall(t *testing.T) {
 	if err := s.EnsureCollection(ctx, uint64(len(recallGateVector))); err != nil {
 		t.Fatalf("EnsureCollection: %v", err)
 	}
+	seedRecallGateRelatedFixtures(ctx, t, s)
 
 	t.Run("interceptor recognized types cover every recallTransmitters emission method", func(t *testing.T) {
 		fset := token.NewFileSet()

@@ -14,14 +14,19 @@
     onconfirm,
     oncancel,
     authFailure = false,
-    onreauth
+    onreauth,
+    notice
   }: {
     open?: boolean;
-    kind: 'memory' | 'discovery';
+    kind: 'memory' | 'discovery' | 'rule';
     onconfirm: () => Promise<void>;
     oncancel: () => void;
     authFailure?: boolean;
     onreauth?: () => void;
+    // D-15/CUR-05: the /rules re-auth resume notice ('Signed in again —
+    // review and resend') — rendered above the footer, faint, same shape
+    // as ArchiveConfirmDialog's own `notice` prop.
+    notice?: string;
   } = $props();
 
   const copy = {
@@ -32,6 +37,10 @@
     discovery: {
       title: 'Delete this discovery?',
       body: "this can't be undone. the map/fact and its citations are removed permanently."
+    },
+    rule: {
+      title: 'Delete this rule?',
+      body: "this can't be undone. the rule is removed permanently."
     }
   } as const;
 
@@ -68,8 +77,11 @@
       <Dialog.Title>{copy[kind].title}</Dialog.Title>
       <Dialog.Description>{copy[kind].body}</Dialog.Description>
     </Dialog.Header>
+    {#if notice}
+      <div class="dcd-notice">{notice}</div>
+    {/if}
     {#if authFailure}
-      <div role="alert" class="flex flex-col gap-2 text-cat-gotcha text-[12px]">
+      <div role="alert" class="flex flex-col gap-2 text-cat-gotcha text-[calc(12*var(--u))]">
         <span>write failed — session expired. re-authenticate to continue.</span>
         <Button variant="outline" size="sm" class="self-start" onclick={() => onreauth?.()}>Re-authenticate</Button>
       </div>
@@ -84,3 +96,10 @@
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
+
+<style>
+  .dcd-notice {
+    font-size: calc(12 * var(--u));
+    color: var(--warning);
+  }
+</style>

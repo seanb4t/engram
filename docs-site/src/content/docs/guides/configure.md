@@ -163,7 +163,10 @@ which attaches an advisory relation verdict to each candidate pair by default
 whenever `ENGRAM_DECISIONS_PROVIDER` is set (`--no-verdicts` skips it), and,
 when `ENGRAM_SEARCH_RANKER=jev` (see
 [Search reranking (Jev)](#search-reranking-jev) below), by every
-`search_memory`/`search_discovery` call.
+`search_memory`/`search_discovery` call, and, unless
+`ENGRAM_SEARCH_UNDERSTANDING=off`, by the console's `/search` query
+understanding (see [Query understanding (Jev)](#query-understanding-jev)
+below).
 
 **Base URL.** `ENGRAM_DECISIONS_BASE_URL` is required when the provider is
 enabled, and it deliberately does **not** inherit `ENGRAM_OPENAI_BASE_URL` —
@@ -191,7 +194,9 @@ questions a feature builds (for curation and reranking features, that is
 memory record content) to OpenRouter, which routes Jev to **TypeSafe** (a
 service on the US West Coast). For `spine-review consolidate`, each request
 carries, per record, up to `ENGRAM_DECISIONS_VERDICT_STATE_CHARS` characters
-total of its summary followed by its content. The provider's policy: no training on inputs, standard
+total of its summary followed by its content. For query understanding, it is
+the console query text — see [Query understanding (Jev)](#query-understanding-jev)
+below for exactly what and when. The provider's policy: no training on inputs, standard
 retention, and zero data retention not confirmed. Enable this only if that is
 acceptable for the records in your store.
 
@@ -280,6 +285,39 @@ is the lexical order for `search_memory` and the vector order for
 and tags never appear — a grader fetches them by id via `get_memory`. It is meant
 to be turned on for a bounded window, graded offline, and turned off; startup
 logs a warning while it is on. It has no effect unless the ranker is `jev`.
+
+## Query understanding (Jev)
+
+The `/search` page can ask the typed-decision provider to turn a written query into advisory filter suggestions — a "Suggested" row of unapplied chips for category, time window, scope, and tag. Suggestions never change the results themselves until you click (or press Enter/Space on) a chip; accepting one applies the exact same filter a manual category/date-range/scope/tag control would. This runs over the Connect-only `UnderstandQuery` RPC — there is no MCP tool and no CLI verb for it.
+
+**On by default when a decisions provider is configured.** Leaving `ENGRAM_SEARCH_UNDERSTANDING` unset makes query understanding follow `ENGRAM_DECISIONS_PROVIDER`: once a provider is set — for typed decisions or search reranking — console query text starts flowing to it for filter suggestions too.
+Set `ENGRAM_SEARCH_UNDERSTANDING=off` to keep the provider for other features without sending console query text.
+Setting `ENGRAM_SEARCH_UNDERSTANDING=jev` explicitly requires `ENGRAM_DECISIONS_PROVIDER` to already be configured (`Config.Validate` rejects the combination otherwise). Whenever understanding is effectively on — by default or explicitly — startup logs a Warn: `search understanding enabled: console query text is sent to <host>`, naming `source` (`default` or `explicit`), the endpoint host, the model, the timeout, and which env var supplied the API key.
+
+**What leaves your deployment.** For a committed prose query the classifier reads as free text — two or more words, no `cat:`/`scope:`/`tag:`/operator syntax, and not an id or short_id lookup — engram sends: the query text, up to 2000 characters, and, only when no scope is already applied, the names of up to 254 of your own readable scopes as the options of one multiple-choice question (more scopes than that asks no scope question at all). It never records or sends record content or summaries. Tag names never leave your deployment either — a tag suggestion is matched locally against your own tag vocabulary, never asked of the provider. This is the same provider and the same data policy as [Typed decisions](#typed-decisions-jev) above — see its **What leaves your deployment** paragraph for the destination and retention policy.
+
+**Failure behavior.** Each query makes at most one decision call, bounded by `ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT`, with no retry. A timeout, an error, or a malformed answer all produce zero suggestions for that call — the search itself never waits for query understanding and never fails because of it. A suggestion is only ever produced at or above a probability of 0.9.
+
+| Environment variable | Flag | Default | Description |
+|---------------------|------|---------|-------------|
+| `ENGRAM_SEARCH_UNDERSTANDING` | — | _(empty)_ | Query-understanding switch; empty follows `ENGRAM_DECISIONS_PROVIDER`, `off` disables it explicitly, `jev` enables it explicitly (requires `ENGRAM_DECISIONS_PROVIDER`) |
+| `ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT` | — | `2s` | Per-query decision call timeout; dedicated to this path, one attempt, no retry |
+| `ENGRAM_SEARCH_UNDERSTANDING_AUDIT` | — | `false` | Opt-in audit capture: every understood query logs its **query text** and suggestion labels (never content). See **Understanding telemetry** below before enabling |
+
+Source: `internal/config` (registry) + `internal/server/decider.go` (`understandingEnabled`, `understandDeciderFromConfig`) + `internal/understand` (the suggestion core).
+
+### Understanding telemetry
+
+Whenever query understanding runs — decided, fell back, or skipped because no question needed asking — the `UnderstandQuery` RPC's own span carries bounded `engram.understand.*` attributes; none of them carries the query, a scope, or a tag. They are absent entirely when understanding is off.
+
+| Attribute | Type | Meaning |
+|-----------|------|---------|
+| `engram.understand.outcome` | string | `decided` (the call succeeded), `fallback` (the call or its answer failed), `skipped` (no question needed asking, or no decider configured) |
+| `engram.understand.fallback_class` | string | Why it fell back (only present on `fallback`) — the same class-word vocabulary as `engram.rerank.fallback_class` |
+| `engram.understand.suggestion_count` | int | Number of suggestions returned (locally-matched tag suggestions count too) |
+| `engram.understand.questions_asked` | int | Number of questions the built request carried, regardless of outcome |
+
+**Opt-in audit capture.** `ENGRAM_SEARCH_UNDERSTANDING_AUDIT=true` additionally emits one `query understanding audit` info line per understood query, carrying `query` (the text — this is the one place this path deliberately logs it), `outcome`, `questions_asked`, `fallback_class` (only when set), and `suggestions` — a JSON array of every suggestion's label in response order. Record content never appears. Startup logs a warning while it is on; setting it while query understanding is off logs a warning that nothing is actually audited.
 
 ## OIDC / Auth
 

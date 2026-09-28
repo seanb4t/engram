@@ -82,6 +82,14 @@ For each candidate pair, fetch each record's full content with
 `mcp__engram__get_memory` — fetch-by-id is not recall-gated, so a
 superseded or windowed record is still readable this way.
 
+`related_memories` can supply a record's neighbourhood — its supersession
+chain, shared tags, shared citations — on demand, useful extra context for
+either an identity verdict here or a staleness judgement below (`##
+Judging staleness`). This skill does not call it itself (`## Tools this
+skill may call` names the six it does); reach for it via `curating-memory`
+if a judgement needs it, and the same propose-then-consent discipline (`##
+Proposing a mutation`) still governs anything it surfaces.
+
 ## Identity verdicts
 
 Judge every candidate pair into exactly one of three verdicts:
@@ -271,6 +279,13 @@ the tool-layer envelope.
 
 This is the consent gate — the only thing between a judgment and a
 mutation.
+
+The same gate governs `archive_memory` / `restore_memory` (MCP) and `engram
+spine-review archive` / `restore` (CLI) — propose, get the user's explicit
+yes in this conversation, then act. This skill does not call `archive_memory`
+or `restore_memory` itself (`## Tools this skill may call` names the six it
+does); the constraint is stated here for consistency with `curating-memory`,
+which does call them.
 
 Present every finding from a sweep as **one report, grouped by verdict**,
 and treat that report as the single inline moment the source consent

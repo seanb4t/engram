@@ -1,0 +1,1 @@
+No external API integration: this phase adds engram's own Connect RPCs and MCP tools over its existing internal/store methods (the detector matched "Connect" and "MCP", which are engram's own transports here); no external service, SDK or third-party API is integrated and no new dependency is added.

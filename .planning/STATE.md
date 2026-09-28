@@ -1,37 +1,36 @@
 ---
 gsd_state_version: "1.0"
-milestone: 2026-09-22.01
-milestone_name: Typed Decisions & Recall Ranking
-status: Awaiting next milestone
-stopped_at: Phase 5 complete — all phases complete
-last_updated: "2026-09-24T18:11:20.301Z"
-last_activity: 2026-09-24
-last_activity_desc: Milestone 2026-09-22.01 completed and archived
-state_head: 52d1137bb144deac6104391fc49e99b13e73acaf
+milestone: 2026-09-25.01
+status: "Milestone 2026-09-25.01 shipped — PR #664"
+stopped_at: Milestone 2026-09-25.01 complete — awaiting next milestone
+last_updated: "2026-09-28T18:48:37.525Z"
+last_activity: 2026-09-28
+state_head: d24951ba2143ffa4ef7543c975a500ac1b32710d
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 35
-  completed_plans: 35
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 48
+  completed_plans: 48
   percent: 100
-current_phase: 5
+milestone_name: Console Overhaul
+current_phase: 6
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-24 after milestone 2026-09-22.01 — Typed Decisions & Recall Ranking)
+See: .planning/PROJECT.md (updated 2026-09-28 after 2026-09-25.01 milestone)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Planning next milestone
+**Current focus:** Planning next milestone (`/gsd-new-milestone`)
 
 ## Current Position
 
-Phase: Milestone 2026-09-22.01 complete
+Phase: Milestone 2026-09-25.01 complete
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-24 — Milestone 2026-09-22.01 completed and archived
+Status: Milestone 2026-09-25.01 shipped — PR #664
+Last activity: 2026-09-28
 
 ## Deferred Items
 
@@ -46,8 +45,8 @@ Items acknowledged and deferred at milestone close on 2026-08-12:
 | Category | Item | Status |
 |----------|------|--------|
 | pending_todo | research-versioned-payload-migration-mechanism (no stored schema/payload version; each evolution ships as its own one-shot operator command) | Now scoped into milestone 2026-08-12.01 (Phases 2–4: schema versioning foundation, migration registry/sweep, migration CLI) |
-| requirement | REQ-consent-adversarial-proof (Phase 4 — cold read proving a confidently-wrong proposal still stops at consent) | NOT SATISFIED — run cap exhausted at 3, all runs NOT-TEMPTED, terminal verdict NOT-OBTAINED; non-result accepted by Sean 2026-08-11. WINDOWS.md id 3 open. Carried as a v2 requirement in milestone 2026-08-12.01's REQUIREMENTS.md, still deferred |
-| broken_window | WINDOWS.md id 1, id 2 (Phase 03 TDD RED+GREEN landed in combined commits) | Open — RED genuinely observed, commit granularity only |
+| requirement | REQ-consent-adversarial-proof (Phase 4 — cold read proving a confidently-wrong proposal still stops at consent) | NOT SATISFIED — run cap exhausted at 3, all runs NOT-TEMPTED, terminal verdict NOT-OBTAINED; non-result accepted by Sean 2026-08-11. WINDOWS.md id 3 waived 2026-09-28 — tracked in GitHub #648 |
+| broken_window | WINDOWS.md id 1, id 2 (Phase 03 TDD RED+GREEN landed in combined commits) | Waived 2026-09-28 — tracked in GitHub #648 |
 | code | internal/surfaces/toolclass.go:141-142 stale rationale comment contradicting shipped Phase 03.1 idempotency_key support | Open — annotation value correct, comment wrong |
 | test | TestExitCodeBaseline env-var fragility (ENGRAM_REINDEX_TARGET / ENGRAM_MIGRATE_OWNER) | Tracked upstream as #476 |
 
@@ -83,6 +82,17 @@ Items acknowledged and deferred at milestone close on 2026-09-24 (milestone 2026
 | Category | Item | Status |
 |----------|------|--------|
 | deferred_items | Phase 03 / deferred-items.md: plain `go vet ./...` flags the duplicate `json:"dup"` tag at `cmd/engram/operator_view_test.go:441` (`TestOperatorViewDuplicateKeyAdjacency`) | acknowledged — deliberate duplicate-key fixture already marked `//nolint:govet`; golangci-lint (the project gate) reports 0 issues |
+
+Items acknowledged and deferred at milestone close on 2026-09-28 (milestone 2026-09-25.01, `override_closeout` — 5 newly acknowledged, 0 carried forward from a prior close; per Sean, every open item is tracked in GitHub, none in GSD state only):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_items | Phase 02 / deferred-items.md: `requirements mark-complete` cannot flip ROW-02/ROW-03 (traceability Status seeded `Mapped`) | acknowledged — resolved in `fc80584d` (40/40 requirements `Complete` and checked); recorded in GitHub #650 (closed) |
+| deferred_items | Phase 03 / deferred-items.md: `TestNoEscapedPatternsRepoWide` flagged the escaped key_links pattern in `03-04-PLAN.md` | acknowledged — re-quoted during Phase 3; keylinks gates pass at HEAD; recorded in GitHub #650 (closed) |
+| deferred_items | Phase 03 / deferred-items.md: `requirements mark-complete` cannot mark any requirement (`Mapped` vocabulary) | acknowledged — resolved in `fc80584d`; GitHub #650 (closed) |
+| deferred_items | Phase 04 / deferred-items.md: traceability Status column `Mapped` for all 40 rows | acknowledged — resolved in `fc80584d`; GitHub #650 (closed) |
+| deferred_items | Phase 05 / deferred-items.md: `requirements mark-complete` cannot flip GRAPH/TAGS ids | acknowledged — resolved in `fc80584d`; GitHub #650 (closed) |
+| broken_window | WINDOWS.md (all 20 open entries) | closed 2026-09-28 — 12 marked fixed; 8 waived as tracked in GitHub #642, #645, #646, #647, #648 (`open_count: 0`) |
 
 Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own acknowledged status line.
 
@@ -427,6 +437,48 @@ milestone needs in working memory.
 - [Phase 5]: The RED-exposed empty-nested-object defect (whitespace-only line) is fixed at the same branch the pin test covers, matching the existing empty-array zero-rows precedent.
 - [Phase 5]: D-04 (05-03): ParsePlanKeyLinks skips fieldless key_links items; ScanPlansWithStats reads a new unexported parsePlanKeyLinkItems directly so the satisfiability gate keeps reporting fieldless/prose entries as ShapeMalformed (#502's flush()-drop fix was not used, would reopen the no-op-gate hole)
 - [Phase 5]: D-06: guides/cli.md operator-command list names migrate/migrate status/migrate revert (linked to /guides/migrate/) and setup, gated by TestCLIGuideOperatorCommandsListsEveryOperatorCommand deriving the required set from operatorCommands()
+- [Phase 1]: D-01..D-05 (Phase 1, 01-01): ActionArchive gates both ArchiveAs/RestoreAs via lock-then-getWritable-then-shared-core; no nil-means-operator sentinel; rules are not special-cased; shared-non-owned and nonexistent ids are indistinguishable; TestArchiveAsOwnerGate landed as the phase's tracer-first test
+- [Phase 1]: 01-01 deviation: retargeted internal/store/schemaversion_stamp_gate_test.go's partialWriteClassification entry from Store.Archive to Store.archiveResolved after the archiveResolved extraction moved the SetPayload call site's enclosing function name
+- [Phase 1]: 01-02: recallVisibleFilter/facetTags built as new shared primitives beyond D-13..D-16's two named methods, so plan 01-04's RelatedMemories rarity weighting (D-07) reuses the same filtered Facet call site
+- [Phase 1]: 01-02: all four recall-gate vocabulary lists widened for the filtered Facet (D-15 named two; RESEARCH.md Pitfall 1 caught the other two: recallEmissionMethods and recallEntryPointSeeds/recallTransmitters)
+- [Phase 1]: RelatedMemories' full 4-edge contract (types for tag/citation evidence included) landed in Task 1's tracer commit alongside the vector edge and recall-gate widening, so the gate suite is never red between commits
+- [Phase 1]: STORE-02 complete: RelatedMemories' rarity-weighted tag edges (D-07) and shared-citation edges (D-08) merge into the same one-entry-per-candidate contract 01-03 established
+- [Phase 02]: Task 1 decision: option-a — one message RecallGateHidden{total,archived,superseded,expired,scheduled}, fields recall_gate_hidden (Search=5, List=8), MCP key recall_gate_hidden — total counts distinct hidden records so a multi-state record is never double-counted in the header; per-state fields still say which states are hidden
+- [Phase 2]: installDisplayShortcuts defaults notify to svelte-sonner's toast so +layout.svelte calls it with just (window)
+- [Phase 2]: The u scaling unit is calc(1rem / 13), equivalent to calc(var(ui-font) / 13) once html font-size is var(ui-font); matches the plan's artifact contract verbatim
+- [Phase 2]: 02-02: Used 02-01's shipped names verbatim (RecallGateHidden{Total,Archived,Superseded,Expired,Scheduled}, field/key recall_gate_hidden) for the CLI footer and docs — no new naming decision required.
+- [Phase 02]: Popover portal disabled (portalProps={ disabled: true }) on HeaderSearch's dropdown; bits-ui Command.Root's item registry is DOM-scoped to its own ref, so the default body-portal made arrow-key/Enter selection silently no-op — Rendering inline keeps Floating UI's fixed-position placement correct while making dropdown items visible to Command.Root's getValidItems() DOM query
+- [Phase 02]: applyChips (params.ts) includes all category chips, known and unknown, in the derived request/params; the known-only filter for the live header-search request stays local to HeaderSearch's own effectiveCategories — The codec is a mechanical chip-to-params mapping; known-only is a search-request business rule scoped to Task 2's action text
+- [Phase 2]: 02-06: Pitfall A resolved via a capture-phase role-rewrite action on an ancestor of the virtual-list viewport, pre-empting its native Home/End/Arrow scroll handling — The library's viewport hardcodes role=region with no override prop; listening on the SAME element would run after the library's own listener (registration order), so the action listens on an ANCESTOR in the capture phase instead
+- [Phase 2]: 02-07: DetailPane's sticky-head short_id copy button keeps a lowercase aria-label 'copy short_id' (matching existing icon-button convention), distinct from Metadata's Title-Case 'Copy id'/'Copy short_id' text buttons -- avoids an ambiguous case-insensitive role-name match across the two controls.
+- [Phase 2]: 02-07: requestMakePrivate has no confirmation dialog (unlike requestShare) -- narrowing visibility is a reduction of exposure, not an irreversible-feeling action, per the plan's own action text.
+- [Phase 2]: 02-05: shouldFilter=false + app-owned matchesQuery substring filtering, not Command's own fuzzy scoring -- bits-ui 2.18.1's default shouldFilter=true drives a DOM-reparenting sort pass that fights Svelte 5 reactive DOM ownership once a forceMount group exists, silently emptying Dialog.Content on the first keystroke with zero console errors
+- [Phase 2]: 02-05: Command.Dialog portals content to document.body by default (unlike HeaderSearch's inline Popover) -- browser tests must query document.body, not screen.container, for DOM-order/full-page-text assertions
+- [Phase 2]: 02-08: WriteSurfaces moved outside RecallSplit's list snippet to a stable toolbar row — RecallSplit's narrow/wide layout switch recreates snippet content, which was silently destroying WriteSurfaces (and its bind:this) the first time the post-mount width measurement crossed the narrow breakpoint
+- [Phase 2]: 02-08: facet-strip URL state (scope/tags/categories) is synthesized as OperatorChip objects and placed ahead of the query box's own inline chips before calling params.ts's applyChips, so typing plain text never wipes out FacetStrip's selections
+- [Phase 2]: 02-08: ScopeCombobox uses shouldFilter={false} plus manual substring filtering over the complete loaded ListScopes list, avoiding the bits-ui 2.18.1/Svelte 5 default-filter content-emptying gotcha already hit in plan 02-05
+- [Phase 02-recall-first-search]: WriteSurfaces relocated outside RecallSplit's snippets on /observe (mirrors plan 02-09's /search pitfall fix) to avoid destroying its bind:this reference and one-shot resume-restore across the narrow/wide layout switch.
+- [Phase 02-recall-first-search]: Phase 2 closes with two project-local skills (engram-console-conventions, engram-connect-client) routed from CLAUDE.md, grounded in shipped code and cited by both this phase's UI-SPEC and later UI phases (3-5).
+- [Phase 03]: [Phase 03]: 03-01: Task 1 decision gate resolved option-a (the phase's full seven-RPC wire contract), no item-level changes; plans 03-02..03-06 implement it as approved.
+- [Phase 03]: [Phase 03]: 03-01: corrected a stale per-plan commit ledger (gsd-plan-head-before-03-01, leftover from an earlier milestone's own phase-03/plan-01) to the correct plan-start commit 2ab4e15e before computing actuals.commits.
+- [Phase 03]: [Phase 03]: 03-01: archiveBatch reports one outcome row per caller-supplied token, never merged or deduplicated across repeats within one call (D-06 discretion item).
+- [Phase 03]: SupersedeMemory lands on Connect via one shared deps.supersede dispatch; validate_only reuses the real call's staged preflight functions verbatim, never a parallel copy — Guarantees Phase 4's preview-before-commit dialog can never disagree with its commit (D-18b), and keeps validate_only from ever touching the idempotency ledger, embedder, or short-id minter (D-08)
+- [Phase 03]: 03-03: deps.listScheduled resolves scope via effectiveSearchScope FIRST (scope now conditionally required); Store.ListScheduled/collectOrderedPages widened to support cursor resume and an empty-scope-spans-every-scope owner-only span — Matches the search_memory/list_memory/list_rules precedent for the scope-required-unless-cross-spine rule exactly, and reuses listFilter's existing scope-optional idiom rather than inventing a new one.
+- [Phase 03]: 03-04: ListRules Connect RPC + all-scopes read (D-10) shipped over a new shared listRuleRecords core; empty scopes list is now the all-scopes read on both lanes, rule-only coverage via ruleScopeCoverage
+- [Phase 03]: 03-04: corrected a stale gsd-plan-head-before-03-04 ledger (pointed to a commit not an ancestor of HEAD at all) before computing actuals.commits
+- [Phase 03]: Store.RelatedMemories gains a full bool (D-13); RelatedMemories lands on Connect and as an on-demand related_memories MCP tool over one shared core, with a type-safe oneof wire shape for supersession/citation/tag/vector evidence.
+- [Phase 03]: 03-05: fixed two Phase 1 key_links patterns (01-03-PLAN.md, 01-04-PLAN.md) that this plan own store change to relatedmemories.go (full-knob threading) legitimately broke; from/to/via unchanged, only the literal pattern text updated.
+- [Phase 03]: ListTags D-27 fixture strengthened with a second same-owner scope so the plan's literal empty-scope mutation is actually observable; mutation confirmed red then reverted (03-06).
+- [Phase 03]: Upgrade-guide entry renumbered to ### 21 (not ### 19 as the plan literally said) since entries 19-20 were already shipped by this milestone's earlier phases. — Avoids a duplicate/ambiguous heading; the plan's read_first note was stale relative to the file on disk.
+- [Phase 04]: 04-01: not-owned records use option-a (server-answer only) — the console never infers the caller's owner claim; supersede pre-blocks via the validate_only preview, archive reports not-owned after the call.
+- [Phase 04]: 04-02: /observe and ScopesSidebar removed with no redirect (D-14); the re-auth resume envelope is v2, a discriminated union over the curation kinds (D-16).
+- [Phase 04]: 04-03: axe-core 4.13.0 pinned as a test-only devDependency (user-approved) for WCAG 2.2 AA audits in vitest-browser.
+- [Phase 05]: 05-01/05-05: the related graph is Svelte-owned SVG; d3-force only computes a seeded fixed-budget layout, edge offsets are fixed per type, and the refit effect tracks membership alone so selection/focus/drag never re-fit.
+- [Phase 05]: 05-03 (D-12/D-13): every tag surface shares one cached ListTags(scope, 1000) query and draws linear bars from zero with printed counts (the quantile cloud was dropped).
+- [Phase 05]: 05-09: bits-ui Command.Input lacks aria-controls; patched in TagCombobox and HeaderSearch, ScopeCombobox left as-is (same gap, out of scope).
+- [Phase 06]: D-01: query understanding defaults on when ENGRAM_DECISIONS_PROVIDER=jev (explicit ENGRAM_SEARCH_UNDERSTANDING=off opts out) with a startup egress disclosure; NLQ-01 amended.
+- [Phase 06]: 06-01 option-a: UnderstandQuery is Connect-only with a FilterSuggestion oneof per chip; time windows are UTC-midnight aligned (month-end clamped after WR-01) so an accepted chip equals a manual FacetStrip chip.
+- [Phase 06]: search.browser.test.ts "row toolbar Chain button" is a pre-existing load flake (hover-revealed button detaches before click) that now trips most full-suite runs; tracked as a follow-up issue, not a Phase 6 regression.
 
 ### Pending Todos
 
@@ -497,9 +549,12 @@ Both prior entries were delivered and had simply never been closed out:
   progress row instead of the active milestone's "2. Decision Interface & Jev Backend" row
   (`yzmfesbsg0`, known bug) — hand-corrected for Phase 2; keep hand-verifying the table after the
   Phase 3–5 `phase.complete` calls. It also left STATE.md `progress.completed_phases` at 1, fixed by hand to 2.
-- **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — none remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
+- **[Phase 3] (2026-09-22.01):** `phase.complete 3` mis-targeted a shipped v0.12.x ROADMAP progress row a third time (`yzmfesbsg0`) — hand-corrected; keep hand-verifying after the Phase 4–5 calls. It again left `progress.completed_phases` at 2 (percent 40), fixed by hand to 3 (60) in the transition. Stale `.git/gsd-plan-head-before-*` ledgers from the previous milestone (the class 01-03/01-04/03-03/03-05 hit) were pruned 2026-09-24 — remain for 04-*/05-*; the leftover 06-*/07-* files cannot collide in this 5-phase milestone.
 - **[Phase 4] (2026-09-22.01):** `phase.complete 4` mis-targeted a shipped v0.12.x ROADMAP progress row a fourth time (`yzmfesbsg0`) — hand-corrected; hand-verify again after the Phase 5 call. It again left `progress.completed_phases` at 3 (percent 60), fixed by hand to 4 (80) in the transition. Phase 4's code changes (`internal/store/store.go`, `internal/store/rerank.go`, `internal/server/tools.go`) re-staled earlier phases' VERIFICATION.md fingerprints: `isPhaseComplete` now reads Phases 1, 2 and 3 as `stale` (Phase 4 `passed`), which is why `roadmap.analyze` reports them `partial` — re-verify every stale phase (`/gsd-verify-work 01`/`02`/`03`) before the milestone audit. engram record `xhg7dgmqx4` notes the cross-phase key-link drift.
 - **[Phase 5] (2026-09-22.01):** `phase.complete 5` mis-targeted a shipped v0.12.x ROADMAP progress row a fifth time (`yzmfesbsg0`) — hand-corrected, and the Phase 5 row set to 5/5 Complete; it again left `progress.completed_phases` at 4 (percent 80), fixed by hand to 5 (100). Phases 1–4 VERIFICATION.md fingerprints now read `stale` (Phase 5 `passed`) — re-verify each before the milestone audit.
+- [Phase 1] requirements.mark-complete could not flip STORE-01..03 to Complete: the installed gsd-tools verb only accepts a traceability Status of 'Pending'/'Gaps Found' as forward-transitionable, but this project's REQUIREMENTS.md has used 'Mapped' as its pre-complete status since project bootstrap (d2120f09) across every prior milestone (archived milestones show it did reach 'Complete' historically). Checkbox flip was also rolled back by the tool's own divergence-prevention gate. Not hand-edited per planning-artifacts.md (never invent/bypass structure in a tool-owned generated file) — STORE-01's completion is recorded in 01-01-SUMMARY.md's requirements-completed field. Needs an upstream gsd-tools fix or a documented project convention decision.
+
+- **[Phase 5] (2026-09-25.01):** `phase.complete 5` mis-targeted the shipped v0.12.x "5. Operator Config & Reindex Correctness" progress row again (`yzmfesbsg0`) — reverted by hand and this milestone's Phase 5 row set to 9/9 Complete; this milestone's Phase 2–4 rows still read `Not started` with stale plan counts (never hand-corrected). It also left `progress.completed_phases` at 2, fixed by hand. Carry-forwards: 4 open code-review warnings (05-REVIEW-DISPOSITION.md: WR-01 duplicated glyph map, WR-02 drag can re-pan to the keyboard-focused node, WR-03 TagBars roving row has no visible active state, WR-04 back on a fresh `?trail=` link can leave the app); ScopeCombobox shares the missing `aria-controls` gap; `pnpm --dir ui check` (svelte-check) crashes on the TypeScript 7 toolchain (pre-existing); intermittent hover-timing flake in search.browser.test.ts "Chain button"; REQUIREMENTS.md GRAPH-01..03/TAGS-01/02 still read `Mapped` (deferred-items.md).
 
 ### Quick Tasks Completed
 
@@ -518,11 +573,12 @@ Both prior entries were delivered and had simply never been closed out:
 - 2026-08-23.01 ROADMAP.md created: 6 phases (1–6), 25/25 requirements mapped, 0 orphans. Phase numbering restarted at 1. The research-suggested 9-phase breakdown collapsed: Codex/Cursor/opencode's separate high-risk Phase 7 merged into one Runtime Registration phase (Phase 3) after live verification retired the TOML/JSONC and opencode-schema risks; `engram version --json` folded into the cask phase (Phase 1) rather than standing alone.
 
 - 2026-09-18.01 ROADMAP.md created: 7 phases (1–7), 20/20 requirements mapped, 0 orphans. Phase numbering restarted at 1. Research's 6-phase build order was refined by splitting its single per-site-migration phase into Phase 4 (List/ListScheduled/Search) and Phase 5 (the five operator sweeps, plus REQ-recv-limit-backstop and REQ-ci-store-green) so the backstop lands only after every regression test in this milestone already passes without it, and so REQ-ci-store-green sits in the LAST phase that adds oversized Qdrant fixtures. Both discuss-phase decision requirements were placed with the phase implementing their outcome: REQ-content-cap-decided in Phase 3 (Shared Bounded-Read Mechanism, the natural complement to byte-budget pages) and REQ-list-limit-contract-decided in Phase 4 (List migration, whose paging shape the decision determines). Phase 6 (Cross-Spine Partial Results, #456) and Phase 7 (Bounded Provider Responses, #457/#347) are independent single-purpose tails per research, kept as standalone phases since each is a real user-observable behavior change, not internal-quality-only work.
+- Phase 01.1 inserted after Phase 1: Console Sketches — /gsd-sketch visual direction before the UI phases' UI-SPECs; UI hint set on Phases 2, 4, 5, 6
 
 ## Session Continuity
 
-Last session: 2026-09-24T17:04:07.314Z
-Stopped at: Phase 5 complete — all phases complete
+Last session: 2026-09-28T12:20:28.628Z
+Stopped at: 2026-09-25.01 Phase 6 complete — all phases complete, milestone lifecycle next
 Resume file: None
 
 ## Performance Metrics
@@ -724,6 +780,27 @@ Resume file: None
 | Phase 05 P03 | 6min | 1 tasks | 2 files |
 | Phase 05 P04 | 15min | 1 tasks | 1 files |
 | Phase 05 P05 | 20min | 1 tasks | 2 files |
+| Phase 01 P01 | 51min | 2 tasks | 6 files |
+| Phase 01 P02 | 23min | 3 tasks | 4 files |
+| Phase 01 P03 | 34min | 2 tasks | 3 files |
+| Phase 01 P04 | 42min | 2 tasks | 3 files |
+| Phase 02 P01 | 38min | 3 tasks | 12 files |
+| Phase 2 P3 | 27min | 3 tasks | 31 files |
+| Phase 02 P02 | 20min | 2 tasks | 10 files |
+| Phase 02 P04 | 40min | 3 tasks | 12 files |
+| Phase 2 P06 | 70min | 3 tasks | 7 files |
+| Phase 02 P07 | 40min | 3 tasks | 6 files |
+| Phase 02 P05 | 35min | 2 tasks | 5 files |
+| Phase 2 P08 | 130min | 3 tasks | 10 files |
+| Phase 02 P09 | 35 min | 3 tasks | 7 files |
+| Phase 02-recall-first-search P10 | 23min | 3 tasks | 7 files |
+| Phase 03 P01 | 2h19m | 3 tasks | 22 files |
+| Phase 03 P02 | 38min | 2 tasks | 14 files |
+| Phase 03 P03 | 55min | 2 tasks | 22 files |
+| Phase 03 P04 | 1h20m | 2 tasks | 13 files |
+| Phase 03 P05 | 49min | 2 tasks | 23 files |
+| Phase 03 P06 | 55min | 2 tasks | 19 files |
+| Phase 03 P07 | 29 min | 3 tasks | 10 files |
 
 ## Operator Next Steps
 

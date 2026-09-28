@@ -71,6 +71,28 @@ const (
 	// EngramServiceScheduleMemoryProcedure is the fully-qualified name of the EngramService's
 	// ScheduleMemory RPC.
 	EngramServiceScheduleMemoryProcedure = "/engram.v1.EngramService/ScheduleMemory"
+	// EngramServiceArchiveMemoryProcedure is the fully-qualified name of the EngramService's
+	// ArchiveMemory RPC.
+	EngramServiceArchiveMemoryProcedure = "/engram.v1.EngramService/ArchiveMemory"
+	// EngramServiceRestoreMemoryProcedure is the fully-qualified name of the EngramService's
+	// RestoreMemory RPC.
+	EngramServiceRestoreMemoryProcedure = "/engram.v1.EngramService/RestoreMemory"
+	// EngramServiceSupersedeMemoryProcedure is the fully-qualified name of the EngramService's
+	// SupersedeMemory RPC.
+	EngramServiceSupersedeMemoryProcedure = "/engram.v1.EngramService/SupersedeMemory"
+	// EngramServiceListScheduledProcedure is the fully-qualified name of the EngramService's
+	// ListScheduled RPC.
+	EngramServiceListScheduledProcedure = "/engram.v1.EngramService/ListScheduled"
+	// EngramServiceListRulesProcedure is the fully-qualified name of the EngramService's ListRules RPC.
+	EngramServiceListRulesProcedure = "/engram.v1.EngramService/ListRules"
+	// EngramServiceRelatedMemoriesProcedure is the fully-qualified name of the EngramService's
+	// RelatedMemories RPC.
+	EngramServiceRelatedMemoriesProcedure = "/engram.v1.EngramService/RelatedMemories"
+	// EngramServiceListTagsProcedure is the fully-qualified name of the EngramService's ListTags RPC.
+	EngramServiceListTagsProcedure = "/engram.v1.EngramService/ListTags"
+	// EngramServiceUnderstandQueryProcedure is the fully-qualified name of the EngramService's
+	// UnderstandQuery RPC.
+	EngramServiceUnderstandQueryProcedure = "/engram.v1.EngramService/UnderstandQuery"
 )
 
 // EngramServiceClient is a client for the engram.v1.EngramService service.
@@ -88,6 +110,21 @@ type EngramServiceClient interface {
 	DeleteMemory(context.Context, *connect.Request[v1.DeleteMemoryRequest]) (*connect.Response[v1.DeleteMemoryResponse], error)
 	SetVisibility(context.Context, *connect.Request[v1.SetVisibilityRequest]) (*connect.Response[v1.SetVisibilityResponse], error)
 	ScheduleMemory(context.Context, *connect.Request[v1.ScheduleMemoryRequest]) (*connect.Response[v1.ScheduleMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
+	ArchiveMemory(context.Context, *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error)
+	RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-02) ---
+	SupersedeMemory(context.Context, *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-03) ---
+	ListScheduled(context.Context, *connect.Request[v1.ListScheduledRequest]) (*connect.Response[v1.ListScheduledResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-04) ---
+	ListRules(context.Context, *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
+	RelatedMemories(context.Context, *connect.Request[v1.RelatedMemoriesRequest]) (*connect.Response[v1.RelatedMemoriesResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-06) ---
+	ListTags(context.Context, *connect.Request[v1.ListTagsRequest]) (*connect.Response[v1.ListTagsResponse], error)
+	// --- query understanding (milestone 2026-09-25.01 Phase 6, D-02: Connect-only, no MCP tool or CLI verb) ---
+	UnderstandQuery(context.Context, *connect.Request[v1.UnderstandQueryRequest]) (*connect.Response[v1.UnderstandQueryResponse], error)
 }
 
 // NewEngramServiceClient constructs a client for the engram.v1.EngramService service. By default,
@@ -173,6 +210,54 @@ func NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(engramServiceMethods.ByName("ScheduleMemory")),
 			connect.WithClientOptions(opts...),
 		),
+		archiveMemory: connect.NewClient[v1.ArchiveMemoryRequest, v1.ArchiveMemoryResponse](
+			httpClient,
+			baseURL+EngramServiceArchiveMemoryProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("ArchiveMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		restoreMemory: connect.NewClient[v1.RestoreMemoryRequest, v1.RestoreMemoryResponse](
+			httpClient,
+			baseURL+EngramServiceRestoreMemoryProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("RestoreMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		supersedeMemory: connect.NewClient[v1.SupersedeMemoryRequest, v1.SupersedeMemoryResponse](
+			httpClient,
+			baseURL+EngramServiceSupersedeMemoryProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("SupersedeMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		listScheduled: connect.NewClient[v1.ListScheduledRequest, v1.ListScheduledResponse](
+			httpClient,
+			baseURL+EngramServiceListScheduledProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("ListScheduled")),
+			connect.WithClientOptions(opts...),
+		),
+		listRules: connect.NewClient[v1.ListRulesRequest, v1.ListRulesResponse](
+			httpClient,
+			baseURL+EngramServiceListRulesProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("ListRules")),
+			connect.WithClientOptions(opts...),
+		),
+		relatedMemories: connect.NewClient[v1.RelatedMemoriesRequest, v1.RelatedMemoriesResponse](
+			httpClient,
+			baseURL+EngramServiceRelatedMemoriesProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("RelatedMemories")),
+			connect.WithClientOptions(opts...),
+		),
+		listTags: connect.NewClient[v1.ListTagsRequest, v1.ListTagsResponse](
+			httpClient,
+			baseURL+EngramServiceListTagsProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("ListTags")),
+			connect.WithClientOptions(opts...),
+		),
+		understandQuery: connect.NewClient[v1.UnderstandQueryRequest, v1.UnderstandQueryResponse](
+			httpClient,
+			baseURL+EngramServiceUnderstandQueryProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("UnderstandQuery")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -190,6 +275,14 @@ type engramServiceClient struct {
 	deleteMemory      *connect.Client[v1.DeleteMemoryRequest, v1.DeleteMemoryResponse]
 	setVisibility     *connect.Client[v1.SetVisibilityRequest, v1.SetVisibilityResponse]
 	scheduleMemory    *connect.Client[v1.ScheduleMemoryRequest, v1.ScheduleMemoryResponse]
+	archiveMemory     *connect.Client[v1.ArchiveMemoryRequest, v1.ArchiveMemoryResponse]
+	restoreMemory     *connect.Client[v1.RestoreMemoryRequest, v1.RestoreMemoryResponse]
+	supersedeMemory   *connect.Client[v1.SupersedeMemoryRequest, v1.SupersedeMemoryResponse]
+	listScheduled     *connect.Client[v1.ListScheduledRequest, v1.ListScheduledResponse]
+	listRules         *connect.Client[v1.ListRulesRequest, v1.ListRulesResponse]
+	relatedMemories   *connect.Client[v1.RelatedMemoriesRequest, v1.RelatedMemoriesResponse]
+	listTags          *connect.Client[v1.ListTagsRequest, v1.ListTagsResponse]
+	understandQuery   *connect.Client[v1.UnderstandQueryRequest, v1.UnderstandQueryResponse]
 }
 
 // ListScopes calls engram.v1.EngramService.ListScopes.
@@ -252,6 +345,46 @@ func (c *engramServiceClient) ScheduleMemory(ctx context.Context, req *connect.R
 	return c.scheduleMemory.CallUnary(ctx, req)
 }
 
+// ArchiveMemory calls engram.v1.EngramService.ArchiveMemory.
+func (c *engramServiceClient) ArchiveMemory(ctx context.Context, req *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error) {
+	return c.archiveMemory.CallUnary(ctx, req)
+}
+
+// RestoreMemory calls engram.v1.EngramService.RestoreMemory.
+func (c *engramServiceClient) RestoreMemory(ctx context.Context, req *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error) {
+	return c.restoreMemory.CallUnary(ctx, req)
+}
+
+// SupersedeMemory calls engram.v1.EngramService.SupersedeMemory.
+func (c *engramServiceClient) SupersedeMemory(ctx context.Context, req *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error) {
+	return c.supersedeMemory.CallUnary(ctx, req)
+}
+
+// ListScheduled calls engram.v1.EngramService.ListScheduled.
+func (c *engramServiceClient) ListScheduled(ctx context.Context, req *connect.Request[v1.ListScheduledRequest]) (*connect.Response[v1.ListScheduledResponse], error) {
+	return c.listScheduled.CallUnary(ctx, req)
+}
+
+// ListRules calls engram.v1.EngramService.ListRules.
+func (c *engramServiceClient) ListRules(ctx context.Context, req *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error) {
+	return c.listRules.CallUnary(ctx, req)
+}
+
+// RelatedMemories calls engram.v1.EngramService.RelatedMemories.
+func (c *engramServiceClient) RelatedMemories(ctx context.Context, req *connect.Request[v1.RelatedMemoriesRequest]) (*connect.Response[v1.RelatedMemoriesResponse], error) {
+	return c.relatedMemories.CallUnary(ctx, req)
+}
+
+// ListTags calls engram.v1.EngramService.ListTags.
+func (c *engramServiceClient) ListTags(ctx context.Context, req *connect.Request[v1.ListTagsRequest]) (*connect.Response[v1.ListTagsResponse], error) {
+	return c.listTags.CallUnary(ctx, req)
+}
+
+// UnderstandQuery calls engram.v1.EngramService.UnderstandQuery.
+func (c *engramServiceClient) UnderstandQuery(ctx context.Context, req *connect.Request[v1.UnderstandQueryRequest]) (*connect.Response[v1.UnderstandQueryResponse], error) {
+	return c.understandQuery.CallUnary(ctx, req)
+}
+
 // EngramServiceHandler is an implementation of the engram.v1.EngramService service.
 type EngramServiceHandler interface {
 	ListScopes(context.Context, *connect.Request[v1.ListScopesRequest]) (*connect.Response[v1.ListScopesResponse], error)
@@ -267,6 +400,21 @@ type EngramServiceHandler interface {
 	DeleteMemory(context.Context, *connect.Request[v1.DeleteMemoryRequest]) (*connect.Response[v1.DeleteMemoryResponse], error)
 	SetVisibility(context.Context, *connect.Request[v1.SetVisibilityRequest]) (*connect.Response[v1.SetVisibilityResponse], error)
 	ScheduleMemory(context.Context, *connect.Request[v1.ScheduleMemoryRequest]) (*connect.Response[v1.ScheduleMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
+	ArchiveMemory(context.Context, *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error)
+	RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-02) ---
+	SupersedeMemory(context.Context, *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-03) ---
+	ListScheduled(context.Context, *connect.Request[v1.ListScheduledRequest]) (*connect.Response[v1.ListScheduledResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-04) ---
+	ListRules(context.Context, *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
+	RelatedMemories(context.Context, *connect.Request[v1.RelatedMemoriesRequest]) (*connect.Response[v1.RelatedMemoriesResponse], error)
+	// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-06) ---
+	ListTags(context.Context, *connect.Request[v1.ListTagsRequest]) (*connect.Response[v1.ListTagsResponse], error)
+	// --- query understanding (milestone 2026-09-25.01 Phase 6, D-02: Connect-only, no MCP tool or CLI verb) ---
+	UnderstandQuery(context.Context, *connect.Request[v1.UnderstandQueryRequest]) (*connect.Response[v1.UnderstandQueryResponse], error)
 }
 
 // NewEngramServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -348,6 +496,54 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(engramServiceMethods.ByName("ScheduleMemory")),
 		connect.WithHandlerOptions(opts...),
 	)
+	engramServiceArchiveMemoryHandler := connect.NewUnaryHandler(
+		EngramServiceArchiveMemoryProcedure,
+		svc.ArchiveMemory,
+		connect.WithSchema(engramServiceMethods.ByName("ArchiveMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceRestoreMemoryHandler := connect.NewUnaryHandler(
+		EngramServiceRestoreMemoryProcedure,
+		svc.RestoreMemory,
+		connect.WithSchema(engramServiceMethods.ByName("RestoreMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceSupersedeMemoryHandler := connect.NewUnaryHandler(
+		EngramServiceSupersedeMemoryProcedure,
+		svc.SupersedeMemory,
+		connect.WithSchema(engramServiceMethods.ByName("SupersedeMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceListScheduledHandler := connect.NewUnaryHandler(
+		EngramServiceListScheduledProcedure,
+		svc.ListScheduled,
+		connect.WithSchema(engramServiceMethods.ByName("ListScheduled")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceListRulesHandler := connect.NewUnaryHandler(
+		EngramServiceListRulesProcedure,
+		svc.ListRules,
+		connect.WithSchema(engramServiceMethods.ByName("ListRules")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceRelatedMemoriesHandler := connect.NewUnaryHandler(
+		EngramServiceRelatedMemoriesProcedure,
+		svc.RelatedMemories,
+		connect.WithSchema(engramServiceMethods.ByName("RelatedMemories")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceListTagsHandler := connect.NewUnaryHandler(
+		EngramServiceListTagsProcedure,
+		svc.ListTags,
+		connect.WithSchema(engramServiceMethods.ByName("ListTags")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceUnderstandQueryHandler := connect.NewUnaryHandler(
+		EngramServiceUnderstandQueryProcedure,
+		svc.UnderstandQuery,
+		connect.WithSchema(engramServiceMethods.ByName("UnderstandQuery")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/engram.v1.EngramService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case EngramServiceListScopesProcedure:
@@ -374,6 +570,22 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 			engramServiceSetVisibilityHandler.ServeHTTP(w, r)
 		case EngramServiceScheduleMemoryProcedure:
 			engramServiceScheduleMemoryHandler.ServeHTTP(w, r)
+		case EngramServiceArchiveMemoryProcedure:
+			engramServiceArchiveMemoryHandler.ServeHTTP(w, r)
+		case EngramServiceRestoreMemoryProcedure:
+			engramServiceRestoreMemoryHandler.ServeHTTP(w, r)
+		case EngramServiceSupersedeMemoryProcedure:
+			engramServiceSupersedeMemoryHandler.ServeHTTP(w, r)
+		case EngramServiceListScheduledProcedure:
+			engramServiceListScheduledHandler.ServeHTTP(w, r)
+		case EngramServiceListRulesProcedure:
+			engramServiceListRulesHandler.ServeHTTP(w, r)
+		case EngramServiceRelatedMemoriesProcedure:
+			engramServiceRelatedMemoriesHandler.ServeHTTP(w, r)
+		case EngramServiceListTagsProcedure:
+			engramServiceListTagsHandler.ServeHTTP(w, r)
+		case EngramServiceUnderstandQueryProcedure:
+			engramServiceUnderstandQueryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -429,4 +641,36 @@ func (UnimplementedEngramServiceHandler) SetVisibility(context.Context, *connect
 
 func (UnimplementedEngramServiceHandler) ScheduleMemory(context.Context, *connect.Request[v1.ScheduleMemoryRequest]) (*connect.Response[v1.ScheduleMemoryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ScheduleMemory is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) ArchiveMemory(context.Context, *connect.Request[v1.ArchiveMemoryRequest]) (*connect.Response[v1.ArchiveMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ArchiveMemory is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) RestoreMemory(context.Context, *connect.Request[v1.RestoreMemoryRequest]) (*connect.Response[v1.RestoreMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.RestoreMemory is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) SupersedeMemory(context.Context, *connect.Request[v1.SupersedeMemoryRequest]) (*connect.Response[v1.SupersedeMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.SupersedeMemory is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) ListScheduled(context.Context, *connect.Request[v1.ListScheduledRequest]) (*connect.Response[v1.ListScheduledResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ListScheduled is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) ListRules(context.Context, *connect.Request[v1.ListRulesRequest]) (*connect.Response[v1.ListRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ListRules is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) RelatedMemories(context.Context, *connect.Request[v1.RelatedMemoriesRequest]) (*connect.Response[v1.RelatedMemoriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.RelatedMemories is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) ListTags(context.Context, *connect.Request[v1.ListTagsRequest]) (*connect.Response[v1.ListTagsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.ListTags is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) UnderstandQuery(context.Context, *connect.Request[v1.UnderstandQueryRequest]) (*connect.Response[v1.UnderstandQueryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.UnderstandQuery is not implemented"))
 }

@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>004 · Related &amp; Tags</title>
+<link rel="stylesheet" href="../themes/default.css">
+<script src="../themes/display.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding-top: 44px; background: var(--color-bg); color: var(--color-text);
+    font: 13px/1.45 var(--font-sans); -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+  input { font: inherit; color: inherit; }
+  .mono { font-family: var(--font-mono); }
+  .muted { color: var(--color-text-muted); }
+  .faint { color: var(--color-text-faint); }
+  .i, button, .row, .node, .bar-row, .tm-block, .chain-card, .cloud-tag { transition: all 0.15s ease; }
+
+  /* ---------- variant nav ---------- */
+  #variant-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 44px;
+    display: flex; align-items: center; gap: 4px; padding: 0 12px;
+    background: var(--color-surface); border-bottom: 1px solid var(--color-border);
+  }
+  .variant-tab { padding: 5px 10px; border-radius: var(--radius-md); color: var(--color-text-muted); font-size: var(--text-sm); white-space: nowrap; }
+  .variant-tab:hover { background: var(--color-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-primary-soft); color: var(--color-primary); }
+  .nav-spacer { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
+  .seg button { white-space: nowrap; padding: 3px 8px; font-size: var(--text-xs); color: var(--color-text-muted); border-right: 1px solid var(--color-border); }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: var(--color-hover); color: var(--color-text); }
+  .seg button.on { background: var(--color-selected); color: var(--color-text); }
+  .seg-label { font-size: var(--text-2xs); color: var(--color-text-faint); margin-right: 6px; text-transform: uppercase; letter-spacing: .06em; }
+  @media (max-width: 760px) { .variant-tab { font-size: var(--text-2xs); padding: 4px 6px; } .seg-label { display: none; } #variant-nav { overflow-x: auto; } }
+
+  /* ---------- console-wide text size ----------
+     Everything inside .ui-scaled sizes off --ui-font (12–16, default 15; themes/display.js sets it on <html>).
+     calc(N*var(--u)) is N px at 13px, so 13px reproduces the original sketch. The sketch chrome (tabs, toolbar) stays fixed. */
+  .ui-scaled {
+    --u: calc(var(--ui-font, 15px) / 13);
+    --text-2xs: calc(11*var(--u)); --text-xs: calc(12*var(--u)); --text-sm: calc(13*var(--u)); --text-base: calc(14*var(--u));
+    --text-lg: calc(16*var(--u)); --text-xl: calc(18*var(--u)); --text-2xl: calc(22*var(--u)); --row-h: calc(28*var(--u));
+    font-size: var(--text-sm);
+  }
+
+  /* ---------- frame / viewport ---------- */
+  #frame { container: frame / inline-size; margin: 0 auto; padding: 12px 16px 80px; max-width: 100%; transition: max-width 0.15s ease; }
+  #frame.constrained { border-left: 1px dashed var(--color-border); border-right: 1px dashed var(--color-border); min-height: calc(100vh - 44px); }
+
+  /* ---------- shared bits ---------- */
+  .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); min-width: 0; }
+  .card-h { display: flex; flex-wrap: wrap; align-items: center; gap: calc(6*var(--u)); padding: calc(8*var(--u)) calc(10*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .card-f { display: flex; flex-wrap: wrap; align-items: center; gap: calc(10*var(--u)); padding: calc(6*var(--u)) calc(10*var(--u)); border-top: 1px solid var(--color-border-subtle); font-size: var(--text-xs); }
+  .h-title { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .chip { display: inline-flex; align-items: center; gap: calc(4*var(--u)); padding: 1px calc(6*var(--u)); border-radius: var(--radius-sm); font-size: var(--text-2xs); border: 1px solid var(--color-border); color: var(--color-text-muted); white-space: nowrap; }
+  .cat-chip { border-color: transparent; background: var(--color-surface-2); color: var(--color-text); }
+  .cat-chip i, .dot { width: calc(7*var(--u)); height: calc(7*var(--u)); border-radius: 50%; display: inline-block; flex: none; }
+  .state-word { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-warning); border: 1px dashed var(--color-border); padding: 0 calc(4*var(--u)); border-radius: var(--radius-sm); white-space: nowrap; }
+  /* state chips never overflow their box: wrap to their own line, clip, then collapse to "first +N" (fitStates) */
+  .states { display: inline-flex; flex: 0 1 auto; gap: calc(3*var(--u)); min-width: 0; max-width: 100%; overflow: hidden; vertical-align: middle; }
+  .states > .state-word { flex: none; }
+  .states.collapsed > .state-word:first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .state-word.more { color: var(--color-text-muted); border-style: solid; }
+  /* state chips sit along the bottom edge of their card, left-aligned, never overflowing */
+  .states-foot { display: flex; min-width: 0; padding-top: calc(4*var(--u)); margin-top: calc(4*var(--u)); border-top: 1px dashed var(--color-border-subtle); }
+  .states-foot:empty { display: none; }
+  .tagc { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); background: var(--color-surface-2); padding: 1px calc(5*var(--u)); border-radius: var(--radius-sm); white-space: nowrap; }
+  .tagc.shared { color: var(--color-primary); background: var(--color-primary-soft); }
+  .btn { display: inline-flex; align-items: center; gap: calc(6*var(--u)); padding: calc(4*var(--u)) calc(9*var(--u)); border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: var(--text-xs); color: var(--color-text-muted); background: var(--color-surface); }
+  .btn:hover { background: var(--color-hover); color: var(--color-text); border-color: var(--color-text-faint); }
+  .btn.primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+  .btn.primary:hover { background: var(--color-primary-hover); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  kbd { font-family: var(--font-mono); font-size: var(--text-2xs); border: 1px solid var(--color-border); border-bottom-width: 2px; border-radius: calc(3*var(--u)); padding: 0 calc(4*var(--u)); color: var(--color-text-muted); }
+
+  /* edge-type glyphs: identity by border style + letter, never colour alone */
+  .g { display: inline-flex; align-items: center; justify-content: center; width: calc(16*var(--u)); height: calc(16*var(--u)); font: 600 calc(9*var(--u))/1 var(--font-mono); color: var(--color-text-muted); border-radius: calc(3*var(--u)); border: 1px solid var(--color-text-faint); flex: none; }
+  .g-supersession { border: 2px solid var(--color-text-muted); }
+  .g-citation { border-style: dashed; }
+  .g-tag { border-style: dotted; border-width: 2px; }
+  .g-vector { border-color: var(--color-border); }
+  .g:hover { color: var(--color-primary); border-color: var(--color-primary); }
+
+  .edge-toggle { display: inline-flex; align-items: center; gap: calc(6*var(--u)); padding: calc(3*var(--u)) calc(8*var(--u)); border: 1px solid var(--color-border); border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--color-text); }
+  .edge-toggle:hover { border-color: var(--color-text-faint); background: var(--color-hover); }
+  .edge-toggle.off { color: var(--color-text-faint); opacity: .55; }
+  .edge-toggle.off svg { opacity: .4; }
+  .edge-toggle .n { color: var(--color-text-faint); font-size: var(--text-2xs); }
+  .swatch { color: var(--color-text-muted); flex: none; width: calc(var(--sw, 24)*var(--u)); height: calc(10*var(--u)); }
+
+  .filter-chip { display: inline-flex; align-items: center; gap: calc(6*var(--u)); padding: 2px calc(4*var(--u)) 2px calc(8*var(--u)); border-radius: var(--radius-full); background: var(--color-primary-soft); color: var(--color-primary); font-size: var(--text-xs); }
+  .filter-chip button { width: calc(18*var(--u)); height: calc(18*var(--u)); border-radius: 50%; }
+  .filter-chip button:hover { background: var(--color-primary); color: #fff; }
+
+  /* anchor bar */
+  .anchor-bar { display: flex; flex-direction: column; gap: calc(6*var(--u)); margin-bottom: calc(10*var(--u)); }
+  .crumbs { display: flex; align-items: center; gap: calc(6*var(--u)); flex-wrap: wrap; font-size: var(--text-xs); color: var(--color-text-faint); }
+  .crumbs .crumb { font-family: var(--font-mono); color: var(--color-text-muted); padding: 1px calc(4*var(--u)); border-radius: var(--radius-sm); }
+  .crumbs .crumb:hover { background: var(--color-hover); color: var(--color-text); }
+  .crumbs .crumb.cur { color: var(--color-text); background: var(--color-surface-2); }
+  .anchor-card { display: grid; grid-template-columns: auto 1fr auto; gap: calc(4*var(--u)) calc(12*var(--u)); align-items: center; padding: calc(10*var(--u)) calc(12*var(--u)); background: var(--color-surface); border: 1px solid var(--color-border); border-left: calc(3*var(--u)) solid var(--color-primary); border-radius: var(--radius-lg); }
+  .anchor-card > * { min-width: 0; }
+  .anchor-card .meta { display: flex; flex-wrap: wrap; align-items: center; gap: calc(6*var(--u)); min-width: 0; }
+  .anchor-card .sum { font-size: var(--text-base); font-weight: 500; min-width: 0; }
+  .anchor-card .tags { display: flex; gap: calc(4*var(--u)); flex-wrap: wrap; justify-content: flex-end; }
+  .anchor-card .call { grid-column: 1 / -1; font-size: var(--text-2xs); }
+  .anchor-card .states-foot { grid-column: 1 / -1; margin-top: 0; }
+  .call b { color: var(--color-text-muted); font-weight: 500; }
+  .call .trunc { color: var(--color-warning); }
+  @container frame (max-width: 700px) { .anchor-card { grid-template-columns: 1fr; } .anchor-card .tags { justify-content: flex-start; } }
+
+  .banner { display: flex; align-items: center; gap: calc(8*var(--u)); padding: calc(6*var(--u)) calc(10*var(--u)); margin-bottom: calc(8*var(--u)); border: 1px dashed var(--color-warning); border-radius: var(--radius-md); color: var(--color-warning); font-size: var(--text-xs); }
+  .banner .mono { color: var(--color-text); }
+
+  /* skeleton */
+  @keyframes pulse { 0%,100% { opacity: .35 } 50% { opacity: .8 } }
+  .sk { background: var(--color-surface-2); border-radius: var(--radius-sm); animation: pulse 1.2s ease infinite; }
+  .sk-line { height: calc(10*var(--u)); margin: calc(8*var(--u)) 0; }
+  .pulse { animation: pulse 1.2s ease infinite; }
+  .loading-line { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .loading-line::after { content: '▍'; animation: pulse .8s steps(2) infinite; }
+
+  .empty-state { padding: calc(16*var(--u)); font-size: var(--text-xs); color: var(--color-text-muted); }
+  .empty-state h4 { margin: 0 0 calc(6*var(--u)); font-size: var(--text-sm); color: var(--color-text); }
+  .empty-state table { border-collapse: collapse; margin-top: calc(6*var(--u)); }
+  .empty-state td { padding: 2px calc(10*var(--u)) 2px 0; vertical-align: top; }
+
+  /* tooltip */
+  #tip { position: fixed; z-index: 10000; pointer-events: none; max-width: calc(360*var(--u)); padding: calc(8*var(--u)) calc(10*var(--u)); border-radius: var(--radius-md); background: var(--color-surface-2); border: 1px solid var(--color-border); box-shadow: var(--shadow-md); font-size: var(--text-xs); opacity: 0; transform: translateY(2px); transition: opacity 0.15s ease, transform 0.15s ease; }
+  #tip.show { opacity: 1; transform: none; }
+  #tip .t-head { display: flex; flex-wrap: wrap; align-items: center; gap: calc(6*var(--u)); margin-bottom: calc(4*var(--u)); }
+  #tip .t-sum { color: var(--color-text); margin-bottom: calc(6*var(--u)); }
+  #tip .t-edge { display: grid; grid-template-columns: auto 1fr; gap: calc(6*var(--u)); align-items: start; padding: calc(3*var(--u)) 0; border-top: 1px solid var(--color-border-subtle); }
+  #tip .t-edge .ev { color: var(--color-text-muted); display: flex; flex-wrap: wrap; gap: calc(3*var(--u)); }
+  .cite { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); background: var(--color-surface-2); border: 1px dashed var(--color-border); padding: 0 calc(4*var(--u)); border-radius: var(--radius-sm); white-space: nowrap; }
+  .cite b { color: var(--color-text-faint); font-weight: 500; }
+  .tagw { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); background: var(--color-surface-2); border: 1px dotted var(--color-text-faint); padding: 0 calc(4*var(--u)); border-radius: var(--radius-sm); white-space: nowrap; }
+  .tagw b { color: var(--color-text); font-weight: 500; }
+
+  /* ---------- SVG graph (A + C) ---------- */
+  svg.graph { width: 100%; height: auto; display: block; }
+  .ring { fill: none; stroke: var(--color-border-subtle); stroke-width: 1; }
+  .ring-label { fill: var(--color-text-faint); font: calc(10px*var(--gs, 1)) var(--font-mono); }
+  .edge { fill: none; stroke: var(--color-text-muted); transition: opacity 0.15s ease, stroke 0.15s ease; }
+  .edge.t-vector { stroke: var(--color-text-faint); }
+  .edge.t-supersession { stroke: var(--color-text-muted); }
+  .edge-hit { fill: none; stroke: transparent; stroke-width: 10; cursor: help; }
+  .node { cursor: pointer; }
+  .node circle.dotc { stroke: var(--color-bg); stroke-width: 2; }
+  .node:hover circle.dotc { stroke: var(--color-primary); stroke-width: 2.5; }
+  .node .halo { fill: none; stroke: transparent; stroke-width: 2; }
+  .node.sel .halo { stroke: var(--color-primary); }
+  .node.hidden-state circle.dotc { opacity: .45; stroke: var(--color-text-faint); stroke-dasharray: 2 2; stroke-width: 1.5; }
+  .node-label { fill: var(--color-text-faint); font: calc(9.5px*var(--gs, 1)) var(--font-mono); pointer-events: none; }
+  /* node state strip: small chips directly beneath the node (label), collapsed to "first +N" by width */
+  .node-states { pointer-events: none; }
+  .node-states rect { fill: var(--color-bg); stroke: var(--color-border); stroke-width: 1; stroke-dasharray: 2 1.5; }
+  .node-states rect.more { stroke-dasharray: none; }
+  .node-states text { fill: var(--color-warning); font: calc(8.5px*var(--gs, 1)) var(--font-mono); }
+  .node-states text.more { fill: var(--color-text-muted); }
+  .node.anchor { cursor: default; }
+  .node.anchor .ring-a { fill: none; stroke: var(--color-primary); stroke-width: 2; }
+  .node.anchor .ring-b { fill: none; stroke: var(--color-primary-soft); stroke-width: 6; }
+  .fdim { opacity: .14; }
+  svg.focus .edge:not(.on) { opacity: .12; }
+  svg.focus .node:not(.on):not(.anchor) { opacity: .35; }
+  svg.focus .edge.on { stroke: var(--color-primary); opacity: 1; }
+  .arrow-muted { fill: var(--color-text-muted); }
+  .arrow-hi { fill: var(--color-primary); }
+
+  /* ---------- Variant A ---------- */
+  .a-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(calc(240*var(--u)), 1fr); gap: calc(10*var(--u)); align-items: start; }
+  @container frame (max-width: 900px) { .a-grid { grid-template-columns: 1fr; } }
+  .graph-wrap { padding: calc(6*var(--u)); position: relative; }
+  .cat-key { display: flex; gap: calc(10*var(--u)); flex-wrap: wrap; }
+  .cat-key span { display: inline-flex; align-items: center; gap: calc(4*var(--u)); color: var(--color-text-muted); }
+  .cloud { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px calc(8*var(--u)); padding: calc(12*var(--u)); line-height: 1.15; }
+  .cloud-tag { color: var(--color-text-muted); padding: 1px calc(3*var(--u)); border-radius: var(--radius-sm); }
+  .cloud-tag:hover { color: var(--color-text); background: var(--color-hover); }
+  .cloud-tag.anchor-tag { color: var(--color-text); text-decoration: underline; text-decoration-color: var(--color-primary); text-decoration-thickness: 2px; text-underline-offset: calc(3*var(--u)); }
+  .cloud-tag.sel { background: var(--color-primary-soft); color: var(--color-primary); }
+  .more-row { display: flex; align-items: center; justify-content: space-between; gap: calc(8*var(--u)); padding: calc(6*var(--u)) calc(10*var(--u)); border-top: 1px solid var(--color-border-subtle); font-size: var(--text-xs); color: var(--color-text-faint); }
+  .linkbtn { color: var(--color-primary); font-size: var(--text-xs); }
+  .linkbtn:hover { text-decoration: underline; }
+
+  /* ---------- Variant B ---------- */
+  .b-grid { display: grid; grid-template-columns: minmax(0, 1fr) calc(300*var(--u)); gap: calc(10*var(--u)); align-items: start; }
+  @container frame (max-width: 900px) { .b-grid { grid-template-columns: 1fr; } }
+  .lanes { display: flex; flex-direction: column; gap: calc(8*var(--u)); min-width: 0; }
+  .lane-h { display: flex; align-items: center; gap: calc(8*var(--u)); padding: calc(6*var(--u)) calc(10*var(--u)); border-bottom: 1px solid var(--color-border-subtle); flex-wrap: wrap; }
+  .lane-h .name { font-weight: 600; font-size: var(--text-sm); }
+  .lane-h .cnt { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .lane-h .cap { font-size: var(--text-2xs); color: var(--color-text-faint); flex: 1; min-width: calc(160*var(--u)); }
+  .lane-h .eye { font-size: var(--text-2xs); color: var(--color-text-faint); padding: 2px calc(6*var(--u)); border-radius: var(--radius-sm); border: 1px solid transparent; }
+  .lane-h .eye:hover { border-color: var(--color-border); color: var(--color-text); }
+  .lane.off .lane-body { display: none; }
+  .lane.off .lane-h { border-bottom: 0; opacity: .6; }
+  .row { display: grid; grid-template-columns: calc(96*var(--u)) minmax(0, 1fr) auto auto auto; gap: calc(10*var(--u)); align-items: center; min-height: var(--row-h); padding: calc(3*var(--u)) calc(10*var(--u)); border-bottom: 1px solid var(--color-border-subtle); cursor: pointer; }
+  .row:last-child { border-bottom: 0; }
+  .row:hover { background: var(--color-hover); }
+  .row.linked { background: var(--color-selected); box-shadow: inset 2px 0 0 var(--color-primary); }
+  .row.flash { animation: flash .9s ease; }
+  @keyframes flash { 0%, 40% { background: var(--color-primary-soft); } 100% { background: transparent; } }
+  .row .id { display: flex; flex-wrap: wrap; align-items: center; gap: 2px calc(6*var(--u)); min-width: 0; overflow: hidden; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
+  .row .sum { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .ev { display: flex; gap: calc(4*var(--u)); align-items: center; justify-content: flex-end; flex-wrap: wrap; max-width: calc(380*var(--u)); }
+  .row .multi { display: flex; gap: calc(3*var(--u)); align-items: center; min-width: calc(40*var(--u)); justify-content: flex-end; }
+  .row .st { display: flex; justify-content: flex-end; min-width: 0; max-width: calc(120*var(--u)); }
+  .row .st:empty { display: none; }
+  .row .multi .x { font: calc(10*var(--u)) var(--font-mono); color: var(--color-text-faint); margin-right: 2px; }
+  .row.fdim { opacity: .3; }
+  @container frame (max-width: 700px) { .row { grid-template-columns: minmax(0, 1fr) auto; } .row .sum { grid-column: 1 / -1; grid-row: 2; white-space: normal; } .row .ev { grid-column: 1; grid-row: 3; justify-content: flex-start; } .row .ev { min-width: 0; overflow: hidden; } .row .ev > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; } .row .st { grid-column: 2; grid-row: 3; align-self: end; } .row .multi { grid-column: 2; grid-row: 1; } }
+  .cos { display: inline-flex; align-items: center; gap: calc(6*var(--u)); font-family: var(--font-mono); font-size: var(--text-xs); }
+  .cos .track { width: calc(48*var(--u)); height: calc(4*var(--u)); background: var(--color-surface-2); border-radius: 2px; overflow: hidden; }
+  .cos .fill { height: 100%; background: var(--color-text-muted); border-radius: 0 2px 2px 0; }
+  .lane-empty { padding: calc(8*var(--u)) calc(10*var(--u)); font-size: var(--text-xs); color: var(--color-text-faint); }
+  .chain { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding: calc(10*var(--u)); }
+  .chain-col { display: flex; flex-direction: column; gap: calc(6*var(--u)); justify-content: center; }
+  .chain-card { width: calc(190*var(--u)); min-width: 0; overflow: hidden; display: flex; flex-direction: column; padding: calc(6*var(--u)) calc(8*var(--u)); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg); cursor: pointer; }
+  .chain-card:hover { border-color: var(--color-text-faint); background: var(--color-hover); }
+  .chain-card.is-anchor { border: 1px solid var(--color-primary); background: var(--color-primary-soft); cursor: default; }
+  .chain-card.hidden-state { opacity: .55; border-style: dashed; }
+  .chain-card.linked { box-shadow: 0 0 0 2px var(--color-primary); }
+  .chain-card .top { display: flex; align-items: center; gap: calc(6*var(--u)); min-width: 0; font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .chain-card .sid { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chain-card .states-foot { margin-top: auto; }
+  .chain-card .s + .top { margin-bottom: calc(4*var(--u)); }
+  .chain-card .s { font-size: var(--text-xs); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
+  .chain-arrow { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 calc(4*var(--u)); color: var(--color-text-faint); font: calc(9*var(--u)) var(--font-mono); min-width: calc(64*var(--u)); }
+  .bars { padding: calc(4*var(--u)) 0; max-height: calc(640*var(--u)); overflow: auto; }
+  .bar-row { display: grid; grid-template-columns: calc(132*var(--u)) 1fr calc(36*var(--u)); gap: calc(8*var(--u)); align-items: center; width: 100%; padding: calc(3*var(--u)) calc(10*var(--u)); text-align: left; font-size: var(--text-xs); }
+  .bar-row:hover { background: var(--color-hover); }
+  .bar-row.sel { background: var(--color-primary-soft); }
+  .bar-row .nm { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-row.anchor-tag .nm { color: var(--color-text); }
+  .bar-row.anchor-tag .nm::before { content: '● '; color: var(--color-primary); font-size: calc(8*var(--u)); }
+  .bar-row .track { height: calc(8*var(--u)); }
+  .bar-row .fill { height: calc(8*var(--u)); background: var(--color-text-faint); border-radius: 0 calc(4*var(--u)) calc(4*var(--u)) 0; min-width: 2px; }
+  .bar-row.anchor-tag .fill { background: var(--color-primary); }
+  .bar-row .c { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); text-align: right; }
+  .tag-search { margin: calc(8*var(--u)) calc(10*var(--u)) calc(4*var(--u)); width: calc(100% - calc(20*var(--u))); padding: calc(4*var(--u)) calc(8*var(--u)); border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-bg); font-size: var(--text-xs); outline: none; }
+  .tag-search:focus { border-color: var(--color-primary); }
+
+  /* ---------- Variant C ---------- */
+  .c-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: calc(10*var(--u)); align-items: start; margin-bottom: calc(10*var(--u)); }
+  @container frame (max-width: 900px) { .c-grid { grid-template-columns: 1fr; } }
+  .panel { display: flex; flex-direction: column; max-height: calc(640*var(--u)); }
+  .panel .scroll { overflow: auto; }
+  .p-sec { padding: calc(10*var(--u)) calc(12*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .p-sec h4 { margin: 0 0 calc(6*var(--u)); font-size: var(--text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--color-text-faint); }
+  .p-head { display: flex; gap: calc(6*var(--u)); align-items: center; flex-wrap: wrap; }
+  .p-sum { margin: calc(6*var(--u)) 0; font-size: var(--text-base); }
+  .ev-block { border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); margin-bottom: calc(6*var(--u)); }
+  .ev-block .ev-h { display: flex; align-items: center; gap: calc(8*var(--u)); padding: calc(4*var(--u)) calc(8*var(--u)); border-bottom: 1px solid var(--color-border-subtle); font-size: var(--text-xs); font-weight: 600; }
+  .ev-block .ev-h .k { margin-left: auto; font-weight: 400; font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .ev-block .ev-b { padding: calc(6*var(--u)) calc(8*var(--u)); font-size: var(--text-xs); color: var(--color-text-muted); }
+  .ev-table { border-collapse: collapse; width: 100%; font-size: var(--text-2xs); }
+  .ev-table th { text-align: left; font-weight: 500; color: var(--color-text-faint); padding: 1px calc(6*var(--u)) calc(3*var(--u)) 0; }
+  .ev-table td { padding: 1px calc(6*var(--u)) 1px 0; font-family: var(--font-mono); color: var(--color-text); }
+  .ev-table td.r, .ev-table th.r { text-align: right; }
+  .ev-table tr.sum td { border-top: 1px solid var(--color-border-subtle); padding-top: calc(3*var(--u)); color: var(--color-text-muted); }
+  .scale { position: relative; height: calc(14*var(--u)); margin-top: calc(4*var(--u)); }
+  .scale .ln { position: absolute; left: 0; right: 0; top: calc(6*var(--u)); height: 2px; background: var(--color-surface-2); }
+  .scale .mk { position: absolute; top: 1px; width: 2px; height: calc(12*var(--u)); background: var(--color-text); }
+  .scale .lb { position: absolute; top: 0; font: calc(9*var(--u)) var(--font-mono); color: var(--color-text-faint); }
+  .nlist .nrow { display: grid; grid-template-columns: calc(12*var(--u)) calc(88*var(--u)) minmax(0,1fr) auto; gap: calc(8*var(--u)); align-items: center; padding: calc(3*var(--u)) calc(12*var(--u)); min-height: calc(26*var(--u)); cursor: pointer; font-size: var(--text-xs); }
+  .nlist .nrow:hover { background: var(--color-hover); }
+  .nlist .nrow.sel { background: var(--color-selected); box-shadow: inset 2px 0 0 var(--color-primary); }
+  .nlist .nrow .sid { font-family: var(--font-mono); color: var(--color-text-muted); }
+  .nlist .nrow .s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nlist .nrow .gs { display: flex; gap: 2px; }
+  .nlist .nrow.fdim { opacity: .3; }
+  .legend { display: flex; flex-wrap: wrap; gap: calc(6*var(--u)); }
+  .tm-wrap { display: flex; gap: calc(6*var(--u)); padding: calc(8*var(--u)); }
+  .tm { position: relative; flex: 1; height: calc(210*var(--u)); }
+  .tm-block { position: absolute; border-radius: var(--radius-sm); background: var(--color-surface-2); border: 1px solid var(--color-border-subtle); padding: calc(3*var(--u)) calc(5*var(--u)); overflow: hidden; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; text-align: left; }
+  .tm-block:hover { border-color: var(--color-text-faint); background: var(--color-hover); }
+  .tm-block .tn { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tm-block .tc { font-family: var(--font-mono); font-size: calc(9.5*var(--u)); color: var(--color-text-faint); }
+  .tm-block.anchor-tag { background: var(--color-primary-soft); border-color: var(--color-primary); }
+  .tm-block.sel { background: var(--color-primary); border-color: var(--color-primary); }
+  .tm-block.sel .tn, .tm-block.sel .tc { color: #fff; }
+  .tm-block.tiny .tn, .tm-block.tiny .tc { display: none; }
+  .tm-more { width: calc(58*var(--u)); border: 1px dashed var(--color-border); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .tm-more:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+  /* ---------- Synthesis: B lanes + C graph/evidence ---------- */
+  .s-grid { display: grid; grid-template-columns: minmax(0, 1fr) calc(340*var(--u)); gap: calc(10*var(--u)); align-items: start; }
+  .s-grid .chain-card { width: calc(180*var(--u)); }
+  .rail { position: sticky; top: 56px; overflow: hidden; min-height: calc(460*var(--u)); }
+  .rail-tabs { display: flex; align-items: center; gap: 2px; padding: calc(6*var(--u)) calc(8*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .rail-tab { padding: calc(3*var(--u)) calc(10*var(--u)); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-text-muted); }
+  .rail-tab:hover { background: var(--color-hover); color: var(--color-text); }
+  .rail-tab.on { background: var(--color-primary-soft); color: var(--color-primary); }
+  .rail .bars { max-height: min(calc(420*var(--u)), calc(100vh - calc(260*var(--u)))); }
+  #variant-s .row[tabindex], #variant-s .chain-card[tabindex] { outline: none; }
+  #variant-s .row[tabindex]:focus-visible, #variant-s .chain-card[tabindex]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+  #variant-s .row.sel { background: var(--color-primary-soft); }
+  #variant-s .row.sel-here { box-shadow: inset calc(3*var(--u)) 0 0 var(--color-primary); }
+  #variant-s .chain-card.sel { box-shadow: 0 0 0 2px var(--color-primary); }
+  #variant-s .multi .x { cursor: default; }
+  svg.has-sel .node:not(.sel):not(.anchor):not(.on) { opacity: .45; }
+  svg .edge.selon { stroke: var(--color-primary); opacity: 1; }
+  .drawer { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: var(--color-surface); border-left: 1px solid var(--color-border); box-shadow: var(--shadow-md); transform: translateX(104%); visibility: hidden; transition: transform 0.2s ease, visibility 0.2s ease; }
+  .drawer.open { transform: none; visibility: visible; }
+  .drawer .d-h { display: flex; align-items: center; gap: calc(6*var(--u)); padding: calc(6*var(--u)) calc(8*var(--u)) calc(6*var(--u)) calc(12*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .drawer .d-x { width: calc(24*var(--u)); height: calc(24*var(--u)); border-radius: var(--radius-md); font-size: calc(16*var(--u)); line-height: 1; color: var(--color-text-muted); }
+  .drawer .d-x:hover { background: var(--color-hover); color: var(--color-text); }
+  .drawer .scroll { flex: 1; min-height: 0; overflow: auto; }
+  @container frame (max-width: 900px) {
+    .s-grid { grid-template-columns: 1fr; }
+    .rail { position: relative; top: auto; min-height: 0; }
+    .drawer { position: fixed; inset: auto 0 0 0; max-height: 62vh; z-index: 9990; border-left: 0; border-top: 1px solid var(--color-border); border-radius: var(--radius-lg) var(--radius-lg) 0 0; transform: translateY(104%); }
+    .drawer.open { transform: none; }
+  }
+
+  /* ---------- Display popover (same markup/look as sketch 001 B′) ----------
+     fixed px on purpose: the control does not resize itself; only its preview does */
+  .aa { display: inline-flex; align-items: center; justify-content: center; height: calc(24*var(--u)); padding: 0 calc(6*var(--u)); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: 600; letter-spacing: .02em; color: var(--color-text-muted); border: 1px solid transparent; }
+  .aa:hover { background: var(--color-hover); color: var(--color-text); }
+  .aa[aria-expanded=true] { background: var(--color-primary-soft); color: var(--color-text); border-color: color-mix(in srgb, var(--color-primary) 45%, transparent); }
+  .dpop { position: fixed; z-index: 9995; width: 320px; max-width: calc(100vw - 16px); background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 10px 12px 12px; font-size: 12px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 8px; }
+  .dpop[hidden] { display: none; }
+  .dpop h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--color-text); }
+  .dpop .lbl { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--color-text-faint); }
+  .dpop .lbl .mono { text-transform: none; letter-spacing: 0; color: var(--color-text); }
+  .dpop kbd { font-size: 11px; }
+  .ts-seg { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
+  .ts-seg button { background: transparent; border: 0; border-right: 1px solid var(--color-border); height: 28px; font-family: var(--font-mono); color: var(--color-text-muted); cursor: pointer; transition: all .15s ease; display: flex; align-items: baseline; justify-content: center; gap: 1px; padding-top: 6px; }
+  .ts-seg button:last-child { border-right: 0; }
+  .ts-seg button:hover { background: var(--color-hover); color: var(--color-text); }
+  .ts-seg button[aria-checked=true] { background: var(--color-primary-soft); color: var(--color-text); box-shadow: inset 0 -2px 0 var(--color-primary); }
+  .ts-seg button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+  .ts-seg small { font-size: 9px; color: var(--color-text-faint); }
+  .dpop .keys { font-size: 11px; color: var(--color-text-faint); display: flex; gap: 8px; flex-wrap: wrap; }
+  .pv { background: var(--color-bg); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); overflow: hidden; }
+  .pv .row { cursor: default; border-bottom: 0; grid-template-columns: calc(96*var(--u)) minmax(0, 1fr) auto; }
+  .pv .row:hover { background: none; }
+  .toast { position: fixed; left: 50%; bottom: 18px; transform: translate(-50%, 8px); z-index: 9997; background: var(--color-surface-2); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 6px 12px; font-size: var(--text-xs); opacity: 0; transition: opacity .15s ease, transform .15s ease; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- annotation mode ---------- */
+  .note { display: none; margin: 8px 10px; padding: 6px 8px; border: 1px dashed var(--color-primary); border-radius: var(--radius-md); font-size: var(--text-2xs); color: var(--color-text-muted); background: var(--color-primary-soft); }
+  .note b { color: var(--color-primary); }
+  body.anno .note { display: block; }
+  #anno-tip { position: fixed; z-index: 10001; pointer-events: none; display: none; font: 10px/1.4 ui-monospace, Menlo, monospace; background: #111; color: #fff; padding: 4px 6px; border-radius: 4px; border: 1px solid #555; max-width: 320px; }
+  body.anno #anno-tip.show { display: block; }
+  body.anno .anno-outline { outline: 1px dashed rgba(139,123,232,.9); outline-offset: 1px; }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <button class="variant-tab" data-variant="a" onclick="showVariant('a', this)">A: Radial graph + tag cloud</button>
+  <button class="variant-tab" data-variant="b" onclick="showVariant('b', this)">B: Edge-type lanes + tag bars</button>
+  <button class="variant-tab" data-variant="c" onclick="showVariant('c', this)">C: Split graph + evidence, tag treemap</button>
+  <button class="variant-tab active" data-variant="s" onclick="showVariant('s', this)">Synthesis: B lanes + C graph/evidence ★ Selected</button>
+  <span class="nav-spacer"></span>
+  <span class="seg-label">state</span>
+  <div class="seg" id="state-seg">
+    <button data-act="view" data-v="populated" class="on">populated</button>
+    <button data-act="view" data-v="loading">loading</button>
+    <button data-act="view" data-v="empty">no neighbours</button>
+    <button data-act="view" data-v="truncated">truncated</button>
+  </div>
+</div>
+
+<div id="frame" class="ui-scaled">
+  <div id="variant-a" class="variant" style="display:none"></div>
+  <div id="variant-b" class="variant" style="display:none"></div>
+  <div id="variant-c" class="variant" style="display:none"></div>
+  <div id="variant-s" class="variant"></div>
+</div>
+
+<div id="tip" class="ui-scaled"></div>
+<div class="toast" id="toast"></div>
+<div class="dpop" id="display-pop" role="dialog" aria-label="Display" hidden>
+  <h3>Display</h3>
+  <div class="lbl"><span id="ts-lbl">Text size</span><span class="mono" id="ts-val">15px</span></div>
+  <div class="ts-seg" id="ts-seg" role="radiogroup" aria-labelledby="ts-lbl">
+    <button role="radio" data-ts="12">12<small>px</small></button><button role="radio" data-ts="13">13<small>px</small></button><button role="radio" data-ts="14">14<small>px</small></button><button role="radio" data-ts="15">15<small>px</small></button><button role="radio" data-ts="16">16<small>px</small></button>
+  </div>
+  <div class="keys" id="ts-keys"></div>
+  <div class="lbl"><span>Preview</span><span>saved per viewer</span></div>
+  <div class="pv ui-scaled" id="ts-preview"><div class="row"><span class="id"><i class="dot" style="background:var(--cat-gotcha)"></i>q7kf2m9x0c</span><span class="sum">Tag rarity weight is ln(n/df): <span class="mono">engram</span> adds almost nothing</span><span class="ev"><span class="tagw">#tags <b>4.32</b></span></span></div></div>
+  <div class="keys">Applies to every console page, not just this view.</div>
+</div>
+<div id="anno-tip"></div>
+
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui,sans-serif;font-size:12px;background:rgba(0,0,0,0.78);color:#fff;padding:8px 10px;border-radius:8px;opacity:0.45;transition:opacity 0.15s ease;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:calc(100vw - 24px);" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.45'">
+  <label style="display:flex;gap:4px;align-items:center;">theme
+    <select id="theme-switcher" style="background:#222;color:#fff;border:1px solid #555;border-radius:4px;font-size:11px;padding:1px 2px;">
+      <option value="default">default</option>
+      <option value="light">light</option>
+    </select>
+  </label>
+  <span style="display:flex;gap:2px;" id="vp-btns">
+    <button data-vp="375" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">375</button>
+    <button data-vp="768" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">768</button>
+    <button data-vp="1280" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">1280</button>
+    <button data-vp="full" style="color:#fff;background:#6a5acd;border:1px solid #888;border-radius:4px;padding:1px 6px;font-size:11px;">full</button>
+  </span>
+  <label style="display:flex;gap:4px;align-items:center;cursor:pointer;"><input type="checkbox" id="anno-toggle"> annotate</label>
+</div>
+
+<script>
+/* =====================================================================
+   Fake data — shapes mirror internal/store/relatedmemories.go
+   RelatedResult { anchor, related: [{memory, edges:[RelatedEdge]}], truncated }
+   RelatedEdge { type, score?, shared_tags?, tag_weight?, shared_citations?, direction?, depth? }
+   ===================================================================== */
+const N_STORE = 1200;               // records in scope, for ln(n/df)
+const CAPS = { supersession: 16, citation: 8, tag: 8, vector: 8 };
+const CEILING = 64, SKETCH_TAG_LIMIT = 30;
+const TYPES = ['supersession', 'citation', 'tag', 'vector'];
+const TYPE_LETTER = { supersession: 'S', citation: 'C', tag: 'T', vector: 'V' };
+const ES = {
+  supersession: { dash: '', w: 2 },
+  citation: { dash: '6 3', w: 1.5 },
+  tag: { dash: '1.5 3.5', w: 1.8 },
+  vector: { dash: '', w: 1 },
+};
+
+// ListTags(subj, scope="repo:engram", limit) → [{tag,count}] exact counts
+const TAGS = [
+  ['engram',400],['gsd',180],['go',88],['reusable-technique',60],['testing',52],['qdrant',45],['summaries',40],['ui',38],
+  ['migrations',34],['console',31],['authz',29],['oidc',27],['ci',26],['spine-review',25],['discovery',24],['jev',22],
+  ['vector',21],['docs-site',20],['helm',19],['supersession',18],['rules',17],['tags',16],['citations',15],['release-please',14],
+  ['shadcn-svelte',13],['recall-gate',12],['protobuf',11],['scheduled',10],['milestone-2026-09-25.01',9],['telemetry',9],
+  ['buf',8],['cross-spine',8],['related-memories',7],['koanf',6],['idempotency',6],['short-id',5],['cobra',5],
+  ['license',4],['shell',3],['fish',3],['ideawright',2],['otel-collector',2]
+].map(([tag, count]) => ({ tag, count }));
+const DF = Object.fromEntries(TAGS.map(t => [t.tag, t.count]));
+const rarity = tag => Math.log(N_STORE / (DF[tag] || 1));
+
+const F = (ref) => ({ kind: 'file', ref });
+const MEM_RAW = [
+  ['m0','decision','RelatedMemories caps: 8 per type, chain 8 hops / 16 members, 64 total — only the vector edge can hit the ceiling',
+    ['engram','related-memories','vector','milestone-2026-09-25.01'],[F('internal/store/relatedmemories.go')],[1,0,0,.3,0,0],'2026-09-24',{supersedes:['m1','m1b']}],
+  ['m1','decision','Related neighbourhood ranks every candidate by one blended relevance score',
+    ['engram','related-memories'],[F('internal/store/relatedmemories.go')],[1,0,0,.2,0,.1],'2026-09-19',{supersedes:['m2'], superseded_by:'m0'}],
+  ['m1b','decision','Related neighbours shown as a flat list sorted by created_at',
+    ['engram','related-memories','console'],[],[.9,.3,0,.1,0,0],'2026-09-18',{superseded_by:'m0'}],
+  ['m2','decision','Related view = vector top-10 only, no tag or citation edges',
+    ['engram','vector'],[],[.95,0,0,.2,0,.2],'2026-09-02',{supersedes:['m3'], superseded_by:'m1'}],
+  ['m3','decision','No related view in the console; agents use search_memory',
+    ['engram','console'],[],[.8,.2,0,.4,0,0],'2026-07-30',{superseded_by:'m2', archived:true, expired:true}],
+  ['m4','gotcha','Tag rarity weight is ln(n/df): the `engram` tag (df 400) contributes almost nothing to a tag edge',
+    ['engram','tags','related-memories','reusable-technique'],[F('internal/store/relatedmemories.go')],[.85,0,0,.3,0,.2],'2026-09-22',{}],
+  ['m5','convention','Read predicate is composed into every Qdrant sub-query, never applied as a post-filter (D-10)',
+    ['engram','qdrant','authz','recall-gate'],[F('internal/store/relatedmemories.go'),F('internal/store/store.go')],[.6,0,0,.8,0,.1],'2026-09-23',{}],
+  ['m6','gotcha','Superseded records are soft-hidden from recall but still fetchable by id via get_memory',
+    ['engram','supersession','recall-gate'],[F('internal/store/store.go')],[.5,.1,0,.5,0,.4],'2026-08-14',{}],
+  ['m7','discovery','Map: internal/store — Qdrant client, recall gate, filter builders, payload indexes',
+    ['engram','qdrant','discovery'],[F('internal/store/store.go'),F('internal/store/filter.go')],[.3,0,0,1,0,0],'2026-08-01',{}],
+  ['m8','decision','Console recall owns the front door: search-first, ~30 one-line rows',
+    ['console','ui','milestone-2026-09-25.01','gsd'],[F('ui/src/routes/+page.svelte')],[.2,1,.3,0,0,0],'2026-09-25',{}],
+  ['m9','preference','Monospace for ids, short_ids, scores and scopes in the console',
+    ['console','ui','shadcn-svelte'],[],[.1,1,0,0,0,0],'2026-09-25',{}],
+  ['m10','rule','Never add auto-extraction: capture is explicit, zero-junk, correctable',
+    ['engram','rules'],[],[.4,0,.4,.1,0,.3],'2026-06-11',{}],
+  ['m11','convention','Milestone labels are CalVer start dates, YYYY-MM-DD.NN, never rewritten',
+    ['gsd','milestone-2026-09-25.01'],[],[0,0,1,0,0,0],'2026-08-12',{}],
+  ['m12','gotcha','Qdrant facet counts cap at the probe size — tag df for rarity is exact only up to 64 per tag',
+    ['qdrant','tags','related-memories'],[F('internal/store/relatedmemories.go')],[.7,0,0,.7,0,0],'2026-09-23',{}],
+  ['m13','decision','Jev reranker: per-hit relevance; a decision error or timeout never fails the search',
+    ['jev','engram','recall-gate','reusable-technique'],[F('internal/decisions/jev.go')],[.6,.1,0,.3,0,.5],'2026-09-05',{}],
+  ['m14','discovery','Fact: ListTags returns exact counts via a Qdrant facet over the tags keyword index',
+    ['tags','qdrant','discovery'],[F('internal/store/listtags.go'),F('internal/store/store.go')],[.6,0,0,.6,0,.2],'2026-09-24',{}],
+  ['m15','convention','Citation identity is kind+ref; locator, pin and excerpt are excluded from the comparison',
+    ['citations','discovery','related-memories'],[F('internal/store/relatedmemories.go')],[.8,0,0,.2,0,.1],'2026-09-23',{}],
+  ['m16','gotcha','Query-by-id vector search returns the anchor itself as the top hit — drop it before the cap',
+    ['qdrant','vector','related-memories'],[],[.75,0,0,.5,0,0],'2026-09-23',{}],
+  ['m17','decision','short_id is a 10-char Crockford base32 handle, accepted anywhere an id is',
+    ['engram','short-id'],[],[.4,.2,0,.2,0,.3],'2026-05-20',{}],
+  ['m18','preference','Interactive shell is fish; write pasteable snippets as plain bash',
+    ['shell','fish'],[],[0,0,0,0,1,0],'2026-04-02',{}],
+  ['m19','convention','Rows expand on hover or focus; j/k move, Enter opens, Esc closes',
+    ['console','ui'],[],[0,1,.1,0,0,0],'2026-09-25',{}],
+  ['m21','gotcha','Qdrant query-by-id must name the dense vector explicitly or it silently searches the default',
+    ['qdrant','go'],[],[.8,0,0,.55,0,0],'2026-09-23',{}],
+  ['m22','decision','The neighbourhood view is read-only: it never stamps links, supersedes or archives',
+    ['authz','supersession'],[],[.9,.1,0,.1,0,.25],'2026-09-22',{}],
+  ['m23','discovery','Map: ui/src/lib/related — neighbourhood panel, edge legend, tag filter components',
+    ['ui','discovery'],[F('ui/src/lib/related/Panel.svelte')],[.75,.5,0,0,0,0],'2026-09-25',{}],
+  ['m20','gotcha','Memory summary is bounded at 512 bytes (ENGRAM_MEMORY_MAX_SUMMARY_BYTES)',
+    ['engram','summaries'],[],[.3,.2,0,.2,0,.4],'2026-07-02',{}],
+];
+
+// deterministic ids
+let seed = 7;
+const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+const CROCK = '0123456789abcdefghjkmnpqrstvwxyz';
+const sid10 = () => Array.from({ length: 10 }, () => CROCK[Math.floor(rnd() * 32)]).join('');
+const hex = n => Array.from({ length: n }, () => '0123456789abcdef'[Math.floor(rnd() * 16)]).join('');
+const uuid = () => `0192${hex(4)}-${hex(4)}-7${hex(3)}-${'89ab'[Math.floor(rnd() * 4)]}${hex(3)}-${hex(12)}`;
+
+const MEM = MEM_RAW.map(([key, category, summary, tags, cites, vec, created, extra]) => ({
+  key, id: uuid(), short_id: sid10(), category, summary, tags, citations: cites, vec,
+  created_at: created, supersedes: extra.supersedes || [], superseded_by: extra.superseded_by || null,
+  archived: !!extra.archived, expired: !!extra.expired, scheduled: !!extra.scheduled,
+}));
+const BY_KEY = Object.fromEntries(MEM.map(m => [m.key, m]));
+
+// filler vector neighbours — only appear in the "truncated" state (k=64)
+const FILL_STEMS = ['Qdrant payload index on scope keyword','Recall gate drops records with future not_before','Cross-spine search reports searched_scopes',
+  'Idempotency fingerprint covers content + target set','Async summary worker pool is bounded','search_memory score is raw cosine',
+  'list_memory cursor is opaque','Owner claim defaults to email','Scheduled records hidden until not_before','Rule summary must be one line',
+  'Discovery citations carry aging pins','Embedder identity keys reindex','schema_version is server-set on every write','Tags filter is AND on search_memory',
+  'created_after/before window is half-open','delete_all is owner-scoped','spine-review archive stamps archived_at','prune-expired previews without --apply',
+  'MigrateStatus probe never gates startup','Shared records readable, never writable'];
+const FILL_CATS = ['convention','gotcha','decision','discovery','preference'];
+const FILLERS = Array.from({ length: 60 }, (_, i) => ({
+  key: 'f' + i, id: uuid(), short_id: sid10(), category: FILL_CATS[i % 5],
+  summary: FILL_STEMS[i % FILL_STEMS.length] + (i >= FILL_STEMS.length ? ` (${['recall','store','console'][Math.floor(i / FILL_STEMS.length) - 1]} note)` : ''),
+  tags: [['engram','qdrant','recall-gate','go','testing'][i % 5]], citations: [], vec: null,
+  created_at: `2026-0${6 + (i % 4)}-${String(1 + (i * 7) % 27).padStart(2, '0')}`, supersedes: [], superseded_by: null, archived: false,
+  fillScore: 0.74 - i * 0.0042,
+}));
+const ALL = [...MEM, ...FILLERS];
+const BY_ID = Object.fromEntries(ALL.map(m => [m.id, m]));
+const BY_SUPERSEDES = k => MEM.filter(m => m.superseded_by === k);
+
+// canonical order archived › superseded › expired › scheduled; expired suppresses scheduled
+const stateWords = m => [m.archived && 'archived', m.superseded_by && 'superseded', m.expired && 'expired', !m.expired && m.scheduled && 'scheduled'].filter(Boolean);
+const stateChips = m => {
+  const w = stateWords(m);
+  return w.length ? `<span class="states" data-words="${w.join(' ')}" title="${w.join(' · ')}">${w.map(x => `<span class="state-word">${x}</span>`).join('')}</span>` : '';
+};
+const statesFoot = m => `<div class="states-foot">${stateChips(m)}</div>`;
+// console-wide text size → unit scale (1 at 13px); read from <html> where display.js put it
+const uiScale = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-font')) || 15) / 13;
+// SVG state strip: small chips centred beneath a node (y = top edge), collapsed to "first +N" past maxW
+function svgStates(m, y, gs) {
+  const w = stateWords(m); if (!w.length) return '';
+  const fs = 8.5 * gs, cw = fs * 0.6, px = 3 * gs, gap = 2 * gs, h = fs + 4 * gs, maxW = 84 * gs;
+  const wid = s => s.length * cw + 2 * px;
+  const span = list => list.reduce((s, x) => s + wid(x), 0) + gap * (list.length - 1);
+  const words = w.length > 1 && span(w) > maxW ? [w[0], '+' + (w.length - 1)] : w;
+  let x = -span(words) / 2;
+  const chips = words.map((s, i) => {
+    const more = s.startsWith('+') ? 'more' : '', cw2 = wid(s), g = `<rect class="${more}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw2.toFixed(1)}" height="${h.toFixed(1)}" rx="${(2 * gs).toFixed(1)}"/>
+      <text class="${more}" x="${(x + cw2 / 2).toFixed(1)}" y="${(y + h / 2).toFixed(1)}" text-anchor="middle" dominant-baseline="central">${s}</text>`;
+    x += cw2 + gap; return g;
+  }).join('');
+  return `<g class="node-states" data-words="${w.join(' ')}"><title>${w.join(' · ')}</title>${chips}</g>`;
+}
+function fitStates(root) {
+  if (!root) return;
+  root.querySelectorAll('.states[data-words]').forEach(el => {
+    const w = el.dataset.words.split(' ');
+    el.classList.remove('collapsed');
+    el.innerHTML = w.map(x => `<span class="state-word">${x}</span>`).join('');
+    if (w.length > 1 && el.clientWidth && el.scrollWidth > el.clientWidth + 1) {
+      el.classList.add('collapsed');
+      el.innerHTML = `<span class="state-word">${w[0]}</span><span class="state-word more">+${w.length - 1}</span>`;
+    }
+  });
+}
+const recallVisible = m => !m.superseded_by && !m.archived;
+const cosine = (a, b) => { let d = 0, na = 0, nb = 0; a.forEach((x, i) => { d += x * b[i]; na += x * x; nb += b[i] * b[i]; }); return d / Math.sqrt(na * nb); };
+
+/* Fake RelatedMemories(subj, id, k) */
+function relatedMemories(anchorKey, k, withFillers) {
+  const anchor = BY_KEY[anchorKey] || BY_ID[anchorKey];
+  const out = new Map();
+  const add = (m, edge) => { if (!out.has(m.id)) out.set(m.id, { memory: m, edges: [] }); out.get(m.id).edges.push(edge); };
+  // supersession: forward to live head, backward BFS through supersedes; hidden members kept (dimmed)
+  let chainN = 0, cur = anchor, d = 0;
+  while (cur.superseded_by && d < 8 && chainN < CAPS.supersession) {
+    cur = BY_KEY[cur.superseded_by]; d++; chainN++;
+    add(cur, { type: 'supersession', direction: 'successor', depth: d });
+  }
+  let frontier = [anchor]; d = 0;
+  while (frontier.length && d < 8 && chainN < CAPS.supersession) {
+    d++; const next = [];
+    for (const f of frontier) for (const p of f.supersedes) {
+      if (chainN >= CAPS.supersession) break;
+      const pm = BY_KEY[p]; chainN++; next.push(pm);
+      add(pm, { type: 'supersession', direction: 'predecessor', depth: d });
+    }
+    frontier = next;
+  }
+  const pool = MEM.filter(m => m.id !== anchor.id && recallVisible(m));
+  // citation: shared kind+ref
+  const ak = new Set(anchor.citations.map(c => c.kind + ' ' + c.ref));
+  pool.map(m => ({ m, shared: m.citations.filter(c => ak.has(c.kind + ' ' + c.ref)) }))
+    .filter(x => x.shared.length).sort((a, b) => b.shared.length - a.shared.length || b.m.created_at.localeCompare(a.m.created_at))
+    .slice(0, CAPS.citation).forEach(x => add(x.m, { type: 'citation', shared_citations: x.shared }));
+  // tag: rarity-weighted shared tags
+  pool.map(m => {
+    const shared = m.tags.filter(t => anchor.tags.includes(t)).map(t => ({ tag: t, weight: rarity(t) })).sort((a, b) => b.weight - a.weight);
+    return { m, shared, w: shared.reduce((s, t) => s + t.weight, 0) };
+  }).filter(x => x.shared.length).sort((a, b) => b.w - a.w).slice(0, CAPS.tag)
+    .forEach(x => add(x.m, { type: 'tag', shared_tags: x.shared, tag_weight: x.w }));
+  // vector: query-by-id cosine (sketch: rescaled to a realistic band, cut at raw ≥ .5)
+  const vec = pool.map(m => ({ m, c: cosine(anchor.vec, m.vec) })).filter(x => x.c >= 0.5)
+    .map(x => ({ m: x.m, score: 0.3 + 0.6 * x.c })).sort((a, b) => b.score - a.score);
+  if (withFillers && anchor.vec[4] === 0) FILLERS.forEach(f => vec.push({ m: f, score: f.fillScore }));
+  vec.sort((a, b) => b.score - a.score);
+  vec.slice(0, k).forEach(x => add(x.m, { type: 'vector', score: x.score }));
+  let related = [...out.values()];
+  related.forEach(r => r.edges.sort((a, b) => TYPES.indexOf(a.type) - TYPES.indexOf(b.type)));
+  let truncated = false;
+  if (related.length > CEILING) { related = related.slice(0, CEILING); truncated = true; }
+  return {
+    anchor, related, truncated, k,
+    searched: { chain: chainN, citations: anchor.citations.length, tagsProbed: Math.min(16, anchor.tags.length), vectorK: k },
+  };
+}
+
+/* =====================================================================
+   UI state
+   ===================================================================== */
+const S = {
+  variant: 's', anchor: 'm0', trail: ['m0'], view: 'populated', busy: false, pending: null,
+  rail: (() => { try { return localStorage.getItem('sk004-rail') === 'tags' ? 'tags' : 'graph'; } catch { return 'graph'; } })(),
+  drawer: false, selLane: null, kbdMove: false,
+  on: { supersession: true, citation: true, tag: true, vector: true },
+  tagFilter: null, tagsAll: false, tagQuery: '', vecAll: false, sel: null,
+};
+let RES = null;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const isLoading = () => S.busy || S.view === 'loading';
+const catVar = c => `var(--cat-${c})`;
+const keyOf = m => m.key;
+
+function compute() {
+  const empty = S.view === 'empty';
+  RES = relatedMemories(empty ? 'm18' : S.anchor, S.view === 'truncated' ? 64 : 8, S.view === 'truncated');
+  RES.byId = Object.fromEntries(RES.related.map(r => [r.memory.id, r]));
+  return RES;
+}
+const visibleEdges = rm => rm.edges.filter(e => S.on[e.type]);
+const capOf = (t, res) => t === 'vector' && res ? res.k : CAPS[t];
+const typeCount = (res, t) => res.related.filter(r => r.edges.some(e => e.type === t)).length;
+const passesTag = m => !S.tagFilter || m.tags.includes(S.tagFilter);
+
+/* ---------- shared renderers ---------- */
+function swatch(t, w = 24) {
+  const s = ES[t];
+  const arrow = t === 'supersession' ? `<path d="M${w - 6},1 L${w - 1},5 L${w - 6},9 z" fill="currentColor"/>` : '';
+  return `<svg class="swatch" style="--sw:${w}" width="${w}" height="10" viewBox="0 0 ${w} 10"><line x1="1" y1="5" x2="${t === 'supersession' ? w - 5 : w - 1}" y2="5" stroke="currentColor" stroke-width="${s.w}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''} stroke-linecap="round" ${t === 'vector' ? 'opacity=".75"' : ''}/>${arrow}</svg>`;
+}
+const glyph = (t, extra = '') => `<span class="g g-${t}" title="${t} edge" ${extra}>${TYPE_LETTER[t]}</span>`;
+const catChip = c => `<span class="chip cat-chip"><i style="background:${catVar(c)}"></i>${c}</span>`;
+
+function edgeToggles(res) {
+  return TYPES.map(t => {
+    const n = res ? typeCount(res, t) : '…';
+    return `<button class="edge-toggle ${S.on[t] ? '' : 'off'}" data-act="edge" data-v="${t}" title="toggle ${t} edges">${swatch(t)}${t}<span class="n mono">${n}/${capOf(t, res)}</span></button>`;
+  }).join('');
+}
+function filterChip(res) {
+  if (!S.tagFilter || !res) return '';
+  const n = res.related.filter(r => r.memory.tags.includes(S.tagFilter)).length;
+  return `<span class="filter-chip"><span class="mono">#${esc(S.tagFilter)}</span> <span>${n} of ${res.related.length} carry it</span><button data-act="tag" data-v="${esc(S.tagFilter)}" title="clear filter">×</button></span>`;
+}
+function edgeEvidence(e) {
+  switch (e.type) {
+    case 'supersession': return `<span class="mono">${e.direction}</span><span>· depth <span class="mono">${e.depth}</span></span><span class="faint">via ${e.direction === 'predecessor' ? 'supersedes' : 'superseded_by'}</span>`;
+    case 'citation': return e.shared_citations.map(c => `<span class="cite"><b>${c.kind}</b> ${esc(c.ref)}</span>`).join('');
+    case 'tag': return e.shared_tags.map(t => `<span class="tagw">#${esc(t.tag)} <b>${t.weight.toFixed(2)}</b></span>`).join('') + `<span class="mono faint">Σ ${e.tag_weight.toFixed(2)}</span>`;
+    case 'vector': return `<span>cosine <span class="mono" style="color:var(--color-text)">${e.score.toFixed(3)}</span></span>`;
+  }
+}
+function tipHTML(rm, onlyType) {
+  const m = rm.memory;
+  const edges = onlyType ? rm.edges.filter(e => e.type === onlyType) : rm.edges;
+  return `<div class="t-head">${catChip(m.category)}<span class="mono muted">${m.short_id}</span><span class="faint mono" style="margin-left:auto">${m.created_at}</span></div>
+    <div class="t-sum">${esc(m.summary)}</div>
+    ${edges.map(e => `<div class="t-edge">${swatch(e.type, 20)}<div class="ev"><b style="color:var(--color-text);font-weight:500">${e.type}</b>${edgeEvidence(e)}</div></div>`).join('')}
+    ${onlyType ? '' : `<div class="faint" style="margin-top:calc(4*var(--u));font-size:calc(10*var(--u))">evidence is per type — never blended</div>`}${statesFoot(m)}`;
+}
+
+function anchorBar(res) {
+  const trail = (S.view === 'empty' ? ['m18'] : S.trail).map((k, i) => {
+    const m = BY_KEY[k] || BY_ID[k];
+    const cur = S.view === 'empty' || i === S.trail.length - 1;
+    return `${i ? '<span>›</span>' : ''}<button class="crumb ${cur ? 'cur' : ''}" ${cur ? '' : `data-act="crumb" data-v="${i}"`}>${m.short_id}</button>`;
+  }).join('');
+  const crumbs = `<div class="crumbs"><span>trail</span>${trail}<span class="nav-spacer"></span><button class="btn" data-act="back" ${S.trail.length < 2 ? 'disabled' : ''}>← back <kbd>[</kbd></button>${S.variant === 's' ? aaButton() : ''}</div>`;
+  if (isLoading()) {
+    const target = BY_KEY[S.pending || S.anchor] || BY_ID[S.pending];
+    return `<div class="anchor-bar">${crumbs}<div class="anchor-card"><div class="meta"><span class="sk" style="width:70px;height:16px;display:inline-block"></span></div><div class="sk sk-line" style="width:70%"></div><div></div>
+      <div class="call loading-line">RelatedMemories(subj, "${target.short_id}", k=8) — resolving anchor, 4 typed sub-queries in flight </div></div></div>`;
+  }
+  const a = res.anchor;
+  const counts = TYPES.map(t => `${t} <b>${typeCount(res, t)}</b>`).join(' · ');
+  return `<div class="anchor-bar">${crumbs}<div class="anchor-card">
+    <div class="meta">${catChip(a.category)}<span class="mono muted">${a.short_id}</span></div>
+    <div class="sum">${esc(a.summary)}</div>
+    <div class="tags">${a.tags.map(t => `<span class="tagc">#${esc(t)}</span>`).join('')}</div>
+    <div class="call mono faint">RelatedMemories(subj, "${a.short_id}", k=${res.k}) → <b>${res.related.length}</b> related · ${counts} · ${res.truncated ? '<span class="trunc">truncated=true</span>' : 'truncated=false'} · 14ms</div>
+    ${statesFoot(a)}
+  </div></div>`;
+}
+
+function emptyExplain(res) {
+  const a = res.anchor;
+  return `<div class="empty-state"><h4>No related records for <span class="mono">${a.short_id}</span></h4>
+    Every edge type ran and came back empty — this is what was searched:
+    <table>
+      <tr><td>${glyph('supersession')}</td><td>chain walk</td><td class="mono faint">no superseded_by, no supersedes</td></tr>
+      <tr><td>${glyph('citation')}</td><td>citations</td><td class="mono faint">anchor carries ${res.searched.citations} citations — nothing to match</td></tr>
+      <tr><td>${glyph('tag')}</td><td>tags probed</td><td class="mono faint">${a.tags.map(t => `#${t} (df ${DF[t]})`).join(', ')} — no other readable record carries them</td></tr>
+      <tr><td>${glyph('vector')}</td><td>vector k=${res.searched.vectorK}</td><td class="mono faint">0 recall-visible neighbours returned</td></tr>
+    </table>
+    <div style="margin-top:8px">Try <button class="linkbtn" data-act="view" data-v="populated">a populated anchor</button> or add tags/citations to this record.</div></div>`;
+}
+const note = html => `<div class="note">${html}</div>`;
+
+/* =====================================================================
+   Variant A — radial local graph + tag cloud
+   ===================================================================== */
+function radialLayout(res) {
+  const R = { citation: 118, tag: 184, vector: 250 };
+  const pos = { [res.anchor.id]: { x: 0, y: 0 } };
+  const rings = { citation: [], tag: [], vector: [] };
+  const preds = {};
+  for (const rm of res.related) {
+    const first = rm.edges[0];
+    if (first.type === 'supersession') {
+      if (first.direction === 'successor') pos[rm.memory.id] = { x: 0, y: -58 * first.depth, chain: true };
+      else (preds[first.depth] = preds[first.depth] || []).push(rm);
+    } else rings[first.type].push(rm);
+  }
+  Object.entries(preds).forEach(([d, list]) => list.forEach((rm, i) => {
+    pos[rm.memory.id] = { x: (i - (list.length - 1) / 2) * 50, y: 58 * d, chain: true };
+  }));
+  Object.entries(rings).forEach(([t, list], ri) => {
+    const n = list.length, shift = [0.15, -0.2, 0.05][ri];
+    list.forEach((rm, i) => {
+      const u = ((i + 0.5 + (n > 1 ? shift : 0)) / n) * 280;
+      const deg = u < 140 ? -70 + u : 110 + (u - 140);
+      const rad = deg * Math.PI / 180;
+      pos[rm.memory.id] = { x: Math.cos(rad) * R[t], y: Math.sin(rad) * R[t], ring: t };
+    });
+  });
+  return { pos, R, rings };
+}
+
+function edgePath(a, b, off, rA, rB) {
+  const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+  const ux = dx / L, uy = dy / L;
+  const sx = a.x + ux * rA, sy = a.y + uy * rA, ex = b.x - ux * rB, ey = b.y - uy * rB;
+  if (!off) return `M${sx.toFixed(1)},${sy.toFixed(1)} L${ex.toFixed(1)},${ey.toFixed(1)}`;
+  const cx = (sx + ex) / 2 - uy * off, cy = (sy + ey) / 2 + ux * off;
+  return `M${sx.toFixed(1)},${sy.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}`;
+}
+const edgeAttrs = t => `stroke-width="${ES[t].w}" ${ES[t].dash ? `stroke-dasharray="${ES[t].dash}"` : ''} stroke-linecap="round"`;
+const markers = `<defs>
+  <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow-muted" d="M0,0 L8,4 L0,8 z"/></marker>
+</defs>`;
+
+// shared edge + node drawing for A and C
+function drawGraph(res, pos, opts) {
+  const { nodeR, anchorR, labels } = opts, gs = opts.gs || 1;
+  const aid = res.anchor.id;
+  let edges = '', nodes = '';
+  const nodeVisible = rm => visibleEdges(rm).length > 0;
+  // chain arrows: member → its superseded_by, when both are drawn
+  if (S.on.supersession) {
+    const chainIds = [aid, ...res.related.filter(r => r.edges.some(e => e.type === 'supersession')).map(r => r.memory.id)];
+    chainIds.forEach(id => {
+      const m = BY_ID[id]; if (!m.superseded_by) return;
+      const to = BY_KEY[m.superseded_by];
+      if (!pos[id] || !pos[to.id] || !chainIds.includes(to.id)) return;
+      const other = id === aid ? to.id : id;
+      const dim = S.tagFilter && !(passesTag(BY_ID[other])) ? 'fdim' : '';
+      const rA = id === aid ? anchorR + 3 * gs : nodeR + 2 * gs, rB = to.id === aid ? anchorR + 5 * gs : nodeR + 4 * gs;
+      edges += `<path class="edge t-supersession ${dim}" data-eid="${other}" d="${edgePath(pos[id], pos[to.id], 0, rA, rB)}" ${edgeAttrs('supersession')} marker-end="url(#arr)"/>
+        <path class="edge-hit" data-tip="${other}" data-tip-type="supersession" d="${edgePath(pos[id], pos[to.id], 0, rA, rB)}"/>`;
+    });
+  }
+  for (const rm of res.related) {
+    if (!nodeVisible(rm)) continue;
+    const p = pos[rm.memory.id]; if (!p) continue;
+    const ve = visibleEdges(rm).filter(e => e.type !== 'supersession');
+    const offs = { citation: 0, tag: 14, vector: -14 };
+    const dim = S.tagFilter && !passesTag(rm.memory) ? 'fdim' : '';
+    ve.forEach(e => {
+      const d = edgePath(pos[aid], p, ve.length > 1 || p.chain ? offs[e.type] || 10 : 0, anchorR + 3 * gs, nodeR + 2 * gs);
+      edges += `<path class="edge t-${e.type} ${dim}" data-eid="${rm.memory.id}" d="${d}" ${edgeAttrs(e.type)}/>
+        <path class="edge-hit" data-tip="${rm.memory.id}" data-tip-type="${e.type}" d="${d}"/>`;
+    });
+    const m = rm.memory;
+    const hidden = stateWords(m).length ? 'hidden-state' : '';
+    const sel = opts.selId === m.id ? 'sel' : '';
+    let label = '', below = '', stTop = nodeR + 3 * gs;
+    if (labels === 'below') {
+      // compact graph: label sits at the bottom of the node, state chips directly beneath it
+      below = `<text class="node-label" y="${(nodeR + 10 * gs).toFixed(1)}" text-anchor="middle">${m.short_id.slice(0, 6)}</text>`;
+      stTop = nodeR + 13 * gs;
+    } else if (labels) {
+      const L = Math.hypot(p.x, p.y) || 1;
+      const lx = p.chain ? p.x - nodeR - 5 * gs : p.x + (p.x / L) * (nodeR + 5 * gs);
+      const ly = p.chain ? p.y + 3 * gs : p.y + (p.y / L) * (nodeR + 5 * gs) + 3 * gs;
+      const anchorSide = p.chain || p.x < 0 ? 'end' : 'start';
+      label = `<text class="node-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchorSide}">${m.short_id.slice(0, 6)}</text>`;
+    }
+    nodes += `<g class="node ${hidden} ${dim} ${sel}" data-nid="${m.id}" data-tip="${m.id}" data-act="${opts.clickAct}" data-v="${m.id}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})">
+      <circle class="halo" r="${nodeR + 4 * gs}"/><circle class="dotc" r="${nodeR}" fill="${catVar(m.category)}"/>${below}${svgStates(m, stTop, gs)}</g>${label}`;
+  }
+  const a = res.anchor;
+  nodes += `<g class="node anchor" transform="translate(0,0)" data-tip-anchor="1"><circle class="ring-b" r="${anchorR + 5 * gs}"/><circle class="dotc" r="${anchorR}" fill="${catVar(a.category)}"/><circle class="ring-a" r="${anchorR + 3 * gs}"/>${svgStates(a, anchorR + 6 * gs, gs)}</g>
+    <text class="node-label" x="${anchorR + 8 * gs}" y="${-anchorR}" style="fill:var(--color-text-muted)">${a.short_id}</text>`;
+  return markers + `<g class="edges">${edges}</g><g class="nodes">${nodes}</g>`;
+}
+
+function radial(res) {
+  if (!res.related.length) {
+    return `<svg class="graph" viewBox="-300 -290 600 580"><circle class="ring" r="118"/><circle class="ring" r="184"/><circle class="ring" r="250"/>
+      <g class="node anchor"><circle class="ring-b" r="17"/><circle class="dotc" r="12" fill="${catVar(res.anchor.category)}"/><circle class="ring-a" r="15"/></g></svg>`;
+  }
+  const { pos, R } = radialLayout(res);
+  const visibleN = res.related.filter(r => visibleEdges(r).length).length;
+  const ringLbl = Object.entries(R).map(([t, r]) => `<circle class="ring" r="${r}"/>
+    <text class="ring-label" x="10" y="${-r + 12}">${t} ${typeCount(res, t)}/${capOf(t, res)}</text>`).join('');
+  const gs = uiScale();
+  return `<svg class="graph" id="a-svg" viewBox="-300 -290 600 580" style="--gs:${gs}">${ringLbl}
+    <text class="ring-label" x="-10" y="-270" text-anchor="end">successor ↑</text><text class="ring-label" x="-10" y="280" text-anchor="end">predecessor ↓</text>
+    ${drawGraph(res, pos, { nodeR: 7 * gs, anchorR: 12 * gs, labels: visibleN <= 26, clickAct: 'recenter', gs })}</svg>`;
+}
+function graphSkeleton(vb = '-300 -290 600 580', rings = [118, 184, 250]) {
+  let dots = '';
+  rings.forEach((r, ri) => { for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 + ri; dots += `<circle cx="${(Math.cos(a) * r).toFixed(0)}" cy="${(Math.sin(a) * r).toFixed(0)}" r="6" fill="var(--color-surface-2)"/>`; } });
+  return `<svg class="graph pulse" viewBox="${vb}">${rings.map(r => `<circle class="ring" r="${r}"/>`).join('')}${dots}<circle r="12" fill="var(--color-surface-2)"/></svg>`;
+}
+
+function tagList() {
+  const list = S.tagsAll ? TAGS : TAGS.slice(0, SKETCH_TAG_LIMIT);
+  return { list, more: !S.tagsAll && TAGS.length > SKETCH_TAG_LIMIT };
+}
+function moreRow() {
+  const { list, more } = tagList();
+  return `<div class="more-row"><span class="mono">ListTags(limit=${S.tagsAll ? 100 : SKETCH_TAG_LIMIT}) → ${list.length} · more=${more}</span>
+    ${more ? `<button class="linkbtn" data-act="tags-all">load all ▸</button>` : `<button class="linkbtn" data-act="tags-all">collapse</button>`}</div>`;
+}
+function tagCloud(res) {
+  const { list } = tagList();
+  const lmin = Math.log(Math.min(...list.map(t => t.count))), lmax = Math.log(Math.max(...list.map(t => t.count)));
+  const anchorTags = res ? res.anchor.tags : [];
+  const sorted = [...list].sort((a, b) => a.tag.localeCompare(b.tag));
+  const html = sorted.map(t => {
+    const fs = 11 + ((Math.log(t.count) - lmin) / (lmax - lmin || 1)) * 13;
+    return `<button class="cloud-tag ${anchorTags.includes(t.tag) ? 'anchor-tag' : ''} ${S.tagFilter === t.tag ? 'sel' : ''}" style="font-size:calc(${fs.toFixed(1)}*var(--u))" data-act="tag" data-v="${t.tag}" data-tip-tag="${t.tag}">${t.tag}</button>`;
+  }).join('');
+  return `<div class="card-h"><span class="h-title">Tags</span><span class="faint" style="font-size:var(--text-2xs)">size ∝ log(count) · underline = on anchor · click filters graph</span></div>
+    <div class="cloud">${html}</div>${moreRow()}`;
+}
+
+function renderA() {
+  const el = $('#variant-a');
+  const loading = isLoading();
+  const res = loading ? null : RES;
+  let body;
+  if (loading) body = graphSkeleton();
+  else if (!res.related.length) body = radial(res) + `<div style="position:absolute;inset:auto 12px 12px 12px" class="card">${emptyExplain(res)}</div>`;
+  else body = radial(res);
+  el.innerHTML = `${anchorBar(res)}
+    ${res && res.truncated ? `<div class="banner">▲ <span><span class="mono">truncated=true</span> — total ceiling <span class="mono">64</span> reached. Only the vector ring is ever cut; labels hidden above 26 nodes (hover for evidence).</span></div>` : ''}
+    <div class="a-grid">
+      <section class="card">
+        <div class="card-h">${edgeToggles(res)}${filterChip(res)}</div>
+        <div class="graph-wrap">${body}</div>
+        <div class="card-f"><span class="cat-key">${['decision','gotcha','convention','preference','discovery','rule'].map(c => `<span><i class="dot" style="background:${catVar(c)}"></i>${c}</span>`).join('')}</span>
+          <span class="faint" style="margin-left:auto">node colour = category · line style = edge type · hover = evidence · click = re-centre</span></div>
+        ${note('<b>A · rings by type.</b> A candidate sits on the ring of its <i>first</i> edge in canonical order (supersession › citation › tag › vector); extra edges draw as extra curved lines of their own style. Chain runs vertically: successors up, predecessors down, arrows point toward the live head. Superseded/archived members are dashed + dimmed.')}
+      </section>
+      <section class="card">${tagCloud(res)}
+        ${note('<b>Cloud = ListTags.</b> Alphabetical, font size log-scaled so <span class="mono">engram 400</span> does not drown <span class="mono">related-memories 7</span>. Rarity is the inverse of size: the small words are the ones that make strong tag edges.')}
+      </section>
+    </div>`;
+}
+
+/* =====================================================================
+   Variant B — edge-type lanes + tag bars
+   ===================================================================== */
+const LANE_CAP = {
+  supersession: 'directed chain via superseded_by → · 8 hops / 16 members · superseded & archived members shown dimmed',
+  citation: 'shared citation kind+ref (locator/pin excluded) · cap 8',
+  tag: `shared tags, each weighted by rarity ln(n/df), n=${N_STORE.toLocaleString()} · ranked by Σ · cap 8`,
+  vector: 'cosine similarity, query-by-id · k=8 (the only type the caller widens)',
+};
+function laneHeader(t, res) {
+  const n = res ? typeCount(res, t) : '…';
+  return `<div class="lane-h">${swatch(t, 28)}<span class="name">${t}</span><span class="cnt">${n}/${capOf(t, res)}</span><span class="cap">${LANE_CAP[t]}</span>
+    <button class="eye" data-act="edge" data-v="${t}">${S.on[t] ? 'hide' : 'show'}</button></div>`;
+}
+function multiBadge(rm, t, mode = 'b') {
+  const others = rm.edges.filter(e => e.type !== t);
+  if (!others.length) return '<span class="multi"></span>';
+  // synthesis: shared selection highlights every appearance, so the badge is a count, not a jump
+  if (mode === 's') return `<span class="multi"><span class="x" title="reached by ${rm.edges.length} edge types: ${rm.edges.map(e => e.type).join(', ')}">×${rm.edges.length}</span>${others.map(e => glyph(e.type)).join('')}</span>`;
+  return `<span class="multi"><span class="x">×${rm.edges.length}</span>${others.map(e => glyph(e.type, `data-act="jump" data-v="${rm.memory.id}" data-t="${e.type}"`)).join('')}</span>`;
+}
+const pickAttrs = (mode, id, lane) => mode === 's' ? `data-act="s-select" data-v="${id}" data-lane="${lane}" tabindex="0"` : `data-act="recenter" data-v="${id}"`;
+function laneRows(t, res, mode = 'b') {
+  const ev = r => r.edges.find(e => e.type === t);
+  const strength = { citation: e => e.shared_citations.length, tag: e => e.tag_weight, vector: e => e.score }[t];
+  let list = res.related.filter(r => r.edges.some(e => e.type === t)).sort((a, b) => strength(ev(b)) - strength(ev(a)));
+  if (!list.length) {
+    const why = { citation: res.anchor.citations.length ? 'no recall-visible record shares a citation kind+ref' : 'anchor carries no citations',
+      tag: 'no recall-visible record shares a tag', vector: 'no recall-visible neighbour returned' }[t];
+    return `<div class="lane-empty">none — ${why}</div>`;
+  }
+  let extra = '';
+  if (t === 'vector' && res.truncated && !S.vecAll && list.length > 8) {
+    extra = `<div class="more-row"><span class="mono">showing 8 of ${list.length} · k=${res.k} · ceiling cut the rest</span><button class="linkbtn" data-act="vec-more">show all ${list.length} ▸</button></div>`;
+    list = list.slice(0, 8);
+  }
+  const maxCos = 1;
+  return list.map(r => {
+    const e = ev(r), m = r.memory;
+    let evHTML;
+    if (t === 'vector') evHTML = `<span class="cos">${e.score.toFixed(3)}<span class="track"><span class="fill" style="width:${(e.score / maxCos * 100).toFixed(0)}%"></span></span></span>`;
+    else evHTML = edgeEvidence(e);
+    return `<div class="row ${S.tagFilter && !passesTag(m) ? 'fdim' : ''}" ${pickAttrs(mode, m.id, t)} data-rid="${m.id}" data-lane="${t}">
+      <span class="id"><i class="dot" style="background:${catVar(m.category)}"></i>${m.short_id}</span>
+      <span class="sum" title="${esc(m.summary)}">${esc(m.summary)}</span>
+      <span class="ev">${evHTML}</span>${multiBadge(r, t, mode)}<span class="st">${stateChips(m)}</span></div>`;
+  }).join('') + extra;
+}
+function chainLane(res, mode = 'b') {
+  const chain = res.related.filter(r => r.edges.some(e => e.type === 'supersession'));
+  if (!chain.length) return `<div class="lane-empty">none — anchor has no superseded_by and supersedes nothing</div>`;
+  const cols = {};
+  chain.forEach(r => { const e = r.edges.find(x => x.type === 'supersession'); const k = e.direction === 'predecessor' ? -e.depth : e.depth; (cols[k] = cols[k] || []).push(r); });
+  cols[0] = [{ memory: res.anchor, anchor: true }];
+  const keys = Object.keys(cols).map(Number).sort((a, b) => a - b);
+  const card = r => {
+    const m = r.memory, sw = stateWords(m);
+    const e = r.anchor ? null : r.edges.find(x => x.type === 'supersession');
+    return `<div class="chain-card ${r.anchor ? 'is-anchor' : ''} ${sw.length ? 'hidden-state' : ''} ${S.tagFilter && !r.anchor && !passesTag(m) ? 'fdim' : ''}" ${r.anchor ? '' : pickAttrs(mode, m.id, 'supersession')} data-rid="${m.id}">
+      <div class="top"><i class="dot" style="background:${catVar(m.category)}"></i><span class="sid">${m.short_id}</span><span style="margin-left:auto" class="mono">${r.anchor ? 'anchor' : `${e.direction === 'predecessor' ? '−' : '+'}${e.depth}`}</span></div>
+      <div class="s">${esc(m.summary)}</div><div class="top" style="margin-top:2px"><span class="mono">${m.created_at}</span>${r.anchor ? '' : multiBadge(r, 'supersession', mode)}</div>
+      ${statesFoot(m)}</div>`;
+  };
+  return `<div class="chain">${keys.map((k, i) => `${i ? `<div class="chain-arrow">${swatch('supersession', 52)}<span>superseded_by</span></div>` : ''}<div class="chain-col">${cols[k].map(card).join('')}</div>`).join('')}</div>`;
+}
+function tagBars(res) {
+  const { list } = tagList();
+  const q = S.tagQuery.trim().toLowerCase();
+  const rows = list.filter(t => !q || t.tag.includes(q));
+  const max = TAGS[0].count;
+  const anchorTags = res ? res.anchor.tags : [];
+  return rows.map(t => `<button class="bar-row ${anchorTags.includes(t.tag) ? 'anchor-tag' : ''} ${S.tagFilter === t.tag ? 'sel' : ''}" data-act="tag" data-v="${t.tag}" data-tip-tag="${t.tag}">
+      <span class="nm">${t.tag}</span><span class="track"><span class="fill" style="display:block;width:${(t.count / max * 100).toFixed(1)}%"></span></span><span class="c">${t.count}</span></button>`).join('')
+    || `<div class="lane-empty">no tag matches “${esc(q)}” in the loaded ${list.length}${tagList().more ? ' — load all to search the rest' : ''}</div>`;
+}
+function renderB() {
+  const el = $('#variant-b');
+  const loading = isLoading();
+  const res = loading ? null : RES;
+  const skel = `<div style="padding:6px 10px">${[80, 64, 72].map(w => `<div class="sk sk-line" style="width:${w}%"></div>`).join('')}</div>`;
+  const lanes = TYPES.map(t => `<section class="card lane ${S.on[t] ? '' : 'off'}" data-lane-sec="${t}">${laneHeader(t, res)}<div class="lane-body">${loading ? skel : t === 'supersession' ? chainLane(res) : laneRows(t, res)}</div></section>`).join('');
+  el.innerHTML = `${anchorBar(res)}
+    <div class="b-grid">
+      <div class="lanes">
+        ${res && res.truncated ? `<div class="banner">▲ <span><span class="mono">truncated=true</span> — total ceiling 64 reached; supersession, citation and tag caps sit below it, so only the vector lane is cut.</span></div>` : ''}
+        ${res && !res.related.length ? `<section class="card">${emptyExplain(res)}</section>` : ''}
+        ${S.tagFilter ? `<div>${filterChip(res)}</div>` : ''}
+        ${lanes}
+        ${note('<b>B · one lane per type.</b> No graph library: a row list per edge type with its own evidence column, so scores are only ever compared within a lane. A candidate reached by several types appears in each lane; the <span class="mono">×N</span> badge shows its other types — hover a row to light up its twins, click a glyph to jump.')}
+      </div>
+      <aside class="card">
+        <div class="card-h"><span class="h-title">Tag popularity</span><span class="faint" style="font-size:var(--text-2xs)">exact counts · ● = on anchor</span></div>
+        <input class="tag-search" id="tag-search" placeholder="filter tags…" value="${esc(S.tagQuery)}">
+        <div class="bars" id="bars">${tagBars(res)}</div>
+        ${moreRow()}
+        ${note('<b>Bars are linear from zero</b> (unlike the cloud) so counts are comparable; the count is printed, so no axis is needed. Click a bar to dim lane rows that lack the tag.')}
+      </aside>
+    </div>`;
+}
+
+/* =====================================================================
+   Variant C — split: compact force graph + evidence panel, tag treemap
+   ===================================================================== */
+const forceCache = {};
+function forceLayout(res, gs = 1) {
+  const sp = Math.max(1, Math.min(1.4, gs));  // spread grows with text so labels + state strips keep room
+  const key = res.anchor.id + '|' + res.related.length + '|' + sp.toFixed(2);
+  if (forceCache[key]) return forceCache[key];
+  // spacing leaves room for the label + state strip drawn beneath each node
+  const rest = Object.fromEntries(Object.entries({ supersession: 70, citation: 96, tag: 126, vector: 156 }).map(([k, v]) => [k, v * sp]));
+  const nodes = res.related.map((r, i) => {
+    const t = r.edges[0].type, a = (i / res.related.length) * Math.PI * 2 + 0.3;
+    return { id: r.memory.id, t, x: Math.cos(a) * rest[t], y: Math.sin(a) * rest[t] * 0.8, rm: r };
+  });
+  const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  byId[res.anchor.id] = { x: 0, y: 0, fixed: true };
+  const springs = [];
+  nodes.forEach(n => {
+    const m = n.rm.memory, e0 = n.rm.edges[0];
+    if (n.t === 'supersession') {
+      // predecessor → spring to its successor; successor → spring to the member it superseded (toward the anchor)
+      const toward = e0.direction === 'predecessor' ? BY_KEY[m.superseded_by] : MEM.find(x => x.superseded_by === m.key && byId[x.id]);
+      springs.push([n, (toward && byId[toward.id]) || byId[res.anchor.id], 64 * sp, 0.08]);
+    } else springs.push([n, byId[res.anchor.id], rest[n.t], 0.05]);
+  });
+  const W = 205, H = 150;
+  for (let it = 0; it < 260; it++) {
+    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j]; let dx = a.x - b.x, dy = a.y - b.y; let d2 = dx * dx + dy * dy || 0.01;
+      if (d2 > 14400) continue;
+      const f = 480 * sp * sp / d2, d = Math.sqrt(d2); a.x += dx / d * f; a.y += dy / d * f; b.x -= dx / d * f; b.y -= dy / d * f;
+    }
+    nodes.forEach(n => { const d2 = n.x * n.x + n.y * n.y || .01; const f = 500 / d2; const d = Math.sqrt(d2); n.x += n.x / d * f; n.y += n.y / d * f; });
+    springs.forEach(([a, b, L, k]) => {
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .01, f = (d - L) * k;
+      a.x += dx / d * f; a.y += dy / d * f; if (!b.fixed) { b.x -= dx / d * f; b.y -= dy / d * f; }
+    });
+    nodes.forEach(n => { n.x = Math.max(-W, Math.min(W, n.x)); n.y = Math.max(-H, Math.min(H, n.y)); });
+  }
+  const pos = { [res.anchor.id]: { x: 0, y: 0 } };
+  nodes.forEach(n => pos[n.id] = { x: n.x, y: n.y });
+  return (forceCache[key] = pos);
+}
+// gs = user units per "13px unit": C's graph scales with text size; the rail graph (o.gs) is also
+// corrected for its rendered width, so labels/nodes track --ui-font rather than the rail's width.
+function forceGraph(res, o = {}) {
+  const gs = o.gs || uiScale();
+  if (!res.related.length) return `<svg class="graph" ${o.id ? `id="${o.id}"` : ''} viewBox="-220 -165 440 330" style="--gs:${gs}" data-gs="${gs}"><g class="node anchor"><circle class="ring-b" r="${15 * gs}"/><circle class="dotc" r="${10 * gs}" fill="${catVar(res.anchor.category)}"/><circle class="ring-a" r="${13 * gs}"/></g>
+    <text class="ring-label" y="${40 * gs}" text-anchor="middle">no neighbours</text></svg>`;
+  const pos = forceLayout(res, gs);
+  const labels = res.related.filter(r => visibleEdges(r).length).length <= 26 ? 'below' : false;
+  return `<svg class="graph" id="${o.id || 'c-svg'}" viewBox="-220 -165 440 330" style="--gs:${gs};overflow:visible" data-gs="${gs}">${drawGraph(res, pos, { nodeR: 6 * gs, anchorR: 10 * gs, labels, clickAct: o.clickAct || 'select', selId: S.sel, gs })}</svg>`;
+}
+// rail graph width at 13px (rail 340 − borders − graph-wrap padding): the calibration point where gs = 1
+const S_GRAPH_REF_W = 326;
+function relayoutSGraph() {
+  const svg = $('#s-svg'); if (!svg || !RES || isLoading()) return;
+  const w = svg.getBoundingClientRect().width; if (!w) return;
+  const gs = uiScale() * S_GRAPH_REF_W / w;
+  if (Math.abs(gs - (+svg.dataset.gs || 0)) < 0.005) return;
+  svg.outerHTML = forceGraph(RES, { id: 's-svg', clickAct: 's-select', gs });
+  applySelS();
+}
+function evidenceBlock(e, res) {
+  let body;
+  if (e.type === 'tag') {
+    body = `<table class="ev-table"><tr><th>shared tag</th><th class="r">df</th><th class="r">ln(${N_STORE}/df)</th></tr>
+      ${e.shared_tags.map(t => `<tr><td>#${esc(t.tag)}</td><td class="r">${DF[t.tag]}</td><td class="r">${t.weight.toFixed(2)}</td></tr>`).join('')}
+      <tr class="sum"><td>tag_weight</td><td></td><td class="r">${e.tag_weight.toFixed(2)}</td></tr></table>`;
+  } else if (e.type === 'vector') {
+    body = `cosine <span class="mono" style="color:var(--color-text)">${e.score.toFixed(3)}</span>
+      <div class="scale"><div class="ln"></div><div class="mk" style="left:${(e.score * 100).toFixed(1)}%"></div><span class="lb" style="left:0;top:14px">0</span><span class="lb" style="right:0;top:14px">1</span></div><div style="height:10px"></div>`;
+  } else if (e.type === 'citation') {
+    body = e.shared_citations.map(c => `<div class="mono" style="font-size:var(--text-2xs);padding:1px 0"><span class="faint">${c.kind}</span> <span style="color:var(--color-text)">${esc(c.ref)}</span></div>`).join('');
+  } else {
+    const path = [];
+    let m = BY_ID[S.sel];
+    if (e.direction === 'predecessor') { while (m && m.id !== res.anchor.id) { path.push(m.short_id); m = BY_KEY[m.superseded_by]; } path.push(res.anchor.short_id + ' (anchor)'); }
+    else { const back = []; while (m && m.id !== res.anchor.id) { back.unshift(m.short_id); m = MEM.find(x => x.superseded_by === m.key); } path.push(res.anchor.short_id + ' (anchor)', ...back); }
+    body = `<span class="mono">${e.direction}</span> · depth <span class="mono">${e.depth}</span><div class="mono" style="margin-top:4px;font-size:var(--text-2xs);color:var(--color-text)">${path.join(' → ')}</div>`;
+  }
+  const k = { supersession: 'hops from anchor', citation: 'kind+ref match', tag: 'rarity-weighted', vector: 'raw cosine' }[e.type];
+  return `<div class="ev-block"><div class="ev-h">${swatch(e.type, 26)}${e.type}<span class="k">${k}</span></div><div class="ev-b">${body}</div></div>`;
+}
+// selected candidate + its per-type evidence (C's panel, reused by the synthesis drawer)
+function candidateEvidence(rm, res) {
+  const m = rm.memory;
+  return `<div class="p-sec"><div class="p-head">${catChip(m.category)}<span class="mono muted">${m.short_id}</span><span class="mono faint" style="margin-left:auto">${m.created_at}</span></div>
+      <p class="p-sum">${esc(m.summary)}</p>
+      <div style="display:flex;gap:calc(4*var(--u));flex-wrap:wrap">${m.tags.map(t => `<span class="tagc ${res.anchor.tags.includes(t) ? 'shared' : ''}">#${esc(t)}</span>`).join('')}</div>
+      ${statesFoot(m)}<div style="height:calc(8*var(--u))"></div>
+      <button class="btn primary" data-act="recenter" data-v="${m.id}">Re-centre on ${m.short_id} <kbd style="color:#fff;border-color:rgba(255,255,255,.4)">↵</kbd></button></div>
+    <div class="p-sec"><h4>Why it is related · ${rm.edges.length} edge type${rm.edges.length > 1 ? 's' : ''}</h4>${rm.edges.map(e => evidenceBlock(e, res)).join('')}
+      <div class="faint" style="font-size:var(--text-2xs)">Evidence is per type; there is no blended score.</div></div>`;
+}
+function panel(res) {
+  if (!res.related.length) return emptyExplain(res);
+  const rm = res.byId[S.sel] || res.related[0];
+  S.sel = rm.memory.id;
+  const list = res.related.filter(r => visibleEdges(r).length);
+  return `<div class="scroll">
+    ${candidateEvidence(rm, res)}
+    <div class="p-sec" style="padding:8px 0 4px"><h4 style="padding:0 12px">Neighbours · ${list.length}${res.truncated ? ' · <span style="color:var(--color-warning)">truncated at 64</span>' : ''}</h4>
+      <div class="nlist">${list.map(r => `<div class="nrow ${r.memory.id === S.sel ? 'sel' : ''} ${S.tagFilter && !passesTag(r.memory) ? 'fdim' : ''}" data-act="select" data-v="${r.memory.id}">
+        <i class="dot" style="background:${catVar(r.memory.category)};${stateWords(r.memory).length ? 'opacity:.45' : ''}"></i><span class="sid">${r.memory.short_id}</span><span class="s">${esc(r.memory.summary)}</span><span class="gs">${r.edges.map(e => glyph(e.type)).join('')}</span></div>`).join('')}</div></div>
+  </div>`;
+}
+function squarify(items, W, H) {
+  const total = items.reduce((s, i) => s + i.count, 0), scale = W * H / total, out = [];
+  let rect = { x: 0, y: 0, w: W, h: H }, row = [];
+  const arr = items.map(i => ({ ...i, a: i.count * scale }));
+  const worst = (r, side) => { const s = r.reduce((a, b) => a + b.a, 0); let mx = 0, mn = Infinity; r.forEach(x => { mx = Math.max(mx, x.a); mn = Math.min(mn, x.a); }); return Math.max(side * side * mx / (s * s), (s * s) / (side * side * mn)); };
+  const lay = r => {
+    const s = r.reduce((a, b) => a + b.a, 0);
+    if (rect.w >= rect.h) { const cw = s / rect.h; let cy = rect.y; r.forEach(x => { const ch = x.a / cw; out.push({ ...x, x: rect.x, y: cy, w: cw, h: ch }); cy += ch; }); rect = { x: rect.x + cw, y: rect.y, w: rect.w - cw, h: rect.h }; }
+    else { const ch = s / rect.w; let cx = rect.x; r.forEach(x => { const cw = x.a / ch; out.push({ ...x, x: cx, y: rect.y, w: cw, h: ch }); cx += cw; }); rect = { x: rect.x, y: rect.y + ch, w: rect.w, h: rect.h - ch }; }
+  };
+  arr.forEach(it => { const side = Math.min(rect.w, rect.h); if (!row.length || worst([...row, it], side) <= worst(row, side)) row.push(it); else { lay(row); row = [it]; } });
+  if (row.length) lay(row);
+  return out;
+}
+function renderTreemap() {
+  const tm = $('#tm'); if (!tm) return;
+  const W = tm.clientWidth, H = tm.clientHeight; if (!W) return;
+  const { list } = tagList();
+  const anchorTags = RES && !isLoading() ? RES.anchor.tags : [];
+  tm.innerHTML = squarify(list, W, H).map(b => {
+    const f = uiScale(), tiny = b.w < 54 * f || b.h < 26 * f;
+    return `<button class="tm-block ${tiny ? 'tiny' : ''} ${anchorTags.includes(b.tag) ? 'anchor-tag' : ''} ${S.tagFilter === b.tag ? 'sel' : ''}" data-act="tag" data-v="${b.tag}" data-tip-tag="${b.tag}"
+      style="left:${(b.x + 1).toFixed(1)}px;top:${(b.y + 1).toFixed(1)}px;width:${Math.max(0, b.w - 2).toFixed(1)}px;height:${Math.max(0, b.h - 2).toFixed(1)}px"><span class="tn">${b.tag}</span><span class="tc">${b.count}</span></button>`;
+  }).join('');
+}
+function renderC() {
+  const el = $('#variant-c');
+  const loading = isLoading();
+  const res = loading ? null : RES;
+  const legend = `<div class="legend">${edgeToggles(res)}</div>`;
+  const { list, more } = tagList();
+  el.innerHTML = `${anchorBar(res)}
+    ${res && res.truncated ? `<div class="banner">▲ <span><span class="mono">truncated=true</span> — 64-entry ceiling reached (vector neighbours cut).</span></div>` : ''}
+    <div class="c-grid">
+      <section class="card">
+        <div class="card-h">${legend}${filterChip(res)}</div>
+        <div class="graph-wrap">${loading ? graphSkeleton('-220 -165 440 330', [60, 110, 150]) : forceGraph(res)}</div>
+        <div class="card-f faint"><span>click = select</span><span>double-click / <kbd>↵</kbd> = re-centre</span><span><kbd>j</kbd>/<kbd>k</kbd> = next/prev</span><span><kbd>[</kbd> = back</span></div>
+        ${note('<b>C · graph is navigation, panel is evidence.</b> The graph only answers "how many, of which type, how clustered"; reading the evidence happens in the panel, where each edge type gets its own block. Click selects rather than re-centres so you can inspect before moving.')}
+      </section>
+      <section class="card panel">${loading ? `<div class="p-sec">${[50, 90, 70, 80, 60].map(w => `<div class="sk sk-line" style="width:${w}%"></div>`).join('')}</div>` : panel(res)}</section>
+    </div>
+    <section class="card">
+      <div class="card-h"><span class="h-title">Tags</span><span class="faint" style="font-size:var(--text-2xs)">area ∝ count · violet = on anchor · click filters</span>
+        <span class="mono faint" style="margin-left:auto;font-size:var(--text-2xs)">ListTags(limit=${S.tagsAll ? 100 : SKETCH_TAG_LIMIT}) → ${list.length} · more=${more}</span></div>
+      <div class="tm-wrap"><div class="tm" id="tm"></div>${more ? `<button class="tm-more" data-act="tags-all">+${TAGS.length - list.length} more ▸</button>` : `<button class="tm-more" data-act="tags-all">◂ top ${SKETCH_TAG_LIMIT}</button>`}</div>
+      ${note('<b>Treemap</b> packs 30+ tags into a fixed box; the long tail collapses into tiny tiles (name on hover). The <i>more</i> strip is a control, deliberately unsized — its area would lie about counts we have not loaded.')}
+    </section>`;
+  renderTreemap();
+}
+
+/* =====================================================================
+   Synthesis — B's lanes as the body, rail = C's graph | B's tag bars,
+   one shared selection, C's evidence panel as a drawer
+   ===================================================================== */
+function drawerHTML(res) {
+  const rm = res && S.sel && res.byId[S.sel];
+  if (!rm) return '';
+  return `<div class="d-h"><span class="h-title">Evidence</span><span class="faint" style="font-size:var(--text-2xs)">supersession › citation › tag › vector</span><span class="nav-spacer"></span><kbd>Esc</kbd><button class="d-x" data-act="drawer-close" title="close (Esc)" aria-label="close evidence">×</button></div>
+    <div class="scroll">${candidateEvidence(rm, res)}</div>`;
+}
+function renderS() {
+  const el = $('#variant-s');
+  const loading = isLoading();
+  const res = loading ? null : RES;
+  if (res && S.sel && !res.byId[S.sel]) { S.sel = null; S.drawer = false; }
+  const skel = `<div style="padding:6px 10px">${[80, 64, 72].map(w => `<div class="sk sk-line" style="width:${w}%"></div>`).join('')}</div>`;
+  const lanes = TYPES.map(t => `<section class="card lane ${S.on[t] ? '' : 'off'}" data-lane-sec="${t}">${laneHeader(t, res)}<div class="lane-body">${loading ? skel : t === 'supersession' ? chainLane(res, 's') : laneRows(t, res, 's')}</div></section>`).join('');
+  const tabs = `<div class="rail-tabs" role="tablist">${[['graph', 'Graph'], ['tags', 'Tags']].map(([v, l]) => `<button role="tab" aria-selected="${S.rail === v}" class="rail-tab ${S.rail === v ? 'on' : ''}" data-act="rail" data-v="${v}">${l}</button>`).join('')}<span class="nav-spacer"></span><kbd title="toggle Graph / Tags">g</kbd></div>`;
+  const graphPane = `<div class="card-h"><div class="legend">${edgeToggles(res)}</div></div>
+    <div class="graph-wrap">${loading ? graphSkeleton('-220 -165 440 330', [60, 110, 150]) : forceGraph(res, { id: 's-svg', clickAct: 's-select' })}</div>
+    <div class="card-f faint"><span>click = select</span><span>dbl-click / <kbd>↵</kbd> = re-centre</span></div>
+    ${note('<b>Graph = overview.</b> C’s compact graph, linked to the lanes: one selection drives both, and the legend toggles are the same switches as the lane <i>hide</i> buttons.')}`;
+  const tagsPane = `<div class="card-h"><span class="h-title">Tag popularity</span><span class="faint" style="font-size:var(--text-2xs)">exact counts · ● = on anchor</span></div>
+    <input class="tag-search" id="tag-search" placeholder="filter tags…" value="${esc(S.tagQuery)}">
+    <div class="bars" id="bars">${tagBars(res)}</div>${moreRow()}`;
+  el.innerHTML = `${anchorBar(res)}
+    <div class="s-grid">
+      <div class="lanes">
+        ${res && res.truncated ? `<div class="banner">▲ <span><span class="mono">truncated=true</span> — total ceiling 64 reached; only the vector lane is cut.</span></div>` : ''}
+        ${res && !res.related.length ? `<section class="card">${emptyExplain(res)}</section>` : ''}
+        ${S.tagFilter ? `<div>${filterChip(res)}</div>` : ''}
+        ${lanes}
+        <div class="card-f faint" style="border:0;padding:0 2px"><span>click / focus = select</span><span><kbd>j</kbd>/<kbd>k</kbd> = next/prev across lanes</span><span><kbd>↵</kbd> = re-centre</span><span><kbd>[</kbd> = back</span><span><kbd>g</kbd> = Graph/Tags</span><span><kbd>Esc</kbd> = hide evidence (j/k keep moving with the graph visible)</span></div>
+        ${note('<b>Synthesis.</b> B’s lanes are the body, so evidence stays per type and is only compared within a lane. Selecting a row lights every appearance of that candidate (lanes + graph node) and slides C’s evidence panel over the rail.')}
+      </div>
+      <aside class="card rail">${tabs}<div class="rail-body">${S.rail === 'graph' ? graphPane : tagsPane}</div>
+        <div class="drawer" id="s-drawer" role="dialog" aria-label="evidence"></div></aside>
+    </div>`;
+  applySelS();
+  relayoutSGraph();
+}
+// selection is applied in place (no re-render) so focus, scroll and the drawer transition survive
+function applySelS() {
+  const root = $('#variant-s'); if (!root || S.variant !== 's') return;
+  const sel = !isLoading() && S.sel;
+  root.querySelectorAll('[data-rid]').forEach(x => {
+    x.classList.toggle('sel', !!sel && x.dataset.rid === sel);
+    x.classList.toggle('sel-here', !!sel && x.dataset.rid === sel && x.dataset.lane === S.selLane);
+  });
+  const svg = $('#s-svg');
+  if (svg) {
+    svg.classList.toggle('has-sel', !!sel);
+    svg.querySelectorAll('.node[data-nid]').forEach(n => n.classList.toggle('sel', n.dataset.nid === sel));
+    svg.querySelectorAll('.edge[data-eid]').forEach(p => p.classList.toggle('selon', p.dataset.eid === sel));
+  }
+  const d = $('#s-drawer');
+  if (d) {
+    const open = !!(sel && S.drawer);
+    if (open) d.innerHTML = drawerHTML(RES);
+    d.classList.toggle('open', open);
+    d.setAttribute('aria-hidden', String(!open));
+    if (getComputedStyle(d).position === 'fixed') { const r = $('#frame').getBoundingClientRect(); d.style.left = r.left + 'px'; d.style.width = r.width + 'px'; }
+    else { d.style.left = ''; d.style.width = ''; }
+    fitStates(d);
+  }
+}
+function selectS(id, lane, openDrawer) {
+  if (!RES || isLoading() || !RES.byId[id]) return;
+  const first = document.querySelector(`#variant-s [data-act="s-select"][data-lane][data-v="${id}"]`);
+  S.sel = id; S.selLane = lane || (first && first.dataset.lane) || null;
+  if (openDrawer) S.drawer = true;
+  applySelS();
+}
+function setRail(v) {
+  S.rail = v; S.drawer = false;
+  try { localStorage.setItem('sk004-rail', v); } catch {}
+  render();
+}
+
+/* =====================================================================
+   Orchestration
+   ===================================================================== */
+function render() {
+  if (!isLoading()) compute();
+  document.querySelectorAll('#state-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === S.view));
+  ({ a: renderA, b: renderB, c: renderC, s: renderS })[S.variant]();
+  fitStates($('#variant-' + S.variant));
+}
+function showVariant(id, btn) {
+  // hidden variants are emptied so ids (#tag-search, #bars, svg ids) stay unique
+  document.querySelectorAll('.variant').forEach(v => { v.style.display = 'none'; v.innerHTML = ''; });
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).style.display = 'block';
+  (btn || document.querySelector(`.variant-tab[data-variant="${id}"]`)).classList.add('active');
+  S.variant = id; hideTip(); render();
+}
+function recenter(id) {
+  const m = BY_ID[id] || BY_KEY[id]; if (!m) return;
+  if (m.key.startsWith('f')) { flashToast(`${m.short_id} is a sketch filler — re-centre works on the named records`); return; }
+  if (S.view === 'empty' || S.view === 'loading') S.view = 'populated';
+  S.pending = m.key; S.busy = true; hideTip(); render();
+  setTimeout(() => {
+    S.anchor = m.key; S.trail.push(m.key); S.busy = false; S.pending = null; S.sel = null; S.selLane = null; S.drawer = false; S.vecAll = false;
+    render();
+  }, 480);
+}
+function goBack(toIndex) {
+  if (S.trail.length < 2) return;
+  const idx = toIndex ?? S.trail.length - 2;
+  const key = S.trail[idx];
+  S.pending = key; S.busy = true; render();
+  setTimeout(() => { S.trail = S.trail.slice(0, idx + 1); S.anchor = key; S.busy = false; S.pending = null; S.sel = null; S.selLane = null; S.drawer = false; render(); }, 300);
+}
+function flashToast(msg) {
+  const t = $('#tip'); t.innerHTML = msg; t.style.left = '50%'; t.style.top = '60px'; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act, v = el.dataset.v;
+  if (a === 'view') { S.view = v; S.busy = false; S.sel = null; S.drawer = false; S.vecAll = false; render(); }
+  else if (a === 'edge') { S.on[v] = !S.on[v]; render(); }
+  else if (a === 'tag') { S.tagFilter = S.tagFilter === v ? null : v; render(); }
+  else if (a === 'tags-all') { S.tagsAll = !S.tagsAll; render(); }
+  else if (a === 'vec-more') { S.vecAll = true; render(); }
+  else if (a === 'recenter') recenter(v);
+  else if (a === 'back') goBack();
+  else if (a === 'crumb') goBack(+v);
+  else if (a === 'select') { S.sel = v; render(); }
+  else if (a === 's-select') selectS(v, el.dataset.lane, true);
+  else if (a === 'drawer-close') { S.drawer = false; applySelS(); }
+  else if (a === 'rail') setRail(v);
+  else if (a === 'display') dpop.hidden ? openDisplay(el) : closeDisplay(true);
+  else if (a === 'jump') {
+    e.stopPropagation();
+    const row = document.querySelector(`#variant-b [data-lane="${el.dataset.t}"][data-rid="${v}"]`) || document.querySelector(`#variant-b .chain-card[data-rid="${v}"]`);
+    if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
+  }
+}, true);
+document.addEventListener('dblclick', e => { const n = e.target.closest('#c-svg .node[data-v], #s-svg .node[data-v], #variant-s [data-act="s-select"][data-lane]'); if (n) recenter(n.dataset.v); });
+document.addEventListener('focusin', e => {
+  const r = e.target.closest && e.target.closest('#variant-s [data-act="s-select"][data-lane]');
+  if (r && !S.kbdMove) selectS(r.dataset.v, r.dataset.lane, true);
+});
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'tag-search') { S.tagQuery = e.target.value; $('#bars').innerHTML = tagBars(isLoading() ? null : RES); }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !dpop.hidden) { e.preventDefault(); closeDisplay(true); return; }
+  if (e.target.closest && e.target.closest('#display-pop')) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === '[') { goBack(); return; }
+  if (S.variant === 's') {
+    if (e.key === 'Escape' && S.drawer) { S.drawer = false; applySelS(); return; }
+    if (e.key === 'g') { setRail(S.rail === 'graph' ? 'tags' : 'graph'); return; }
+    if (isLoading() || !RES.related.length) return;
+    if (e.key === 'j' || e.key === 'k' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const items = [...document.querySelectorAll('#variant-s [data-act="s-select"][data-lane]')].filter(x => x.offsetParent !== null);
+      if (!items.length) return;
+      let i = items.findIndex(x => x.dataset.v === S.sel && x.dataset.lane === S.selLane);
+      if (i < 0) i = items.findIndex(x => x.dataset.v === S.sel);
+      const fwd = e.key === 'j' || e.key === 'ArrowDown';
+      const nx = items[i < 0 ? 0 : Math.max(0, Math.min(items.length - 1, i + (fwd ? 1 : -1)))];
+      selectS(nx.dataset.v, nx.dataset.lane, false);
+      S.kbdMove = true; nx.focus({ preventScroll: true }); S.kbdMove = false;
+      nx.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      e.preventDefault(); return;
+    }
+    if (e.key === 'Enter' && S.sel && !e.target.closest('button, a, input, select')) { e.preventDefault(); recenter(S.sel); }
+    return;
+  }
+  if (S.variant !== 'c' || isLoading() || !RES.related.length) return;
+  const list = RES.related.filter(r => visibleEdges(r).length);
+  const i = list.findIndex(r => r.memory.id === S.sel);
+  if (e.key === 'j' || e.key === 'ArrowDown') { S.sel = list[Math.min(list.length - 1, i + 1)].memory.id; render(); e.preventDefault(); }
+  if (e.key === 'k' || e.key === 'ArrowUp') { S.sel = list[Math.max(0, i - 1)].memory.id; render(); e.preventDefault(); }
+  if (e.key === 'Enter' && S.sel) recenter(S.sel);
+});
+
+/* tooltips + hover linking */
+const tip = $('#tip');
+function showTip(html, ev) { tip.innerHTML = html; tip.classList.add('show'); moveTip(ev); }
+function moveTip(ev) {
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - 14;
+  tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+}
+function hideTip() { tip.classList.remove('show'); }
+function clearFocus() {
+  document.querySelectorAll('svg.focus').forEach(s => s.classList.remove('focus'));
+  document.querySelectorAll('.on[data-eid], .node.on').forEach(x => x.classList.remove('on'));
+  document.querySelectorAll('.linked').forEach(x => x.classList.remove('linked'));
+}
+document.addEventListener('mouseover', e => {
+  if (!RES || isLoading()) return;
+  const t = e.target.closest('[data-tip], [data-tip-tag], [data-rid], [data-tip-anchor]');
+  clearFocus();
+  if (!t) { hideTip(); return; }
+  if (t.dataset.tipTag) {
+    const tg = t.dataset.tipTag, n = RES.related.filter(r => r.memory.tags.includes(tg)).length;
+    showTip(`<div class="mono" style="color:var(--color-text)">#${tg}</div><div class="muted">count <span class="mono">${DF[tg]}</span> · rarity ln(n/df) <span class="mono">${rarity(tg).toFixed(2)}</span></div><div class="faint">${n} of the current neighbours carry it · click to filter</div>`, e);
+    return;
+  }
+  if (t.dataset.tipAnchor) { showTip(`<div class="faint">anchor</div><div>${esc(RES.anchor.summary)}</div>`, e); return; }
+  const id = t.dataset.tip || t.dataset.rid;
+  if (t.dataset.rid && !t.dataset.tip) {
+    document.querySelectorAll(`[data-rid="${id}"]`).forEach(x => x.classList.add('linked'));
+    const sv = S.variant === 's' && RES.byId[id] && $('#s-svg');
+    if (sv) { sv.classList.add('focus'); sv.querySelectorAll(`[data-eid="${id}"], .node[data-nid="${id}"]`).forEach(x => x.classList.add('on')); }
+    return;
+  }
+  const rm = RES.byId[id]; if (!rm) return;
+  const svg = t.closest('svg');
+  if (svg) {
+    svg.classList.add('focus');
+    svg.querySelectorAll(`[data-eid="${id}"]`).forEach(x => x.classList.add('on'));
+    svg.querySelectorAll(`.node[data-nid="${id}"]`).forEach(x => x.classList.add('on'));
+    if (S.variant === 's') document.querySelectorAll(`#variant-s [data-rid="${id}"]`).forEach(x => x.classList.add('linked'));
+  }
+  if ((S.variant === 'c' || S.variant === 's') && !t.dataset.tipType) {
+    const m = rm.memory; showTip(`<div class="t-head"><span class="mono muted">${m.short_id}</span>${rm.edges.map(x => glyph(x.type)).join('')}</div><div>${esc(m.summary)}</div><div class="faint" style="font-size:calc(10*var(--u));margin-top:calc(3*var(--u))">click for evidence</div>${statesFoot(m)}`, e);
+  } else showTip(tipHTML(rm, t.dataset.tipType), e);
+});
+document.addEventListener('mousemove', e => { if (tip.classList.contains('show')) moveTip(e); });
+
+/* =====================================================================
+   Sketch toolbar
+   ===================================================================== */
+$('#theme-switcher').addEventListener('change', e => { document.querySelector('link[href*=themes]').href = '../themes/' + e.target.value + '.css'; });
+document.querySelectorAll('#vp-btns button').forEach(b => b.addEventListener('click', () => {
+  const v = b.dataset.vp, f = $('#frame');
+  f.style.maxWidth = v === 'full' ? '100%' : v + 'px';
+  f.classList.toggle('constrained', v !== 'full');
+  document.querySelectorAll('#vp-btns button').forEach(x => x.style.background = x === b ? '#6a5acd' : '#333');
+  setTimeout(() => { renderTreemap(); fitStates($('#variant-' + S.variant)); applySelS(); relayoutSGraph(); }, 200);
+}));
+const annoTip = $('#anno-tip');
+$('#anno-toggle').addEventListener('change', e => { document.body.classList.toggle('anno', e.target.checked); if (!e.target.checked) { annoTip.classList.remove('show'); document.querySelectorAll('.anno-outline').forEach(x => x.classList.remove('anno-outline')); } });
+document.addEventListener('mousemove', e => {
+  if (!document.body.classList.contains('anno')) return;
+  const el = e.target;
+  document.querySelectorAll('.anno-outline').forEach(x => x.classList.remove('anno-outline'));
+  if (!el || el.closest('#sketch-tools') || el === document.body || el.id === 'frame') { annoTip.classList.remove('show'); return; }
+  el.classList.add('anno-outline');
+  const cs = getComputedStyle(el);
+  const cls = (typeof el.className === 'string' ? el.className : el.className.baseVal || '').replace('anno-outline', '').trim().split(/\s+/).slice(0, 2).join('.');
+  annoTip.innerHTML = `${el.tagName.toLowerCase()}${cls ? '.' + cls : ''}<br>font ${cs.fontSize} ${cs.fontWeight} · ${cs.fontFamily.split(',')[0]}<br>color ${cs.color}${el instanceof SVGElement ? `<br>fill ${cs.fill} · stroke ${cs.stroke} ${cs.strokeDasharray !== 'none' ? '· dash ' + cs.strokeDasharray : ''}` : `<br>bg ${cs.backgroundColor}<br>pad ${cs.padding} · radius ${cs.borderRadius}`}`;
+  annoTip.style.left = Math.min(innerWidth - 330, e.clientX + 12) + 'px'; annoTip.style.top = (e.clientY + 16) + 'px';
+  annoTip.classList.add('show');
+});
+addEventListener('resize', () => { if (S.variant === 'c') renderTreemap(); fitStates($('#variant-' + S.variant)); applySelS(); relayoutSGraph(); });
+
+/* =====================================================================
+   Display: console-wide text size (themes/display.js owns storage, ⌘+/⌘−/⌘0 and cross-tab sync)
+   ===================================================================== */
+const D = window.EngramDisplay;
+const MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
+const dpop = $('#display-pop'), tsSeg = $('#ts-seg');
+const aaButton = () => `<button class="aa" data-act="display" aria-haspopup="dialog" aria-expanded="${!dpop.hidden}" aria-controls="display-pop" title="Display: text size">Aa</button>`;
+$('#ts-keys').innerHTML = `<span><kbd>${MOD}</kbd><kbd>+</kbd> larger</span><span><kbd>${MOD}</kbd><kbd>−</kbd> smaller</span><span><kbd>${MOD}</kbd><kbd>0</kbd> reset to ${D.DEFAULT}</span>`;
+function syncDisplay() {
+  const n = D.get();
+  $('#ts-val').textContent = n + 'px';
+  tsSeg.querySelectorAll('button').forEach(b => { const on = +b.dataset.ts === n; b.setAttribute('aria-checked', on); b.tabIndex = on ? 0 : -1; });
+}
+function placeDisplay() {
+  const btn = $('#variant-s .aa'); if (!btn || dpop.hidden) return;
+  const r = btn.getBoundingClientRect();
+  dpop.style.left = Math.max(8, Math.min(r.right - dpop.offsetWidth, innerWidth - dpop.offsetWidth - 8)) + 'px';
+  dpop.style.top = (r.bottom + 6) + 'px';
+}
+function openDisplay(btn) {
+  dpop.hidden = false; syncDisplay(); placeDisplay();
+  btn.setAttribute('aria-expanded', 'true'); hideTip();
+  (tsSeg.querySelector('[aria-checked=true]') || tsSeg.firstElementChild).focus();
+}
+function closeDisplay(refocus) {
+  if (dpop.hidden) return; dpop.hidden = true;
+  const btn = $('#variant-s .aa'); if (btn) { btn.setAttribute('aria-expanded', 'false'); if (refocus) btn.focus(); }
+}
+function toast(html) { const t = $('#toast'); t.innerHTML = html; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1800); }
+tsSeg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { D.set(+b.dataset.ts); b.focus(); } });
+tsSeg.addEventListener('keydown', e => {
+  const d = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key]; if (!d) return;
+  e.preventDefault(); e.stopPropagation(); D.step(d); tsSeg.querySelector('[aria-checked=true]').focus();
+});
+document.addEventListener('mousedown', e => { if (!e.target.closest('#display-pop') && !e.target.closest('[data-act=display]')) closeDisplay(false); });
+let lastSize = D.get();
+// every change — segment, ⌘+/⌘−/⌘0, or another tab — re-renders so SVG labels, node sizes and chip fits re-lay out
+addEventListener('engram:textsize', e => {
+  const n = e.detail.size, changed = n !== lastSize; lastSize = n;
+  syncDisplay(); hideTip(); render(); placeDisplay();
+  toast(`Text size ${n}px${changed ? '' : n === D.MAX ? ' (max)' : n === D.MIN ? ' (min)' : ''}`);
+});
+syncDisplay();
+
+render();
+</script>
+</body>
+</html>

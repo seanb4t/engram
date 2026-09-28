@@ -158,13 +158,33 @@ func csrfWriteCases(futureNotBefore *timestamppb.Timestamp) []csrfWriteRPCCase {
 				}, h)
 			},
 		},
+		{
+			name: "ArchiveMemory",
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient, h csrfHeaders) error {
+				return doCSRFWrite(ctx, c.ArchiveMemory, &engramv1.ArchiveMemoryRequest{Ids: []string{"some-id"}}, h)
+			},
+		},
+		{
+			name: "RestoreMemory",
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient, h csrfHeaders) error {
+				return doCSRFWrite(ctx, c.RestoreMemory, &engramv1.RestoreMemoryRequest{Ids: []string{"some-id"}}, h)
+			},
+		},
+		{
+			name: "SupersedeMemory",
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient, h csrfHeaders) error {
+				return doCSRFWrite(ctx, c.SupersedeMemory, &engramv1.SupersedeMemoryRequest{Content: "valid content", Scope: "test:scope", Source: "agent-inferred", Category: "decision", Supersedes: []string{"some-id"}}, h)
+			},
+		},
 	}
 }
 
 // TestCSRFWriteProcedureAllowlist pins csrfWriteProcedures at the data level
-// (SC3 / T-16-08): exactly the six generated write Procedure constants, and
-// none of the five read Procedure constants — independent of, and a faster
-// backstop than, the full httptest matrices below.
+// (SC3 / T-16-08): exactly the nine generated write Procedure constants
+// (the original six plus milestone 2026-09-25.01 Phase 3's
+// ArchiveMemory/RestoreMemory (D-15) and plan 03-02's SupersedeMemory
+// (D-15)), and none of the five read Procedure constants — independent of,
+// and a faster backstop than, the full httptest matrices below.
 func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 	wantWrite := []string{
 		engramv1connect.EngramServiceStoreMemoryProcedure,
@@ -173,9 +193,12 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 		engramv1connect.EngramServiceDeleteMemoryProcedure,
 		engramv1connect.EngramServiceSetVisibilityProcedure,
 		engramv1connect.EngramServiceScheduleMemoryProcedure,
+		engramv1connect.EngramServiceArchiveMemoryProcedure,
+		engramv1connect.EngramServiceRestoreMemoryProcedure,
+		engramv1connect.EngramServiceSupersedeMemoryProcedure,
 	}
-	if got := len(csrfWriteProcedures); got != 6 {
-		t.Fatalf("csrfWriteProcedures has %d entries, want exactly 6", got)
+	if got := len(csrfWriteProcedures); got != 9 {
+		t.Fatalf("csrfWriteProcedures has %d entries, want exactly 9", got)
 	}
 	for _, p := range wantWrite {
 		if !csrfWriteProcedures[p] {
@@ -189,6 +212,22 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 		engramv1connect.EngramServiceSearchMemoriesProcedure,
 		engramv1connect.EngramServiceGetMemoryProcedure,
 		engramv1connect.EngramServiceSearchDiscoveriesProcedure,
+		// ListScheduled (plan 03-03, RPC-05): a read Procedure, absent from
+		// csrfWriteProcedures and reachable without a CSRF token.
+		engramv1connect.EngramServiceListScheduledProcedure,
+		// ListRules (plan 03-04, RPC-05): a read Procedure, absent from
+		// csrfWriteProcedures and reachable without a CSRF token.
+		engramv1connect.EngramServiceListRulesProcedure,
+		// RelatedMemories (plan 03-05, RPC-05): a read Procedure, absent
+		// from csrfWriteProcedures and reachable without a CSRF token.
+		engramv1connect.EngramServiceRelatedMemoriesProcedure,
+		// ListTags (plan 03-06, RPC-05): a read Procedure, absent from
+		// csrfWriteProcedures and reachable without a CSRF token.
+		engramv1connect.EngramServiceListTagsProcedure,
+		// UnderstandQuery (milestone 2026-09-25.01 Phase 6, D-02): a read
+		// Procedure, absent from csrfWriteProcedures and reachable without
+		// a CSRF token.
+		engramv1connect.EngramServiceUnderstandQueryProcedure,
 	}
 	for _, p := range readProcedures {
 		if csrfWriteProcedures[p] {
@@ -377,6 +416,56 @@ func TestReadRPCsCSRFExempt(t *testing.T) {
 				req := connect.NewRequest(&engramv1.SearchDiscoveriesRequest{Scope: "discovery:test", Query: "test query"})
 				req.Header().Set("X-Test-Actor", "actor-A")
 				_, err := c.SearchDiscoveries(ctx, req)
+				return err
+			},
+		},
+		{
+			name:      "ListScheduled",
+			procedure: engramv1connect.EngramServiceListScheduledProcedure,
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient) error {
+				req := connect.NewRequest(&engramv1.ListScheduledRequest{Scope: "test:scope"})
+				req.Header().Set("X-Test-Actor", "actor-A")
+				_, err := c.ListScheduled(ctx, req)
+				return err
+			},
+		},
+		{
+			name:      "ListRules",
+			procedure: engramv1connect.EngramServiceListRulesProcedure,
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient) error {
+				req := connect.NewRequest(&engramv1.ListRulesRequest{}) // empty scopes: the all-scopes read
+				req.Header().Set("X-Test-Actor", "actor-A")
+				_, err := c.ListRules(ctx, req)
+				return err
+			},
+		},
+		{
+			name:      "RelatedMemories",
+			procedure: engramv1connect.EngramServiceRelatedMemoriesProcedure,
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient) error {
+				req := connect.NewRequest(&engramv1.RelatedMemoriesRequest{Id: "00000000-0000-0000-0000-000000000000"})
+				req.Header().Set("X-Test-Actor", "actor-A")
+				_, err := c.RelatedMemories(ctx, req)
+				return err // a not_found is fine here; only PermissionDenied fails this test
+			},
+		},
+		{
+			name:      "ListTags",
+			procedure: engramv1connect.EngramServiceListTagsProcedure,
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient) error {
+				req := connect.NewRequest(&engramv1.ListTagsRequest{Scope: "test:scope"})
+				req.Header().Set("X-Test-Actor", "actor-A")
+				_, err := c.ListTags(ctx, req)
+				return err
+			},
+		},
+		{
+			name:      "UnderstandQuery",
+			procedure: engramv1connect.EngramServiceUnderstandQueryProcedure,
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient) error {
+				req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "two words"})
+				req.Header().Set("X-Test-Actor", "actor-A")
+				_, err := c.UnderstandQuery(ctx, req)
 				return err
 			},
 		},

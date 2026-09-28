@@ -138,11 +138,14 @@ var operations = []Operation{
 		MCPTool: "supersede_memory", CLICommand: "",
 		// Destructive: false (CONTEXT.md's worked example) — additive
 		// under all inputs, history preserved, target soft-hidden never
-		// deleted. Idempotent: true — NOT via an idempotency_key (this
-		// verb explicitly supports none), but structurally: the "single
-		// live head" invariant rejects a second call targeting an
+		// deleted. Idempotent: true — structurally: the "single live
+		// head" invariant rejects a second call targeting an
 		// already-superseded record, so an identical repeat creates no
-		// second record.
+		// second record. (This verb has supported an optional
+		// idempotency_key since milestone 2026-08-12.01 03.1 — a
+		// same-key replay short-circuits before that structural check
+		// ever runs — but the structural invariant above is what makes
+		// Idempotent true even for a caller who never passes one.)
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
@@ -155,10 +158,43 @@ var operations = []Operation{
 		MCPTool: "list_rules", CLICommand: "",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
+	{
+		// archive_memory (milestone 2026-09-25.01 Phase 3, D-06/D-16): the
+		// MCP-tool row for the SAME reasoning the "spine-review archive"
+		// CLI-only row below already carries — neither reads, writes, nor
+		// erases content, tags, or the vector, and it is exactly reversible
+		// by restore_memory. Destructive: false rests on the same
+		// set_visibility precedent that row cites. Idempotent: true —
+		// archiving an already-archived id reports the already_archived
+		// outcome and issues no write.
+		MCPTool: "archive_memory", CLICommand: "",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
+		// restore_memory is archive_memory's exact inverse — see the row
+		// immediately above. Idempotent: true — restoring a never-archived
+		// id reports the not_archived outcome and mutates nothing.
+		MCPTool: "restore_memory", CLICommand: "",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
+		// related_memories (milestone 2026-09-25.01 Phase 3, D-23): a plain
+		// read over the id-neighbourhood core — no write RPC, same stance
+		// as search_discovery/list_rules above.
+		MCPTool: "related_memories", CLICommand: "",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
+		// list_tags (milestone 2026-09-25.01 Phase 3 plan 03-06, D-23): a
+		// plain read over the scope tag-count core — no write RPC, same
+		// stance as related_memories/list_rules above.
+		MCPTool: "list_tags", CLICommand: "",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
 
 	// CLI-only operations: no MCP tool exists for any of these, so
 	// MCPTool is deliberately empty. Classified by the same conservative
-	// stance as the 15 MCP rows above.
+	// stance as the 17 MCP rows above.
 	{
 		MCPTool: "", CLICommand: "reindex",
 		// Additive: re-embeds into a NEW (new-dimension) collection,

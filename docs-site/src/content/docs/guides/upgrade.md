@@ -39,6 +39,8 @@ one predictable, migration-safe contract.
 | treat a cross-spine `search`/`list` failure as "no results", or branch on its error to detect a coverage-enumeration problem | §17 |
 | rely on `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` meaning no request deadline at all | §18 |
 | script `spine-review consolidate` without `--scope` or `--all-scopes` | §19 |
+| script `list_rules`/`ListRules` with no `scopes` expecting a rejection, or pattern-match `list_scheduled`/`ListScheduled`'s missing-scope hint as `required` rather than `conditional_required` | §21 |
+| set `ENGRAM_DECISIONS_PROVIDER=jev` (or Helm `memory.decisions.provider: jev`) and do not want console `/search` query text sent to the provider | §22 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -502,6 +504,86 @@ enforce: a sweep requires an explicit `--scope` or `--all-scopes` (#508).
 
 **Who should act:** anyone who scripted `spine-review consolidate` without a
 scope flag. Add `--scope <scope>` or `--all-scopes`.
+
+### 20. Recall responses report what the recall gate hid
+
+`SearchMemories`/`search_memory` and `ListMemories`/`list_memory` now carry an
+additive `recall_gate_hidden` field/key: `{total, archived, superseded,
+expired, scheduled}` counts of records the recall gate hid from that same
+response's window (the same top-k for search, the same page for list),
+counting only the states the call did not already request. `engram search`
+and `engram list` text output prints a matching footer line —
+`recall_gate_hidden: 5  archived: 2  superseded: 2  expired: 1  scheduled: 1`
+— whenever a response reports hidden records, on any scope mode; the field
+is absent when the count could not be computed and all-zero when nothing was
+hidden. See the [tools reference](/reference/tools/#search_memory) and the
+[CLI guide's output contract](/guides/cli/#output-contract) for the full
+shape.
+
+**Who should act:** nobody — additive. No existing field, argument, or
+response shape changed; a caller that does not read `recall_gate_hidden`
+sees no difference.
+
+### 21. Curation tools and RPCs (milestone 2026-09-25.01 Phase 3)
+
+Four new MCP tools — [`archive_memory`](/reference/tools/#archive_memory),
+[`restore_memory`](/reference/tools/#restore_memory),
+[`related_memories`](/reference/tools/#related_memories),
+[`list_tags`](/reference/tools/#list_tags) — and seven new Connect RPCs
+(`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`, `ListRules`,
+`ListScheduled`, `RelatedMemories`, `ListTags`) land on the server. Both are
+purely **additive**.
+
+Two existing tools change observable behavior:
+
+- [`list_rules`](/reference/tools/#list_rules)/`ListRules` with an empty (or
+  omitted) `scopes` **now succeeds**, returning every readable `rule:*`
+  scope's rules in one cross-scope read (up to 1000 rules in total). It used
+  to reject with `field=scopes hint=required`.
+- [`list_scheduled`](/reference/tools/#list_scheduled)/`ListScheduled`
+  without a `scope` and without `cross_spine` now rejects with
+  `hint=conditional_required` (naming both `scope` and `cross_spine`)
+  instead of `hint=required` — the same conditional-scope shape
+  `search_memory`/`list_memory` already use.
+
+`supersede_memory`/`SupersedeMemory` also gains `validate_only` (preview a
+merge without writing), and `list_scheduled`/`ListScheduled` gains
+`cross_spine` and cursor paging — both additive.
+
+**Who should act:** anyone who scripted `list_rules`/`ListRules` expecting an
+empty `scopes` to reject, or who pattern-matched `list_scheduled`/
+`ListScheduled`'s missing-scope rejection on `hint=required` rather than
+branching on `field`/`hint` generically. Client-tier CLI verbs for the new
+capabilities (`engram related`, `engram tags`, archive/restore over Connect)
+are tracked separately as [issue #630](https://github.com/seanb4t/engram/issues/630).
+
+### 22. Console query understanding (milestone 2026-09-25.01 Phase 6)
+
+A new Connect RPC, `UnderstandQuery`, lands on the server — purely
+**additive**: no MCP tool, no CLI verb, and no existing RPC changes shape.
+It backs the operator console's `/search` "Suggested" row: a written query
+can now be turned into advisory, unapplied filter chips (category, time
+window, scope, tag) that a person accepts explicitly.
+
+Three new environment variables (and matching Helm values) control it:
+`ENGRAM_SEARCH_UNDERSTANDING` (`memory.search.understanding`),
+`ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT` (`memory.search.understandingTimeout`),
+and `ENGRAM_SEARCH_UNDERSTANDING_AUDIT` (`memory.search.understandingAudit`).
+Leaving `ENGRAM_SEARCH_UNDERSTANDING` unset makes it **follow
+`ENGRAM_DECISIONS_PROVIDER`**: once a decisions provider is configured for
+any purpose (typed decisions or search reranking), console query text starts
+flowing to it for filter suggestions too, and startup logs a Warn — `search
+understanding enabled: console query text is sent to <host>` — every time
+this is on, by default or explicitly. See
+[Query understanding (Jev)](/guides/configure/#query-understanding-jev) for
+the full contract.
+
+**Who should act:** operators with a decisions provider configured
+(`ENGRAM_DECISIONS_PROVIDER`/`memory.decisions.provider: jev`) who do not
+want console query text sent to it — set `ENGRAM_SEARCH_UNDERSTANDING=off`
+(Helm `memory.search.understanding: off`). Everyone else: nothing — no
+decisions provider means this stays off, and a provider you already accepted
+Typed decisions' data policy for gains one more, documented consumer.
 
 ---
 

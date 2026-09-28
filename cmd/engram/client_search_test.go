@@ -575,6 +575,119 @@ func TestClientSearchCoverageUnknownFooter(t *testing.T) {
 	}
 }
 
+// recallHiddenFooterLine is the exact D-03 recall-gate hidden-count footer
+// literal for a RecallGateHidden{Total: 5, Archived: 2, Superseded: 2,
+// Expired: 1, Scheduled: 1} response, shared by both invocations of
+// TestClientSearchRecallHiddenFooter (scope-confined and --cross-spine)
+// below, proving the footer is identical regardless of scope mode (D-03: it
+// is NOT gated on --cross-spine the way renderCoverageFooter is).
+const recallHiddenFooterLine = "recall_gate_hidden: 5  archived: 2  superseded: 2  expired: 1  scheduled: 1"
+
+// TestClientSearchRecallHiddenFooter pins D-03: the text lane prints the
+// recall-gate hidden-count footer whenever the server reports one, on a
+// scope-confined call AND a --cross-spine call alike — proving the footer
+// is gated on the response, never on the caller's own scope mode.
+func TestClientSearchRecallHiddenFooter(t *testing.T) {
+	hidden := &engramv1.RecallGateHidden{Total: 5, Archived: 2, Superseded: 2, Expired: 1, Scheduled: 1}
+
+	t.Run("scope-confined", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, searchCmd)
+		svc := &stubEngramService{
+			searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+				return &engramv1.SearchMemoriesResponse{
+					Memories:         []*engramv1.Memory{{ShortId: "AAAA111111"}},
+					RecallGateHidden: hidden,
+				}, nil
+			},
+		}
+		url := startStubServer(t, svc)
+
+		stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "text")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(stdout, recallHiddenFooterLine) {
+			t.Errorf("stdout = %q, want the recall-gate hidden footer %q (scope-confined call, D-03)", stdout, recallHiddenFooterLine)
+		}
+	})
+
+	t.Run("cross-spine", func(t *testing.T) {
+		resetClientFlags(t)
+		resetCommandFlagState(t, searchCmd)
+		svc := &stubEngramService{
+			searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+				return &engramv1.SearchMemoriesResponse{
+					Memories:         []*engramv1.Memory{{ShortId: "AAAA111111"}},
+					SearchedScopes:   []string{"repo:a"},
+					RecallGateHidden: hidden,
+				}, nil
+			},
+		}
+		url := startStubServer(t, svc)
+
+		stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--cross-spine", "--output", "text")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		coverageIdx := strings.Index(stdout, "searched_scopes: 1")
+		hiddenIdx := strings.Index(stdout, recallHiddenFooterLine)
+		if coverageIdx < 0 {
+			t.Errorf("stdout = %q, want the coverage footer", stdout)
+		}
+		if hiddenIdx < 0 {
+			t.Errorf("stdout = %q, want the recall-gate hidden footer %q", stdout, recallHiddenFooterLine)
+		}
+		if coverageIdx >= 0 && hiddenIdx >= 0 && hiddenIdx < coverageIdx {
+			t.Errorf("stdout = %q, want the coverage footer to print BEFORE the recall-gate hidden footer", stdout)
+		}
+	})
+}
+
+// TestClientSearchNoRecallHiddenFooterWhenAbsentOrZero pins the D-03
+// transparency invariant: an absent RecallGateHidden field (the server
+// could not compute the count) and an all-zero one (nothing was hidden)
+// both produce byte-identical output to the pre-phase baseline — no
+// fabricated zero line, no footer when the count is unknown.
+func TestClientSearchNoRecallHiddenFooterWhenAbsentOrZero(t *testing.T) {
+	mems := []*engramv1.Memory{{ShortId: "AAAA111111", Scope: "repo:x"}}
+	var want strings.Builder
+	if err := renderMemoryTable(&want, mems, true); err != nil {
+		t.Fatalf("renderMemoryTable: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		hidden *engramv1.RecallGateHidden
+	}{
+		{"absent", nil},
+		{"all-zero", &engramv1.RecallGateHidden{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetClientFlags(t)
+			resetCommandFlagState(t, searchCmd)
+			svc := &stubEngramService{
+				searchFn: func(context.Context, *engramv1.SearchMemoriesRequest) (*engramv1.SearchMemoriesResponse, error) {
+					return &engramv1.SearchMemoriesResponse{
+						Memories:         mems,
+						RecallGateHidden: tc.hidden,
+					}, nil
+				},
+			}
+			url := startStubServer(t, svc)
+
+			stdout, _, err := runClient(t, "search", "--server", url, "--query", "q", "--scope", "repo:x", "--output", "text")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if stdout != want.String() {
+				t.Errorf("stdout = %q, want exactly %q (no recall-gate hidden footer)", stdout, want.String())
+			}
+		})
+	}
+}
+
 // TestClientSearchMissingScopeIsUsageErrorBeforeDialing pins D-01: with
 // neither --scope nor --cross-spine, the guard fires before any network
 // call.

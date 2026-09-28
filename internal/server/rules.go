@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -35,10 +36,13 @@ type storeRuleArgs struct {
 	ID      string   `json:"id,omitempty" jsonschema:"omit to create; supply to replace in place"`
 }
 
-// listRulesArgs.Scopes carries omitempty (D-06a); listRules already rejects
-// len(a.Scopes)==0 in Go — that check was likewise shadowed by the schema.
+// listRulesArgs.Scopes carries omitempty (D-06a). Unlike before this plan, an
+// empty/omitted Scopes is no longer rejected: it is the all-scopes read
+// (D-10, milestone 2026-09-25.01 Phase 3) — listRuleRecords' per-entry
+// validRuleScope loop still rejects a blank or non-rule ENTRY within a
+// non-empty list.
 type listRulesArgs struct {
-	Scopes []string `json:"scopes,omitempty" jsonschema:"one or more rule:* scopes to fetch the complete rule set from"`
+	Scopes []string `json:"scopes,omitempty" jsonschema:"rule:* scopes to fetch the complete rule set from; omit or leave empty for every readable rule scope"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"restrict to rules carrying ALL listed tags (AND)"`
 	Full   bool     `json:"full,omitempty" jsonschema:"true adds full content; default returns the compact index shape"`
 }
@@ -185,17 +189,17 @@ func toRuleView(m store.Memory) ruleView {
 	}
 }
 
-// listRules returns the complete rule set across the given rule:* scopes,
-// oldest-first, as compact ruleView values (or full store.Memory when full).
-// D-03 (plan 04-06): the contract is the complete rule set for a scope, UP TO
-// store.MaxRecallLimit — no exemption from the phase's one documented recall
-// maximum, and no internal paging past it. The second return is a
-// human-readable curation advisory for the tool's textResult (empty when
-// under threshold); it never changes the {rules} payload.
-func (d *deps) listRules(ctx context.Context, c caller, a listRulesArgs) (out []any, advisory string, err error) {
-	if len(a.Scopes) == 0 {
-		return nil, "", argErrf(classMalformed, HintRequired, "scopes", "at least one rule scope is required")
-	}
+// listRuleRecords is the shared raw core behind listRules (MCP shaping,
+// below) and the Connect ListRules RPC (D-10, milestone 2026-09-25.01 Phase
+// 3): with one or more explicit scopes it behaves exactly as before this
+// plan — validate each scope, then a per-scope Store.List loop, appending
+// each scope's records in the order supplied, oldest-first within each scope.
+// With an EMPTY scopes list it performs ONE cross-scope Store.List — an empty
+// scope spans every scope the caller may read (internal/store.listFilter) —
+// bounded at store.MaxRecallLimit records IN TOTAL (never per scope), oldest-
+// first across the whole result. The second return is the curation advisory
+// (ruleAdvisory); it never changes which rules are returned.
+func (d *deps) listRuleRecords(ctx context.Context, c caller, a listRulesArgs) ([]store.Memory, string, error) {
 	for i, sc := range a.Scopes {
 		if !validRuleScope(sc) {
 			// Field stays the plain "scopes" (never "scopes[i]" or the offending
@@ -204,42 +208,125 @@ func (d *deps) listRules(ctx context.Context, c caller, a listRulesArgs) (out []
 			return nil, "", argErrf(classMalformed, HintPrefix, "scopes", "scope at position %d must be rule:repo:<repo> or rule:project:<project>", i)
 		}
 	}
-	var over []string
-	for _, sc := range a.Scopes {
-		// Limit:0 resolves to store.MaxRecallLimit at the store (D-01/D-03,
-		// plans 04-02/04-06) — the complete rule set up to the documented
-		// maximum, never literally "all" and never internally paged past it.
-		// Ascending = oldest-first; Categories pins the rule kind. Full is
-		// copied straight from a.Full (04-06): this is the ONE list caller
-		// outside the typed core (coreListRequest is never built here —
-		// 04-RESEARCH.md Pattern 6, step 4), so it is invisible to
-		// deps.listMemory's own Full wiring and must thread it itself, or a
-		// full=true rule read would silently regress to summary-shaped
-		// (no-content) records once the store's default fetch became
-		// summary-shaped (04-05).
-		ms, _, _, lerr := d.st.List(ctx, sc, c.Subj, store.ListOptions{
+
+	// Full is copied straight from a.Full: this is the ONE list caller
+	// outside the typed core (coreListRequest is never built here —
+	// 04-RESEARCH.md Pattern 6, step 4), so it is invisible to
+	// deps.listMemory's own Full wiring and must thread it itself, or a
+	// full=true rule read would silently regress to summary-shaped
+	// (no-content) records once the store's default fetch became
+	// summary-shaped (04-05).
+	var ms []store.Memory
+	if len(a.Scopes) == 0 {
+		// D-10: one cross-scope read. Limit:0 resolves to store.MaxRecallLimit
+		// at the store (D-01/D-03, plans 04-02/04-06) — up to the documented
+		// maximum IN TOTAL, never literally "all" and never internally paged
+		// past it.
+		got, _, _, err := d.st.List(ctx, "", c.Subj, store.ListOptions{
 			Limit:      0,
 			Ascending:  true,
 			Categories: []string{"rule"},
 			Tags:       a.Tags,
 			Full:       a.Full,
 		})
-		if lerr != nil {
-			return nil, "", lerr
+		if err != nil {
+			return nil, "", err
 		}
-		if len(ms) > ruleThreshold {
-			over = append(over, fmt.Sprintf("%d rules in %s", len(ms), sc))
-		}
-		for _, m := range ms {
-			if a.Full {
-				out = append(out, m)
-			} else {
-				out = append(out, toRuleView(m))
+		ms = got
+	} else {
+		for _, sc := range a.Scopes {
+			// Limit:0 resolves to store.MaxRecallLimit at the store — the
+			// complete rule set up to the documented maximum PER SCOPE, never
+			// internally paged past it.
+			got, _, _, err := d.st.List(ctx, sc, c.Subj, store.ListOptions{
+				Limit:      0,
+				Ascending:  true,
+				Categories: []string{"rule"},
+				Tags:       a.Tags,
+				Full:       a.Full,
+			})
+			if err != nil {
+				return nil, "", err
 			}
+			ms = append(ms, got...)
 		}
 	}
-	if len(over) > 0 {
-		advisory = "curation smell — " + strings.Join(over, "; ") + " — consider consolidating"
+	return ms, ruleAdvisory(ms), nil
+}
+
+// ruleAdvisory renders the curation-smell advisory over ms: counts rules per
+// scope (scopes sorted for a deterministic rendering across the all-scopes
+// read), and names every scope whose count exceeds ruleThreshold. For a
+// single-scope-over-threshold call (the only shape any existing test
+// exercises) this is byte-identical to the text the pre-D-10 inline
+// computation produced.
+func ruleAdvisory(ms []store.Memory) string {
+	counts := make(map[string]int)
+	for _, m := range ms {
+		counts[m.Scope]++
+	}
+	scopes := make([]string, 0, len(counts))
+	for sc := range counts {
+		scopes = append(scopes, sc)
+	}
+	sort.Strings(scopes)
+
+	var over []string
+	for _, sc := range scopes {
+		if counts[sc] > ruleThreshold {
+			over = append(over, fmt.Sprintf("%d rules in %s", counts[sc], sc))
+		}
+	}
+	if len(over) == 0 {
+		return ""
+	}
+	return "curation smell — " + strings.Join(over, "; ") + " — consider consolidating"
+}
+
+// ruleScopeCoverage is searchedScopes filtered to rule:* scopes (D-10,
+// T-03-18): the all-scopes ListRules/list_rules read must report ONLY the
+// rule scopes it covered, never a non-rule scope the same caller happens to
+// be able to read. When allScopes is false this returns the zero-value
+// scopeCoverage exactly like searchedScopes(ctx, c, false) — no ListScopes
+// call, no coverage keys on the wire (byte-identical to an explicit-scope
+// call). When the underlying coverage query failed (cov.Unknown), the value
+// passes through unchanged: Unknown stays true and Scopes stays nil, so the
+// caller reports scopes_unknown rather than a filtered (and therefore
+// misleading) empty list.
+func (d *deps) ruleScopeCoverage(ctx context.Context, c caller, allScopes bool) scopeCoverage {
+	cov := d.searchedScopes(ctx, c, allScopes)
+	if !allScopes || cov.Unknown {
+		return cov
+	}
+	// Freshly allocated, non-nil even when empty (D-10): an all-scopes call
+	// with no readable rule scope must render searched_scopes as an empty
+	// list, not an absent/null key.
+	scopes := make([]string, 0, len(cov.Scopes))
+	for _, sc := range cov.Scopes {
+		if validRuleScope(sc) {
+			scopes = append(scopes, sc)
+		}
+	}
+	cov.Scopes = scopes
+	return cov
+}
+
+// listRules is the MCP shaping wrapper over listRuleRecords (D-10): the
+// pre-D-10 empty-scopes rejection is gone — an empty/omitted Scopes list is
+// now the all-scopes read, delegated to listRuleRecords exactly like an
+// explicit-scope call. Compact ruleView values are returned by default; full
+// store.Memory records when a.Full is set.
+func (d *deps) listRules(ctx context.Context, c caller, a listRulesArgs) (out []any, advisory string, err error) {
+	ms, advisory, err := d.listRuleRecords(ctx, c, a)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, m := range ms {
+		if a.Full {
+			out = append(out, m)
+		} else {
+			out = append(out, toRuleView(m))
+		}
 	}
 	return out, advisory, nil
 }

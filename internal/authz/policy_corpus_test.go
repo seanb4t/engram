@@ -11,7 +11,7 @@ import (
 
 // allActions is the full D-05 verb list, used by fixtures that must assert
 // across every action rather than a single one.
-var allActions = []Action{ActionRead, ActionWrite, ActionDelete, ActionShare, ActionSchedule}
+var allActions = []Action{ActionRead, ActionWrite, ActionDelete, ActionShare, ActionSchedule, ActionArchive}
 
 // TestPolicyCorpus_OwnRecordAllow is a PERMANENT D-08 regression test: it
 // parses the SAME embedded .cedar bytes (via MustDefault, not a mock) and
@@ -28,14 +28,14 @@ func TestPolicyCorpus_OwnRecordAllow(t *testing.T) {
 
 // TestPolicyCorpus_SharedReadOnly is the direct backstop for Pitfall 3 (an
 // over-broad shared-read policy silently granting write/delete/share/
-// schedule): asserts read Allow AND every other action Deny against the real
-// embedded policy text (DEC-kyz).
+// schedule/archive): asserts read Allow AND every other action Deny against
+// the real embedded policy text (DEC-kyz).
 func TestPolicyCorpus_SharedReadOnly(t *testing.T) {
 	pdp := MustDefault()
 	if got := pdp.DecideRecord("alice", "human", ActionRead, "bob", "note", "shared", ""); !got.Allow {
 		t.Fatalf("DecideRecord(owner=alice, action=read, resource=bob/shared) = Deny, want Allow")
 	}
-	for _, action := range []Action{ActionWrite, ActionDelete, ActionShare, ActionSchedule} {
+	for _, action := range []Action{ActionWrite, ActionDelete, ActionShare, ActionSchedule, ActionArchive} {
 		if got := pdp.DecideRecord("alice", "human", action, "bob", "note", "shared", ""); got.Allow {
 			t.Fatalf("DecideRecord(owner=alice, action=%s, resource=bob/shared) = Allow, want Deny (DEC-kyz)", action)
 		}

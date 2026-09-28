@@ -911,6 +911,74 @@ func TestSearchRankerEnabledLogLine(t *testing.T) {
 	}
 }
 
+// TestUnderstandingEnabledLogLine pins D-15's host-only, key-value-free
+// disclosure shape (T-06-18): the endpoint host only, never userinfo, path
+// or query; api_key_source names the winning env var, never a value; source
+// is passed through verbatim.
+func TestUnderstandingEnabledLogLine(t *testing.T) {
+	const base = "https://user:s3cret-userinfo@gateway.example/openrouter?x=1"
+
+	cases := []struct {
+		name       string
+		ownKey     string
+		openaiKey  string
+		wantSource string
+	}{
+		{"own key wins", "own-key-VALUE", "", "ENGRAM_DECISIONS_API_KEY"},
+		{"falls back to openai key", "", "openai-key-VALUE", "ENGRAM_OPENAI_API_KEY"},
+		{"neither set", "", "", "none"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			cfg := &config.Config{}
+			cfg.Decisions.Provider = "jev"
+			cfg.Decisions.BaseURL = base
+			cfg.Decisions.Model = "typesafe/jev-1.13"
+			cfg.Decisions.APIKey = tc.ownKey
+			cfg.OpenAI.APIKey = tc.openaiKey
+
+			logUnderstandingEnabled(cfg, "explicit")
+
+			out := buf.String()
+			for _, forbidden := range []string{"s3cret-userinfo", "own-key-VALUE", "openai-key-VALUE", "/openrouter", "x=1"} {
+				if strings.Contains(out, forbidden) {
+					t.Errorf("log output contains forbidden substring %q: %s", forbidden, out)
+				}
+			}
+
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &rec); err != nil {
+				t.Fatalf("unmarshal log line %q: %v", out, err)
+			}
+			wantMsg := "search understanding enabled: console query text is sent to gateway.example"
+			if rec["msg"] != wantMsg {
+				t.Errorf("msg = %v, want %q", rec["msg"], wantMsg)
+			}
+			if rec["endpoint_host"] != "gateway.example" {
+				t.Errorf("endpoint_host = %v, want gateway.example", rec["endpoint_host"])
+			}
+			if rec["api_key_source"] != tc.wantSource {
+				t.Errorf("api_key_source = %v, want %v", rec["api_key_source"], tc.wantSource)
+			}
+			if rec["source"] != "explicit" {
+				t.Errorf("source = %v, want explicit", rec["source"])
+			}
+			if _, ok := rec["understanding_timeout"]; !ok {
+				t.Error("understanding_timeout missing from log record")
+			}
+			if rec["disable_with"] != "ENGRAM_SEARCH_UNDERSTANDING=off" {
+				t.Errorf("disable_with = %v, want ENGRAM_SEARCH_UNDERSTANDING=off", rec["disable_with"])
+			}
+		})
+	}
+}
+
 // TestDeciderFromConfigStillRetries proves the consolidate-path client
 // deciderFromConfig builds is UNCHANGED by this plan: against a
 // 503-then-200 handler it makes two requests and succeeds — the search
@@ -1055,6 +1123,230 @@ func TestSearchRerankAudit(t *testing.T) {
 			}
 			if msg, _ := rec["msg"].(string); !strings.Contains(msg, tc.wantSub) {
 				t.Errorf("msg = %q, want substring %q", msg, tc.wantSub)
+			}
+		})
+	}
+}
+
+// TestUnderstandingEnabledResolver proves understandingEnabled's D-01
+// resolution table: an explicit "off"/"jev" wins outright, an empty value
+// follows cfg.Decisions.Provider, and an unrecognized value stays off with a
+// Warn naming ENGRAM_SEARCH_UNDERSTANDING.
+func TestUnderstandingEnabledResolver(t *testing.T) {
+	cases := []struct {
+		understanding string
+		provider      string
+		wantEnabled   bool
+		wantSource    string
+	}{
+		{"", "", false, "default"},
+		{"", "jev", true, "default"},
+		{"off", "jev", false, "explicit"},
+		{"jev", "jev", true, "explicit"},
+		{"jev", "", true, "explicit"},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("understanding=%q,provider=%q", tc.understanding, tc.provider), func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Search.Understanding = tc.understanding
+			cfg.Decisions.Provider = tc.provider
+
+			enabled, source := understandingEnabled(cfg)
+			if enabled != tc.wantEnabled || source != tc.wantSource {
+				t.Errorf("understandingEnabled() = (%v, %q), want (%v, %q)", enabled, source, tc.wantEnabled, tc.wantSource)
+			}
+		})
+	}
+
+	t.Run("unknown value warns and stays off", func(t *testing.T) {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		cfg := &config.Config{}
+		cfg.Search.Understanding = "JEV"
+		cfg.Decisions.Provider = "jev"
+
+		enabled, source := understandingEnabled(cfg)
+		if enabled {
+			t.Error("enabled = true, want false")
+		}
+		if source != "explicit" {
+			t.Errorf("source = %q, want explicit", source)
+		}
+
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &rec); err != nil {
+			t.Fatalf("unmarshal log line %q: %v", buf.String(), err)
+		}
+		if rec["level"] != "WARN" {
+			t.Errorf("level = %v, want WARN", rec["level"])
+		}
+		if rec["value"] != "JEV" {
+			t.Errorf("value = %v, want JEV", rec["value"])
+		}
+		if msg, _ := rec["msg"].(string); !strings.Contains(msg, "ENGRAM_SEARCH_UNDERSTANDING") {
+			t.Errorf("msg = %q, want substring ENGRAM_SEARCH_UNDERSTANDING", msg)
+		}
+	})
+}
+
+// TestUnderstandingTimeoutResolver proves understandingTimeout's D-01a
+// resolution table: 2s default on empty; an explicit valid value honored; 0,
+// negative and unparseable values all fall back to 2s (never
+// jev.WithMaxTimeout's 10m ceiling, unacceptable on this synchronous path).
+func TestUnderstandingTimeoutResolver(t *testing.T) {
+	cfg := &config.Config{}
+	if got := understandingTimeout(cfg); got != 2*time.Second {
+		t.Errorf("empty = %v, want 2s", got)
+	}
+	cfg.Search.UnderstandingTimeout = "150ms"
+	if got := understandingTimeout(cfg); got != 150*time.Millisecond {
+		t.Errorf("150ms = %v, want 150ms", got)
+	}
+	for _, bad := range []string{"0", "-1s", "soon"} {
+		cfg.Search.UnderstandingTimeout = bad
+		if got := understandingTimeout(cfg); got != 2*time.Second {
+			t.Errorf("%q = %v, want fallback 2s", bad, got)
+		}
+	}
+}
+
+// TestUnderstandDeciderGate proves understandDecider's D-04 gate: a non-nil
+// Decider only when a provider is configured AND understanding resolves on;
+// every other combination — including provider empty with understanding
+// explicitly "jev", a misconfiguration Config.Validate (plan 06-04) rejects
+// before production ever reaches here — returns (nil, nil).
+func TestUnderstandDeciderGate(t *testing.T) {
+	cases := []struct {
+		name          string
+		provider      string
+		understanding string
+		wantNil       bool
+	}{
+		{"provider jev, understanding unset", "jev", "", false},
+		{"provider jev, understanding off", "jev", "off", true},
+		{"provider empty, understanding empty", "", "", true},
+		{"provider empty, understanding jev", "", "jev", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Decisions.Provider = tc.provider
+			cfg.Decisions.BaseURL = "https://example.invalid/api"
+			cfg.Search.Understanding = tc.understanding
+
+			dec, err := understandDecider(cfg)
+			if err != nil {
+				t.Fatalf("understandDecider: %v", err)
+			}
+			if tc.wantNil && dec != nil {
+				t.Error("understandDecider returned non-nil, want nil")
+			}
+			if !tc.wantNil && dec == nil {
+				t.Error("understandDecider returned nil, want non-nil")
+			}
+		})
+	}
+}
+
+// TestUnderstandingAuditResolver pins D-16's resolver: "true"/"1" turn the
+// audit on, "false"/empty/garbage keep it off (Config.Validate rejects
+// garbage before production ever reaches here); the startup Warn fires only
+// on a non-empty, non-boolean value; and understandingAudit is completely
+// independent of searchRerankAudit — neither reads the other's field.
+func TestUnderstandingAuditResolver(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{{"true", true}, {"1", true}, {"false", false}, {"", false}, {"yes please", false}} {
+		cfg := &config.Config{}
+		cfg.Search.UnderstandingAudit = tc.value
+		if got := understandingAudit(cfg); got != tc.want {
+			t.Errorf("understandingAudit(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+
+	t.Run("warns only on a non-empty non-boolean value", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			value    string
+			wantWarn bool
+		}{
+			{"empty", "", false},
+			{"false", "false", false},
+			{"true", "true", false},
+			{"garbage", "yes please", true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				prev := slog.Default()
+				slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+				t.Cleanup(func() { slog.SetDefault(prev) })
+
+				cfg := &config.Config{}
+				cfg.Search.UnderstandingAudit = tc.value
+				understandingAudit(cfg)
+
+				out := strings.TrimSpace(buf.String())
+				gotWarn := out != ""
+				if gotWarn != tc.wantWarn {
+					t.Errorf("warn emitted = %v, want %v (output: %q)", gotWarn, tc.wantWarn, out)
+				}
+				if gotWarn && !strings.Contains(out, "ENGRAM_SEARCH_UNDERSTANDING_AUDIT") {
+					t.Errorf("warn output = %q, want substring ENGRAM_SEARCH_UNDERSTANDING_AUDIT", out)
+				}
+			})
+		}
+	})
+
+	t.Run("independent of the rerank audit flag", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Search.RerankAudit = "true"
+		cfg.Search.UnderstandingAudit = "false"
+		if got := understandingAudit(cfg); got {
+			t.Error("understandingAudit() = true, want false (must ignore RerankAudit)")
+		}
+		if got := searchRerankAudit(cfg); !got {
+			t.Error("searchRerankAudit() = false, want true (must ignore UnderstandingAudit)")
+		}
+	})
+}
+
+// TestUnderstandingAuditEnabledLogLine pins the two disclosure lines
+// logUnderstandingAuditEnabled produces: enabled names the audit capture
+// itself; disabled names that the flag is set but understanding is off, so
+// nothing is actually audited.
+func TestUnderstandingAuditEnabledLogLine(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+		wantSub string
+	}{
+		{"enabled", true, "search understanding audit capture enabled"},
+		{"disabled", false, "nothing is suggested, so nothing is audited"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			logUnderstandingAuditEnabled(tc.enabled)
+
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &rec); err != nil {
+				t.Fatalf("unmarshal log line %q: %v", buf.String(), err)
+			}
+			if rec["level"] != "WARN" {
+				t.Errorf("level = %v, want WARN", rec["level"])
+			}
+			if msg, _ := rec["msg"].(string); !strings.Contains(msg, tc.wantSub) {
+				t.Errorf("msg = %q, want substring %q", msg, tc.wantSub)
+			}
+			if tc.enabled && rec["log_msg"] != "query understanding audit" {
+				t.Errorf("log_msg = %v, want %q", rec["log_msg"], "query understanding audit")
 			}
 		})
 	}

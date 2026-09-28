@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>006 · Graph interaction &amp; density</title>
+<link rel="stylesheet" href="../themes/default.css">
+<script src="../themes/display.js"></script>
+<!-- Real engine: d3 v7 (the console uses the d3-force / d3-zoom / d3-drag / d3-selection micro-packages — same APIs). Needs network. -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding-top: 44px; background: var(--color-bg); color: var(--color-text); font: 13px/1.45 var(--font-sans); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+  .mono { font-family: var(--font-mono); }
+  .muted { color: var(--color-text-muted); }
+  .faint { color: var(--color-text-faint); }
+  button, .row { transition: all .15s ease; }
+
+  #variant-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 9998; height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 12px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); overflow-x: auto; }
+  .variant-tab { padding: 5px 10px; border-radius: var(--radius-md); color: var(--color-text-muted); font-size: 13px; white-space: nowrap; }
+  .variant-tab:hover { background: var(--color-hover); color: var(--color-text); }
+  .variant-tab.active { background: var(--color-primary-soft); color: var(--color-primary); }
+  .nav-spacer { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; flex: none; }
+  .seg button { white-space: nowrap; padding: 3px 8px; font-size: 12px; color: var(--color-text-muted); border-right: 1px solid var(--color-border); }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: var(--color-hover); color: var(--color-text); }
+  .seg button.on { background: var(--color-selected); color: var(--color-text); }
+  .seg-label { font-size: 11px; color: var(--color-text-faint); margin: 0 6px 0 10px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+
+  .ui-scaled { --u: calc(var(--ui-font, 15px) / 13);
+    --text-2xs: calc(11*var(--u)); --text-xs: calc(12*var(--u)); --text-sm: calc(13*var(--u)); --text-base: calc(14*var(--u)); --row-h: calc(26*var(--u));
+    font-size: var(--text-sm); }
+  #frame { container: frame / inline-size; margin: 0 auto; padding: calc(12*var(--u)) calc(16*var(--u)) 80px; max-width: 100%; transition: max-width .15s ease; }
+  #frame.constrained { border-left: 1px dashed var(--color-border); border-right: 1px dashed var(--color-border); min-height: calc(100vh - 44px); }
+  kbd { font-family: var(--font-mono); font-size: var(--text-2xs); border: 1px solid var(--color-border); border-bottom-width: 2px; border-radius: calc(3*var(--u)); padding: 0 calc(4*var(--u)); color: var(--color-text-muted); white-space: nowrap; }
+  .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); min-width: 0; }
+  .dot { width: calc(7*var(--u)); height: calc(7*var(--u)); border-radius: 50%; display: inline-block; flex: none; }
+  .g { display: inline-flex; align-items: center; justify-content: center; width: calc(16*var(--u)); height: calc(16*var(--u)); font: 600 calc(9*var(--u))/1 var(--font-mono); color: var(--color-text-muted); border: 1px solid var(--color-text-faint); border-radius: calc(3*var(--u)); flex: none; }
+  .g-supersession { border: 2px solid var(--color-text-muted); }
+  .g-citation { border-style: dashed; }
+  .g-tag { border-style: dotted; border-width: 2px; }
+  .g-vector { border-color: var(--color-border); }
+  .state-word { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-warning); border: 1px dashed var(--color-border); padding: 0 calc(4*var(--u)); border-radius: var(--radius-sm); white-space: nowrap; }
+
+  /* anchor bar */
+  .crumbs { display: flex; align-items: center; gap: calc(6*var(--u)); font-size: var(--text-xs); color: var(--color-text-faint); margin-bottom: calc(8*var(--u)); flex-wrap: wrap; }
+  .crumb { font-family: var(--font-mono); color: var(--color-text-muted); padding: 1px calc(5*var(--u)); border-radius: var(--radius-sm); }
+  .crumb:hover { background: var(--color-hover); color: var(--color-text); }
+  .crumb.cur { color: var(--color-text); background: var(--color-surface-2); }
+  .anchor-card { border-left: 3px solid var(--color-primary); padding: calc(8*var(--u)) calc(12*var(--u)); margin-bottom: calc(10*var(--u)); }
+  .anchor-card .sum { font-size: var(--text-base); margin: calc(3*var(--u)) 0; }
+  .call { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .call b { color: var(--color-text); }
+  .call .warn { color: var(--color-warning); }
+  .banner { border: 1px solid var(--color-warning); color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 10%, transparent); border-radius: var(--radius-md); padding: calc(5*var(--u)) calc(10*var(--u)); font: var(--text-xs) var(--font-mono); margin-bottom: calc(10*var(--u)); }
+
+  .s-grid { display: grid; grid-template-columns: minmax(0,1fr) calc(340*var(--u)); gap: calc(10*var(--u)); align-items: start; }
+  @container frame (max-width: 900px) { .s-grid { grid-template-columns: 1fr; } .rail { position: relative !important; top: auto !important; } }
+
+  /* lanes (condensed — the sketch is about the rail) */
+  .lane { margin-bottom: calc(8*var(--u)); }
+  .lane-h { display: flex; align-items: center; gap: calc(6*var(--u)); padding: calc(6*var(--u)) calc(10*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .lane-h .nm { font-weight: 600; }
+  .lane-h .cnt { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); }
+  .lane-h .cap { font-size: var(--text-2xs); color: var(--color-text-faint); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lane-h .eye { font-size: var(--text-2xs); color: var(--color-text-faint); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 0 calc(5*var(--u)); }
+  .lane.off .lane-body { display: none; }
+  .lane.off .lane-h { opacity: .6; }
+  .row { display: grid; grid-template-columns: calc(92*var(--u)) minmax(0,1fr) auto; gap: calc(10*var(--u)); align-items: center; min-height: var(--row-h); padding: 0 calc(10*var(--u)); border-bottom: 1px solid var(--color-border-subtle); cursor: pointer; }
+  .row:hover { background: var(--color-hover); }
+  .row.sel { background: var(--color-primary-soft); }
+  .row .id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); display: flex; gap: calc(6*var(--u)); align-items: center; }
+  .row .sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .ev { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--color-text-muted); display: flex; gap: calc(6*var(--u)); align-items: center; }
+  .more-row { display: flex; align-items: center; justify-content: space-between; gap: calc(8*var(--u)); padding: calc(6*var(--u)) calc(10*var(--u)); font-size: var(--text-xs); color: var(--color-text-faint); }
+  .link { color: var(--color-primary); font-size: var(--text-xs); }
+  .link:hover { text-decoration: underline; }
+
+  /* rail */
+  .rail { position: sticky; top: calc(44px + 10px); max-height: calc(100vh - 44px - 20px); overflow-y: auto; }
+  .rail-tabs { display: flex; align-items: center; gap: calc(4*var(--u)); padding: calc(6*var(--u)) calc(8*var(--u)); border-bottom: 1px solid var(--color-border-subtle); }
+  .rail-tab { padding: calc(3*var(--u)) calc(9*var(--u)); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-text-muted); }
+  .rail-tab.on { background: var(--color-primary-soft); color: var(--color-primary); }
+  .rail-tabs kbd { margin-left: auto; }
+  .gwrap { position: relative; }
+  svg.graph { display: block; width: 100%; height: calc(380*var(--u)); touch-action: none; cursor: grab; outline: none; }
+  svg.graph:active { cursor: grabbing; }
+  svg.graph:focus-visible { box-shadow: inset 0 0 0 2px var(--color-primary); }
+  .edge { fill: none; stroke: var(--color-text-muted); transition: opacity .15s ease, stroke .15s ease; }
+  .edge.t-vector { stroke: var(--color-text-faint); }
+  .edge.selon { stroke: var(--color-primary); opacity: 1 !important; }
+  svg.has-sel .edge:not(.selon) { opacity: .35; }
+  svg.has-sel .node:not(.sel):not(.anchor) { opacity: .45; }
+  .node { cursor: pointer; transition: opacity .15s ease; }
+  .node .body { stroke: var(--color-bg); stroke-width: 1.5; }
+  .node.hidden-state .body { opacity: .5; stroke-dasharray: 2 2; stroke: var(--color-text-faint); }
+  .node .ring-a { fill: none; stroke: var(--color-primary); stroke-width: 1.6; }
+  .node .ring-b { fill: none; stroke: var(--color-primary); stroke-width: 1; opacity: .6; }
+  .node .halo { fill: none; stroke: transparent; stroke-width: 2; }
+  .node.sel .halo { stroke: var(--color-primary); fill: var(--color-primary-soft); }
+  .node .focus { fill: none; stroke: none; }
+  .va .node.kfocus .focus { stroke: var(--color-primary); stroke-width: 1.5; stroke-dasharray: 3 2.5; }
+  .vb .node.kfocus .focus { stroke: var(--color-primary); stroke-width: 2.4; }
+  .node .lbl { font: 600 calc(8.5px * var(--gs,1)) var(--font-mono); fill: var(--color-text-muted); paint-order: stroke; stroke: var(--color-surface); stroke-width: 3px; pointer-events: none; }
+  .node.anchor .lbl, .node.kfocus .lbl, .node.sel .lbl { fill: var(--color-text); }
+  .vb .pill rect { fill: var(--color-primary); }
+  .vb .pill text { font: 600 calc(8.5px * var(--gs,1)) var(--font-mono); fill: #fff; }
+  .node .pin { fill: var(--color-warning); }
+  .arrow-muted { fill: var(--color-text-muted); }
+  .arrow-sel { fill: var(--color-primary); }
+
+  .zctl { position: absolute; top: calc(8*var(--u)); right: calc(8*var(--u)); display: flex; flex-direction: column; gap: 2px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); overflow: hidden; }
+  .zctl button { width: calc(26*var(--u)); height: calc(24*var(--u)); font: 600 var(--text-xs) var(--font-mono); color: var(--color-text-muted); }
+  .zctl button:hover { background: var(--color-hover); color: var(--color-text); }
+  .zctl button:disabled { opacity: .35; cursor: default; }
+  .zctl .pct { font: var(--text-2xs) var(--font-mono); color: var(--color-text-faint); text-align: center; padding: 2px 0; border-top: 1px solid var(--color-border-subtle); }
+  .wheel-hint { position: absolute; left: 50%; top: 45%; transform: translate(-50%,-50%); background: rgba(0,0,0,.72); color: #fff; font-size: var(--text-xs); padding: calc(6*var(--u)) calc(10*var(--u)); border-radius: var(--radius-md); pointer-events: none; opacity: 0; transition: opacity .2s ease; }
+  .wheel-hint.show { opacity: 1; }
+  .flabel { position: absolute; pointer-events: none; z-index: 4; max-width: calc(230*var(--u)); background: var(--color-surface-2); border: 1px solid var(--color-primary); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: calc(5*var(--u)) calc(8*var(--u)); font-size: var(--text-2xs); opacity: 0; transition: opacity .12s ease; }
+  .flabel.show { opacity: 1; }
+  .flabel .top { display: flex; gap: calc(5*var(--u)); align-items: center; font-family: var(--font-mono); }
+  .flabel .s { color: var(--color-text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .hints { display: flex; flex-wrap: wrap; gap: calc(4*var(--u)) calc(10*var(--u)); padding: calc(6*var(--u)) calc(10*var(--u)); border-top: 1px solid var(--color-border-subtle); font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .legend { display: flex; flex-wrap: wrap; gap: calc(6*var(--u)); padding: calc(6*var(--u)) calc(10*var(--u)); border-top: 1px solid var(--color-border-subtle); }
+  .lg { display: inline-flex; align-items: center; gap: calc(5*var(--u)); font-size: var(--text-2xs); color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 1px calc(7*var(--u)) 1px calc(4*var(--u)); }
+  .lg[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+  .lg .c { font-family: var(--font-mono); color: var(--color-text-faint); }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  body.show-sr .sr-only { position: static; width: auto; height: auto; clip: auto; white-space: normal; display: block; margin: calc(6*var(--u)) calc(10*var(--u)); padding: calc(6*var(--u)); border: 1px dashed var(--color-warning); border-radius: var(--radius-md); font: var(--text-2xs)/1.5 var(--font-mono); color: var(--color-text-muted); max-height: calc(160*var(--u)); overflow: auto; }
+  body.show-sr .sr-only::before { content: attr(data-sr-label); display: block; color: var(--color-warning); margin-bottom: 2px; }
+  .sr-only li[aria-current="true"] { color: var(--color-primary); }
+
+  /* evidence — never covers the graph */
+  .ev-below { border-top: 1px solid var(--color-border-subtle); }
+  .ev-below:empty { display: none; }
+  .ev { display: flex; flex-direction: column; gap: calc(6*var(--u)); padding: calc(8*var(--u)) calc(10*var(--u)); font-size: var(--text-xs); }
+  .ev-top { display: flex; align-items: center; gap: calc(6*var(--u)); font: var(--text-2xs) var(--font-mono); color: var(--color-text-muted); }
+  .ev-top .x { margin-left: auto; color: var(--color-text-faint); font-family: var(--font-mono); }
+  .ev-top .x:hover { color: var(--color-text); }
+  .ev-sum { color: var(--color-text); }
+  .ev-why { font-size: var(--text-2xs); color: var(--color-text-faint); text-transform: uppercase; letter-spacing: .06em; }
+  .ev-line { display: grid; grid-template-columns: auto calc(78*var(--u)) minmax(0,1fr); gap: calc(6*var(--u)); align-items: baseline; font: var(--text-2xs)/1.5 var(--font-mono); color: var(--color-text-muted); }
+  .ev-line .t { color: var(--color-text); }
+  .ev-acts { display: flex; gap: calc(6*var(--u)); flex-wrap: wrap; }
+  .ev-foot { font-size: var(--text-2xs); color: var(--color-text-faint); }
+  .ev-jump { padding: calc(6*var(--u)) calc(10*var(--u)); font-size: var(--text-2xs); color: var(--color-text-muted); display: flex; flex-wrap: wrap; gap: calc(4*var(--u)) calc(6*var(--u)); align-items: center; white-space: nowrap; }
+  .row-ev { border-bottom: 1px solid var(--color-border-subtle); background: color-mix(in srgb, var(--color-primary) 6%, transparent); box-shadow: inset calc(3*var(--u)) 0 0 var(--color-primary); padding-left: calc(92*var(--u)); animation: open .15s ease; }
+  @keyframes open { from { opacity: 0; transform: translateY(-3px); } }
+  .row.sel-here { box-shadow: inset calc(3*var(--u)) 0 0 var(--color-primary); }
+  .ecard { position: absolute; z-index: 4; width: calc(236*var(--u)); background: var(--color-surface-2); border: 1px solid var(--color-primary); border-radius: var(--radius-md); box-shadow: var(--shadow-md); animation: open .15s ease; }
+  .ecard .ev { padding: calc(6*var(--u)) calc(8*var(--u)); gap: calc(4*var(--u)); }
+  .ecard .ev-sum { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .btn { display: inline-flex; align-items: center; gap: calc(6*var(--u)); padding: calc(4*var(--u)) calc(9*var(--u)); border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: var(--text-xs); color: var(--color-text-muted); background: var(--color-surface); }
+  .btn:hover { background: var(--color-hover); color: var(--color-text); }
+  .btn.primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
+  .note { margin-bottom: calc(10*var(--u)); padding: calc(8*var(--u)) calc(10*var(--u)); border: 1px dashed var(--color-border); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.55; }
+  .note b { color: var(--color-text); }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 6px 12px; font-size: 12px; opacity: 0; transition: all .2s ease; z-index: 70; box-shadow: var(--shadow-md); }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+  .nod3 { padding: 20px; color: var(--color-warning); font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <button class="variant-tab active" data-v="a" data-ev="below">A1: evidence under the graph ★ Selected</button>
+  <button class="variant-tab" data-v="a" data-ev="inline">A2: evidence inline in its lane</button>
+  <button class="variant-tab" data-v="a" data-ev="card">A3: evidence card beside the node</button>
+  <button class="variant-tab" data-v="b" data-ev="below">B: No chrome · keyboard zoom · halo band</button>
+  <span class="nav-spacer"></span>
+  <span class="seg-label">vector lane</span>
+  <div class="seg" id="dens-seg">
+    <button data-d="v8" class="on">collapsed · 8 of 50</button>
+    <button data-d="v57">expanded · 50</button>
+    <button data-d="c64">ceiling 64 · truncated</button>
+  </div>
+</div>
+
+<div id="frame" class="ui-scaled">
+  <div class="note" id="vnote"></div>
+  <div class="crumbs" id="crumbs"></div>
+  <div class="card anchor-card" id="anchor-card"></div>
+  <div id="banner"></div>
+  <div class="s-grid">
+    <div id="lanes"></div>
+    <aside class="card rail" id="rail">
+      <div class="rail-tabs" role="tablist"><button class="rail-tab on" role="tab" aria-selected="true">Graph</button><button class="rail-tab" role="tab" aria-selected="false" title="Tags tab — see sketch 004">Tags</button><kbd>g</kbd></div>
+      <div class="gwrap" id="gwrap"></div>
+      <div class="ev-below" id="ev-below"></div>
+      <div class="legend" id="legend"></div>
+      <div class="hints" id="hints"></div>
+      <div class="sr-only" id="sr-list" data-sr-label="visually-hidden neighbourhood list (D-11)"></div>
+      <div class="sr-only" id="sr-live" aria-live="polite" data-sr-label="aria-live summary (polite)"></div>
+    </aside>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui,sans-serif;font-size:12px;background:rgba(0,0,0,0.78);color:#fff;padding:8px 10px;border-radius:8px;opacity:0.45;transition:opacity 0.15s ease;display:flex;gap:10px;align-items:center;flex-wrap:wrap;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.45'">
+  <label style="display:flex;gap:4px;align-items:center;">theme
+    <select id="theme-switcher" style="background:#222;color:#fff;border:1px solid #555;border-radius:4px;font-size:11px;"><option value="default">default</option><option value="light">light</option></select>
+  </label>
+  <span style="display:flex;gap:2px;" id="vp-btns">
+    <button data-vp="375" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">375</button>
+    <button data-vp="768" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">768</button>
+    <button data-vp="1280" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:1px 6px;font-size:11px;">1280</button>
+    <button data-vp="full" style="color:#fff;background:#6a5acd;border:1px solid #888;border-radius:4px;padding:1px 6px;font-size:11px;">full</button>
+  </span>
+  <label style="display:flex;gap:4px;align-items:center;cursor:pointer;"><input type="checkbox" id="sr-toggle"> reveal SR list</label>
+  <label style="display:flex;gap:4px;align-items:center;cursor:pointer;"><input type="checkbox" id="rm-toggle"> reduced motion</label>
+  <span style="display:flex;gap:2px;">text
+    <button id="ts-dn" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:0 6px;">−</button><span id="ts-v">15</span><button id="ts-up" style="color:#fff;background:#333;border:1px solid #555;border-radius:4px;padding:0 6px;">+</button>
+  </span>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+if (!window.d3) document.getElementById('gwrap').innerHTML = '<div class="nod3">d3 did not load (offline?). This sketch needs cdn.jsdelivr.net for the real force/zoom/drag engine.</div>';
+
+/* ===================================================================
+   Fake RelatedMemories result — shapes per proto: related[{memory, edges[]}],
+   edge = EdgeType + oneof evidence. Caps: citation/tag 8, vector k, chain 8 hops / 16, ceiling 64.
+   =================================================================== */
+const TYPES = ['supersession', 'citation', 'tag', 'vector'];
+const LETTER = { supersession: 'S', citation: 'C', tag: 'T', vector: 'V' };
+const CATS = ['decision', 'gotcha', 'convention', 'preference', 'discovery'];
+const ES = { supersession: { dash: '', w: 2 }, citation: { dash: '6 3', w: 1.5 }, tag: { dash: '1.5 3.5', w: 1.8 }, vector: { dash: '', w: 1 } };
+const SUMS = ['RelatedMemories walks the chain both ways under a depth cap', 'Tag-edge weight is ln(n/df); ubiquitous tags add almost nothing', 'Citation match is kind+ref, locator and pin excluded', 'Vector neighbours are query-by-id against the anchor embedding', 'Non-supersession edges follow the recall gate', 'Per-type caps stop one edge type crowding the others', 'k widens only the vector cap, up to the shared 1000 maximum', 'Neighbours come from every readable scope, read filter composed in', 'Total ceiling is 64; only the vector lane can be cut', 'Graph mirrors the lane membership, never its own top-N', 'Supersession arrows point toward the live head', 'Evidence is per type; there is no blended score'];
+function lcg(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+const B32 = '0123456789abcdefghjkmnpqrstvwxyz';
+function sid(r) { let o = ''; for (let i = 0; i < 10; i++) o += B32[Math.floor(r() * 32)]; return o; }
+
+function buildResult(seed, anchorId) {
+  const r = lcg(seed);
+  const mk = (extra = {}) => ({ id: sid(r), category: CATS[Math.floor(r() * CATS.length)], summary: SUMS[Math.floor(r() * SUMS.length)], created: `2026-09-${String(1 + Math.floor(r() * 26)).padStart(2, '0')}`, states: [], ...extra });
+  const anchor = mk({ id: anchorId || 'q7kf2m9x0c', category: 'decision', summary: 'Related view is a route /related/<id>; lanes body, graph as the rail overview' });
+  const rel = [];
+  const add = (m, edge) => { let e = rel.find(x => x.memory.id === m.id); if (!e) { e = { memory: m, edges: [] }; rel.push(e); } e.edges.push(edge); return e; };
+  // chain: -2, -1 (superseded), +1 head
+  const p2 = mk({ states: ['superseded'] }), p1 = mk({ states: ['superseded'] }), s1 = mk();
+  add(p2, { type: 'supersession', direction: 'predecessor', depth: 2 });
+  add(p1, { type: 'supersession', direction: 'predecessor', depth: 1 });
+  add(s1, { type: 'supersession', direction: 'successor', depth: 1 });
+  p2.next = p1.id; p1.next = anchor.id; anchor.next = s1.id;
+  const cites = [mk(), mk()];
+  cites.forEach(m => add(m, { type: 'citation', shared: ['file internal/store/relatedmemories.go'] }));
+  const tags = Array.from({ length: 6 }, () => mk());
+  tags.forEach((m, i) => add(m, { type: 'tag', weight: +(7.4 - i * 0.9 + r()).toFixed(2), shared: ['#related-memories', '#rarity-weighted-tags'].slice(0, 1 + (i % 2)) }));
+  add(cites[1], { type: 'tag', weight: 2.1, shared: ['#list-tags'] });
+  // vector: 60 scored neighbours; the first few overlap other lanes
+  const vec = [];
+  for (let i = 0; i < 60; i++) {
+    const m = i === 1 ? tags[0] : i === 3 ? tags[2] : i === 6 ? cites[0] : mk();
+    vec.push({ m, score: +(0.86 - i * 0.0075 - r() * 0.004).toFixed(3) });
+  }
+  return { anchor, rel, vec, byId: Object.fromEntries([anchor, ...rel.map(x => x.memory), ...vec.map(v => v.m)].map(m => [m.id, m])) };
+}
+
+const S = { v: 'a', ev: 'below', selLane: null, dens: 'v8', seed: 7, trail: ['q7kf2m9x0c'], off: {}, sel: null, kidx: 0, reduced: matchMedia('(prefers-reduced-motion: reduce)').matches, pinned: new Set() };
+let RES = buildResult(S.seed, 'q7kf2m9x0c');
+
+/* the visible neighbourhood = lanes' membership (D-07): vector lane shows 8 unless expanded */
+function view() {
+  const vecN = S.dens === 'v8' ? 8 : S.dens === 'v57' ? 50 : 60;
+  const vecTotal = S.dens === 'c64' ? 60 : 50;
+  const rel = RES.rel.map(x => ({ memory: x.memory, edges: [...x.edges] }));
+  const find = id => rel.find(x => x.memory.id === id);
+  let total = rel.length;
+  const vecShown = [];
+  for (const v of RES.vec.slice(0, vecTotal)) {
+    let e = find(v.m.id);
+    if (!e) { if (total >= 64) break; e = { memory: v.m, edges: [] }; rel.push(e); total++; }
+    e.edges.push({ type: 'vector', score: v.score });
+    vecShown.push(e);
+  }
+  const vecVisible = new Set(vecShown.slice(0, vecN).map(e => e.memory.id));
+  // a candidate is drawn if any of its visible-lane edges is on (vector edges only within the collapse window)
+  const drawn = rel.filter(e => e.edges.some(ed => !S.off[ed.type] && (ed.type !== 'vector' || vecVisible.has(e.memory.id))));
+  const counts = Object.fromEntries(TYPES.map(t => [t, rel.filter(e => e.edges.some(ed => ed.type === t)).length]));
+  return { rel, drawn, vecVisible, vecShownN: vecShown.length, vecTotal: S.dens === 'c64' ? 60 : 50, counts, truncated: S.dens === 'c64' };
+}
+const visEdges = (e, V) => e.edges.filter(ed => !S.off[ed.type] && (ed.type !== 'vector' || V.vecVisible.has(e.memory.id)));
+const firstType = e => TYPES.find(t => e.edges.some(ed => ed.type === t));
+const strength = (e, t) => { const ed = e.edges.find(x => x.type === t); return t === 'supersession' ? (ed.direction === 'predecessor' ? -ed.depth : ed.depth) : t === 'citation' ? 1 : t === 'tag' ? -ed.weight : -ed.score; };
+/* keyboard order: anchor, then lane order supersession › citation › tag › vector, strength within lane (D-10) */
+function kOrder(V) {
+  const out = [RES.anchor.id];
+  for (const t of TYPES) {
+    V.drawn.filter(e => firstType(e) === t && visEdges(e, V).length).sort((a, b) => strength(a, t) - strength(b, t)).forEach(e => out.push(e.memory.id));
+  }
+  return out;
+}
+
+/* ---------- lanes ---------- */
+function renderLanes(V) {
+  const caps = { supersession: '16', citation: '8', tag: '8', vector: 'k=64' };
+  const cap = { supersession: 'chain walk both ways · 8 hops', citation: 'same kind+ref · cap 8', tag: 'shared tags weighted ln(n/df) · Σ · cap 8', vector: 'raw cosine, query-by-id' };
+  $('#lanes').innerHTML = TYPES.map(t => {
+    let rows = V.rel.filter(e => e.edges.some(ed => ed.type === t)).sort((a, b) => strength(a, t) - strength(b, t));
+    const all = rows.length;
+    if (t === 'vector') rows = rows.filter(e => V.vecVisible.has(e.memory.id));
+    const body = rows.map(e => {
+      const ed = e.edges.find(x => x.type === t);
+      const ev = t === 'supersession' ? `${ed.direction === 'predecessor' ? '−' : '+'}${ed.depth}` : t === 'citation' ? ed.shared[0] : t === 'tag' ? `Σ ${ed.weight}` : ed.score.toFixed(3);
+      const multi = e.edges.length > 1 ? `×${e.edges.length} ` + e.edges.filter(x => x.type !== t).map(x => `<span class="g g-${x.type}">${LETTER[x.type]}</span>`).join('') : '';
+      const here = S.sel === e.memory.id && homeLane(e) === t;
+      return `<div class="row ${S.sel === e.memory.id ? 'sel' : ''} ${here ? 'sel-here' : ''}" data-id="${e.memory.id}" data-lane="${t}"><span class="id"><i class="dot" style="background:var(--cat-${e.memory.category})"></i>${e.memory.id.slice(0, 6)}…</span><span class="sum">${esc(e.memory.summary)} ${e.memory.states.map(s => `<span class="state-word">${s}</span>`).join('')}</span><span class="ev">${ev} ${multi}</span></div>${here && S.ev === 'inline' && S.v === 'a' ? `<div class="row-ev" id="row-ev">${evHTML(e, 'inline')}</div>` : ''}`;
+    }).join('');
+    const more = t === 'vector' ? (S.dens === 'v8' ? `<div class="more-row"><span>showing 8 of ${V.vecTotal} · the graph shows the same 8</span><button class="link" data-act="expand">show all ${V.vecTotal} ▸</button></div>` : `<div class="more-row"><span>${S.dens === 'c64' ? `showing ${V.vecShownN} · ceiling 64 cut the rest` : `showing all ${V.vecTotal}`} · graph mirrors this</span><button class="link" data-act="collapse">collapse to 8 ▴</button></div>`) : '';
+    return `<section class="card lane ${S.off[t] ? 'off' : ''}"><div class="lane-h"><span class="g g-${t}">${LETTER[t]}</span><span class="nm">${t}</span><span class="cnt">${all}/${caps[t]}</span><span class="cap">${cap[t]}</span><button class="eye" data-act="toggle" data-t="${t}">${S.off[t] ? 'show' : 'hide'}</button></div><div class="lane-body">${body}${more}</div></section>`;
+  }).join('');
+}
+
+/* ---------- anchor bar ---------- */
+function renderAnchor(V) {
+  $('#crumbs').innerHTML = `<span>trail</span>` + S.trail.map((id, i) => `${i ? '<span>›</span>' : ''}<button class="crumb ${i === S.trail.length - 1 ? 'cur' : ''}" data-act="crumb" data-i="${i}">${id.slice(0, 6)}…</button>`).join('') + `<span style="flex:1"></span><button class="crumb" data-act="back">← back <kbd>[</kbd></button>`;
+  const a = RES.anchor;
+  const nRel = V.rel.length;
+  $('#anchor-card').innerHTML = `<div class="mono muted" style="font-size:var(--text-2xs);display:flex;gap:8px;align-items:center"><i class="dot" style="background:var(--cat-${a.category})"></i>${a.category} · ${a.id}</div><div class="sum">${esc(a.summary)}</div>
+    <div class="call">RelatedMemories(subj, "${a.id.slice(0, 4)}…", k=64) → <b>${nRel}</b> related · ${TYPES.map(t => `${t} ${V.counts[t]}`).join(' · ')} · <span class="${V.truncated ? 'warn' : ''}">truncated=${V.truncated}</span> · 14ms</div>`;
+  $('#banner').innerHTML = V.truncated ? `<div class="banner">▲ truncated=true — total ceiling 64 reached; only the vector lane is cut.</div>` : '';
+}
+
+/* ---------- graph ---------- */
+let sim, zoom, svg, gRoot, NODES, LINKS, nodeSel, edgeSel, curT = window.d3 ? d3.zoomIdentity : null;
+const R = n => n > 26 ? 4.2 : 6;
+function renderGraph(V, keepZoom) {
+  const wrap = $('#gwrap');
+  if (!window.d3) return;
+  const n = V.drawn.length + 1;
+  const nr = R(n), ar = 10;
+  const labelsAll = n <= 26;
+  wrap.innerHTML = `<svg class="graph ${S.v === 'a' ? 'va' : 'vb'}" id="gsvg" viewBox="-220 -190 440 380" tabindex="0" role="listbox" aria-label="Related graph for ${RES.anchor.id}: ${n - 1} neighbours. Arrows move, Space selects, Enter re-centres, Escape returns." aria-describedby="sr-list">
+      <defs><marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path class="arrow-muted" d="M0,0 L8,4 L0,8 z"/></marker>
+      <marker id="arr-sel" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path class="arrow-sel" d="M0,0 L8,4 L0,8 z"/></marker></defs>
+      <g id="groot"><g id="edges"></g><g id="nodes"></g></g></svg>
+    ${S.v === 'a' ? `<div class="zctl"><button data-z="in" aria-label="Zoom in">+</button><button data-z="out" aria-label="Zoom out">−</button><button data-z="fit" aria-label="Fit to view" title="fit">⤢</button><div class="pct" id="zpct">100%</div></div><div class="wheel-hint" id="whint">hold ⌘ to zoom with the wheel</div><div class="flabel" id="flabel"></div>` : ''}`;
+  svg = d3.select('#gsvg'); gRoot = d3.select('#groot');
+
+  // nodes + links (star + chain arrows, D-06)
+  const prev = NODES ? Object.fromEntries(NODES.map(d => [d.id, d])) : {};
+  NODES = [{ id: RES.anchor.id, m: RES.anchor, anchor: true, fx: 0, fy: 0 }];
+  V.drawn.forEach(e => {
+    const p = prev[e.memory.id];
+    const ve = visEdges(e, V);
+    NODES.push({ id: e.memory.id, m: e.memory, e, types: ve.map(x => x.type), vecOnly: ve.length === 1 && ve[0].type === 'vector', score: (e.edges.find(x => x.type === 'vector') || {}).score, x: p?.x, y: p?.y, fx: S.pinned.has(e.memory.id) ? p?.fx : undefined, fy: S.pinned.has(e.memory.id) ? p?.fy : undefined });
+  });
+  const byId = Object.fromEntries(NODES.map(d => [d.id, d]));
+  LINKS = [];
+  NODES.forEach(d => {
+    if (d.anchor) return;
+    d.types.filter(t => t !== 'supersession').forEach(t => LINKS.push({ source: RES.anchor.id, target: d.id, type: t, multi: d.types.filter(x => x !== 'supersession').length > 1 }));
+  });
+  if (!S.off.supersession) [RES.anchor, ...V.drawn.map(e => e.memory)].forEach(m => { if (m.next && byId[m.id] && byId[m.next]) LINKS.push({ source: m.id, target: m.next, type: 'supersession', chain: true }); });
+
+  const dist = l => l.type === 'supersession' ? 48 : l.type === 'citation' ? 70 : l.type === 'tag' ? 82 : 96 + (1 - (byId[l.target.id || l.target].score || 0.7)) * 180;
+  sim = d3.forceSimulation(NODES).randomSource(lcg(42))
+    .force('link', d3.forceLink(LINKS).id(d => d.id).distance(dist).strength(l => l.type === 'supersession' ? 0.9 : 0.35))
+    .force('charge', d3.forceManyBody().strength(n > 26 ? -28 : -70))
+    .force('collide', d3.forceCollide(d => (d.anchor ? ar : nr) + (labelsAll ? 7 : 2)))
+    .force('x', d3.forceX(0).strength(0.03)).force('y', d3.forceY(0).strength(0.03))
+    .stop();
+  if (S.v === 'b') sim.force('band', d3.forceRadial(d => d.vecOnly ? 150 : 0, 0, 0).strength(d => d.vecOnly ? 0.35 : 0));
+  // fixed settle budget, synchronous, before first paint (D-09)
+  for (let i = 0; i < 300; i++) sim.tick();
+
+  edgeSel = d3.select('#edges').selectAll('path').data(LINKS).join('path')
+    .attr('class', l => `edge t-${l.type}`).attr('stroke-width', l => ES[l.type].w).attr('stroke-dasharray', l => ES[l.type].dash || null)
+    .attr('stroke-linecap', l => l.type === 'tag' ? 'round' : null).attr('marker-end', l => l.type === 'supersession' ? 'url(#arr)' : null);
+
+  nodeSel = d3.select('#nodes').selectAll('g.node').data(NODES, d => d.id).join('g')
+    .attr('class', d => `node ${d.anchor ? 'anchor' : ''} ${d.m.states.length ? 'hidden-state' : ''}`)
+    .attr('id', d => `n-${d.id}`).attr('role', 'option').attr('aria-selected', d => S.sel === d.id)
+    .attr('aria-label', d => `${d.id}, ${d.m.category}${d.anchor ? ', anchor' : ', ' + d.types.join(' and ')}${d.m.states.length ? ', ' + d.m.states.join(', ') : ''}`);
+  nodeSel.each(function (d) {
+    const g = d3.select(this); const r = d.anchor ? ar : nr;
+    g.append('circle').attr('class', 'halo').attr('r', r + 4);
+    g.append('circle').attr('class', 'focus').attr('r', r + (S.v === 'a' ? 6 : 3.5));
+    if (d.anchor) { g.append('circle').attr('class', 'ring-b').attr('r', r + 5); g.append('circle').attr('class', 'ring-a').attr('r', r + 2.5); }
+    g.append('circle').attr('class', 'body').attr('r', r).attr('fill', `var(--cat-${d.m.category})`);
+    g.append('text').attr('class', 'lbl').attr('text-anchor', 'middle').attr('y', r + 10).text(d.id.slice(0, 6));
+    if (S.v === 'b') { const p = g.append('g').attr('class', 'pill').style('display', 'none'); p.append('rect').attr('rx', 3).attr('height', 12).attr('y', r + 3); p.append('text').attr('text-anchor', 'middle').attr('y', r + 12).text(d.id.slice(0, 6)); }
+    g.append('circle').attr('class', 'pin').attr('r', 1.8).attr('cx', r * 0.8).attr('cy', -r * 0.8).style('display', 'none');
+  });
+  nodeSel.select('.lbl').style('display', d => (labelsAll || d.anchor) ? null : 'none');
+
+  // drag (D-09): brief reheat unless reduced motion; A releases, B pins where dropped
+  nodeSel.filter(d => !d.anchor).call(d3.drag()
+    .on('start', (ev, d) => { if (!S.reduced) sim.alphaTarget(0.25).restart(); d.fx = d.x; d.fy = d.y; })
+    .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; if (S.reduced) { d.x = ev.x; d.y = ev.y; draw(); } })
+    .on('end', (ev, d) => { sim.alphaTarget(0); if (S.v === 'a') { d.fx = d.fy = null; if (S.reduced) draw(); } else { S.pinned.add(d.id); draw(); } }));
+  nodeSel.on('click', (ev, d) => { if (ev.defaultPrevented) return; S.kidx = kOrder(V).indexOf(d.id); select(d.anchor ? null : d.id, 'graph'); $('#gsvg').focus({ preventScroll: true }); })
+    .on('dblclick', (ev, d) => { ev.stopPropagation(); if (!d.anchor) recenter(d.id); })
+    .on('mouseenter', (ev, d) => showCard(d)).on('mouseleave', () => showCard(null));
+
+  sim.on('tick', draw);
+  draw();
+
+  // pan/zoom: scale 0.5–4, translate bounded to the graph extent
+  zoom = d3.zoom().scaleExtent([0.5, 4]).translateExtent([[-440, -380], [440, 380]])
+    .filter(ev => {
+      if (ev.type === 'dblclick') return false;
+      if (ev.type === 'wheel' && S.v === 'a' && !(ev.metaKey || ev.ctrlKey)) { hintWheel(); return false; }
+      return !ev.button;
+    })
+    .on('zoom', ev => { curT = ev.transform; gRoot.attr('transform', curT); svg.style('--gs', 1 / curT.k); const p = $('#zpct'); if (p) p.textContent = Math.round(curT.k * 100) + '%'; syncZBtns(); placeCard(); });
+  svg.call(zoom).on('dblclick.zoom', null);
+  if (keepZoom && curT) svg.call(zoom.transform, curT); else { curT = d3.zoomIdentity; fit(true); }
+  $$('.zctl [data-z]').forEach(b => b.addEventListener('click', () => zoomAct(b.dataset.z)));
+  $('#gsvg').addEventListener('keydown', gKeys);
+  $('#gsvg').addEventListener('focus', () => focusNode(false));
+  $('#gsvg').addEventListener('blur', () => { nodeSel.classed('kfocus', false); showCard(null); pills(); });
+  applySel(); renderEvidence();
+}
+function edgePath(l) {
+  const s = l.source, t = l.target;
+  const rs = s.anchor ? 13 : R(NODES.length) + 2, rt = t.anchor ? 15 : R(NODES.length) + 3;
+  const dx = t.x - s.x, dy = t.y - s.y, len = Math.hypot(dx, dy) || 1;
+  const off = l.multi ? ({ citation: 0, tag: 12, vector: -12 }[l.type] || 0) : 0;
+  const sx = s.x + dx / len * rs, sy = s.y + dy / len * rs, tx = t.x - dx / len * rt, ty = t.y - dy / len * rt;
+  if (!off) return `M${sx},${sy}L${tx},${ty}`;
+  const mx = (sx + tx) / 2 - dy / len * off, my = (sy + ty) / 2 + dx / len * off;
+  return `M${sx},${sy}Q${mx},${my} ${tx},${ty}`;
+}
+function draw() {
+  edgeSel.attr('d', edgePath);
+  nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+  nodeSel.select('.pin').style('display', d => S.pinned.has(d.id) ? null : 'none');
+  placeCard();
+}
+function syncZBtns() { const i = $('.zctl [data-z="in"]'), o = $('.zctl [data-z="out"]'); if (i) { i.disabled = curT.k >= 3.99; o.disabled = curT.k <= 0.51; } }
+function zoomAct(z) {
+  const t = S.reduced ? svg : svg.transition().duration(200);
+  if (z === 'in') t.call(zoom.scaleBy, 1.4); else if (z === 'out') t.call(zoom.scaleBy, 1 / 1.4); else fit();
+}
+function fit(instant) {
+  const xs = NODES.map(d => d.x), ys = NODES.map(d => d.y);
+  const x0 = Math.min(...xs) - 20, x1 = Math.max(...xs) + 20, y0 = Math.min(...ys) - 24, y1 = Math.max(...ys) + 24;
+  const k = Math.max(0.5, Math.min(4, Math.min(440 / (x1 - x0), 380 / (y1 - y0))));
+  const t = d3.zoomIdentity.scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+  (S.reduced || instant ? svg : svg.transition().duration(250)).call(zoom.transform, t);
+}
+let whT;
+function hintWheel() { const h = $('#whint'); if (!h) return; h.classList.add('show'); clearTimeout(whT); whT = setTimeout(() => h.classList.remove('show'), 900); }
+
+/* ---------- keyboard: one tab stop, roving aria-activedescendant (D-10) ---------- */
+function gKeys(e) {
+  const V = view(); const order = kOrder(V);
+  if (['ArrowRight', 'ArrowDown'].includes(e.key)) { e.preventDefault(); S.kidx = Math.min(order.length - 1, S.kidx + 1); focusNode(true); }
+  else if (['ArrowLeft', 'ArrowUp'].includes(e.key)) { e.preventDefault(); S.kidx = Math.max(0, S.kidx - 1); focusNode(true); }
+  else if (e.key === 'Home') { e.preventDefault(); S.kidx = 0; focusNode(true); }
+  else if (e.key === 'End') { e.preventDefault(); S.kidx = order.length - 1; focusNode(true); }
+  else if (e.key === ' ') { e.preventDefault(); const id = order[S.kidx]; select(id === RES.anchor.id ? null : id, 'graph'); }
+  else if (e.key === 'Enter') { e.preventDefault(); const id = order[S.kidx]; if (id !== RES.anchor.id) recenter(id); }
+  else if (e.key === 'Escape') { e.preventDefault(); if (S.sel) { select(null); } else { e.target.blur(); toast('Escape: left the graph (focus returns to the lane list)'); } }
+  else if (S.v === 'b' && (e.key === '+' || e.key === '=')) { e.preventDefault(); zoomAct('in'); }
+  else if (S.v === 'b' && (e.key === '-' || e.key === '_')) { e.preventDefault(); zoomAct('out'); }
+  else if (S.v === 'b' && e.key === '0') { e.preventDefault(); zoomAct('fit'); }
+  else if (S.v === 'b' && e.key === 'u') { e.preventDefault(); S.pinned.clear(); NODES.forEach(d => { if (!d.anchor) d.fx = d.fy = null; }); if (!S.reduced) sim.alpha(0.3).restart(); draw(); toast('unpinned all'); }
+}
+function focusNode(announce) {
+  const order = kOrder(view()); const id = order[Math.min(S.kidx, order.length - 1)];
+  nodeSel.classed('kfocus', d => d.id === id);
+  $('#gsvg').setAttribute('aria-activedescendant', `n-${id}`);
+  const d = NODES.find(x => x.id === id);
+  // keep the focused node in view: pan if it left the viewport
+  if (d && curT) { const [px, py] = curT.apply([d.x, d.y]); if (Math.abs(px) > 200 || Math.abs(py) > 170) (S.reduced ? svg : svg.transition().duration(200)).call(zoom.translateTo, d.x, d.y); }
+  if (S.v === 'a') showCard(d); else pills(d);
+  $$('#sr-list li').forEach(li => li.setAttribute('aria-current', li.dataset.id === id));
+  if (announce && d) live(`${S.kidx + 1} of ${order.length}: ${d.id}, ${d.m.category}${d.anchor ? ', anchor' : ', ' + d.types.join(', ')}`);
+}
+function pills(d) {
+  if (S.v !== 'b' || !nodeSel) return;
+  nodeSel.select('.pill').style('display', n => d && n.id === d.id ? null : 'none').each(function () { const g = d3.select(this); const tw = g.select('text').node().getComputedTextLength() + 8; g.select('rect').attr('x', -tw / 2).attr('width', tw); });
+  nodeSel.select('.lbl').style('display', n => (d && n.id === d.id) ? 'none' : (NODES.length <= 26 || n.anchor || n.id === S.sel) ? null : 'none');
+}
+function showCard(d) {
+  const c = $('#flabel'); if (!c) return;
+  if (!d) { const f = $('#gsvg.va .node.kfocus'); if (f && document.activeElement === $('#gsvg')) d = NODES.find(n => `n-${n.id}` === f.id); }
+  if (!d || ($('#ecard') && d.id === S.sel)) { c.classList.remove('show'); c._d = null; return; }
+  c._d = d;
+  c.innerHTML = `<div class="top"><i class="dot" style="background:var(--cat-${d.m.category})"></i>${d.id}${d.anchor ? ' · anchor' : ''}<span style="flex:1"></span>${(d.types || []).map(t => `<span class="g g-${t}">${LETTER[t]}</span>`).join('')}</div><div class="s">${esc(d.m.summary)}</div>${d.m.states.length ? `<div style="margin-top:3px">${d.m.states.map(s => `<span class="state-word">${s}</span>`).join(' ')}</div>` : ''}`;
+  c.classList.add('show'); placeCard();
+}
+function placeCard() {
+  placeECard();
+  const c = $('#flabel'); if (!c || !c._d || !curT) return;
+  const svgEl = $('#gsvg'); const box = svgEl.getBoundingClientRect(); const wb = $('#gwrap').getBoundingClientRect();
+  const [px, py] = curT.apply([c._d.x, c._d.y]);
+  const sx = box.width / 440, sy = box.height / 380;
+  let left = (px + 220) * sx + 14, top = (py + 190) * sy - 10;
+  if (left + c.offsetWidth > wb.width - 6) left = (px + 220) * sx - c.offsetWidth - 14;
+  c.style.left = Math.max(4, left) + 'px'; c.style.top = Math.max(4, Math.min(wb.height - c.offsetHeight - 4, top)) + 'px';
+}
+
+/* ---------- shared selection + evidence (never over the graph) ---------- */
+function homeLane(e) { return (S.selLane && e.edges.some(x => x.type === S.selLane)) ? S.selLane : firstType(e); }
+function evLine(x) {
+  const v = x.type === 'vector' ? `cosine ${x.score}` : x.type === 'tag' ? `${x.shared.join(' ')} · Σ ${x.weight}` : x.type === 'citation' ? x.shared.join(' · ') : `${x.direction} · depth ${x.depth}`;
+  return `<div class="ev-line"><span class="g g-${x.type}">${LETTER[x.type]}</span><span class="t">${x.type}</span><span>${esc(v)}</span></div>`;
+}
+function evHTML(e, mode) {
+  const m = e.memory;
+  const top = mode === 'inline' ? '' : `<div class="ev-top"><i class="dot" style="background:var(--cat-${m.category})"></i>${m.category} · ${m.id} · ${m.created}<button class="x" data-act="close-dr" aria-label="Clear selection">esc ×</button></div>`;
+  const sum = mode === 'inline' ? '' : `<div class="ev-sum">${esc(m.summary)}</div>`;
+  return `<div class="ev" role="region" aria-label="Why ${m.id} is related">${top}${sum}
+    ${m.states.length && mode !== 'inline' ? `<div>${m.states.map(s => `<span class="state-word">${s}</span>`).join(' ')}</div>` : ''}
+    <div class="ev-why">Why it is related · ${e.edges.length} edge type${e.edges.length > 1 ? 's' : ''}</div>
+    ${e.edges.map(evLine).join('')}
+    <div class="ev-acts"><button class="btn primary" data-act="recenter" data-id="${m.id}">Re-centre <kbd style="color:#fff;border-color:rgba(255,255,255,.4)">↵</kbd></button><button class="btn" data-act="open-rec" data-id="${m.id}">Open record ↗</button>${mode === 'inline' ? '<button class="btn" data-act="close-dr">close <kbd>esc</kbd></button>' : ''}</div>
+    ${mode === 'card' ? '' : '<div class="ev-foot">Evidence is per type; there is no blended score.</div>'}</div>`;
+}
+function select(id, from) {
+  S.sel = id; if (!id) S.selLane = null;
+  applySel(); renderLanesKeep(); renderEvidence(from);
+  if (id) live(`selected ${id}; evidence ${S.v === 'a' && S.ev === 'inline' ? 'shown in its lane' : S.v === 'a' && S.ev === 'card' ? 'shown beside the node' : 'shown under the graph'}`);
+}
+function renderEvidence(from) {
+  const below = $('#ev-below'); const old = $('#ecard'); if (old) old.remove();
+  below.innerHTML = '';
+  if (!S.sel) return;
+  const e = view().rel.find(x => x.memory.id === S.sel); if (!e) return;
+  const mode = S.v === 'b' ? 'below' : S.ev;
+  if (mode === 'below') below.innerHTML = evHTML(e, 'below');
+  else if (mode === 'inline') {
+    below.innerHTML = `<div class="ev-jump"><i class="dot" style="background:var(--cat-${e.memory.category})"></i><span class="mono">${e.memory.id.slice(0, 6)}…</span> evidence is open in the <b>${homeLane(e)}</b> lane <button class="link" data-act="jump">jump ↙</button><span style="flex:1"></span><button class="link" data-act="close-dr">esc ×</button></div>`;
+    if (from === 'graph') { const r = $('#row-ev'); if (r) r.scrollIntoView({ block: 'nearest', behavior: S.reduced ? 'auto' : 'smooth' }); }
+  } else if (mode === 'card') {
+    const c = document.createElement('div'); c.className = 'ecard'; c.id = 'ecard'; c.innerHTML = evHTML(e, 'card');
+    $('#gwrap').appendChild(c); showCard(null); placeECard();
+  }
+}
+/* card goes on the vertical half of the graph away from the selected node, so the node and its edges stay visible */
+function placeECard() {
+  const c = $('#ecard'); if (!c || !S.sel || !curT) return;
+  const d = NODES && NODES.find(n => n.id === S.sel); if (!d) return;
+  const box = $('#gsvg').getBoundingClientRect(); const wb = $('#gwrap').getBoundingClientRect();
+  const [px, py] = curT.apply([d.x, d.y]); const sx = box.width / 440, sy = box.height / 380;
+  const nx = (px + 220) * sx, ny = (py + 190) * sy;
+  // the rail is too narrow for a side card, so use the vertical half away from the node
+  const atTop = ny > wb.height / 2;
+  c.style.left = '6px'; c.style.width = (wb.width - 12 - (atTop ? 40 : 0)) + 'px';
+  c.style.top = (atTop ? 6 : wb.height - c.offsetHeight - 6) + 'px';
+}
+function applySel() {
+  if (!nodeSel) return;
+  const id = S.sel;
+  svg.classed('has-sel', !!id);
+  nodeSel.classed('sel', d => d.id === id).attr('aria-selected', d => d.id === id);
+  edgeSel.classed('selon', l => id && (l.source.id === id || l.target.id === id)).attr('marker-end', l => l.type !== 'supersession' ? null : (id && (l.source.id === id || l.target.id === id)) ? 'url(#arr-sel)' : 'url(#arr)');
+  pills(NODES.find(d => $('#gsvg').getAttribute('aria-activedescendant') === `n-${d.id}` && document.activeElement === $('#gsvg')));
+}
+function renderLanesKeep() { const y = scrollY; renderLanes(view()); scrollTo(0, y); }
+
+function recenter(id) {
+  S.trail.push(id); S.sel = null; S.kidx = 0; S.pinned.clear(); NODES = null;
+  S.seed += 13; RES = buildResult(S.seed, id);
+  toast(`→ /related/${id}`);
+  renderAll(false);
+  live(`re-centred on ${id}; ${view().rel.length} related`);
+  $('#gsvg') && $('#gsvg').focus();
+}
+function back() { if (S.trail.length < 2) return toast('trail start — Escape returns to where the view was opened'); S.trail.pop(); const id = S.trail[S.trail.length - 1]; S.seed -= 13; RES = buildResult(S.seed, id); S.sel = null; NODES = null; renderAll(false); }
+
+/* ---------- SR equivalents (D-11) ---------- */
+function renderSR(V) {
+  const order = kOrder(V);
+  $('#sr-list').innerHTML = `<ul style="margin:0;padding-left:14px">${order.map(id => { const m = RES.byId[id]; const e = V.rel.find(x => x.memory.id === id); return `<li data-id="${id}">${id}, ${m.category}${e ? ', ' + visEdges(e, V).map(x => x.type).join(' and ') : ', anchor'}${m.states.length ? ', ' + m.states.join(', ') : ''}</li>`; }).join('')}</ul>`;
+}
+function live(msg) { $('#sr-live').textContent = msg; }
+
+/* ---------- legend / hints ---------- */
+function renderLegend(V) {
+  $('#legend').innerHTML = TYPES.map(t => `<button class="lg" aria-pressed="${!S.off[t]}" data-act="toggle" data-t="${t}"><span class="g g-${t}">${LETTER[t]}</span>${t}<span class="c">${V.counts[t]}</span></button>`).join('');
+  $('#hints').innerHTML = S.v === 'a'
+    ? `<span><kbd>⇥</kbd> focus</span><span><kbd>←</kbd><kbd>→</kbd> move</span><span><kbd>space</kbd> select</span><span><kbd>↵</kbd> re-centre</span><span><kbd>esc</kbd> back</span><span><kbd>⌘</kbd>+scroll zoom · drag to pan · drag a node</span>`
+    : `<span><kbd>⇥</kbd> focus</span><span><kbd>←</kbd><kbd>→</kbd> move</span><span><kbd>space</kbd> select</span><span><kbd>↵</kbd> re-centre</span><span><kbd>+</kbd><kbd>−</kbd><kbd>0</kbd> zoom/fit</span><span>drag pins · <kbd>u</kbd> unpin</span><span><kbd>esc</kbd> back</span>`;
+}
+
+const ACTL = 'Controls as A: + / − / fit on the canvas, <kbd>⌘</kbd>+wheel zoom, dashed focus ring + hover/focus card, dragged nodes spring back.';
+const NOTES = {
+  below: '<b>A1 · evidence under the graph.</b> Selecting a node or row keeps the graph whole; the evidence stacks directly beneath it in the rail (the rail scrolls if needed). ' + ACTL,
+  inline: '<b>A2 · evidence inline in its lane.</b> Selecting expands the candidate\'s row in its lane (the lane you clicked, or its first lane from the graph) and scrolls it into view; the rail only shows a one-line pointer. Click the row again or <kbd>esc</kbd> to close. ' + ACTL,
+  card: '<b>A3 · evidence card beside the node.</b> A compact card opens on the top or bottom half of the graph, away from the selected node, so the node and its violet edges stay visible; it follows pan/zoom/drag. ' + ACTL,
+  a: '<b>A · corner controls.</b> + / − / fit and a zoom readout sit on the canvas. Plain wheel scrolls the page (the rail is sticky); <kbd>⌘</kbd>+wheel zooms and a hint says so. Keyboard focus = dashed violet ring + a floating card (short_id, glyphs, summary). Past 26 nodes only the anchor, focused and selected nodes are labelled; nodes shrink. A dragged node springs back.',
+  b: '<b>B · no chrome.</b> The canvas has no controls — zoom with <kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd> (graph focused) or the wheel, which zooms freely. Focus = solid ring + a label pill. Vector-only neighbours are held in an outer band (radial force), so an expanded vector lane reads as a halo around the typed core. A dragged node stays pinned (● marker); <kbd>u</kbd> unpins.',
+};
+function renderAll(keepZoom) {
+  const V = view();
+  $$('.variant-tab').forEach(t => t.classList.toggle('active', t.dataset.v === S.v && t.dataset.ev === S.ev));
+  $('#vnote').innerHTML = NOTES[S.v === 'b' ? 'b' : S.ev];
+  renderAnchor(V); renderLanes(V); renderLegend(V); renderSR(V); renderGraph(V, keepZoom);
+  $$('#dens-seg button').forEach(b => b.classList.toggle('on', b.dataset.d === S.dens));
+}
+
+document.addEventListener('click', e => {
+  const r = e.target.closest('.row[data-id]'); if (r) { S.kidx = kOrder(view()).indexOf(r.dataset.id); S.selLane = r.dataset.lane; if (S.sel === r.dataset.id && S.ev === 'inline') { select(null); return; } select(r.dataset.id, 'lane'); return; }
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  switch (a.dataset.act) {
+    case 'toggle': S.off[a.dataset.t] = !S.off[a.dataset.t]; renderAll(false); live(`${a.dataset.t} ${S.off[a.dataset.t] ? 'hidden' : 'shown'}; ${view().drawn.length} nodes drawn`); break;
+    case 'expand': S.dens = 'v57'; renderAll(false); live('vector lane expanded; graph shows all vector neighbours'); break;
+    case 'collapse': S.dens = 'v8'; renderAll(false); break;
+    case 'close-dr': select(null); break;
+    case 'jump': { const x = $('#row-ev'); if (x) x.scrollIntoView({ block: 'center', behavior: S.reduced ? 'auto' : 'smooth' }); break; }
+    case 'recenter': recenter(a.dataset.id); break;
+    case 'open-rec': toast(`→ /search?sel=${a.dataset.id}`); break;
+    case 'crumb': { const i = +a.dataset.i; while (S.trail.length - 1 > i) back(); break; }
+    case 'back': back(); break;
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === '[' && document.activeElement.tagName !== 'INPUT') back();
+  if (e.key === 'Escape' && S.sel && document.activeElement !== $('#gsvg')) select(null);
+});
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1600); }
+
+$$('.variant-tab').forEach(b => b.addEventListener('click', () => { S.v = b.dataset.v; S.ev = b.dataset.ev; S.sel = null; S.selLane = null; S.pinned.clear(); NODES = null; renderAll(false); }));
+$$('#dens-seg button').forEach(b => b.addEventListener('click', () => { S.dens = b.dataset.d; renderAll(false); }));
+$('#theme-switcher').addEventListener('change', e => { document.querySelector('link[href*=themes]').href = '../themes/' + e.target.value + '.css'; });
+$$('#vp-btns button').forEach(b => b.addEventListener('click', () => {
+  const f = $('#frame'); const v = b.dataset.vp;
+  f.style.maxWidth = v === 'full' ? '100%' : v + 'px'; f.classList.toggle('constrained', v !== 'full');
+  $$('#vp-btns button').forEach(x => x.style.background = x === b ? '#6a5acd' : '#333');
+}));
+$('#sr-toggle').addEventListener('change', e => document.body.classList.toggle('show-sr', e.target.checked));
+$('#rm-toggle').checked = S.reduced;
+$('#rm-toggle').addEventListener('change', e => { S.reduced = e.target.checked; toast(S.reduced ? 'reduced motion: no reheat, no animated zoom' : 'motion on'); });
+const tsSync = () => { $('#ts-v').textContent = EngramDisplay.get(); };
+$('#ts-up').addEventListener('click', () => { EngramDisplay.step(1); tsSync(); });
+$('#ts-dn').addEventListener('click', () => { EngramDisplay.step(-1); tsSync(); });
+window.addEventListener('engram:textsize', tsSync); tsSync();
+
+renderAll(false);
+</script>
+</body>
+</html>

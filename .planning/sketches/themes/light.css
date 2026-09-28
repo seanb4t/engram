@@ -1,0 +1,55 @@
+/* Dense dev tool — light. Derived from ui/src/app.css :root tokens. */
+:root {
+  --color-bg: #ffffff;
+  --color-surface: #f6f8fa;
+  --color-surface-2: #eef1f4;
+  --color-hover: #f0f3f6;
+  --color-selected: #e7e3fb;
+  --color-border: #d0d7de;
+  --color-border-subtle: #e6e9ed;
+  --color-text: #1f2328;
+  --color-text-muted: #59636e;
+  --color-text-faint: #818b98;
+  --color-primary: #6E56CF;
+  --color-primary-hover: #5b44bd;
+  --color-primary-soft: rgba(110, 86, 207, 0.12);
+  --color-accent: #6E56CF;
+  --color-danger: #bc4c00;
+  --color-success: #1a7f37;
+  --color-warning: #9a6700;
+
+  --cat-convention: #0969da;
+  --cat-gotcha: #bc4c00;
+  --cat-decision: #C026D3;
+  --cat-preference: #0550ae;
+  --cat-discovery: #0d9488;
+  --cat-rule: #9a6700;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Inter', sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.125rem;
+  --text-2xl: 1.375rem;
+
+  --ui-font: 15px; /* console-wide text size preference (12–16), set by display.js */
+  --row-h: 28px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 6px 16px rgba(0,0,0,0.10);
+  --shadow-lg: 0 16px 40px rgba(0,0,0,0.14);
+}

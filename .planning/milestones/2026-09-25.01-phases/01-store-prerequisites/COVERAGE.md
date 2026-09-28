@@ -1,0 +1,1 @@
+No external API integration: this phase adds internal/store methods over the already-integrated Qdrant go-client v1.19.2 (Facet, Count, Scroll, Query) and one internal Cedar action; the Connect and MCP mentions are engram's own lanes, deferred to Phase 3.

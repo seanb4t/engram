@@ -112,7 +112,7 @@ func TestListScheduledBounded(t *testing.T) {
 			// once, no extras, with every RPC's limit staying inside
 			// PerRPCLimit of the full view.
 			rec.reset()
-			items, err := st.ListScheduled(ctx, fx.Scope, owner, store.ScheduledPending, store.ListOptions{Limit: store.MaxRecallLimit})
+			items, _, err := st.ListScheduled(ctx, fx.Scope, owner, store.ScheduledPending, store.ListOptions{Limit: store.MaxRecallLimit})
 			if err != nil {
 				t.Fatalf("%s: ListScheduled(max): %v", shape, err)
 			}
@@ -141,7 +141,7 @@ func TestListScheduledBounded(t *testing.T) {
 			}
 
 			// Zero limit still yields twenty, unchanged from today.
-			zItems, zErr := st.ListScheduled(ctx, fx.Scope, owner, store.ScheduledPending, store.ListOptions{})
+			zItems, _, zErr := st.ListScheduled(ctx, fx.Scope, owner, store.ScheduledPending, store.ListOptions{})
 			if zErr != nil {
 				t.Fatalf("%s: ListScheduled(zero-limit): %v", shape, zErr)
 			}
@@ -159,7 +159,7 @@ func TestListScheduledBounded(t *testing.T) {
 			if half == 0 {
 				half = 1
 			}
-			allItems, allErr := st.ListScheduled(ctx, fx.Scope, owner, store.ScheduledPending, store.ListOptions{Limit: store.MaxRecallLimit})
+			allItems, _, allErr := st.ListScheduled(ctx, fx.Scope, owner, store.ScheduledPending, store.ListOptions{Limit: store.MaxRecallLimit})
 			if allErr != nil {
 				t.Fatalf("%s: ListScheduled(all, for window boundary): %v", shape, allErr)
 			}
@@ -171,7 +171,7 @@ func TestListScheduledBounded(t *testing.T) {
 			for _, m := range allItems[:half] {
 				wantIDs[m.ID] = true
 			}
-			windowItems, wErr := st.ListScheduled(ctx, fx.Scope, owner, store.ScheduledPending, store.ListOptions{Limit: store.MaxRecallLimit, CreatedAfter: boundary})
+			windowItems, _, wErr := st.ListScheduled(ctx, fx.Scope, owner, store.ScheduledPending, store.ListOptions{Limit: store.MaxRecallLimit, CreatedAfter: boundary})
 			if wErr != nil {
 				t.Fatalf("%s: ListScheduled(window): %v", shape, wErr)
 			}

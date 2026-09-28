@@ -320,12 +320,13 @@ func (a *engramAPI) ListMemories(ctx context.Context, req *connect.Request[engra
 	// byte-identical on the wire while keeping this handler free of any
 	// reference to the deprecated field (staticcheck SA1019).
 	return connect.NewResponse(&engramv1.ListMemoriesResponse{
-		Memories:        shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
-		Total:           res.Total,
-		NextPageToken:   res.NextToken,
-		SearchedScopes:  cov.Scopes,
-		ScopesTruncated: cov.Truncated,
-		ScopesUnknown:   cov.Unknown,
+		Memories:         shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
+		Total:            res.Total,
+		NextPageToken:    res.NextToken,
+		SearchedScopes:   cov.Scopes,
+		ScopesTruncated:  cov.Truncated,
+		ScopesUnknown:    cov.Unknown,
+		RecallGateHidden: res.Hidden.toProto(),
 	}), nil
 }
 
@@ -360,7 +361,7 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	if _, err := effectiveSearchScope(req.Msg.Scope, req.Msg.CrossSpine); err != nil {
 		return nil, connectError(ctx, err)
 	}
-	ms, err := a.d.searchMemory(ctx, c, coreSearchRequest{
+	res, err := a.d.searchMemory(ctx, c, coreSearchRequest{
 		Scope: req.Msg.Scope, Query: req.Msg.Query, K: k, Tags: req.Msg.Tags,
 		CreatedAfter: after, CreatedBefore: before, Categories: req.Msg.Categories,
 		CrossSpine:        req.Msg.CrossSpine,
@@ -374,14 +375,15 @@ func (a *engramAPI) SearchMemories(ctx context.Context, req *connect.Request[eng
 	// Same helper the MCP closures use — see the identical note on
 	// ListMemories; the zero-value scopeCoverage on a scope-confined call
 	// serializes as absent with no explicit omission branch needed (D-14),
-	// and carries no error (D-06) so ms (already computed above) is never
-	// discarded here.
+	// and carries no error (D-06) so res.Memories (already computed above) is
+	// never discarded here.
 	cov := a.d.searchedScopes(ctx, c, req.Msg.CrossSpine)
 	return connect.NewResponse(&engramv1.SearchMemoriesResponse{
-		Memories:        shapeProtoMemories(ms, req.Msg.Full, a.d.summaryMaxChars),
-		SearchedScopes:  cov.Scopes,
-		ScopesTruncated: cov.Truncated,
-		ScopesUnknown:   cov.Unknown,
+		Memories:         shapeProtoMemories(res.Memories, req.Msg.Full, a.d.summaryMaxChars),
+		SearchedScopes:   cov.Scopes,
+		ScopesTruncated:  cov.Truncated,
+		ScopesUnknown:    cov.Unknown,
+		RecallGateHidden: res.Hidden.toProto(),
 	}), nil
 }
 
@@ -447,12 +449,14 @@ func (a *engramAPI) SearchDiscoveries(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(&engramv1.SearchDiscoveriesResponse{Discoveries: memoriesToProto(ms)}), nil
 }
 
-// The six Connect write RPCs below are thin adapters (SC2): resolve the caller
+// The write Connect RPCs below are thin adapters (SC2): resolve the caller
 // via callerFromConnectContext, convert the proto request to args via the
 // 17-03 protoconv layer, call the SAME deps.* method the MCP tool calls, map
 // the result via protoconv, and map any error via the single connectError
 // mapper (D-11) — never the store directly, never a hand-rolled per-handler
-// error mapping, never an ownership comparison (DEC-cgb).
+// error mapping, never an ownership comparison (DEC-cgb). The original six
+// (StoreMemory..ScheduleMemory) plus milestone 2026-09-25.01 Phase 3's
+// ArchiveMemory/RestoreMemory/SupersedeMemory all follow this shape.
 
 func (a *engramAPI) StoreMemory(ctx context.Context, req *connect.Request[engramv1.StoreMemoryRequest]) (*connect.Response[engramv1.StoreMemoryResponse], error) {
 	c, err := callerFromConnectContext(ctx)
@@ -528,6 +532,173 @@ func (a *engramAPI) ScheduleMemory(ctx context.Context, req *connect.Request[eng
 		return nil, connectError(ctx, err)
 	}
 	return connect.NewResponse(idsToScheduleMemoryResponse(id, shortID)), nil
+}
+
+// ArchiveMemory/RestoreMemory (milestone 2026-09-25.01 Phase 3, D-06/D-07)
+// follow the same thin-adapter shape as the six write RPCs above: resolve
+// the caller, call the SAME deps.* batch core the archive_memory/
+// restore_memory MCP tools call (Task 3), map the result via protoconv, map
+// any error via connectError. A per-id not_found row is never an error path
+// (Pitfall 1) — only a shape violation (empty list, over-cap list, malformed
+// entry) reaches connectError here.
+
+func (a *engramAPI) ArchiveMemory(ctx context.Context, req *connect.Request[engramv1.ArchiveMemoryRequest]) (*connect.Response[engramv1.ArchiveMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	rs, err := a.d.archiveMemory(ctx, c, archiveArgs{IDs: req.Msg.GetIds()})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(&engramv1.ArchiveMemoryResponse{Results: archiveResultsToProto(rs)}), nil
+}
+
+func (a *engramAPI) RestoreMemory(ctx context.Context, req *connect.Request[engramv1.RestoreMemoryRequest]) (*connect.Response[engramv1.RestoreMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	rs, err := a.d.restoreMemory(ctx, c, archiveArgs{IDs: req.Msg.GetIds()})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(&engramv1.RestoreMemoryResponse{Results: archiveResultsToProto(rs)}), nil
+}
+
+// SupersedeMemory (milestone 2026-09-25.01 Phase 3 plan 03-02, D-08/D-09)
+// follows the same thin-adapter shape as the other write RPCs: resolve the
+// caller, call the SAME deps.supersede dispatch the supersede_memory MCP
+// tool calls (through d.supersede, never d.supersedeMemory/
+// d.validateSupersede directly, so validate_only can never reach the real
+// write on this lane either), map the result via protoconv, map any error
+// via connectError.
+func (a *engramAPI) SupersedeMemory(ctx context.Context, req *connect.Request[engramv1.SupersedeMemoryRequest]) (*connect.Response[engramv1.SupersedeMemoryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	out, err := a.d.supersede(ctx, c, supersedeMemoryRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(supersedeOutcomeToResponse(out, a.d.summaryMaxChars)), nil
+}
+
+// ListScheduled (plan 03-03, D-11) delegates to the SAME d.listScheduled
+// core the list_scheduled MCP tool calls, mapping the request via
+// listScheduledRequestToArgs and any error via connectError — the same
+// thin-adapter shape as every other RPC in this file. Coverage comes from
+// the one searchedScopes helper every cross-spine surface uses, exactly like
+// ListMemories above. Records are returned in full (no full/summary knob —
+// no surface exposes one for this method, 04-RESEARCH.md Pitfall 6).
+func (a *engramAPI) ListScheduled(ctx context.Context, req *connect.Request[engramv1.ListScheduledRequest]) (*connect.Response[engramv1.ListScheduledResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	res, err := a.d.listScheduled(ctx, c, listScheduledRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	cov := a.d.searchedScopes(ctx, c, req.Msg.GetCrossSpine())
+	return connect.NewResponse(&engramv1.ListScheduledResponse{
+		Memories:        memoriesToProto(res.Memories),
+		NextPageToken:   res.NextCursor,
+		SearchedScopes:  cov.Scopes,
+		ScopesTruncated: cov.Truncated,
+		ScopesUnknown:   cov.Unknown,
+	}), nil
+}
+
+// ListRules (plan 03-04, D-10) delegates to the SAME d.listRuleRecords core
+// the list_rules MCP tool calls, mapping the request via
+// listRulesRequestToArgs and any error via connectError — the same
+// thin-adapter shape as every other RPC in this file. Coverage comes from
+// the SAME searchedScopes helper every cross-spine surface uses, filtered to
+// rule:* scopes by ruleScopeCoverage (T-03-18: never a raw searchedScopes
+// call on this RPC). Rules are shaped through shapeProtoMemories exactly
+// like ListMemories, so args.Full governs the compact-vs-full projection on
+// this lane too.
+func (a *engramAPI) ListRules(ctx context.Context, req *connect.Request[engramv1.ListRulesRequest]) (*connect.Response[engramv1.ListRulesResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	args := listRulesRequestToArgs(req.Msg)
+	rules, advisory, err := a.d.listRuleRecords(ctx, c, args)
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	allScopes := len(args.Scopes) == 0
+	cov := a.d.ruleScopeCoverage(ctx, c, allScopes)
+	return connect.NewResponse(&engramv1.ListRulesResponse{
+		Rules:           shapeProtoMemories(rules, args.Full, a.d.summaryMaxChars),
+		Advisory:        advisory,
+		SearchedScopes:  cov.Scopes,
+		ScopesTruncated: cov.Truncated,
+		ScopesUnknown:   cov.Unknown,
+	}), nil
+}
+
+// RelatedMemories (plan 03-05, RPC-04) delegates to the SAME
+// d.relatedMemories core the related_memories MCP tool calls, mapping the
+// request fields directly and any error via connectError — the same thin-
+// adapter shape as every other RPC in this file. The response is shaped
+// through relatedResultToProto, which composes shapeProtoMemories exactly
+// like every other read RPC, so req.Msg.GetFull() governs the compact-vs-
+// full projection on this lane too (D-13).
+func (a *engramAPI) RelatedMemories(ctx context.Context, req *connect.Request[engramv1.RelatedMemoriesRequest]) (*connect.Response[engramv1.RelatedMemoriesResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	res, err := a.d.relatedMemories(ctx, c, relatedArgs{ID: req.Msg.GetId(), K: req.Msg.GetK(), Full: req.Msg.GetFull()})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(relatedResultToProto(res, req.Msg.GetFull(), a.d.summaryMaxChars)), nil
+}
+
+// ListTags (plan 03-06, RPC-04) delegates to the SAME a.d.listTags core the
+// list_tags MCP tool calls, mapping the request fields directly and any
+// error via connectError — the same thin-adapter shape as every other RPC
+// in this file.
+func (a *engramAPI) ListTags(ctx context.Context, req *connect.Request[engramv1.ListTagsRequest]) (*connect.Response[engramv1.ListTagsResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	ts, more, err := a.d.listTags(ctx, c, listTagsArgs{Scope: req.Msg.GetScope(), Limit: req.Msg.GetLimit()})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(&engramv1.ListTagsResponse{Tags: tagCountsToProto(ts), More: more}), nil
+}
+
+// UnderstandQuery is Connect-only by design (milestone 2026-09-25.01 Phase 6
+// D-02): suggestion chips are a console affordance and a second lane would
+// be another path sending query text to the provider, so no MCP tool or CLI
+// verb exists.
+func (a *engramAPI) UnderstandQuery(ctx context.Context, req *connect.Request[engramv1.UnderstandQueryRequest]) (*connect.Response[engramv1.UnderstandQueryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	m := req.Msg
+	r, err := a.d.understandQuery(ctx, c, understandArgs{
+		Query:         m.GetQuery(),
+		Scope:         m.GetScope(),
+		CrossSpine:    m.GetCrossSpine(),
+		Categories:    m.GetCategories(),
+		Tags:          m.GetTags(),
+		CreatedAfter:  m.GetCreatedAfter(),
+		CreatedBefore: m.GetCreatedBefore(),
+	})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(understandResultToProto(r)), nil
 }
 
 // connectResolver supplies the per-request identity TokenInfo for the

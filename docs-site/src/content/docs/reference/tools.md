@@ -27,6 +27,10 @@ records created.
 | `set_visibility` | Share or unshare a memory you own |
 | `store_rule` | Persist a normative, user-blessed rule (ground truth) |
 | `list_rules` | List the complete rule set for one or more scopes |
+| `archive_memory` | Retire a memory you own without deleting it (reversible) |
+| `restore_memory` | Reverse an `archive_memory` call |
+| `related_memories` | On-demand neighbourhood: supersession, shared tags, shared citations, vector similarity |
+| `list_tags` | Exact tag counts for a scope, for tag reuse before `store_memory` |
 
 **`actor` and `owner` are always server-set.** They come from the validated OIDC
 token and are never accepted as client input.
@@ -64,6 +68,10 @@ untrusted server.
 | `supersede_memory` | false | false | true | false |
 | `store_rule` | false | false | false | false |
 | `list_rules` | true | false | true | false |
+| `archive_memory` | false | false | true | false |
+| `restore_memory` | false | false | true | false |
+| `related_memories` | true | false | true | false |
+| `list_tags` | true | false | true | false |
 <!-- engram:rule:end tool-blast-radius -->
 
 ---
@@ -169,6 +177,17 @@ call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is absent
 (never an empty list, which would read as "searched nothing"), and
 `scopes_truncated` is absent/false.
 
+The response also carries `recall_gate_hidden` — `{total, archived,
+superseded, expired, scheduled}` counts of records the recall gate hid from
+this same query at this same `k`, with the gate lifted, counting only states
+this call did not already include. Present on a scope-confined call and a
+cross-spine call alike (unlike `searched_scopes`, it is not gated on
+`cross_spine`). Absent when the count could not be computed; all-zero when
+nothing was hidden. A record hidden for more than one reason counts once in
+`total` and once per state it carries, so the per-state fields can sum to
+more than `total`. There is no argument to include hidden records in this
+result set — fetch a specific one by id with `get_memory`.
+
 With [`ENGRAM_SEARCH_RANKER=jev`](/guides/configure/#search-reranking-jev)
 enabled, results are instead reordered by the typed-decision provider's
 probability that each record answers the query — lexical order first, then a
@@ -217,6 +236,17 @@ the call still succeeds: `scopes_unknown` is `true`, `searched_scopes` is
 absent (never an empty list, which would read as "searched nothing"), and
 `scopes_truncated` is absent/false.
 
+The response also carries `recall_gate_hidden` — `{total, archived,
+superseded, expired, scheduled}` counts of records the recall gate hid from
+this same page (same `limit`, `cursor`/`offset`, and every filter), with the
+gate lifted, counting only states this call did not already include. Present
+on a scope-confined call and a cross-spine call alike. Absent when the count
+could not be computed; all-zero when nothing was hidden. A record hidden for
+more than one reason counts once in `total` and once per state it carries,
+so the per-state fields can sum to more than `total`. There is no argument
+to include hidden records in this page — fetch a specific one by id with
+`get_memory`.
+
 Pass an explicit `limit` on a cross-spine list. The underlying total becomes
 an exact count across every readable scope rather than one scope (visible as
 the Connect API's `total` field), and on the Connect lane an unset limit
@@ -228,17 +258,24 @@ by `offset` or `page_token` rather than relying on the default.
 ## list_scheduled
 
 List your windowed memories the recall gate is hiding. Active windowed records
-surface via `list_memory`/`search_memory`, not here.
+surface via `list_memory`/`search_memory`, not here. ListScheduled stays
+owner-only even when `cross_spine` spans every scope — another actor's shared
+scheduled or expired record never appears here (deferred reveal).
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `scope` | string | yes | The scope to list scheduled/expired memories from |
+| `scope` | string | required unless `cross_spine` | The scope to list scheduled/expired memories from |
 | `state` | string | no | `scheduled` (default, not yet active), `expired`, or `all` |
 | `limit` | uint64 | no | Maximum memories to return; 0 resolves to this tool's default, 20; values above 1000 (the maximum) are rejected (`field=limit hint=out_of_range`) |
 | `created_after` | string | no | RFC3339 timestamp — include only records with `created_at >= created_after` (inclusive lower bound) |
 | `created_before` | string | no | RFC3339 timestamp — include only records with `created_at < created_before` (exclusive upper bound). Half-open window: `[created_after, created_before)` |
+| `cross_spine` | bool | no | List across every scope the caller can read (still only the caller's own records; ignores `scope` if supplied) |
+| `cursor` | string | no | Opaque pagination cursor from a prior `next_cursor`; omit for the first page |
 
-Returns `{ "memories": [...] }`, the matching hidden windowed records.
+Returns `{ "memories": [...], "next_cursor": "..." }`, the matching hidden
+windowed records and an opaque token for the next page (empty when this is
+the last page). A `cross_spine` call additionally carries `searched_scopes`/
+`scopes_truncated` (or `scopes_unknown`) — see `list_memory` above.
 The result is returned as structured content and, per MCP 2026-07-28, also as
 the same JSON in a text block.
 
@@ -297,6 +334,7 @@ Takes the full `store_memory` field set for the **new, correcting** record, plus
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `supersedes` | array of string | yes | One or more ids — each a full UUID or a `short_id` — of the memories this new record corrects. A one-element array is the ordinary single-target case. |
+| `validate_only` | bool | no | Run the full preflight (ownership, single-live-head, rule rejection, ambiguous short_id) without writing anything; returns the resolved targets, or the exact rejection a real call would produce. Optional — useful before a multi-target merge, not a routine extra round trip. Never consults `idempotency_key`. |
 
 There is no maximum target count — the set is unbounded. Duplicate targets — the
 same id given twice, or two spellings of the same record (a short id and its
@@ -371,7 +409,10 @@ still in flight.
   target — delete the rule instead (same restriction as
   [`set_visibility`](#set_visibility)).
 
-Returns the new record's `id` and `short_id`.
+Returns the new record's `id` and `short_id`. With `validate_only=true`,
+returns `{ validated: true, supersedes: [...], targets: [...] }` instead —
+the resolved target ids and no `id`/`short_id`, because nothing was written —
+or the same rejection a real call over the same inputs would produce.
 
 ---
 
@@ -542,25 +583,148 @@ Returns the stored rule's `id` and `short_id`.
 
 List the **complete** rule set for one or more `rule:*` scopes, up to 1000
 rules per scope (the same documented recall maximum every other listing/search
-tool shares), oldest-first. Rules are the repository/project's normative
-ground truth.
+tool shares), oldest-first; omit `scopes` to list every readable rule scope's
+rules in ONE cross-scope read, up to 1000 rules **in total** rather than per
+scope. Rules are the repository/project's normative ground truth.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `scopes` | string[] | yes | One or more `rule:*` scopes to fetch the complete rule set from |
+| `scopes` | string[] | no | One or more `rule:*` scopes to fetch the complete rule set from; omit for every readable rule scope's rules |
 | `tags` | string[] | no | Restrict to rules carrying **all** listed tags (AND) |
 | `full` | bool | no | `true` adds full content; default returns the compact index shape |
 
 The default compact shape is a `ruleView` (`short_id`, `id`, `summary`, `tags`,
 `scope`, `created_at`) — note it carries no `content`, so a contradiction or
 duplication check needs `full=true`. `full=true` returns the full records.
-Ordering is oldest-first (this ascending order is specific to `list_rules`).
+Ordering is oldest-first (this ascending order is specific to `list_rules`),
+within each explicit scope and across the whole all-scopes read alike.
 The result is returned as structured content and, per MCP 2026-07-28, also as
 the same JSON in a text block.
 A per-scope count above 50 adds a curation-smell advisory to the result under
 `advisory` (absent otherwise) — the `rules` payload is unaffected. The
 advisory is a volume signal only: it says nothing about duplication or
 contradiction, and it cannot fire below 51 rules in a scope.
+Omitting `scopes` additionally carries `searched_scopes`/`scopes_truncated`
+(or `scopes_unknown`) naming ONLY the rule scopes covered — never a non-rule
+scope the caller can also read — see `list_memory` above for the shared
+three-state coverage semantics.
+
+---
+
+## related_memories
+
+Return one record's neighbourhood: its supersession chain, records sharing a
+citation, records sharing a rarity-weighted tag, and its nearest vector
+neighbours — each edge carrying evidence typed to how it was found. Call this
+**only on demand**: curating (dedup before a store, finding what a correction
+should supersede) or an explicit user ask. Never call it at session start,
+and never as an automatic follow-up to a search — the same on-demand framing
+[`search_discovery`](#search_discovery) already uses.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `id` | string | yes | The UUID **or `short_id`** of the anchor memory |
+| `k` | uint64 | no | Widens only the vector-neighbour cap; 0 resolves to this tool's default, 8; values above 1000 (the maximum) are rejected (`field=k hint=out_of_range`) |
+| `full` | bool | no | Return full `content` on the anchor and every neighbour instead of compact summaries (default `false`) |
+
+Returns `{ "anchor": {...}, "related": [{ "memory": {...}, "edges": [...] }], "truncated": bool }`.
+Each edge is a flat object drawn only from `{type, score, shared_tags,
+tag_weight, shared_citations, direction, depth}` — `type` is one of
+`supersession`, `citation`, `tag`, or `vector`; `score` (vector), `shared_tags`
++ `tag_weight` (tag), `shared_citations` (citation), and `direction` +
+`depth` (supersession) are populated only for their own edge type. A record
+may appear once per edge type that connects it to the anchor.
+
+Isolation is unconditional: another actor's private record never appears,
+even one sharing the anchor's tag or citation; an anchor you cannot read
+returns `not_found` echoing only your own input. The result is returned as
+structured content and, per MCP 2026-07-28, also as the same JSON in a text
+block.
+
+---
+
+## list_tags
+
+Return exact, recall-visible tag counts for a scope, or (scope omitted) every
+scope the caller can read. Use it before [`store_memory`](#store_memory) to
+reuse an existing tag rather than invent a near-duplicate, and to choose a
+`tags` filter for [`search_memory`](#search_memory)/[`list_memory`](#list_memory).
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `scope` | string | no | Scope to count tags in; omit for every readable scope |
+| `limit` | uint64 | no | Maximum distinct tags to return; 0 resolves to this tool's default, 100; values above 1000 (the maximum) are rejected (`field=limit hint=out_of_range`) |
+
+Returns `{ "tags": [{ "tag": "...", "count": N }], "more": bool }`, sorted by
+count descending. Counts cover recall-visible records only — an archived,
+superseded, expired, or scheduled record's tags are not counted. There is
+**no server-side prefix filter**: `more: true` means the top-N list is
+truncated, not that no more tags exist; filter the returned list yourself if
+you need a narrower match. The result is returned as structured content and,
+per MCP 2026-07-28, also as the same JSON in a text block.
+
+---
+
+## archive_memory
+
+Retire one or more memories you own, reversibly, without deleting them.
+Archived records drop out of `search_memory` / `list_memory` /
+`search_discovery` / `list_scheduled` but stay fetchable via
+[`get_memory`](#get_memory). Nothing is deleted, and no other derived state
+(`superseded_by`, `not_before`/`not_after`) is touched — see
+[Archiving](/reference/memory-record/#archiving) for the full
+independently-cleared-state contract.
+
+Discriminate against its siblings: [`delete_memory`](#delete_memory) removes
+junk with no history worth keeping; [`supersede_memory`](#supersede_memory)
+records a reversal because the fact itself changed; `archive_memory` retires
+a record that is still true but no longer useful. **Use only after the user
+has explicitly agreed to it in the conversation** — never as automatic
+tidy-up.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `ids` | string[] | yes | 1 to 1000 ids, each a full UUID or `short_id`. Each entry is bounded at 256 bytes. |
+
+Returns one outcome per id, **in the order you supplied them**:
+`archived`, `already_archived`, or `not_found`. A duplicate id in the list is
+reported once per occurrence, never merged or deduplicated. `id` is empty on
+a `not_found` row and set to the resolved UUID otherwise.
+
+A target you do not own and a target that does not exist both read
+`not_found` — the same indistinguishable-by-design rejection
+[`supersede_memory`](#supersede_memory) uses for its target set — so the
+call never echoes a UUID for either case. The whole call rejects only on a
+malformed batch (empty `ids`, a blank entry, more than 1000 entries, or an
+entry over 256 bytes); see
+[Batch outcomes](/reference/errors/#batch-outcomes-archive_memory--restore_memory).
+
+Operators reach the identical effect via `engram spine-review archive` on
+the CLI.
+
+---
+
+## restore_memory
+
+Reverse an [`archive_memory`](#archive_memory) call: clears `archived_at`,
+returning the record to normal recall. Never a delete, content erasure, or
+vector removal.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `ids` | string[] | yes | 1 to 1000 ids, each a full UUID or `short_id`. Each entry is bounded at 256 bytes. |
+
+Returns one outcome per id, **in the order you supplied them**: `restored`
+(the record was archived and is now not), `not_archived` (it was not
+archived — nothing to restore), or `not_found` — the same
+indistinguishable-by-design rejection as `archive_memory` above. A duplicate
+id in the list is reported once per occurrence, never merged. `id` is empty
+on a `not_found` row and set to the resolved UUID otherwise. Rejection
+conditions and the malformed-batch envelope are identical to
+`archive_memory`.
+
+Operators reach the identical effect via `engram spine-review restore` on
+the CLI.
 
 ---
 

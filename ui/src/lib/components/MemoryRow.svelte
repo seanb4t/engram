@@ -58,23 +58,23 @@
   style="--c:var(--cat-{memory.category})"
   class={'group relative flex items-stretch border-b border-border ' + (selected ? 'bg-accent' : 'hover:bg-accent')}
 >
-  <span class="absolute left-0 top-2 bottom-2 w-[3px] rounded-r" style="background:var(--c)"></span>
+  <span class="absolute left-0 top-2 bottom-2 w-[calc(3*var(--u))] rounded-r" style="background:var(--c)"></span>
   <button
     type="button"
     onclick={() => onselect(memory.id)}
     class="flex-1 min-w-0 text-left px-3 py-2 flex flex-col gap-1"
   >
     <div class="flex items-center gap-2 min-w-0">
-      <span class={'truncate flex-1 text-[13px] ' + dimCls}>{summary}</span>
-      {#if isAuto}<span aria-label="auto-generated summary" title="auto-generated summary" class="shrink-0 text-[10px] text-primary">✦</span>{/if}
+      <span class={'truncate flex-1 text-[calc(13*var(--u))] ' + dimCls}>{summary}</span>
+      {#if isAuto}<span aria-label="auto-generated summary" title="auto-generated summary" class="shrink-0 text-[calc(10*var(--u))] text-primary">✦</span>{/if}
     </div>
-    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground min-w-0">
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[calc(11*var(--u))] text-muted-foreground min-w-0">
       <span class={'font-medium shrink-0 ' + dimCls} style="color:var(--c)">{memory.category}</span>
       <span class={'shrink-0 ' + dimCls}>·</span>
       <span class={'tabular-nums shrink-0 ' + dimCls}>{when}</span>
-      {#each stateWords as word (word)}<Badge variant="outline" class="text-[10px] uppercase shrink-0">{word}</Badge>{/each}
+      {#each stateWords as word (word)}<Badge variant="outline" class="text-[calc(10*var(--u))] uppercase shrink-0">{word}</Badge>{/each}
       {#if showScope && memory.scope}<span class={'shrink-0 ' + dimCls}><ScopeChip scope={memory.scope} /></span>{/if}
-      {#each shownTags as t (t)}<span class={'shrink-0 px-1 rounded bg-muted font-mono text-[10.5px] ' + dimCls}>{t}</span>{/each}
+      {#each shownTags as t (t)}<span class={'shrink-0 px-1 rounded bg-muted font-mono text-[calc(10.5*var(--u))] ' + dimCls}>{t}</span>{/each}
       {#if overflow > 0}<span class={'shrink-0 ' + dimCls}>+{overflow}</span>{/if}
     </div>
   </button>

@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 002: Command Palette</title>
+<link rel="stylesheet" href="../themes/default.css">
+<script src="../themes/display.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--color-bg);color:var(--color-text);font:var(--text-sm)/1.4 var(--font-sans);padding-top:40px;overflow:hidden;-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--font-mono)}
+button{font:inherit;color:inherit}
+code{font-family:var(--font-mono);font-size:var(--text-xs);background:var(--color-surface-2);border:1px solid var(--color-border-subtle);padding:0 calc(4*var(--u));border-radius:calc(3*var(--u));color:var(--color-text)}
+kbd{font:var(--text-2xs)/1.5 var(--font-mono);border:1px solid var(--color-border);border-bottom-width:2px;border-radius:calc(3*var(--u));padding:0 calc(4*var(--u));color:var(--color-text-muted);background:var(--color-surface-2)}
+
+/* variant tabs */
+#variant-nav{position:fixed;top:0;left:0;right:0;height:40px;z-index:9998;background:var(--color-surface);border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:4px;padding:0 12px;overflow-x:auto}
+#variant-nav .ttl{color:var(--color-text-faint);font-size:var(--text-xs);margin-right:8px;white-space:nowrap}
+.variant-tab{background:none;border:1px solid transparent;color:var(--color-text-muted);padding:4px 10px;border-radius:var(--radius-md);cursor:pointer;transition:all .15s ease;white-space:nowrap}
+.variant-tab:hover{background:var(--color-hover);color:var(--color-text)}
+.variant-tab.active{background:var(--color-primary-soft);color:var(--color-text);border-color:var(--color-primary)}
+
+#frame{position:relative;height:calc(100vh - 40px);margin:0 auto;overflow:hidden;container-type:inline-size;transition:max-width .15s ease}
+#frame.constrained{border-left:1px solid var(--color-border);border-right:1px solid var(--color-border)}
+.variant{height:100%;display:none;flex-direction:column;position:relative}
+.variant.active{display:flex}
+
+/* app chrome */
+.app-hd{height:calc(44*var(--u));flex:none;display:flex;align-items:center;gap:calc(12*var(--u));padding:0 calc(16*var(--u));border-bottom:1px solid var(--color-border);background:var(--color-surface)}
+.brand{font-weight:600;display:flex;gap:calc(7*var(--u));align-items:center;white-space:nowrap}
+.brand i{width:calc(10*var(--u));height:calc(10*var(--u));border-radius:calc(3*var(--u));background:var(--color-primary);display:block}
+.nav{display:flex;gap:2px}
+.nav a{color:var(--color-text-muted);padding:calc(4*var(--u)) calc(8*var(--u));border-radius:var(--radius-sm);cursor:pointer;transition:all .15s ease;white-space:nowrap}
+.nav a:hover{background:var(--color-hover);color:var(--color-text)}
+.nav a.on{color:var(--color-text);background:var(--color-selected)}
+.hd-spacer{flex:1}
+.kbtn{display:flex;align-items:center;gap:calc(8*var(--u));height:calc(28*var(--u));padding:0 calc(6*var(--u)) 0 calc(10*var(--u));border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text-muted);cursor:pointer;transition:all .15s ease;white-space:nowrap}
+.kbtn:hover{border-color:var(--color-primary);color:var(--color-text)}
+.main{flex:1;overflow:auto;padding:calc(16*var(--u)) calc(20*var(--u));min-height:0}
+.page-h{display:flex;align-items:baseline;gap:calc(10*var(--u));margin:0 0 calc(10*var(--u))}
+.page-h h1{font-size:var(--text-xl);margin:0;font-weight:600}
+.muted{color:var(--color-text-muted)}
+.faint{color:var(--color-text-faint)}
+
+/* rows */
+.line{display:flex;align-items:center;gap:calc(8*var(--u));height:var(--row-h);min-width:0;white-space:nowrap}
+.dot{width:calc(8*var(--u));height:calc(8*var(--u));border-radius:50%;flex:none}
+.sum{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sum mark,.pv-sum mark{background:var(--color-primary-soft);color:var(--color-text);border-radius:2px;padding:0 1px}
+.scope{color:var(--color-text-faint);font-size:var(--text-xs);max-width:calc(210*var(--u));overflow:hidden;text-overflow:ellipsis;flex:none}
+.sid{color:var(--color-text-muted);font-size:var(--text-xs);flex:none}
+.num{color:var(--color-text-faint);font-size:var(--text-xs);width:calc(42*var(--u));text-align:right;flex:none}
+.num.rel{width:calc(56*var(--u));color:var(--color-primary)}
+.state{font-size:var(--text-2xs);text-transform:uppercase;letter-spacing:.05em;border:1px solid var(--color-border);border-radius:calc(3*var(--u));padding:0 calc(4*var(--u));color:var(--color-text-muted);flex:none;line-height:calc(16*var(--u))}
+.state.s-scheduled{color:var(--color-warning);border-color:var(--color-warning)}
+.dim .sum{color:var(--color-text-muted)}
+.prow{padding:0 calc(10*var(--u));border-radius:var(--radius-sm);cursor:pointer;transition:background .15s ease}
+.prow:hover{background:var(--color-hover)}
+
+/* palette list */
+.list{overflow:auto;padding:calc(4*var(--u)) calc(6*var(--u)) calc(8*var(--u));flex:1;outline:none;min-height:0}
+.sec-h{font-size:var(--text-2xs);text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint);padding:calc(10*var(--u)) calc(10*var(--u)) calc(4*var(--u));display:flex;justify-content:space-between;gap:calc(8*var(--u))}
+.sec-h .mono{text-transform:none;letter-spacing:0}
+.item{border-radius:var(--radius-sm);padding:0 calc(10*var(--u));cursor:pointer;position:relative;transition:background .15s ease,opacity .15s ease}
+.item:hover{background:var(--color-hover)}
+.item.active{background:var(--color-selected)}
+.item.active::before{content:'';position:absolute;left:0;top:calc(6*var(--u));height:calc(16*var(--u));width:2px;border-radius:2px;background:var(--color-primary)}
+.item .sub{display:none;gap:calc(8*var(--u));align-items:center;height:calc(22*var(--u));margin-top:calc(-4*var(--u));padding-left:calc(16*var(--u));color:var(--color-text-faint);font-size:var(--text-xs);white-space:nowrap;overflow:hidden}
+.item.active .sub{display:flex}
+.item .ico{width:calc(14*var(--u));text-align:center;color:var(--color-text-faint);flex:none}
+.item .hint{color:var(--color-text-faint);font-size:var(--text-xs);flex:none;opacity:0;transition:opacity .15s ease}
+.item.active .hint{opacity:1}
+.item .cnt{color:var(--color-text-faint);font-size:var(--text-xs);flex:none}
+.item.fix .sum{color:var(--color-text)}
+.item.full{margin-bottom:2px}
+.note-row{padding:calc(8*var(--u)) calc(10*var(--u));color:var(--color-text-muted);font-size:var(--text-xs)}
+.list.stale .item.mem{opacity:.55}
+.skel{height:var(--row-h);display:flex;align-items:center;gap:calc(8*var(--u));padding:0 calc(10*var(--u))}
+.skel span{height:calc(8*var(--u));border-radius:calc(4*var(--u));background:var(--color-surface-2);animation:pulse 1s ease infinite alternate}
+@keyframes pulse{to{opacity:.4}}
+
+/* chips */
+.chips{display:flex;flex-wrap:wrap;gap:calc(4*var(--u));align-items:center;padding:calc(6*var(--u)) calc(12*var(--u));border-bottom:1px solid var(--color-border-subtle);min-height:calc(32*var(--u))}
+.chips .lbl{font-size:var(--text-2xs);color:var(--color-text-faint);text-transform:uppercase;letter-spacing:.06em;margin-right:calc(4*var(--u))}
+.chips .hintx{font-size:var(--text-xs);color:var(--color-text-faint)}
+.chip{display:inline-flex;align-items:center;gap:calc(4*var(--u));height:calc(20*var(--u));padding:0 calc(3*var(--u)) 0 calc(7*var(--u));border-radius:var(--radius-full);border:1px solid var(--color-border);background:var(--color-surface-2);font:var(--text-xs)/1 var(--font-mono);color:var(--color-text);transition:all .15s ease;max-width:100%}
+.chip .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.kind{border-color:var(--color-primary);background:var(--color-primary-soft)}
+.chip.pending{border-style:dashed;color:var(--color-text-muted);background:none}
+.chip.bad{border-color:var(--color-danger);color:var(--color-danger)}
+.chip.info{background:none;color:var(--color-text-faint);padding-right:calc(7*var(--u))}
+.chip.ghost{border-style:dashed;background:none;color:var(--color-text-faint);cursor:pointer;padding-right:calc(7*var(--u))}
+.chip.ghost:hover{color:var(--color-text);border-color:var(--color-primary)}
+.chip button{background:none;border:0;color:var(--color-text-faint);cursor:pointer;width:calc(14*var(--u));height:calc(14*var(--u));border-radius:50%;display:grid;place-items:center;font-size:calc(11*var(--u));padding:0;line-height:1;transition:all .15s ease}
+.chip button:hover{background:var(--color-hover);color:var(--color-text)}
+
+/* status */
+.status{display:flex;align-items:center;gap:calc(8*var(--u));padding:calc(6*var(--u)) calc(12*var(--u));font-size:var(--text-xs);color:var(--color-text-muted);min-height:calc(30*var(--u));flex-wrap:wrap}
+.status b{color:var(--color-text);font-weight:600}
+.status.warn .hl b{color:var(--color-warning)}
+.status.empty .hl{color:var(--color-text)}
+.status .note{color:var(--color-text-faint)}
+.status .src{margin-left:auto;font:var(--text-2xs) var(--font-mono);color:var(--color-text-faint);background:none;border:1px solid transparent;border-radius:calc(3*var(--u));padding:1px calc(4*var(--u));cursor:pointer;transition:all .15s ease}
+.status .src:hover{color:var(--color-text);border-color:var(--color-border)}
+.status.err .hl{color:var(--color-danger);font-weight:600}
+.envelope{margin:0 calc(12*var(--u)) calc(6*var(--u));font:var(--text-xs)/1.5 var(--font-mono);padding:calc(6*var(--u)) calc(8*var(--u));border:1px solid var(--color-danger);border-radius:var(--radius-sm);background:var(--color-surface-2);color:var(--color-danger);white-space:pre-wrap;word-break:break-word}
+.coverage{margin:0 calc(12*var(--u)) calc(6*var(--u));padding:calc(6*var(--u)) calc(8*var(--u));border:1px solid var(--color-border-subtle);border-radius:var(--radius-sm);font:var(--text-2xs)/1.7 var(--font-mono);color:var(--color-text-faint)}
+.coverage .hit{color:var(--color-text)}
+.spin{width:calc(10*var(--u));height:calc(10*var(--u));border:1.5px solid var(--color-border);border-top-color:var(--color-primary);border-radius:50%;animation:spin .6s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress{height:2px;position:relative;overflow:hidden;flex:none}
+.progress.on::after{content:'';position:absolute;top:0;bottom:0;width:35%;background:var(--color-primary);animation:slide .9s ease-in-out infinite}
+@keyframes slide{from{left:-35%}to{left:100%}}
+
+/* A: modal */
+.overlay{position:absolute;inset:0;background:color-mix(in srgb,var(--color-bg) 72%,transparent);display:flex;justify-content:center;align-items:flex-start;padding-top:9vh;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease,visibility 0s .15s;z-index:50}
+.overlay.open{opacity:1;visibility:visible;transition:opacity .15s ease,visibility 0s;pointer-events:auto;backdrop-filter:blur(2px)}
+.modal{width:min(calc(680*var(--u)),calc(100% - calc(24*var(--u))));background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;max-height:72vh;transform:translateY(calc(-6*var(--u))) scale(.985);transition:transform .15s ease;overflow:hidden}
+.overlay.open .modal{transform:none}
+.in-wrap{display:flex;align-items:center;gap:calc(8*var(--u));padding:0 calc(12*var(--u));height:calc(46*var(--u));flex:none}
+.in-wrap input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--color-text);font:var(--text-lg) var(--font-sans)}
+.in-wrap input::placeholder{color:var(--color-text-faint)}
+.glass{color:var(--color-text-faint);font-size:var(--text-lg)}
+.pal-foot{display:flex;gap:calc(12*var(--u));align-items:center;padding:calc(6*var(--u)) calc(12*var(--u));border-top:1px solid var(--color-border-subtle);color:var(--color-text-faint);font-size:var(--text-2xs);flex:none;flex-wrap:wrap}
+.pal-foot .r{margin-left:auto;font-family:var(--font-mono)}
+
+/* B: header search + dropdown */
+.hd-search{position:relative;flex:1;max-width:calc(560*var(--u));margin:0 auto;min-width:0}
+.hd-input{display:flex;align-items:center;gap:calc(6*var(--u));height:calc(30*var(--u));padding:0 calc(8*var(--u));background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-md);transition:all .15s ease}
+.hd-input:hover{border-color:var(--color-text-faint)}
+.hd-input:focus-within{border-color:var(--color-primary);box-shadow:0 0 0 calc(3*var(--u)) var(--color-primary-soft)}
+.hd-input input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--color-text);font:var(--text-sm) var(--font-sans)}
+.hd-input input::placeholder{color:var(--color-text-faint)}
+.dropdown{position:absolute;top:calc(100% + calc(6*var(--u)));left:0;right:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;max-height:min(calc(540*var(--u)),calc(100vh - calc(110*var(--u))));opacity:0;visibility:hidden;transform:translateY(calc(-4*var(--u)));pointer-events:none;transition:opacity .15s ease,transform .15s ease,visibility 0s .15s;z-index:40;overflow:hidden}
+.dropdown.open{opacity:1;visibility:visible;transform:none;pointer-events:auto;transition:opacity .15s ease,transform .15s ease,visibility 0s}
+.search-page{display:flex;flex-direction:column;height:100%;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface);overflow:hidden}
+.search-page .in-wrap{border-bottom:1px solid var(--color-border-subtle)}
+
+/* C: takeover */
+.takeover{position:absolute;inset:0;background:var(--color-bg);z-index:60;display:flex;flex-direction:column;opacity:0;visibility:hidden;pointer-events:none;transform:scale(.99);transition:opacity .15s ease,transform .15s ease,visibility 0s .15s}
+.takeover.open{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition:opacity .15s ease,transform .15s ease,visibility 0s}
+.to-top{padding:calc(18*var(--u)) calc(24*var(--u)) 0;max-width:calc(1180*var(--u));width:100%;margin:0 auto;flex:none}
+.to-bar{display:flex;align-items:center;justify-content:space-between;color:var(--color-text-faint);font-size:var(--text-xs);margin-bottom:calc(6*var(--u))}
+.to-bar button{background:none;border:1px solid var(--color-border);border-radius:var(--radius-sm);color:var(--color-text-muted);cursor:pointer;padding:2px calc(8*var(--u));transition:all .15s ease}
+.to-bar button:hover{color:var(--color-text);border-color:var(--color-primary)}
+.to-input{display:flex;align-items:center;gap:calc(10*var(--u));height:calc(56*var(--u));border-bottom:2px solid var(--color-primary)}
+.to-input input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--color-text);font:var(--text-2xl) var(--font-sans)}
+.to-input input::placeholder{color:var(--color-text-faint)}
+.to-top .chips,.to-top .status{padding-left:0;padding-right:0}
+.split{flex:1;display:grid;grid-template-columns:minmax(0,1fr) calc(380*var(--u));max-width:calc(1180*var(--u));width:100%;margin:0 auto;min-height:0;padding:0 calc(24*var(--u))}
+.split .list{border-right:1px solid var(--color-border-subtle);padding-left:0}
+.preview{overflow:auto;padding:calc(14*var(--u)) 0 calc(16*var(--u)) calc(18*var(--u))}
+.pv-k{font-size:var(--text-2xs);text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint);margin:calc(12*var(--u)) 0 calc(3*var(--u))}
+.pv-sum{font-size:var(--text-lg);font-weight:600;margin:calc(4*var(--u)) 0 calc(8*var(--u));line-height:1.35}
+.pv-body{color:var(--color-text-muted);line-height:1.55;margin:calc(8*var(--u)) 0}
+.pv-grid{display:grid;grid-template-columns:calc(88*var(--u)) minmax(0,1fr);gap:calc(4*var(--u)) calc(10*var(--u));font-size:var(--text-xs)}
+.pv-grid dt{color:var(--color-text-faint)}
+.pv-grid dd{margin:0;font-family:var(--font-mono);word-break:break-all}
+.pv-actions{display:flex;gap:calc(6*var(--u));margin-top:calc(14*var(--u))}
+.btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:var(--radius-md);padding:calc(4*var(--u)) calc(10*var(--u));cursor:pointer;transition:all .15s ease;color:var(--color-text)}
+.btn:hover{border-color:var(--color-primary)}
+.btn.pri{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-bg)}
+.btn.pri:hover{background:var(--color-primary-hover)}
+
+/* pages */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(150*var(--u)),1fr));gap:calc(8*var(--u));margin-bottom:calc(16*var(--u))}
+.tile{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:calc(10*var(--u)) calc(12*var(--u));background:var(--color-surface)}
+.tile .v{font:600 var(--text-2xl) var(--font-mono)}
+.tile .k{color:var(--color-text-faint);font-size:var(--text-xs);display:flex;gap:calc(6*var(--u));align-items:center}
+.detail{max-width:calc(760*var(--u))}
+.crumb{color:var(--color-text-faint);font-size:var(--text-xs);margin-bottom:calc(8*var(--u))}
+.crumb a{color:var(--color-text-muted);cursor:pointer}
+.crumb a:hover{color:var(--color-text)}
+.link{color:var(--color-primary);cursor:pointer}
+
+.toast{position:fixed;bottom:calc(60*var(--u));left:50%;transform:translate(-50%,calc(8*var(--u)));background:var(--color-surface-2);border:1px solid var(--color-border);box-shadow:var(--shadow-md);color:var(--color-text);padding:calc(6*var(--u)) calc(12*var(--u));border-radius:var(--radius-md);font-size:var(--text-xs);opacity:0;transition:all .15s ease;z-index:9990;pointer-events:none;max-width:calc(100vw - calc(32*var(--u)))}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@container (max-width: 760px){
+  .nav{display:none}
+  .scope{display:none}
+  .split{grid-template-columns:minmax(0,1fr);padding:0 calc(12*var(--u))}
+  .split .list{border-right:0}
+  .preview{display:none}
+  .to-top{padding:calc(12*var(--u)) calc(12*var(--u)) 0}
+  .kbtn .lbl{display:none}
+  .hd-search .dropdown{position:fixed;left:calc(8*var(--u));right:calc(8*var(--u));top:calc(40px + calc(52*var(--u)))}
+}
+@container (max-width: 420px){
+  .num{display:none}
+  .brand span{display:none}
+  .main{padding:calc(12*var(--u))}
+}
+
+/* ---------- console-wide text size ----------
+   --ui-font (12–16px, default 15) is set on <html> by themes/display.js and shared by every console page.
+   --u = --ui-font/13, so every size written calc(N*var(--u)) resolves to N px at 13px.
+   .scaled marks the product surface; sketch chrome stays at --u:1px. */
+:root{--u:1px}
+.scaled{--u:calc(var(--ui-font) / 13);--text-2xs:calc(11*var(--u));--text-xs:calc(12*var(--u));--text-sm:var(--ui-font);--text-base:calc(14*var(--u));--text-lg:calc(16*var(--u));--text-xl:calc(18*var(--u));--text-2xl:calc(22*var(--u));--row-h:calc(28*var(--u));font-size:var(--text-sm)}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:calc(24*var(--u));height:calc(24*var(--u));border:0;border-radius:var(--radius-sm);background:transparent;color:var(--color-text-muted);cursor:pointer;transition:all .15s ease;flex:none}
+.icon-btn:hover{background:var(--color-hover);color:var(--color-text)}
+.aa{width:auto;padding:0 calc(6*var(--u));font-size:var(--text-xs);font-weight:600;letter-spacing:.02em;border:1px solid transparent}
+.aa[aria-expanded=true]{background:var(--color-primary-soft);color:var(--color-text);border-color:color-mix(in srgb,var(--color-primary) 45%,transparent)}
+.avatar{flex:none;display:inline-flex;align-items:center;justify-content:center;width:calc(24*var(--u));height:calc(24*var(--u));border-radius:50%;background:var(--color-surface-2);border:1px solid var(--color-border);font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-muted)}
+
+/* Display popover (fixed px on purpose: the control does not resize itself; only its preview does) */
+.dpop{position:fixed;z-index:70;width:320px;background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:10px 12px 12px;font-family:var(--font-sans);font-size:12px;line-height:1.4;color:var(--color-text-muted);display:flex;flex-direction:column;gap:8px}
+.dpop[hidden]{display:none}
+.dpop h3{margin:0;font-size:13px;font-weight:600;color:var(--color-text)}
+.dpop .lbl{display:flex;justify-content:space-between;align-items:baseline;margin:0;gap:0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)}
+.dpop .lbl .mono{font-family:var(--font-mono);text-transform:none;letter-spacing:0;color:var(--color-text)}
+.ts-seg{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden}
+.ts-seg button{background:transparent;border:0;border-right:1px solid var(--color-border);height:28px;font-family:var(--font-mono);color:var(--color-text-muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:baseline;justify-content:center;gap:1px;padding-top:6px}
+.ts-seg button:last-child{border-right:0}
+.ts-seg button:hover{background:var(--color-hover);color:var(--color-text)}
+.ts-seg button[aria-checked=true]{background:var(--color-primary-soft);color:var(--color-text);box-shadow:inset 0 -2px 0 var(--color-primary)}
+.ts-seg button:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}
+.ts-seg small{font-size:9px;color:var(--color-text-faint)}
+.dpop .keys{font-size:11px;color:var(--color-text-faint);display:flex;gap:8px;flex-wrap:wrap}
+.pv{background:var(--color-bg);border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);overflow:hidden}
+.pv-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;column-gap:calc(8*var(--u));align-items:center;height:var(--row-h);padding:0 calc(10*var(--u));color:var(--color-text)}
+.pv .cat{display:inline-flex;align-items:center;gap:calc(6*var(--u));color:var(--c);font-size:var(--text-2xs);white-space:nowrap}
+.pv .cat i{flex:none;width:calc(7*var(--u));height:calc(7*var(--u));border-radius:2px;background:var(--c)}
+.pv .sum{display:block;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--color-text)}
+.pv .sum code{font-family:var(--font-mono);font-size:.92em;color:var(--color-text);background:var(--color-surface-2);border:0;padding:0 3px;border-radius:3px}
+.pv .age{font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-faint);text-align:right}
+.pv .num{width:auto;font-family:var(--font-mono);font-size:var(--text-2xs);color:var(--color-text-muted)}
+
+/* sketch meta (hardcoded dark, independent of theme) */
+#sketch-tools,#sketch-ctrl{position:fixed;bottom:12px;z-index:9999;font:12px system-ui,sans-serif;background:rgba(0,0,0,.8);color:#fff;padding:6px 8px;border-radius:8px;opacity:.5;transition:opacity .15s ease;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#sketch-tools{right:12px}
+#sketch-ctrl{left:12px;max-width:min(560px,calc(100vw - 24px))}
+#sketch-tools:hover,#sketch-ctrl:hover{opacity:1}
+#sketch-tools button,#sketch-ctrl button,#sketch-tools select{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:2px 6px;cursor:pointer;font:11px system-ui,sans-serif;transition:all .15s ease}
+#sketch-ctrl button.t{font-family:ui-monospace,Menlo,monospace}
+#sketch-tools button:hover,#sketch-ctrl button:hover{background:rgba(255,255,255,.2)}
+#sketch-tools button.on,#sketch-ctrl button.on{background:rgba(255,255,255,.34);border-color:rgba(255,255,255,.5)}
+#sketch-tools select option{color:#000}
+.sk-sep{width:1px;height:14px;background:rgba(255,255,255,.2)}
+.sk-lbl{color:rgba(255,255,255,.55);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+#anno-tip{position:fixed;z-index:10000;background:rgba(0,0,0,.9);color:#fff;font:11px/1.45 ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre;display:none}
+.anno-outline{outline:1px dashed rgba(255,0,200,.8)!important;outline-offset:-1px}
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="ttl">002 command-palette</span>
+  <button class="variant-tab active" data-v="a" onclick="showVariant('a',this)">A: ⌘K modal palette</button>
+  <button class="variant-tab" data-v="b" onclick="showVariant('b',this)">B: Top-bar inline search ★ Selected</button>
+  <button class="variant-tab" data-v="c" onclick="showVariant('c',this)">C: Full-page takeover</button>
+</div>
+
+<div id="frame" class="scaled">
+
+  <!-- ============ A ============ -->
+  <div id="variant-a" class="variant active">
+    <header class="app-hd">
+      <div class="brand"><i></i><span>engram</span></div>
+      <nav class="nav" data-nav></nav>
+      <div class="hd-spacer"></div>
+      <button class="kbtn" id="a-open"><span>⌕</span><span class="lbl">Search or jump to…</span><kbd>⌘K</kbd></button>
+    </header>
+    <main class="main" id="a-main"></main>
+    <div class="overlay" id="a-overlay">
+      <div class="modal" role="dialog" aria-label="Command palette">
+        <div class="in-wrap"><span class="glass">⌕</span><input id="a-input" autocomplete="off" spellcheck="false" placeholder="Search memories · paste an id or short_id · scope: #tag is:"><kbd>esc</kbd></div>
+        <div class="progress" id="a-prog"></div>
+        <div class="chips" id="a-chips"></div>
+        <div id="a-status"></div>
+        <div class="list" id="a-list" tabindex="-1"></div>
+        <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> / <kbd>j</kbd><kbd>k</kbd> move</span><span><kbd>↵</kbd> run</span><span><kbd>⇥</kbd> section</span><span><kbd>esc</kbd> close</span><span class="r">server-driven · shouldFilter={false}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ B ============ -->
+  <div id="variant-b" class="variant">
+    <header class="app-hd">
+      <div class="brand"><i></i><span>engram</span></div>
+      <nav class="nav" data-nav></nav>
+      <div class="hd-search" id="b-search">
+        <div class="hd-input"><span class="faint">⌕</span><input id="b-input" autocomplete="off" spellcheck="false" placeholder="Search, paste an id, scope: #tag is:"><kbd>/</kbd></div>
+        <div class="dropdown" id="b-drop">
+          <div class="progress" id="b-prog"></div>
+          <div class="chips" id="b-chips"></div>
+          <div id="b-status"></div>
+          <div class="list" id="b-list" tabindex="-1"></div>
+          <div class="pal-foot"><span><kbd>↵</kbd> on text opens /search</span><span><kbd>⇥</kbd> section</span><span><kbd>esc</kbd> close</span><span class="r">anchored dropdown</span></div>
+        </div>
+      </div>
+      <button class="icon-btn aa" data-act="display" aria-haspopup="dialog" aria-expanded="false" aria-controls="display-pop" title="Display: text size">Aa</button><span class="avatar" title="Account menu (not sketched)">sb</span>
+    </header>
+    <main class="main" id="b-main"></main>
+  </div>
+
+  <!-- ============ C ============ -->
+  <div id="variant-c" class="variant">
+    <header class="app-hd">
+      <div class="brand"><i></i><span>engram</span></div>
+      <nav class="nav" data-nav></nav>
+      <div class="hd-spacer"></div>
+      <button class="kbtn" id="c-open"><span>⌕</span><span class="lbl">Search</span><kbd>/</kbd></button>
+    </header>
+    <main class="main" id="c-main"></main>
+    <div class="takeover" id="c-take">
+      <div class="to-top">
+        <div class="to-bar"><span id="c-from">Search · Esc returns to Recall</span><button id="c-close">Esc · back</button></div>
+        <div class="to-input"><span class="glass">⌕</span><input id="c-input" autocomplete="off" spellcheck="false" placeholder="Paste an id or short_id, or search every scope you can read"></div>
+        <div class="progress" id="c-prog"></div>
+        <div class="chips" id="c-chips"></div>
+        <div id="c-status"></div>
+      </div>
+      <div class="split">
+        <div class="list" id="c-list" tabindex="-1"></div>
+        <aside class="preview" id="c-preview"></aside>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast scaled" id="toast"></div>
+<div class="dpop" id="display-pop" role="dialog" aria-label="Display" hidden>
+  <h3>Display</h3>
+  <div class="lbl"><span id="ts-lbl">Text size</span><span class="mono" id="ts-val">15px</span></div>
+  <div class="ts-seg" id="ts-seg" role="radiogroup" aria-labelledby="ts-lbl">
+    <button role="radio" data-ts="12">12<small>px</small></button><button role="radio" data-ts="13">13<small>px</small></button><button role="radio" data-ts="14">14<small>px</small></button><button role="radio" data-ts="15">15<small>px</small></button><button role="radio" data-ts="16">16<small>px</small></button>
+  </div>
+  <div class="keys" id="ts-keys"></div>
+  <div class="lbl"><span>Preview</span><span>saved per viewer</span></div>
+  <div class="pv scaled" id="ts-preview"><div class="pv-row"><span class="cat" style="--c:var(--cat-gotcha)"><i></i>gotcha</span><span class="sum">gofmt drift is NOT caught by <code>golangci-lint</code></span><span class="age">12d</span><span class="score"><span class="num">0.81</span></span></div></div>
+  <div class="keys">Applies to every console page, not just this list.</div>
+</div>
+
+<div id="sketch-ctrl">
+  <span class="sk-lbl">try</span>
+  <button class="t" data-try="753aba22-61d0-493c-81a1-ee00c0b1852c">uuid</button>
+  <button class="t" data-try="y0bzh06c11">y0bzh06c11</button>
+  <button class="t" data-try="k3m9p2qr7a">k3m9p2qr7a (ambig)</button>
+  <button class="t" data-try="github">github</button>
+  <button class="t" data-try="recall gate">recall gate</button>
+  <button class="t" data-try="scope:selfh">scope:selfh</button>
+  <button class="t" data-try="#gsd">#gsd</button>
+  <button class="t" data-try="is:gotcha qdrant">is:gotcha qdrant</button>
+  <button class="t" data-try="zzzzzz">zzzzzz</button>
+  <span class="sk-sep"></span>
+  <span class="sk-lbl">server</span>
+  <button data-force="live" class="on">live</button>
+  <button data-force="loading">loading</button>
+  <button data-force="empty">no-matches</button>
+  <button data-force="error">error</button>
+  <span class="sk-sep"></span>
+  <button id="jev-btn" title="ENGRAM_SEARCH_RANKER=jev: reorder by relevance">jev ranker</button>
+</div>
+
+<div id="sketch-tools">
+  <select id="theme-sel" title="theme"><option value="default">default (dark)</option><option value="light">light</option></select>
+  <span class="sk-sep"></span>
+  <button data-vp="375">375</button><button data-vp="768">768</button><button data-vp="1280">1280</button><button data-vp="full" class="on">full</button>
+  <span class="sk-sep"></span>
+  <button id="anno-btn">annotate</button>
+</div>
+<div id="anno-tip"></div>
+
+<script>
+/* ---------------- data (hardcoded; stands in for the Connect RPCs) ---------------- */
+const R='github.com/seanb4t/';
+const S_=n=>'repo:'+R+n;
+const MEM=[
+ {id:'753aba22-61d0-493c-81a1-ee00c0b1852c',sid:'8f2nq5wx3b',cat:'decision',scope:S_('engram'),tags:['console','gsd','palette'],at:'2026-09-24T18:12:00Z',state:['superseded'],supBy:'st74vdk0gh',
+  sum:'Palette keeps client-side filtering over four static items; only /search talks to the server',
+  body:'Initial console call: the command palette filters static items client-side. Reversed after the 2026-09-25 failures; discussion on the github milestone.'},
+ {id:'c41f09e7-2b6d-4c8a-9f13-5e7a0d2b6c90',sid:'st74vdk0gh',cat:'decision',scope:S_('engram'),tags:['console','gsd','palette','milestone-2026-09-25.01'],at:'2026-09-25T21:40:00Z',state:[],
+  sum:'Console overhaul: every entry box resolves a UUID, short_id or text and says what it searched',
+  body:'Supersedes 8f2nq5wx3b. Command.Root shouldFilter={false}; list driven by SearchMemories with cross_spine by default; ids resolve via GetMemory. Tracked on github as milestone 2026-09-25.01.'},
+ {id:'0b8d2e61-7c3a-4f95-8e24-a1d6c9f07b35',sid:'y0bzh06c11',cat:'gotcha',scope:S_('engram'),tags:['recall','recall-gate','scheduled'],at:'2026-09-19T09:03:00Z',state:[],
+  sum:'Recall gate hides scheduled and expired records from search; get_memory by id bypasses it',
+  body:'search_memory, list_memory, search_discovery and list_scheduled apply the recall gate. Fetch-by-id does not, so an agent holding an id can always read the record. Do not "fix" this by filtering id lookups in the console.'},
+ {id:'5e2a7c19-d304-4b6e-a8f1-9c0b3d5e7a21',sid:'k3m9p2qr7a',cat:'convention',scope:S_('engram'),tags:['release','github-actions'],at:'2026-08-30T14:22:00Z',state:[],
+  sum:'release-please cuts releases from Conventional Commit types; never hand-edit Chart.yaml version',
+  body:'Merging the release PR on github cuts the vX.Y.Z tag; release-please syncs Chart.yaml and plugin.json.'},
+ {id:'a9c3e5f7-1b2d-4e6f-8a0c-2d4f6b8a0c1e',sid:'k3m9p2qr7a',cat:'preference',scope:S_('selfhosted-cluster'),tags:['github-actions','security'],at:'2026-07-11T08:45:00Z',state:[],shared:true,
+  sum:'Pin GitHub Actions to full commit SHAs with a version comment',
+  body:'Shared record. Renovate keeps the SHA and the trailing # vX.Y.Z comment in step.'},
+ {id:'e7f10a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b',sid:'d4hz9m1c6e',cat:'gotcha',scope:S_('selfhosted-cluster'),tags:['qdrant','backup'],at:'2026-09-02T16:30:00Z',state:[],
+  sum:'Qdrant snapshot restore merges into an existing collection unless you drop it first',
+  body:'Restoring onto a live collection silently merges points. Drop the collection, then restore.'},
+ {id:'f1a2b3c4-d5e6-4f70-8192-a3b4c5d6e7f8',sid:'p7r2k8vt0s',cat:'gotcha',scope:S_('engram'),tags:['qdrant','perf','cross-spine'],at:'2026-09-12T11:05:00Z',state:[],
+  sum:'Qdrant needs a payload index on owner before cross_spine search, or filtered HNSW full-scans',
+  body:'Without the keyword index on owner, the cross-spine owner filter makes Qdrant brute-force every point.'},
+ {id:'2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f',sid:'1qa6jx4w9n',cat:'decision',scope:S_('engram'),tags:['qdrant','architecture'],at:'2026-05-14T10:00:00Z',state:[],
+  sum:'Qdrant is the only store; no Postgres sidecar for metadata',body:'Payload carries every field; schema evolution is payload migration.'},
+ {id:'3d4e5f60-7182-4a93-b4c5-d6e7f8091a2b',sid:'m0t3gdb7yk',cat:'gotcha',scope:S_('engram'),tags:['connect','errors'],at:'2026-08-21T13:15:00Z',state:[],
+  sum:'Connect errors drop the field hint unless an ErrorDetail is attached',body:'connect-go (github.com/connectrpc) only carries field=/hint= to the browser when the envelope rides as a detail.'},
+ {id:'4e5f6071-8293-4ab4-c5d6-e7f8091a2b3c',sid:'6wrc2e9hpf',cat:'rule',scope:'rule:repo:'+R+'engram',tags:['errors','api'],at:'2026-06-03T09:00:00Z',state:[],
+  sum:'Every rejected call names the failing field and a machine-stable hint code',body:'field=<name> hint=<code>: <text>, one envelope on every lane. See docs-site reference/errors.md on github.'},
+ {id:'5f607182-93a4-4bc5-d6e7-f8091a2b3c4d',sid:'b9n4s7kx2d',cat:'rule',scope:'rule:repo:'+R+'engram',tags:['git','github'],at:'2026-04-20T09:00:00Z',state:[],
+  sum:'Never push to main; branch and PR (protect-main ruleset on github)',body:'Rule, user-blessed.'},
+ {id:'60718293-a4b5-4cd6-e7f8-091a2b3c4d5e',sid:'r5v8y1q3tc',cat:'convention',scope:S_('engram'),tags:['gsd','release'],at:'2026-08-12T17:20:00Z',state:[],
+  sum:'GSD milestone labels are CalVer start dates; releases stay SemVer',body:'Label stamped once at /gsd-new-milestone.'},
+ {id:'718293a4-b5c6-4de7-f809-1a2b3c4d5e6f',sid:'h2j6m4n8pa',cat:'decision',scope:S_('engram'),tags:['console','scopes','gsd'],at:'2026-09-25T22:10:00Z',state:[],
+  sum:'Scope autocomplete reads ListScopes with record counts, never a client-side cache',body:'Counts come from the server so the palette never offers a scope you cannot read.'},
+ {id:'8293a4b5-c6d7-4ef8-8091-2a3b4c5d6e7f',sid:'x7e3w5d9gs',cat:'gotcha',scope:S_('selfhosted-cluster'),tags:['flux','github'],at:'2026-08-05T07:40:00Z',state:[],
+  sum:'Flux GitRepository auth to github needs a deploy key per repo; a PAT expires silently',body:''},
+ {id:'93a4b5c6-d7e8-4f90-9102-3b4c5d6e7f80',sid:'3kf8b2zr6v',cat:'convention',scope:S_('selfhosted-cluster'),tags:['renovate','github'],at:'2026-07-28T12:00:00Z',state:[],
+  sum:'Renovate opens one PR per chart on github; automerge only patch bumps',body:''},
+ {id:'a4b5c6d7-e8f9-4a01-a213-4c5d6e7f8091',sid:'q9s1t4mh7e',cat:'preference',scope:S_('engram'),tags:['console','design','gsd'],at:'2026-09-25T20:55:00Z',state:[],
+  sum:'Dense 28px rows with monospace ids; no card layouts in the console',body:''},
+ {id:'b5c6d7e8-f90a-4b12-b324-5d6e7f8091a2',sid:'5ya2c8nj3w',cat:'gotcha',scope:S_('engram'),tags:['console','bits-ui','palette','gsd'],at:'2026-09-25T19:30:00Z',state:[],
+  sum:'bits-ui Command snapshots item labels, so a dynamic "Search for …" item filters itself out',body:'Label captured while q was empty; typing filters it away. Use shouldFilter={false} and drive items from the server.'},
+ {id:'c6d7e8f9-0a1b-4c23-8435-6e7f8091a2b3',sid:'g6p0x9r4kd',cat:'decision',scope:S_('engram'),tags:['recall','supersede','recall-gate'],at:'2026-07-02T15:00:00Z',state:[],
+  sum:'Superseded and archived records are soft-hidden from recall but fetchable by id',body:'Same contract as the recall gate: recall hides, fetch-by-id shows.'},
+ {id:'d7e8f90a-1b2c-4d34-9546-7f8091a2b3c4',sid:'t1b7e3wq5m',cat:'decision',scope:S_('engram'),tags:['jev','search'],at:'2026-09-20T10:00:00Z',state:['scheduled'],
+  sum:'Revisit the jev ranker default after 30 days of relevance telemetry',body:'not_before 2026-10-20.'},
+ {id:'e8f90a1b-2c3d-4e45-a657-8091a2b3c4d5',sid:'w4k9f2s6hz',cat:'preference',scope:S_('dotfiles'),tags:['shell'],at:'2026-06-18T19:00:00Z',state:[],
+  sum:'fish is the interactive shell; pasted snippets run through bash',body:''},
+ {id:'f90a1b2c-3d4e-4f56-b768-91a2b3c4d5e6',sid:'a8d3n7vc1y',cat:'convention',scope:S_('engram'),tags:['github','gsd','tracking'],at:'2026-07-08T11:00:00Z',state:[],
+  sum:'GitHub Issues replaced beads; migrated work carries the from-beads label',body:''},
+ {id:'0a1b2c3d-4e5f-4a67-8879-a2b3c4d5e6f7',sid:'e2m6q0zk8r',cat:'gotcha',scope:S_('selfhosted-cluster'),tags:['oidc','github'],at:'2026-08-14T08:10:00Z',state:[],
+  sum:'Authentik issuer URL needs its trailing slash or JWKS discovery 404s from github-hosted runners',body:''},
+ {id:'1b2c3d4e-5f60-4b78-9980-b3c4d5e6f708',sid:'n5h1w7jb3x',cat:'decision',scope:S_('engram'),tags:['palette','gsd'],at:'2026-09-10T09:00:00Z',state:['archived'],
+  sum:'Palette labels are static strings defined in CommandPalette.svelte',body:''},
+ {id:'2c3d4e5f-6071-4c89-aa91-c4d5e6f70819',sid:'c0r9t2yg6p',cat:'convention',scope:S_('selfhosted-apps'),tags:['gsd'],at:'2026-09-01T09:00:00Z',state:[],
+  sum:'GSD phases for app migrations live in .planning/ of selfhosted-apps',body:''},
+ {id:'3d4e5f60-7182-4d9a-bb02-d5e6f708192a',sid:'f3x8k1sd9q',cat:'discovery',scope:'discovery:repo:'+R+'engram',tags:['map','console'],at:'2026-09-24T12:00:00Z',state:[],
+  sum:'map: ui/ console — AppShell, CommandPalette, MemoryList, ScopesSidebar',body:''},
+ {id:'4e5f6071-8293-4eab-8c13-e6f708192a3b',sid:'j9w2c5x8vk',cat:'rule',scope:'rule:project:homelab',tags:['backup'],at:'2026-05-30T09:00:00Z',state:[],
+  sum:'Every stateful service has a tested restore path before it goes live',body:''},
+];
+const CATS=['decision','gotcha','convention','preference','discovery','rule'];
+// ListScopes / ListTags — counts derived from the dataset so they agree with results
+const SCOPES=(()=>{const c={};MEM.forEach(m=>c[m.scope]=(c[m.scope]||0)+1);return Object.entries(c).map(([scope,n])=>({scope,n})).sort((a,b)=>b.n-a.n)})();
+const TAGS=(()=>{const c={};MEM.forEach(m=>m.tags.forEach(t=>c[t]=(c[t]||0)+1));return Object.entries(c).map(([t,n])=>({t,n})).sort((a,b)=>b.n-a.n||a.t.localeCompare(b.t))})();
+const CAT_N=(()=>{const c={};MEM.forEach(m=>c[m.cat]=(c[m.cat]||0)+1);return c})();
+const READABLE=SCOPES.filter(s=>!s.scope.startsWith('discovery:')).map(s=>s.scope);
+const CMDS=[{label:'Go to Recall',go:'recall',k:'G R'},{label:'Go to Observe',go:'observe',k:'G O'},{label:'Go to Discovery',go:'discovery',k:'G D'},{label:'Go to Rules',go:'rules',k:'G U'},{label:'Go to Scheduled',go:'scheduled',k:'G S'}];
+const bySid=s=>MEM.find(m=>m.sid===s);
+const byId=id=>MEM.find(m=>m.id===id);
+
+/* ---------------- helpers ---------------- */
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const shortScope=s=>s.replace(R,'…/');
+const pl=(n,w,p)=>n===1?w:(p||w+'s');
+const hash=s=>{let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return (h>>>0)/4294967295};
+const hay=m=>(m.sum+' '+m.body+' '+m.tags.join(' ')).toLowerCase();
+function hl(text,words){
+  if(!words||!words.length) return esc(text);
+  const re=new RegExp('('+words.map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','ig');
+  return text.split(re).map((part,i)=>i%2?'<mark>'+esc(part)+'</mark>':esc(part)).join('');
+}
+let toastT;
+function toast(html){const t=document.getElementById('toast');t.innerHTML=html;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)}
+
+/* ---------------- input classification ---------------- */
+const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SID_RE=/^[0-9a-hjkmnp-tv-z]{10}$/i; // Crockford base32: no i l o u
+function parse(q){
+  const toks=[];const re=/\S+/g;let m;
+  while((m=re.exec(q)))toks.push({raw:m[0],s:m.index,e:m.index+m[0].length});
+  const p={q,text:[],scopes:[],tags:[],cats:[],ac:null};
+  const trailing=/\s$/.test(q);
+  toks.forEach((t,i)=>{
+    const last=i===toks.length-1&&!trailing;let mm;
+    if((mm=t.raw.match(/^(scope:|in:)(.*)$/i))){
+      const v=mm[2],exact=SCOPES.some(s=>s.scope===v);
+      if(last)p.ac={type:'scope',prefix:mm[1],v,tok:t};
+      if(exact||(!last&&v))p.scopes.push({v,tok:t,unknown:!exact});
+      else if(last)p.pending={type:'scope',label:mm[1]+v,tok:t};
+    }else if((mm=t.raw.match(/^(#|tag:)(.*)$/i))){
+      const v=mm[2],exact=TAGS.some(x=>x.t===v);
+      if(last)p.ac={type:'tag',prefix:mm[1],v,tok:t};
+      if(exact||(!last&&v))p.tags.push({v,tok:t});
+      else if(last)p.pending={type:'tag',label:mm[1]+v,tok:t};
+    }else if((mm=t.raw.match(/^(is:)(.*)$/i))){
+      const v=mm[2].toLowerCase(),ok=CATS.includes(v);
+      if(last)p.ac={type:'cat',prefix:mm[1],v,tok:t};
+      if(ok)p.cats.push({v,tok:t});
+      else if(!last&&v)p.cats.push({v,tok:t,bad:true});
+      else if(last)p.pending={type:'cat',label:mm[1]+v,tok:t};
+    }else p.text.push(t);
+  });
+  const words=p.text.map(t=>t.raw);
+  p.textStr=words.join(' ');
+  p.kind=words.length===1&&UUID_RE.test(words[0])?'uuid'
+    :words.length===1&&SID_RE.test(words[0])?'short_id'
+    :words.length?'text'
+    :(p.scopes.length||p.tags.length||p.cats.length)?'list':'empty';
+  return p;
+}
+const queryKey=(p,cs)=>JSON.stringify([p.kind,p.textStr.toLowerCase(),p.scopes.map(s=>s.v),p.tags.map(t=>t.v),p.cats.map(c=>c.v),cs]);
+
+/* ---------------- fake backend ---------------- */
+let FORCE='live',JEV=false;
+const ERR=(field,hint,text)=>({field,hint,text});
+function api(p,cs){
+  return new Promise((res,rej)=>{
+    setTimeout(()=>{
+      if(FORCE==='loading')return; // never settles: shows the stale-while-loading state
+      try{res(serve(p,cs))}catch(e){rej(e)}
+    },150+Math.random()*250);
+  });
+}
+function stateNote(m){
+  if(!m.state.length)return '';
+  const s=m.state[0];
+  if(s==='superseded')return `this record is <b>superseded</b> → <code>${m.supBy}</code>; hidden from search, fetchable by id`;
+  if(s==='scheduled')return `this record is <b>scheduled</b>; the recall gate hides it from search until not_before`;
+  return `this record is <b>${s}</b>; hidden from search, fetchable by id`;
+}
+function serve(p,cs){
+  if(FORCE==='error')throw ERR('scope','scope-required-unless-cross-spine','scope is required unless cross_spine is set');
+  const bad=p.cats.find(c=>c.bad);
+  if(bad)throw ERR('categories','category-unknown',`"${bad.v}" is not one of ${CATS.join('|')}`);
+  const none=FORCE==='empty';
+  if(p.kind==='uuid'){
+    const id=p.textStr.toLowerCase(),m=none?null:byId(id);
+    if(m)return {rpc:'GetMemory',hits:[{m}],tone:'ok',headline:`Resolved id <code>${id.slice(0,8)}…</code> → <b>1 memory</b>`,note:stateNote(m)||'fetch-by-id: no scope needed'};
+    return {rpc:'GetMemory',hits:[],tone:'empty',headline:`No memory with id <code>${esc(id.slice(0,8))}…</code> that you can read`,note:'not-found and not-yours look the same by design'};
+  }
+  if(p.kind==='short_id'){
+    const sid=p.textStr.toLowerCase(),ms=none?[]:MEM.filter(m=>m.sid===sid);
+    if(ms.length===1)return {rpc:'GetMemory · short_id',hits:[{m:ms[0]}],tone:'ok',headline:`Resolved short_id <code>${sid}</code> → <b>1 memory</b>`,note:stateNote(ms[0])};
+    if(ms.length>1)return {rpc:'GetMemory · short_id',hits:ms.map(m=>({m})),tone:'warn',headline:`short_id <code>${sid}</code> is ambiguous → <b>${ms.length} memories</b>`,note:'pick one, or paste the full id to be exact'};
+    const r=textSearch(p,cs,none);
+    r.headline=`No short_id <code>${esc(sid)}</code>. Searched it as text instead: `+r.headline;
+    r.tone=r.hits.length?'warn':'empty';
+    return r;
+  }
+  if(p.kind==='text'||p.kind==='list')return textSearch(p,cs,none);
+  const hits=none?[]:MEM.filter(m=>READABLE.includes(m.scope)&&!m.state.length).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,6).map(m=>({m}));
+  return {rpc:'ListMemories',cs:true,searched:READABLE,perScope:perScope(hits,READABLE),hits,tone:hits.length?'ok':'empty',
+    headline:hits.length?`Recent: <b>${hits.length} newest</b> across ${READABLE.length} scopes you can read`:'No memories in any scope you can read'};
+}
+function perScope(hits,searched){const c={};searched.forEach(s=>c[s]=0);hits.forEach(h=>c[h.m.scope]=(c[h.m.scope]||0)+1);return c}
+function textSearch(p,cs,none){
+  const scopes=p.scopes.map(s=>s.v);
+  if(!scopes.length&&!cs)throw ERR('scope','scope-required-unless-cross-spine','scope is required unless cross_spine is set');
+  const searched=scopes.length?scopes:READABLE;
+  const words=p.textStr.toLowerCase().split(/\s+/).filter(Boolean);
+  const tags=p.tags.map(t=>t.v),cats=p.cats.map(c=>c.v);
+  const all=none?[]:MEM.filter(m=>searched.includes(m.scope)&&tags.every(t=>m.tags.includes(t))&&(!cats.length||cats.includes(m.cat))&&words.every(w=>hay(m).includes(w)));
+  const vis=all.filter(m=>!m.state.length),hidden=all.filter(m=>m.state.length);
+  const isText=words.length>0;
+  let hits=vis.map(m=>{
+    if(!isText)return {m};
+    const s=words.reduce((a,w)=>a+(m.sum.toLowerCase().includes(w)?.11:0)+(m.tags.some(t=>t.includes(w))?.05:0),.46)+hash(m.id+words.join())*.14;
+    const h={m,score:Math.min(.94,s)};
+    if(JEV)h.rel=.3+hash(m.sid+'jev'+words.join())*.68;
+    return h;
+  });
+  if(isText)hits.sort(JEV?(a,b)=>b.rel-a.rel:(a,b)=>b.score-a.score);else hits.sort((a,b)=>b.m.at.localeCompare(a.m.at));
+  const k=new Set(hits.map(h=>h.m.scope)).size;
+  const unknown=p.scopes.filter(s=>s.unknown).map(s=>s.v);
+  const filt=[...p.tags.map(t=>'#'+esc(t.v)),...p.cats.map(c=>'is:'+c.v)];
+  const filtTxt=filt.length?` with <code>${filt.join(' ')}</code>`:'';
+  const where=scopes.length?(scopes.length===1?`<code>${esc(shortScope(scopes[0]))}</code>`:`${scopes.length} chosen scopes`):'';
+  let headline;
+  if(unknown.length&&!hits.length)headline=`No scope <code>${esc(unknown[0])}</code> that you can read, so nothing was searched`;
+  else if(hits.length){
+    const n=`<b>${hits.length} ${isText?pl(hits.length,'hit'):pl(hits.length,'memory','memories')}</b>`;
+    headline=isText?`${n}${filtTxt} ${scopes.length?'in '+where:`across <b>${k} ${pl(k,'scope')}</b>`}`
+                   :`${n}${filtTxt} ${scopes.length?'in '+where:`across <b>${k} ${pl(k,'scope')}</b>`}`;
+  }else headline=isText?`No memories match <code>${esc(p.textStr)}</code>${filtTxt} in ${scopes.length?where:'any scope you can read'}`
+                       :`No memories${filtTxt} in ${scopes.length?where:'any scope you can read'}`;
+  let note='';
+  if(hidden.length){const w=[...new Set(hidden.map(m=>m.state[0]))].join('/');note=`+${hidden.length} ${w} ${pl(hidden.length,'match','matches')} hidden by the recall gate (fetch by id)`;}
+  return {rpc:isText?'SearchMemories':'ListMemories',cs:!scopes.length,searched,perScope:perScope(hits,searched),hits,tone:hits.length?'ok':'empty',headline,note};
+}
+
+/* ---------------- search controller (shared by all variants) ---------------- */
+const CTRLS=[];
+function createSearch(cfg){
+  const S={q:'',cs:true,p:parse(''),resp:null,err:null,pending:false,req:0,items:[],active:0,moved:false,cov:false,key:null,timer:0};
+  const {input,chips,status,list,progress}=cfg;
+  const secsAllowed=cfg.sections||['full','memories','scopes','tags','commands'];
+  const api_={S,setQuery,move,run,cycle,rerun:()=>{S.key=null;query()},focus:()=>{input.focus();input.select()}};
+  input.addEventListener('input',()=>{S.q=input.value;changed()});
+  input.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'){e.preventDefault();move(1)}
+    else if(e.key==='ArrowUp'){e.preventDefault();move(-1)}
+    else if(e.key==='Enter'){e.preventDefault();run()}
+    else if(e.key==='Tab'){e.preventDefault();cycle(e.shiftKey?-1:1)}
+    else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();cfg.onEscape&&cfg.onEscape()}
+  });
+  let lx=-1,ly=-1;
+  list.addEventListener('pointermove',e=>{
+    if(e.clientX===lx&&e.clientY===ly)return;lx=e.clientX;ly=e.clientY;
+    const it=e.target.closest('[data-i]');if(!it)return;const i=+it.dataset.i;
+    if(i!==S.active){S.active=i;S.moved=true;paintActive(false)}
+  });
+  list.addEventListener('click',e=>{const it=e.target.closest('[data-i]');if(it){S.active=+it.dataset.i;run()}});
+  chips.addEventListener('click',e=>{
+    const b=e.target.closest('[data-act]');if(!b)return;
+    const act=b.dataset.act;
+    if(act==='rm-text')setQuery(cut(S.q,S.p.text));
+    else if(act==='rm-tok')setQuery(cut(S.q,[{s:+b.dataset.s,e:+b.dataset.e}]));
+    else if(act==='rm-cs'){S.cs=false;S.key=null;changed(true)}
+    else if(act==='add-cs'){S.cs=true;S.key=null;changed(true)}
+  });
+  status.addEventListener('click',e=>{if(e.target.closest('[data-act=cov]')){S.cov=!S.cov;renderStatus()}});
+
+  function cut(q,ranges){
+    ranges=[...ranges].sort((a,b)=>b.s-a.s);
+    ranges.forEach(r=>{q=q.slice(0,r.s)+q.slice(r.e)});
+    return q.replace(/\s{2,}/g,' ').replace(/^\s+/,'');
+  }
+  function setQuery(q,{focus=true}={}){input.value=q;S.q=q;changed();if(focus){input.focus();input.setSelectionRange(q.length,q.length)}}
+  function changed(keepMoved){
+    S.p=parse(S.q);
+    if(!S.q.trim())S.cs=true;
+    if(!keepMoved)S.moved=false;
+    render();
+    clearTimeout(S.timer);S.timer=setTimeout(query,70);
+  }
+  function query(){
+    const key=queryKey(S.p,S.cs);
+    if(key===S.key&&!S.pending)return;
+    S.key=key;
+    const id=++S.req;S.pending=true;
+    progress.classList.add('on');list.classList.add('stale');renderStatus();
+    if(!S.resp&&!S.err)render();
+    const done=()=>{S.pending=false;progress.classList.remove('on');list.classList.remove('stale');render()};
+    api(S.p,S.cs).then(r=>{if(id!==S.req)return;S.resp=r;S.err=null;done()},
+                        e=>{if(id!==S.req)return;S.err=e;S.resp=null;done()});
+  }
+
+  /* sections */
+  function build(){
+    const p=S.p,secs=[],words=p.kind==='text'?p.textStr.toLowerCase().split(/\s+/):[];
+    const add=(key,title,src,items)=>{if(secsAllowed.includes(key)&&items.length)secs.push({key,title,src,items})};
+    // "open full search" row (B top row, A in commands)
+    const fullRow=(p.kind==='text'||p.kind==='list')&&!S.err?{t:'full',key:'full',label:p.kind==='text'?`Search all memories for “${esc(p.textStr)}”`:`Open /search with ${esc(S.q.trim())}`}:null;
+    if(cfg.fullOnTop&&fullRow)add('full',null,null,[fullRow]);
+    // memories
+    let mem=[];
+    if(S.err){
+      if(S.err.field==='scope'){
+        mem.push({t:'fix',key:'fix:cs',act:'cs',label:'Re-enable cross-spine: search every scope you can read',ico:'↻'});
+        mem.push({t:'fix',key:'fix:scope',act:'scope',label:'Pick one scope instead (types scope:)',ico:'⌗'});
+      }
+      if(FORCE==='error')mem.push({t:'fix',key:'fix:retry',act:'retry',label:'Retry the request',ico:'↻'});
+      if(S.err.field==='categories')mem.push({t:'fix',key:'fix:cat',act:'cat',label:'Remove the unknown is: filter',ico:'✕'});
+    }else if(S.resp){
+      mem=S.resp.hits.slice(0,cfg.maxMem).map(h=>({t:'mem',key:'m:'+h.m.id,h,words}));
+      if(S.resp.hits.length>cfg.maxMem)mem.push({t:'more',key:'more',label:`${S.resp.hits.length-cfg.maxMem} more on /search`});
+      if(!S.resp.hits.length)mem.push({t:'note',html:p.kind==='uuid'?'Check the id, or search its text instead.':'Nothing matched. Discoveries live in a separate lane (search_discovery).'});
+    }else if(S.pending)mem=[{t:'skel'},{t:'skel'},{t:'skel'}];
+    const memTitle=p.kind==='empty'?'Recent':'Memories';
+    const memSrc=S.err?'rejected':S.resp?S.resp.rpc+(S.resp.cs?' · cross_spine':''):'…';
+    // scopes
+    let sc=[];
+    if(p.ac&&p.ac.type==='scope'){const v=p.ac.v.toLowerCase();sc=SCOPES.filter(s=>s.scope.toLowerCase().includes(v)&&!s.scope.startsWith('discovery:'))}
+    else if(p.kind==='text')sc=SCOPES.filter(s=>!s.scope.startsWith('discovery:')&&words.some(w=>s.scope.toLowerCase().includes(w))).slice(0,3);
+    else if(p.kind==='empty')sc=SCOPES.filter(s=>!s.scope.startsWith('discovery:')).slice(0,3);
+    sc=sc.filter(s=>!p.scopes.some(x=>x.v===s.scope)).slice(0,cfg.maxSc||6).map(s=>({t:'scope',key:'s:'+s.scope,s}));
+    // tags / categories
+    let tg=[],tgTitle='Tags',tgSrc='ListTags';
+    if(p.ac&&p.ac.type==='cat'){tgTitle='Categories';tgSrc='enum';tg=CATS.filter(c=>c.startsWith(p.ac.v)).map(c=>({t:'cat',key:'c:'+c,c}))}
+    else{
+      let list_=[];
+      if(p.ac&&p.ac.type==='tag'){const v=p.ac.v.toLowerCase();list_=TAGS.filter(x=>x.t.includes(v))}
+      else if(p.kind==='text')list_=TAGS.filter(x=>words.some(w=>x.t.includes(w))).slice(0,3);
+      else if(p.kind==='empty')list_=TAGS.slice(0,4);
+      tg=list_.filter(x=>!p.tags.some(y=>y.v===x.t)||(p.ac&&p.ac.type==='tag')).slice(0,cfg.maxTg||6).map(x=>({t:'tag',key:'t:'+x.t,x}));
+    }
+    // commands (static, filtered locally — they are not memories)
+    let cm=[];
+    if(!cfg.fullOnTop&&fullRow&&secsAllowed.includes('full'))cm.push(fullRow);
+    if(S.resp&&!S.resp.hits.length&&p.kind==='text')cm.push({t:'cmd',key:'cmd:disc',cmd:{label:`Search discoveries for “${esc(p.textStr)}”`,go:'discovery',k:''}});
+    const tl=p.textStr.toLowerCase();
+    CMDS.filter(c=>p.kind==='empty'||(p.kind==='text'&&tl.length>1&&(c.label.toLowerCase().includes(tl)||c.go.startsWith(tl)))).forEach(c=>cm.push({t:'cmd',key:'cmd:'+c.go,cmd:c}));
+    const order=p.ac&&p.ac.type==='scope'?['full','scopes','memories','tags','commands']
+               :p.ac&&(p.ac.type==='tag'||p.ac.type==='cat')?['full','tags','memories','scopes','commands']
+               :['full','memories','scopes','tags','commands'];
+    const bag={memories:[memTitle,memSrc,mem],scopes:['Scopes','ListScopes',sc],tags:[tgTitle,tgSrc,tg],commands:['Commands','local',cm]};
+    order.forEach(k=>{if(bag[k])add(k,...bag[k])});
+    return secs;
+  }
+  function itemHTML(it){
+    if(it.t==='skel')return `<div class="skel"><span style="width:8px"></span><span style="flex:1"></span><span style="width:70px"></span></div>`;
+    if(it.t==='note')return `<div class="note-row">${it.html}</div>`;
+    const i=S.items.push(it)-1;
+    const open=(cls,inner)=>`<div class="item ${cls}" data-i="${i}">${inner}</div>`;
+    switch(it.t){
+      case 'mem':{const m=it.h.m,dim=m.state.some(s=>s!=='scheduled');
+        return open('mem'+(dim?' dim':''),`<div class="line"><span class="dot" style="background:var(--cat-${m.cat})" title="${m.cat}"></span><span class="sum">${hl(m.sum,it.words)}</span>${m.state.map(s=>`<span class="state s-${s}">${s}</span>`).join('')}<span class="scope mono" title="${esc(m.scope)}">${esc(shortScope(m.scope))}</span><span class="sid mono">${m.sid}</span>${it.h.rel!=null?`<span class="num rel mono" title="jev relevance">rel ${it.h.rel.toFixed(2)}</span>`:''}${it.h.score!=null?`<span class="num mono" title="cosine score">${it.h.score.toFixed(3)}</span>`:''}</div><div class="sub"><span class="mono">${m.cat}</span><span>${m.tags.map(t=>'#'+esc(t)).join(' ')}</span><span class="mono">${m.at.slice(0,10)}</span><span class="mono">${m.id}</span>${m.shared?'<span>shared</span>':''}</div>`)}
+      case 'scope':return open('',`<div class="line"><span class="ico">⌗</span><span class="sum mono">${esc(it.s.scope)}</span><span class="cnt mono">${it.s.n}</span><span class="hint">↵ scope:</span></div>`);
+      case 'tag':return open('',`<div class="line"><span class="ico">#</span><span class="sum mono">${esc(it.x.t)}</span><span class="cnt mono">${it.x.n}</span><span class="hint">↵ filter</span></div>`);
+      case 'cat':return open('',`<div class="line"><span class="ico"><span class="dot" style="display:inline-block;background:var(--cat-${it.c})"></span></span><span class="sum mono">is:${it.c}</span><span class="cnt mono">${CAT_N[it.c]||0}</span><span class="hint">↵ filter</span></div>`);
+      case 'cmd':return open('',`<div class="line"><span class="ico">→</span><span class="sum">${it.cmd.label}</span>${it.cmd.k?`<kbd>${it.cmd.k}</kbd>`:''}</div>`);
+      case 'full':{const n=S.resp&&!S.pending?`${S.resp.hits.length} ${S.resp.rpc==='SearchMemories'?pl(S.resp.hits.length,'hit'):'found'}`:'';
+        return open('full',`<div class="line"><span class="ico">⌕</span><span class="sum">${it.label}</span><span class="cnt mono">${n}</span><kbd>↵</kbd><span class="cnt mono">/search</span></div>`)}
+      case 'more':return open('',`<div class="line"><span class="ico">…</span><span class="sum muted">${it.label}</span><span class="hint">↵</span></div>`);
+      case 'fix':return open('fix',`<div class="line"><span class="ico">${it.ico}</span><span class="sum">${it.label}</span><span class="hint">↵</span></div>`);
+    }
+  }
+  function render(){
+    renderChips();renderStatus();
+    const prevKey=S.items[S.active]&&S.items[S.active].key;
+    S.items=[];
+    const secs=build();
+    list.innerHTML=secs.map(sec=>`<div class="sec">${sec.title?`<div class="sec-h"><span>${sec.title}</span><span class="mono">${sec.src}</span></div>`:''}${sec.items.map(itemHTML).join('')}</div>`).join('');
+    let idx=0;
+    if(S.moved&&prevKey){const k=S.items.findIndex(it=>it.key===prevKey);if(k>=0)idx=k}
+    S.active=Math.min(idx,Math.max(0,S.items.length-1));
+    paintActive(false);
+  }
+  function paintActive(scroll=true){
+    list.querySelectorAll('[data-i]').forEach(el=>el.classList.toggle('active',+el.dataset.i===S.active));
+    if(scroll){const el=list.querySelector(`[data-i="${S.active}"]`);if(el)el.scrollIntoView({block:'nearest'})}
+    cfg.onActive&&cfg.onActive(S.items[S.active],S);
+  }
+  function renderChips(){
+    const p=S.p,out=[];
+    const chip=(cls,txt,act,extra='',title='')=>`<span class="chip ${cls}" title="${esc(title)}"><span class="t">${txt}</span>${act?`<button data-act="${act}" ${extra} aria-label="remove">✕</button>`:''}</span>`;
+    if(p.kind==='uuid')out.push(chip('kind','uuid → GetMemory','rm-text','','full UUID: fetched by id, no scope'));
+    else if(p.kind==='short_id')out.push(chip('kind','short_id → lookup','rm-text','','10-char Crockford base32'));
+    else if(p.kind==='text')out.push(chip('kind',`text “${esc(p.textStr)}”`,'rm-text','','semantic search'));
+    if(p.kind==='uuid'||p.kind==='short_id')out.push(chip('info','any scope you can read',null));
+    if((p.kind==='text'||p.kind==='list')&&!p.scopes.length){
+      out.push(S.cs?chip('','cross-spine','rm-cs','','cross_spine=true: every scope you can read'):`<span class="chip ghost" data-act="add-cs" title="restore cross_spine">+ cross-spine</span>`);
+    }
+    p.scopes.forEach(s=>out.push(chip(s.unknown?'bad':'',`scope: ${esc(shortScope(s.v))}`,'rm-tok',`data-s="${s.tok.s}" data-e="${s.tok.e}"`,s.unknown?'not a scope you can read':s.v)));
+    p.tags.forEach(t=>out.push(chip('',`#${esc(t.v)}`,'rm-tok',`data-s="${t.tok.s}" data-e="${t.tok.e}"`,'tags: AND')));
+    p.cats.forEach(c=>out.push(chip(c.bad?'bad':'',`${c.bad?'':`<span class="dot" style="display:inline-block;width:calc(6*var(--u));height:calc(6*var(--u));background:var(--cat-${c.v})"></span> `}is:${esc(c.v)}`,'rm-tok',`data-s="${c.tok.s}" data-e="${c.tok.e}"`,c.bad?'unknown category':'categories: OR')));
+    if(p.pending)out.push(chip('pending',`${esc(p.pending.label)}…`,'rm-tok',`data-s="${p.pending.tok.s}" data-e="${p.pending.tok.e}"`,'not applied yet: pick one below'));
+    chips.innerHTML=out.length?`<span class="lbl">interpreted as</span>${out.join('')}`:`<span class="lbl">interpreted as</span><span class="hintx">nothing yet · text, a UUID, a short_id, <code>scope:</code> <code>#tag</code> <code>is:gotcha</code></span>`;
+  }
+  function renderStatus(){
+    let h='';
+    const spin=S.pending?`<span class="spin"></span><span class="faint">searching…</span>`:'';
+    if(S.err){
+      h=`<div class="status err"><span class="hl">Server rejected the request</span>${spin}<span class="src" style="cursor:default">${S.err.field==='scope'?'SearchMemories':'SearchMemories'}</span></div><div class="envelope">field=${S.err.field} hint=${S.err.hint}: ${esc(S.err.text)}</div>`;
+    }else if(S.resp){
+      const r=S.resp;
+      const src=r.searched?`${r.rpc}${r.cs?' · cross_spine':''} · ${r.searched.length} ${pl(r.searched.length,'scope')} searched ${S.cov?'▴':'▾'}`:r.rpc;
+      h=`<div class="status ${r.tone}">${S.pending?'<span class="faint">previous results ·</span>':''}<span class="hl">${r.headline}</span>${r.note?`<span class="note">· ${r.note}</span>`:''}${spin}<button class="src" ${r.searched?'data-act="cov"':''}>${src}</button></div>`;
+      if(S.cov&&r.searched)h+=`<div class="coverage">${r.searched.map(s=>{const n=r.perScope[s]||0;return `<div class="${n?'hit':''}">${n?'✓':'·'} ${esc(s)}  ${n?n+' '+pl(n,'hit'):'0'}</div>`}).join('')}<div>discovery:* not included (separate lane: search_discovery)</div></div>`;
+    }else if(S.pending)h=`<div class="status">${spin}</div>`;
+    else h=`<div class="status"><span class="faint">Type to search</span></div>`;
+    status.innerHTML=h;
+  }
+
+  /* actions */
+  function move(d){const n=S.items.length;if(!n)return;S.active=(S.active+d+n)%n;S.moved=true;paintActive()}
+  function cycle(d){
+    const secEls=[...list.querySelectorAll('.sec')].filter(s=>s.querySelector('[data-i]'));
+    if(!secEls.length)return;
+    const cur=secEls.findIndex(s=>s.querySelector(`[data-i="${S.active}"]`));
+    const nx=secEls[(cur+d+secEls.length)%secEls.length];
+    S.active=+nx.querySelector('[data-i]').dataset.i;S.moved=true;paintActive();
+  }
+  function complete(type,val){
+    const pre={scope:'scope:',tag:'#',cat:'is:'}[type];
+    const ac=S.p.ac;let q;
+    if(ac&&ac.type===type)q=S.q.slice(0,ac.tok.s)+ac.prefix+val+' '+S.q.slice(ac.tok.e).replace(/^\s+/,'');
+    else q=(S.q.trim()?S.q.replace(/\s*$/,' '):'')+pre+val+' ';
+    setQuery(q);
+  }
+  function run(){
+    const it=S.items[S.active];if(!it)return;
+    switch(it.t){
+      case 'mem':cfg.onMemory(it.h.m);break;
+      case 'scope':complete('scope',it.s.scope);break;
+      case 'tag':complete('tag',it.x.t);break;
+      case 'cat':complete('cat',it.c);break;
+      case 'cmd':cfg.onCommand(it.cmd);break;
+      case 'full':case 'more':cfg.onFull?cfg.onFull(S.q):toast('No /search page in this variant');break;
+      case 'fix':
+        if(it.act==='cs'){S.cs=true;changed()}
+        else if(it.act==='scope')setQuery((S.q.trim()?S.q.replace(/\s*$/,' '):'')+'scope:');
+        else if(it.act==='cat')setQuery(cut(S.q,S.p.cats.filter(c=>c.bad).map(c=>c.tok)));
+        else{S.key=null;query();if(FORCE==='error')toast('Server error is still on (sketch controls → live)')}
+        break;
+    }
+  }
+  CTRLS.push(api_);
+  changed();
+  return api_;
+}
+
+/* ---------------- console pages (shared) ---------------- */
+function prow(m){const dim=m.state.some(s=>s!=='scheduled');return `<div class="prow${dim?' dim':''}" data-open="${m.id}"><div class="line"><span class="dot" style="background:var(--cat-${m.cat})"></span><span class="sum">${esc(m.sum)}</span>${m.state.map(s=>`<span class="state s-${s}">${s}</span>`).join('')}<span class="scope mono">${esc(shortScope(m.scope))}</span><span class="sid mono">${m.sid}</span><span class="num mono">${m.at.slice(5,10)}</span></div></div>`}
+const NAMES={recall:'Recall',observe:'Observe',discovery:'Discovery',rules:'Rules',scheduled:'Scheduled'};
+function pageHTML(page){
+  if(page.startsWith('memory:')){
+    const m=byId(page.slice(7));
+    return `<div class="detail"><div class="crumb"><a data-go="recall">Recall</a> / <span class="mono">${m.sid}</span></div>
+      <div class="line" style="gap:10px"><span class="dot" style="background:var(--cat-${m.cat})"></span><span class="mono faint">${m.cat}</span>${m.state.map(s=>`<span class="state s-${s}">${s}</span>`).join('')}</div>
+      <div class="pv-sum">${esc(m.sum)}</div><p class="pv-body">${esc(m.body||'(no body)')}</p>
+      ${m.supBy?`<p class="muted">Superseded by <span class="link mono" data-open="${bySid(m.supBy).id}">${m.supBy}</span></p>`:''}
+      <dl class="pv-grid"><dt>id</dt><dd>${m.id}</dd><dt>short_id</dt><dd>${m.sid}</dd><dt>scope</dt><dd>${esc(m.scope)}</dd><dt>tags</dt><dd>${m.tags.map(t=>'#'+esc(t)).join(' ')}</dd><dt>created_at</dt><dd>${m.at}</dd><dt>visibility</dt><dd>${m.shared?'shared':'private'}</dd></dl></div>`;
+  }
+  const vis=MEM.filter(m=>READABLE.includes(m.scope)&&!m.state.length).sort((a,b)=>b.at.localeCompare(a.at));
+  if(page==='observe')return `<div class="page-h"><h1>Observe</h1><span class="muted">store health · ${MEM.length} records</span></div>
+    <div class="tiles">${CATS.map(c=>`<div class="tile"><div class="v">${CAT_N[c]||0}</div><div class="k"><span class="dot" style="background:var(--cat-${c})"></span>${c}</div></div>`).join('')}</div>
+    <div class="sec-h"><span>Scopes</span><span class="mono">ListScopes</span></div>${SCOPES.map(s=>`<div class="prow"><div class="line"><span class="sum mono">${esc(s.scope)}</span><span class="cnt mono faint">${s.n}</span></div></div>`).join('')}`;
+  const list=page==='discovery'?MEM.filter(m=>m.cat==='discovery'):page==='rules'?MEM.filter(m=>m.cat==='rule'):page==='scheduled'?MEM.filter(m=>m.state.includes('scheduled')):vis;
+  const sub={recall:`newest across ${READABLE.length} scopes you can read`,discovery:'discovery:* lane · search_discovery',rules:'rule:* scopes · list_rules',scheduled:'hidden by the recall gate until not_before'}[page];
+  return `<div class="page-h"><h1>${NAMES[page]}</h1><span class="muted">${sub}</span></div>${list.map(prow).join('')||'<div class="note-row">Nothing here.</div>'}`;
+}
+function makeNav(root,onGo){
+  const nav=root.querySelector('[data-nav]');
+  nav.innerHTML=Object.entries(NAMES).map(([k,v])=>`<a data-go="${k}">${v}</a>`).join('');
+  nav.addEventListener('click',e=>{const a=e.target.closest('[data-go]');if(a)onGo(a.dataset.go)});
+  return page=>nav.querySelectorAll('a').forEach(a=>a.classList.toggle('on',page===a.dataset.go||(page.startsWith('memory:')&&a.dataset.go==='recall')));
+}
+function wireMain(main,onGo,onOpen){
+  main.addEventListener('click',e=>{
+    const o=e.target.closest('[data-open]');if(o){onOpen(byId(o.dataset.open));return}
+    const g=e.target.closest('[data-go]');if(g)onGo(g.dataset.go);
+  });
+}
+function mountSearchPage(main,q,onMemory){
+  main.innerHTML=`<div class="search-page"><div class="in-wrap"><span class="glass">⌕</span><input autocomplete="off" spellcheck="false" placeholder="Search every scope you can read"><span class="mono faint" style="font-size:var(--text-2xs)">/search</span></div><div class="progress"></div><div class="chips"></div><div class="sp-status"></div><div class="list" tabindex="-1"></div></div>`;
+  const el=s=>main.querySelector(s);
+  const c=createSearch({input:el('input'),chips:el('.chips'),status:el('.sp-status'),list:el('.list'),progress:el('.progress'),sections:['memories'],maxMem:50,onMemory,onCommand(){},onEscape(){el('input').blur()}});
+  c.setQuery(q);
+  return c;
+}
+
+/* ---------------- Variant A: ⌘K modal ---------------- */
+const A=(()=>{
+  const root=document.getElementById('variant-a'),main=document.getElementById('a-main'),ov=document.getElementById('a-overlay');
+  let page='recall',pageCtrl=null;
+  const mark=makeNav(root,go);
+  function go(pg){page=pg;pageCtrl=null;main.innerHTML=pageHTML(pg);mark(pg);main.scrollTop=0}
+  function openMem(m){close();go('memory:'+m.id);toast(`GetMemory <code>${m.sid}</code>`)}
+  wireMain(main,go,openMem);
+  const ctrl=createSearch({input:document.getElementById('a-input'),chips:document.getElementById('a-chips'),status:document.getElementById('a-status'),list:document.getElementById('a-list'),progress:document.getElementById('a-prog'),maxMem:8,maxSc:5,maxTg:5,
+    onMemory:openMem,
+    onCommand(c){close();go(c.go);toast(`→ ${NAMES[c.go]}`)},
+    onFull(q){close();page='search';mark('');pageCtrl=mountSearchPage(main,q,m=>{go('memory:'+m.id)});toast(`Opened <code>/search?q=${esc(q.trim())}</code>`)},
+    onEscape:close});
+  function open(){ov.classList.add('open');ctrl.focus()}
+  function close(){ov.classList.remove('open');document.getElementById('a-input').blur()}
+  ov.addEventListener('mousedown',e=>{if(e.target===ov)close()});
+  document.getElementById('a-open').addEventListener('click',open);
+  go('recall');
+  return {open,close,isOpen:()=>ov.classList.contains('open'),ctrl:()=>ov.classList.contains('open')?ctrl:pageCtrl,search:()=>ctrl};
+})();
+
+/* ---------------- Variant B: header inline search ---------------- */
+const B=(()=>{
+  const root=document.getElementById('variant-b'),main=document.getElementById('b-main'),drop=document.getElementById('b-drop'),input=document.getElementById('b-input');
+  let pageCtrl=null;
+  const mark=makeNav(root,go);
+  function go(pg){pageCtrl=null;main.innerHTML=pageHTML(pg);mark(pg);main.scrollTop=0}
+  function openMem(m){close();go('memory:'+m.id);toast(`GetMemory <code>${m.sid}</code>`)}
+  wireMain(main,go,openMem);
+  const ctrl=createSearch({input,chips:document.getElementById('b-chips'),status:document.getElementById('b-status'),list:document.getElementById('b-list'),progress:document.getElementById('b-prog'),maxMem:5,maxSc:3,maxTg:3,fullOnTop:true,
+    onMemory:openMem,
+    onCommand(c){close();go(c.go);toast(`→ ${NAMES[c.go]}`)},
+    onFull(q){close();ctrl.setQuery('',{focus:false});mark('');pageCtrl=mountSearchPage(main,q,m=>go('memory:'+m.id));toast(`Opened <code>/search?q=${esc(q.trim())}</code> with the query applied`)},
+    onEscape:()=>{close();input.blur()}});
+  function open(){drop.classList.add('open');input.focus();input.select()}
+  function close(){drop.classList.remove('open')}
+  input.addEventListener('focus',()=>drop.classList.add('open'));
+  input.addEventListener('blur',()=>setTimeout(()=>{if(document.activeElement!==input&&!drop.contains(document.activeElement))close()},120));
+  drop.addEventListener('mousedown',e=>{if(!e.target.closest('input'))e.preventDefault()});
+  go('recall');
+  return {open,close,isOpen:()=>drop.classList.contains('open'),ctrl:()=>drop.classList.contains('open')?ctrl:pageCtrl,search:()=>ctrl};
+})();
+
+/* ---------------- Variant C: full-page takeover ---------------- */
+const C=(()=>{
+  const root=document.getElementById('variant-c'),main=document.getElementById('c-main'),take=document.getElementById('c-take'),pv=document.getElementById('c-preview');
+  let page='recall',scroll=0;
+  const mark=makeNav(root,go);
+  function go(pg){page=pg;main.innerHTML=pageHTML(pg);mark(pg);main.scrollTop=0}
+  function label(pg){return pg.startsWith('memory:')?byId(pg.slice(7)).sid:NAMES[pg]}
+  wireMain(main,go,m=>go('memory:'+m.id));
+  function preview(it){
+    if(!it){pv.innerHTML='<div class="note-row">Nothing selected.</div>';return}
+    if(it.t==='mem'){const m=it.h.m;
+      pv.innerHTML=`<div class="line" style="gap:8px"><span class="dot" style="background:var(--cat-${m.cat})"></span><span class="mono faint">${m.cat}</span>${m.state.map(s=>`<span class="state s-${s}">${s}</span>`).join('')}${m.shared?'<span class="state">shared</span>':''}</div>
+      <div class="pv-sum">${hl(m.sum,it.words)}</div><p class="pv-body">${esc(m.body||'(no body)')}</p>
+      ${m.supBy?`<p class="muted">Superseded by <code>${m.supBy}</code></p>`:''}
+      <dl class="pv-grid"><dt>short_id</dt><dd>${m.sid}</dd><dt>id</dt><dd>${m.id}</dd><dt>scope</dt><dd>${esc(m.scope)}</dd><dt>tags</dt><dd>${m.tags.map(t=>'#'+esc(t)).join(' ')}</dd><dt>created_at</dt><dd>${m.at}</dd>${it.h.score!=null?`<dt>score</dt><dd>${it.h.score.toFixed(3)} cosine</dd>`:''}${it.h.rel!=null?`<dt>relevance</dt><dd>${it.h.rel.toFixed(2)} (jev)</dd>`:''}</dl>
+      <div class="pv-actions"><button class="btn pri" data-pv="open">Open ↵</button><button class="btn" data-pv="copy">Copy short_id</button></div>`;
+      return}
+    const d={scope:()=>`<div class="pv-k">scope · ListScopes</div><div class="pv-sum mono">${esc(it.s.scope)}</div><p class="pv-body">${it.s.n} ${pl(it.s.n,'record')} you can read. <kbd>↵</kbd> adds <code>scope:</code>; the search then runs in this scope only and cross-spine turns off.</p>`,
+      tag:()=>`<div class="pv-k">tag · ListTags</div><div class="pv-sum mono">#${esc(it.x.t)}</div><p class="pv-body">${it.x.n} ${pl(it.x.n,'record')}. Tag filters AND together and apply before vector ranking.</p>`,
+      cat:()=>`<div class="pv-k">category</div><div class="pv-sum mono">is:${it.c}</div><p class="pv-body">Categories OR together.</p>`,
+      cmd:()=>`<div class="pv-k">command · local</div><div class="pv-sum">${it.cmd.label}</div><p class="pv-body">Navigation, not a memory. Filtered in the browser.</p>`,
+      fix:()=>`<div class="pv-k">fix</div><div class="pv-sum">${it.label}</div><p class="pv-body">The server named the field and the hint; this action changes that field.</p>`,
+      more:()=>`<div class="pv-sum">${it.label}</div>`,full:()=>`<div class="pv-sum">${it.label}</div>`};
+    pv.innerHTML=(d[it.t]||(()=>''))();
+  }
+  pv.addEventListener('click',e=>{const b=e.target.closest('[data-pv]');if(!b)return;if(b.dataset.pv==='open')ctrl.run();else toast('Copied short_id')});
+  const ctrl=createSearch({input:document.getElementById('c-input'),chips:document.getElementById('c-chips'),status:document.getElementById('c-status'),list:document.getElementById('c-list'),progress:document.getElementById('c-prog'),maxMem:40,maxSc:6,maxTg:6,sections:['memories','scopes','tags','commands'],
+    onMemory(m){close(true);go('memory:'+m.id);toast(`GetMemory <code>${m.sid}</code>`)},
+    onCommand(c){close(true);go(c.go);toast(`→ ${NAMES[c.go]}`)},
+    onEscape:()=>close(),onActive:preview});
+  function open(){
+    if(!take.classList.contains('open')){scroll=main.scrollTop;document.getElementById('c-from').textContent=`Search · Esc returns to ${label(page)}`;take.classList.add('open')}
+    ctrl.focus();
+  }
+  function close(silent){
+    if(!take.classList.contains('open'))return;
+    take.classList.remove('open');document.getElementById('c-input').blur();
+    if(!silent){main.scrollTop=scroll;toast(`Restored ${esc(label(page))}`)}
+  }
+  document.getElementById('c-open').addEventListener('click',open);
+  document.getElementById('c-close').addEventListener('click',()=>close());
+  go('recall');
+  return {open,close,isOpen:()=>take.classList.contains('open'),ctrl:()=>take.classList.contains('open')?ctrl:null,search:()=>ctrl};
+})();
+
+/* ---------------- variant switching + global keys ---------------- */
+const V={a:A,b:B,c:C};let cur='a';
+function showVariant(id,btn){
+  document.querySelectorAll('.variant').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.variant-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('variant-'+id).classList.add('active');
+  (btn||document.querySelector(`.variant-tab[data-v="${id}"]`)).classList.add('active');
+  cur=id;
+}
+const isTyping=t=>t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable);
+document.addEventListener('keydown',e=>{
+  const v=V[cur];
+  if(e.key==='Escape'&&!dpop.hidden){e.preventDefault();closeDisplay(true);return}
+  if(e.target.closest&&e.target.closest('#display-pop'))return;
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();v.open();return}
+  if(isTyping(e.target))return;
+  if(e.key==='/'){e.preventDefault();v.open();return}
+  const c=v.ctrl();
+  if(e.key==='Escape'){if(v.isOpen()){e.preventDefault();v.close()}return}
+  if(!c)return;
+  if(e.key==='j'||e.key==='ArrowDown'){e.preventDefault();c.move(1)}
+  else if(e.key==='k'||e.key==='ArrowUp'){e.preventDefault();c.move(-1)}
+  else if(e.key==='Enter'){e.preventDefault();c.run()}
+  else if(e.key==='Tab'){e.preventDefault();c.cycle(e.shiftKey?-1:1)}
+});
+
+/* ---------------- sketch controls ---------------- */
+document.getElementById('sketch-ctrl').addEventListener('click',e=>{
+  const t=e.target.closest('[data-try]');
+  if(t){const v=V[cur];v.open();v.search().setQuery(t.dataset.try);return}
+  const f=e.target.closest('[data-force]');
+  if(f){FORCE=f.dataset.force;document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('on',b===f));CTRLS.forEach(c=>c.rerun());toast(`Server: <b>${FORCE}</b>`);return}
+  if(e.target.id==='jev-btn'){JEV=!JEV;e.target.classList.toggle('on',JEV);CTRLS.forEach(c=>c.rerun());toast(JEV?'ENGRAM_SEARCH_RANKER=jev: results carry relevance':'jev ranker off: cosine order')}
+});
+// prevent control clicks from stealing focus from an open search (B closes on blur)
+document.getElementById('sketch-ctrl').addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault()});
+document.getElementById('theme-sel').addEventListener('change',e=>{document.querySelector('link[href*=themes]').href='../themes/'+e.target.value+'.css'});
+document.querySelectorAll('[data-vp]').forEach(b=>b.addEventListener('click',()=>{
+  const f=document.getElementById('frame'),v=b.dataset.vp;
+  f.style.maxWidth=v==='full'?'':v+'px';f.classList.toggle('constrained',v!=='full');
+  document.querySelectorAll('[data-vp]').forEach(x=>x.classList.toggle('on',x===b));
+}));
+let anno=false,annoEl=null;const tip=document.getElementById('anno-tip');
+document.getElementById('anno-btn').addEventListener('click',e=>{anno=!anno;e.target.classList.toggle('on',anno);if(!anno){tip.style.display='none';annoEl&&annoEl.classList.remove('anno-outline')}});
+document.addEventListener('mousemove',e=>{
+  if(!anno)return;
+  const el=e.target;
+  if(el.closest('#sketch-tools,#sketch-ctrl,#anno-tip')){tip.style.display='none';return}
+  if(annoEl!==el){annoEl&&annoEl.classList.remove('anno-outline');annoEl=el;el.classList.add('anno-outline')}
+  const cs=getComputedStyle(el);
+  const cls=[...el.classList].filter(c=>c!=='anno-outline').join('.');
+  tip.textContent=`${el.tagName.toLowerCase()}${cls?'.'+cls:''}\nfont    ${cs.fontSize} / ${cs.fontWeight} ${cs.fontFamily.split(',')[0]}\ncolor   ${cs.color}\nbg      ${cs.backgroundColor}\npadding ${cs.padding}\nsize    ${Math.round(el.offsetWidth)}×${Math.round(el.offsetHeight)}`;
+  tip.style.display='block';
+  tip.style.left=Math.min(e.clientX+14,innerWidth-tip.offsetWidth-8)+'px';
+  tip.style.top=Math.min(e.clientY+14,innerHeight-tip.offsetHeight-8)+'px';
+});
+
+/* ---------------- Display popover: console-wide text size ----------------
+   themes/display.js owns the value, its persistence, cross-page/tab sync and the global
+   ⌘+ / ⌘- / ⌘0 shortcuts; this only renders and sets it (same popover as sketch 001 B′). */
+const DISP=window.EngramDisplay;
+const MOD=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent)?'⌘':'Ctrl';
+const dpop=document.getElementById('display-pop'), tsSeg=document.getElementById('ts-seg');
+let textSize=DISP.get();
+document.getElementById('ts-keys').innerHTML=`<span><kbd>${MOD}</kbd><kbd>+</kbd> larger</span><span><kbd>${MOD}</kbd><kbd>−</kbd> smaller</span><span><kbd>${MOD}</kbd><kbd>0</kbd> reset to ${DISP.DEFAULT}</span>`;
+function paintTextSize(){
+  document.getElementById('ts-val').textContent=textSize+'px';
+  tsSeg.querySelectorAll('button').forEach(b=>{const on=+b.dataset.ts===textSize;b.setAttribute('aria-checked',on);b.tabIndex=on?0:-1});
+}
+window.addEventListener('engram:textsize',e=>{
+  const n=e.detail.size, changed=n!==textSize; textSize=n; paintTextSize();
+  const btn=document.querySelector('.aa[aria-expanded=true]'); if(btn&&!dpop.hidden) placeDisplay(btn);
+  toast(`Text size ${n}px${changed?'':n===DISP.MAX?' (max)':n===DISP.MIN?' (min)':''}`);
+});
+function placeDisplay(btn){
+  const r=btn.getBoundingClientRect();
+  dpop.style.left=Math.max(8,Math.min(r.right-dpop.offsetWidth,innerWidth-dpop.offsetWidth-8))+'px'; dpop.style.top=(r.bottom+6)+'px';
+}
+function openDisplay(btn){
+  dpop.hidden=false; placeDisplay(btn); btn.setAttribute('aria-expanded','true');
+  (tsSeg.querySelector('[aria-checked=true]')||tsSeg.firstElementChild).focus();
+}
+function closeDisplay(refocus){
+  if(dpop.hidden) return; dpop.hidden=true;
+  const btn=document.querySelector('.aa[aria-expanded=true]'); if(btn){ btn.setAttribute('aria-expanded','false'); if(refocus) btn.focus(); }
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act=display]'); if(b) dpop.hidden?openDisplay(b):closeDisplay(true)});
+tsSeg.addEventListener('click',e=>{const b=e.target.closest('button');if(b){DISP.set(+b.dataset.ts);b.focus()}});
+tsSeg.addEventListener('keydown',e=>{
+  const d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1}[e.key]; if(!d) return;
+  e.preventDefault(); e.stopPropagation(); DISP.step(d); tsSeg.querySelector('[aria-checked=true]').focus();
+});
+document.addEventListener('mousedown',e=>{ if(!e.target.closest('#display-pop')&&!e.target.closest('[data-act=display]')) closeDisplay(false) });
+paintTextSize();
+
+// A opens on load so the palette is visible immediately
+A.open();
+</script>
+</body>
+</html>

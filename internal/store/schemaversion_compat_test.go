@@ -449,7 +449,7 @@ func assertApplicabilityMatrix(ctx context.Context, t *testing.T, s *Store, subj
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	scheduledItems, err := s.ListScheduled(ctx, scope, subj, ScheduledAll, ListOptions{Limit: compatRecallLimit})
+	scheduledItems, _, err := s.ListScheduled(ctx, scope, subj, ScheduledAll, ListOptions{Limit: compatRecallLimit})
 	if err != nil {
 		t.Fatalf("ListScheduled: %v", err)
 	}

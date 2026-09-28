@@ -1,215 +1,173 @@
 # Project Research Summary
 
-**Project:** engram — milestone 2026-09-18.01 "Bounded Reads"
-**Domain:** Bounded-size reads/pagination for a Go + Qdrant memory server (Connect API + MCP + gRPC client)
-**Researched:** 2026-09-18
+**Project:** engram — Console Overhaul (milestone 2026-09-25.01)
+**Domain:** operator/developer console for a self-hosted memory MCP server (recall-first search UI, curation workbench, related-memories browse) — SvelteKit 2 / Svelte 5 SPA over ConnectRPC, backed by Go + Qdrant with store-layer authz and provider-neutral advisory typed decisions (Jev)
+**Researched:** 2026-09-25
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This is a hardening milestone, not a feature-landscape scan: the goal is that no Qdrant read
-or provider HTTP response can fail because of unbounded size, and every such failure surfaces
-as a clear, named error instead of an opaque Connect `internal`/HTTP 500. All four research
-passes converge on the same root cause and the same fix shape. Root cause: `internal/server/tools.go`'s
-one shared `*qdrant.Client` sets no `MaxCallRecvMsgSize`, so grpc-go's default 4 MiB client
-receive cap applies uniformly, while `Store`'s read paths (`List` in all three modes,
-`ListScheduled`, `Search`/`SearchDiscovery`'s `k`, and five 256-batch operator sweeps) request
-full record payloads with no page-size-to-payload-size ceiling, and memory `content` itself has
-no size cap at all (unlike `summary`, already capped by `ENGRAM_MEMORY_MAX_SUMMARY_BYTES`).
-#583 already fixed exactly one instance of this shape (`Store.ListScopes`, via a payload
-selector) and #585 immediately found four siblings — the architecture and pitfalls research
-both treat this recurrence as diagnostic: fixing sites one at a time reproduces the sequence a
-third time, so the recommended approach is one shared bounded-read mechanism (a
-`WithPayloadInclude`/byte-budget-aware page helper, reusing the already-proven `scrollAllPoints`
-pattern) applied to every call site, not five independent patches.
+This milestone is a design-and-product job, not a stack migration. The console's stack (Svelte 5.57, SvelteKit 2.70, shadcn-svelte 1.7.0, bits-ui 2.18→2.19.3, Tailwind 4, TanStack Query 6) is already current; the work is exposing roughly eight server capabilities that are API-reachable but UI-invisible (facets, `score`/`relevance`, scope autocomplete, curation writes, related-memories, tag counts), and fixing two live entry-point bugs that share one root cause: the console silently stops asking the server and starts guessing. The command palette filters a static four-item list client-side instead of driving results from `SearchMemories` (bits-ui `Command.Root` defaults `shouldFilter` to `true`); free-text search never tries `GetMemory` for an id-shaped token, so an agent pasting a short_id gets a confusing "no results." Both are `Command`/routing bugs fixable without new server work, and both directly motivate this milestone's organizing principle: "the entry point must not lie" — every search reports honestly what it searched and which resolution path it took.
 
-The recommended approach needs **zero new Go dependencies** — every capability (payload
-selectors, `Config.GrpcOptions`, gRPC status/codes inspection, Connect's `CodeResourceExhausted`,
-`io.LimitReader`/`io.CopyN`) already exists in the pinned stack and, in most cases, already has a
-working precedent inside this codebase (`ListScopes`'s payload-scoped scroll, the
-`status.FromError`/`grpccodes.AlreadyExists` idiom, `listByCursor`'s keyset paging). Feature
-research against comparable systems (Qdrant, Weaviate, Milvus, Google AIP-158, mem0, Zep)
-confirms this is squarely table-stakes work — every comparable system enforces a real page
-ceiling, classifies a size-exceeded request with a named error rather than a generic failure,
-and coerces down an oversized request rather than silently truncating it — and that engram's
-`content` field is the one text field in its own schema left uncapped relative to its own
-established precedent (`Citation.excerpt` 16 KiB, discovery `content` 64 KiB).
+The recommended build order (developer recall → operator curation → newcomer browse, per Sean's own decision) is corroborated independently by all four research files: STACK ranks the results-row virtualization and search-box mechanics as the highest-certainty, lowest-risk work; FEATURES' prioritization matrix puts id/short_id resolution, the palette fix, score/relevance rendering, and facet exposure at P1 (all reuse existing RPCs, zero new server surface); ARCHITECTURE's suggested build order puts store-layer prerequisites and the entry-point fix before any new proto; and PITFALLS anchors five of its ten critical pitfalls in exactly this first phase. The graph view and NL-query-understanding chips are consistently sequenced last across all four files — not because they're unimportant, but because every source (Obsidian/Roam/Logseq graph-view retrospectives, Linear/Gmail NL-chip precedent) independently warns these are the two features easiest to over-build for looks and under-deliver for utility, and both benefit from the facet/filter-chip UI and `ListTags`/`ListScopes` data existing first.
 
-The primary risk this research surfaces is under-scoping: record-count caps alone (`maxListLimit
-= 1000`, `reindexBatch = 256`) do not bound bytes while `content` is unbounded, so a small page
-of a few huge records can still overflow the same cap a page of 1000 tiny records would not.
-Two further risks compound this milestone specifically: adding several new >4 MiB real-Qdrant
-regression fixtures increases exactly the CI memory pressure that `internal/store`'s testcontainer
-already struggled under; and a casually-written `ResourceExhausted → clear error` mapping can
-either leak raw gRPC/Qdrant internals to a caller or mis-catch legitimate server-capacity
-exhaustion unrelated to this bug. All three are addressed below with concrete phase-level
-mitigations. Two design questions — whether to cap `content` size, and whether `ListMemories`
-keeps `limit: 0` = all + offset vs. moves to a hard cap + cursor — are deliberately **not**
-resolved by this research; they are flagged for discuss-phase with the evidence needed to decide
-them.
+The two biggest risks are architectural, not visual. First, DEC-cgb (store-layer-only authz enforcement) is a locked invariant that every new Connect RPC (`SupersedeMemory`, `ArchiveMemory`/`RestoreMemory`, `RelatedMemories`) must respect — a "quick guard" in a handler is the single most likely regression, and `ArchiveMemory`/`RestoreMemory` specifically need *new* authz-gated store methods since today's `store.Archive`/`Restore` are subject-less CLI-only paths. Second, the CSRF contract is a two-sided, silently-failing allowlist (`csrfWriteProcedures` in `connectcsrf.go` plus routing through the `engramWrite` client) — an omission produces no test failure, just a forgeable mutation. Both risks are well-understood and have direct code-level fixes (see ARCHITECTURE Gap 1/2 and PITFALLS 6/7), but they are exactly the kind of "looks done, isn't" failure the roadmap must gate explicitly rather than trust to manual click-through.
 
 ## Key Findings
 
 ### Recommended Stack
 
-Zero new `go.mod` entries. Every fix uses an already-vendored API: `qdrant.NewWithPayloadInclude`/
-`NewWithPayloadExclude` (already proven in this repo for `ListScopes`), `qdrant.Config.GrpcOptions`
-to raise `MaxCallRecvMsgSize` as **defense-in-depth only** (explicitly not a fix — #583 already
-rejected it as the primary mechanism), `google.golang.org/grpc/status`+`codes` to detect
-`ResourceExhausted` (mirrors the existing `status.FromError`/`grpccodes.AlreadyExists` idiom at
-`store.go:591`), `connect.CodeResourceExhausted` for the Connect-side mapping (maps to HTTP 429;
-the CLI's `exitCodeForConnectErr` already has a row anticipating this), and stdlib `io.LimitReader`/
-`io.CopyN` for bounding the embed/summarize HTTP drain calls.
+No stack migration — bump `bits-ui` to `2.19.3` (accessibility fixes relevant to the new `Combobox` usage) and add two small, purpose-fit libraries. Everything else (debounced search, tag cloud, scope autocomplete) is covered by what's already a dependency.
 
 **Core technologies:**
-- `qdrant.NewWithPayloadInclude(...)` — shrink Scroll/Get responses to only needed fields — already the fix pattern for #583, reusable for `List`'s offset/cursor paths.
-- `qdrant.Config.GrpcOptions` (`grpc.MaxCallRecvMsgSize`) — raise the receive ceiling as a second line of defense only, wired at the single `storeFromConfig` client-construction site.
-- `google.golang.org/grpc/status`/`codes` + `connect.CodeResourceExhausted` — classify and map the transport's own `ResourceExhausted` status instead of pre-flight size estimation.
-- `io.LimitReader`/`io.CopyN` (stdlib) — bound HTTP client response-body decode, error-body read, and post-error drain in `internal/embed`/`internal/summarize`, extending an idiom already partly shipped in those files.
+- `@humanspeak/svelte-virtual-list@0.5.14` — virtualizes the dense results list (50–1000 rows); the only Svelte-5-native, actively-maintained virtualizer with a documented keyboard-accessible viewport. `@tanstack/svelte-virtual` is explicitly rejected — its Svelte 5 support issue (#866) has been open since 2024-10-28 and requires a private-API workaround.
+- `d3-force` + `d3-drag` + `d3-zoom` + `d3-selection` (3.0.0 each, ~31 KB combined) — related-memories graph physics/gestures, rendered as plain Svelte-owned inline SVG. Chosen over Sigma.js and Cytoscape.js specifically because native SVG elements are directly keyboard/ARIA-addressable; canvas/WebGL renderers require building a synthetic accessibility layer from scratch (a confirmed, library-unsolved gap for both alternatives).
+- `@tanstack/svelte-query@^6.1.34` (existing) — `placeholderData: keepPreviousData` avoids flash-to-empty between keystrokes; the codebase already uses v6's required thunk syntax everywhere.
+- `bits-ui@2.19.3` (bump from ^2.18.1) — `Combobox` (unopinionated, server-driven by default) for scope autocomplete; `Command.Root shouldFilter={false}` for the palette.
+- Plain `flex-wrap` of the existing shadcn-svelte `Badge` for the tag cloud — no dedicated tag-cloud library; those target a decorative, rotated-text aesthetic that actively hurts scannability/keyboard access for an operator control.
+
+**Architectural note carried from STACK into the row design:** hover-expand must not be a virtualizer-managed dynamic row height (reintroduces exactly the remeasurement complexity the library exists to hide). Render fixed-height virtualized rows; render expanded content as an absolutely-positioned overlay anchored to the hovered row's bounding rect, reusing the detail pane's content.
 
 ### Expected Features
 
-**Must have (table stakes, per FEATURES.md and comparable-system survey):**
-- A real, enforced maximum page/result size independent of caller input, on every Qdrant scroll/search/sweep call site (AIP-158, Weaviate, Milvus, Qdrant's own REST cap all do this).
-- A named, classified error (not opaque `internal`/500) when a request would exceed a bound — maps directly to `ResourceExhausted` → the existing `field=<name> hint=<code>` envelope.
-- Coerce-down, not silent-truncate, on an oversized caller-supplied `limit`/`k`.
-- Bounded provider/dependency HTTP I/O — never trust a downstream body or drain to be small (#347/#457).
-- Cross-spine recall (#456) keeps already-successful hits when a downstream coverage call fails — independent bug, same milestone.
+**Must have (table stakes, P1 — all reuse existing server capabilities, zero new RPCs):**
+- Id/short_id/prose resolution with honest reporting of which path was taken — fixes the motivating bug directly
+- Server-driven command palette (`shouldFilter={false}`) — fixes the other motivating bug directly
+- `score` (always) and `relevance` (when present) rendered on dense rows, hover-expand, `j`/`k` traversal, detail pane
+- Facets exposed for category (OR), tags (AND), time window, derived state, scope — all already server-supported, currently UI-invisible
+- Honest empty/error states everywhere ("no memories match X in any scope you can read", field-named errors)
+- Scope autocomplete with counts (reuses `ListScopes`)
 
-**Should have (engram-specific differentiators, not required by any comparable system):**
-- Byte-budget-aware paging (stop a page by accumulated size, not just record count) — the strongest complement to a content-size cap.
-- Reuse of engram's own `field=<name> hint=<code>` envelope for the new `ResourceExhausted` case — "finish the pattern," not invent one.
-- Keep numeric-offset paging for console/CLI UX (every comparable system keeps this as a supported mode) while giving it a real ceiling underneath — do not force cursor-only paging.
+**Should have (differentiators, P2 — need new Connect RPCs but reuse existing store/MCP logic):**
+- `SupersedeMemory`/`ArchiveMemory`/`RestoreMemory` write RPCs with a preview-before-commit UI; multi-target merge (engram's server already supports N-way supersession — ahead of every competitor surveyed, which are pairwise-only)
+- `ListRules`/`ListScheduled` read RPCs + distinct, always-shared-styled views (rules must never get a visibility toggle — the server rejects it)
+- Tag cloud with counts (`ListTags`, Qdrant Facet API)
 
-**Defer / explicitly out of scope:**
-- Any new pagination primitive (GraphQL-style connections, streaming RPCs) — the gap here is enforcement, not shape.
-- Deprecating numeric-offset paging in console/CLI.
-- The planted embedder provider-routing/failover seed (per PROJECT.md).
-- A hard "exactly one `ScrollAndOffset` call site" AST gate — no such gate exists today and adding one is out of this milestone's scope (architecture research: the doc-comment claim is already scoped to `spine.go` alone, four other legitimate call sites exist).
+**Defer (P3, this milestone's last-priority capabilities):**
+- Related-memories graph (`RelatedMemories`) — local/focused only (one record + neighborhood), never a global "hairball" view; every source (Obsidian, Roam, Logseq, Kumu) converges on this being the single most consistent graph-view finding
+- NL query understanding as removable, user-confirmed filter chips — must sit on top of the facet-chip UI (P1), never replace it; never auto-apply
+
+**Explicit anti-features to avoid:** client-side filtering of a server-authoritative list; pagination of a ranked result set (Algolia's own team rejects this for recall tools); silent/guessed id-vs-text resolution; fabricated `relevance` when the reranker didn't run; auto-applying NL-parsed filters; a global/decorative graph view; physics-tuning UI exposed to end users.
 
 ### Architecture Approach
 
-One production `*qdrant.Client` (`internal/server/tools.go:123`) feeds every recall-gated
-`Store` method; all currently request full payload with no byte ceiling. The recommended
-approach is two shared mechanisms, not one: (1) an ordered-page bounded-scroll helper for
-`List`/`ListScheduled`/`ListScopes`-shaped reads (which use `OrderBy`+`Limit` semantics), and
-(2) a byte-budget extension of the already-existing `scrollAllPoints` whole-spine iterator for
-the five unordered operator sweeps (`migrate`, `revert`, `summarize-missing`, `spine-review`,
-`reindex`). Error classification happens once in `internal/store` (a typed sentinel,
-`store.ErrResponseTooLarge`), then mapped once per lane at each lane's existing single
-chokepoint: `connectError` for Connect (add one `case`), and a new analogous single mapper for
-MCP (which currently has none — each tool closure returns a raw Go error).
+The system already has a clean, doubled-lane shape: MCP tools and Connect handlers both call the same `deps.*` capability functions, and `internal/store` is the *only* place Cedar authz becomes a Qdrant filter (DEC-cgb, locked). Six new/extended Connect RPCs are needed (`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`, `ListRules`, `ListScheduled`, `RelatedMemories`, `ListTags` — all additive on the wire). Two of these are genuinely new authz surface, not thin wrappers: `ArchiveMemory`/`RestoreMemory` need a new `getWritable`-gated store path (today's `store.Archive`/`Restore` are subject-less, CLI-only), and `ListTags` needs a new `tags` payload index plus widening a test-infrastructure allowlist (`recognizedFilterCarryingRequestMethods`) that currently rejects any filtered `Facet` call. `RelatedMemories` should be one RPC returning a flat, typed-edge list (supersession, shared-tags, shared-citations, vector-neighbor) with authz composed once into the underlying Qdrant filter — never four RPCs, never a handler-level post-filter.
 
 **Major components:**
-1. `internal/store` (`store.go`, `spine.go`, `migrate.go`, `revert.go`, `summarize.go`) — owns every Qdrant read/sweep call site; gains the bounded-page/byte-budget mechanism and the `ResourceExhausted` sentinel classification.
-2. `internal/server/connecterror.go` (`connectError`) — the single existing Connect-lane error mapper; gains one `ResourceExhausted` arm.
-3. `internal/server/tools.go` (MCP closures + `storeFromConfig`) — needs a new MCP-side error mapper (does not exist today) and is the sole site for the defense-in-depth `MaxCallRecvMsgSize` dial option.
-4. `internal/embed`, `internal/summarize` — independent HTTP clients; already bound the error-body read, need the drain (`io.Copy(io.Discard, resp.Body)`, 4 call sites) bounded by both bytes and time.
-5. Two existing AST gates in `internal/store` (`schemaversion_recallgate_test.go`) — name-keyed, not line-keyed; safe to refactor around as long as a new shared helper's name is added to `recallTransmitters` with justification.
+1. `internal/server/*deps` — the one capability-per-method core both MCP and Connect call; new capabilities land here first, before any proto change
+2. `internal/store/*Store` — the only place authz composes into Qdrant filters (`ownerScopeFilter`, `getWritable`); every new per-record write RPC must gate through this, never a handler-level check
+3. `internal/server/connectcsrf.go` — hand-maintained allowlist gating every mutating Procedure; an omission is a silent, non-failing CSRF hole
+4. `internal/decide`/`internal/decide/jev` — provider-neutral, advisory-only typed decisions; the query-understanding capability is a new consumer here, server-side only (never called from the browser — it would leak the API key), reusing the existing two-client (short-timeout, no-retry) pattern
+5. `ui/src/lib/mutations/*.ts` — one `useXMutation()` hook per write RPC with optimistic patch/rollback/invalidate, an established shape every new write surface must copy exactly
 
 ### Critical Pitfalls
 
-1. **Fixing only the named sites reproduces #583→#585 a third time.** Every `WithPayload(true)` Scroll/Query call site in `internal/store` is in scope, not just the five named in PROJECT.md — grep once (`rg -n 'WithPayload\(true\)|NewWithPayload\(true\)' internal/store/*.go`) and land one shared mechanism, not five patches.
-2. **Page-size caps alone don't bound bytes.** `content` is unbounded today; a small page of huge records overflows the same cap a large page of tiny records wouldn't. Test both a many-small-records fixture AND a few-large-records fixture per fixed path — treat "cap content size" (open decision A) as effectively required for a provable fix, not a nice-to-have.
-3. **A casual `ResourceExhausted` mapping leaks internals or over-catches.** Echoing raw gRPC error text exposes the byte ceiling and backing-store details; a bare code-based catch can also mis-map a genuine server-capacity exhaustion. Match on both the status code and the specific "received message after decompression larger than max" message shape, and assert the response body is scrubbed (not just re-coded) in tests.
-4. **`io.LimitReader` alone doesn't close #457.** It bounds bytes read, not time — a slow-trickle provider under `WithTimeout(0)` (the exact scenario the issue names) still hangs. Pair the byte bound with an explicit deadline on the drain, and test both axes (large-but-fast body, and slow-trickle body under `WithTimeout(0)`) separately.
-5. **New >4 MiB regression fixtures compound existing CI instability (#497).** This milestone's own "done means" bar requires several new multi-MiB real-Qdrant fixtures, which increases exactly the memory pressure #497's own root-cause theory blames — orchestrator-verified: the shared-container CI fix (#498) already shipped and no `connection refused`/`Unavailable` has recurred in 60 scanned runs since, so the remaining risk is this milestone's own new fixtures destabilizing that now-stable job, not re-diagnosing the original flake. Gate new fixtures behind `testing.Short()` (existing precedent) as a matter of course.
+1. **The command palette lies (client-side filtering)** — set `Command.Root shouldFilter={false}` on every palette/combobox driven by server results; this is the exact bug that motivated the milestone.
+2. **Search-box race (stale response overwrites newer query)** — thread `AbortSignal` into every server-driven query's `queryFn`; the query key already includes the raw text, but nothing cancels abandoned in-flight requests today.
+3. **Flash-to-empty during debounced search** — `placeholderData: keepPreviousData`, and gate the "no results" empty state strictly on `isFetching === false`, never on `data.length === 0` alone.
+4. **Focus loss / mixed keyboard model on hover-expand rows** — keep real DOM focus on the list container (`aria-activedescendant`, WAI-ARIA APG Listbox pattern); hover must be purely visual and must never mutate the same "active id" state `j`/`k` writes, or mouse position and keyboard selection silently disagree about what's "current."
+5. **Authz enforced in a Connect handler instead of the store (DEC-cgb violation)** and **a new mutating RPC shipped CSRF-unprotected** — both are locked invariants with concrete two-line checklists (route through `engramWrite`, add to `csrfWriteProcedures`, delegate all authz to the store method the MCP tool already calls) and both fail silently if skipped.
 
 ## Implications for Roadmap
 
-Architecture research proposes a 6-phase build order by hard dependency (not issue number);
-this synthesis adopts it directly, folding in the orchestrator-verified facts that narrow scope.
+Based on combined research, suggested phase structure (closely matching the milestone's own stated audience order and ARCHITECTURE's "suggested build order," cross-checked against FEATURES' MVP definition and PITFALLS' phase mapping):
 
-### Phase 1: Test harness stability + oversized-fixture helper
-**Rationale:** Every later phase's "done" bar is a real-Qdrant regression test holding >4 MiB of payload, RED before the fix. #497's shared-container CI fix already shipped (#498, 2026-08-22) and has held for 60+ runs since — this phase is about keeping that stability intact once this milestone's own new large fixtures land, not re-diagnosing a recurred flake. Extract `TestListScopesFullPayloadsOverGRPCLimit`'s fixture-seeding shape (n records × contentBytes, with a `<= 4<<20` self-check) into a shared, reusable test helper since the next several phases each need a copy of it.
-**Delivers:** a reusable oversized-fixture test helper; `testing.Short()`-gated by convention; confidence the CI job stays green as new fixtures land.
-**Addresses:** #497 (residual concern only — keep stable, not re-fix).
-**Avoids:** Pitfall 5 (new fixtures compounding CI resource pressure), Pitfall 6/PITFALLS.md (fixture-size-vs-compression reasoning errors).
+### Phase 1: Store-layer prerequisites and API-gap groundwork
+**Rationale:** ARCHITECTURE and PITFALLS both insist the authz-sensitive and test-infrastructure work (new `ArchiveMemory`/`RestoreMemory` authz gate, `tags` payload index, widening `recognizedFilterCarryingRequestMethods` for a filtered `Facet` call) land before any RPC or UI is built on top of it — building UI against an RPC whose authz shape isn't settled risks the DEC-cgb regression class.
+**Delivers:** `Store.RelatedMemories`, `Store.ListTags(scope, subj)`, and an authz-gated Archive/Restore store path, each with unit/integration test coverage; no proto change yet.
+**Addresses:** the two named "Gap" items in ARCHITECTURE (Gap 1: Archive/Restore authz; Gap 2: ListTags index + recall-gate test).
+**Avoids:** Pitfall 6 (authz in handler instead of store).
 
-### Phase 2: Store-layer error classification + `ResourceExhausted` mapping (both lanes)
-**Rationale:** A prerequisite for writing any Phase 1-style regression test that asserts the *right* failure mode (a clear, named error) rather than just "no longer a bare 500." Independent of the read-site fixes themselves — it classifies whatever error a Qdrant RPC returns today.
-**Delivers:** a `store.ErrResponseTooLarge`-style typed sentinel; one new `connectError` arm (Connect lane); a new, equally singular MCP-side mapper (does not exist today); a registered hint code in the `field=<name> hint=<code>` envelope, scrubbed of raw upstream text.
-**Uses:** `google.golang.org/grpc/status`/`codes`, `connect.CodeResourceExhausted` (Stack).
-**Implements:** the "classify once, map once per lane at each lane's existing chokepoint" pattern (Architecture).
-**Avoids:** Pitfall 3 (leaking internals or over-broad catch).
+### Phase 2: Recall-first search (developer audience — front door)
+**Rationale:** This is Sean's own stated audience order and independently the P1 tier in FEATURES' prioritization matrix — every item here reuses an existing RPC (`SearchMemories`, `GetMemory`, `ListScopes`), so it is the lowest-risk, highest-visibility phase and should land first regardless of any new-RPC work.
+**Delivers:** client-side id/short_id/text routing (try `GetMemory` first for id-shaped input, fall back to `SearchMemories` on `NotFound` — no new RPC), server-driven command palette, dense virtualized results row (`score`/`relevance` rendered, hover-expand via overlay not dynamic height, `j`/`k` traversal via `aria-activedescendant`), facet exposure (category/tags/time window/state/scope), honest empty/error/loading states, scope autocomplete with counts.
+**Addresses:** FEATURES §1/§2 table stakes; the milestone's two motivating bugs.
+**Avoids:** Pitfalls 1–5 (palette lying, search race, flash-to-empty, focus/hover conflation, virtualization breakage) — write the regression test for each before/alongside the corresponding UI.
 
-### Phase 3: Shared bounded-read mechanism
-**Rationale:** The single largest phase and the load-bearing one — builds the ordered-page helper (List/ListScheduled/ListScopes-shaped reads) and extends the existing `scrollAllPoints` with a byte budget (whole-spine sweeps), rather than five independent per-site loops. Must land together with the AST-gate reclassification (`recallTransmitters`) in the same change, since that gate goes RED the moment a new helper is wired in.
-**Delivers:** two reusable bounded-scroll primitives; updated AST-gate entries with justification.
-**Addresses:** the shared root cause behind #585 and its siblings (Features, Architecture, Pitfalls all converge here).
-**Avoids:** Pitfall 1 (five independent per-site patches), Pitfall 2 (count-only caps).
+### Phase 3: Curation RPCs (proto + server, one RPC at a time)
+**Rationale:** ARCHITECTURE explicitly sequences "RPCs before the UI that consumes them"; `SupersedeMemory` first (zero new store work, de-risks the CSRF-allowlist step), then Archive/Restore (depends on Phase 1's authz work), then `ListRules`/`ListScheduled` (near-zero risk).
+**Delivers:** `SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`, `ListRules`, `ListScheduled` Connect RPCs, each proto-gen'd, vendored into `ui/src/lib/gen/`, added to `csrfWriteProcedures` if mutating, with a parity-test row or documented MCP asymmetry decision.
+**Uses:** the `connectapi_write_parity_test.go` pattern extended per new RPC; `getWritable` gate from Phase 1.
+**Implements:** the thin-handler-delegates-to-store-method pattern (Component 1/2 above).
+**Avoids:** Pitfall 7 (CSRF allowlist omission) — write the positive-assertion test first, before any UI touches these RPCs.
 
-### Phase 4: Per-site migration onto the shared mechanism
-**Rationale:** Ordered by exposure, matching #585's own report: `Store.List` (all three modes, highest exposure) → `ListScheduled` → `Search`/`SearchDiscovery` (cap `k` server-side too) → the five 256-record operator sweeps. Each site needs its own real-Qdrant regression test proving *that caller's* request shape stays under the cap. Add `MaxCallRecvMsgSize` as defense-in-depth here too (one-line, low-risk).
-**Delivers:** every named read path in PROJECT.md's "Target features" bounded and regression-tested.
-**Addresses:** #585 and named siblings, in full.
-**Avoids:** Pitfall 2 (test both many-small and few-large record fixtures per path), Pitfall 8/PITFALLS.md (preserve `total`/exhaustion semantics unchanged by whatever batching is introduced).
+### Phase 4: Curation surfaces (operator audience)
+**Rationale:** Second in Sean's stated audience order; depends on Phase 3's write RPCs existing.
+**Delivers:** supersede-with-chain preview UI (multi-target, not pairwise), archive/restore actions, distinct rules/scheduled list views (index-first, full text on demand; no visibility toggle on rules).
+**Addresses:** FEATURES §3 (curation workflows) table stakes and differentiators.
+**Avoids:** Pitfall 10 (new curation surfaces falling outside the re-auth resume envelope) — extend `ALLOWED_DESTINATIONS`/`kind` unions and write a resume round-trip UAT for every new write surface, don't assume existing memory/discovery tests generalize.
 
-### Phase 5: Cross-spine partial-result semantics (#456)
-**Rationale:** Independent of the byte-bounding work (pure error-handling/proto-shape change), but sequenced after Phase 2 so `connectError`'s "typed sentinel, single mapper" discipline is already established to extend for the new field. Could run in parallel with Phase 3/4 if resourcing allows.
-**Delivers:** already-successful search/list hits are returned even when the follow-up `ListScopes` coverage call fails; a new wire-visible sentinel (e.g. `scopes_unknown`) distinguishing "coverage unknown" from "coverage empty" — a proto change, not a store-layer-only fix.
-**Addresses:** #456.
-**Avoids:** Pitfall 11/PITFALLS.md (don't fix this by making `ListScopes` swallow its own errors — that reintroduces the exact ambiguity the design already avoids).
+### Phase 5: Related-memories graph and tag cloud (newcomer/browse audience)
+**Rationale:** Third and last in Sean's stated audience order; needs Phase 1's store methods and Phase 3-adjacent `RelatedMemories`/`ListTags` RPCs (add these to Phase 3's RPC batch or treat as a small follow-on batch — ARCHITECTURE groups them with the other read RPCs).
+**Delivers:** local/focused (never global) related-memories graph with capped edges-per-node, visually distinct edge types, a fixed settle budget, full keyboard/ARIA equivalence and an `aria-live` textual fallback; tag cloud with count-quantile sizing, paired with (not replacing) the counts-annotated autocomplete filter.
+**Uses:** `d3-force`/`d3-drag`/`d3-zoom` + inline SVG (STACK); `RelatedMemories`/`ListTags` RPCs (Phase 3).
+**Addresses:** FEATURES §4/§5.
+**Avoids:** Pitfall 8 (decorative/hairball graph) — set edge-cap and keyboard-equivalence constraints in the UI-spec step before any layout library integration begins.
 
-### Phase 6: Bounded provider responses (#457; #347 verification only)
-**Rationale:** Fully independent of the Qdrant read-path work — no shared code with `internal/store`. Orchestrator-verified: #347's error-body bounding is **already shipped** (landed in v0.12.x, #464) — this phase's real work is #457's unbounded drain only. Sequenced last because it has zero dependency on, and zero risk to, the rest of the milestone's critical path.
-**Delivers:** all four `io.Copy(io.Discard, resp.Body)` drain calls (embed.go:295,309; summarize.go:182,191) wrapped in `io.LimitReader`, paired with an explicit deadline independent of `http.Client.Timeout`; a regression test exercising `WithTimeout(0)` + a slow-trickle body, not just a large-but-fast one.
-**Addresses:** #457 (real work); confirms #347 as already-fixed (close the tracking issue, or add a regression test only).
-**Avoids:** Pitfall 4 (byte-only bound doesn't close the time axis #457 actually names).
+### Phase 6: Query understanding (NL chips)
+**Rationale:** Correctly sequenced last by every research file — it is the least load-bearing capability, has the most design risk (no direct precedent for the Choice/Noul batching shape in this codebase), and depends on Phase 2's facet-chip UI existing first (chips-from-NL only make sense once chips-from-manual-filtering have a defined shape).
+**Delivers:** a server-side-only `UnderstandQuery` RPC (never a browser-side decide call — leaks the API key) producing removable, unapplied-until-confirmed filter chips; bounded 2s no-retry timeout degrading to zero suggestions on any failure; query-text logging gated behind a new opt-in flag mirroring `ENGRAM_SEARCH_RERANK_AUDIT` (never content, never a default-on path).
+**Addresses:** FEATURES §6.
+**Avoids:** Pitfall 9 (advisory NL understanding quietly stopping being advisory) — test that results are unchanged until a chip is clicked, and that no query text appears in logs without the audit flag.
 
 ### Phase Ordering Rationale
 
-- Phase 1 before everything: every other phase's proof mechanism (an oversized real-Qdrant fixture) depends on a stable container and a reusable fixture helper.
-- Phase 2 before Phase 3/4: writing a regression test that proves the *right* failure mode (a named error, not a changed byte count) requires the error-mapping to already exist, so RED states are legible.
-- Phase 3 before Phase 4: one shared mechanism, proven once, is safer to reuse five times than to invent five times — directly derived from the #583→#585 recurrence pattern in Pitfalls research.
-- Phase 5 after Phase 2, parallel-eligible with 3/4: it reuses the classification discipline but shares no code with the byte-bounding mechanism.
-- Phase 6 last: zero shared code with the Qdrant read path; sequencing it last avoids blocking the critical path, and confirms #347 needs no code change (only #457 does).
+- **Store-before-proto-before-UI** is not a preference but a consequence of DEC-cgb: authz shape must be settled in the store before any RPC exposes it, or the RPC locks in a handler-level shortcut that's expensive to unwind later.
+- **Recall (Phase 2) before curation (Phases 3–4) before browse (Phases 5–6)** is Sean's explicit decision, independently corroborated by FEATURES' P1/P2/P3 prioritization matrix (everything Phase 2 needs already has a wire contract; everything Phase 5–6 needs is new RPC surface with the highest design risk in the whole milestone).
+- **Query understanding last** because it is architecturally downstream of the facet-chip UI (Phase 2) it becomes a shortcut into — building it earlier would create a second, divergent filter representation.
+- This ordering directly avoids the two most consequential pitfall classes (authz drift, CSRF gaps) by settling them once, early, rather than repeating a handler-level check per new RPC.
 
 ### Research Flags
 
-Needs deeper research during planning:
-- **Phase 3 (shared bounded-read mechanism):** the two-phase ids→payload design that architecture/pitfalls research surfaces as a candidate for offset-mode deep paging carries real correctness risk (TOCTOU on delete/supersede/archive between phases; `GetPoints` does not preserve requested-id order — confirmed against Qdrant's own issue tracker). If this design is adopted rather than a pure byte-budget shrink, plan-phase should treat the TOCTOU/ordering fixtures as explicit acceptance criteria, not implementation detail.
-- **Phase 4 (per-site migration):** the `total`/exhaustion-semantics interaction (Pitfall 8) needs explicit test design — verify `total` stays independent of whatever internal batching lands, and that a size-forced partial page is distinguishable from a truly-exhausted last page.
-- **Discuss-phase (pre-roadmap):** both open design decisions — (A) a `content` size cap, and (B) `ListMemories`'s `limit: 0`=all+offset vs. hard-cap+cursor — need explicit resolution before Phase 3/4 plans can be finalized, since the chosen shape of (B) determines what the ordered-page helper's signature looks like.
+Phases likely needing deeper research during planning:
+- **Phase 3 (Curation RPCs):** the Archive/Restore authz-gate design (new `authz.Action` vs. reusing `ActionWrite`; whether the CLI keeps its subject-less bypass) is a genuine open design decision, not a known pattern — flag for `/gsd-plan-phase --research-phase` or at minimum a design-review step before implementation.
+- **Phase 5 (Graph/tag cloud):** the edge-scoring/capping heuristic (top-N by what signal — Jev `same_subject` score where available, else recency/score) has no established precedent in this codebase; needs a UI-spec decision pass before any layout library integration.
+- **Phase 6 (Query understanding):** the Choice/Noul question-batching shape for query-to-filter parsing has no direct precedent in `internal/decide`'s existing consumers (`internal/relevance`, `internal/verdict`) — ARCHITECTURE explicitly flags this as MEDIUM confidence, extrapolated rather than confirmed.
 
-Standard patterns (skip research-phase):
-- **Phase 1 (test harness):** reuses an existing, already-shipped fixture pattern (`TestListScopesFullPayloadsOverGRPCLimit`) verbatim.
-- **Phase 2 (error classification):** reuses two already-shipped idioms in this exact codebase (`status.FromError`/`grpccodes` pattern; `field=<name> hint=<code>` envelope).
-- **Phase 6 (provider response bounding):** stdlib-only, and the error-body-bounding half is already shipped in the same files — this is a narrow, well-understood extension.
+Phases with standard patterns (skip research-phase):
+- **Phase 1 (Store prerequisites):** direct extensions of existing, well-understood patterns (`ensureIndexes`, `getWritable`, `NewQueryID` sub-queries) — HIGH confidence, file:line-grounded.
+- **Phase 2 (Recall-first search):** every fix is either a documented bits-ui/TanStack Query idiom or a WAI-ARIA APG pattern with a live precedent already partially implemented in `MemoryRow.svelte` — HIGH confidence, well-trodden ground.
+- **Phase 3 (Curation RPCs, non-Archive/Restore items):** `SupersedeMemory`/`ListRules`/`ListScheduled` are direct wrappers around existing `deps.*` functions with an established parity-test pattern to copy.
+- **Phase 4 (Curation surfaces):** the mutation-hook shape (`useXMutation`) is fully established and documented with line-level precedent in `mutations/memory.ts`.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Every claim verified directly against the pinned module cache source (qdrant-go-client, grpc-go, connect-go, testcontainers-go) plus this repo's own working tree — no training-data recall used. |
-| Features | MEDIUM-HIGH | Cross-checked against official docs for Qdrant/Weaviate/Milvus and the AIP-158 standard text; GitHub issues/blog posts used only for corroborating detail, not as primary claims. |
-| Architecture | HIGH | All findings read directly from source at this branch's HEAD, plus GitHub issue bodies read verbatim via `gh issue view`. |
-| Pitfalls | HIGH for repo-cited claims (own shipped code); MEDIUM for the #497 root-cause theory itself (the issue states "not investigated," though the orchestrator's 60-run scan since the CI fix corroborates it holding). |
+| Stack | HIGH | Every package version checked live against the npm registry and/or Context7-indexed source docs on 2026-09-25; bundle sizes are live Bundlephobia figures |
+| Features | HIGH for table-stakes UI mechanics (multi-source corroborated across Raycast/Linear/Algolia/GitHub); MEDIUM for graph-view and NL-chip judgment calls (fewer independent sources, more editorializing, explicitly flagged inline in FEATURES.md) |
+| Architecture | HIGH for the Go/proto/authz integration points (read directly from the actual code, with file:line citations); MEDIUM for the query-understanding decision shape (no direct precedent in this codebase, extrapolated from two related consumers) |
+| Pitfalls | HIGH for engram-specific/repo-grounded findings (direct file:line evidence); MEDIUM for external library specifics not confirmed against first-party version-pinned docs (flagged inline, e.g. `placeholderData` carrying forward unchanged into TanStack Query v6) |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Content size cap (decision A) is unresolved by design.** Research leans toward "effectively required for a provable byte-ceiling guarantee" (Milvus's own `maxOutputSize` precedent, engram's own existing text-field cap pattern), but PROJECT.md holds this open for discuss-phase. Roadmap/plan-phase should surface this leaning explicitly rather than let the paging fix silently stand in for it.
-- **Paging shape (decision B) is unresolved by design.** Research supports keeping offset/`limit` as a documented mode (matches every comparable system and engram's own ADR choosing offset-for-UI deliberately) while ending `limit: 0`="all" as the literal AIP-158 anti-pattern — but the final shape (hard cap only vs. hard cap + cursor) is a discuss-phase call, not a research conclusion.
-- **Whether a two-phase ids→payload design is adopted at all for deep-offset paging** is not decided by this research — it is one candidate mechanism among others (byte-budget shrink being the simpler alternative), and carries the TOCTOU/ordering risks flagged above if chosen.
-- **The `internal/surfaces`-equivalent single-declaration mechanism for a new error hint code** — architecture/pitfalls research assumes this convention extends to the new `ResourceExhausted` hint but notes "verify" — plan-phase should confirm `internal/surfaces` actually covers error hints, not just conditional-rule sentences, before assuming the pattern applies unmodified.
+- **Archive/Restore authz design (Phase 1/3):** whether to add a new `authz.Action` or reuse `ActionWrite`, and whether the CLI keeps a subject-less bypass — a genuine open decision, not resolvable from research alone; resolve during Phase 3 planning/design.
+- **MCP parity policy for the four RPCs with no existing MCP tool** (`ArchiveMemory`/`RestoreMemory`/`RelatedMemories`/`ListTags`): ARCHITECTURE flags this as "decide explicitly" per RPC — either add matching MCP tools or document an intentional Connect/console-only asymmetry (mirroring the existing `SearchDiscoveries` precedent). Needs a decision during requirements/roadmap review, not left implicit.
+- **TanStack Query v6's exact `placeholderData`/`keepPreviousData` behavior:** confirmed unchanged from v5 in the general migration guide, but not explicitly re-confirmed against the pinned `6.1.34` changelog — verify directly before relying on it in Phase 2.
+- **Per-row `edge_type` de-duplication semantics for `RelatedMemories`** (a candidate can appear via more than one edge type — one row per type, or dedupe-and-list types): explicitly deferred to planning in ARCHITECTURE, not research.
+- **`ListScheduled`'s `cross_spine` widening:** adding this to the new Connect RPC would be new behavior beyond the existing MCP tool's contract; decide whether to also widen the MCP tool or accept a second documented asymmetry.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `github.com/qdrant/go-client@v1.19.2`, `google.golang.org/grpc@v1.83.2`, `connectrpc.com/connect@v1.21.0`, `github.com/testcontainers/testcontainers-go{,/modules/qdrant}@v0.44.0` — module cache source read directly (STACK.md).
-- This repo's working tree at `feat/2026-09-18.01` HEAD `ec79d4bd`: `internal/store/*.go`, `internal/server/{tools,connectapi,connecterror}.go`, `internal/embed/embed.go`, `internal/summarize/summarize.go`, `cmd/engram/client_common.go`, `.github/workflows/ci.yaml`, `.planning/PROJECT.md` (ARCHITECTURE.md, PITFALLS.md).
-- GitHub issues #585, #583, #456, #347, #457, #497 — bodies read verbatim via `gh issue view --json body`.
-- Official docs/standards: Qdrant capacity-planning and payload docs, Weaviate GraphQL/search docs, Milvus Limitations docs, Google AIP-158 (FEATURES.md).
+- Live npm registry queries (`npm view`), 2026-09-25 — all pinned package versions in STACK.md
+- Context7 `/huntabyte/bits-ui`, `/tanstack/query` — quoted directly from source docs
+- Direct codebase reads: `internal/server/connectapi.go`, `connectcsrf.go`, `decider.go`; `internal/store/store.go`, `spine.go`, `migrate_status.go`, `schemaversion_recallgate_test.go`; `internal/decide/*`; `ui/src/lib/client.ts`, `mutations/memory.ts`, `resume.ts`, `queries.ts`; `ui/src/routes/search/+page.svelte`; `ui/src/lib/components/MemoryRow.svelte`, `CommandPalette.svelte`
+- `.planning/PROJECT.md`, `.planning/notes/console-overhaul-exploration.md`, `CLAUDE.md` (memory contract, locked ADRs)
+- `github.com/qdrant/go-client@v1.19.2` — `FacetCounts.Filter` field, direct source read
+- WAI-ARIA APG Listbox pattern (w3.org)
 
 ### Secondary (MEDIUM confidence)
-- GitHub issue trackers for corroborating mechanism detail: `qdrant/migration`#66/#30, `qdrant/qdrant`#2537/#5071, `qdrant-client`#463, `weaviate/weaviate`#2929/#2302, `milvus-io/milvus`#39480/#44578, `grpc/grpc-go`#4761, `aip-dev/google.aip.dev`#1428.
-- mem0 and Zep API reference docs (pagination shape comparison only, not load-bearing for engram's decision).
+- TanStack/virtual#866 (GitHub issue, confirmed open 2026-09-25) — community-confirmed, not first-party resolution
+- cytoscape/cytoscape.js#3125 (community discussion on accessibility gap)
+- Obsidian/Roam/Logseq/Kumu graph-view retrospectives (community blog posts and forum threads, convergent across independent sources)
+- Baymard, Nielsen Norman Group, Algolia blog UX research (industry research, not primary-source docs)
 
 ### Tertiary (LOW confidence)
-- The #497 CI-flakiness root-cause theory (runner resource pressure) — the issue itself states "not investigated"; corroborated only indirectly by the orchestrator's 60-run post-fix scan finding zero recurrences, not by direct diagnosis.
+- None flagged as LOW in any of the four research files — all uncertain claims were explicitly labeled MEDIUM with the reason stated inline.
 
 ---
-*Research completed: 2026-09-18*
+*Research completed: 2026-09-25*
 *Ready for roadmap: yes*

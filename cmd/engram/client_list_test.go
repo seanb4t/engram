@@ -484,6 +484,34 @@ func TestClientListCoverageUnknownFooter(t *testing.T) {
 	}
 }
 
+// TestClientListRecallHiddenFooter pins D-03 on the list lane: the text
+// lane prints the recall-gate hidden-count footer whenever the server
+// reports one, mirroring the search lane's TestClientSearchRecallHiddenFooter
+// (client_search_test.go).
+func TestClientListRecallHiddenFooter(t *testing.T) {
+	resetClientFlags(t)
+	resetCommandFlagState(t, listCmd)
+	svc := &stubEngramService{
+		listFn: func(context.Context, *engramv1.ListMemoriesRequest) (*engramv1.ListMemoriesResponse, error) {
+			return &engramv1.ListMemoriesResponse{
+				Memories:         []*engramv1.Memory{{ShortId: "AAAA111111"}},
+				Total:            1,
+				RecallGateHidden: &engramv1.RecallGateHidden{Total: 1, Archived: 1},
+			}, nil
+		},
+	}
+	url := startStubServer(t, svc)
+
+	stdout, _, err := runClient(t, "list", "--server", url, "--scope", "repo:x", "--output", "text")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "recall_gate_hidden: 1  archived: 1  superseded: 0  expired: 0  scheduled: 0"
+	if !strings.Contains(stdout, want) {
+		t.Errorf("stdout = %q, want the recall-gate hidden footer %q", stdout, want)
+	}
+}
+
 // TestClientListMissingScopeIsUsageErrorBeforeDialing pins D-01: with
 // neither --scope nor --cross-spine, the guard fires before any network
 // call.

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"slices"
@@ -36,6 +37,14 @@ import (
 	"github.com/seanb4t/engram/internal/store/storetest"
 	"github.com/seanb4t/engram/internal/telemetry"
 )
+
+// hitsOf adapts deps.searchMemory's coreSearchResult return (D-01/D-02/D-03,
+// phase 02-recall-first-search plan 02-01) back to the plain
+// ([]store.Memory, error) shape most existing tests assert on — they care
+// about the hits, not the recall-gate hidden count.
+func hitsOf(res coreSearchResult, err error) ([]store.Memory, error) {
+	return res.Memories, err
+}
 
 // TestToolArgSchemasDoNotPanic exercises jsonschema schema generation for every
 // tool's argument type via mcp.AddTool — the exact path that panicked at startup
@@ -797,7 +806,7 @@ func TestSearchListMemoryCompactViewOmitsCitations(t *testing.T) {
 		return ""
 	}
 
-	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "citation-carrying record", K: 10})
+	hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "citation-carrying record", K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -1642,7 +1651,7 @@ func TestAnonReadIsolationHandlers(t *testing.T) {
 	anonCaller := callerFor(ctx, t)
 
 	// searchMemory with anonymous context must return ownerless, not shared.
-	hits, err := d.searchMemory(ctx, anonCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10})
+	hits, err := hitsOf(d.searchMemory(ctx, anonCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -1965,7 +1974,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	c := callerFor(ctx, t)
 
 	// Single tag: both alpha-carrying records, never the untagged one — on both handlers.
-	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}})
+	hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha"}}))
 	if err != nil {
 		t.Fatalf("searchMemory alpha: %v", err)
 	}
@@ -1981,7 +1990,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// AND of two tags: only the record carrying both; the alpha-only record is excluded.
-	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}})
+	hits, err = hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Tags: []string{"alpha", "beta"}}))
 	if err != nil {
 		t.Fatalf("searchMemory AND: %v", err)
 	}
@@ -1990,7 +1999,7 @@ func TestSearchListMemoryTagsHandler(t *testing.T) {
 	}
 
 	// Omitted tags: passthrough returns all three — on both handlers.
-	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10})
+	hits, err = hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory passthrough: %v", err)
 	}
@@ -2051,7 +2060,7 @@ func TestSearchMemoryCategoriesArg(t *testing.T) {
 	}
 
 	// Single category: only the decision record, never preference or gotcha.
-	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision"}})
+	hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision"}}))
 	if err != nil {
 		t.Fatalf("searchMemory decision: %v", err)
 	}
@@ -2060,7 +2069,7 @@ func TestSearchMemoryCategoriesArg(t *testing.T) {
 	}
 
 	// OR of two categories: decision and gotcha, never preference.
-	hits, err = d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"}})
+	hits, err = hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: []string{"decision", "gotcha"}}))
 	if err != nil {
 		t.Fatalf("searchMemory decision+gotcha: %v", err)
 	}
@@ -2126,9 +2135,9 @@ func TestSearchMemoryCrossSpineIsolation(t *testing.T) {
 
 	// 1. Cross-spine spans scopes: A's cross-spine hits include A's records
 	// from BOTH scopes, and the set of distinct Scope values has >1 member.
-	hits, err := d.searchMemory(ctxA, callerA, coreSearchRequest{
+	hits, err := hitsOf(d.searchMemory(ctxA, callerA, coreSearchRequest{
 		Query: "x", Scope: "", CrossSpine: true, K: 10, Tags: []string{fixtureTag},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("cross-spine searchMemory: %v", err)
 	}
@@ -2160,9 +2169,9 @@ func TestSearchMemoryCrossSpineIsolation(t *testing.T) {
 
 	// 3. Scope-confined is unchanged: naming scopeShared with no CrossSpine
 	// returns only that scope's hits; A's scopeAOnly record is absent.
-	scoped, err := d.searchMemory(ctxA, callerA, coreSearchRequest{
+	scoped, err := hitsOf(d.searchMemory(ctxA, callerA, coreSearchRequest{
 		Query: "x", Scope: scopeShared, CrossSpine: false, K: 10, Tags: []string{fixtureTag},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("scope-confined searchMemory: %v", err)
 	}
@@ -2317,9 +2326,9 @@ func TestCrossSpineResultScope(t *testing.T) {
 	ctxO := authedContext(t, owner)
 	c := callerFor(ctxO, t)
 
-	ms, err := d.searchMemory(ctxO, c, coreSearchRequest{
+	ms, err := hitsOf(d.searchMemory(ctxO, c, coreSearchRequest{
 		Query: "x", Scope: "", CrossSpine: true, K: 10, Tags: []string{fixtureTag},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("cross-spine searchMemory: %v", err)
 	}
@@ -2532,7 +2541,7 @@ func TestCategoriesArgEdges(t *testing.T) {
 	c := callerFor(ctx, t)
 
 	searchIDsErr := func(cats []string) ([]string, error) {
-		hits, err := d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: cats})
+		hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Query: "x", Scope: scope, K: 10, Categories: cats}))
 		if err != nil {
 			return nil, err
 		}
@@ -2784,7 +2793,7 @@ func TestSupersedeMemory(t *testing.T) {
 	}
 
 	// The target must be absent from search_memory.
-	hits, err := d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "original content", K: 10})
+	hits, err := hitsOf(d.searchMemory(ctx, c, coreSearchRequest{Scope: scope, Query: "original content", K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -5054,7 +5063,7 @@ func TestAuthedCrossActorSharedReadHandlers(t *testing.T) {
 	bCaller := callerFor(bctx, t)
 
 	// searchMemory: B sees A's shared, not A's private.
-	hits, err := d.searchMemory(bctx, bCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10})
+	hits, err := hitsOf(d.searchMemory(bctx, bCaller, coreSearchRequest{Query: "content", Scope: scope, K: 10}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -5134,12 +5143,12 @@ func TestListScheduledTool(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = d.st.Delete(context.Background(), id, store.Authenticated("sub-A")) })
 
-	got, err := d.listScheduled(ctx, callerFor(ctx, t), listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
+	res, err := d.listScheduled(ctx, callerFor(ctx, t), listScheduledArgs{Scope: "ls:project:x"}) // default state=scheduled
 	if err != nil {
 		t.Fatalf("list_scheduled: %v", err)
 	}
 	found := false
-	for _, m := range got {
+	for _, m := range res.Memories {
 		if m.ID == id {
 			found = true
 		}
@@ -5349,7 +5358,7 @@ func TestBuildDepsFromEnvRankerDefaultIsInert(t *testing.T) {
 	}
 	t.Cleanup(func() { cleanupErr(t, "Delete "+m.ID, d.st.Delete(ctx, m.ID, subj)) })
 
-	hits, err := d.searchMemory(ctx, caller{Subj: subj}, coreSearchRequest{Scope: scope, Query: "default ranker stays inert", K: 5})
+	hits, err := hitsOf(d.searchMemory(ctx, caller{Subj: subj}, coreSearchRequest{Scope: scope, Query: "default ranker stays inert", K: 5}))
 	if err != nil {
 		t.Fatalf("searchMemory: %v", err)
 	}
@@ -5364,6 +5373,200 @@ func TestBuildDepsFromEnvRankerDefaultIsInert(t *testing.T) {
 	if got := atomic.LoadInt64(&count); got != 0 {
 		t.Errorf("Decisions server received %d requests during search, want 0", got)
 	}
+}
+
+// TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider proves D-01's
+// three resolutions end to end through buildDepsFromEnv, and D-15's startup
+// disclosure line for the default and explicit paths (and its absence when
+// off or when no provider is configured) — Qdrant-backed like
+// TestBuildDepsFromEnvRankerDefaultIsInert.
+func TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider(t *testing.T) {
+	addr := storetest.Addr()
+	if addr == "" {
+		storetest.SkipOrFailNoQdrant(t)
+	}
+
+	var count int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt64(&count, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	srvHost := func() string {
+		u, err := url.Parse(srv.URL)
+		if err != nil {
+			t.Fatalf("url.Parse(%q): %v", srv.URL, err)
+		}
+		return u.Host
+	}()
+
+	t.Setenv("ENGRAM_QDRANT_ADDR", addr)
+	t.Setenv("ENGRAM_QDRANT_COLLECTION", testCollection("mem_understanding_default_test"))
+	t.Setenv("ENGRAM_EMBED_DIM", "3")
+	t.Setenv("ENGRAM_SUMMARY_MODEL", "")
+	t.Setenv("ENGRAM_SUMMARY_ON_WRITE", "")
+	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "jev")
+	t.Setenv("ENGRAM_DECISIONS_BASE_URL", srv.URL+"/api")
+	t.Setenv("ENGRAM_DECISIONS_API_KEY", "k")
+
+	captureLog := func(t *testing.T) *bytes.Buffer {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+		return &buf
+	}
+
+	understandingWarnRecords := func(t *testing.T, buf *bytes.Buffer) []map[string]any {
+		var recs []map[string]any
+		for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+			if line == "" {
+				continue
+			}
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(line), &rec); err != nil {
+				t.Fatalf("unmarshal log line %q: %v", line, err)
+			}
+			if msg, _ := rec["msg"].(string); strings.HasPrefix(msg, "search understanding enabled: console query text is sent to ") {
+				recs = append(recs, rec)
+			}
+		}
+		return recs
+	}
+
+	t.Run("default", func(t *testing.T) {
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "")
+		buf := captureLog(t)
+
+		d, err := buildDepsFromEnv(nil, nil)
+		if err != nil {
+			t.Fatalf("buildDepsFromEnv: %v", err)
+		}
+		if d.understandDec == nil {
+			t.Fatal("d.understandDec = nil, want non-nil (default follows ENGRAM_DECISIONS_PROVIDER=jev)")
+		}
+		recs := understandingWarnRecords(t, buf)
+		if len(recs) != 1 {
+			t.Fatalf("got %d 'search understanding enabled' records, want exactly 1: %v", len(recs), recs)
+		}
+		rec := recs[0]
+		if msg, _ := rec["msg"].(string); !strings.HasSuffix(msg, srvHost) {
+			t.Errorf("msg = %q, want suffix %q", msg, srvHost)
+		}
+		if rec["source"] != "default" {
+			t.Errorf("source = %v, want default", rec["source"])
+		}
+		if rec["disable_with"] != "ENGRAM_SEARCH_UNDERSTANDING=off" {
+			t.Errorf("disable_with = %v, want ENGRAM_SEARCH_UNDERSTANDING=off", rec["disable_with"])
+		}
+		if got := atomic.LoadInt64(&count); got != 0 {
+			t.Errorf("decisions server received %d requests during startup, want 0", got)
+		}
+	})
+
+	t.Run("explicit", func(t *testing.T) {
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "jev")
+		buf := captureLog(t)
+
+		d, err := buildDepsFromEnv(nil, nil)
+		if err != nil {
+			t.Fatalf("buildDepsFromEnv: %v", err)
+		}
+		if d.understandDec == nil {
+			t.Fatal("d.understandDec = nil, want non-nil (ENGRAM_SEARCH_UNDERSTANDING=jev)")
+		}
+		recs := understandingWarnRecords(t, buf)
+		if len(recs) != 1 {
+			t.Fatalf("got %d 'search understanding enabled' records, want exactly 1: %v", len(recs), recs)
+		}
+		if recs[0]["source"] != "explicit" {
+			t.Errorf("source = %v, want explicit", recs[0]["source"])
+		}
+		if got := atomic.LoadInt64(&count); got != 0 {
+			t.Errorf("decisions server received %d requests during startup, want 0", got)
+		}
+	})
+
+	t.Run("off", func(t *testing.T) {
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "off")
+		buf := captureLog(t)
+
+		d, err := buildDepsFromEnv(nil, nil)
+		if err != nil {
+			t.Fatalf("buildDepsFromEnv: %v", err)
+		}
+		if d.understandDec != nil {
+			t.Error("d.understandDec = non-nil, want nil (ENGRAM_SEARCH_UNDERSTANDING=off)")
+		}
+		if d.decider == nil {
+			t.Error("d.decider = nil, want non-nil (consolidate client is unaffected by understanding being off)")
+		}
+		if strings.Contains(buf.String(), "search understanding enabled") {
+			t.Errorf("startup log contains the understanding disclosure with understanding off: %s", buf.String())
+		}
+
+		res, err := d.understandQuery(context.Background(), caller{}, understandArgs{Query: "two words"})
+		if err != nil {
+			t.Fatalf("understandQuery: %v", err)
+		}
+		if res.Enabled {
+			t.Error("understandQuery Enabled = true, want false (understanding off)")
+		}
+		if got := atomic.LoadInt64(&count); got != 0 {
+			t.Errorf("decisions server received %d requests, want 0", got)
+		}
+	})
+
+	t.Run("audit while off", func(t *testing.T) {
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "off")
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING_AUDIT", "true")
+		buf := captureLog(t)
+
+		d, err := buildDepsFromEnv(nil, nil)
+		if err != nil {
+			t.Fatalf("buildDepsFromEnv: %v", err)
+		}
+		if d.understandDec != nil {
+			t.Error("d.understandDec = non-nil, want nil (ENGRAM_SEARCH_UNDERSTANDING=off)")
+		}
+		if !strings.Contains(buf.String(), "nothing is suggested, so nothing is audited") {
+			t.Errorf("startup log = %s, want the audit-does-nothing disclosure", buf.String())
+		}
+	})
+
+	t.Run("audit on", func(t *testing.T) {
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "")
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING_AUDIT", "true")
+		buf := captureLog(t)
+
+		d, err := buildDepsFromEnv(nil, nil)
+		if err != nil {
+			t.Fatalf("buildDepsFromEnv: %v", err)
+		}
+		if d.understandDec == nil {
+			t.Fatal("d.understandDec = nil, want non-nil (default follows ENGRAM_DECISIONS_PROVIDER=jev)")
+		}
+		if !strings.Contains(buf.String(), "search understanding audit capture enabled") {
+			t.Errorf("startup log = %s, want the audit-capture-enabled disclosure", buf.String())
+		}
+	})
+
+	t.Run("no provider", func(t *testing.T) {
+		t.Setenv("ENGRAM_DECISIONS_PROVIDER", "")
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "")
+		buf := captureLog(t)
+
+		d, err := buildDepsFromEnv(nil, nil)
+		if err != nil {
+			t.Fatalf("buildDepsFromEnv: %v", err)
+		}
+		if d.understandDec != nil {
+			t.Error("d.understandDec = non-nil, want nil (no decisions provider configured)")
+		}
+		if strings.Contains(buf.String(), "search understanding enabled") {
+			t.Errorf("startup log contains the understanding disclosure with no provider: %s", buf.String())
+		}
+	})
 }
 
 // TestBuildDepsFromEnvRankerJev proves buildDepsFromEnv builds a non-nil

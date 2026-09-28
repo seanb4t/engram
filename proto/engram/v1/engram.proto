@@ -134,6 +134,35 @@ message ListMemoriesResponse {
   // scopes_truncated is absent/false. Present only on a cross-spine
   // response; never true alongside a populated searched_scopes.
   bool scopes_unknown = 7;
+  // recall_gate_hidden is the per-state count of records the recall gate hid
+  // from this response's page window that would otherwise have appeared
+  // (D-01/D-02, phase 02-recall-first-search plan 02-01). The window is the
+  // SAME page request (limit, offset or page_token, every filter) re-run
+  // with the recall gate lifted, bounded by the page limit. total counts
+  // distinct hidden records; each per-state field counts records carrying
+  // that state — a record with several states counts once in each, so the
+  // per-state fields may sum to more than total. Counts only states this
+  // request itself gated (include_archived/include_superseded/
+  // include_scheduled false). ABSENT when the comparison could not be
+  // computed (the underlying store call failed); PRESENT with every field
+  // zero when nothing was hidden. Introduced by milestone 2026-09-25.01
+  // Phase 2 D-01/D-02.
+  RecallGateHidden recall_gate_hidden = 8;
+}
+
+// RecallGateHidden is the per-state count of records the recall gate hid
+// from a search/list response that would otherwise have appeared
+// (D-01/D-02, phase 02-recall-first-search plan 02-01). Reused verbatim on
+// both SearchMemoriesResponse and ListMemoriesResponse — one message, two
+// independent field-number sequences (buf breaking: breaking.use: [FILE]).
+// Counts only, never ids or content: computed under the caller's own read
+// predicate, so a caller learns nothing about records they cannot read.
+message RecallGateHidden {
+  uint64 total = 1;
+  uint64 archived = 2;
+  uint64 superseded = 3;
+  uint64 expired = 4;
+  uint64 scheduled = 5;
 }
 
 message SearchMemoriesRequest {
@@ -184,6 +213,12 @@ message SearchMemoriesResponse {
   // semantics, sibling field number scheme (next free number in THIS
   // message, not shared with ListMemoriesResponse's field 7).
   bool scopes_unknown = 4;
+  // recall_gate_hidden — see ListMemoriesResponse.recall_gate_hidden;
+  // identical semantics, sibling field number scheme (next free number in
+  // THIS message, not shared with ListMemoriesResponse's field 8). Here the
+  // window is the same vector query at the same k with the recall gate
+  // lifted, bounded by k.
+  RecallGateHidden recall_gate_hidden = 5;
 }
 
 message GetMemoryRequest { string id = 1; }
@@ -364,6 +399,383 @@ message ScheduleMemoryResponse {
   string short_id = 2;
 }
 
+// --- curation RPCs (milestone 2026-09-25.01 Phase 3) ---
+
+// ArchiveOutcome enumerates the per-id result ArchiveMemory/RestoreMemory
+// report for one requested id (D-06/D-07). The zero value is never a real
+// outcome — every response entry sets one of the other five explicitly.
+enum ArchiveOutcome {
+  ARCHIVE_OUTCOME_UNSPECIFIED = 0;
+  ARCHIVE_OUTCOME_ARCHIVED = 1;
+  ARCHIVE_OUTCOME_ALREADY_ARCHIVED = 2;
+  ARCHIVE_OUTCOME_RESTORED = 3;
+  ARCHIVE_OUTCOME_NOT_ARCHIVED = 4;
+  // ARCHIVE_OUTCOME_NOT_FOUND covers a nonexistent id, an id the caller does
+  // not own, and an ambiguous short_id alike (D-07, DEC-xa6) —
+  // indistinguishable by design.
+  ARCHIVE_OUTCOME_NOT_FOUND = 5;
+}
+
+// ArchiveResult is ArchiveMemory/RestoreMemory's per-id report, reused
+// verbatim across both response messages — one message, two independent
+// field-number sequences (buf breaking: breaking.use: [FILE]), mirroring the
+// RecallGateHidden precedent above.
+message ArchiveResult {
+  // requested is the token the caller actually supplied (a short_id or a
+  // UUID), set on EVERY row including NOT_FOUND, so a caller can correlate
+  // each row back to its input (results[i] always answers ids[i]; a
+  // duplicate token is reported once per occurrence, never merged).
+  string requested = 1;
+  // id is the canonical UUID, set once the target resolved. It is ALWAYS
+  // EMPTY on ARCHIVE_OUTCOME_NOT_FOUND (D-07, DEC-xa6) — a caller learns
+  // nothing about a record it cannot write, even one it addressed by a
+  // guessed short_id that happens to resolve.
+  string id = 2;
+  ArchiveOutcome outcome = 3;
+}
+
+// ArchiveMemoryRequest/RestoreMemoryRequest take a batch of ids (full UUID
+// or short_id, D-06). The whole call is rejected only for an empty list,
+// more than 1000 ids, or a blank or over-256-byte entry — never for an
+// individual id that does not resolve or is not owned, which reports
+// ARCHIVE_OUTCOME_NOT_FOUND in the response instead (D-06/D-07). There is
+// no cross-record atomicity: a store failure part-way through aborts the
+// call and ids already processed keep their new state — each per-id
+// operation is independently idempotent and reversible (D-06). No
+// buf.validate rule is attached to either request message: the single
+// shared server-side core validates, so both the MCP and Connect lanes
+// return the byte-identical field=/hint= rejection envelope (D-17/D-20).
+message ArchiveMemoryRequest {
+  repeated string ids = 1;
+}
+message ArchiveMemoryResponse {
+  repeated ArchiveResult results = 1;
+}
+message RestoreMemoryRequest {
+  repeated string ids = 1;
+}
+message RestoreMemoryResponse {
+  repeated ArchiveResult results = 1;
+}
+
+// SupersedeMemoryRequest takes the store_memory field set (content through
+// summary) plus citations, supersedes (one or more ids of the memories this
+// new record corrects/replaces, each a full UUID or short_id) and
+// idempotency_key (fingerprint covers content and the resolved target set,
+// D-08/D-09). validate_only, when set, runs the identical preflight a real
+// call runs (argument checks, ownership and addressability, rule rejection,
+// single live head, ambiguous short_id) and names every offending target
+// exactly as a real call would, but writes nothing: no record, no
+// superseded_by stamp, no idempotency ledger entry, no embed, no short-id
+// mint. It never consults or records idempotency_key, so it never reports a
+// replay. It is still a call on this write RPC, so CSRF applies. No
+// buf.validate rule is attached to this message: the single shared
+// server-side core validates, so both the MCP and Connect lanes return the
+// byte-identical field=/hint= rejection envelope (D-17/D-20).
+message SupersedeMemoryRequest {
+  string content = 1;
+  string scope = 2;
+  string source = 3;
+  string category = 4;
+  repeated string tags = 5;
+  string repo = 6;
+  string workspace = 7;
+  string worktree = 8;
+  string base_dir = 9;
+  string summary = 10;
+  repeated Citation citations = 11;
+  repeated string supersedes = 12;
+  string idempotency_key = 13;
+  bool validate_only = 14;
+}
+
+// SupersedeMemoryResponse: id/short_id are set on a real call
+// (validate_only false). validated, supersedes (the resolved canonical
+// target ids in caller order, deduplicated — the exact list a commit would
+// write) and targets (compact summary view) are set only when validated is
+// true (D-08/D-09).
+message SupersedeMemoryResponse {
+  string id = 1;
+  string short_id = 2;
+  bool validated = 3;
+  repeated string supersedes = 4;
+  repeated Memory targets = 5;
+}
+
+// ListScheduledRequest widens list_scheduled's contract onto Connect (plan
+// 03-03, D-11): cross_spine and an opaque page_token/next_page_token join
+// the existing scope/state/limit/window fields. No buf.validate rule is
+// attached: the single shared server-side core validates, so both lanes
+// return the byte-identical field=/hint= rejection envelope (D-17/D-20).
+message ListScheduledRequest {
+  string scope = 1; // required unless cross_spine
+  string state = 2; // scheduled (default, not yet active) | expired | all
+  uint64 limit = 3; // 0 resolves to the page default 20; a larger value is rejected
+  string created_after = 4;  // RFC3339; inclusive lower bound on created_at
+  string created_before = 5; // RFC3339; exclusive upper bound on created_at
+  // cross_spine lists across every scope, still returning only the caller's
+  // own records, ignoring `scope` when true.
+  // engram:rule:start scope-required-unless-cross-spine
+  // scope is required unless cross_spine is true
+  // engram:rule:end scope-required-unless-cross-spine
+  bool cross_spine = 6;
+  string page_token = 7; // opaque cursor; when set, resumes from a prior next_page_token
+}
+message ListScheduledResponse {
+  repeated Memory memories = 1;
+  string next_page_token = 2; // empty when no further pages
+  // searched_scopes/scopes_truncated/scopes_unknown: see
+  // ListMemoriesResponse.searched_scopes; identical semantics, present only
+  // on a cross_spine request.
+  repeated string searched_scopes = 3;
+  bool scopes_truncated = 4;
+  bool scopes_unknown = 5;
+}
+
+// ListRulesRequest widens list_rules' contract onto Connect (plan 03-04,
+// D-10): scopes empty (proto3 default for a repeated field) is now the
+// all-scopes read — one cross-scope read of every readable rule:* scope, up
+// to 1000 rules IN TOTAL, oldest-first across the whole result — rather than
+// a rejection; explicit scopes keep today's contract, up to 1000 rules PER
+// SCOPE, oldest-first within each, in the order supplied. No buf.validate
+// rule is attached: the single shared server-side core (listRuleRecords)
+// validates a blank or non-rule scope entry, so both lanes return the
+// byte-identical field=/hint= rejection envelope.
+message ListRulesRequest {
+  repeated string scopes = 1; // empty = every readable rule:* scope, one read up to 1000 rules in total
+  repeated string tags = 2;   // empty = all; non-empty = rules carrying ALL listed tags (AND)
+  bool full = 3;              // false (default) returns compact (content cleared) rules; true returns full content
+}
+message ListRulesResponse {
+  repeated Memory rules = 1;
+  // advisory is the curation-smell note (empty when no scope in the result
+  // is over the soft per-scope threshold); it never changes which rules are
+  // returned.
+  string advisory = 2;
+  // searched_scopes/scopes_truncated/scopes_unknown: present only on the
+  // all-scopes read (an empty scopes list on the request) — see
+  // ListMemoriesResponse.searched_scopes for the shared three-state
+  // semantics. Unlike ListMemoriesResponse, these name ONLY rule:* scopes —
+  // never a non-rule scope the same caller can also read (D-10).
+  repeated string searched_scopes = 3;
+  bool scopes_truncated = 4;
+  bool scopes_unknown = 5;
+}
+
+// --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
+//
+// RelatedMemories wraps the store's id-neighbourhood read (2026-09-25.01
+// Phase 1, D-06..D-12): the supersession chain in both directions, records
+// sharing a citation kind+ref, records sharing rarity-weighted tags, and the
+// anchor's nearest vector neighbours — one entry per related record, never
+// twice, listing every edge that reached it.
+
+// EdgeType names the kind of relationship a RelatedEdge was reached by
+// (D-12). The zero value is never a real edge — every RelatedEdge sets one
+// of the other four explicitly, and its oneof evidence case always matches
+// this field.
+enum EdgeType {
+  EDGE_TYPE_UNSPECIFIED = 0;
+  EDGE_TYPE_SUPERSESSION = 1;
+  EDGE_TYPE_CITATION = 2;
+  EDGE_TYPE_TAG = 3;
+  EDGE_TYPE_VECTOR = 4;
+}
+
+// SupersessionDirection names which pointer a supersession edge was reached
+// through, relative to the anchor.
+enum SupersessionDirection {
+  SUPERSESSION_DIRECTION_UNSPECIFIED = 0;
+  SUPERSESSION_DIRECTION_SUCCESSOR = 1;
+  SUPERSESSION_DIRECTION_PREDECESSOR = 2;
+}
+
+// WeightedTag is one tag the anchor and a candidate share, plus its rarity
+// weight (Phase 1 D-07).
+message WeightedTag {
+  string tag = 1;
+  double weight = 2;
+}
+
+// CitationRef is one citation kind+ref the anchor and a candidate share
+// (Phase 1 D-08) — locator, pin, and excerpt are excluded from the identity
+// comparison.
+message CitationRef {
+  string kind = 1;
+  string ref = 2;
+}
+
+// VectorEvidence is the vector edge's evidence: the raw Qdrant cosine
+// similarity.
+message VectorEvidence {
+  float score = 1;
+}
+
+// TagEvidence is the tag edge's evidence: the shared tags with their rarity
+// weight, and the sum of those weights.
+message TagEvidence {
+  repeated WeightedTag shared_tags = 1;
+  double tag_weight = 2;
+}
+
+// CitationEvidence is the citation edge's evidence: the shared kind+ref
+// pairs.
+message CitationEvidence {
+  repeated CitationRef shared_citations = 1;
+}
+
+// SupersessionEvidence is the supersession edge's evidence: which pointer
+// was followed, and how many hops from the anchor (1 = direct link).
+message SupersessionEvidence {
+  SupersessionDirection direction = 1;
+  uint32 depth = 2;
+}
+
+// RelatedEdge is one piece of per-type evidence for why a candidate appeared
+// in a RelatedMemory's edges (D-12). type and the oneof evidence case always
+// match exactly: vector -> VectorEvidence, tag -> TagEvidence,
+// citation -> CitationEvidence, supersession -> SupersessionEvidence.
+// Evidence is never comparable across types — a vector score and a
+// supersession depth measure different things.
+message RelatedEdge {
+  EdgeType type = 1;
+  oneof evidence {
+    VectorEvidence vector = 2;
+    TagEvidence tag = 3;
+    CitationEvidence citation = 4;
+    SupersessionEvidence supersession = 5;
+  }
+}
+
+// RelatedMemory is one candidate record plus every edge type that reached
+// it (Phase 1 D-06's documented multi-edge rule): a candidate reachable by
+// more than one edge type is ONE entry, never returned twice. memory is
+// compact unless RelatedMemoriesRequest.full is set (D-13).
+message RelatedMemory {
+  Memory memory = 1;
+  repeated RelatedEdge edges = 2;
+}
+
+// RelatedMemoriesRequest requests the neighbourhood of one memory the
+// caller can read (RPC-04). id is a full UUID or short_id. k widens ONLY
+// the vector edge (0 resolves to the default of 8 vector neighbours; a
+// value above 1000 is rejected). full requests full content instead of
+// compact summaries for the anchor and every entry's memory (D-13). No
+// buf.validate rule is attached: the single shared server-side core
+// validates, so both lanes return the byte-identical field=/hint= rejection
+// envelope (D-17/D-20).
+message RelatedMemoriesRequest {
+  string id = 1;
+  uint64 k = 2;
+  bool full = 3;
+}
+
+// RelatedMemoriesResponse is RelatedMemories' return shape: the resolved
+// anchor, its neighbourhood, and whether the result ceiling left a fetched
+// vector candidate out (truncated). An unreadable or nonexistent anchor
+// reads not_found, echoing only the caller's original input (matching every
+// other per-id gate on this service).
+message RelatedMemoriesResponse {
+  Memory anchor = 1;
+  repeated RelatedMemory related = 2;
+  bool truncated = 3;
+}
+
+// TagCount is one tag plus the exact number of the caller's recall-visible
+// records that carry it (2026-09-25.01 Phase 1 D-13), wrapped onto Connect
+// by milestone 2026-09-25.01 Phase 3 (RPC-04).
+message TagCount {
+  string tag = 1;
+  uint64 count = 2;
+}
+
+// ListTagsRequest lists the tags on the records the caller can recall in
+// scope, or across every readable scope when scope is empty (2026-09-25.01
+// Phase 1 D-14, Phase 3 D-14). limit 0 resolves to 100; a value above the
+// maximum, 1000, is rejected. No buf.validate rule is attached: the single
+// shared server-side core validates, so both lanes return the byte-identical
+// field=/hint= rejection envelope. No server-side prefix filter is offered
+// by design (Phase 3 D-14) — filter the returned list on the client; Qdrant
+// Facet has no prefix match on a keyword index.
+message ListTagsRequest {
+  string scope = 1; // empty = every scope the caller can read
+  uint64 limit = 2; // 0 resolves to 100; above 1000 is rejected
+}
+
+// ListTagsResponse is ListTags' return shape: counts are exact over
+// recall-visible records only (no archived, superseded, expired, or
+// not-yet-active ones), ordered by count descending then tag ascending.
+// more reports that more distinct tags exist beyond limit — never a silent
+// truncation.
+message ListTagsResponse {
+  repeated TagCount tags = 1;
+  bool more = 2;
+}
+
+// query understanding (milestone 2026-09-25.01 Phase 6)
+
+// SuggestionSource marks whether a FilterSuggestion came from a typed
+// decision (DECIDED) or from local tag matching (MATCHED); see
+// UnderstandQueryResponse for the D-09/D-05 distinction.
+enum SuggestionSource {
+  SUGGESTION_SOURCE_UNSPECIFIED = 0;
+  SUGGESTION_SOURCE_DECIDED = 1;
+  SUGGESTION_SOURCE_MATCHED = 2;
+}
+
+// TimeWindowSuggestion is a suggested time-window chip: created_after and
+// created_before are RFC3339 UTC day-aligned midnights (Task 1 option-a —
+// created_before is always empty for this phase's buckets), and label
+// names the bucket ("today", "past week", "past month", "past year") for
+// the chip's own text.
+message TimeWindowSuggestion {
+  string created_after = 1;
+  string created_before = 2;
+  string label = 3;
+}
+
+// FilterSuggestion is one suggested, unapplied filter chip (milestone
+// 2026-09-25.01 Phase 6, D-03/D-11): suggestions are advisory and never
+// change search results until the user accepts one by clicking the chip.
+// source is DECIDED when a typed-decision answer reached the 0.9
+// probability threshold (D-05), or MATCHED when the query named an
+// existing tag from the caller's own vocabulary (D-09).
+message FilterSuggestion {
+  oneof kind {
+    string category = 1;
+    TimeWindowSuggestion time_window = 2;
+    string scope = 3;
+    string tag = 4;
+  }
+  SuggestionSource source = 5;
+}
+
+// UnderstandQueryRequest asks the server to suggest filter chips for query
+// (milestone 2026-09-25.01 Phase 6, D-02/D-03): a prose search string plus
+// the filters currently applied to the console's search, so the server can
+// skip a question whose answer is already applied. No buf.validate rule is
+// attached: the single shared server-side core validates, so both the
+// envelope and the core stay single.
+message UnderstandQueryRequest {
+  string query = 1;
+  string scope = 2;
+  bool cross_spine = 3;
+  repeated string categories = 4;
+  repeated string tags = 5;
+  string created_after = 6;
+  string created_before = 7;
+}
+
+// UnderstandQueryResponse is UnderstandQuery's return shape (D-04): enabled
+// is false when query understanding is off for this deployment — the
+// caller should stop calling UnderstandQuery for the rest of the session —
+// and true otherwise, even when suggestions is empty. A decision failure or
+// timeout yields zero decided suggestions, never an RPC error (D-05).
+message UnderstandQueryResponse {
+  bool enabled = 1;
+  repeated FilterSuggestion suggestions = 2;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
@@ -378,4 +790,19 @@ service EngramService {
   rpc DeleteMemory(DeleteMemoryRequest) returns (DeleteMemoryResponse);
   rpc SetVisibility(SetVisibilityRequest) returns (SetVisibilityResponse);
   rpc ScheduleMemory(ScheduleMemoryRequest) returns (ScheduleMemoryResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-01) ---
+  rpc ArchiveMemory(ArchiveMemoryRequest) returns (ArchiveMemoryResponse);
+  rpc RestoreMemory(RestoreMemoryRequest) returns (RestoreMemoryResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-02) ---
+  rpc SupersedeMemory(SupersedeMemoryRequest) returns (SupersedeMemoryResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-03) ---
+  rpc ListScheduled(ListScheduledRequest) returns (ListScheduledResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-04) ---
+  rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-05) ---
+  rpc RelatedMemories(RelatedMemoriesRequest) returns (RelatedMemoriesResponse);
+  // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-06) ---
+  rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
+  // --- query understanding (milestone 2026-09-25.01 Phase 6, D-02: Connect-only, no MCP tool or CLI verb) ---
+  rpc UnderstandQuery(UnderstandQueryRequest) returns (UnderstandQueryResponse);
 }

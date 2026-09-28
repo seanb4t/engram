@@ -249,8 +249,9 @@ type DecisionsConfig struct {
 }
 
 // SearchConfig selects the search-path (`search_memory`/`search_discovery`)
-// reranker (D-01, D-09). Values stay strings, like DecisionsConfig, and are
-// validated by Config.Validate only when Ranker is "jev".
+// reranker (D-01, D-09) and query understanding (milestone 2026-09-25.01
+// Phase 6, D-01). Values stay strings, like DecisionsConfig, and are
+// validated by Config.Validate only when the relevant feature is on.
 type SearchConfig struct {
 	// Ranker is "" or "lexical" (default, off) or "jev" (search-path
 	// reranking enabled). "jev" requires Decisions.Provider to be set — it
@@ -270,6 +271,17 @@ type SearchConfig struct {
 	// the Jev ranker is being evaluated. Validated as a boolean
 	// unconditionally; it has no effect unless Ranker is "jev".
 	RerankAudit string `koanf:"rerank_audit"`
+	// Understanding is "" (default) or "off" or "jev" (milestone
+	// 2026-09-25.01 Phase 6 D-01). "" follows Decisions.Provider — on when
+	// "jev", off otherwise; "off" opts out unconditionally; "jev" is
+	// explicit and requires a provider to be configured.
+	Understanding string `koanf:"understanding"`
+	// UnderstandingTimeout bounds the one understanding decision call per
+	// query (ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT, default "2s", D-01a).
+	UnderstandingTimeout string `koanf:"understanding_timeout"`
+	// UnderstandingAudit ("false" default) is the opt-in audit of query
+	// text plus suggestion labels — never content (D-16).
+	UnderstandingAudit string `koanf:"understanding_audit"`
 }
 
 // OIDCConfig holds the MCP bearer-token issuer settings and the web-UI

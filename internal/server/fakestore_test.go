@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -50,6 +51,17 @@ type spyStore struct {
 	// other method here; a test sets this field directly before exercising
 	// a handler.
 	migrateStatus store.MigrateStatusResult
+	// related is the SCRIPTED result RelatedMemories returns (milestone
+	// 2026-09-25.01 Phase 3) — this fake never derives a neighbourhood from
+	// s.records, mirroring migrateStatus's precedent; a test sets this field
+	// directly before exercising a handler.
+	related store.RelatedResult
+	// tags/tagsMore are the SCRIPTED result ListTags returns (milestone
+	// 2026-09-25.01 Phase 3) — this fake never derives tag counts from
+	// s.records, mirroring migrateStatus/related's precedent; a test sets
+	// these fields directly before exercising a handler.
+	tags     []store.TagCount
+	tagsMore bool
 }
 
 var _ memStore = (*spyStore)(nil)
@@ -299,6 +311,48 @@ func (s *spyStore) UpdatePayload(_ context.Context, cur store.Memory, shared *bo
 	return nil
 }
 
+// ArchiveAs mirrors store.Store.ArchiveAs's owner-gate and outcome
+// semantics (milestone 2026-09-25.01 Phase 3, D-16): absent or not-owned ->
+// ArchiveOutcomeNotFound plus an ErrNotFound-wrapping error; already
+// archived -> ArchiveOutcomeAlready, no mutation; otherwise stamps
+// ArchivedAt and reports ArchiveOutcomeChanged.
+func (s *spyStore) ArchiveAs(_ context.Context, id string, subj store.Subject) (store.ArchiveResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := ownerOfSubject(subj)
+	s.record("ArchiveAs", owner, id)
+	m, ok := s.records[id]
+	if !ok || m.Owner != owner {
+		return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeNotFound}, fmt.Errorf("%w: %s", store.ErrNotFound, id)
+	}
+	if m.ArchivedAt != nil {
+		return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeAlready}, nil
+	}
+	now := time.Now().UTC()
+	m.ArchivedAt = &now
+	s.records[id] = m
+	return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeChanged}, nil
+}
+
+// RestoreAs mirrors store.Store.RestoreAs, the exact inverse of ArchiveAs
+// above.
+func (s *spyStore) RestoreAs(_ context.Context, id string, subj store.Subject) (store.ArchiveResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := ownerOfSubject(subj)
+	s.record("RestoreAs", owner, id)
+	m, ok := s.records[id]
+	if !ok || m.Owner != owner {
+		return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeNotFound}, fmt.Errorf("%w: %s", store.ErrNotFound, id)
+	}
+	if m.ArchivedAt == nil {
+		return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeAlready}, nil
+	}
+	m.ArchivedAt = nil
+	s.records[id] = m
+	return store.ArchiveResult{ID: id, Outcome: store.ArchiveOutcomeChanged}, nil
+}
+
 func (s *spyStore) Delete(_ context.Context, id string, subj store.Subject) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -384,15 +438,26 @@ func (s *spyStore) List(_ context.Context, scope string, subj store.Subject, opt
 	return page, total, "", nil
 }
 
-func (s *spyStore) ListScheduled(_ context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) ([]store.Memory, error) {
+// ListScheduled treats an empty scope as spanning every scope (owner filter
+// kept — deferred reveal stays owner-only, milestone 2026-09-25.01 Phase 3
+// D-11), sorts matches by CreatedAt descending then ID for a deterministic
+// page order, and pages with a decimal-offset cursor: opts.Cursor is the
+// starting index into the sorted match set ("" means 0), a non-numeric or
+// negative token is rejected as store.ErrInvalidArgument, and the returned
+// next cursor is the decimal offset of the first unreturned match ("" once
+// the match set is exhausted).
+func (s *spyStore) ListScheduled(_ context.Context, scope string, subj store.Subject, state store.ScheduledState, opts store.ListOptions) ([]store.Memory, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	owner := ownerOfSubject(subj)
 	s.record("ListScheduled", owner, scope)
 	now := time.Now().UTC()
-	var out []store.Memory
+	var matched []store.Memory
 	for _, m := range s.records {
-		if m.Scope != scope || m.Owner != owner {
+		if scope != "" && m.Scope != scope {
+			continue
+		}
+		if m.Owner != owner {
 			continue
 		}
 		pending := m.NotBefore != nil && now.Before(*m.NotBefore)
@@ -411,14 +476,46 @@ func (s *spyStore) ListScheduled(_ context.Context, scope string, subj store.Sub
 				continue
 			}
 		}
-		out = append(out, m)
-		if opts.Limit > 0 && uint64(len(out)) >= opts.Limit {
-			break
-		}
+		matched = append(matched, m)
 	}
-	return out, nil
+	sort.Slice(matched, func(i, j int) bool {
+		if matched[i].CreatedAt.Equal(matched[j].CreatedAt) {
+			return matched[i].ID < matched[j].ID
+		}
+		return matched[i].CreatedAt.After(matched[j].CreatedAt)
+	})
+
+	start := 0
+	if opts.Cursor != "" {
+		n, cErr := strconv.Atoi(opts.Cursor)
+		if cErr != nil || n < 0 {
+			return nil, "", store.ErrInvalidArgument
+		}
+		start = n
+	}
+	if start > len(matched) {
+		start = len(matched)
+	}
+	limit := opts.Limit
+	if limit == 0 {
+		limit = 20
+	}
+	end := start + int(limit)
+	if end > len(matched) {
+		end = len(matched)
+	}
+	page := append([]store.Memory{}, matched[start:end]...)
+	next := ""
+	if end < len(matched) {
+		next = strconv.Itoa(end)
+	}
+	return page, next, nil
 }
 
+// ListScopes sorts its result by scope (the real store does — Qdrant's
+// bucket enumeration returns them in a deterministic order and downstream
+// coverage assertions rely on it), so a coverage test can assert
+// searched_scopes verbatim rather than sorting it itself.
 func (s *spyStore) ListScopes(_ context.Context, subj store.Subject) ([]store.ScopeCount, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -435,6 +532,7 @@ func (s *spyStore) ListScopes(_ context.Context, subj store.Subject) ([]store.Sc
 	for scope, c := range counts {
 		out = append(out, store.ScopeCount{Scope: scope, Count: c})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Scope < out[j].Scope })
 	return out, false, nil
 }
 
@@ -467,6 +565,67 @@ func (s *spyStore) MintShortID(_ context.Context, seen map[string]struct{}) (str
 		return id, nil
 	}
 	return "", errors.New("spyStore: could not mint a unique short id")
+}
+
+// RelatedMemories returns the SCRIPTED s.related value when the requested id
+// matches s.related.Anchor.ID, or an ErrNotFound-wrapping error otherwise —
+// mirroring MigrateStatus's scripted-not-derived precedent. A test sets
+// s.related directly before exercising a handler.
+func (s *spyStore) RelatedMemories(_ context.Context, id string, subj store.Subject, _ uint64, _ bool) (store.RelatedResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.record("RelatedMemories", ownerOfSubject(subj), id)
+	if s.related.Anchor.ID != id {
+		return store.RelatedResult{}, fmt.Errorf("%w: %s", store.ErrNotFound, id)
+	}
+	return s.related, nil
+}
+
+// ListTags returns the SCRIPTED s.tags/s.tagsMore values, mirroring
+// MigrateStatus/RelatedMemories's scripted-not-derived precedent. A test
+// sets s.tags/s.tagsMore directly before exercising a handler.
+func (s *spyStore) ListTags(_ context.Context, subj store.Subject, scope string, _ uint64) ([]store.TagCount, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.record("ListTags", ownerOfSubject(subj), scope)
+	return s.tags, s.tagsMore, nil
+}
+
+// Search mirrors SearchReranked's filtering exactly (scope/readableBy/
+// categories/tags/window, CreatedAt-desc sort, truncate to k) — this fake
+// has no separate vector-vs-rerank distinction, so it records "Search"
+// instead of "SearchReranked" and otherwise behaves identically, enough to
+// prove which method a call site invoked without reimplementing Qdrant's
+// own ranking semantics.
+func (s *spyStore) Search(_ context.Context, scope string, subj store.Subject, _ []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner := ownerOfSubject(subj)
+	s.record("Search", owner, scope)
+	var matched []store.Memory
+	for _, m := range s.records {
+		if m.Scope != scope || !readableBy(m, owner) {
+			continue
+		}
+		if len(opts.Categories) > 0 && !slices.Contains(opts.Categories, m.Category) {
+			continue
+		}
+		if !hasAllTags(m.Tags, opts.Tags) {
+			continue
+		}
+		if !opts.CreatedAfter.IsZero() && m.CreatedAt.Before(opts.CreatedAfter) {
+			continue
+		}
+		if !opts.CreatedBefore.IsZero() && !m.CreatedAt.Before(opts.CreatedBefore) {
+			continue
+		}
+		matched = append(matched, m)
+	}
+	sort.Slice(matched, func(i, j int) bool { return matched[i].CreatedAt.After(matched[j].CreatedAt) })
+	if uint64(len(matched)) > k {
+		matched = matched[:k]
+	}
+	return matched, nil
 }
 
 func (s *spyStore) SearchReranked(_ context.Context, scope string, subj store.Subject, _ string, _ []float32, k uint64, opts store.SearchOptions) ([]store.Memory, error) {

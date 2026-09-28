@@ -10,11 +10,12 @@ import { CATEGORIES } from '$lib/queries';
 // CI's `pnpm build` are unaffected.)
 //
 // MemoryRow + MemoryDetail render every memory Category, plus `discovery`-category
-// records on the /discovery route, through `var(--cat-{category})`. A category
-// without a token renders an unstyled dot/badge, so each must be defined. The list
-// derives from the source-of-truth CATEGORIES (queries.ts) so a newly added
-// category can't silently reintroduce the missing-token bug.
-const RENDERABLE_CATEGORIES = [...CATEGORIES, 'discovery'] as const;
+// records on the /discovery route and `rule`-category records in this phase's
+// rows, through `var(--cat-{category})`. A category without a token renders an
+// unstyled dot/badge, so each must be defined. The list derives from the
+// source-of-truth CATEGORIES (queries.ts) so a newly added category can't
+// silently reintroduce the missing-token bug.
+const RENDERABLE_CATEGORIES = [...CATEGORIES, 'discovery', 'rule'] as const;
 
 const css = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8');
 // Extract each block's body by selector, not by position, so a reordered file (or
@@ -56,4 +57,26 @@ describe('destructive tokens', () => {
     expect(dark).toContain('--destructive-foreground: var(--background);');
     expect(dark).not.toMatch(/--destructive-foreground:\s*#fff/i);
   });
+});
+
+describe('console foundation tokens (D-13)', () => {
+  const NEW_TOKENS = [
+    'surface-2',
+    'hover',
+    'selected',
+    'border-subtle',
+    'text-faint',
+    'primary-soft',
+    'warning',
+    'success',
+    'cat-rule'
+  ] as const;
+
+  for (const token of NEW_TOKENS) {
+    it(`defines --${token} in :root, .dark, and bridges --color-${token} in @theme`, () => {
+      expect(root).toContain(`--${token}:`);
+      expect(dark).toContain(`--${token}:`);
+      expect(theme).toContain(`--color-${token}:`);
+    });
+  }
 });

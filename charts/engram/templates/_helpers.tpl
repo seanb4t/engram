@@ -94,6 +94,23 @@
 - { name: ENGRAM_SEARCH_RERANK_AUDIT, value: "{{ . }}" }
 {{- end }}
 {{- end }}
+{{- /* Query understanding (Jev, milestone 2026-09-25.01 Phase 6). These
+       three rows are INDEPENDENT of memory.search.ranker — each one renders
+       only when its own value is set, so the default render (every value
+       empty) is byte-identical to before this block existed. Deliberately
+       NOT nested under memory.decisions.provider, matching the ranker block
+       above: an explicit "jev" with no provider configured still renders
+       here and fails loudly at server startup instead of silently doing
+       nothing. */}}
+{{- with .Values.memory.search.understanding }}
+- { name: ENGRAM_SEARCH_UNDERSTANDING, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.search.understandingTimeout }}
+- { name: ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT, value: "{{ . }}" }
+{{- end }}
+{{- with .Values.memory.search.understandingAudit }}
+- { name: ENGRAM_SEARCH_UNDERSTANDING_AUDIT, value: "{{ . }}" }
+{{- end }}
 {{- /* Empty omits the var → server defaults the MCP transport to /mcp. "/" restores the legacy root catch-all. */}}
 {{- with .Values.memory.mcpPath }}
 - { name: ENGRAM_MCP_PATH, value: "{{ . }}" }

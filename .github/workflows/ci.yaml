@@ -416,6 +416,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: ui/pnpm-lock.yaml
       - run: cd ui && pnpm install --frozen-lockfile
+      # Type-check before the browser suite: svelte-check is the only checker
+      # that reads .svelte files, and nothing else fails when it cannot run.
+      - run: cd ui && pnpm check
       # Cache the Playwright browser binaries keyed on the resolved version so
       # warm runs skip the ~190MB Chromium download.
       - name: playwright version

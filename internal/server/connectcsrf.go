@@ -28,20 +28,26 @@ const (
 // csrfWriteProcedures is the write-only allowlist (D-07): the CSRF
 // interceptor gates on this set instead of every Connect procedure. Keyed on
 // the generated Procedure string constants (never a hand-maintained path
-// list, Pitfall 3) so a Phase-15 proto regen can't silently drift the
-// allowlist away from the actual six write RPCs.
+// list, Pitfall 3) so a proto regen can't silently drift the allowlist away
+// from the actual write RPCs. Milestone 2026-09-25.01 Phase 3 (D-15) added
+// ArchiveMemory/RestoreMemory to the original six, and plan 03-02 (D-15)
+// added SupersedeMemory — including its validate_only path, which is still a
+// call on this write Procedure (D-08).
 var csrfWriteProcedures = map[string]bool{
-	engramv1connect.EngramServiceStoreMemoryProcedure:    true,
-	engramv1connect.EngramServiceStoreDiscoveryProcedure: true,
-	engramv1connect.EngramServiceUpdateMemoryProcedure:   true,
-	engramv1connect.EngramServiceDeleteMemoryProcedure:   true,
-	engramv1connect.EngramServiceSetVisibilityProcedure:  true,
-	engramv1connect.EngramServiceScheduleMemoryProcedure: true,
+	engramv1connect.EngramServiceStoreMemoryProcedure:     true,
+	engramv1connect.EngramServiceStoreDiscoveryProcedure:  true,
+	engramv1connect.EngramServiceUpdateMemoryProcedure:    true,
+	engramv1connect.EngramServiceDeleteMemoryProcedure:    true,
+	engramv1connect.EngramServiceSetVisibilityProcedure:   true,
+	engramv1connect.EngramServiceScheduleMemoryProcedure:  true,
+	engramv1connect.EngramServiceArchiveMemoryProcedure:   true,
+	engramv1connect.EngramServiceRestoreMemoryProcedure:   true,
+	engramv1connect.EngramServiceSupersedeMemoryProcedure: true,
 }
 
 // newConnectCSRFInterceptor returns a unary interceptor enforcing the
-// session-bound double-submit CSRF token on the six write Procedures only
-// (D-07); the five read Procedures pass through untouched (SC3). It must run
+// session-bound double-submit CSRF token on the write Procedures only
+// (D-07); the read Procedures pass through untouched (SC3). It must run
 // AFTER the subject interceptor (D-02: needs the resolved Subject) and
 // BEFORE the validate interceptor (D-02: a forged-origin caller learns
 // nothing about payload shape). Every rejection maps to CodePermissionDenied
