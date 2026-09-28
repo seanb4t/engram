@@ -9,7 +9,7 @@
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
     "test:node": "vitest run --project node",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --tsgo"
   },
   "devDependencies": {
     "@lucide/svelte": "1.48.0",
@@ -22,6 +22,7 @@
     "@types/d3-force": "3.0.10",
     "@types/d3-selection": "3.0.12",
     "@types/d3-zoom": "3.0.8",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/browser": "5.0.2",
     "@vitest/browser-playwright": "5.0.2",
     "axe-core": "4.13.0",
@@ -32,7 +33,7 @@
     "svelte-check": "4.7.6",
     "svelte-sonner": "1.2.1",
     "tailwindcss": "4.3.3",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
     "vite": "8.3.1",
     "vitest": "5.0.2",
     "vitest-browser-svelte": "3.1.0"
