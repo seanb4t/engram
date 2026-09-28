@@ -1250,3 +1250,104 @@ func TestUnderstandDeciderGate(t *testing.T) {
 		})
 	}
 }
+
+// TestUnderstandingAuditResolver pins D-16's resolver: "true"/"1" turn the
+// audit on, "false"/empty/garbage keep it off (Config.Validate rejects
+// garbage before production ever reaches here); the startup Warn fires only
+// on a non-empty, non-boolean value; and understandingAudit is completely
+// independent of searchRerankAudit — neither reads the other's field.
+func TestUnderstandingAuditResolver(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{{"true", true}, {"1", true}, {"false", false}, {"", false}, {"yes please", false}} {
+		cfg := &config.Config{}
+		cfg.Search.UnderstandingAudit = tc.value
+		if got := understandingAudit(cfg); got != tc.want {
+			t.Errorf("understandingAudit(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+
+	t.Run("warns only on a non-empty non-boolean value", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			value    string
+			wantWarn bool
+		}{
+			{"empty", "", false},
+			{"false", "false", false},
+			{"true", "true", false},
+			{"garbage", "yes please", true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				prev := slog.Default()
+				slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+				t.Cleanup(func() { slog.SetDefault(prev) })
+
+				cfg := &config.Config{}
+				cfg.Search.UnderstandingAudit = tc.value
+				understandingAudit(cfg)
+
+				out := strings.TrimSpace(buf.String())
+				gotWarn := out != ""
+				if gotWarn != tc.wantWarn {
+					t.Errorf("warn emitted = %v, want %v (output: %q)", gotWarn, tc.wantWarn, out)
+				}
+				if gotWarn && !strings.Contains(out, "ENGRAM_SEARCH_UNDERSTANDING_AUDIT") {
+					t.Errorf("warn output = %q, want substring ENGRAM_SEARCH_UNDERSTANDING_AUDIT", out)
+				}
+			})
+		}
+	})
+
+	t.Run("independent of the rerank audit flag", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Search.RerankAudit = "true"
+		cfg.Search.UnderstandingAudit = "false"
+		if got := understandingAudit(cfg); got {
+			t.Error("understandingAudit() = true, want false (must ignore RerankAudit)")
+		}
+		if got := searchRerankAudit(cfg); !got {
+			t.Error("searchRerankAudit() = false, want true (must ignore UnderstandingAudit)")
+		}
+	})
+}
+
+// TestUnderstandingAuditEnabledLogLine pins the two disclosure lines
+// logUnderstandingAuditEnabled produces: enabled names the audit capture
+// itself; disabled names that the flag is set but understanding is off, so
+// nothing is actually audited.
+func TestUnderstandingAuditEnabledLogLine(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+		wantSub string
+	}{
+		{"enabled", true, "search understanding audit capture enabled"},
+		{"disabled", false, "nothing is suggested, so nothing is audited"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			logUnderstandingAuditEnabled(tc.enabled)
+
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &rec); err != nil {
+				t.Fatalf("unmarshal log line %q: %v", buf.String(), err)
+			}
+			if rec["level"] != "WARN" {
+				t.Errorf("level = %v, want WARN", rec["level"])
+			}
+			if msg, _ := rec["msg"].(string); !strings.Contains(msg, tc.wantSub) {
+				t.Errorf("msg = %q, want substring %q", msg, tc.wantSub)
+			}
+			if tc.enabled && rec["log_msg"] != "query understanding audit" {
+				t.Errorf("log_msg = %v, want %q", rec["log_msg"], "query understanding audit")
+			}
+		})
+	}
+}

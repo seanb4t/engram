@@ -402,6 +402,40 @@ func logUnderstandingEnabled(cfg *config.Config, source string) {
 	)
 }
 
+// understandingAudit parses ENGRAM_SEARCH_UNDERSTANDING_AUDIT (D-16),
+// defaulting to false on empty/invalid — Config.Validate already rejects a
+// non-boolean, so the warn branch only fires on an out-of-band call that
+// bypassed it. Structural copy of searchRerankAudit, but independent of it:
+// this reads ONLY cfg.Search.UnderstandingAudit, never RerankAudit — the two
+// audit flags gate unrelated features and must never consult each other.
+func understandingAudit(cfg *config.Config) bool {
+	b, err := strconv.ParseBool(cfg.Search.UnderstandingAudit)
+	if err != nil {
+		if cfg.Search.UnderstandingAudit != "" {
+			slog.Warn("ENGRAM_SEARCH_UNDERSTANDING_AUDIT is set but not a boolean; audit capture stays off",
+				"value", cfg.Search.UnderstandingAudit)
+		}
+		return false
+	}
+	return b
+}
+
+// logUnderstandingAuditEnabled is the loud startup disclosure for the
+// understanding audit capture (D-16): unlike every other engram telemetry
+// surface, each understood console query will now log its query text and
+// suggestion labels. Warn level on purpose — structural copy of
+// logSearchRerankAuditEnabled. enabled reports whether query understanding
+// is itself actually on; without it the flag does nothing, and the line
+// says that instead.
+func logUnderstandingAuditEnabled(enabled bool) {
+	if !enabled {
+		slog.Warn("ENGRAM_SEARCH_UNDERSTANDING_AUDIT is true but query understanding is off; nothing is suggested, so nothing is audited")
+		return
+	}
+	slog.Warn("search understanding audit capture enabled: every understood console query logs its query text and suggestion labels (never content) at info level",
+		"log_msg", "query understanding audit")
+}
+
 // logSearchRankerEnabled logs one Info line naming that search-path
 // reranking is enabled: the ranker, model, the base URL's host ONLY (never
 // any userinfo, path or query — T-04-01/T-04-07), the rerank timeout, and

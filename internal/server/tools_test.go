@@ -5517,6 +5517,40 @@ func TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider(t *testing.T) {
 		}
 	})
 
+	t.Run("audit while off", func(t *testing.T) {
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "off")
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING_AUDIT", "true")
+		buf := captureLog(t)
+
+		d, err := buildDepsFromEnv(nil, nil)
+		if err != nil {
+			t.Fatalf("buildDepsFromEnv: %v", err)
+		}
+		if d.understandDec != nil {
+			t.Error("d.understandDec = non-nil, want nil (ENGRAM_SEARCH_UNDERSTANDING=off)")
+		}
+		if !strings.Contains(buf.String(), "nothing is suggested, so nothing is audited") {
+			t.Errorf("startup log = %s, want the audit-does-nothing disclosure", buf.String())
+		}
+	})
+
+	t.Run("audit on", func(t *testing.T) {
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "")
+		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING_AUDIT", "true")
+		buf := captureLog(t)
+
+		d, err := buildDepsFromEnv(nil, nil)
+		if err != nil {
+			t.Fatalf("buildDepsFromEnv: %v", err)
+		}
+		if d.understandDec == nil {
+			t.Fatal("d.understandDec = nil, want non-nil (default follows ENGRAM_DECISIONS_PROVIDER=jev)")
+		}
+		if !strings.Contains(buf.String(), "search understanding audit capture enabled") {
+			t.Errorf("startup log = %s, want the audit-capture-enabled disclosure", buf.String())
+		}
+	})
+
 	t.Run("no provider", func(t *testing.T) {
 		t.Setenv("ENGRAM_DECISIONS_PROVIDER", "")
 		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "")
