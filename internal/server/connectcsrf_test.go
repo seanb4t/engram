@@ -224,6 +224,10 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 		// ListTags (plan 03-06, RPC-05): a read Procedure, absent from
 		// csrfWriteProcedures and reachable without a CSRF token.
 		engramv1connect.EngramServiceListTagsProcedure,
+		// UnderstandQuery (milestone 2026-09-25.01 Phase 6, D-02): a read
+		// Procedure, absent from csrfWriteProcedures and reachable without
+		// a CSRF token.
+		engramv1connect.EngramServiceUnderstandQueryProcedure,
 	}
 	for _, p := range readProcedures {
 		if csrfWriteProcedures[p] {
@@ -452,6 +456,16 @@ func TestReadRPCsCSRFExempt(t *testing.T) {
 				req := connect.NewRequest(&engramv1.ListTagsRequest{Scope: "test:scope"})
 				req.Header().Set("X-Test-Actor", "actor-A")
 				_, err := c.ListTags(ctx, req)
+				return err
+			},
+		},
+		{
+			name:      "UnderstandQuery",
+			procedure: engramv1connect.EngramServiceUnderstandQueryProcedure,
+			call: func(ctx context.Context, c engramv1connect.EngramServiceClient) error {
+				req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "two words"})
+				req.Header().Set("X-Test-Actor", "actor-A")
+				_, err := c.UnderstandQuery(ctx, req)
 				return err
 			},
 		},

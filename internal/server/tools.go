@@ -108,6 +108,12 @@ type deps struct {
 	// reranked search also logs its query text and candidate ids for an
 	// offline grading pass. Off by default; meaningless without rankHook.
 	rankAudit bool
+	// understandDec is the query-understanding Decider (milestone
+	// 2026-09-25.01 Phase 6, D-01/D-04): nil unless understanding resolves
+	// on AND a provider is configured. The only production source is
+	// understandDecider in buildDepsFromEnv. nil means UnderstandQuery
+	// answers {enabled:false} — no decision call, no store call.
+	understandDec decide.Decider
 }
 
 // memoryWriteCaps holds the always-enforced memory content/tags write
@@ -357,6 +363,10 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if audit {
 		logSearchRerankAuditEnabled(hook != nil)
 	}
+	udec, err := understandDecider(cfg)
+	if err != nil {
+		return nil, err
+	}
 	return &deps{
 		st:               st,
 		em:               em,
@@ -369,6 +379,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		decider:          dec,
 		rankHook:         hook,
 		rankAudit:        audit,
+		understandDec:    udec,
 	}, nil
 }
 

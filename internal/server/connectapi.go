@@ -676,6 +676,31 @@ func (a *engramAPI) ListTags(ctx context.Context, req *connect.Request[engramv1.
 	return connect.NewResponse(&engramv1.ListTagsResponse{Tags: tagCountsToProto(ts), More: more}), nil
 }
 
+// UnderstandQuery is Connect-only by design (milestone 2026-09-25.01 Phase 6
+// D-02): suggestion chips are a console affordance and a second lane would
+// be another path sending query text to the provider, so no MCP tool or CLI
+// verb exists.
+func (a *engramAPI) UnderstandQuery(ctx context.Context, req *connect.Request[engramv1.UnderstandQueryRequest]) (*connect.Response[engramv1.UnderstandQueryResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	m := req.Msg
+	r, err := a.d.understandQuery(ctx, c, understandArgs{
+		Query:         m.GetQuery(),
+		Scope:         m.GetScope(),
+		CrossSpine:    m.GetCrossSpine(),
+		Categories:    m.GetCategories(),
+		Tags:          m.GetTags(),
+		CreatedAfter:  m.GetCreatedAfter(),
+		CreatedBefore: m.GetCreatedBefore(),
+	})
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(understandResultToProto(r)), nil
+}
+
 // connectResolver supplies the per-request identity TokenInfo for the
 // Connect lane, plus WHICH credential family authenticated it (auth.Lane,
 // D-07). NewConnectResolver composes the bearer half and the webauth

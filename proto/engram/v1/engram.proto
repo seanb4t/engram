@@ -712,6 +712,70 @@ message ListTagsResponse {
   bool more = 2;
 }
 
+// query understanding (milestone 2026-09-25.01 Phase 6)
+
+// SuggestionSource marks whether a FilterSuggestion came from a typed
+// decision (DECIDED) or from local tag matching (MATCHED); see
+// UnderstandQueryResponse for the D-09/D-05 distinction.
+enum SuggestionSource {
+  SUGGESTION_SOURCE_UNSPECIFIED = 0;
+  SUGGESTION_SOURCE_DECIDED = 1;
+  SUGGESTION_SOURCE_MATCHED = 2;
+}
+
+// TimeWindowSuggestion is a suggested time-window chip: created_after and
+// created_before are RFC3339 UTC day-aligned midnights (Task 1 option-a —
+// created_before is always empty for this phase's buckets), and label
+// names the bucket ("today", "past week", "past month", "past year") for
+// the chip's own text.
+message TimeWindowSuggestion {
+  string created_after = 1;
+  string created_before = 2;
+  string label = 3;
+}
+
+// FilterSuggestion is one suggested, unapplied filter chip (milestone
+// 2026-09-25.01 Phase 6, D-03/D-11): suggestions are advisory and never
+// change search results until the user accepts one by clicking the chip.
+// source is DECIDED when a typed-decision answer reached the 0.9
+// probability threshold (D-05), or MATCHED when the query named an
+// existing tag from the caller's own vocabulary (D-09).
+message FilterSuggestion {
+  oneof kind {
+    string category = 1;
+    TimeWindowSuggestion time_window = 2;
+    string scope = 3;
+    string tag = 4;
+  }
+  SuggestionSource source = 5;
+}
+
+// UnderstandQueryRequest asks the server to suggest filter chips for query
+// (milestone 2026-09-25.01 Phase 6, D-02/D-03): a prose search string plus
+// the filters currently applied to the console's search, so the server can
+// skip a question whose answer is already applied. No buf.validate rule is
+// attached: the single shared server-side core validates, so both the
+// envelope and the core stay single.
+message UnderstandQueryRequest {
+  string query = 1;
+  string scope = 2;
+  bool cross_spine = 3;
+  repeated string categories = 4;
+  repeated string tags = 5;
+  string created_after = 6;
+  string created_before = 7;
+}
+
+// UnderstandQueryResponse is UnderstandQuery's return shape (D-04): enabled
+// is false when query understanding is off for this deployment — the
+// caller should stop calling UnderstandQuery for the rest of the session —
+// and true otherwise, even when suggestions is empty. A decision failure or
+// timeout yields zero decided suggestions, never an RPC error (D-05).
+message UnderstandQueryResponse {
+  bool enabled = 1;
+  repeated FilterSuggestion suggestions = 2;
+}
+
 service EngramService {
   rpc ListScopes(ListScopesRequest) returns (ListScopesResponse);
   rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
@@ -739,4 +803,6 @@ service EngramService {
   rpc RelatedMemories(RelatedMemoriesRequest) returns (RelatedMemoriesResponse);
   // --- curation RPCs (milestone 2026-09-25.01 Phase 3, plan 03-06) ---
   rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
+  // --- query understanding (milestone 2026-09-25.01 Phase 6, D-02: Connect-only, no MCP tool or CLI verb) ---
+  rpc UnderstandQuery(UnderstandQueryRequest) returns (UnderstandQueryResponse);
 }
