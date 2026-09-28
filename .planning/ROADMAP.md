@@ -583,7 +583,7 @@ this codebase and is flagged for a research/UI-spec pass at plan time.
   3. The graph renders correctly in light and dark mode using the category colour tokens, and clicking a node selects it in the detail pane
   4. A tag popularity list drawn as linear bars with printed counts (amended 2026-09-27 from a quantile-sized cloud; Phase 5 D-12), in DOM order matching reading order, is built from `ListTags` counts; clicking a tag adds it as a filter chip, and the same counts are available via chip autocomplete without opening the cloud
 
-**Plans:** 3/9 plans executed
+**Plans:** 7/9 plans executed
 **UI hint**: yes
 
 Plans:
@@ -595,10 +595,10 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-04-PLAN.md — edge-type lanes, supersession timeline, shared selection, evidence under the graph, re-centre, vector collapse mirrored in the graph, legend toggles (D-02, D-04, D-05, D-07, D-10; GRAPH-01, GRAPH-03)
-- [ ] 05-05-PLAN.md — graph keyboard and ARIA equivalence, live summary, Escape tiers, corner zoom, ⌘-wheel gate, refit, spring-back drag (D-04, D-09–D-11, D-20; GRAPH-01, GRAPH-02)
-- [ ] 05-06-PLAN.md — header search Tags group with counts, scope-following, unknown-tag row (D-16–D-19; TAGS-02)
-- [ ] 05-07-PLAN.md — /search docked Tags panel sharing the pane slot, bottom sheet when narrow, + tag picker in the facet strip (D-13, D-16, D-17; TAGS-01, TAGS-02)
+- [x] 05-04-PLAN.md — edge-type lanes, supersession timeline, shared selection, evidence under the graph, re-centre, vector collapse mirrored in the graph, legend toggles (D-02, D-04, D-05, D-07, D-10; GRAPH-01, GRAPH-03)
+- [x] 05-05-PLAN.md — graph keyboard and ARIA equivalence, live summary, Escape tiers, corner zoom, ⌘-wheel gate, refit, spring-back drag (D-04, D-09–D-11, D-20; GRAPH-01, GRAPH-02)
+- [x] 05-06-PLAN.md — header search Tags group with counts, scope-following, unknown-tag row (D-16–D-19; TAGS-02)
+- [x] 05-07-PLAN.md — /search docked Tags panel sharing the pane slot, bottom sheet when narrow, + tag picker in the facet strip (D-13, D-16, D-17; TAGS-01, TAGS-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
