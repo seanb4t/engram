@@ -108,3 +108,100 @@ export function tagsErrorCopy(parsed: ParsedConnectError): TagsErrorCopy {
   const codeName = parsed.kind === 'opaque' ? parsed.codeName : 'unknown';
   return { kind: 'opaque', heading: `ListTags failed — nothing was listed. list_tags returned code=${codeName}` };
 }
+
+/** Max match rows the "+ tag" picker / header Tags group ever show (D-18). */
+export const MATCH_TOP = 8;
+
+export interface TagMatchPart {
+  text: string;
+  hit: boolean;
+}
+
+export interface TagMatch {
+  tag: string;
+  count: number;
+  parts: TagMatchPart[];
+}
+
+export interface RankedTagMatches {
+  matches: TagMatch[];
+  total: number;
+  unknown: { tag: string; reason: string } | null;
+}
+
+/** A leading '#' or 'tag:' is a token-entry artifact, not part of the tag
+ * text itself -- strip it before matching (D-18). */
+function stripQueryPrefix(raw: string): string {
+  let q = raw.trim();
+  if (q.startsWith('#')) {
+    q = q.slice(1);
+  } else if (q.toLowerCase().startsWith('tag:')) {
+    q = q.slice('tag:'.length);
+  }
+  return q.trim();
+}
+
+/** Splits a tag into [before, hit, after] parts around a case-insensitive
+ * substring match, omitting empty edge parts -- the caller bolds the hit
+ * part and renders the rest as plain text nodes (never raw HTML). */
+function highlightParts(tag: string, query: string): TagMatchPart[] {
+  if (!query) return [{ text: tag, hit: false }];
+  const idx = tag.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return [{ text: tag, hit: false }];
+  const parts: TagMatchPart[] = [];
+  if (idx > 0) parts.push({ text: tag.slice(0, idx), hit: false });
+  parts.push({ text: tag.slice(idx, idx + query.length), hit: true });
+  if (idx + query.length < tag.length) parts.push({ text: tag.slice(idx + query.length), hit: false });
+  return parts;
+}
+
+function byCountDescThenTagAsc(a: TagRow, b: TagRow): number {
+  return b.count - a.count || a.tag.localeCompare(b.tag);
+}
+
+/** Substring match over the loaded (top-1000) rows, ranked prefix matches
+ * first then by count (D-18), capped to `limit` (MATCH_TOP by default) with
+ * `total` reporting the full match count before capping. A typed tag that
+ * is not itself a loaded tag always gets an `unknown` row alongside any
+ * real matches -- it is never silently blocked (D-19). */
+export function rankTagMatches(
+  rows: TagRow[],
+  rawQuery: string,
+  { more, limit = MATCH_TOP }: { more: boolean; limit?: number }
+): RankedTagMatches {
+  const query = stripQueryPrefix(rawQuery);
+
+  if (!query) {
+    const top = rows.slice(0, limit).map((r) => ({ tag: r.tag, count: r.count, parts: highlightParts(r.tag, '') }));
+    return { matches: top, total: rows.length, unknown: null };
+  }
+
+  const lower = query.toLowerCase();
+  const matched = rows.filter((r) => r.tag.toLowerCase().includes(lower));
+  const prefix = matched.filter((r) => r.tag.toLowerCase().startsWith(lower)).sort(byCountDescThenTagAsc);
+  const prefixSet = new Set(prefix.map((r) => r.tag));
+  const rest = matched.filter((r) => !prefixSet.has(r.tag)).sort(byCountDescThenTagAsc);
+  const ordered = [...prefix, ...rest];
+
+  const matches = ordered.slice(0, limit).map((r) => ({ tag: r.tag, count: r.count, parts: highlightParts(r.tag, query) }));
+  const exact = rows.some((r) => r.tag.toLowerCase() === lower);
+  const unknown = exact
+    ? null
+    : { tag: query, reason: more ? `#${query} — not among the loaded tags` : `#${query} — 0 recall-visible records` };
+
+  return { matches, total: ordered.length, unknown };
+}
+
+export interface MatchFooter {
+  text: string;
+  warn: string | null;
+}
+
+/** No singular special case (E5 zero-one-many backstop) -- the template is
+ * identical for 1 through MATCH_TOP matches. */
+export function matchFooter({ total, more, loaded }: { total: number; more: boolean; loaded: number }): MatchFooter {
+  return {
+    text: `${total} matches · top ${MATCH_TOP} shown`,
+    warn: more ? `matching among the ${loaded.toLocaleString('en-US')} most-used tags` : null
+  };
+}

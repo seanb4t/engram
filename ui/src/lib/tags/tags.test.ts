@@ -138,8 +138,8 @@ describe('rankTagMatches', () => {
     ]);
     const qdrantMatch = r.matches.find((m) => m.tag === 'qdrant')!;
     expect(qdrantMatch.parts).toEqual([
-      { text: 'qd', hit: true },
-      { text: 'rant', hit: false }
+      { text: 'q', hit: true },
+      { text: 'drant', hit: false }
     ]);
   });
 
