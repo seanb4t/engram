@@ -129,9 +129,12 @@
 
   // Keeps the ids whose row is expired, in `rows` list order (never `ids`
   // order) -- a request whose targets include no expired row opens nothing
-  // and says so instead.
+  // and says so instead. The selected record counts even when its row is
+  // not loaded (a `?sel=` deep link or an unfetched cursor page).
   function archiveExpired(ids: string[]) {
-    const kept = rows.filter((m) => ids.includes(m.id) && isExpired(m)).map((m) => m.id);
+    const pool =
+      selectedMemory && !rows.some((m) => m.id === selectedMemory.id) ? [...rows, selectedMemory] : rows;
+    const kept = pool.filter((m) => ids.includes(m.id) && isExpired(m)).map((m) => m.id);
     if (kept.length === 0) {
       toast('Archive applies to expired rows only');
       return;

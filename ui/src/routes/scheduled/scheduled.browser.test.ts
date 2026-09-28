@@ -391,6 +391,28 @@ describe('scheduled route — archive for expired rows only (D-13)', () => {
     }
   });
 
+  it('the pane Archive opens the confirm for an expired ?sel= record whose row is not loaded', async () => {
+    pageState.url.href = 'http://localhost/scheduled?state=expired&sel=m-offpage';
+    const offPage = makeExpired({ id: 'm-offpage', summary: 'off-page expired' });
+    listScheduledSpy.mockResolvedValue({
+      memories: [makeExpired({ id: 'm-loaded', summary: 'loaded row' })],
+      nextPageToken: '',
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    getMemorySpy.mockResolvedValue({ memory: offPage });
+
+    const screen = await renderScheduled();
+    screen.container.style.width = '1200px';
+    await expect.poll(() => screen.container.querySelector('[aria-label="Memory detail"]') !== null).toBe(true);
+    await screen.getByRole('button', { name: 'Archive' }).click();
+
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog.getByText('Archive 1 records?')).toBeInTheDocument();
+    expect(toastSpy).not.toHaveBeenCalledWith('Archive applies to expired rows only');
+  });
+
   it('pressing "a" on an active expired row opens the archive confirm for it', async () => {
     const expired = makeExpired({ id: 'm-exp', summary: 'expired row' });
     listScheduledSpy.mockResolvedValue({
