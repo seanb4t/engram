@@ -344,6 +344,30 @@ describe('HeaderSearch', () => {
     await expect.element(input).toHaveValue('');
   });
 
+  it('the operator-only list row hands the operator query itself to /search', async () => {
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    await input.fill('#ci');
+    await expect.poll(() => listMemoriesSpy.mock.calls.length).toBe(1);
+    await screen.getByRole('option', { name: /List memories matching #ci/ }).click();
+
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?q=%23ci');
+  });
+
+  it('carries cross-spine off through the hand-off to /search', async () => {
+    const screen = await renderHeaderSearch();
+    const input = screen.getByRole('combobox', { name: 'Search memories' });
+    await input.fill('gofmt');
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBe(1);
+    await screen.getByRole('button', { name: 'remove cross-spine' }).click();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBe(2);
+
+    await input.click();
+    await userEvent.keyboard('{Enter}');
+
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search?q=gofmt&xs=0');
+  });
+
   it('Enter on a memory row hands the same params plus sel to /search (D-10)', async () => {
     searchMemoriesSpy.mockResolvedValue({ memories: [fakeMemory({ id: 'm42' })] });
     const screen = await renderHeaderSearch();

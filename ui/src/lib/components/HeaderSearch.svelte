@@ -308,15 +308,17 @@
   // through the one shared codec (D-10, ENTRY-06).
   function runTopSearch() {
     if (classified.kind !== 'text') return;
-    const params = applyChips({ ...defaultSearchParams(), q: classified.text }, activeChips);
+    const params = applyChips({ ...defaultSearchParams(), q: classified.text, crossSpine: !crossSpineOff }, activeChips);
     goto(`${base}/search?${encodeSearchParams(params)}`);
     headerSearch.text = '';
     debouncedText = '';
     open = false;
   }
 
+  // Operator-only input hands off as the query itself: /search runs its
+  // unranked listing only when `q` classifies as operators (D-09).
   function runTopList() {
-    const params = applyChips({ ...defaultSearchParams() }, activeChips);
+    const params = { ...defaultSearchParams(), q: debouncedText.trim(), crossSpine: !crossSpineOff };
     goto(`${base}/search?${encodeSearchParams(params)}`);
     headerSearch.text = '';
     debouncedText = '';
@@ -327,7 +329,7 @@
   // id/short_id row's `q` is the raw pasted input (no chips to apply).
   function openMemory(id: string) {
     const q = classified.kind === 'text' ? classified.text : debouncedText;
-    const params = applyChips({ ...defaultSearchParams(), q, sel: id }, activeChips);
+    const params = applyChips({ ...defaultSearchParams(), q, crossSpine: !crossSpineOff, sel: id }, activeChips);
     goto(`${base}/search?${encodeSearchParams(params)}`);
     headerSearch.text = '';
     open = false;
