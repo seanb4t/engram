@@ -569,10 +569,17 @@ function tagFilterTagsResponse() {
   });
 }
 
+const RAIL_TAB_KEY = 'engram.console.relatedRailTab';
+
 describe('/related/[id] — rail Tags tab and the in-view tag filter (Task 1, D-13/D-14/D-15/D-11)', () => {
   beforeEach(() => {
     relatedMemoriesSpy.mockReset().mockResolvedValue(tagFilterFixtureResponse());
     listTagsSpy.mockReset().mockResolvedValue(tagFilterTagsResponse());
+    // D-01: the rail tab is remembered per viewer via localStorage, which
+    // persists across tests sharing this browser page -- clear it so every
+    // test here starts from the true default (Graph) regardless of run
+    // order or what an earlier test (this file or another) last wrote.
+    localStorage.removeItem(RAIL_TAB_KEY);
   });
 
   it('shows Graph and Tags rail tabs, defaulting to Graph', async () => {
@@ -670,6 +677,11 @@ describe('/related/[id] — rail Tags tab and the in-view tag filter (Task 1, D-
   it('the tag filter never changes membership -- role=option count is unaffected', async () => {
     const screen = await renderRelated();
     await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    // The rail tab remembers its last value across tests in this shared
+    // browser page (D-01) -- force Graph explicitly rather than assuming
+    // the default, so `before` is never measured against an empty Tags
+    // panel left over from a prior test.
+    await screen.getByRole('tab', { name: 'Graph' }).click();
     const before = screen.container.querySelectorAll('svg.graph [role="option"]').length;
 
     await screen.getByRole('tab', { name: 'Tags' }).click();
@@ -704,8 +716,6 @@ describe('/related/[id] — rail Tags tab and the in-view tag filter (Task 1, D-
     await expect.element(screen.getByRole('region', { name: 'Why oacand00001 is related' })).toBeInTheDocument();
   });
 });
-
-const RAIL_TAB_KEY = 'engram.console.relatedRailTab';
 
 describe('/related/[id] — g, remembered tab, trail crumbs, back and Escape tiers (Task 2, D-01/D-04)', () => {
   beforeEach(() => {
@@ -759,7 +769,7 @@ describe('/related/[id] — g, remembered tab, trail crumbs, back and Escape tie
     await expect.element(screen.getByText('trail')).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'aaaaaaaaaa' })).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'bbbbbbbbbb' })).toBeInTheDocument();
-    await expect.element(screen.getByText('anchor00001')).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('.crumbs .cur')?.textContent).toBe('anchor00001');
   });
 
   it('clicking the first crumb navigates to it, cutting the trail before it and carrying `from` forward', async () => {

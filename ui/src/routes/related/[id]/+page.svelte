@@ -65,10 +65,28 @@
   let vectorExpanded = $state(false);
   const hiddenTypes = new SvelteSet<LaneType>();
 
-  // D-01: which rail tab is showing -- Task 2 wires the `g` key and
-  // localStorage persistence; Task 1 only drives it from state and from
-  // D-05 continuity (a lane/chain-card selection switches back to Graph).
-  let railTab = $state<'graph' | 'tags'>('graph');
+  // D-01: which rail tab is showing, remembered per viewer (safe to lose).
+  const RAIL_TAB_KEY = 'engram.console.relatedRailTab';
+
+  function loadStoredRailTab(): 'graph' | 'tags' {
+    try {
+      const v = localStorage.getItem(RAIL_TAB_KEY);
+      return v === 'graph' || v === 'tags' ? v : 'graph';
+    } catch {
+      return 'graph';
+    }
+  }
+
+  let railTab = $state<'graph' | 'tags'>(loadStoredRailTab());
+
+  $effect(() => {
+    const v = railTab;
+    try {
+      localStorage.setItem(RAIL_TAB_KEY, v);
+    } catch {
+      // convenience only, safe to lose
+    }
+  });
 
   // D-14: the view's own in-place tag filter -- never GRAPH-05, never
   // touches membership, the lanes' order or the RelatedMemories request.
@@ -166,6 +184,70 @@
     return `${base}/search?${encodeSearchParams({ ...defaultSearchParams(), sel: candidateId })}`;
   }
 
+  // D-04: exitToOrigin navigates to where the view was opened from --
+  // `params.from` was already validated through isAllowedDestination by
+  // parseRelatedParams, so it is carried verbatim; with no `from` (and once
+  // the anchor is known), fall back to /search with the anchor selected.
+  function exitToOrigin() {
+    if (params.from) {
+      goto(`${base}${params.from}`);
+      return;
+    }
+    if (!model) return;
+    goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), sel: model.anchor.id })}`);
+  }
+
+  // D-04: `[` and "← back" walk back one step along the trail (re-centres
+  // pushed those history entries) when one exists; with an empty trail --
+  // e.g. a pasted /related URL -- there is nothing to walk back through, so
+  // both fall through to exitToOrigin.
+  function goBack() {
+    if (params.trail.length > 0) {
+      history.back();
+    } else {
+      exitToOrigin();
+    }
+  }
+
+  // Mirrors ResultsList.svelte's identical guard: row/route-level keys are
+  // ignored while a text field has focus, so typing 'g' or '[' in the tag
+  // filter box (or anywhere else) never fires a route action.
+  function isTypingTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
+  // D-01/D-04 route-level keys. RelatedGraph's own Escape tiers
+  // (clear-selection, then onleave) stop propagation when the keypress
+  // originates inside the graph, so this handler only ever sees an Escape
+  // pressed OUTSIDE the graph -- exactly the "Escape outside the graph
+  // returns to where the view was opened from" half of D-04.
+  let lanesEl: HTMLDivElement | undefined = $state();
+
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented) return;
+    if (isTypingTarget(e.target)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'g':
+        railTab = railTab === 'graph' ? 'tags' : 'graph';
+        break;
+      case '[':
+        goBack();
+        break;
+      case 'Escape':
+        if (selection !== null) {
+          selection = null;
+        } else {
+          exitToOrigin();
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
   // The three one-line-row lanes rendered by EdgeLane, in canonical order --
   // supersession renders separately via SupersessionLane (plan 05-04 Task 2).
   const EDGE_LANE_TYPES: LaneType[] = ['citation', 'tag', 'vector'];
@@ -197,6 +279,8 @@
     return () => ro.disconnect();
   });
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <div class="related-page" bind:this={rootEl}>
   {#if relatedQ.isLoading}
@@ -245,6 +329,25 @@
     </div>
   {:else if model && membership}
     {@const call = callLineParts(model, durations.get(id))}
+    <div class="anchor-bar">
+      {#if params.trail.length > 0}
+        <div class="crumbs">
+          <span class="crumbs-label mono">trail</span>
+          {#each params.trail as entry, i (entry + '-' + i)}
+            <button
+              type="button"
+              class="crumb"
+              onclick={() =>
+                goto(`${base}${relatedPath(entry, { from: params.from, trail: params.trail.slice(0, i) })}`)}
+              >{entry}</button
+            >
+            <span class="crumb-sep" aria-hidden="true">›</span>
+          {/each}
+          <span class="crumb cur mono">{model.anchor.shortId}</span>
+        </div>
+      {/if}
+      <button type="button" class="back-btn" onclick={goBack}>← back <Kbd>[</Kbd></button>
+    </div>
     <div class="anchor-card">
       <div class="meta">
         <span class="cat-chip">
@@ -267,7 +370,7 @@
       <p class="truncation-banner">{TRUNCATION_BANNER}</p>
     {/if}
     <div class="s-grid">
-      <div class="lanes">
+      <div class="lanes" bind:this={lanesEl} tabindex="-1" aria-label="Related lanes">
         {#if filterTag && filterCounts}
           <div class="tag-filter-chip" data-testid="tag-filter-chip">
             <span class="mono">#{filterTag} {filterCounts.carriers} of {filterCounts.total} carry it</span>
@@ -336,6 +439,7 @@
             summary={graphSummary}
             onselect={(nid) => (selection = nid ? { id: nid, lane: 'graph' } : null)}
             onrecenter={recenter}
+            onleave={() => lanesEl?.focus()}
           />
           {#if selectedCandidate}
             <EvidenceSection
@@ -372,6 +476,45 @@
     overflow-y: auto;
     container: frame / inline-size;
     --rail-max-h: 100%;
+  }
+  .anchor-bar {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--u));
+  }
+  .crumbs {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    flex-wrap: wrap;
+    font-size: calc(11 * var(--u));
+  }
+  .crumbs-label {
+    color: var(--text-faint);
+  }
+  .crumb {
+    color: var(--muted-foreground);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .crumb.cur {
+    color: var(--foreground);
+    text-decoration: none;
+    pointer-events: none;
+  }
+  .crumb-sep {
+    color: var(--text-faint);
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    margin-left: auto;
+    font-size: calc(11 * var(--u));
+    color: var(--muted-foreground);
+    border: 1px solid var(--border);
+    border-radius: calc(4 * var(--u));
+    padding: calc(2 * var(--u)) calc(6 * var(--u));
   }
   .anchor-card {
     border-left: 3px solid var(--primary);
