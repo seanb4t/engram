@@ -656,6 +656,7 @@ pre-close `REQUIREMENTS.md` snapshot).
 - ✓ **Recall-gate hidden count** — additive `RecallGateHidden { total, archived, superseded, expired, scheduled }` on `SearchMemoriesResponse` (5) / `ListMemoriesResponse` (8), the MCP `search_memory`/`list_memory` results and the CLI footer; computed by a second gate-lifted `Store.Search`/`Store.List` call under the caller's own subject (MCP input schemas unchanged) — 2026-09-25.01 Phase 2
 - ✓ **RPC-01..06** — seven curation RPCs on Connect (`SupersedeMemory`, `ArchiveMemory`, `RestoreMemory`, `ListRules`, `ListScheduled`, `RelatedMemories`, `ListTags`), each delegating to the same `deps.*` core its MCP tool calls; new MCP tools `archive_memory`/`restore_memory` (consent-gated, per-id outcomes), `related_memories` (on-demand, `oneof` edge evidence) and `list_tags`; `validate_only` supersede preview on both lanes; `list_rules` empty scopes = one all-readable read capped at 1000 total; `list_scheduled` gains `cross_spine` + cursor on both lanes. The three writes are CSRF-gated (proven by the phase's first test), proto additive (`buf breaking` clean), SPA re-vendored (ui-drift clean) — 2026-09-25.01 Phase 3
 - ✓ **CUR-01..05, DSYS-03/04** — console curation workbench: supersede with a `validate_only` preview and history-chain dialog, archive/restore with per-id outcomes and two undo surfaces, multi-select bulk actions and a hover row toolbar on /search, /rules (grouped, delete-only) and /scheduled (tabs, cursor paging, archive-expired) routes, a v2 re-auth resume envelope covering every new write surface, a WCAG 2.2 AA axe-core audit across the surfaces, and chromedp e2e round trips against the real binary; /observe removed — 2026-09-25.01 Phase 4
+- ✓ **GRAPH-01..03, TAGS-01/02** — `/related/<id>` view of one record's `RelatedMemories` neighbourhood (never a global graph): Svelte-owned inline SVG with a seeded d3-force settle, per-type edge encoding, legend and lane toggles, edge-type lanes with a supersession timeline and evidence under the graph, one shared selection across lanes/graph/evidence, a roving one-Tab-stop keyboard model with a screen-reader list and live summary, corner zoom with a ⌘-wheel gate, trail/back/Escape-to-origin; entry from the detail pane, row key `r` and ⌘K. Tag popularity as linear count bars over one cached `ListTags` query shared by the /search docked Tags panel, the /related Tags tab, the `+ tag` picker and the header `#`/`tag:` group; WCAG 2.2 AA audited and a chromedp round trip against the real binary — 2026-09-25.01 Phase 5
 
 ### Active
 
@@ -667,7 +668,7 @@ absorb.
 - [x] Dense hover-expand results row, detail pane, keyboard traversal, score/relevance, facets — Phase 2
 - [x] Connect RPCs: SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags — Phase 3
 - [x] Curation surfaces: supersede, archive/restore, rules and scheduled views — Phase 4
-- [ ] Related-memories graph, tag cloud, scope autocomplete
+- [x] Related-memories graph, tag popularity list (Phase 5); scope autocomplete (Phase 2)
 - [ ] Natural-language query understanding as advisory, user-confirmed filter chips
 - [x] Console conventions + Connect client skills (Phase 2); vetted design/a11y skills and WCAG 2.2 AA audit (Phase 4, DSYS-03)
 
@@ -1083,6 +1084,8 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | Helm exposes `memory.search.ranker` / `memory.search.rerankTimeout`, gated independently of `memory.decisions.provider` so `jev` without a provider still renders and reaches the server's rejection (2026-09-22.01 Phase 4, D-10) | Nesting under the provider gate would render nothing and leave the operator's opt-in silently inert | ✓ Good — default render byte-identical; `chart:validate` checksum re-pinned |
 | The console never infers the caller's owner claim: not-owned records are presented from the server's answer only (supersede via the `validate_only` preview, archive after the call) (2026-09-25.01 Phase 4, 04-01 option-a) | The SPA has no caller-identity signal; deriving one from cached private records would be client-side authz inference | ✓ Good — shipped; a pre-block would need a WhoAmI RPC |
 | axe-core pinned as a test-only devDependency for WCAG 2.2 AA checks in vitest-browser, never bundled (2026-09-25.01 Phase 4, 04-03) | A maintained rule engine beats a hand-rolled contrast checker; legitimacy verified by the user before install | ✓ Good — 9 AA defects found and fixed |
+| The related graph is Svelte-owned SVG: d3-force only computes a seeded, fixed-budget layout (d3-zoom/d3-drag drive the transform), and edge curve offsets are fixed per edge type (2026-09-25.01 Phase 5, 05-01/05-05) | A deterministic settle keeps screenshots and tests stable and the same candidate always draws the same curves; letting Svelte own the DOM keeps ARIA, selection and theme tokens in one place instead of a d3-managed subtree | ✓ Good — refit tracks only membership, so selection, focus and drag never re-fit the view |
+| Tag surfaces share one cached `ListTags(scope, 1000)` query and draw linear bars from zero with printed counts, replacing the quantile-sized cloud (2026-09-25.01 Phase 5, D-12/D-13) | Font-size clouds misreport magnitude and break reading order; one query per scope key keeps the panel, the /related Tags tab, the picker and the header group consistent | ✓ Good — TAGS-01 amended; counts identical across all four surfaces |
 
 ## Evolution
 
@@ -1103,4 +1106,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-27 after 2026-09-25.01 Phase 4*
+*Last updated: 2026-09-28 after 2026-09-25.01 Phase 5*

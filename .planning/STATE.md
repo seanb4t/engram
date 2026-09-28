@@ -12,20 +12,20 @@ last_activity_desc: Phase 05 complete, transitioned to Phase 6
 state_head: c2158e504ee1dee338154390c436d478f01af5e5
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 6
   total_plans: 42
   completed_plans: 42
-  percent: 29
+  percent: 86
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-27 after 2026-09-25.01 Phase 4)
+See: .planning/PROJECT.md (updated 2026-09-28 after 2026-09-25.01 Phase 5)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 05 — Related-Memories Graph & Tag Cloud
+**Current focus:** Phase 6 — Query Understanding
 
 ## Current Position
 
@@ -464,6 +464,9 @@ milestone needs in working memory.
 - [Phase 04]: 04-01: not-owned records use option-a (server-answer only) — the console never infers the caller's owner claim; supersede pre-blocks via the validate_only preview, archive reports not-owned after the call.
 - [Phase 04]: 04-02: /observe and ScopesSidebar removed with no redirect (D-14); the re-auth resume envelope is v2, a discriminated union over the curation kinds (D-16).
 - [Phase 04]: 04-03: axe-core 4.13.0 pinned as a test-only devDependency (user-approved) for WCAG 2.2 AA audits in vitest-browser.
+- [Phase 05]: 05-01/05-05: the related graph is Svelte-owned SVG; d3-force only computes a seeded fixed-budget layout, edge offsets are fixed per type, and the refit effect tracks membership alone so selection/focus/drag never re-fit.
+- [Phase 05]: 05-03 (D-12/D-13): every tag surface shares one cached ListTags(scope, 1000) query and draws linear bars from zero with printed counts (the quantile cloud was dropped).
+- [Phase 05]: 05-09: bits-ui Command.Input lacks aria-controls; patched in TagCombobox and HeaderSearch, ScopeCombobox left as-is (same gap, out of scope).
 
 ### Pending Todos
 
@@ -539,6 +542,8 @@ Both prior entries were delivered and had simply never been closed out:
 - **[Phase 5] (2026-09-22.01):** `phase.complete 5` mis-targeted a shipped v0.12.x ROADMAP progress row a fifth time (`yzmfesbsg0`) — hand-corrected, and the Phase 5 row set to 5/5 Complete; it again left `progress.completed_phases` at 4 (percent 80), fixed by hand to 5 (100). Phases 1–4 VERIFICATION.md fingerprints now read `stale` (Phase 5 `passed`) — re-verify each before the milestone audit.
 - [Phase 1] requirements.mark-complete could not flip STORE-01..03 to Complete: the installed gsd-tools verb only accepts a traceability Status of 'Pending'/'Gaps Found' as forward-transitionable, but this project's REQUIREMENTS.md has used 'Mapped' as its pre-complete status since project bootstrap (d2120f09) across every prior milestone (archived milestones show it did reach 'Complete' historically). Checkbox flip was also rolled back by the tool's own divergence-prevention gate. Not hand-edited per planning-artifacts.md (never invent/bypass structure in a tool-owned generated file) — STORE-01's completion is recorded in 01-01-SUMMARY.md's requirements-completed field. Needs an upstream gsd-tools fix or a documented project convention decision.
 
+- **[Phase 5] (2026-09-25.01):** `phase.complete 5` mis-targeted the shipped v0.12.x "5. Operator Config & Reindex Correctness" progress row again (`yzmfesbsg0`) — reverted by hand and this milestone's Phase 5 row set to 9/9 Complete; this milestone's Phase 2–4 rows still read `Not started` with stale plan counts (never hand-corrected). It also left `progress.completed_phases` at 2, fixed by hand. Carry-forwards: 4 open code-review warnings (05-REVIEW-DISPOSITION.md: WR-01 duplicated glyph map, WR-02 drag can re-pan to the keyboard-focused node, WR-03 TagBars roving row has no visible active state, WR-04 back on a fresh `?trail=` link can leave the app); ScopeCombobox shares the missing `aria-controls` gap; `pnpm --dir ui check` (svelte-check) crashes on the TypeScript 7 toolchain (pre-existing); intermittent hover-timing flake in search.browser.test.ts "Chain button"; REQUIREMENTS.md GRAPH-01..03/TAGS-01/02 still read `Mapped` (deferred-items.md).
+
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |
@@ -561,9 +566,9 @@ Both prior entries were delivered and had simply never been closed out:
 
 ## Session Continuity
 
-Last session: 2026-09-28T01:26:39.773Z
+Last session: 2026-09-28T05:55:00Z
 Stopped at: Phase 05 complete, ready to plan Phase 6
-Resume file: .planning/phases/05-related-memories-graph-tag-cloud/05-UI-SPEC.md
+Resume file: None
 
 ## Performance Metrics
 

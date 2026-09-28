@@ -687,7 +687,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-09-26 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-09-27 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-09-27 |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-09-28 |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-08-17 |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
 | 2. Interface Discoverability | v0.13.x | 6/6 | Complete | 2026-08-05 |
@@ -732,7 +732,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 2. Recall-First Search | 2026-09-25.01 | 15/15 | Not started | - |
 | 3. Curation RPCs & MCP Tools | 2026-09-25.01 | 6/6 | Not started | - |
 | 4. Curation Surfaces | 2026-09-25.01 | 7/7 | Not started | - |
-| 5. Related-Memories Graph & Tag Cloud | 2026-09-25.01 | 5/5 | Not started | - |
+| 5. Related-Memories Graph & Tag Cloud | 2026-09-25.01 | 9/9 | Complete | 2026-09-28 |
 | 6. Query Understanding | 2026-09-25.01 | 4/4 | Not started | - |
 
 **v0.9.x — Recall Quality: ✅ shipped 2026-07-10 (PR #336) · 6/6 requirements · audit PASSED.**
