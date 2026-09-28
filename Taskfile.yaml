@@ -32,6 +32,12 @@ tasks:
       - mkdir -p ../internal/webauth/static
       - cp -R build/. ../internal/webauth/static/
 
+  ui:check:
+    desc: Type-check the SvelteKit SPA (svelte-check on TypeScript 7 via --tsgo)
+    dir: ui
+    cmds:
+      - pnpm install --frozen-lockfile
+      - pnpm check
   skills:vendor:
     desc: >-
       Vendor skill/engram/skills into internal/skills/data (canonical -> vendored copy, D-01). NOT a dependency of default/test/test:go:
@@ -94,7 +100,7 @@ tasks:
 
   lint:
     desc: Run all linters
-    deps: ['lint:go', 'lint:yaml', 'lint:actions', 'lint:markdown', 'lint:python', 'lint:setup']
+    deps: ['lint:go', 'lint:yaml', 'lint:actions', 'lint:markdown', 'lint:python', 'lint:setup', 'ui:check']
   lint:setup:
     desc: Check generated setup commands without modifying files
     cmds:
