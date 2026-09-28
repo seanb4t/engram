@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 18
+open_count: 20
 waived_count: 0
 fixed_count: 7
-total_count: 25
-last_updated: 2026-09-28T15:38:49.186Z
+total_count: 27
+last_updated: 2026-09-28T16:19:20.383Z
 ---
 
 # Broken Windows Ledger
@@ -40,6 +40,8 @@ last_updated: 2026-09-28T15:38:49.186Z
 | 23 | 04 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete rejects DSYS-04/CUR-01/CUR-02 (and every other v1 requirement): traceability Status column reads Mapped repo-wide, not the tool's Pending/Complete vocabulary | open |  | 2026-09-27T20:17:06.822Z |  |
 | 24 | 05 | deviation | ui/src/routes/rules/rules.browser.test.ts |  | Updated delete-only legend/action-button assertions after wiring the D-03 Related entry point onto /rules (Rule 1 auto-fix, not a defect) | open |  | 2026-09-28T03:23:16.265Z |  |
 | 25 | 6 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete NLQ-02 is a no-op: traceability table Status column holds the roadmap-mapping value 'Mapped' (not 'Pending'/'Complete'), so cmdRequirementsMarkComplete rejects the transition and rolls back even the checkbox flip; 0 requirements anywhere in this milestone's REQUIREMENTS.md have ever been marked complete via this tool, pre-existing and project-wide | open |  | 2026-09-28T15:38:49.186Z |  |
+| 26 | 6 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete NLQ-01/NLQ-03/NLQ-04 is a no-op: same pre-existing traceability-table 'Mapped' vocabulary mismatch documented for NLQ-02 (WINDOWS id 25) -- cmdRequirementsMarkComplete rejects the transition and rolls back the checkbox flip | open |  | 2026-09-28T16:18:55.128Z |  |
+| 27 | 6 | deviation | internal/e2e/console_browser_test.go |  | Executor self-reported process error during Task 2 (no lasting effect): a version-control stash command was used momentarily while comparing before and after chart render output, violating the worktree executor's absolute stash prohibition. Recovered immediately by restoring the exact saved entry and confirming the working tree matched; deliberately left the now-applied entry in the shared stash list rather than removing it, since removal is also prohibited for this executor role. | open |  | 2026-09-28T16:19:20.383Z |  |
 
 ````json
 [
@@ -356,6 +358,32 @@ last_updated: 2026-09-28T15:38:49.186Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-28T15:38:49.186Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 26,
+    "kind": "deviation",
+    "phase": "6",
+    "file": ".planning/REQUIREMENTS.md",
+    "line": null,
+    "description": "requirements mark-complete NLQ-01/NLQ-03/NLQ-04 is a no-op: same pre-existing traceability-table 'Mapped' vocabulary mismatch documented for NLQ-02 (WINDOWS id 25) -- cmdRequirementsMarkComplete rejects the transition and rolls back the checkbox flip",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-28T16:18:55.128Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 27,
+    "kind": "deviation",
+    "phase": "6",
+    "file": "internal/e2e/console_browser_test.go",
+    "line": null,
+    "description": "Executor self-reported process error during Task 2 (no lasting effect): a version-control stash command was used momentarily while comparing before and after chart render output, violating the worktree executor's absolute stash prohibition. Recovered immediately by restoring the exact saved entry and confirming the working tree matched; deliberately left the now-applied entry in the shared stash list rather than removing it, since removal is also prohibited for this executor role.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-28T16:19:20.383Z",
     "resolved_at": null,
     "milestone": null
   }
