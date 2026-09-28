@@ -57,6 +57,41 @@ func TestWindow(t *testing.T) {
 		}
 	})
 
+	t.Run("past_month clamps instead of rolling forward on a month-length overflow date", func(t *testing.T) {
+		// April has 30 days: AddDate(0,-1,0) from 2026-05-31 would overshoot
+		// forward to 2026-05-01 (day 31 doesn't exist in April, so Go's
+		// AddDate normalizes into the following month). The fix must clamp
+		// to April's last day instead.
+		overflowNow := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+		after, _, label, ok := Window("past_month", overflowNow)
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+		if want := "2026-04-30T00:00:00Z"; after != want {
+			t.Errorf("after = %q, want %q", after, want)
+		}
+		if label != "past month" {
+			t.Errorf("label = %q, want %q", label, "past month")
+		}
+	})
+
+	t.Run("past_year clamps a leap-day now instead of rolling forward", func(t *testing.T) {
+		// 2028 is a leap year; 2027 is not, so Feb 2027 has no 29th.
+		// AddDate(-1,0,0) from 2028-02-29 would roll forward to 2027-03-01.
+		// The fix must clamp to 2027-02-28 instead.
+		leapDayNow := time.Date(2028, 2, 29, 9, 0, 0, 0, time.UTC)
+		after, _, label, ok := Window("past_year", leapDayNow)
+		if !ok {
+			t.Fatal("ok = false, want true")
+		}
+		if want := "2027-02-28T00:00:00Z"; after != want {
+			t.Errorf("after = %q, want %q", after, want)
+		}
+		if label != "past year" {
+			t.Errorf("label = %q, want %q", label, "past year")
+		}
+	})
+
 	t.Run("unrecognized buckets report ok false", func(t *testing.T) {
 		for _, bucket := range []string{"none", "yesterday"} {
 			t.Run(bucket, func(t *testing.T) {
