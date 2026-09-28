@@ -168,6 +168,10 @@ None - no external service configuration required.
 - `TagBars.svelte` and `TagCombobox.svelte` are ready to be mounted by their hosts: plan 05-06 (header search Tags group), 05-07 (`/search` docked Tags panel and its `TagCombobox`), and 05-08 (`/related` rail Tags tab, which will additionally pass `rarity` weights from tag edges).
 - No blockers. `rankTagMatches`/`matchFooter`/`visibleTagRows`/`tagListFooter` are stable, tested contracts the downstream host plans can build directly against.
 
+## Self-Check: PASSED
+
+All 8 created source/test files and the SUMMARY.md itself verified present on disk; all 7 commits (`69dc6f53`, `4ca2398b`, `96e945f4`, `2769ae3c`, `e0710103`, `d9e843ca`, `6080009c`) verified present in `git log`.
+
 ---
 *Phase: 05-related-memories-graph-tag-cloud*
 *Completed: 2026-09-28*
