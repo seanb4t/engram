@@ -94,7 +94,7 @@ describe('TagBars — one cached ListTags query, rows as linear bars', () => {
     await expect.poll(() => listTagsSpy).toHaveBeenCalledTimes(1);
 
     const screen2 = await renderBars({}, qc);
-    await expect.element(screen2.container.querySelectorAll('[role="option"]')[0]!).toBeInTheDocument();
+    await expect.element(screen2.container.querySelectorAll('[role="option"]')[0] as HTMLElement).toBeInTheDocument();
     expect(listTagsSpy).toHaveBeenCalledTimes(1);
     void screen1;
   });
@@ -223,7 +223,7 @@ describe('TagBars — errors (E4 error)', () => {
     listTagsSpy.mockResolvedValue(fakeTags());
     await screen.getByRole('button', { name: 'Retry' }).click();
     await expect.poll(() => listTagsSpy).toHaveBeenCalledTimes(2);
-    await expect.element(screen.container.querySelectorAll('[role="option"]')[0]!).toBeInTheDocument();
+    await expect.element(screen.container.querySelectorAll('[role="option"]')[0] as HTMLElement).toBeInTheDocument();
   });
 });
 
