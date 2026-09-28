@@ -253,6 +253,58 @@ func (SupersessionDirection) EnumDescriptor() ([]byte, []int) {
 	return file_engram_v1_engram_proto_rawDescGZIP(), []int{3}
 }
 
+// SuggestionSource marks whether a FilterSuggestion came from a typed
+// decision (DECIDED) or from local tag matching (MATCHED); see
+// UnderstandQueryResponse for the D-09/D-05 distinction.
+type SuggestionSource int32
+
+const (
+	SuggestionSource_SUGGESTION_SOURCE_UNSPECIFIED SuggestionSource = 0
+	SuggestionSource_SUGGESTION_SOURCE_DECIDED     SuggestionSource = 1
+	SuggestionSource_SUGGESTION_SOURCE_MATCHED     SuggestionSource = 2
+)
+
+// Enum value maps for SuggestionSource.
+var (
+	SuggestionSource_name = map[int32]string{
+		0: "SUGGESTION_SOURCE_UNSPECIFIED",
+		1: "SUGGESTION_SOURCE_DECIDED",
+		2: "SUGGESTION_SOURCE_MATCHED",
+	}
+	SuggestionSource_value = map[string]int32{
+		"SUGGESTION_SOURCE_UNSPECIFIED": 0,
+		"SUGGESTION_SOURCE_DECIDED":     1,
+		"SUGGESTION_SOURCE_MATCHED":     2,
+	}
+)
+
+func (x SuggestionSource) Enum() *SuggestionSource {
+	p := new(SuggestionSource)
+	*p = x
+	return p
+}
+
+func (x SuggestionSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SuggestionSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_engram_v1_engram_proto_enumTypes[4].Descriptor()
+}
+
+func (SuggestionSource) Type() protoreflect.EnumType {
+	return &file_engram_v1_engram_proto_enumTypes[4]
+}
+
+func (x SuggestionSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SuggestionSource.Descriptor instead.
+func (SuggestionSource) EnumDescriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{4}
+}
+
 // A single memory record (mirrors internal/store.Memory's readable fields).
 type Memory struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -4264,6 +4316,354 @@ func (x *ListTagsResponse) GetMore() bool {
 	return false
 }
 
+// TimeWindowSuggestion is a suggested time-window chip: created_after and
+// created_before are RFC3339 UTC day-aligned midnights (Task 1 option-a —
+// created_before is always empty for this phase's buckets), and label
+// names the bucket ("today", "past week", "past month", "past year") for
+// the chip's own text.
+type TimeWindowSuggestion struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CreatedAfter  string                 `protobuf:"bytes,1,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`
+	CreatedBefore string                 `protobuf:"bytes,2,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"`
+	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TimeWindowSuggestion) Reset() {
+	*x = TimeWindowSuggestion{}
+	mi := &file_engram_v1_engram_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TimeWindowSuggestion) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TimeWindowSuggestion) ProtoMessage() {}
+
+func (x *TimeWindowSuggestion) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TimeWindowSuggestion.ProtoReflect.Descriptor instead.
+func (*TimeWindowSuggestion) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *TimeWindowSuggestion) GetCreatedAfter() string {
+	if x != nil {
+		return x.CreatedAfter
+	}
+	return ""
+}
+
+func (x *TimeWindowSuggestion) GetCreatedBefore() string {
+	if x != nil {
+		return x.CreatedBefore
+	}
+	return ""
+}
+
+func (x *TimeWindowSuggestion) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+// FilterSuggestion is one suggested, unapplied filter chip (milestone
+// 2026-09-25.01 Phase 6, D-03/D-11): suggestions are advisory and never
+// change search results until the user accepts one by clicking the chip.
+// source is DECIDED when a typed-decision answer reached the 0.9
+// probability threshold (D-05), or MATCHED when the query named an
+// existing tag from the caller's own vocabulary (D-09).
+type FilterSuggestion struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Kind:
+	//
+	//	*FilterSuggestion_Category
+	//	*FilterSuggestion_TimeWindow
+	//	*FilterSuggestion_Scope
+	//	*FilterSuggestion_Tag
+	Kind          isFilterSuggestion_Kind `protobuf_oneof:"kind"`
+	Source        SuggestionSource        `protobuf:"varint,5,opt,name=source,proto3,enum=engram.v1.SuggestionSource" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilterSuggestion) Reset() {
+	*x = FilterSuggestion{}
+	mi := &file_engram_v1_engram_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilterSuggestion) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilterSuggestion) ProtoMessage() {}
+
+func (x *FilterSuggestion) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilterSuggestion.ProtoReflect.Descriptor instead.
+func (*FilterSuggestion) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *FilterSuggestion) GetKind() isFilterSuggestion_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return nil
+}
+
+func (x *FilterSuggestion) GetCategory() string {
+	if x != nil {
+		if x, ok := x.Kind.(*FilterSuggestion_Category); ok {
+			return x.Category
+		}
+	}
+	return ""
+}
+
+func (x *FilterSuggestion) GetTimeWindow() *TimeWindowSuggestion {
+	if x != nil {
+		if x, ok := x.Kind.(*FilterSuggestion_TimeWindow); ok {
+			return x.TimeWindow
+		}
+	}
+	return nil
+}
+
+func (x *FilterSuggestion) GetScope() string {
+	if x != nil {
+		if x, ok := x.Kind.(*FilterSuggestion_Scope); ok {
+			return x.Scope
+		}
+	}
+	return ""
+}
+
+func (x *FilterSuggestion) GetTag() string {
+	if x != nil {
+		if x, ok := x.Kind.(*FilterSuggestion_Tag); ok {
+			return x.Tag
+		}
+	}
+	return ""
+}
+
+func (x *FilterSuggestion) GetSource() SuggestionSource {
+	if x != nil {
+		return x.Source
+	}
+	return SuggestionSource_SUGGESTION_SOURCE_UNSPECIFIED
+}
+
+type isFilterSuggestion_Kind interface {
+	isFilterSuggestion_Kind()
+}
+
+type FilterSuggestion_Category struct {
+	Category string `protobuf:"bytes,1,opt,name=category,proto3,oneof"`
+}
+
+type FilterSuggestion_TimeWindow struct {
+	TimeWindow *TimeWindowSuggestion `protobuf:"bytes,2,opt,name=time_window,json=timeWindow,proto3,oneof"`
+}
+
+type FilterSuggestion_Scope struct {
+	Scope string `protobuf:"bytes,3,opt,name=scope,proto3,oneof"`
+}
+
+type FilterSuggestion_Tag struct {
+	Tag string `protobuf:"bytes,4,opt,name=tag,proto3,oneof"`
+}
+
+func (*FilterSuggestion_Category) isFilterSuggestion_Kind() {}
+
+func (*FilterSuggestion_TimeWindow) isFilterSuggestion_Kind() {}
+
+func (*FilterSuggestion_Scope) isFilterSuggestion_Kind() {}
+
+func (*FilterSuggestion_Tag) isFilterSuggestion_Kind() {}
+
+// UnderstandQueryRequest asks the server to suggest filter chips for query
+// (milestone 2026-09-25.01 Phase 6, D-02/D-03): a prose search string plus
+// the filters currently applied to the console's search, so the server can
+// skip a question whose answer is already applied. No buf.validate rule is
+// attached: the single shared server-side core validates, so both the
+// envelope and the core stay single.
+type UnderstandQueryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	CrossSpine    bool                   `protobuf:"varint,3,opt,name=cross_spine,json=crossSpine,proto3" json:"cross_spine,omitempty"`
+	Categories    []string               `protobuf:"bytes,4,rep,name=categories,proto3" json:"categories,omitempty"`
+	Tags          []string               `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
+	CreatedAfter  string                 `protobuf:"bytes,6,opt,name=created_after,json=createdAfter,proto3" json:"created_after,omitempty"`
+	CreatedBefore string                 `protobuf:"bytes,7,opt,name=created_before,json=createdBefore,proto3" json:"created_before,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnderstandQueryRequest) Reset() {
+	*x = UnderstandQueryRequest{}
+	mi := &file_engram_v1_engram_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnderstandQueryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnderstandQueryRequest) ProtoMessage() {}
+
+func (x *UnderstandQueryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnderstandQueryRequest.ProtoReflect.Descriptor instead.
+func (*UnderstandQueryRequest) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *UnderstandQueryRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *UnderstandQueryRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *UnderstandQueryRequest) GetCrossSpine() bool {
+	if x != nil {
+		return x.CrossSpine
+	}
+	return false
+}
+
+func (x *UnderstandQueryRequest) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
+}
+
+func (x *UnderstandQueryRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *UnderstandQueryRequest) GetCreatedAfter() string {
+	if x != nil {
+		return x.CreatedAfter
+	}
+	return ""
+}
+
+func (x *UnderstandQueryRequest) GetCreatedBefore() string {
+	if x != nil {
+		return x.CreatedBefore
+	}
+	return ""
+}
+
+// UnderstandQueryResponse is UnderstandQuery's return shape (D-04): enabled
+// is false when query understanding is off for this deployment — the
+// caller should stop calling UnderstandQuery for the rest of the session —
+// and true otherwise, even when suggestions is empty. A decision failure or
+// timeout yields zero decided suggestions, never an RPC error (D-05).
+type UnderstandQueryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Suggestions   []*FilterSuggestion    `protobuf:"bytes,2,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnderstandQueryResponse) Reset() {
+	*x = UnderstandQueryResponse{}
+	mi := &file_engram_v1_engram_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnderstandQueryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnderstandQueryResponse) ProtoMessage() {}
+
+func (x *UnderstandQueryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_engram_v1_engram_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnderstandQueryResponse.ProtoReflect.Descriptor instead.
+func (*UnderstandQueryResponse) Descriptor() ([]byte, []int) {
+	return file_engram_v1_engram_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *UnderstandQueryResponse) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *UnderstandQueryResponse) GetSuggestions() []*FilterSuggestion {
+	if x != nil {
+		return x.Suggestions
+	}
+	return nil
+}
+
 var File_engram_v1_engram_proto protoreflect.FileDescriptor
 
 const file_engram_v1_engram_proto_rawDesc = "" +
@@ -4597,7 +4997,33 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x05limit\x18\x02 \x01(\x04R\x05limit\"O\n" +
 	"\x10ListTagsResponse\x12'\n" +
 	"\x04tags\x18\x01 \x03(\v2\x13.engram.v1.TagCountR\x04tags\x12\x12\n" +
-	"\x04more\x18\x02 \x01(\bR\x04more*W\n" +
+	"\x04more\x18\x02 \x01(\bR\x04more\"x\n" +
+	"\x14TimeWindowSuggestion\x12#\n" +
+	"\rcreated_after\x18\x01 \x01(\tR\fcreatedAfter\x12%\n" +
+	"\x0ecreated_before\x18\x02 \x01(\tR\rcreatedBefore\x12\x14\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\"\xdd\x01\n" +
+	"\x10FilterSuggestion\x12\x1c\n" +
+	"\bcategory\x18\x01 \x01(\tH\x00R\bcategory\x12B\n" +
+	"\vtime_window\x18\x02 \x01(\v2\x1f.engram.v1.TimeWindowSuggestionH\x00R\n" +
+	"timeWindow\x12\x16\n" +
+	"\x05scope\x18\x03 \x01(\tH\x00R\x05scope\x12\x12\n" +
+	"\x03tag\x18\x04 \x01(\tH\x00R\x03tag\x123\n" +
+	"\x06source\x18\x05 \x01(\x0e2\x1b.engram.v1.SuggestionSourceR\x06sourceB\x06\n" +
+	"\x04kind\"\xe5\x01\n" +
+	"\x16UnderstandQueryRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
+	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\x1f\n" +
+	"\vcross_spine\x18\x03 \x01(\bR\n" +
+	"crossSpine\x12\x1e\n" +
+	"\n" +
+	"categories\x18\x04 \x03(\tR\n" +
+	"categories\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\x12#\n" +
+	"\rcreated_after\x18\x06 \x01(\tR\fcreatedAfter\x12%\n" +
+	"\x0ecreated_before\x18\a \x01(\tR\rcreatedBefore\"r\n" +
+	"\x17UnderstandQueryResponse\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12=\n" +
+	"\vsuggestions\x18\x02 \x03(\v2\x1b.engram.v1.FilterSuggestionR\vsuggestions*W\n" +
 	"\n" +
 	"Visibility\x12\x1a\n" +
 	"\x16VISIBILITY_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -4619,7 +5045,11 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x15SupersessionDirection\x12&\n" +
 	"\"SUPERSESSION_DIRECTION_UNSPECIFIED\x10\x00\x12$\n" +
 	" SUPERSESSION_DIRECTION_SUCCESSOR\x10\x01\x12&\n" +
-	"\"SUPERSESSION_DIRECTION_PREDECESSOR\x10\x022\xad\f\n" +
+	"\"SUPERSESSION_DIRECTION_PREDECESSOR\x10\x02*s\n" +
+	"\x10SuggestionSource\x12!\n" +
+	"\x1dSUGGESTION_SOURCE_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19SUGGESTION_SOURCE_DECIDED\x10\x01\x12\x1d\n" +
+	"\x19SUGGESTION_SOURCE_MATCHED\x10\x022\x87\r\n" +
 	"\rEngramService\x12I\n" +
 	"\n" +
 	"ListScopes\x12\x1c.engram.v1.ListScopesRequest\x1a\x1d.engram.v1.ListScopesResponse\x12O\n" +
@@ -4640,7 +5070,8 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\rListScheduled\x12\x1f.engram.v1.ListScheduledRequest\x1a .engram.v1.ListScheduledResponse\x12F\n" +
 	"\tListRules\x12\x1b.engram.v1.ListRulesRequest\x1a\x1c.engram.v1.ListRulesResponse\x12X\n" +
 	"\x0fRelatedMemories\x12!.engram.v1.RelatedMemoriesRequest\x1a\".engram.v1.RelatedMemoriesResponse\x12C\n" +
-	"\bListTags\x12\x1a.engram.v1.ListTagsRequest\x1a\x1b.engram.v1.ListTagsResponseB\x96\x01\n" +
+	"\bListTags\x12\x1a.engram.v1.ListTagsRequest\x1a\x1b.engram.v1.ListTagsResponse\x12X\n" +
+	"\x0fUnderstandQuery\x12!.engram.v1.UnderstandQueryRequest\x1a\".engram.v1.UnderstandQueryResponseB\x96\x01\n" +
 	"\rcom.engram.v1B\vEngramProtoP\x01Z3github.com/seanb4t/engram/gen/go/engram/v1;engramv1\xa2\x02\x03EXX\xaa\x02\tEngram.V1\xca\x02\tEngram\\V1\xe2\x02\x15Engram\\V1\\GPBMetadata\xea\x02\n" +
 	"Engram::V1b\x06proto3"
 
@@ -4656,154 +5087,164 @@ func file_engram_v1_engram_proto_rawDescGZIP() []byte {
 	return file_engram_v1_engram_proto_rawDescData
 }
 
-var file_engram_v1_engram_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
+var file_engram_v1_engram_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_engram_v1_engram_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
 var file_engram_v1_engram_proto_goTypes = []any{
 	(Visibility)(0),                   // 0: engram.v1.Visibility
 	(ArchiveOutcome)(0),               // 1: engram.v1.ArchiveOutcome
 	(EdgeType)(0),                     // 2: engram.v1.EdgeType
 	(SupersessionDirection)(0),        // 3: engram.v1.SupersessionDirection
-	(*Memory)(nil),                    // 4: engram.v1.Memory
-	(*ScopeCount)(nil),                // 5: engram.v1.ScopeCount
-	(*ListScopesRequest)(nil),         // 6: engram.v1.ListScopesRequest
-	(*ListScopesResponse)(nil),        // 7: engram.v1.ListScopesResponse
-	(*ListMemoriesRequest)(nil),       // 8: engram.v1.ListMemoriesRequest
-	(*ListMemoriesResponse)(nil),      // 9: engram.v1.ListMemoriesResponse
-	(*RecallGateHidden)(nil),          // 10: engram.v1.RecallGateHidden
-	(*SearchMemoriesRequest)(nil),     // 11: engram.v1.SearchMemoriesRequest
-	(*SearchMemoriesResponse)(nil),    // 12: engram.v1.SearchMemoriesResponse
-	(*GetMemoryRequest)(nil),          // 13: engram.v1.GetMemoryRequest
-	(*GetMemoryResponse)(nil),         // 14: engram.v1.GetMemoryResponse
-	(*SearchDiscoveriesRequest)(nil),  // 15: engram.v1.SearchDiscoveriesRequest
-	(*SearchDiscoveriesResponse)(nil), // 16: engram.v1.SearchDiscoveriesResponse
-	(*SchemaVersionBucket)(nil),       // 17: engram.v1.SchemaVersionBucket
-	(*MigrateStatusRequest)(nil),      // 18: engram.v1.MigrateStatusRequest
-	(*MigrateStatusResponse)(nil),     // 19: engram.v1.MigrateStatusResponse
-	(*StoreMemoryRequest)(nil),        // 20: engram.v1.StoreMemoryRequest
-	(*StoreMemoryResponse)(nil),       // 21: engram.v1.StoreMemoryResponse
-	(*Citation)(nil),                  // 22: engram.v1.Citation
-	(*StoreDiscoveryRequest)(nil),     // 23: engram.v1.StoreDiscoveryRequest
-	(*StoreDiscoveryResponse)(nil),    // 24: engram.v1.StoreDiscoveryResponse
-	(*UpdateMemoryRequest)(nil),       // 25: engram.v1.UpdateMemoryRequest
-	(*UpdateMemoryResponse)(nil),      // 26: engram.v1.UpdateMemoryResponse
-	(*DeleteMemoryRequest)(nil),       // 27: engram.v1.DeleteMemoryRequest
-	(*DeleteMemoryResponse)(nil),      // 28: engram.v1.DeleteMemoryResponse
-	(*SetVisibilityRequest)(nil),      // 29: engram.v1.SetVisibilityRequest
-	(*SetVisibilityResponse)(nil),     // 30: engram.v1.SetVisibilityResponse
-	(*ScheduleMemoryRequest)(nil),     // 31: engram.v1.ScheduleMemoryRequest
-	(*ScheduleMemoryResponse)(nil),    // 32: engram.v1.ScheduleMemoryResponse
-	(*ArchiveResult)(nil),             // 33: engram.v1.ArchiveResult
-	(*ArchiveMemoryRequest)(nil),      // 34: engram.v1.ArchiveMemoryRequest
-	(*ArchiveMemoryResponse)(nil),     // 35: engram.v1.ArchiveMemoryResponse
-	(*RestoreMemoryRequest)(nil),      // 36: engram.v1.RestoreMemoryRequest
-	(*RestoreMemoryResponse)(nil),     // 37: engram.v1.RestoreMemoryResponse
-	(*SupersedeMemoryRequest)(nil),    // 38: engram.v1.SupersedeMemoryRequest
-	(*SupersedeMemoryResponse)(nil),   // 39: engram.v1.SupersedeMemoryResponse
-	(*ListScheduledRequest)(nil),      // 40: engram.v1.ListScheduledRequest
-	(*ListScheduledResponse)(nil),     // 41: engram.v1.ListScheduledResponse
-	(*ListRulesRequest)(nil),          // 42: engram.v1.ListRulesRequest
-	(*ListRulesResponse)(nil),         // 43: engram.v1.ListRulesResponse
-	(*WeightedTag)(nil),               // 44: engram.v1.WeightedTag
-	(*CitationRef)(nil),               // 45: engram.v1.CitationRef
-	(*VectorEvidence)(nil),            // 46: engram.v1.VectorEvidence
-	(*TagEvidence)(nil),               // 47: engram.v1.TagEvidence
-	(*CitationEvidence)(nil),          // 48: engram.v1.CitationEvidence
-	(*SupersessionEvidence)(nil),      // 49: engram.v1.SupersessionEvidence
-	(*RelatedEdge)(nil),               // 50: engram.v1.RelatedEdge
-	(*RelatedMemory)(nil),             // 51: engram.v1.RelatedMemory
-	(*RelatedMemoriesRequest)(nil),    // 52: engram.v1.RelatedMemoriesRequest
-	(*RelatedMemoriesResponse)(nil),   // 53: engram.v1.RelatedMemoriesResponse
-	(*TagCount)(nil),                  // 54: engram.v1.TagCount
-	(*ListTagsRequest)(nil),           // 55: engram.v1.ListTagsRequest
-	(*ListTagsResponse)(nil),          // 56: engram.v1.ListTagsResponse
-	(*timestamppb.Timestamp)(nil),     // 57: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),     // 58: google.protobuf.FieldMask
+	(SuggestionSource)(0),             // 4: engram.v1.SuggestionSource
+	(*Memory)(nil),                    // 5: engram.v1.Memory
+	(*ScopeCount)(nil),                // 6: engram.v1.ScopeCount
+	(*ListScopesRequest)(nil),         // 7: engram.v1.ListScopesRequest
+	(*ListScopesResponse)(nil),        // 8: engram.v1.ListScopesResponse
+	(*ListMemoriesRequest)(nil),       // 9: engram.v1.ListMemoriesRequest
+	(*ListMemoriesResponse)(nil),      // 10: engram.v1.ListMemoriesResponse
+	(*RecallGateHidden)(nil),          // 11: engram.v1.RecallGateHidden
+	(*SearchMemoriesRequest)(nil),     // 12: engram.v1.SearchMemoriesRequest
+	(*SearchMemoriesResponse)(nil),    // 13: engram.v1.SearchMemoriesResponse
+	(*GetMemoryRequest)(nil),          // 14: engram.v1.GetMemoryRequest
+	(*GetMemoryResponse)(nil),         // 15: engram.v1.GetMemoryResponse
+	(*SearchDiscoveriesRequest)(nil),  // 16: engram.v1.SearchDiscoveriesRequest
+	(*SearchDiscoveriesResponse)(nil), // 17: engram.v1.SearchDiscoveriesResponse
+	(*SchemaVersionBucket)(nil),       // 18: engram.v1.SchemaVersionBucket
+	(*MigrateStatusRequest)(nil),      // 19: engram.v1.MigrateStatusRequest
+	(*MigrateStatusResponse)(nil),     // 20: engram.v1.MigrateStatusResponse
+	(*StoreMemoryRequest)(nil),        // 21: engram.v1.StoreMemoryRequest
+	(*StoreMemoryResponse)(nil),       // 22: engram.v1.StoreMemoryResponse
+	(*Citation)(nil),                  // 23: engram.v1.Citation
+	(*StoreDiscoveryRequest)(nil),     // 24: engram.v1.StoreDiscoveryRequest
+	(*StoreDiscoveryResponse)(nil),    // 25: engram.v1.StoreDiscoveryResponse
+	(*UpdateMemoryRequest)(nil),       // 26: engram.v1.UpdateMemoryRequest
+	(*UpdateMemoryResponse)(nil),      // 27: engram.v1.UpdateMemoryResponse
+	(*DeleteMemoryRequest)(nil),       // 28: engram.v1.DeleteMemoryRequest
+	(*DeleteMemoryResponse)(nil),      // 29: engram.v1.DeleteMemoryResponse
+	(*SetVisibilityRequest)(nil),      // 30: engram.v1.SetVisibilityRequest
+	(*SetVisibilityResponse)(nil),     // 31: engram.v1.SetVisibilityResponse
+	(*ScheduleMemoryRequest)(nil),     // 32: engram.v1.ScheduleMemoryRequest
+	(*ScheduleMemoryResponse)(nil),    // 33: engram.v1.ScheduleMemoryResponse
+	(*ArchiveResult)(nil),             // 34: engram.v1.ArchiveResult
+	(*ArchiveMemoryRequest)(nil),      // 35: engram.v1.ArchiveMemoryRequest
+	(*ArchiveMemoryResponse)(nil),     // 36: engram.v1.ArchiveMemoryResponse
+	(*RestoreMemoryRequest)(nil),      // 37: engram.v1.RestoreMemoryRequest
+	(*RestoreMemoryResponse)(nil),     // 38: engram.v1.RestoreMemoryResponse
+	(*SupersedeMemoryRequest)(nil),    // 39: engram.v1.SupersedeMemoryRequest
+	(*SupersedeMemoryResponse)(nil),   // 40: engram.v1.SupersedeMemoryResponse
+	(*ListScheduledRequest)(nil),      // 41: engram.v1.ListScheduledRequest
+	(*ListScheduledResponse)(nil),     // 42: engram.v1.ListScheduledResponse
+	(*ListRulesRequest)(nil),          // 43: engram.v1.ListRulesRequest
+	(*ListRulesResponse)(nil),         // 44: engram.v1.ListRulesResponse
+	(*WeightedTag)(nil),               // 45: engram.v1.WeightedTag
+	(*CitationRef)(nil),               // 46: engram.v1.CitationRef
+	(*VectorEvidence)(nil),            // 47: engram.v1.VectorEvidence
+	(*TagEvidence)(nil),               // 48: engram.v1.TagEvidence
+	(*CitationEvidence)(nil),          // 49: engram.v1.CitationEvidence
+	(*SupersessionEvidence)(nil),      // 50: engram.v1.SupersessionEvidence
+	(*RelatedEdge)(nil),               // 51: engram.v1.RelatedEdge
+	(*RelatedMemory)(nil),             // 52: engram.v1.RelatedMemory
+	(*RelatedMemoriesRequest)(nil),    // 53: engram.v1.RelatedMemoriesRequest
+	(*RelatedMemoriesResponse)(nil),   // 54: engram.v1.RelatedMemoriesResponse
+	(*TagCount)(nil),                  // 55: engram.v1.TagCount
+	(*ListTagsRequest)(nil),           // 56: engram.v1.ListTagsRequest
+	(*ListTagsResponse)(nil),          // 57: engram.v1.ListTagsResponse
+	(*TimeWindowSuggestion)(nil),      // 58: engram.v1.TimeWindowSuggestion
+	(*FilterSuggestion)(nil),          // 59: engram.v1.FilterSuggestion
+	(*UnderstandQueryRequest)(nil),    // 60: engram.v1.UnderstandQueryRequest
+	(*UnderstandQueryResponse)(nil),   // 61: engram.v1.UnderstandQueryResponse
+	(*timestamppb.Timestamp)(nil),     // 62: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),     // 63: google.protobuf.FieldMask
 }
 var file_engram_v1_engram_proto_depIdxs = []int32{
-	57, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
-	57, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
-	22, // 2: engram.v1.Memory.citations:type_name -> engram.v1.Citation
-	57, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
-	57, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
-	57, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
-	57, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
-	5,  // 7: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
-	4,  // 8: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
-	10, // 9: engram.v1.ListMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
-	4,  // 10: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
-	10, // 11: engram.v1.SearchMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
-	4,  // 12: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
-	4,  // 13: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
-	17, // 14: engram.v1.MigrateStatusResponse.buckets:type_name -> engram.v1.SchemaVersionBucket
-	17, // 15: engram.v1.MigrateStatusResponse.future:type_name -> engram.v1.SchemaVersionBucket
-	22, // 16: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
-	58, // 17: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
+	62, // 0: engram.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
+	62, // 1: engram.v1.Memory.last_accessed_at:type_name -> google.protobuf.Timestamp
+	23, // 2: engram.v1.Memory.citations:type_name -> engram.v1.Citation
+	62, // 3: engram.v1.Memory.not_before:type_name -> google.protobuf.Timestamp
+	62, // 4: engram.v1.Memory.not_after:type_name -> google.protobuf.Timestamp
+	62, // 5: engram.v1.Memory.archived_at:type_name -> google.protobuf.Timestamp
+	62, // 6: engram.v1.Memory.summary_egress_at:type_name -> google.protobuf.Timestamp
+	6,  // 7: engram.v1.ListScopesResponse.scopes:type_name -> engram.v1.ScopeCount
+	5,  // 8: engram.v1.ListMemoriesResponse.memories:type_name -> engram.v1.Memory
+	11, // 9: engram.v1.ListMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
+	5,  // 10: engram.v1.SearchMemoriesResponse.memories:type_name -> engram.v1.Memory
+	11, // 11: engram.v1.SearchMemoriesResponse.recall_gate_hidden:type_name -> engram.v1.RecallGateHidden
+	5,  // 12: engram.v1.GetMemoryResponse.memory:type_name -> engram.v1.Memory
+	5,  // 13: engram.v1.SearchDiscoveriesResponse.discoveries:type_name -> engram.v1.Memory
+	18, // 14: engram.v1.MigrateStatusResponse.buckets:type_name -> engram.v1.SchemaVersionBucket
+	18, // 15: engram.v1.MigrateStatusResponse.future:type_name -> engram.v1.SchemaVersionBucket
+	23, // 16: engram.v1.StoreDiscoveryRequest.citations:type_name -> engram.v1.Citation
+	63, // 17: engram.v1.UpdateMemoryRequest.update_mask:type_name -> google.protobuf.FieldMask
 	0,  // 18: engram.v1.SetVisibilityRequest.visibility:type_name -> engram.v1.Visibility
-	57, // 19: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
-	57, // 20: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
+	62, // 19: engram.v1.ScheduleMemoryRequest.not_before:type_name -> google.protobuf.Timestamp
+	62, // 20: engram.v1.ScheduleMemoryRequest.not_after:type_name -> google.protobuf.Timestamp
 	1,  // 21: engram.v1.ArchiveResult.outcome:type_name -> engram.v1.ArchiveOutcome
-	33, // 22: engram.v1.ArchiveMemoryResponse.results:type_name -> engram.v1.ArchiveResult
-	33, // 23: engram.v1.RestoreMemoryResponse.results:type_name -> engram.v1.ArchiveResult
-	22, // 24: engram.v1.SupersedeMemoryRequest.citations:type_name -> engram.v1.Citation
-	4,  // 25: engram.v1.SupersedeMemoryResponse.targets:type_name -> engram.v1.Memory
-	4,  // 26: engram.v1.ListScheduledResponse.memories:type_name -> engram.v1.Memory
-	4,  // 27: engram.v1.ListRulesResponse.rules:type_name -> engram.v1.Memory
-	44, // 28: engram.v1.TagEvidence.shared_tags:type_name -> engram.v1.WeightedTag
-	45, // 29: engram.v1.CitationEvidence.shared_citations:type_name -> engram.v1.CitationRef
+	34, // 22: engram.v1.ArchiveMemoryResponse.results:type_name -> engram.v1.ArchiveResult
+	34, // 23: engram.v1.RestoreMemoryResponse.results:type_name -> engram.v1.ArchiveResult
+	23, // 24: engram.v1.SupersedeMemoryRequest.citations:type_name -> engram.v1.Citation
+	5,  // 25: engram.v1.SupersedeMemoryResponse.targets:type_name -> engram.v1.Memory
+	5,  // 26: engram.v1.ListScheduledResponse.memories:type_name -> engram.v1.Memory
+	5,  // 27: engram.v1.ListRulesResponse.rules:type_name -> engram.v1.Memory
+	45, // 28: engram.v1.TagEvidence.shared_tags:type_name -> engram.v1.WeightedTag
+	46, // 29: engram.v1.CitationEvidence.shared_citations:type_name -> engram.v1.CitationRef
 	3,  // 30: engram.v1.SupersessionEvidence.direction:type_name -> engram.v1.SupersessionDirection
 	2,  // 31: engram.v1.RelatedEdge.type:type_name -> engram.v1.EdgeType
-	46, // 32: engram.v1.RelatedEdge.vector:type_name -> engram.v1.VectorEvidence
-	47, // 33: engram.v1.RelatedEdge.tag:type_name -> engram.v1.TagEvidence
-	48, // 34: engram.v1.RelatedEdge.citation:type_name -> engram.v1.CitationEvidence
-	49, // 35: engram.v1.RelatedEdge.supersession:type_name -> engram.v1.SupersessionEvidence
-	4,  // 36: engram.v1.RelatedMemory.memory:type_name -> engram.v1.Memory
-	50, // 37: engram.v1.RelatedMemory.edges:type_name -> engram.v1.RelatedEdge
-	4,  // 38: engram.v1.RelatedMemoriesResponse.anchor:type_name -> engram.v1.Memory
-	51, // 39: engram.v1.RelatedMemoriesResponse.related:type_name -> engram.v1.RelatedMemory
-	54, // 40: engram.v1.ListTagsResponse.tags:type_name -> engram.v1.TagCount
-	6,  // 41: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
-	8,  // 42: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
-	11, // 43: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
-	13, // 44: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
-	15, // 45: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
-	18, // 46: engram.v1.EngramService.MigrateStatus:input_type -> engram.v1.MigrateStatusRequest
-	20, // 47: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
-	23, // 48: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
-	25, // 49: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
-	27, // 50: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
-	29, // 51: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
-	31, // 52: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
-	34, // 53: engram.v1.EngramService.ArchiveMemory:input_type -> engram.v1.ArchiveMemoryRequest
-	36, // 54: engram.v1.EngramService.RestoreMemory:input_type -> engram.v1.RestoreMemoryRequest
-	38, // 55: engram.v1.EngramService.SupersedeMemory:input_type -> engram.v1.SupersedeMemoryRequest
-	40, // 56: engram.v1.EngramService.ListScheduled:input_type -> engram.v1.ListScheduledRequest
-	42, // 57: engram.v1.EngramService.ListRules:input_type -> engram.v1.ListRulesRequest
-	52, // 58: engram.v1.EngramService.RelatedMemories:input_type -> engram.v1.RelatedMemoriesRequest
-	55, // 59: engram.v1.EngramService.ListTags:input_type -> engram.v1.ListTagsRequest
-	7,  // 60: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
-	9,  // 61: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
-	12, // 62: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
-	14, // 63: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
-	16, // 64: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
-	19, // 65: engram.v1.EngramService.MigrateStatus:output_type -> engram.v1.MigrateStatusResponse
-	21, // 66: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
-	24, // 67: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
-	26, // 68: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
-	28, // 69: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
-	30, // 70: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
-	32, // 71: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
-	35, // 72: engram.v1.EngramService.ArchiveMemory:output_type -> engram.v1.ArchiveMemoryResponse
-	37, // 73: engram.v1.EngramService.RestoreMemory:output_type -> engram.v1.RestoreMemoryResponse
-	39, // 74: engram.v1.EngramService.SupersedeMemory:output_type -> engram.v1.SupersedeMemoryResponse
-	41, // 75: engram.v1.EngramService.ListScheduled:output_type -> engram.v1.ListScheduledResponse
-	43, // 76: engram.v1.EngramService.ListRules:output_type -> engram.v1.ListRulesResponse
-	53, // 77: engram.v1.EngramService.RelatedMemories:output_type -> engram.v1.RelatedMemoriesResponse
-	56, // 78: engram.v1.EngramService.ListTags:output_type -> engram.v1.ListTagsResponse
-	60, // [60:79] is the sub-list for method output_type
-	41, // [41:60] is the sub-list for method input_type
-	41, // [41:41] is the sub-list for extension type_name
-	41, // [41:41] is the sub-list for extension extendee
-	0,  // [0:41] is the sub-list for field type_name
+	47, // 32: engram.v1.RelatedEdge.vector:type_name -> engram.v1.VectorEvidence
+	48, // 33: engram.v1.RelatedEdge.tag:type_name -> engram.v1.TagEvidence
+	49, // 34: engram.v1.RelatedEdge.citation:type_name -> engram.v1.CitationEvidence
+	50, // 35: engram.v1.RelatedEdge.supersession:type_name -> engram.v1.SupersessionEvidence
+	5,  // 36: engram.v1.RelatedMemory.memory:type_name -> engram.v1.Memory
+	51, // 37: engram.v1.RelatedMemory.edges:type_name -> engram.v1.RelatedEdge
+	5,  // 38: engram.v1.RelatedMemoriesResponse.anchor:type_name -> engram.v1.Memory
+	52, // 39: engram.v1.RelatedMemoriesResponse.related:type_name -> engram.v1.RelatedMemory
+	55, // 40: engram.v1.ListTagsResponse.tags:type_name -> engram.v1.TagCount
+	58, // 41: engram.v1.FilterSuggestion.time_window:type_name -> engram.v1.TimeWindowSuggestion
+	4,  // 42: engram.v1.FilterSuggestion.source:type_name -> engram.v1.SuggestionSource
+	59, // 43: engram.v1.UnderstandQueryResponse.suggestions:type_name -> engram.v1.FilterSuggestion
+	7,  // 44: engram.v1.EngramService.ListScopes:input_type -> engram.v1.ListScopesRequest
+	9,  // 45: engram.v1.EngramService.ListMemories:input_type -> engram.v1.ListMemoriesRequest
+	12, // 46: engram.v1.EngramService.SearchMemories:input_type -> engram.v1.SearchMemoriesRequest
+	14, // 47: engram.v1.EngramService.GetMemory:input_type -> engram.v1.GetMemoryRequest
+	16, // 48: engram.v1.EngramService.SearchDiscoveries:input_type -> engram.v1.SearchDiscoveriesRequest
+	19, // 49: engram.v1.EngramService.MigrateStatus:input_type -> engram.v1.MigrateStatusRequest
+	21, // 50: engram.v1.EngramService.StoreMemory:input_type -> engram.v1.StoreMemoryRequest
+	24, // 51: engram.v1.EngramService.StoreDiscovery:input_type -> engram.v1.StoreDiscoveryRequest
+	26, // 52: engram.v1.EngramService.UpdateMemory:input_type -> engram.v1.UpdateMemoryRequest
+	28, // 53: engram.v1.EngramService.DeleteMemory:input_type -> engram.v1.DeleteMemoryRequest
+	30, // 54: engram.v1.EngramService.SetVisibility:input_type -> engram.v1.SetVisibilityRequest
+	32, // 55: engram.v1.EngramService.ScheduleMemory:input_type -> engram.v1.ScheduleMemoryRequest
+	35, // 56: engram.v1.EngramService.ArchiveMemory:input_type -> engram.v1.ArchiveMemoryRequest
+	37, // 57: engram.v1.EngramService.RestoreMemory:input_type -> engram.v1.RestoreMemoryRequest
+	39, // 58: engram.v1.EngramService.SupersedeMemory:input_type -> engram.v1.SupersedeMemoryRequest
+	41, // 59: engram.v1.EngramService.ListScheduled:input_type -> engram.v1.ListScheduledRequest
+	43, // 60: engram.v1.EngramService.ListRules:input_type -> engram.v1.ListRulesRequest
+	53, // 61: engram.v1.EngramService.RelatedMemories:input_type -> engram.v1.RelatedMemoriesRequest
+	56, // 62: engram.v1.EngramService.ListTags:input_type -> engram.v1.ListTagsRequest
+	60, // 63: engram.v1.EngramService.UnderstandQuery:input_type -> engram.v1.UnderstandQueryRequest
+	8,  // 64: engram.v1.EngramService.ListScopes:output_type -> engram.v1.ListScopesResponse
+	10, // 65: engram.v1.EngramService.ListMemories:output_type -> engram.v1.ListMemoriesResponse
+	13, // 66: engram.v1.EngramService.SearchMemories:output_type -> engram.v1.SearchMemoriesResponse
+	15, // 67: engram.v1.EngramService.GetMemory:output_type -> engram.v1.GetMemoryResponse
+	17, // 68: engram.v1.EngramService.SearchDiscoveries:output_type -> engram.v1.SearchDiscoveriesResponse
+	20, // 69: engram.v1.EngramService.MigrateStatus:output_type -> engram.v1.MigrateStatusResponse
+	22, // 70: engram.v1.EngramService.StoreMemory:output_type -> engram.v1.StoreMemoryResponse
+	25, // 71: engram.v1.EngramService.StoreDiscovery:output_type -> engram.v1.StoreDiscoveryResponse
+	27, // 72: engram.v1.EngramService.UpdateMemory:output_type -> engram.v1.UpdateMemoryResponse
+	29, // 73: engram.v1.EngramService.DeleteMemory:output_type -> engram.v1.DeleteMemoryResponse
+	31, // 74: engram.v1.EngramService.SetVisibility:output_type -> engram.v1.SetVisibilityResponse
+	33, // 75: engram.v1.EngramService.ScheduleMemory:output_type -> engram.v1.ScheduleMemoryResponse
+	36, // 76: engram.v1.EngramService.ArchiveMemory:output_type -> engram.v1.ArchiveMemoryResponse
+	38, // 77: engram.v1.EngramService.RestoreMemory:output_type -> engram.v1.RestoreMemoryResponse
+	40, // 78: engram.v1.EngramService.SupersedeMemory:output_type -> engram.v1.SupersedeMemoryResponse
+	42, // 79: engram.v1.EngramService.ListScheduled:output_type -> engram.v1.ListScheduledResponse
+	44, // 80: engram.v1.EngramService.ListRules:output_type -> engram.v1.ListRulesResponse
+	54, // 81: engram.v1.EngramService.RelatedMemories:output_type -> engram.v1.RelatedMemoriesResponse
+	57, // 82: engram.v1.EngramService.ListTags:output_type -> engram.v1.ListTagsResponse
+	61, // 83: engram.v1.EngramService.UnderstandQuery:output_type -> engram.v1.UnderstandQueryResponse
+	64, // [64:84] is the sub-list for method output_type
+	44, // [44:64] is the sub-list for method input_type
+	44, // [44:44] is the sub-list for extension type_name
+	44, // [44:44] is the sub-list for extension extendee
+	0,  // [0:44] is the sub-list for field type_name
 }
 
 func init() { file_engram_v1_engram_proto_init() }
@@ -4818,13 +5259,19 @@ func file_engram_v1_engram_proto_init() {
 		(*RelatedEdge_Citation)(nil),
 		(*RelatedEdge_Supersession)(nil),
 	}
+	file_engram_v1_engram_proto_msgTypes[54].OneofWrappers = []any{
+		(*FilterSuggestion_Category)(nil),
+		(*FilterSuggestion_TimeWindow)(nil),
+		(*FilterSuggestion_Scope)(nil),
+		(*FilterSuggestion_Tag)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_engram_v1_engram_proto_rawDesc), len(file_engram_v1_engram_proto_rawDesc)),
-			NumEnums:      4,
-			NumMessages:   53,
+			NumEnums:      5,
+			NumMessages:   57,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
