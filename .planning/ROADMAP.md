@@ -623,7 +623,7 @@ existing consumers and is flagged for a research pass at plan time.
   3. A test proves search results are unchanged until a suggested chip is clicked, and an accepted chip is indistinguishable from a manually added one
   4. A test proves no query text appears in logs unless the explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 **UI hint**: yes
 
 Plans:
@@ -639,7 +639,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 06-05-PLAN.md — opt-in audit line and always-on engram.understand.* span telemetry, with the no-query-text sweep (D-14, D-16, D-17; NLQ-04)
+- [x] 06-05-PLAN.md — opt-in audit line and always-on engram.understand.* span telemetry, with the no-query-text sweep (D-14, D-16, D-17; NLQ-04)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
