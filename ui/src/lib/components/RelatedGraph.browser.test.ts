@@ -503,34 +503,47 @@ describe('RelatedGraph — zoom controls and wheel gate (GRAPH-01, D-20)', () =>
     expect(screen.container.querySelector('.wheel-hint.show')).toBeNull();
   });
 
+  function spreadNodes(count: number): GraphNode[] {
+    // A wide spread of vector candidates settles to a large layout radius,
+    // so the initial fit sits comfortably below SCALE_MAX -- leaving room
+    // for the zoom-in clicks below to actually change the readout.
+    const rest: GraphNode[] = [];
+    for (let i = 0; i < count; i++) rest.push(mkNode(`n${i}`, { types: ['vector'] }));
+    return anchorPlus(rest);
+  }
+
   it("'Zoom in' changes the readout and becomes disabled within 10 clicks, as 'Zoom out' does at the lower limit", async () => {
-    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const nodes = spreadNodes(20);
     const screen = await renderGraph(nodes, []);
     await tick();
-    const zoomIn = screen.getByRole('button', { name: 'Zoom in' });
-    const zoomOut = screen.getByRole('button', { name: 'Zoom out' });
+    // Native .click() on the live DOM button -- Playwright's locator.click()
+    // waits for "enabled" actionability, which hangs forever once the limit
+    // disables the button; a bounded loop that stops at the limit needs a
+    // click that doesn't wait.
+    const zoomInEl = () => screen.container.querySelector<HTMLButtonElement>('button[aria-label="Zoom in"]')!;
+    const zoomOutEl = () => screen.container.querySelector<HTMLButtonElement>('button[aria-label="Zoom out"]')!;
     const readout = () => screen.container.querySelector('.pct')?.textContent;
 
     const start = readout();
-    await zoomIn.click();
+    zoomInEl().click();
     await tick();
     expect(readout()).not.toBe(start);
 
-    for (let i = 0; i < 10; i++) {
-      await zoomIn.click();
+    for (let i = 0; i < 10 && !zoomInEl().disabled; i++) {
+      zoomInEl().click();
       await tick();
     }
-    await expect.element(zoomIn).toBeDisabled();
+    expect(zoomInEl().disabled).toBe(true);
 
-    for (let i = 0; i < 20; i++) {
-      await zoomOut.click();
+    for (let i = 0; i < 20 && !zoomOutEl().disabled; i++) {
+      zoomOutEl().click();
       await tick();
     }
-    await expect.element(zoomOut).toBeDisabled();
+    expect(zoomOutEl().disabled).toBe(true);
   });
 
   it("the readout's accessible text matches 'Zoom {N}%'", async () => {
-    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const nodes = spreadNodes(20);
     const screen = await renderGraph(nodes, []);
     await tick();
     const pct = screen.container.querySelector('.pct')!;
@@ -538,7 +551,7 @@ describe('RelatedGraph — zoom controls and wheel gate (GRAPH-01, D-20)', () =>
   });
 
   it('after Zoom in, changing selectedId keeps the readout, and changing the nodes prop returns it to the fit value', async () => {
-    const nodes = anchorPlus([mkNode('n1', { types: ['tag'] })]);
+    const nodes = spreadNodes(20);
     const screen = await renderGraph(nodes, []);
     await tick();
     const zoomIn = screen.getByRole('button', { name: 'Zoom in' });
@@ -557,7 +570,7 @@ describe('RelatedGraph — zoom controls and wheel gate (GRAPH-01, D-20)', () =>
     await tick();
     expect(screen.container.querySelector('.pct')?.textContent).toBe(zoomed);
 
-    const nextNodes = anchorPlus([mkNode('n2', { types: ['vector'] })]);
+    const nextNodes = spreadNodes(4);
     await screen.rerender({ anchorId: 'anchor-id', nodes: nextNodes, edges: [], onselect: vi.fn(), onrecenter: vi.fn() });
     await tick();
     expect(screen.container.querySelector('.pct')?.textContent).not.toBe(zoomed);
@@ -589,14 +602,14 @@ describe('RelatedGraph — spring-back drag under reduced motion (D-09)', () => 
     const rect = nodeEl.getBoundingClientRect();
     const startX = rect.x + rect.width / 2;
     const startY = rect.y + rect.height / 2;
-    nodeEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: startX, clientY: startY, button: 0 }));
-    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: startX + 40, clientY: startY + 40 }));
+    nodeEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window, clientX: startX, clientY: startY, button: 0 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, view: window, clientX: startX + 40, clientY: startY + 40 }));
     await tick();
     // Mid-drag: the node must actually have moved under the pointer --
     // proves drag pickup happened, not just that nothing moved at all.
     expect(nodeEl.getAttribute('transform')).not.toBe(before);
 
-    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: startX + 40, clientY: startY + 40 }));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window, clientX: startX + 40, clientY: startY + 40 }));
     await tick();
 
     expect(nodeEl.getAttribute('transform')).toBe(before);
@@ -612,9 +625,9 @@ describe('RelatedGraph — spring-back drag under reduced motion (D-09)', () => 
     const rect = anchorEl.getBoundingClientRect();
     const startX = rect.x + rect.width / 2;
     const startY = rect.y + rect.height / 2;
-    anchorEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: startX, clientY: startY, button: 0 }));
-    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: startX + 40, clientY: startY + 40 }));
-    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: startX + 40, clientY: startY + 40 }));
+    anchorEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window, clientX: startX, clientY: startY, button: 0 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, view: window, clientX: startX + 40, clientY: startY + 40 }));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window, clientX: startX + 40, clientY: startY + 40 }));
     await tick();
 
     expect(anchorEl.getAttribute('transform')).toBe(before);
