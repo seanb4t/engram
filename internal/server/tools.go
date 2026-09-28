@@ -367,6 +367,10 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if err != nil {
 		return nil, err
 	}
+	if udec != nil {
+		_, source := understandingEnabled(cfg)
+		logUnderstandingEnabled(cfg, source)
+	}
 	return &deps{
 		st:               st,
 		em:               em,

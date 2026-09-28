@@ -368,6 +368,40 @@ func understandDecider(cfg *config.Config) (decide.Decider, error) {
 	return understandDeciderFromConfig(cfg)
 }
 
+// logUnderstandingEnabled is the D-15 startup disclosure for query
+// understanding (milestone 2026-09-25.01 Phase 6, D-01's stated
+// mitigation): unlike most engram telemetry, console query text now leaves
+// the deployment to the decisions provider whenever understanding is on —
+// by default (provider=jev) or by an explicit ENGRAM_SEARCH_UNDERSTANDING
+// setting. Warn level on purpose, following logSearchRerankAuditEnabled: an
+// operator whose provider was configured only for spine-review consolidate
+// may not have consciously opted into this egress, and the log should keep
+// saying so at every startup. source is understandingEnabled's own result
+// ("default" or "explicit"), naming which branch turned it on. Host only —
+// never userinfo, path or query (T-06-18) — and the key's value is never a
+// log attribute, only which env var supplied it.
+func logUnderstandingEnabled(cfg *config.Config, source string) {
+	var host string
+	if u, err := url.Parse(cfg.Decisions.BaseURL); err == nil {
+		host = u.Host
+	}
+	apiKeySource := "none"
+	switch {
+	case cfg.Decisions.APIKey != "":
+		apiKeySource = "ENGRAM_DECISIONS_API_KEY"
+	case cfg.OpenAI.APIKey != "":
+		apiKeySource = "ENGRAM_OPENAI_API_KEY"
+	}
+	slog.Warn("search understanding enabled: console query text is sent to "+host,
+		"source", source,
+		"endpoint_host", host,
+		"model", cfg.Decisions.Model,
+		"understanding_timeout", understandingTimeout(cfg),
+		"api_key_source", apiKeySource,
+		"disable_with", "ENGRAM_SEARCH_UNDERSTANDING=off",
+	)
+}
+
 // logSearchRankerEnabled logs one Info line naming that search-path
 // reranking is enabled: the ranker, model, the base URL's host ONLY (never
 // any userinfo, path or query — T-04-01/T-04-07), the rerank timeout, and

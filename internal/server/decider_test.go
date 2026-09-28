@@ -911,6 +911,74 @@ func TestSearchRankerEnabledLogLine(t *testing.T) {
 	}
 }
 
+// TestUnderstandingEnabledLogLine pins D-15's host-only, key-value-free
+// disclosure shape (T-06-18): the endpoint host only, never userinfo, path
+// or query; api_key_source names the winning env var, never a value; source
+// is passed through verbatim.
+func TestUnderstandingEnabledLogLine(t *testing.T) {
+	const base = "https://user:s3cret-userinfo@gateway.example/openrouter?x=1"
+
+	cases := []struct {
+		name       string
+		ownKey     string
+		openaiKey  string
+		wantSource string
+	}{
+		{"own key wins", "own-key-VALUE", "", "ENGRAM_DECISIONS_API_KEY"},
+		{"falls back to openai key", "", "openai-key-VALUE", "ENGRAM_OPENAI_API_KEY"},
+		{"neither set", "", "", "none"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			cfg := &config.Config{}
+			cfg.Decisions.Provider = "jev"
+			cfg.Decisions.BaseURL = base
+			cfg.Decisions.Model = "typesafe/jev-1.13"
+			cfg.Decisions.APIKey = tc.ownKey
+			cfg.OpenAI.APIKey = tc.openaiKey
+
+			logUnderstandingEnabled(cfg, "explicit")
+
+			out := buf.String()
+			for _, forbidden := range []string{"s3cret-userinfo", "own-key-VALUE", "openai-key-VALUE", "/openrouter", "x=1"} {
+				if strings.Contains(out, forbidden) {
+					t.Errorf("log output contains forbidden substring %q: %s", forbidden, out)
+				}
+			}
+
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &rec); err != nil {
+				t.Fatalf("unmarshal log line %q: %v", out, err)
+			}
+			wantMsg := "search understanding enabled: console query text is sent to gateway.example"
+			if rec["msg"] != wantMsg {
+				t.Errorf("msg = %v, want %q", rec["msg"], wantMsg)
+			}
+			if rec["endpoint_host"] != "gateway.example" {
+				t.Errorf("endpoint_host = %v, want gateway.example", rec["endpoint_host"])
+			}
+			if rec["api_key_source"] != tc.wantSource {
+				t.Errorf("api_key_source = %v, want %v", rec["api_key_source"], tc.wantSource)
+			}
+			if rec["source"] != "explicit" {
+				t.Errorf("source = %v, want explicit", rec["source"])
+			}
+			if _, ok := rec["understanding_timeout"]; !ok {
+				t.Error("understanding_timeout missing from log record")
+			}
+			if rec["disable_with"] != "ENGRAM_SEARCH_UNDERSTANDING=off" {
+				t.Errorf("disable_with = %v, want ENGRAM_SEARCH_UNDERSTANDING=off", rec["disable_with"])
+			}
+		})
+	}
+}
+
 // TestDeciderFromConfigStillRetries proves the consolidate-path client
 // deciderFromConfig builds is UNCHANGED by this plan: against a
 // 503-then-200 handler it makes two requests and succeeds — the search
