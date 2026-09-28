@@ -13,6 +13,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -47,16 +48,19 @@ type understandResult struct {
 }
 
 // understandQuery is the shared core the Connect UnderstandQuery RPC calls.
-// The off short-circuit (d.understandDec == nil) runs FIRST, before
-// rejectOverMaximumCount and before understand.Suggest — D-04's guarantee
-// that understanding-off means zero decision calls and zero store calls.
-// An empty or whitespace-only query is not an error: it returns
-// {Enabled:true} with zero suggestions and no decision call (NLQ-04).
-//
-// Advisory end to end (D-04/D-05/D-12/D-17, Task 3): only an
-// unauthenticated caller or an over-maximum categories/tags list is an RPC
-// error. A ListScopes or tag-vocabulary read failure degrades to fewer
-// suggestions, never an error — see Task 3's Warn lines.
+// Advisory end to end (D-04/D-05/D-12/D-17): the ONLY RPC errors this
+// returns are an unauthenticated caller (checked by the Connect handler
+// before this is called) or an over-maximum categories/tags list —
+// everything else degrades to fewer suggestions. The off short-circuit
+// (d.understandDec == nil) runs FIRST, before rejectOverMaximumCount and
+// before understand.Suggest — D-04's guarantee that understanding-off
+// means zero decision calls and zero store calls. An empty or
+// whitespace-only query is not an error: it returns {Enabled:true} with
+// zero suggestions and no decision call (NLQ-04). A ListScopes or
+// tag-vocabulary read failure degrades to fewer suggestions (no scope
+// options, no tag vocabulary respectively), each logged once via a fixed
+// Warn line carrying no query, scope, tag or err text — the store's own
+// span already records the error.
 func (d *deps) understandQuery(ctx context.Context, c caller, a understandArgs) (understandResult, error) {
 	if d.understandDec == nil {
 		return understandResult{}, nil
@@ -77,18 +81,18 @@ func (d *deps) understandQuery(ctx context.Context, c caller, a understandArgs) 
 			for _, s := range sc {
 				scopes = append(scopes, s.Scope)
 			}
+		} else {
+			slog.WarnContext(ctx, "query understanding: scope options unavailable")
 		}
-		// A ListScopes error means "no scope options" — never an RPC error
-		// (Task 3 adds the Warn line and its own test).
 	}
 	var vocab []string
 	if ts, _, err := d.listTags(ctx, c, listTagsArgs{Scope: a.Scope, Limit: store.MaxRecallLimit}); err == nil {
 		for _, tc := range ts {
 			vocab = append(vocab, tc.Tag)
 		}
+	} else {
+		slog.WarnContext(ctx, "query understanding: tag vocabulary unavailable")
 	}
-	// A listTags error means "no tag vocabulary" — never an RPC error (Task
-	// 3 adds the Warn line and its own test).
 	rep := understand.Suggest(ctx, d.understandDec, understand.Input{
 		Query: q,
 		Applied: understand.Applied{

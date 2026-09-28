@@ -4,10 +4,14 @@
 package understand
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -681,4 +685,91 @@ func TestSuggestOrderAndSkip(t *testing.T) {
 			t.Errorf("Suggestions = %v, want exactly [tag1]", res.Suggestions)
 		}
 	})
+}
+
+// TestSuggestFallbackNeverErrors proves Suggest's D-05/D-12/D-17 contract:
+// every D-12 decide.Decider error class and context.Canceled yield
+// OutcomeFallback with FallbackClass equal to decide.Status(err), zero
+// decided suggestions, the matched tags still present, and QuestionsAsked
+// equal to the built request's question count — Suggest itself never
+// returns an error. Exactly one Warn line names the class, never the query
+// text.
+func TestSuggestFallbackNeverErrors(t *testing.T) {
+	const sentinel = "SENTINEL-UNDERSTAND-9c2f query text about tag1"
+
+	errs := []error{
+		&decide.Error{Kind: decide.ErrDecisionTimeout},
+		&decide.Error{Kind: decide.ErrDecisionUnavailable},
+		&decide.Error{Kind: decide.ErrDecisionRateLimited},
+		&decide.Error{Kind: decide.ErrDecisionAuth},
+		&decide.Error{Kind: decide.ErrDecisionBadRequest},
+		&decide.Error{Kind: decide.ErrDecisionContextTooLarge},
+		&decide.Error{Kind: decide.ErrDecisionResponseTooLarge},
+		&decide.Error{Kind: decide.ErrDecisionMalformedResponse},
+		context.Canceled,
+	}
+
+	for _, wantErr := range errs {
+		wantClass := decide.Status(wantErr)
+		t.Run(wantClass, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			dec := &countingDecider{err: wantErr}
+			req := NewRequest(sentinel, Applied{}, nil)
+			res := Suggest(context.Background(), dec, Input{
+				Query: sentinel,
+				Tags:  []string{"tag1"},
+				Now:   time.Now(),
+			})
+
+			if res.Outcome != OutcomeFallback {
+				t.Errorf("Outcome = %q, want %q", res.Outcome, OutcomeFallback)
+			}
+			if res.FallbackClass != wantClass {
+				t.Errorf("FallbackClass = %q, want %q", res.FallbackClass, wantClass)
+			}
+			for _, s := range res.Suggestions {
+				if s.Source == SourceDecided {
+					t.Errorf("Suggestions contains a decided suggestion %v, want zero", s)
+				}
+			}
+			var foundTag bool
+			for _, s := range res.Suggestions {
+				if s.Kind == KindTag && s.Value == "tag1" {
+					foundTag = true
+				}
+			}
+			if !foundTag {
+				t.Errorf("Suggestions = %v, want the matched tag1 present", res.Suggestions)
+			}
+			if res.QuestionsAsked != len(req.Questions) {
+				t.Errorf("QuestionsAsked = %d, want %d", res.QuestionsAsked, len(req.Questions))
+			}
+
+			out := buf.String()
+			lines := strings.Split(strings.TrimSpace(out), "\n")
+			if len(lines) != 1 || lines[0] == "" {
+				t.Fatalf("log output = %q, want exactly one line", out)
+			}
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+				t.Fatalf("log line did not parse as JSON: %v", err)
+			}
+			if rec["msg"] != "query understanding fell back to no decided suggestions" {
+				t.Errorf("msg = %v, want the fixed fallback message", rec["msg"])
+			}
+			if rec["level"] != "WARN" {
+				t.Errorf("level = %v, want WARN", rec["level"])
+			}
+			if rec["class"] != wantClass {
+				t.Errorf("class = %v, want %q", rec["class"], wantClass)
+			}
+			if strings.Contains(out, sentinel) {
+				t.Errorf("log output contains the query text: %q", out)
+			}
+		})
+	}
 }

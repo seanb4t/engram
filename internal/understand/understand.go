@@ -11,6 +11,7 @@ package understand
 
 import (
 	"context"
+	"log/slog"
 	"math"
 	"slices"
 	"time"
@@ -315,7 +316,8 @@ func FromResponse(resp decide.Response, req decide.Request, now time.Time) ([]Su
 // (rwtzp3m7y8): zero questions in the built request or a nil dec skips the
 // Decide call entirely (OutcomeSkipped, matched tags still returned); a
 // Decide error or a FromResponse error both yield OutcomeFallback with
-// FallbackClass naming why (matched tags still returned).
+// FallbackClass naming why (matched tags still returned) and one Warn line
+// via logFallback (D-05/D-17).
 func Suggest(ctx context.Context, dec decide.Decider, in Input) Result {
 	matched := MatchTags(in.Query, in.Tags, in.Applied.Tags)
 	req := NewRequest(in.Query, in.Applied, in.Scopes)
@@ -325,11 +327,22 @@ func Suggest(ctx context.Context, dec decide.Decider, in Input) Result {
 	}
 	resp, err := dec.Decide(ctx, req)
 	if err != nil {
-		return Result{Suggestions: matched, Outcome: OutcomeFallback, FallbackClass: decide.Status(err), QuestionsAsked: n}
+		class := decide.Status(err)
+		logFallback(ctx, class)
+		return Result{Suggestions: matched, Outcome: OutcomeFallback, FallbackClass: class, QuestionsAsked: n}
 	}
 	decided, err := FromResponse(resp, req, in.Now)
 	if err != nil {
-		return Result{Suggestions: matched, Outcome: OutcomeFallback, FallbackClass: decide.Status(err), QuestionsAsked: n}
+		class := decide.Status(err)
+		logFallback(ctx, class)
+		return Result{Suggestions: matched, Outcome: OutcomeFallback, FallbackClass: class, QuestionsAsked: n}
 	}
 	return Result{Suggestions: append(decided, matched...), Outcome: OutcomeDecided, QuestionsAsked: n}
+}
+
+// logFallback emits the one WarnContext line a decision failure or a
+// malformed response produces — the class word only, never the query, a
+// question, or the error text (D-05/D-17).
+func logFallback(ctx context.Context, class string) {
+	slog.WarnContext(ctx, "query understanding fell back to no decided suggestions", "class", class)
 }
