@@ -3,7 +3,7 @@
   // queries (every query passes `{ signal }` and keys on the full normalized
   // params), the honest results header, and the shared ResultsList/RecallSplit/
   // DetailPane set from plans 02-06/02-07.
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
@@ -33,7 +33,8 @@
     understandEligible,
     understandQueryKey,
     understandQueryRequest,
-    visibleSuggestions
+    visibleSuggestions,
+    suggestionAnnouncement
   } from '$lib/search/understand';
   import { relatedPath } from '$lib/search/related-params';
   import {
@@ -100,7 +101,10 @@
   }
 
   // The page's own query input (debounced 160ms into the URL, replaceState so
-  // typing doesn't spam browser history).
+  // typing doesn't spam browser history). `searchInputEl` also receives
+  // focus when a Suggested-row accept/dismiss empties the last chip
+  // (a11y gap-fill, not in D-13 — focus must never fall back to <body>).
+  let searchInputEl: HTMLInputElement | undefined = $state();
   let inputText = $state(params.q);
   $effect(() => {
     inputText = params.q;
@@ -211,6 +215,23 @@
       ? visibleSuggestions(understandQ.data.suggestions, effective, dismissedKeys)
       : []
   );
+
+  // D-13/06-UI-SPEC "Row appearance announcement": fires once per NEW
+  // UnderstandQuery response, never on a later accept/dismiss re-render of
+  // the SAME response — the effect's only tracked dependency is
+  // `understandQ.data` itself (everything else is read inside `untrack`),
+  // so toggling a facet chip or dismissing a suggestion never re-announces.
+  let suggestedAnnouncement = $state('');
+  $effect(() => {
+    const data = understandQ.data;
+    if (data === undefined) return;
+    untrack(() => {
+      const n = understandEligible(classified) && data.enabled
+        ? visibleSuggestions(data.suggestions, effective, dismissedKeys).length
+        : 0;
+      suggestedAnnouncement = n > 0 ? suggestionAnnouncement(n) : '';
+    });
+  });
 
   // D-09: operator-only input (no free text — e.g. `scope:x #tag is:gotcha`)
   // is an unranked ListMemories cursor listing that infinite-scrolls, never a
@@ -585,11 +606,13 @@
     <input
       class="search-input"
       aria-label="Search query"
+      bind:this={searchInputEl}
       value={inputText}
       oninput={onInput}
       placeholder="Search, paste an id, scope: #tag is:"
     />
   </div>
+  <p class="sr-only" aria-live="polite">{suggestedAnnouncement}</p>
   <FacetStrip
     params={effective}
     {categoryCounts}
@@ -607,6 +630,7 @@
       params={effective}
       onchange={(partial) => navigate({ ...partial, sel: '' })}
       ondismiss={dismissSuggestion}
+      onempty={() => searchInputEl?.focus()}
     />
   {/if}
   <ResultsHeader

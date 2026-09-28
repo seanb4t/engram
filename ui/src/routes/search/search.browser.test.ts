@@ -1718,4 +1718,36 @@ describe('search route — suggested filters (NLQ-03)', () => {
     expect(pageState.url.href).toBe(hrefBefore);
     expect(searchMemoriesSpy.mock.calls.length).toBe(callsBefore);
   });
+
+  it('the live region announces the count once per new response and does not re-announce on a dismiss', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [
+        { kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED },
+        { kind: { case: 'tag', value: 'qdrant' }, source: SuggestionSource.MATCHED }
+      ]
+    });
+    const screen = await renderSearch();
+    await expect.element(screen.getByText('2 suggested filters')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Dismiss suggested filter: #qdrant' }).click();
+    await expect.element(screen.getByRole('button', { name: 'Suggested filter, not applied: #qdrant' })).not.toBeInTheDocument();
+    await expect.element(screen.getByText('2 suggested filters')).toBeInTheDocument();
+  });
+
+  it('dismissing the only chip by Delete moves focus to the "Search query" input', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [{ kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED }]
+    });
+    const screen = await renderSearch();
+    const chip = screen.getByRole('button', { name: 'Suggested filter, not applied: decision' });
+    (chip.element() as HTMLElement).focus();
+    await userEvent.keyboard('{Delete}');
+
+    const input = screen.getByRole('textbox', { name: 'Search query' }).element();
+    await expect.poll(() => document.activeElement).toBe(input);
+  });
 });

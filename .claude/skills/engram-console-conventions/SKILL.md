@@ -220,6 +220,34 @@ words section describes (`opacity: 0.3` on non-text marks, `var(--muted-foregrou
 text, never a raw opacity on text) — and shows a `#tag N of M carry it ×` chip. It never changes
 graph/lane membership and is not GRAPH-05 (a cross-surface highlight stays v2).
 
+### `/search` Suggested row keyboard model (Phase 6)
+
+The Suggested row (`ui/src/lib/components/SuggestedRow.svelte`, milestone 2026-09-25.01 Phase 6,
+D-13) is a `role="toolbar" aria-label="Suggested filters"` — one `Tab` stop, roving tabindex over
+its accept controls only (the WAI-ARIA APG Toolbar pattern):
+
+| Key(s) | Action |
+|---|---|
+| `Tab` (into the row) | Focuses the currently-active chip's accept control (defaults to the first chip) |
+| `←` / `→` | Move roving focus among chips' accept controls, clamped at the ends (no wrap) |
+| `Home` / `End` | Jump to the first/last chip's accept control |
+| `Enter` / `Space` | Accept the focused chip (native button activation — no custom handler) |
+| `Delete` / `Backspace` | Dismiss the focused chip; focus moves to the chip now at that position (or the `/search` query input if none remain) |
+| `×` (pointer only) | Dismiss that chip — `tabindex="-1"`, never a Tab/arrow stop, a sibling `<button>` of the accept control inside a non-interactive wrapper (never a button nested in a button) |
+
+Accepting or dismissing a chip changes only which suggestions are visible, never the URL by
+itself (a dismiss) or anything beyond the manual `FacetStrip`-equivalent partial (an accept, D-11).
+A visually hidden `aria-live="polite"` region announces `{N} suggested filter(s)` once per NEW
+`UnderstandQuery` response — never on a later accept/dismiss re-render of that same response.
+
+### Suggestion chips (Phase 6)
+
+A suggestion chip (`.suggested-chip`) is **never filled at any state** — `border: 1px dashed
+var(--border)` at rest, `var(--primary)` on hover/focus-visible, `background: transparent`
+always. This is the one visual rule that distinguishes an unapplied suggestion from every other
+chip in the console (`FacetStrip`'s active-category/active-scope chips fill with
+`--primary-soft`; a suggestion chip never does).
+
 ## Where the code lives
 
 | Concern | Path |
@@ -260,6 +288,8 @@ graph/lane membership and is not GRAPH-05 (a cross-surface highlight stays v2).
 | Tag popularity bar list (`/search` panel, `/related` rail Tags tab) | `ui/src/lib/components/TagBars.svelte` |
 | "+ tag" autocomplete picker (TAGS-02) | `ui/src/lib/components/TagCombobox.svelte` |
 | One tag match row (bolded hit, mini bar, count) | `ui/src/lib/components/TagMatchRow.svelte` |
+| Suggested row — roving toolbar, accept/dismiss chips (Phase 6) | `ui/src/lib/components/SuggestedRow.svelte` |
+| Suggested-row eligibility, keys, labels, hide rule, accept mapping, announcement (Phase 6) | `ui/src/lib/search/understand.ts` |
 
 For the design rationale behind these choices — why 28px rows, why 250ms hover delay, what
 layouts were tried and rejected — see `Skill("sketch-findings-engram")`.
