@@ -110,13 +110,14 @@ type Applied struct {
 
 // Input is Suggest's argument: the query text, the currently-applied
 // filters, the caller's own readable scopes (D-08 scope Choice options,
-// caller-scoped — never a second store read), and the request time (a
-// future time-window bucket computation consumes Now; unused by this
-// plan's category-only slice).
+// caller-scoped — never a second store read), the caller's own tag
+// vocabulary (D-09 local matching — never sent to the decision provider),
+// and the request time (D-07's time-window bucket-to-window conversion).
 type Input struct {
 	Query   string
 	Applied Applied
 	Scopes  []string
+	Tags    []string
 	Now     time.Time
 }
 
@@ -170,18 +171,20 @@ func scopeOptions(scopes []string) map[string]string {
 	return opts
 }
 
-// NewRequest builds the D-05/D-06/D-08 decide.Request for query: the query
-// state (truncated to MaxQueryChars runes), one Noul question per category
-// in Categories not already present in applied.Categories (zero applied
-// categories asks all four; every category applied asks none), and — when
-// applied.Scope is empty and the de-duplicated scope count (scopes minus
-// any named NoneOption) is between 1 and MaxScopeOptions inclusive — one
-// Choice question over scopeOptions(scopes). The gate counts scopes only,
-// never a store scan-cap flag (RESEARCH Pitfall 5): a caller with more
-// scopes than MaxScopeOptions readable, or an already-applied scope, asks
-// no scope question at all.
+// NewRequest builds the D-05/D-06/D-07/D-08 decide.Request for query: the
+// query state (truncated to MaxQueryChars runes), one Noul question per
+// category in Categories not already present in applied.Categories (zero
+// applied categories asks all four; every category applied asks none), a
+// time_window Choice over WindowOptions() when applied.CreatedAfter and
+// applied.CreatedBefore are both empty, and — when applied.Scope is empty
+// and the de-duplicated scope count (scopes minus any named NoneOption) is
+// between 1 and MaxScopeOptions inclusive — one Choice question over
+// scopeOptions(scopes). The scope gate counts scopes only, never a store
+// scan-cap flag (RESEARCH Pitfall 5): a caller with more scopes than
+// MaxScopeOptions readable, or an already-applied scope, asks no scope
+// question at all.
 func NewRequest(query string, applied Applied, scopes []string) decide.Request {
-	questions := make(map[string]decide.Question, len(Categories)+1)
+	questions := make(map[string]decide.Question, len(Categories)+2)
 	for _, cat := range Categories {
 		if slices.Contains(applied.Categories, cat) {
 			continue
@@ -190,6 +193,12 @@ func NewRequest(query string, applied Applied, scopes []string) decide.Request {
 			"Is the person searching specifically for a "+cat+" memory?",
 			categoryWhenTrue[cat],
 			categoryWhenFalse,
+		)
+	}
+	if applied.CreatedAfter == "" && applied.CreatedBefore == "" {
+		questions[QuestionTimeWindow] = decide.Choice(
+			"When were the memories the person is looking for recorded?",
+			WindowOptions(),
 		)
 	}
 	if applied.Scope == "" {
@@ -233,19 +242,22 @@ func validateChoiceAnswer(resp decide.Response, req decide.Request, name string)
 	return ans.Choice, p, nil
 }
 
-// FromResponse maps resp to the decided suggestions, in emission order
-// (categories in Categories order, then scope — plan Task 2 inserts
-// time_window between them): for every category whose question is present
-// in req.Questions, resp.Answers must carry a present, noul-typed, finite
-// [0, 1] answer — else FromResponse returns a *decide.Error with Kind
-// decide.ErrDecisionMalformedResponse naming the offending question, never
-// a partial result. A category is suggested (KindCategory, Source
-// SourceDecided) when its Probability is at or above Threshold. When the
-// QuestionScope question was asked, its answer is validated the same way
-// (see validateChoiceAnswer) and a KindScope suggestion is emitted when the
+// FromResponse maps resp to the decided suggestions, in emission order:
+// categories (Categories order), then time_window, then scope. For every
+// category whose question is present in req.Questions, resp.Answers must
+// carry a present, noul-typed, finite [0, 1] answer — else FromResponse
+// returns a *decide.Error with Kind decide.ErrDecisionMalformedResponse
+// naming the offending question, never a partial result. A category is
+// suggested (KindCategory, Source SourceDecided) when its Probability is
+// at or above Threshold. When the QuestionTimeWindow question was asked,
+// its answer is validated like a category (see validateChoiceAnswer) and,
+// when the chosen bucket is not NoneOption and its probability is at or
+// above Threshold, Window(bucket, now) converts it to a KindTimeWindow
+// suggestion. When the QuestionScope question was asked, its answer is
+// validated the same way and a KindScope suggestion is emitted when the
 // chosen option is not NoneOption and its probability is at or above
 // Threshold.
-func FromResponse(resp decide.Response, req decide.Request) ([]Suggestion, error) {
+func FromResponse(resp decide.Response, req decide.Request, now time.Time) ([]Suggestion, error) {
 	var out []Suggestion
 	for _, cat := range Categories {
 		name := CategoryQuestion(cat)
@@ -264,6 +276,25 @@ func FromResponse(resp decide.Response, req decide.Request) ([]Suggestion, error
 			out = append(out, Suggestion{Kind: KindCategory, Value: cat, Source: SourceDecided})
 		}
 	}
+	if _, asked := req.Questions[QuestionTimeWindow]; asked {
+		bucket, p, err := validateChoiceAnswer(resp, req, QuestionTimeWindow)
+		if err != nil {
+			return nil, err
+		}
+		if bucket != NoneOption && p >= Threshold {
+			after, before, label, ok := Window(bucket, now)
+			if ok {
+				out = append(out, Suggestion{
+					Kind:          KindTimeWindow,
+					Value:         bucket,
+					CreatedAfter:  after,
+					CreatedBefore: before,
+					Label:         label,
+					Source:        SourceDecided,
+				})
+			}
+		}
+	}
 	if _, asked := req.Questions[QuestionScope]; asked {
 		choice, p, err := validateChoiceAnswer(resp, req, QuestionScope)
 		if err != nil {
@@ -277,24 +308,28 @@ func FromResponse(resp decide.Response, req decide.Request) ([]Suggestion, error
 }
 
 // Suggest builds one Request from in, asks dec exactly once (never
-// DecideMany), and maps the response to suggestions. Suggest never returns
-// an error — a decision failure is "no decision" (rwtzp3m7y8): zero
-// questions in the built request or a nil dec skips the call entirely
-// (OutcomeSkipped); a Decide error or a FromResponse error both yield
-// OutcomeFallback with FallbackClass naming why.
+// DecideMany), and maps the response to suggestions. Tag suggestions
+// (D-09) are matched locally against in.Tags and are always included,
+// regardless of outcome — matching a tag is never a decision. Suggest
+// never returns an error — a decision failure is "no decision"
+// (rwtzp3m7y8): zero questions in the built request or a nil dec skips the
+// Decide call entirely (OutcomeSkipped, matched tags still returned); a
+// Decide error or a FromResponse error both yield OutcomeFallback with
+// FallbackClass naming why (matched tags still returned).
 func Suggest(ctx context.Context, dec decide.Decider, in Input) Result {
+	matched := MatchTags(in.Query, in.Tags, in.Applied.Tags)
 	req := NewRequest(in.Query, in.Applied, in.Scopes)
 	n := len(req.Questions)
 	if n == 0 || dec == nil {
-		return Result{Outcome: OutcomeSkipped, QuestionsAsked: n}
+		return Result{Suggestions: matched, Outcome: OutcomeSkipped, QuestionsAsked: n}
 	}
 	resp, err := dec.Decide(ctx, req)
 	if err != nil {
-		return Result{Outcome: OutcomeFallback, FallbackClass: decide.Status(err), QuestionsAsked: n}
+		return Result{Suggestions: matched, Outcome: OutcomeFallback, FallbackClass: decide.Status(err), QuestionsAsked: n}
 	}
-	suggestions, err := FromResponse(resp, req)
+	decided, err := FromResponse(resp, req, in.Now)
 	if err != nil {
-		return Result{Outcome: OutcomeFallback, FallbackClass: decide.Status(err), QuestionsAsked: n}
+		return Result{Suggestions: matched, Outcome: OutcomeFallback, FallbackClass: decide.Status(err), QuestionsAsked: n}
 	}
-	return Result{Suggestions: suggestions, Outcome: OutcomeDecided, QuestionsAsked: n}
+	return Result{Suggestions: append(decided, matched...), Outcome: OutcomeDecided, QuestionsAsked: n}
 }

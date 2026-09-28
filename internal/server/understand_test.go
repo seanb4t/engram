@@ -178,13 +178,14 @@ func TestUnderstandQueryTracer(t *testing.T) {
 		if after-before != 1 {
 			t.Fatalf("decisions server saw %d new requests, want exactly 1", after-before)
 		}
-		// D-08 (plan 06-02): understandQuery reads the caller's own readable
-		// scopes for the scope Choice's options when no scope is applied —
-		// a single ListScopes call, not "no store call at all" (06-01's
-		// original assertion, superseded by this behavior).
+		// D-08/D-09 (plan 06-02): understandQuery reads the caller's own
+		// readable scopes for the scope Choice's options (no scope applied)
+		// and its own tag vocabulary for local matching — two store calls,
+		// not "no store call at all" (06-01's original assertion,
+		// superseded by this behavior).
 		callLog := sp.callLog()
-		if len(callLog) != 1 || callLog[0].Method != "ListScopes" {
-			t.Errorf("spy store call log = %v, want exactly one ListScopes call", callLog)
+		if len(callLog) != 2 || callLog[0].Method != "ListScopes" || callLog[1].Method != "ListTags" {
+			t.Errorf("spy store call log = %v, want exactly [ListScopes, ListTags]", callLog)
 		}
 	})
 
@@ -375,9 +376,11 @@ func understandSeedScope(t *testing.T, sp *spyStore, owner, scope, visibility st
 }
 
 // newUnderstandScopeScriptedDecider returns a scriptedDecider that answers
-// every category noul at 0.1 (never a category suggestion) and the "scope"
-// choice with Choice "repo:a/x" at probability 0.93 (>= Threshold) — the
-// fixed response TestUnderstandQueryScopeSuggestion's behavior block
+// every category noul at 0.1 (never a category suggestion), the
+// "time_window" choice with "none" (Task 2 also asks this question — this
+// fixture stays scoped to proving the scope suggestion alone), and the
+// "scope" choice with Choice "repo:a/x" at probability 0.93 (>= Threshold)
+// — the fixed response TestUnderstandQueryScopeSuggestion's behavior block
 // specifies.
 func newUnderstandScopeScriptedDecider() *scriptedDecider {
 	return &scriptedDecider{resp: decide.Response{Answers: map[string]decide.Answer{
@@ -385,6 +388,17 @@ func newUnderstandScopeScriptedDecider() *scriptedDecider {
 		understand.CategoryQuestion("gotcha"):     {Type: decide.QuestionNoul, Probability: 0.1},
 		understand.CategoryQuestion("decision"):   {Type: decide.QuestionNoul, Probability: 0.1},
 		understand.CategoryQuestion("preference"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.QuestionTimeWindow: {
+			Type:   decide.QuestionChoice,
+			Choice: "none",
+			Probabilities: map[string]float64{
+				"none":       0.97,
+				"today":      0.01,
+				"past_week":  0.01,
+				"past_month": 0.005,
+				"past_year":  0.005,
+			},
+		},
 		understand.QuestionScope: {
 			Type:   decide.QuestionChoice,
 			Choice: "repo:a/x",
@@ -494,6 +508,172 @@ func TestUnderstandQueryScopeSuggestion(t *testing.T) {
 			if c.Method == "ListScopes" {
 				t.Error("ListScopes called, want none (scope already applied)")
 			}
+		}
+	})
+}
+
+// newUnderstandAllKindsDecider returns a scriptedDecider answering gotcha
+// 0.95, decision 0.93, the other two categories at 0.1, time_window
+// "past_week" at 0.94, and scope "repo:a/x" at 0.96 — the fixed response
+// TestUnderstandQueryAllKinds' behavior block specifies.
+func newUnderstandAllKindsDecider() *scriptedDecider {
+	return &scriptedDecider{resp: decide.Response{Answers: map[string]decide.Answer{
+		understand.CategoryQuestion("convention"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.CategoryQuestion("gotcha"):     {Type: decide.QuestionNoul, Probability: 0.95},
+		understand.CategoryQuestion("decision"):   {Type: decide.QuestionNoul, Probability: 0.93},
+		understand.CategoryQuestion("preference"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.QuestionTimeWindow: {
+			Type:   decide.QuestionChoice,
+			Choice: "past_week",
+			Probabilities: map[string]float64{
+				"past_week":  0.94,
+				"none":       0.03,
+				"today":      0.01,
+				"past_month": 0.01,
+				"past_year":  0.01,
+			},
+		},
+		understand.QuestionScope: {
+			Type:   decide.QuestionChoice,
+			Choice: "repo:a/x",
+			Probabilities: map[string]float64{
+				"repo:a/x": 0.96,
+				"none":     0.04,
+			},
+		},
+	}}}
+}
+
+// TestUnderstandQueryAllKinds proves Task 2's combined end-to-end shape
+// (D-05/D-07/D-08/D-09): one prose query yields every suggestion kind in
+// order — category gotcha, category decision, time_window, scope, then the
+// one matched tag — each with the right oneof case and source; the tag
+// vocabulary is read via the shared listTags core scoped to the caller and
+// the applied scope, and never reaches the decide request (the vocabulary
+// tags never appear in any question instruction, criterion, or option).
+func TestUnderstandQueryAllKinds(t *testing.T) {
+	t.Run("no scope applied", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+		sp.tags = []store.TagCount{{Tag: "qdrant-zeta", Count: 9}, {Tag: "omega-ci", Count: 3}}
+
+		dec := newUnderstandAllKindsDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "why does qdrant break in repo x lately"})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		resp, err := client.UnderstandQuery(context.Background(), req)
+		if err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		suggestions := resp.Msg.GetSuggestions()
+		if len(suggestions) != 5 {
+			t.Fatalf("len(Suggestions) = %d, want 5: %v", len(suggestions), suggestions)
+		}
+
+		if got := suggestions[0]; got.GetCategory() != "gotcha" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("suggestions[0] = %+v, want category=gotcha source=DECIDED", got)
+		}
+		if got := suggestions[1]; got.GetCategory() != "decision" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("suggestions[1] = %+v, want category=decision source=DECIDED", got)
+		}
+
+		tw := suggestions[2]
+		twMsg := tw.GetTimeWindow()
+		if twMsg == nil {
+			t.Fatalf("suggestions[2] = %+v, want a time_window suggestion", tw)
+		}
+		if !strings.HasSuffix(twMsg.GetCreatedAfter(), "T00:00:00Z") || len(twMsg.GetCreatedAfter()) != len("2026-09-28T00:00:00Z") {
+			t.Errorf("suggestions[2].created_after = %q, want a day-aligned RFC3339 midnight", twMsg.GetCreatedAfter())
+		}
+		if twMsg.GetCreatedBefore() != "" {
+			t.Errorf("suggestions[2].created_before = %q, want empty", twMsg.GetCreatedBefore())
+		}
+		if twMsg.GetLabel() != "past week" {
+			t.Errorf("suggestions[2].label = %q, want %q", twMsg.GetLabel(), "past week")
+		}
+		if tw.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("suggestions[2].Source = %v, want DECIDED", tw.GetSource())
+		}
+
+		if got := suggestions[3]; got.GetScope() != "repo:a/x" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("suggestions[3] = %+v, want scope=repo:a/x source=DECIDED", got)
+		}
+		if got := suggestions[4]; got.GetTag() != "qdrant-zeta" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_MATCHED {
+			t.Errorf("suggestions[4] = %+v, want tag=qdrant-zeta source=MATCHED", got)
+		}
+
+		var listTagsCalls int
+		for _, c := range sp.callLog() {
+			if c.Method == "ListTags" {
+				listTagsCalls++
+				if c.Owner != "actor-A" {
+					t.Errorf("ListTags owner = %q, want %q", c.Owner, "actor-A")
+				}
+				if scope, _ := c.Args.(string); scope != "" {
+					t.Errorf("ListTags scope = %q, want empty (no scope applied)", scope)
+				}
+			}
+		}
+		if listTagsCalls != 1 {
+			t.Errorf("ListTags called %d times, want 1", listTagsCalls)
+		}
+
+		lastReq := dec.lastRequest()
+		if len(lastReq.State) != 1 {
+			t.Fatalf("len(State) = %d, want 1", len(lastReq.State))
+		}
+		if _, ok := lastReq.State["query"]; !ok {
+			t.Error(`State["query"] missing`)
+		}
+		for _, forbidden := range []string{"qdrant-zeta", "omega-ci"} {
+			for name, q := range lastReq.Questions {
+				if strings.Contains(q.Instructions, forbidden) {
+					t.Errorf("question %q instructions contain vocabulary tag %q", name, forbidden)
+				}
+				if strings.Contains(q.WhenTrue, forbidden) || strings.Contains(q.WhenFalse, forbidden) {
+					t.Errorf("question %q criteria contain vocabulary tag %q", name, forbidden)
+				}
+				for opt, desc := range q.Options {
+					if strings.Contains(opt, forbidden) || strings.Contains(desc, forbidden) {
+						t.Errorf("question %q option %q contains vocabulary tag %q", name, opt, forbidden)
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("scope applied: ListTags scoped to it", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+		sp.tags = []store.TagCount{{Tag: "qdrant-zeta", Count: 9}}
+
+		dec := newUnderstandAllKindsDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{
+			Query: "why does qdrant break in repo x lately",
+			Scope: "repo:a/x",
+		})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		var found bool
+		for _, c := range sp.callLog() {
+			if c.Method == "ListTags" {
+				found = true
+				if scope, _ := c.Args.(string); scope != "repo:a/x" {
+					t.Errorf("ListTags scope = %q, want %q", scope, "repo:a/x")
+				}
+			}
+		}
+		if !found {
+			t.Error("ListTags not called")
 		}
 	})
 }

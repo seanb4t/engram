@@ -17,6 +17,7 @@ import (
 	"time"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/understand"
 )
 
@@ -80,6 +81,14 @@ func (d *deps) understandQuery(ctx context.Context, c caller, a understandArgs) 
 		// A ListScopes error means "no scope options" — never an RPC error
 		// (Task 3 adds the Warn line and its own test).
 	}
+	var vocab []string
+	if ts, _, err := d.listTags(ctx, c, listTagsArgs{Scope: a.Scope, Limit: store.MaxRecallLimit}); err == nil {
+		for _, tc := range ts {
+			vocab = append(vocab, tc.Tag)
+		}
+	}
+	// A listTags error means "no tag vocabulary" — never an RPC error (Task
+	// 3 adds the Warn line and its own test).
 	rep := understand.Suggest(ctx, d.understandDec, understand.Input{
 		Query: q,
 		Applied: understand.Applied{
@@ -90,6 +99,7 @@ func (d *deps) understandQuery(ctx context.Context, c caller, a understandArgs) 
 			CreatedBefore: a.CreatedBefore,
 		},
 		Scopes: scopes,
+		Tags:   vocab,
 		Now:    time.Now(),
 	})
 	return understandResult{Enabled: true, Suggestions: rep.Suggestions, Report: rep}, nil
