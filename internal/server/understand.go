@@ -51,7 +51,12 @@ type understandResult struct {
 // that understanding-off means zero decision calls and zero store calls.
 // An empty or whitespace-only query is not an error: it returns
 // {Enabled:true} with zero suggestions and no decision call (NLQ-04).
-func (d *deps) understandQuery(ctx context.Context, _ caller, a understandArgs) (understandResult, error) {
+//
+// Advisory end to end (D-04/D-05/D-12/D-17, Task 3): only an
+// unauthenticated caller or an over-maximum categories/tags list is an RPC
+// error. A ListScopes or tag-vocabulary read failure degrades to fewer
+// suggestions, never an error — see Task 3's Warn lines.
+func (d *deps) understandQuery(ctx context.Context, c caller, a understandArgs) (understandResult, error) {
 	if d.understandDec == nil {
 		return understandResult{}, nil
 	}
@@ -65,6 +70,16 @@ func (d *deps) understandQuery(ctx context.Context, _ caller, a understandArgs) 
 	if q == "" {
 		return understandResult{Enabled: true}, nil
 	}
+	var scopes []string
+	if a.Scope == "" {
+		if sc, _, err := d.st.ListScopes(ctx, c.Subj); err == nil {
+			for _, s := range sc {
+				scopes = append(scopes, s.Scope)
+			}
+		}
+		// A ListScopes error means "no scope options" — never an RPC error
+		// (Task 3 adds the Warn line and its own test).
+	}
 	rep := understand.Suggest(ctx, d.understandDec, understand.Input{
 		Query: q,
 		Applied: understand.Applied{
@@ -74,7 +89,8 @@ func (d *deps) understandQuery(ctx context.Context, _ caller, a understandArgs) 
 			CreatedAfter:  a.CreatedAfter,
 			CreatedBefore: a.CreatedBefore,
 		},
-		Now: time.Now(),
+		Scopes: scopes,
+		Now:    time.Now(),
 	})
 	return understandResult{Enabled: true, Suggestions: rep.Suggestions, Report: rep}, nil
 }

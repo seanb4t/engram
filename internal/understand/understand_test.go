@@ -6,6 +6,7 @@ package understand
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ import (
 // state truncated to MaxQueryChars runes.
 func TestNewRequestCategories(t *testing.T) {
 	t.Run("no applied categories asks all four", func(t *testing.T) {
-		req := NewRequest("what did we decide", Applied{})
+		req := NewRequest("what did we decide", Applied{}, nil)
 		var got []string
 		for name := range req.Questions {
 			if _, ok := req.Questions[name]; ok {
@@ -56,7 +57,7 @@ func TestNewRequestCategories(t *testing.T) {
 	})
 
 	t.Run("some applied categories filters the question set", func(t *testing.T) {
-		req := NewRequest("what did we decide", Applied{Categories: []string{"decision", "gotcha"}})
+		req := NewRequest("what did we decide", Applied{Categories: []string{"decision", "gotcha"}}, nil)
 		if _, ok := req.Questions[CategoryQuestion("decision")]; ok {
 			t.Error("category_decision present, want filtered out (applied)")
 		}
@@ -72,7 +73,7 @@ func TestNewRequestCategories(t *testing.T) {
 	})
 
 	t.Run("all four applied asks nothing", func(t *testing.T) {
-		req := NewRequest("what did we decide", Applied{Categories: append([]string{}, Categories...)})
+		req := NewRequest("what did we decide", Applied{Categories: append([]string{}, Categories...)}, nil)
 		if len(req.Questions) != 0 {
 			t.Errorf("len(Questions) = %d, want 0", len(req.Questions))
 		}
@@ -86,7 +87,7 @@ func TestNewRequestCategories(t *testing.T) {
 		for i := 0; i < 2100; i++ {
 			long += "é"
 		}
-		req := NewRequest(long, Applied{})
+		req := NewRequest(long, Applied{}, nil)
 		q, _ := req.State["query"].(string)
 		if n := utf8.RuneCountInString(q); n != MaxQueryChars {
 			t.Errorf("truncated query has %d runes, want %d", n, MaxQueryChars)
@@ -100,7 +101,7 @@ func TestNewRequestCategories(t *testing.T) {
 // TestFromResponseCategoryThreshold proves FromResponse's D-05 threshold
 // boundary and malformed-response handling.
 func TestFromResponseCategoryThreshold(t *testing.T) {
-	req := NewRequest("what did we decide", Applied{})
+	req := NewRequest("what did we decide", Applied{}, nil)
 
 	t.Run("threshold boundary", func(t *testing.T) {
 		cases := []struct {
@@ -245,7 +246,7 @@ func TestSuggestCategoryPaths(t *testing.T) {
 
 	t.Run("decision error falls back", func(t *testing.T) {
 		dec := &countingDecider{err: &decide.Error{Kind: decide.ErrDecisionTimeout}}
-		req := NewRequest("what did we decide", Applied{})
+		req := NewRequest("what did we decide", Applied{}, nil)
 		res := Suggest(context.Background(), dec, Input{Query: "what did we decide", Now: time.Now()})
 		if res.Outcome != OutcomeFallback {
 			t.Errorf("Outcome = %q, want %q", res.Outcome, OutcomeFallback)
@@ -286,5 +287,184 @@ func TestSuggestCategoryPaths(t *testing.T) {
 		if res.Outcome != OutcomeSkipped {
 			t.Errorf("Outcome = %q, want %q", res.Outcome, OutcomeSkipped)
 		}
+	})
+}
+
+// TestScopeQuestionGate proves NewRequest's D-08 scope-question gate: 0
+// scopes asks nothing; the option cardinality boundary at MaxScopeOptions
+// (254 asks, 255 does not); an already-applied scope skips the question
+// regardless of scope count; a scope literally named "none" is dropped from
+// the options (the gate counts scopes only, never ListScopes' scan-cap
+// flag — RESEARCH Pitfall 5, which is not even in this function's
+// signature).
+func TestScopeQuestionGate(t *testing.T) {
+	t.Run("0 scopes: no scope question", func(t *testing.T) {
+		req := NewRequest("q", Applied{}, nil)
+		if _, ok := req.Questions[QuestionScope]; ok {
+			t.Error("scope question present, want absent")
+		}
+	})
+
+	t.Run("1 scope: options are {s, none}", func(t *testing.T) {
+		req := NewRequest("q", Applied{}, []string{"repo:a/x"})
+		q, ok := req.Questions[QuestionScope]
+		if !ok {
+			t.Fatal("scope question absent, want present")
+		}
+		if len(q.Options) != 2 {
+			t.Fatalf("len(Options) = %d, want 2: %v", len(q.Options), q.Options)
+		}
+		if _, ok := q.Options["repo:a/x"]; !ok {
+			t.Error(`Options["repo:a/x"] missing`)
+		}
+		if _, ok := q.Options[NoneOption]; !ok {
+			t.Error(`Options["none"] missing`)
+		}
+	})
+
+	t.Run("254 scopes: 255 options, Validate() nil", func(t *testing.T) {
+		scopes := make([]string, MaxScopeOptions)
+		for i := range scopes {
+			scopes[i] = fmt.Sprintf("repo:a/s%d", i)
+		}
+		req := NewRequest("q", Applied{}, scopes)
+		q, ok := req.Questions[QuestionScope]
+		if !ok {
+			t.Fatal("scope question absent, want present")
+		}
+		if len(q.Options) != MaxScopeOptions+1 {
+			t.Fatalf("len(Options) = %d, want %d", len(q.Options), MaxScopeOptions+1)
+		}
+		if err := req.Validate(); err != nil {
+			t.Errorf("req.Validate() = %v, want nil", err)
+		}
+	})
+
+	t.Run("255 scopes: no scope question", func(t *testing.T) {
+		scopes := make([]string, MaxScopeOptions+1)
+		for i := range scopes {
+			scopes[i] = fmt.Sprintf("repo:a/s%d", i)
+		}
+		req := NewRequest("q", Applied{}, scopes)
+		if _, ok := req.Questions[QuestionScope]; ok {
+			t.Error("scope question present, want absent (over MaxScopeOptions)")
+		}
+	})
+
+	t.Run("applied scope with 3 scopes: no scope question", func(t *testing.T) {
+		req := NewRequest("q", Applied{Scope: "repo:a/x"}, []string{"repo:a/x", "repo:a/y", "repo:a/z"})
+		if _, ok := req.Questions[QuestionScope]; ok {
+			t.Error("scope question present, want absent (scope already applied)")
+		}
+	})
+
+	t.Run("a scope literally named none is dropped", func(t *testing.T) {
+		req := NewRequest("q", Applied{}, []string{"repo:a/x", "none"})
+		q, ok := req.Questions[QuestionScope]
+		if !ok {
+			t.Fatal("scope question absent, want present")
+		}
+		if len(q.Options) != 2 {
+			t.Fatalf("len(Options) = %d, want 2: %v", len(q.Options), q.Options)
+		}
+		if _, ok := q.Options["none"]; !ok {
+			t.Error(`Options["none"] missing (reserved)`)
+		}
+	})
+}
+
+// TestFromResponseChoices proves FromResponse's choice-answer validation for
+// the D-08 scope question (Task 2 extends this test with a "time" subtest
+// for the time_window half): a chosen "none" yields no suggestion; a chosen
+// scope at or above Threshold is suggested, below is not; a chosen option
+// that was never asked, a missing Probabilities entry for the chosen
+// option, or a noul-typed answer for "scope" all yield
+// decide.ErrDecisionMalformedResponse and zero suggestions.
+func TestFromResponseChoices(t *testing.T) {
+	scopes := []string{"repo:a/x", "repo:a/y"}
+
+	t.Run("scope", func(t *testing.T) {
+		// All four categories applied so only the scope question is asked —
+		// this subtest is about the scope choice-answer validation alone.
+		req := NewRequest("what did we decide", Applied{Categories: append([]string{}, Categories...)}, scopes)
+
+		t.Run("none chosen: no suggestion", func(t *testing.T) {
+			resp := decide.Response{Answers: map[string]decide.Answer{
+				QuestionScope: {Type: decide.QuestionChoice, Choice: NoneOption, Probabilities: map[string]float64{NoneOption: 0.97, "repo:a/x": 0.02, "repo:a/y": 0.01}},
+			}}
+			got, err := FromResponse(resp, req)
+			if err != nil {
+				t.Fatalf("FromResponse: %v", err)
+			}
+			for _, s := range got {
+				if s.Kind == KindScope {
+					t.Errorf("scope suggested = %v, want none", s)
+				}
+			}
+		})
+
+		t.Run("chosen at threshold: suggested", func(t *testing.T) {
+			resp := decide.Response{Answers: map[string]decide.Answer{
+				QuestionScope: {Type: decide.QuestionChoice, Choice: "repo:a/x", Probabilities: map[string]float64{"repo:a/x": 0.9, NoneOption: 0.1}},
+			}}
+			got, err := FromResponse(resp, req)
+			if err != nil {
+				t.Fatalf("FromResponse: %v", err)
+			}
+			var found bool
+			for _, s := range got {
+				if s.Kind == KindScope && s.Value == "repo:a/x" && s.Source == SourceDecided {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("got = %v, want a scope suggestion for repo:a/x", got)
+			}
+		})
+
+		t.Run("below threshold: not suggested", func(t *testing.T) {
+			resp := decide.Response{Answers: map[string]decide.Answer{
+				QuestionScope: {Type: decide.QuestionChoice, Choice: "repo:a/x", Probabilities: map[string]float64{"repo:a/x": 0.8999, NoneOption: 0.1001}},
+			}}
+			got, err := FromResponse(resp, req)
+			if err != nil {
+				t.Fatalf("FromResponse: %v", err)
+			}
+			for _, s := range got {
+				if s.Kind == KindScope {
+					t.Errorf("scope suggested = %v, want none (below threshold)", s)
+				}
+			}
+		})
+
+		t.Run("malformed: chosen option never asked", func(t *testing.T) {
+			resp := decide.Response{Answers: map[string]decide.Answer{
+				QuestionScope: {Type: decide.QuestionChoice, Choice: "repo:z/never-asked", Probabilities: map[string]float64{"repo:z/never-asked": 0.95}},
+			}}
+			_, err := FromResponse(resp, req)
+			if !errors.Is(err, decide.ErrDecisionMalformedResponse) {
+				t.Fatalf("err = %v, want ErrDecisionMalformedResponse", err)
+			}
+		})
+
+		t.Run("malformed: missing probabilities entry for chosen option", func(t *testing.T) {
+			resp := decide.Response{Answers: map[string]decide.Answer{
+				QuestionScope: {Type: decide.QuestionChoice, Choice: "repo:a/x", Probabilities: map[string]float64{NoneOption: 0.5}},
+			}}
+			_, err := FromResponse(resp, req)
+			if !errors.Is(err, decide.ErrDecisionMalformedResponse) {
+				t.Fatalf("err = %v, want ErrDecisionMalformedResponse", err)
+			}
+		})
+
+		t.Run("malformed: noul-typed answer for scope", func(t *testing.T) {
+			resp := decide.Response{Answers: map[string]decide.Answer{
+				QuestionScope: {Type: decide.QuestionNoul, Probability: 0.95},
+			}}
+			_, err := FromResponse(resp, req)
+			if !errors.Is(err, decide.ErrDecisionMalformedResponse) {
+				t.Fatalf("err = %v, want ErrDecisionMalformedResponse", err)
+			}
+		})
 	})
 }

@@ -66,6 +66,17 @@ const (
 	KindTag        Kind = "tag"
 )
 
+// QuestionScope is the decide.Request question name for the D-08 scope
+// Choice.
+const QuestionScope = "scope"
+
+// NoneOption is the reserved Choice-question option meaning "the query does
+// not name or clearly point to one of the offered options" — shared by the
+// D-08 scope question and (plan Task 2) the D-07 time-window question. A
+// scope literally named NoneOption is dropped from scopeOptions rather than
+// colliding with the reserved meaning.
+const NoneOption = "none"
+
 // Source names how a Suggestion was produced.
 type Source string
 
@@ -98,11 +109,14 @@ type Applied struct {
 }
 
 // Input is Suggest's argument: the query text, the currently-applied
-// filters, and the request time (a future time-window bucket computation
-// consumes Now; unused by this plan's category-only slice).
+// filters, the caller's own readable scopes (D-08 scope Choice options,
+// caller-scoped — never a second store read), and the request time (a
+// future time-window bucket computation consumes Now; unused by this
+// plan's category-only slice).
 type Input struct {
 	Query   string
 	Applied Applied
+	Scopes  []string
 	Now     time.Time
 }
 
@@ -134,12 +148,40 @@ var categoryWhenTrue = map[string]string{
 // question (D-06).
 const categoryWhenFalse = "The query does not specifically ask for that kind of memory."
 
-// NewRequest builds the D-05/D-06 decide.Request for query: the query
-// state (truncated to MaxQueryChars runes) plus one Noul question per
-// category in Categories not already present in applied.Categories. Zero
-// applied categories asks all four; every category applied asks none.
-func NewRequest(query string, applied Applied) decide.Request {
-	questions := make(map[string]decide.Question, len(Categories))
+// scopeOptions builds the D-08 scope Choice's options from scopes: one
+// entry per de-duplicated scope (a scope literally named NoneOption is
+// dropped — it cannot be distinguished from the reserved option) plus the
+// reserved NoneOption entry. The returned map's length is always at least
+// 1 (NoneOption alone for a zero-length scopes).
+func scopeOptions(scopes []string) map[string]string {
+	seen := make(map[string]struct{}, len(scopes))
+	opts := make(map[string]string, len(scopes)+1)
+	for _, sc := range scopes {
+		if sc == NoneOption {
+			continue
+		}
+		if _, dup := seen[sc]; dup {
+			continue
+		}
+		seen[sc] = struct{}{}
+		opts[sc] = "Memories stored in the " + sc + " scope."
+	}
+	opts[NoneOption] = "The query does not name or clearly point to one of these scopes."
+	return opts
+}
+
+// NewRequest builds the D-05/D-06/D-08 decide.Request for query: the query
+// state (truncated to MaxQueryChars runes), one Noul question per category
+// in Categories not already present in applied.Categories (zero applied
+// categories asks all four; every category applied asks none), and — when
+// applied.Scope is empty and the de-duplicated scope count (scopes minus
+// any named NoneOption) is between 1 and MaxScopeOptions inclusive — one
+// Choice question over scopeOptions(scopes). The gate counts scopes only,
+// never a store scan-cap flag (RESEARCH Pitfall 5): a caller with more
+// scopes than MaxScopeOptions readable, or an already-applied scope, asks
+// no scope question at all.
+func NewRequest(query string, applied Applied, scopes []string) decide.Request {
+	questions := make(map[string]decide.Question, len(Categories)+1)
 	for _, cat := range Categories {
 		if slices.Contains(applied.Categories, cat) {
 			continue
@@ -150,6 +192,16 @@ func NewRequest(query string, applied Applied) decide.Request {
 			categoryWhenFalse,
 		)
 	}
+	if applied.Scope == "" {
+		opts := scopeOptions(scopes)
+		n := len(opts) - 1 // exclude the reserved NoneOption entry
+		if n >= 1 && n <= MaxScopeOptions {
+			questions[QuestionScope] = decide.Choice(
+				"Does the query name, or clearly point to, one of these scopes? Choose none if it does not.",
+				opts,
+			)
+		}
+	}
 	return decide.Request{
 		State: decide.State{
 			StateQuery: verdict.State("", query, MaxQueryChars),
@@ -158,13 +210,41 @@ func NewRequest(query string, applied Applied) decide.Request {
 	}
 }
 
-// FromResponse maps resp to the decided category suggestions, in
-// Categories order: for every category whose question is present in
-// req.Questions, resp.Answers must carry a present, noul-typed, finite
+// validateChoiceAnswer checks resp's answer for the choice question named
+// name, asked as req.Questions[name] (the caller must have already
+// confirmed it was asked): the answer must be present, type choice, its
+// Choice must be a key of the asked question's Options, and
+// Probabilities[Choice] must be present and finite in [0, 1]. Any
+// violation returns a *decide.Error with Kind ErrDecisionMalformedResponse
+// naming name — never a partial or best-effort result (D-05).
+func validateChoiceAnswer(resp decide.Response, req decide.Request, name string) (choice string, prob float64, err error) {
+	q := req.Questions[name]
+	ans, ok := resp.Answers[name]
+	if !ok || ans.Type != decide.QuestionChoice {
+		return "", 0, &decide.Error{Kind: decide.ErrDecisionMalformedResponse, Question: name}
+	}
+	if _, askedOption := q.Options[ans.Choice]; !askedOption {
+		return "", 0, &decide.Error{Kind: decide.ErrDecisionMalformedResponse, Question: name}
+	}
+	p, ok := ans.Probabilities[ans.Choice]
+	if !ok || math.IsNaN(p) || math.IsInf(p, 0) || p < 0 || p > 1 {
+		return "", 0, &decide.Error{Kind: decide.ErrDecisionMalformedResponse, Question: name}
+	}
+	return ans.Choice, p, nil
+}
+
+// FromResponse maps resp to the decided suggestions, in emission order
+// (categories in Categories order, then scope — plan Task 2 inserts
+// time_window between them): for every category whose question is present
+// in req.Questions, resp.Answers must carry a present, noul-typed, finite
 // [0, 1] answer — else FromResponse returns a *decide.Error with Kind
 // decide.ErrDecisionMalformedResponse naming the offending question, never
 // a partial result. A category is suggested (KindCategory, Source
-// SourceDecided) when its Probability is at or above Threshold.
+// SourceDecided) when its Probability is at or above Threshold. When the
+// QuestionScope question was asked, its answer is validated the same way
+// (see validateChoiceAnswer) and a KindScope suggestion is emitted when the
+// chosen option is not NoneOption and its probability is at or above
+// Threshold.
 func FromResponse(resp decide.Response, req decide.Request) ([]Suggestion, error) {
 	var out []Suggestion
 	for _, cat := range Categories {
@@ -184,6 +264,15 @@ func FromResponse(resp decide.Response, req decide.Request) ([]Suggestion, error
 			out = append(out, Suggestion{Kind: KindCategory, Value: cat, Source: SourceDecided})
 		}
 	}
+	if _, asked := req.Questions[QuestionScope]; asked {
+		choice, p, err := validateChoiceAnswer(resp, req, QuestionScope)
+		if err != nil {
+			return nil, err
+		}
+		if choice != NoneOption && p >= Threshold {
+			out = append(out, Suggestion{Kind: KindScope, Value: choice, Source: SourceDecided})
+		}
+	}
 	return out, nil
 }
 
@@ -194,7 +283,7 @@ func FromResponse(resp decide.Response, req decide.Request) ([]Suggestion, error
 // (OutcomeSkipped); a Decide error or a FromResponse error both yield
 // OutcomeFallback with FallbackClass naming why.
 func Suggest(ctx context.Context, dec decide.Decider, in Input) Result {
-	req := NewRequest(in.Query, in.Applied)
+	req := NewRequest(in.Query, in.Applied, in.Scopes)
 	n := len(req.Questions)
 	if n == 0 || dec == nil {
 		return Result{Outcome: OutcomeSkipped, QuestionsAsked: n}
