@@ -583,7 +583,7 @@ this codebase and is flagged for a research/UI-spec pass at plan time.
   3. The graph renders correctly in light and dark mode using the category colour tokens, and clicking a node selects it in the detail pane
   4. A tag popularity list drawn as linear bars with printed counts (amended 2026-09-27 from a quantile-sized cloud; Phase 5 D-12), in DOM order matching reading order, is built from `ListTags` counts; clicking a tag adds it as a filter chip, and the same counts are available via chip autocomplete without opening the cloud
 
-**Plans:** 7/9 plans executed
+**Plans:** 8/9 plans executed
 **UI hint**: yes
 
 Plans:
@@ -602,7 +602,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05-08-PLAN.md — /related rail Graph | Tags tabs, in-view tag filter, g key, trail, back and Escape to origin (D-01, D-04, D-11, D-13–D-15; TAGS-01, GRAPH-02)
+- [x] 05-08-PLAN.md — /related rail Graph | Tags tabs, in-view tag filter, g key, trail, back and Escape to origin (D-01, D-04, D-11, D-13–D-15; TAGS-01, GRAPH-02)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
