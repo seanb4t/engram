@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/understand"
@@ -73,7 +75,9 @@ func (d *deps) understandQuery(ctx context.Context, c caller, a understandArgs) 
 	}
 	q := strings.TrimSpace(a.Query)
 	if q == "" {
-		return understandResult{Enabled: true}, nil
+		res := understandResult{Enabled: true, Report: understand.Result{Outcome: understand.OutcomeSkipped}}
+		res.Report.Stamp(trace.SpanFromContext(ctx))
+		return res, nil
 	}
 	var scopes []string
 	if a.Scope == "" {
@@ -109,6 +113,7 @@ func (d *deps) understandQuery(ctx context.Context, c caller, a understandArgs) 
 	if d.understandAudit {
 		rep.Audit(ctx, q)
 	}
+	rep.Stamp(trace.SpanFromContext(ctx))
 	return understandResult{Enabled: true, Suggestions: rep.Suggestions, Report: rep}, nil
 }
 

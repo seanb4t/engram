@@ -14,7 +14,43 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// Span attribute keys for the always-on understanding telemetry (milestone
+// 2026-09-25.01 Phase 6, D-14, Tier 1). They are set on the AMBIENT span —
+// the Connect UnderstandQuery RPC span — never a span of this package's
+// own, so one span row answers "did understanding run, and how did it
+// resolve?" without a join. None of them carries the query, a scope or a
+// tag.
+const (
+	AttrOutcome         = "engram.understand.outcome"
+	AttrFallbackClass   = "engram.understand.fallback_class"
+	AttrSuggestionCount = "engram.understand.suggestion_count"
+	AttrQuestionsAsked  = "engram.understand.questions_asked"
+)
+
+// Stamp sets the Tier 1 attributes on span: the outcome, the suggestion
+// count, the questions-asked count, and the fallback class (only when set).
+// A zero-value Result (Outcome == "") stamps nothing — the off path (no
+// Result is ever built) and an error return both leave the span with none
+// of these attributes, which is the "off"/"not reached" signal.
+func (r Result) Stamp(span trace.Span) {
+	if r.Outcome == "" {
+		return
+	}
+	attrs := []attribute.KeyValue{
+		attribute.String(AttrOutcome, r.Outcome),
+		attribute.Int(AttrSuggestionCount, len(r.Suggestions)),
+		attribute.Int(AttrQuestionsAsked, r.QuestionsAsked),
+	}
+	if r.FallbackClass != "" {
+		attrs = append(attrs, attribute.String(AttrFallbackClass, r.FallbackClass))
+	}
+	span.SetAttributes(attrs...)
+}
 
 // AuditLabel returns the human-readable label for s's audit-line entry:
 // "kind:value" for category, scope and tag suggestions, and

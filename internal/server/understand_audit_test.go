@@ -13,6 +13,9 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/internal/decide"
@@ -195,4 +198,224 @@ func keysOf(m map[string]any) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// understandSpanScope is the seeded scope name used by
+// TestUnderstandQuerySpanTelemetry's "decided" subtest, so a leak check has
+// a real scope name to look for.
+const understandSpanScope = "repo:a/x"
+
+// newUnderstandSpanDecidedDecider answers gotcha 0.95, decision 0.93, the
+// other two categories at 0.1, time_window "none", and scope "none" (at
+// high probability, so no scope suggestion is added even though the scope
+// question is asked for a seeded scope) — TestUnderstandQuerySpanTelemetry's
+// "decided" subtest fixture.
+func newUnderstandSpanDecidedDecider() *scriptedDecider {
+	return &scriptedDecider{resp: decide.Response{Answers: map[string]decide.Answer{
+		understand.CategoryQuestion("convention"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.CategoryQuestion("gotcha"):     {Type: decide.QuestionNoul, Probability: 0.95},
+		understand.CategoryQuestion("decision"):   {Type: decide.QuestionNoul, Probability: 0.93},
+		understand.CategoryQuestion("preference"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.QuestionTimeWindow: {
+			Type:   decide.QuestionChoice,
+			Choice: "none",
+			Probabilities: map[string]float64{
+				"none":       0.97,
+				"today":      0.01,
+				"past_week":  0.01,
+				"past_month": 0.005,
+				"past_year":  0.005,
+			},
+		},
+		understand.QuestionScope: {
+			Type:   decide.QuestionChoice,
+			Choice: "none",
+			Probabilities: map[string]float64{
+				"none":              0.97,
+				understandSpanScope: 0.03,
+			},
+		},
+	}}}
+}
+
+// spanAttrInt64 returns the int64 value of the named attribute on sp, and
+// whether it was present.
+func spanAttrInt64(sp sdktrace.ReadOnlySpan, key string) (int64, bool) {
+	for _, kv := range sp.Attributes() {
+		if string(kv.Key) == key {
+			return kv.Value.AsInt64(), true
+		}
+	}
+	return 0, false
+}
+
+// spanHasAttr reports whether sp carries an attribute named key, regardless
+// of value.
+func spanHasAttr(sp sdktrace.ReadOnlySpan, key string) bool {
+	for _, kv := range sp.Attributes() {
+		if string(kv.Key) == key {
+			return true
+		}
+	}
+	return false
+}
+
+// assertNoLeakedText fails t if any string-valued attribute on any span in
+// spans contains needle.
+func assertNoLeakedText(t *testing.T, spans []sdktrace.ReadOnlySpan, needle string) {
+	t.Helper()
+	for _, sp := range spans {
+		for _, kv := range sp.Attributes() {
+			if kv.Value.Type().String() == "STRING" && strings.Contains(kv.Value.AsString(), needle) {
+				t.Errorf("span %q attribute %q = %q, want no occurrence of %q", sp.Name(), kv.Key, kv.Value.AsString(), needle)
+			}
+		}
+	}
+}
+
+// TestUnderstandQuerySpanTelemetry proves D-14 (Task 2): every enabled
+// UnderstandQuery call stamps bounded, text-free engram.understand.*
+// attributes on the ambient Connect RPC span; an off call stamps none of
+// them; no span attribute anywhere ever carries the query text, a matched
+// tag or a scope name.
+func TestUnderstandQuerySpanTelemetry(t *testing.T) {
+	newRecorder := func(t *testing.T) *tracetest.SpanRecorder {
+		t.Helper()
+		sr := tracetest.NewSpanRecorder()
+		prev := otel.GetTracerProvider()
+		otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr)))
+		t.Cleanup(func() { otel.SetTracerProvider(prev) })
+		return sr
+	}
+
+	understandQuerySpan := func(t *testing.T, sr *tracetest.SpanRecorder) sdktrace.ReadOnlySpan {
+		t.Helper()
+		for _, sp := range sr.Ended() {
+			if strings.HasSuffix(sp.Name(), "UnderstandQuery") {
+				return sp
+			}
+		}
+		t.Fatalf("no recorded span ending in UnderstandQuery: %v", sr.Ended())
+		return nil
+	}
+
+	t.Run("decided", func(t *testing.T) {
+		sr := newRecorder(t)
+
+		d, sp := newSpyDeps()
+		understandSeedScope(t, sp, "actor-A", understandSpanScope, "")
+		sp.tags = []store.TagCount{{Tag: "zeta", Count: 3}}
+		dec := newUnderstandSpanDecidedDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		span := understandQuerySpan(t, sr)
+		if got := spanAttr(span, understand.AttrOutcome); got != understand.OutcomeDecided {
+			t.Errorf("%s = %q, want %q", understand.AttrOutcome, got, understand.OutcomeDecided)
+		}
+		if got, ok := spanAttrInt64(span, understand.AttrSuggestionCount); !ok || got != 3 {
+			t.Errorf("%s = %v (present=%v), want 3", understand.AttrSuggestionCount, got, ok)
+		}
+		wantQuestions := int64(len(dec.lastRequest().Questions))
+		if got, ok := spanAttrInt64(span, understand.AttrQuestionsAsked); !ok || got != wantQuestions {
+			t.Errorf("%s = %v (present=%v), want %d", understand.AttrQuestionsAsked, got, ok, wantQuestions)
+		}
+		if spanHasAttr(span, understand.AttrFallbackClass) {
+			t.Errorf("%s present, want absent (outcome decided)", understand.AttrFallbackClass)
+		}
+
+		assertNoLeakedText(t, sr.Ended(), understandAuditSentinel)
+		assertNoLeakedText(t, sr.Ended(), "zeta")
+		assertNoLeakedText(t, sr.Ended(), understandSpanScope)
+	})
+
+	t.Run("fallback", func(t *testing.T) {
+		sr := newRecorder(t)
+
+		d, sp := newSpyDeps()
+		sp.tags = []store.TagCount{{Tag: "zeta", Count: 3}}
+		d.understandDec = &scriptedDecider{err: &decide.Error{Kind: decide.ErrDecisionTimeout}}
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		span := understandQuerySpan(t, sr)
+		if got := spanAttr(span, understand.AttrOutcome); got != understand.OutcomeFallback {
+			t.Errorf("%s = %q, want %q", understand.AttrOutcome, got, understand.OutcomeFallback)
+		}
+		if got := spanAttr(span, understand.AttrFallbackClass); got != "timeout" {
+			t.Errorf("%s = %q, want %q", understand.AttrFallbackClass, got, "timeout")
+		}
+		if got, ok := spanAttrInt64(span, understand.AttrSuggestionCount); !ok || got != 1 {
+			t.Errorf("%s = %v (present=%v), want 1", understand.AttrSuggestionCount, got, ok)
+		}
+
+		assertNoLeakedText(t, sr.Ended(), understandAuditSentinel)
+		assertNoLeakedText(t, sr.Ended(), "zeta")
+	})
+
+	t.Run("skipped", func(t *testing.T) {
+		sr := newRecorder(t)
+
+		d, _ := newSpyDeps()
+		d.understandDec = newUnderstandAuditScriptedDecider()
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "   "})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		span := understandQuerySpan(t, sr)
+		if got := spanAttr(span, understand.AttrOutcome); got != understand.OutcomeSkipped {
+			t.Errorf("%s = %q, want %q", understand.AttrOutcome, got, understand.OutcomeSkipped)
+		}
+		if got, ok := spanAttrInt64(span, understand.AttrSuggestionCount); !ok || got != 0 {
+			t.Errorf("%s = %v (present=%v), want 0", understand.AttrSuggestionCount, got, ok)
+		}
+		if got, ok := spanAttrInt64(span, understand.AttrQuestionsAsked); !ok || got != 0 {
+			t.Errorf("%s = %v (present=%v), want 0", understand.AttrQuestionsAsked, got, ok)
+		}
+
+		assertNoLeakedText(t, sr.Ended(), understandAuditSentinel)
+	})
+
+	t.Run("off", func(t *testing.T) {
+		sr := newRecorder(t)
+
+		d, _ := newSpyDeps()
+		// d.understandDec deliberately left nil.
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		span := understandQuerySpan(t, sr)
+		for _, key := range []string{
+			understand.AttrOutcome,
+			understand.AttrFallbackClass,
+			understand.AttrSuggestionCount,
+			understand.AttrQuestionsAsked,
+		} {
+			if spanHasAttr(span, key) {
+				t.Errorf("attribute %q present on an off call, want absent", key)
+			}
+		}
+
+		assertNoLeakedText(t, sr.Ended(), understandAuditSentinel)
+	})
 }
