@@ -376,7 +376,7 @@ out to the CLI.
 - [x] **Phase 2: Recall-First Search** - Honest id/short_id/text resolution, server-driven command palette, dense virtualized results row with facets and score/relevance (completed 2026-09-26)
 - [x] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided (completed 2026-09-27)
 - [x] **Phase 4: Curation Surfaces** - Supersede, archive/restore, rules, and scheduled views for operators, with resume-envelope coverage, an a11y audit, and an e2e round trip (completed 2026-09-27)
-- [ ] **Phase 5: Related-Memories Graph & Tag Cloud** - A local, keyboard/ARIA-equivalent related-memories graph and a count-based tag cloud
+- [x] **Phase 5: Related-Memories Graph & Tag Cloud** - A local, keyboard/ARIA-equivalent related-memories graph and a count-based tag cloud (completed 2026-09-28)
 - [ ] **Phase 6: Query Understanding** - Advisory, off-by-default NL-query-understanding filter chips
 
 ### Phase 1: Store Prerequisites
@@ -583,7 +583,7 @@ this codebase and is flagged for a research/UI-spec pass at plan time.
   3. The graph renders correctly in light and dark mode using the category colour tokens, and clicking a node selects it in the detail pane
   4. A tag popularity list drawn as linear bars with printed counts (amended 2026-09-27 from a quantile-sized cloud; Phase 5 D-12), in DOM order matching reading order, is built from `ListTags` counts; clicking a tag adds it as a filter chip, and the same counts are available via chip autocomplete without opening the cloud
 
-**Plans:** 9/9 plans executed
+**Plans:** 9/9 plans complete
 **UI hint**: yes
 
 Plans:
@@ -687,7 +687,7 @@ existing consumers and is flagged for a research pass at plan time.
 | 2. Headless CLI Client | v0.12.x | 4/4 | Complete    | 2026-09-26 |
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-09-27 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-09-27 |
-| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
+| 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | Complete    | 2026-09-28 |
 | 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-08-17 |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
 | 2. Interface Discoverability | v0.13.x | 6/6 | Complete | 2026-08-05 |
