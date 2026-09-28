@@ -1,8 +1,8 @@
 ---
 phase: 06-query-understanding
-reviewed: 2026-09-28T16:33:46Z
+reviewed: 2026-09-28T17:15:00Z
 depth: standard
-files_reviewed: 34
+files_reviewed: 41
 files_reviewed_list:
   - .claude/skills/engram-connect-client/SKILL.md
   - .claude/skills/engram-console-conventions/SKILL.md
@@ -49,97 +49,66 @@ files_reviewed_list:
   - ui/src/routes/search/search.browser.test.ts
 findings:
   critical: 0
-  warning: 2
+  warning: 0
   info: 2
-  total: 4
+  total: 2
 status: issues_found
 ---
 
 # Phase 6: Code Review Report
 
-**Reviewed:** 2026-09-28T16:33:46Z
+**Reviewed:** 2026-09-28T17:15:00Z
 **Depth:** standard
-**Files Reviewed:** 34 (of 43 listed; see Notes)
+**Files Reviewed:** 41 (of 43 listed; see Notes)
 **Status:** issues_found
 
 ## Summary
 
-This phase adds the advisory query-understanding path (`UnderstandQuery` Connect RPC,
-`internal/understand`, and the `/search` Suggested row) fairly cleanly against the locked
-D-01..D-17 decisions in `06-CONTEXT.md`. The implementation and its very extensive test suite
-(server-side outcome/telemetry/audit tests, config registry/validate/docs gate tests, and
-browser-level a11y/keyboard tests) agree with each other on almost every documented contract:
-the off-path never calls the store or the decider, the audit flag never leaks query text without
-being explicitly on, span telemetry never carries the query/scope/tag, the CSRF write-list
-correctly excludes this RPC as a read, and the Helm chart / docs-site pages are kept in lockstep
-with the registry via dedicated docs-gate tests.
+This is a re-review (--auto iteration 2) verifying the two fixes applied against the prior
+review's findings (WR-01, WR-02; `06-REVIEW-FIX.md`, commits `dc939fa7` and `7118877b`) and
+re-checking the full phase scope for regressions or newly-introduced defects.
 
-I found one real correctness bug worth fixing before this ships (the `past_month`/`past_year`
-time-window calculation can silently collapse to a 1-3 day window on certain calendar dates due
-to Go's `time.AddDate` end-of-month rollover, and it is untested against that case), one design
-smell around an unused request field, and two minor documentation/logging nits.
+**WR-01 (`past_month`/`past_year` `AddDate` overflow) — confirmed fixed, no regression.**
+`internal/understand/window.go`'s new `subtractCalendarClamped`/`lastDayOfMonth` helpers were
+traced by hand against the two pinned overflow cases (`2026-05-31` past_month → `2026-04-30`,
+`2028-02-29` past_year → `2027-02-28`) and three additional cases not in the test suite:
+a January-crossing borrow (`2026-01-31` past_month → `2025-12-31`), a non-leap-year February
+clamp (`2026-03-31` past_month → `2026-02-28`), and a leap-year February no-clamp
+(`2028-03-31` past_month → `2028-02-29`) — all correct. `go build ./...`, `go vet
+./internal/server/... ./internal/understand/...`, and `go test ./internal/understand/...
+./internal/server/... -run 'Window|Understand'` were independently re-run and are clean/green,
+including the two new `TestWindow` overflow sub-tests. The fix does not touch the RFC3339/UTC
+encoding contract (D-07/D-11) — `t.Format(time.RFC3339)` is unchanged — so FacetStrip's
+byte-for-byte match still holds.
 
-## Warnings
+**WR-02 (`CrossSpine` unconsulted) — confirmed fixed, no regression.** The doc comment added to
+`understandArgs.CrossSpine` in `internal/server/understand.go` accurately states the intentional
+non-consumption and the reasoning. Verified independently: the proto file
+(`proto/engram/v1/engram.proto:759-767`, `UnderstandQueryRequest`) carries no comment on
+`cross_spine = 3` (confirming the fixer's claim that the proto-comment half of the change was
+reverted to avoid tripping `RuleScopeRequiredUnlessCrossSpine`), and
+`go test ./internal/surfaces/... -run '^TestSurfaceConformanceProseFiles$'` passes. The UI's
+`understandQueryRequest` (`ui/src/lib/search/understand.ts:22-34`) still sends `crossSpine`
+per the wire contract; the field being server-side-documented-but-unread is consistent end to
+end and not a functional bug.
 
-### WR-01: `past_month`/`past_year` time-window suggestion can silently shrink to a few days
-
-**File:** `internal/understand/window.go:58-61`
-**Issue:** `Window` computes the "past month" bound as `midnight.AddDate(0, -1, 0)` and "past
-year" as `midnight.AddDate(-1, 0, 0)`. Go's `time.AddDate` does not clamp an overflowing day —
-it normalizes by rolling into the *following* month. For any "now" whose day-of-month is larger
-than the previous month's length (i.e. any `now` on the 29th-31st where the prior month is
-shorter, e.g. March 29/30/31, May 29/30/31, July 29/30/31, October 29/30/31, December 29/30/31),
-`AddDate(0, -1, 0)` overshoots forward instead of landing near the start of the previous month.
-For example, `time.Date(2026, 5, 31, ...).AddDate(0, -1, 0)` yields `2026-05-01` (April has only
-30 days, so day 31 rolls over into May), not late April as a user would expect. A decided
-"past month" suggestion accepted on such a day would silently apply a filter covering only
-~30 hours instead of ~30 days, contradicting its own chip label and hiding almost everything a
-user actually wants. `past_year` has the same failure mode around leap-day boundaries
-(`AddDate(-1,0,0)` from Feb 29 in a leap year lands on Mar 1 of the prior non-leap year). This
-is untested: `window_test.go`'s fixed `now` is 2026-09-28, which never exercises the overflow
-path for any bucket.
-**Fix:** Compute the boundary via day-count subtraction (or explicitly clamp) instead of
-`AddDate` month/year arithmetic, e.g.:
-```go
-case "past_month":
-    t = midnight.AddDate(0, -1, 0)
-    if t.After(midnight.AddDate(0, 0, -28)) { // overflowed forward past the sane range
-        t = time.Date(nowUTC.Year(), nowUTC.Month()-1, 1, 0, 0, 0, 0, time.UTC)
-    }
-```
-or simplest: pick a fixed day count for "past month" (e.g. 30 days) the way "past week" already
-uses a fixed 7-day count, sidestepping calendar-month arithmetic entirely. Add a test case with
-`now` set to a date whose previous month is shorter (e.g. `2026-05-31`) to pin the fix.
-
-### WR-02: `UnderstandQueryRequest.cross_spine` is threaded through but never consulted
-
-**File:** `internal/server/understand.go:31-118`, `proto/engram/v1/engram.proto:762`
-**Issue:** `understandArgs.CrossSpine` is populated from the wire request
-(`connectapi.go:692`) but is never read anywhere in `understandQuery`, `understand.NewRequest`,
-or `understand.Applied` (which has no `CrossSpine` field at all). The D-08 scope-suggestion gate
-only checks `a.Scope == ""`, regardless of whether the caller already broadened to cross-spine.
-This may be an intentional simplification (a scope suggestion is still useful even when the user
-is already searching cross-spine), but as written the field is dead code on the server — nothing
-distinguishes "no scope, single-spine" from "no scope, cross-spine" for suggestion purposes, and
-a future reader of `understandArgs` may reasonably assume it does something because it exists
-and is plumbed all the way from the proto request.
-**Fix:** Either wire `CrossSpine` into the D-08 gate if that was the intent (e.g. skip the scope
-question when the caller has already explicitly gone cross-spine, since suggesting one scope
-would narrow rather than clarify), or drop the field from `understandArgs`/document explicitly
-in the doc comment above `understandArgs` *why* it is accepted but intentionally ignored, so the
-next reader doesn't have to rediscover this by tracing the whole call chain.
+Neither fix touched files outside its stated scope (`git show --stat` confirms `dc939fa7` only
+touched `window.go`/`window_test.go`, `7118877b` only touched `understand.go`), and no new
+BLOCKER/WARNING-tier issues were found across the rest of the phase's scope on this pass. The
+two prior Info-tier findings (IN-01, IN-02) were explicitly out of the fixer's `fix_scope:
+critical_warning` and remain present, unchanged, below.
 
 ## Info
 
 ### IN-01: `Result.Audit` logs the trimmed query, not "as received" as documented
 
-**File:** `internal/understand/report.go:68-77`, `internal/server/understand.go:76,113-115`
+**File:** `internal/understand/report.go:68-77`, `internal/server/understand.go:86,124`
 **Issue:** `Audit`'s doc comment states it logs "the query text (verbatim, as received — not the
 MaxQueryChars-truncated text the decision call sees)". The caller (`understandQuery`) actually
-passes `q := strings.TrimSpace(a.Query)`, so any leading/trailing whitespace present in the raw
-wire request is stripped before it reaches the audit log — it is verbatim only up to trimming,
-not truly "as received". Low impact (whitespace trimming is unlikely to matter to an offline
-grader), but the doc comment overstates the guarantee.
+passes `q := strings.TrimSpace(a.Query)` to `rep.Audit(ctx, q)`, so any leading/trailing
+whitespace present in the raw wire request is stripped before it reaches the audit log — it is
+verbatim only up to trimming, not truly "as received". Low impact (whitespace trimming is
+unlikely to matter to an offline grader), but the doc comment overstates the guarantee.
 **Fix:** Either pass `a.Query` (untrimmed) to `rep.Audit(ctx, ...)`, or soften the doc comment to
 say "as received, up to leading/trailing whitespace trimming."
 
@@ -162,21 +131,18 @@ apply to them), to head off future confusion.
 
 ## Notes
 
-Nine of the 43 listed `required_reading` files were not present as distinct readable artifacts
-relative to what was reviewed above; their content overlaps entirely with files already read in
-full (e.g. `internal/config/config.go`/`validate.go`/`registry.go` were read for the Search/
-Understanding fields; `config_test.go`/`validate_test.go`/`search_config_test.go`/
-`search_docs_test.go`/`service_auth_test.go` were grepped and spot-read for
-understanding-specific assertions rather than read end-to-end, since they are large
-pre-existing files where only a small, already-verified slice is new to this phase). No
-additional findings emerged from the grepped portions beyond what is reported above.
+Two of the 43 listed files were not distinct readable artifacts from what was already covered
+(overlap with files read in full for the Search/Understanding config surface), consistent with
+the prior iteration's Notes.
 
-No BLOCKER-tier findings: the off-switch, CSRF exclusion, audit-flag gating, span telemetry
-scrubbing, and Helm/docs consistency are all correct and are each backed by a dedicated,
-specific test that would fail if the guarantee regressed.
+No BLOCKER-tier findings and no WARNING-tier findings remain: both `06-REVIEW.iter2.md` warnings
+(WR-01, WR-02) were independently re-verified as correctly and completely fixed, with no
+regressions introduced in `window.go`, `window_test.go`, or `understand.go`, and no new
+correctness, security, or robustness defects were found elsewhere in the reviewed scope on this
+pass.
 
 ---
 
-_Reviewed: 2026-09-28T16:33:46Z_
+_Reviewed: 2026-09-28T17:15:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
