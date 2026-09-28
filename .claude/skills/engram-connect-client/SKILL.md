@@ -1,6 +1,6 @@
 ---
 name: engram-connect-client
-description: The engram console's Connect-web client contract — the read vs CSRF-write client split, TanStack Query key conventions, the CSRF double-submit contract, the re-auth resume envelope, query discipline (AbortSignal, keepPreviousData, meta.silent), and a per-RPC request/response table for SearchMemories, ListMemories, GetMemory, ListScopes, and the milestone 2026-09-25.01 Phase 3 curation RPCs (SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags). Load before writing any ui/ code that calls the server.
+description: The engram console's Connect-web client contract — the read vs CSRF-write client split, TanStack Query key conventions, the CSRF double-submit contract, the re-auth resume envelope, query discipline (AbortSignal, keepPreviousData, meta.silent), and a per-RPC request/response table for SearchMemories, ListMemories, GetMemory, ListScopes, the milestone 2026-09-25.01 Phase 3 curation RPCs (SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags), and the Phase 6 UnderstandQuery RPC. Load before writing any ui/ code that calls the server.
 ---
 
 # engram SPA ↔ Connect Client Contract
@@ -189,3 +189,17 @@ under the operator; `'getMemory'`, `'relatedMemories'`, and `'listTags'` refetch
 those are not the "don't jump the list" surface. Any of the three writes can change what these
 seven read queries would return (an archived/restored/superseded record's recall visibility, its
 neighbourhood, or its tag counts).
+
+## Per-RPC contract (UnderstandQuery, milestone 2026-09-25.01 Phase 6)
+
+| RPC | Client | Request fields | Response fields | Query key |
+|---|---|---|---|---|
+| `UnderstandQuery` | `engram` (read, no CSRF — D-02) | `query, scope, crossSpine, categories, tags, createdAfter, createdBefore` | `enabled` (D-04 session latch: once `false`, no further calls this session), `suggestions[]` (`FilterSuggestion.kind` oneof `category \| timeWindow{createdAfter, createdBefore, label} \| scope \| tag`, plus `source`) | `['understandQuery', q]` — bare `q` only, never the merged effective params (the query-key pitfall this RPC exists to warn about); `staleTime: Infinity`, no `placeholderData`, `meta: { silent: true }` |
+
+Fires only for a committed `/search` query the classifier reads as `text` with zero operator
+chips and 2+ words (D-10) — `ui/src/lib/search/understand.ts`'s `understandEligible`. The request
+carries the currently-applied filters (scope/crossSpine/categories/tags/window) so the server can
+skip a question whose answer is already applied, but **the query key does not** — toggling a
+facet chip after the row has rendered never re-triggers the RPC, it only changes which
+already-fetched suggestions `visibleSuggestions` hides. `FilterSuggestion.kind` is the same
+`{ case, value }` oneof shape as `RelatedEdge.evidence` above — read `case` before `value`.

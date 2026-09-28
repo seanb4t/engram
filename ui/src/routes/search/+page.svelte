@@ -3,7 +3,7 @@
   // queries (every query passes `{ signal }` and keys on the full normalized
   // params), the honest results header, and the shared ResultsList/RecallSplit/
   // DetailPane set from plans 02-06/02-07.
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
@@ -29,6 +29,13 @@
     type SearchParams
   } from '$lib/search/params';
   import { classifyInput, type OperatorChip } from '$lib/search/classify';
+  import {
+    understandEligible,
+    understandQueryKey,
+    understandQueryRequest,
+    visibleSuggestions,
+    suggestionAnnouncement
+  } from '$lib/search/understand';
   import { relatedPath } from '$lib/search/related-params';
   import {
     rankedHeaderParts,
@@ -43,6 +50,7 @@
   } from '$lib/search/recall-header';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import FacetStrip from '$lib/components/FacetStrip.svelte';
+  import SuggestedRow from '$lib/components/SuggestedRow.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';
   import RecallSplit from '$lib/components/RecallSplit.svelte';
   import DetailPane from '$lib/components/DetailPane.svelte';
@@ -93,7 +101,10 @@
   }
 
   // The page's own query input (debounced 160ms into the URL, replaceState so
-  // typing doesn't spam browser history).
+  // typing doesn't spam browser history). `searchInputEl` also receives
+  // focus when a Suggested-row accept/dismiss empties the last chip
+  // (a11y gap-fill, not in D-13 — focus must never fall back to <body>).
+  let searchInputEl: HTMLInputElement | undefined = $state();
   let inputText = $state(params.q);
   $effect(() => {
     inputText = params.q;
@@ -163,6 +174,64 @@
     queryFn: ({ signal }) => engram.listScopes({}, { signal }),
     meta: { silent: true }
   }));
+
+  // NLQ-03/D-04/D-10: the Suggested row's UnderstandQuery. Keyed by bare q
+  // (never `effective` — the query-key pitfall note in 06-UI-SPEC.md), no
+  // placeholderData (a previous q's chips must never show for a new q), and
+  // latched off for the rest of the page session once a response reports
+  // enabled: false.
+  let understandingOff = $state(false);
+  const understandQ = createQuery(() => ({
+    queryKey: understandQueryKey(params.q),
+    queryFn: ({ signal }) =>
+      engram.understandQuery(
+        understandQueryRequest(classified.kind === 'text' ? classified.text : '', effective),
+        { signal }
+      ),
+    enabled: understandEligible(classified) && !understandingOff,
+    staleTime: Infinity,
+    meta: { silent: true }
+  }));
+  $effect(() => {
+    if (understandQ.data?.enabled === false) understandingOff = true;
+  });
+
+  // D-12: dismissals are held per-q in memory only — never the URL, never
+  // web storage — and forgotten whenever q changes, including a round trip
+  // back to a q seen before (the effect keeps `dismissed.q` synced to the
+  // live q the instant it changes, so returning to an old q value never
+  // resurrects a stale dismissal that happened to share that same q).
+  let dismissed = $state<{ q: string; keys: string[] }>({ q: params.q, keys: [] });
+  $effect(() => {
+    if (params.q !== dismissed.q) dismissed = { q: params.q, keys: [] };
+  });
+  const dismissedKeys = $derived(new Set(dismissed.q === params.q ? dismissed.keys : []));
+  function dismissSuggestion(key: string) {
+    dismissed = { q: params.q, keys: [...dismissed.keys, key] };
+  }
+
+  const visibleSuggested = $derived(
+    understandEligible(classified) && understandQ.data?.enabled
+      ? visibleSuggestions(understandQ.data.suggestions, effective, dismissedKeys)
+      : []
+  );
+
+  // D-13/06-UI-SPEC "Row appearance announcement": fires once per NEW
+  // UnderstandQuery response, never on a later accept/dismiss re-render of
+  // the SAME response — the effect's only tracked dependency is
+  // `understandQ.data` itself (everything else is read inside `untrack`),
+  // so toggling a facet chip or dismissing a suggestion never re-announces.
+  let suggestedAnnouncement = $state('');
+  $effect(() => {
+    const data = understandQ.data;
+    if (data === undefined) return;
+    untrack(() => {
+      const n = understandEligible(classified) && data.enabled
+        ? visibleSuggestions(data.suggestions, effective, dismissedKeys).length
+        : 0;
+      suggestedAnnouncement = n > 0 ? suggestionAnnouncement(n) : '';
+    });
+  });
 
   // D-09: operator-only input (no free text — e.g. `scope:x #tag is:gotcha`)
   // is an unranked ListMemories cursor listing that infinite-scrolls, never a
@@ -537,11 +606,13 @@
     <input
       class="search-input"
       aria-label="Search query"
+      bind:this={searchInputEl}
       value={inputText}
       oninput={onInput}
       placeholder="Search, paste an id, scope: #tag is:"
     />
   </div>
+  <p class="sr-only" aria-live="polite">{suggestedAnnouncement}</p>
   <FacetStrip
     params={effective}
     {categoryCounts}
@@ -553,6 +624,15 @@
     {tagsPanelOpen}
     ontagspanel={() => (tagsPanelOpen = !tagsPanelOpen)}
   />
+  {#if visibleSuggested.length > 0}
+    <SuggestedRow
+      suggestions={visibleSuggested}
+      params={effective}
+      onchange={(partial) => navigate({ ...partial, sel: '' })}
+      ondismiss={dismissSuggestion}
+      onempty={() => searchInputEl?.focus()}
+    />
+  {/if}
   <ResultsHeader
     parts={headerParts}
     {scopeHits}

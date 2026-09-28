@@ -26,6 +26,7 @@ import {
   ListTagsResponseSchema,
   EdgeType,
   SupersessionDirection,
+  SuggestionSource,
   type Memory
 } from '$lib/gen/engram_pb';
 import { headerSearch } from '$lib/search/header-search.svelte';
@@ -65,7 +66,8 @@ const {
   listTagsSpy,
   deleteMemorySpy,
   peekResumeSpy,
-  redirectToLoginSpy
+  redirectToLoginSpy,
+  understandQuerySpy
 } = await vi.hoisted(async () => {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/search');
@@ -101,7 +103,8 @@ const {
     listTagsSpy: vi.fn(),
     deleteMemorySpy: vi.fn(),
     peekResumeSpy: vi.fn(() => null),
-    redirectToLoginSpy: vi.fn()
+    redirectToLoginSpy: vi.fn(),
+    understandQuerySpy: vi.fn()
   };
 });
 
@@ -125,7 +128,8 @@ vi.mock('$lib/client', async (importOriginal) => {
       relatedMemories: relatedMemoriesSpy,
       listRules: listRulesSpy,
       listScheduled: listScheduledSpy,
-      listTags: listTagsSpy
+      listTags: listTagsSpy,
+      understandQuery: understandQuerySpy
     },
     engramWrite: {
       ...actual.engramWrite,
@@ -218,6 +222,7 @@ beforeEach(() => {
   deleteMemorySpy.mockReset();
   peekResumeSpy.mockReset().mockReturnValue(null);
   redirectToLoginSpy.mockReset();
+  understandQuerySpy.mockReset().mockResolvedValue({ enabled: false, suggestions: [] });
   sessionStorage.clear();
   pageState.url.href = 'http://localhost/search';
   // headerSearch is a module-level singleton (the ⌘K hand-off point, D-11) --
@@ -873,6 +878,31 @@ describe('/search Tags panel — AA audit', () => {
 
     await page.screenshot({ element: document.body });
     await auditBothThemes(document.body, '/search Tags panel');
+  });
+});
+
+describe('/search suggested filters — AA audit (DSYS-03)', () => {
+  it('a four-kind Suggested row passes the AA audit in both themes', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [
+        { kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED },
+        {
+          kind: { case: 'timeWindow', value: { createdAfter: '2026-09-21T00:00:00Z', createdBefore: '', label: 'past week' } },
+          source: SuggestionSource.DECIDED
+        },
+        { kind: { case: 'scope', value: 'repo:acme/x' }, source: SuggestionSource.DECIDED },
+        { kind: { case: 'tag', value: 'qdrant' }, source: SuggestionSource.MATCHED }
+      ]
+    });
+
+    const screen = await renderSearch();
+    const row = screen.getByRole('toolbar', { name: 'Suggested filters' });
+    await expect.element(row).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Suggested filter, not applied: #qdrant' })).toBeInTheDocument();
+
+    await auditBothThemes(row.element(), '/search suggested filters');
   });
 });
 
