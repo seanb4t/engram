@@ -1,19 +1,18 @@
 ---
 gsd_state_version: "1.0"
 milestone: 2026-09-25.01
-milestone_name: Console Overhaul
-status: Awaiting next milestone
+status: "Milestone 2026-09-25.01 shipped — PR #664"
 stopped_at: Milestone 2026-09-25.01 complete — awaiting next milestone
-last_updated: "2026-09-28T18:25:20.477Z"
+last_updated: "2026-09-28T18:48:37.525Z"
 last_activity: 2026-09-28
-last_activity_desc: Milestone 2026-09-25.01 completed and archived
-state_head: 2bd026a24bb397f7c8336216665bd6efa64c7dc0
+state_head: d24951ba2143ffa4ef7543c975a500ac1b32710d
 progress:
   total_phases: 7
   completed_phases: 7
   total_plans: 48
   completed_plans: 48
   percent: 100
+milestone_name: Console Overhaul
 current_phase: 6
 ---
 
@@ -30,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-09-28 after 2026-09-25.01 milestone)
 
 Phase: Milestone 2026-09-25.01 complete
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-28 — Milestone 2026-09-25.01 completed and archived
+Status: Milestone 2026-09-25.01 shipped — PR #664
+Last activity: 2026-09-28
 
 ## Deferred Items
 
