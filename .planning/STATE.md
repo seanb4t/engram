@@ -46,8 +46,8 @@ Items acknowledged and deferred at milestone close on 2026-08-12:
 | Category | Item | Status |
 |----------|------|--------|
 | pending_todo | research-versioned-payload-migration-mechanism (no stored schema/payload version; each evolution ships as its own one-shot operator command) | Now scoped into milestone 2026-08-12.01 (Phases 2–4: schema versioning foundation, migration registry/sweep, migration CLI) |
-| requirement | REQ-consent-adversarial-proof (Phase 4 — cold read proving a confidently-wrong proposal still stops at consent) | NOT SATISFIED — run cap exhausted at 3, all runs NOT-TEMPTED, terminal verdict NOT-OBTAINED; non-result accepted by Sean 2026-08-11. WINDOWS.md id 3 open. Carried as a v2 requirement in milestone 2026-08-12.01's REQUIREMENTS.md, still deferred |
-| broken_window | WINDOWS.md id 1, id 2 (Phase 03 TDD RED+GREEN landed in combined commits) | Open — RED genuinely observed, commit granularity only |
+| requirement | REQ-consent-adversarial-proof (Phase 4 — cold read proving a confidently-wrong proposal still stops at consent) | NOT SATISFIED — run cap exhausted at 3, all runs NOT-TEMPTED, terminal verdict NOT-OBTAINED; non-result accepted by Sean 2026-08-11. WINDOWS.md id 3 waived 2026-09-28 — tracked in GitHub #648 |
+| broken_window | WINDOWS.md id 1, id 2 (Phase 03 TDD RED+GREEN landed in combined commits) | Waived 2026-09-28 — tracked in GitHub #648 |
 | code | internal/surfaces/toolclass.go:141-142 stale rationale comment contradicting shipped Phase 03.1 idempotency_key support | Open — annotation value correct, comment wrong |
 | test | TestExitCodeBaseline env-var fragility (ENGRAM_REINDEX_TARGET / ENGRAM_MIGRATE_OWNER) | Tracked upstream as #476 |
 
@@ -83,6 +83,17 @@ Items acknowledged and deferred at milestone close on 2026-09-24 (milestone 2026
 | Category | Item | Status |
 |----------|------|--------|
 | deferred_items | Phase 03 / deferred-items.md: plain `go vet ./...` flags the duplicate `json:"dup"` tag at `cmd/engram/operator_view_test.go:441` (`TestOperatorViewDuplicateKeyAdjacency`) | acknowledged — deliberate duplicate-key fixture already marked `//nolint:govet`; golangci-lint (the project gate) reports 0 issues |
+
+Items acknowledged and deferred at milestone close on 2026-09-28 (milestone 2026-09-25.01, `override_closeout` — 5 newly acknowledged, 0 carried forward from a prior close; per Sean, every open item is tracked in GitHub, none in GSD state only):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_items | Phase 02 / deferred-items.md: `requirements mark-complete` cannot flip ROW-02/ROW-03 (traceability Status seeded `Mapped`) | acknowledged — resolved in `fc80584d` (40/40 requirements `Complete` and checked); recorded in GitHub #650 (closed) |
+| deferred_items | Phase 03 / deferred-items.md: `TestNoEscapedPatternsRepoWide` flagged the escaped key_links pattern in `03-04-PLAN.md` | acknowledged — re-quoted during Phase 3; keylinks gates pass at HEAD; recorded in GitHub #650 (closed) |
+| deferred_items | Phase 03 / deferred-items.md: `requirements mark-complete` cannot mark any requirement (`Mapped` vocabulary) | acknowledged — resolved in `fc80584d`; GitHub #650 (closed) |
+| deferred_items | Phase 04 / deferred-items.md: traceability Status column `Mapped` for all 40 rows | acknowledged — resolved in `fc80584d`; GitHub #650 (closed) |
+| deferred_items | Phase 05 / deferred-items.md: `requirements mark-complete` cannot flip GRAPH/TAGS ids | acknowledged — resolved in `fc80584d`; GitHub #650 (closed) |
+| broken_window | WINDOWS.md (all 20 open entries) | closed 2026-09-28 — 12 marked fixed; 8 waived as tracked in GitHub #642, #645, #646, #647, #648 (`open_count: 0`) |
 
 Archived copies of every acknowledged `deferred-items.md` live under `.planning/milestones/2026-08-12.01-phases/`, each carrying its own acknowledged status line.
 

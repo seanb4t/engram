@@ -18,7 +18,7 @@
   **What was verified instead:** GRAPH-01/02/03 and TAGS-01/02 are proven shipped by this phase's
   live evidence — `TestConsoleRelatedView` (chromedp, real browser + Qdrant), the WCAG 2.2 AA
   audits in `surfaces.browser.test.ts`, and the full `05-01`..`05-09` plan chain's own test suites.
-  status: open
+  status: acknowledged
   **Recommendation:** either (a) accept `Mapped` as a synonym for `Pending` in
   `cmdRequirementsMarkComplete`'s acceptance regex upstream in `gsd-tools`, or (b) migrate this
   project's `REQUIREMENTS.md` traceability Status column to the tool's own `Pending`/`Complete`/

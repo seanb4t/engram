@@ -2,7 +2,7 @@
 
 - `internal/keylinks` `TestNoEscapedPatternsRepoWide` fails against a pre-existing
   key_links pattern in a sibling plan file, not touched by 03-01's execution
-  status: resolved (orchestrator, post-wave-1 gate: pattern re-quoted to single-quoted YAML)
+  status: acknowledged
   **What:** `03-04-PLAN.md:65` declares a `key_links` pattern with an escaped
   quote shape (`d[.]st[.]List[(]ctx, \"\", c[.]Subj`) that the gate flags as
   `shape=escaping`, with the fix `d[.]st[.]List[(]ctx, "", c[.]Subj`.
@@ -19,7 +19,7 @@
 
 - `gsd-tools requirements mark-complete` structurally cannot mark ANY
   requirement complete in this milestone's `.planning/REQUIREMENTS.md`
-  status: open (not fixed — out of scope for this plan; report upstream or
+  status: acknowledged
   regenerate the traceability table)
   **What:** `requirements mark-complete <ID>` (gsd-core 1.14.0,
   `bin/lib/milestone.cjs` `cmdRequirementsMarkComplete`) only flips a
