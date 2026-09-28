@@ -158,6 +158,68 @@ describe('/related/[id] — fetches one RelatedMemories response and draws the n
   });
 });
 
+describe('/related/[id] — lanes, shared selection and evidence under the graph (Task 1)', () => {
+  it('clicking a tag-lane row lights every appearance of that candidate and opens the evidence section under the graph', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByTestId('lane-row-tag-tagvec-uuid')).toBeInTheDocument();
+
+    await screen.getByTestId('lane-row-tag-tagvec-uuid').click();
+
+    await expect.poll(() => screen.container.querySelector('[data-testid="lane-row-tag-tagvec-uuid"]')?.classList.contains('sel')).toBe(true);
+    expect(screen.container.querySelector('[data-testid="lane-row-tag-tagvec-uuid"]')?.classList.contains('sel-here')).toBe(true);
+
+    const vectorRow = screen.container.querySelector('[data-testid="lane-row-vector-tagvec-uuid"]');
+    expect(vectorRow?.classList.contains('sel')).toBe(true);
+    expect(vectorRow?.classList.contains('sel-here')).toBe(false);
+
+    expect(screen.container.querySelector('#gn-tagvec-uuid')?.classList.contains('sel')).toBe(true);
+
+    const rail = screen.container.querySelector('.rail');
+    const railChildren = Array.from(rail?.children ?? []);
+    const graphIdx = railChildren.findIndex((el) => el.matches('svg.graph'));
+    const evIdx = railChildren.findIndex((el) => el.matches('.ev'));
+    expect(graphIdx).toBeGreaterThanOrEqual(0);
+    expect(evIdx).toBeGreaterThan(graphIdx);
+
+    await expect.element(screen.getByRole('region', { name: 'Why tagv0000001 is related' })).toBeInTheDocument();
+    await expect.poll(() => rail?.querySelector('.ev')?.textContent ?? '').toContain('Why it is related · 2 edge types');
+    await expect.poll(() => rail?.querySelector('.ev')?.textContent ?? '').toContain('#engram 1.40');
+    await expect.element(screen.getByText('Evidence is per type; there is no blended score.')).toBeInTheDocument();
+  });
+
+  it('clicking the node opens the same evidence section', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('#gn-tagvec-uuid')).not.toBeNull();
+    screen.container.querySelector('#gn-tagvec-uuid')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await expect.element(screen.getByRole('region', { name: 'Why tagv0000001 is related' })).toBeInTheDocument();
+  });
+
+  it('esc × clears the selection and removes the evidence section', async () => {
+    const screen = await renderRelated();
+    await screen.getByTestId('lane-row-tag-tagvec-uuid').click();
+    await expect.element(screen.getByRole('region', { name: 'Why tagv0000001 is related' })).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Clear selection' }).click();
+    await expect.poll(() => screen.container.querySelectorAll('.ev').length).toBe(0);
+  });
+
+  it('Re-centre navigates to the selected candidate, carrying the anchor onto the trail', async () => {
+    const screen = await renderRelated();
+    await screen.getByTestId('lane-row-tag-tagvec-uuid').click();
+    await screen.getByRole('button', { name: 'Re-centre ↵' }).click();
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/related/tagv0000001?trail=anchor00001');
+  });
+
+  it('clicking the anchor node selects nothing', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('#gn-anchor-uuid')).not.toBeNull();
+    screen.container.querySelector('#gn-anchor-uuid')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(screen.container.querySelectorAll('.ev').length).toBe(0);
+  });
+});
+
 function zeroCandidateResponse(truncated = false) {
   const anchor = makeMemory({ id: 'anchor-uuid', shortId: 'anchor00001', category: 'decision', summary: 'Anchor summary' });
   return create(RelatedMemoriesResponseSchema, { anchor, truncated, related: [] });
