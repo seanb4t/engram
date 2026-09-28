@@ -424,3 +424,89 @@ describe('/related/[id] — supersession timeline, truncation and empty states (
     await page.screenshot();
   });
 });
+
+// Fixture: an anchor with n vector-only candidates (no other edge types),
+// so the vector lane and the graph's non-anchor nodes are exactly this set.
+function vectorHitsResponse(n: number, truncated = false) {
+  const anchor = makeMemory({ id: 'anchor-uuid', shortId: 'anchor00001', category: 'decision', summary: 'Anchor summary' });
+  const related = Array.from({ length: n }, (_, i) => {
+    const mem = makeMemory({
+      id: `v${i}-uuid`,
+      shortId: `vhit${String(i).padStart(2, '0')}0001`,
+      category: 'discovery',
+      summary: `Vector candidate ${i}`
+    });
+    const edge = create(RelatedEdgeSchema, {
+      type: EdgeType.VECTOR,
+      evidence: { case: 'vector', value: create(VectorEvidenceSchema, { score: 0.9 - i * 0.01 }) }
+    });
+    return create(RelatedMemorySchema, { memory: mem, edges: [edge] });
+  });
+  return create(RelatedMemoriesResponseSchema, { anchor, truncated, related });
+}
+
+describe('/related/[id] — vector "show all" mirrored in the graph, and legend/lane switches (Task 3)', () => {
+  it('collapses the vector lane to 8 rows with a "show all" row, and the graph draws only those 8 vector nodes', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(vectorHitsResponse(20));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(8);
+    await expect.element(screen.getByText('showing 8 of 20 · k=64 · show all 20 ▸')).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('[id^="gn-v"]').length).toBe(8);
+  });
+
+  it('expanding "show all" reveals every vector row and node with no second RelatedMemories call', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(vectorHitsResponse(20));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('showing 8 of 20 · k=64 · show all 20 ▸')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'showing 8 of 20 · k=64 · show all 20 ▸' }).click();
+
+    await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(20);
+    expect(screen.container.querySelectorAll('[id^="gn-v"]').length).toBe(20);
+    expect(relatedMemoriesSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('inserts the ceiling-cut clause in the collapsed row when the response is truncated', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(vectorHitsResponse(20, true));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('showing 8 of 20 · k=64 · ceiling cut the rest · show all 20 ▸')).toBeInTheDocument();
+  });
+
+  it('unchecking the tag legend checkbox hides the tag lane body, removes tag-only nodes from the graph, and flips the lane button to "show"', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('#gn-tag-uuid')).not.toBeNull();
+
+    await screen.getByRole('checkbox', { name: 'Show tag edges' }).click();
+
+    await expect.poll(() => screen.container.querySelector('#gn-tag-uuid')).toBeNull();
+    expect(screen.container.querySelectorAll('[data-testid^="lane-row-tag-"]').length).toBe(0);
+    await expect.element(screen.getByTestId('lane-toggle-tag')).toHaveTextContent('show');
+  });
+
+  it("pressing the tag lane's hide button unchecks the legend checkbox", async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByTestId('lane-toggle-tag').click();
+
+    await expect.element(screen.getByRole('checkbox', { name: 'Show tag edges' })).not.toBeChecked();
+  });
+
+  it('re-centring resets the vector lane back to collapsed', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(vectorHitsResponse(20));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('showing 8 of 20 · k=64 · show all 20 ▸')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'showing 8 of 20 · k=64 · show all 20 ▸' }).click();
+    await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(20);
+
+    await screen.getByTestId('lane-row-vector-v0-uuid').click();
+    relatedMemoriesSpy.mockClear().mockResolvedValue(vectorHitsResponse(20));
+    await screen.getByRole('button', { name: 'Re-centre ↵' }).click();
+
+    await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(8);
+  });
+});
