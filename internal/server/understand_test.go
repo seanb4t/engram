@@ -4,22 +4,30 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/decide"
+	"github.com/seanb4t/engram/internal/store"
+	"github.com/seanb4t/engram/internal/understand"
 )
 
 // understandWireQuestion and understandWireRequest are the minimal subset
@@ -174,8 +182,14 @@ func TestUnderstandQueryTracer(t *testing.T) {
 		if after-before != 1 {
 			t.Fatalf("decisions server saw %d new requests, want exactly 1", after-before)
 		}
-		if len(sp.callLog()) != 0 {
-			t.Errorf("spy store call log = %v, want empty (no store call for UnderstandQuery)", sp.callLog())
+		// D-08/D-09 (plan 06-02): understandQuery reads the caller's own
+		// readable scopes for the scope Choice's options (no scope applied)
+		// and its own tag vocabulary for local matching — two store calls,
+		// not "no store call at all" (06-01's original assertion,
+		// superseded by this behavior).
+		callLog := sp.callLog()
+		if len(callLog) != 2 || callLog[0].Method != "ListScopes" || callLog[1].Method != "ListTags" {
+			t.Errorf("spy store call log = %v, want exactly [ListScopes, ListTags]", callLog)
 		}
 	})
 
@@ -274,33 +288,52 @@ func TestUnderstandQueryTracer(t *testing.T) {
 }
 
 // scriptedDecider is a fake decide.Decider whose Decide/DecideMany calls
-// are mutex-guarded counters — used as d.decider (the consolidate client)
-// in TestUnderstandQueryOffNeverDecides to prove UnderstandQuery never
-// reaches it when d.understandDec is nil.
+// are mutex-guarded counters, returning a scripted (resp, err) pair and
+// recording the last Request handed to Decide — used both as d.decider
+// (the consolidate client) in TestUnderstandQueryOffNeverDecides to prove
+// UnderstandQuery never reaches it when d.understandDec is nil, and as
+// d.understandDec in tests that need to script a whole decide.Response and
+// inspect the captured request's questions/options.
 type scriptedDecider struct {
 	mu              sync.Mutex
 	decideCalls     int
 	decideManyCalls int
+	lastReq         decide.Request
+	resp            decide.Response
+	err             error
 }
 
-func (s *scriptedDecider) Decide(_ context.Context, _ decide.Request) (decide.Response, error) {
+func (s *scriptedDecider) Decide(_ context.Context, req decide.Request) (decide.Response, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.decideCalls++
-	return decide.Response{}, nil
+	s.lastReq = req
+	return s.resp, s.err
 }
 
 func (s *scriptedDecider) DecideMany(_ context.Context, reqs []decide.Request) []decide.Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.decideManyCalls++
-	return make([]decide.Result, len(reqs))
+	out := make([]decide.Result, len(reqs))
+	for i := range reqs {
+		out[i] = decide.Result{Response: s.resp, Err: s.err}
+	}
+	return out
 }
 
 func (s *scriptedDecider) counts() (decideCalls, decideManyCalls int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.decideCalls, s.decideManyCalls
+}
+
+// lastRequest returns the most recently captured Decide request, under
+// lock.
+func (s *scriptedDecider) lastRequest() decide.Request {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastReq
 }
 
 // TestUnderstandQueryOffNeverDecides proves D-04's isolation from the
@@ -326,5 +359,592 @@ func TestUnderstandQueryOffNeverDecides(t *testing.T) {
 	}
 	if len(sp.callLog()) != 0 {
 		t.Errorf("spy store call log = %v, want empty", sp.callLog())
+	}
+}
+
+// understandSeedScope upserts one readable record for owner in scope,
+// directly on the embedded spy — enough for spyStore.ListScopes (which
+// derives its scope set from readable records) to surface it.
+func understandSeedScope(t *testing.T, sp *spyStore, owner, scope, visibility string) {
+	t.Helper()
+	if err := sp.Upsert(context.Background(), store.Memory{
+		ID:         uuid.NewString(),
+		Content:    "x",
+		Scope:      scope,
+		Owner:      owner,
+		Visibility: visibility,
+		CreatedAt:  time.Now().UTC(),
+	}, []float32{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("seed %s/%s: %v", owner, scope, err)
+	}
+}
+
+// newUnderstandScopeScriptedDecider returns a scriptedDecider that answers
+// every category noul at 0.1 (never a category suggestion), the
+// "time_window" choice with "none" (Task 2 also asks this question — this
+// fixture stays scoped to proving the scope suggestion alone), and the
+// "scope" choice with Choice "repo:a/x" at probability 0.93 (>= Threshold)
+// — the fixed response TestUnderstandQueryScopeSuggestion's behavior block
+// specifies.
+func newUnderstandScopeScriptedDecider() *scriptedDecider {
+	return &scriptedDecider{resp: decide.Response{Answers: map[string]decide.Answer{
+		understand.CategoryQuestion("convention"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.CategoryQuestion("gotcha"):     {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.CategoryQuestion("decision"):   {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.CategoryQuestion("preference"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.QuestionTimeWindow: {
+			Type:   decide.QuestionChoice,
+			Choice: "none",
+			Probabilities: map[string]float64{
+				"none":       0.97,
+				"today":      0.01,
+				"past_week":  0.01,
+				"past_month": 0.005,
+				"past_year":  0.005,
+			},
+		},
+		understand.QuestionScope: {
+			Type:   decide.QuestionChoice,
+			Choice: "repo:a/x",
+			Probabilities: map[string]float64{
+				"repo:a/x": 0.93,
+				"none":     0.05,
+				"repo:a/y": 0.02,
+			},
+		},
+	}}}
+}
+
+// TestUnderstandQueryScopeSuggestion proves D-08 end to end (Task 1): the
+// caller's own readable scopes (from ListScopes, caller's Subject passed
+// straight through) become the scope Choice's options, another actor's
+// private scope is never offered, and a DECIDED scope choice at or above
+// Threshold becomes exactly one scope suggestion. With a scope already
+// applied, no scope question is asked and ListScopes is not called.
+func TestUnderstandQueryScopeSuggestion(t *testing.T) {
+	t.Run("scope suggested from caller's own readable scopes", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+		understandSeedScope(t, sp, "actor-A", "repo:a/y", "")
+		understandSeedScope(t, sp, "actor-B", "repo:b/secret", "")
+
+		dec := newUnderstandScopeScriptedDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "what did we record in the x repo"})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		resp, err := client.UnderstandQuery(context.Background(), req)
+		if err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		var scopeSuggestions []*engramv1.FilterSuggestion
+		for _, s := range resp.Msg.GetSuggestions() {
+			if _, ok := s.GetKind().(*engramv1.FilterSuggestion_Scope); ok {
+				scopeSuggestions = append(scopeSuggestions, s)
+			}
+		}
+		if len(scopeSuggestions) != 1 {
+			t.Fatalf("len(scope suggestions) = %d, want 1: %v", len(scopeSuggestions), resp.Msg.GetSuggestions())
+		}
+		if got := scopeSuggestions[0].GetScope(); got != "repo:a/x" {
+			t.Errorf("scope = %q, want %q", got, "repo:a/x")
+		}
+		if got := scopeSuggestions[0].GetSource(); got != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("source = %v, want SUGGESTION_SOURCE_DECIDED", got)
+		}
+
+		lastReq := dec.lastRequest()
+		q, ok := lastReq.Questions[understand.QuestionScope]
+		if !ok {
+			t.Fatal("scope question not asked")
+		}
+		if len(q.Options) != 3 {
+			t.Fatalf("len(Options) = %d, want 3 (repo:a/x, repo:a/y, none): %v", len(q.Options), q.Options)
+		}
+		for _, want := range []string{"repo:a/x", "repo:a/y", "none"} {
+			if _, ok := q.Options[want]; !ok {
+				t.Errorf("Options missing %q: %v", want, q.Options)
+			}
+		}
+		if _, ok := q.Options["repo:b/secret"]; ok {
+			t.Error("Options contains repo:b/secret, want never offered (another actor's private scope)")
+		}
+
+		var listScopesCalls int
+		for _, c := range sp.callLog() {
+			if c.Method == "ListScopes" {
+				listScopesCalls++
+				if c.Owner != "actor-A" {
+					t.Errorf("ListScopes owner = %q, want %q", c.Owner, "actor-A")
+				}
+			}
+		}
+		if listScopesCalls != 1 {
+			t.Errorf("ListScopes called %d times, want 1", listScopesCalls)
+		}
+	})
+
+	t.Run("scope already applied: no scope question, no ListScopes call", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+		understandSeedScope(t, sp, "actor-A", "repo:a/y", "")
+
+		dec := newUnderstandScopeScriptedDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{
+			Query: "what did we record in the x repo",
+			Scope: "repo:a/y",
+		})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		lastReq := dec.lastRequest()
+		if _, ok := lastReq.Questions[understand.QuestionScope]; ok {
+			t.Error("scope question asked, want none (scope already applied)")
+		}
+		for _, c := range sp.callLog() {
+			if c.Method == "ListScopes" {
+				t.Error("ListScopes called, want none (scope already applied)")
+			}
+		}
+	})
+}
+
+// newUnderstandAllKindsDecider returns a scriptedDecider answering gotcha
+// 0.95, decision 0.93, the other two categories at 0.1, time_window
+// "past_week" at 0.94, and scope "repo:a/x" at 0.96 — the fixed response
+// TestUnderstandQueryAllKinds' behavior block specifies.
+func newUnderstandAllKindsDecider() *scriptedDecider {
+	return &scriptedDecider{resp: decide.Response{Answers: map[string]decide.Answer{
+		understand.CategoryQuestion("convention"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.CategoryQuestion("gotcha"):     {Type: decide.QuestionNoul, Probability: 0.95},
+		understand.CategoryQuestion("decision"):   {Type: decide.QuestionNoul, Probability: 0.93},
+		understand.CategoryQuestion("preference"): {Type: decide.QuestionNoul, Probability: 0.1},
+		understand.QuestionTimeWindow: {
+			Type:   decide.QuestionChoice,
+			Choice: "past_week",
+			Probabilities: map[string]float64{
+				"past_week":  0.94,
+				"none":       0.03,
+				"today":      0.01,
+				"past_month": 0.01,
+				"past_year":  0.01,
+			},
+		},
+		understand.QuestionScope: {
+			Type:   decide.QuestionChoice,
+			Choice: "repo:a/x",
+			Probabilities: map[string]float64{
+				"repo:a/x": 0.96,
+				"none":     0.04,
+			},
+		},
+	}}}
+}
+
+// TestUnderstandQueryAllKinds proves Task 2's combined end-to-end shape
+// (D-05/D-07/D-08/D-09): one prose query yields every suggestion kind in
+// order — category gotcha, category decision, time_window, scope, then the
+// one matched tag — each with the right oneof case and source; the tag
+// vocabulary is read via the shared listTags core scoped to the caller and
+// the applied scope, and never reaches the decide request (the vocabulary
+// tags never appear in any question instruction, criterion, or option).
+func TestUnderstandQueryAllKinds(t *testing.T) {
+	t.Run("no scope applied", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+		sp.tags = []store.TagCount{{Tag: "qdrant-zeta", Count: 9}, {Tag: "omega-ci", Count: 3}}
+
+		dec := newUnderstandAllKindsDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "why does qdrant break in repo x lately"})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		resp, err := client.UnderstandQuery(context.Background(), req)
+		if err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		suggestions := resp.Msg.GetSuggestions()
+		if len(suggestions) != 5 {
+			t.Fatalf("len(Suggestions) = %d, want 5: %v", len(suggestions), suggestions)
+		}
+
+		if got := suggestions[0]; got.GetCategory() != "gotcha" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("suggestions[0] = %+v, want category=gotcha source=DECIDED", got)
+		}
+		if got := suggestions[1]; got.GetCategory() != "decision" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("suggestions[1] = %+v, want category=decision source=DECIDED", got)
+		}
+
+		tw := suggestions[2]
+		twMsg := tw.GetTimeWindow()
+		if twMsg == nil {
+			t.Fatalf("suggestions[2] = %+v, want a time_window suggestion", tw)
+		}
+		if !strings.HasSuffix(twMsg.GetCreatedAfter(), "T00:00:00Z") || len(twMsg.GetCreatedAfter()) != len("2026-09-28T00:00:00Z") {
+			t.Errorf("suggestions[2].created_after = %q, want a day-aligned RFC3339 midnight", twMsg.GetCreatedAfter())
+		}
+		if twMsg.GetCreatedBefore() != "" {
+			t.Errorf("suggestions[2].created_before = %q, want empty", twMsg.GetCreatedBefore())
+		}
+		if twMsg.GetLabel() != "past week" {
+			t.Errorf("suggestions[2].label = %q, want %q", twMsg.GetLabel(), "past week")
+		}
+		if tw.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("suggestions[2].Source = %v, want DECIDED", tw.GetSource())
+		}
+
+		if got := suggestions[3]; got.GetScope() != "repo:a/x" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_DECIDED {
+			t.Errorf("suggestions[3] = %+v, want scope=repo:a/x source=DECIDED", got)
+		}
+		if got := suggestions[4]; got.GetTag() != "qdrant-zeta" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_MATCHED {
+			t.Errorf("suggestions[4] = %+v, want tag=qdrant-zeta source=MATCHED", got)
+		}
+
+		var listTagsCalls int
+		for _, c := range sp.callLog() {
+			if c.Method == "ListTags" {
+				listTagsCalls++
+				if c.Owner != "actor-A" {
+					t.Errorf("ListTags owner = %q, want %q", c.Owner, "actor-A")
+				}
+				if scope, _ := c.Args.(string); scope != "" {
+					t.Errorf("ListTags scope = %q, want empty (no scope applied)", scope)
+				}
+			}
+		}
+		if listTagsCalls != 1 {
+			t.Errorf("ListTags called %d times, want 1", listTagsCalls)
+		}
+
+		lastReq := dec.lastRequest()
+		if len(lastReq.State) != 1 {
+			t.Fatalf("len(State) = %d, want 1", len(lastReq.State))
+		}
+		if _, ok := lastReq.State["query"]; !ok {
+			t.Error(`State["query"] missing`)
+		}
+		for _, forbidden := range []string{"qdrant-zeta", "omega-ci"} {
+			for name, q := range lastReq.Questions {
+				if strings.Contains(q.Instructions, forbidden) {
+					t.Errorf("question %q instructions contain vocabulary tag %q", name, forbidden)
+				}
+				if strings.Contains(q.WhenTrue, forbidden) || strings.Contains(q.WhenFalse, forbidden) {
+					t.Errorf("question %q criteria contain vocabulary tag %q", name, forbidden)
+				}
+				for opt, desc := range q.Options {
+					if strings.Contains(opt, forbidden) || strings.Contains(desc, forbidden) {
+						t.Errorf("question %q option %q contains vocabulary tag %q", name, opt, forbidden)
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("scope applied: ListTags scoped to it", func(t *testing.T) {
+		d, sp := newSpyDeps()
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+		sp.tags = []store.TagCount{{Tag: "qdrant-zeta", Count: 9}}
+
+		dec := newUnderstandAllKindsDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{
+			Query: "why does qdrant break in repo x lately",
+			Scope: "repo:a/x",
+		})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		var found bool
+		for _, c := range sp.callLog() {
+			if c.Method == "ListTags" {
+				found = true
+				if scope, _ := c.Args.(string); scope != "repo:a/x" {
+					t.Errorf("ListTags scope = %q, want %q", scope, "repo:a/x")
+				}
+			}
+		}
+		if !found {
+			t.Error("ListTags not called")
+		}
+	})
+}
+
+// TestUnderstandQueryDecisionFailureZeroSuggestions proves a Decide error
+// degrades to zero decided suggestions rather than an RPC error
+// (D-05/D-12/D-17): only the locally-matched tag suggestion survives.
+func TestUnderstandQueryDecisionFailureZeroSuggestions(t *testing.T) {
+	d, sp := newSpyDeps()
+	understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+	sp.tags = []store.TagCount{{Tag: "qdrant-zeta", Count: 9}}
+
+	dec := &scriptedDecider{err: &decide.Error{Kind: decide.ErrDecisionTimeout}}
+	d.understandDec = dec
+	client := understandTestClient(t, d)
+
+	req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "why does qdrant break"})
+	req.Header().Set("X-Test-Actor", "actor-A")
+	resp, err := client.UnderstandQuery(context.Background(), req)
+	if err != nil {
+		t.Fatalf("UnderstandQuery: %v", err)
+	}
+	if !resp.Msg.GetEnabled() {
+		t.Error("Enabled = false, want true")
+	}
+	suggestions := resp.Msg.GetSuggestions()
+	if len(suggestions) != 1 {
+		t.Fatalf("len(Suggestions) = %d, want 1: %v", len(suggestions), suggestions)
+	}
+	if got := suggestions[0]; got.GetTag() != "qdrant-zeta" || got.GetSource() != engramv1.SuggestionSource_SUGGESTION_SOURCE_MATCHED {
+		t.Errorf("suggestions[0] = %+v, want tag=qdrant-zeta source=MATCHED", got)
+	}
+}
+
+// failingListTagsStore embeds *spyStore and overrides ListTags to return a
+// scripted error, mirroring failingListScopesStore's shape
+// (crossspinecoverage_test.go).
+type failingListTagsStore struct {
+	*spyStore
+	listErr error
+}
+
+func (f *failingListTagsStore) ListTags(ctx context.Context, subj store.Subject, scope string, limit uint64) ([]store.TagCount, bool, error) {
+	if f.listErr != nil {
+		return nil, false, f.listErr
+	}
+	return f.spyStore.ListTags(ctx, subj, scope, limit)
+}
+
+// TestUnderstandQueryStoreFailureDegrades proves ListScopes/listTags read
+// failures degrade to fewer suggestions rather than an RPC error: each
+// failure logs its own fixed Warn line carrying no query, scope or tag
+// text.
+func TestUnderstandQueryStoreFailureDegrades(t *testing.T) {
+	const sentinelQuery = "sensitive query about repo:secret and tag-x"
+
+	t.Run("ListScopes failure: no scope question, RPC succeeds", func(t *testing.T) {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		sp := newSpyStore()
+		fs := &failingListScopesStore{spyStore: sp, listErr: errors.New("boom")}
+		d := &deps{st: fs, em: fakeEmbedder{}}
+
+		dec := newUnderstandScopeScriptedDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: sentinelQuery})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		lastReq := dec.lastRequest()
+		if _, ok := lastReq.Questions[understand.QuestionScope]; ok {
+			t.Error("scope question asked, want none (ListScopes failed)")
+		}
+
+		out := buf.String()
+		if !strings.Contains(out, "query understanding: scope options unavailable") {
+			t.Errorf("log output = %q, want the scope-unavailable Warn line", out)
+		}
+		if strings.Contains(out, "sensitive query") || strings.Contains(out, "repo:secret") || strings.Contains(out, "tag-x") {
+			t.Errorf("log output leaks query/scope/tag text: %q", out)
+		}
+	})
+
+	t.Run("ListTags failure: no tag suggestions, RPC succeeds", func(t *testing.T) {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		sp := newSpyStore()
+		fs := &failingListTagsStore{spyStore: sp, listErr: errors.New("boom")}
+		d := &deps{st: fs, em: fakeEmbedder{}}
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+
+		dec := newUnderstandScopeScriptedDecider()
+		d.understandDec = dec
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: sentinelQuery})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		resp, err := client.UnderstandQuery(context.Background(), req)
+		if err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+		for _, s := range resp.Msg.GetSuggestions() {
+			if s.GetTag() != "" {
+				t.Errorf("suggestions contains a tag %v, want none (ListTags failed)", s)
+			}
+		}
+
+		out := buf.String()
+		if !strings.Contains(out, "query understanding: tag vocabulary unavailable") {
+			t.Errorf("log output = %q, want the tag-vocabulary-unavailable Warn line", out)
+		}
+		if strings.Contains(out, "sensitive query") || strings.Contains(out, "repo:secret") || strings.Contains(out, "tag-x") {
+			t.Errorf("log output leaks query/scope/tag text: %q", out)
+		}
+	})
+}
+
+// TestUnderstandDeciderBoundedNoRetry proves D-01a's bound through the
+// real production resolver (understandDecider): a hung decisions server
+// returns in under 1s with zero decided suggestions after exactly one
+// request, and a 503 is never retried.
+func TestUnderstandDeciderBoundedNoRetry(t *testing.T) {
+	t.Run("hung", func(t *testing.T) {
+		var reqs int32
+		release := make(chan struct{})
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt32(&reqs, 1)
+			select {
+			case <-r.Context().Done():
+			case <-release:
+			}
+		}))
+		// t.Cleanup runs LIFO: closing release BEFORE srv.Close() unblocks
+		// the still-parked handler goroutine first, so Close() (which waits
+		// for in-flight connections) doesn't itself hang — connect-go/net/http
+		// do not reliably close the server-side connection on client-side
+		// context cancellation alone (the hung-server harness gotcha).
+		t.Cleanup(func() { srv.Close() })
+		t.Cleanup(func() { close(release) })
+
+		cfg := &config.Config{}
+		cfg.Decisions.Provider = "jev"
+		cfg.Decisions.BaseURL = srv.URL
+		cfg.Search.UnderstandingTimeout = "150ms"
+
+		dec, err := understandDecider(cfg)
+		if err != nil {
+			t.Fatalf("understandDecider: %v", err)
+		}
+		if dec == nil {
+			t.Fatal("understandDecider returned nil")
+		}
+
+		d, sp := newSpyDeps()
+		d.understandDec = dec
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+
+		start := time.Now()
+		res, err := d.understandQuery(context.Background(), caller{Subj: store.Authenticated("actor-A")}, understandArgs{Query: "what did we decide"})
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatalf("understandQuery: %v", err)
+		}
+		if elapsed >= time.Second {
+			t.Errorf("understandQuery took %v, want under 1s", elapsed)
+		}
+		if !res.Enabled {
+			t.Error("Enabled = false, want true")
+		}
+		for _, s := range res.Suggestions {
+			if s.Source == understand.SourceDecided {
+				t.Errorf("Suggestions contains a decided suggestion %v, want zero", s)
+			}
+		}
+		if got := atomic.LoadInt32(&reqs); got != 1 {
+			t.Errorf("decisions server saw %d requests, want exactly 1", got)
+		}
+	})
+
+	t.Run("503", func(t *testing.T) {
+		var reqs int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			atomic.AddInt32(&reqs, 1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+
+		cfg := &config.Config{}
+		cfg.Decisions.Provider = "jev"
+		cfg.Decisions.BaseURL = srv.URL
+		cfg.Search.UnderstandingTimeout = "150ms"
+
+		dec, err := understandDecider(cfg)
+		if err != nil {
+			t.Fatalf("understandDecider: %v", err)
+		}
+
+		d, sp := newSpyDeps()
+		d.understandDec = dec
+		understandSeedScope(t, sp, "actor-A", "repo:a/x", "")
+
+		res, err := d.understandQuery(context.Background(), caller{Subj: store.Authenticated("actor-A")}, understandArgs{Query: "what did we decide"})
+		if err != nil {
+			t.Fatalf("understandQuery: %v", err)
+		}
+		for _, s := range res.Suggestions {
+			if s.Source == understand.SourceDecided {
+				t.Errorf("Suggestions contains a decided suggestion %v, want zero", s)
+			}
+		}
+		if got := atomic.LoadInt32(&reqs); got != 1 {
+			t.Errorf("decisions server saw %d requests, want exactly 1 (no retry)", got)
+		}
+	})
+}
+
+// TestUnderstandQueryStateless proves UnderstandQuery is stateless
+// (NLQ-02): two identical calls each make at most one Decide call and
+// return byte-identical responses, and the spy store's call log records
+// only reads (ListScopes/ListTags), never a write.
+func TestUnderstandQueryStateless(t *testing.T) {
+	d, sp := newSpyDeps()
+	understandSeedScope(t, sp, "actor-A", "repo:a/x", "") // seeding: one Upsert call, not part of the RPC calls checked below
+	sp.tags = []store.TagCount{{Tag: "qdrant-zeta", Count: 9}}
+	baseline := len(sp.callLog())
+
+	dec := newUnderstandAllKindsDecider()
+	d.understandDec = dec
+	client := understandTestClient(t, d)
+
+	req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "why does qdrant break in repo x lately"})
+	req.Header().Set("X-Test-Actor", "actor-A")
+
+	resp1, err := client.UnderstandQuery(context.Background(), req)
+	if err != nil {
+		t.Fatalf("UnderstandQuery (1st): %v", err)
+	}
+	resp2, err := client.UnderstandQuery(context.Background(), req)
+	if err != nil {
+		t.Fatalf("UnderstandQuery (2nd): %v", err)
+	}
+	if !proto.Equal(resp1.Msg, resp2.Msg) {
+		t.Errorf("responses differ: %v != %v", resp1.Msg, resp2.Msg)
+	}
+
+	decideCalls, decideManyCalls := dec.counts()
+	if decideCalls != 2 {
+		t.Errorf("decideCalls = %d, want 2", decideCalls)
+	}
+	if decideManyCalls != 0 {
+		t.Errorf("decideManyCalls = %d, want 0", decideManyCalls)
+	}
+
+	callLog := sp.callLog()
+	for _, c := range callLog[baseline:] {
+		if c.Method != "ListScopes" && c.Method != "ListTags" {
+			t.Errorf("spy store call log (from the two RPC calls) contains %q, want only ListScopes/ListTags entries", c.Method)
+		}
 	}
 }
