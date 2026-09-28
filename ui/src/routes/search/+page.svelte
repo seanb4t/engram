@@ -29,7 +29,12 @@
     type SearchParams
   } from '$lib/search/params';
   import { classifyInput, type OperatorChip } from '$lib/search/classify';
-  import { understandEligible, understandQueryKey, understandQueryRequest } from '$lib/search/understand';
+  import {
+    understandEligible,
+    understandQueryKey,
+    understandQueryRequest,
+    visibleSuggestions
+  } from '$lib/search/understand';
   import { relatedPath } from '$lib/search/related-params';
   import {
     rankedHeaderParts,
@@ -186,8 +191,25 @@
   $effect(() => {
     if (understandQ.data?.enabled === false) understandingOff = true;
   });
+
+  // D-12: dismissals are held per-q in memory only — never the URL, never
+  // web storage — and forgotten whenever q changes, including a round trip
+  // back to a q seen before (the effect keeps `dismissed.q` synced to the
+  // live q the instant it changes, so returning to an old q value never
+  // resurrects a stale dismissal that happened to share that same q).
+  let dismissed = $state<{ q: string; keys: string[] }>({ q: params.q, keys: [] });
+  $effect(() => {
+    if (params.q !== dismissed.q) dismissed = { q: params.q, keys: [] };
+  });
+  const dismissedKeys = $derived(new Set(dismissed.q === params.q ? dismissed.keys : []));
+  function dismissSuggestion(key: string) {
+    dismissed = { q: params.q, keys: [...dismissed.keys, key] };
+  }
+
   const visibleSuggested = $derived(
-    understandEligible(classified) && understandQ.data?.enabled ? understandQ.data.suggestions : []
+    understandEligible(classified) && understandQ.data?.enabled
+      ? visibleSuggestions(understandQ.data.suggestions, effective, dismissedKeys)
+      : []
   );
 
   // D-09: operator-only input (no free text — e.g. `scope:x #tag is:gotcha`)
@@ -584,6 +606,7 @@
       suggestions={visibleSuggested}
       params={effective}
       onchange={(partial) => navigate({ ...partial, sel: '' })}
+      ondismiss={dismissSuggestion}
     />
   {/if}
   <ResultsHeader

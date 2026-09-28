@@ -1388,4 +1388,334 @@ describe('search route — suggested filters (NLQ-03)', () => {
     expect(suggestedHref).toBe(manualHref);
     expect(suggestedCalls).toEqual(manualCalls);
   });
+
+  it('accepts a suggested time_window chip to the same URL and SearchMemories calls the manual created-after date input produces', async () => {
+    const startUrl = 'http://localhost/search?q=what%20did%20we%20decide';
+    const understandResponse = create(UnderstandQueryResponseSchema, {
+      enabled: true,
+      suggestions: [
+        {
+          kind: { case: 'timeWindow', value: { createdAfter: '2026-09-21T00:00:00Z', createdBefore: '', label: 'past week' } },
+          source: SuggestionSource.DECIDED
+        }
+      ]
+    });
+    understandQuerySpy.mockReset().mockResolvedValue(understandResponse);
+    pageState.url.href = startUrl;
+
+    const screen = await renderSearch();
+    const chip = screen.getByRole('button', { name: 'Suggested filter, not applied: past week' });
+    await expect.element(chip).toBeInTheDocument();
+    const callsBeforeAccept = searchMemoriesSpy.mock.calls.length;
+    await chip.click();
+    await expect.poll(() => pageState.url.searchParams.get('after')).toBe('2026-09-21T00:00:00Z');
+    const suggestedHref = pageState.url.href;
+    const suggestedCalls = searchMemoriesSpy.mock.calls.slice(callsBeforeAccept);
+
+    await screen.unmount();
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    pageState.url.href = startUrl;
+    searchMemoriesSpy.mockReset().mockResolvedValue(emptySearchResult());
+    understandQuerySpy.mockReset().mockResolvedValue({ enabled: false, suggestions: [] });
+
+    const screen2 = await renderSearch();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const manualCallsBefore = searchMemoriesSpy.mock.calls.length;
+    await screen2.getByRole('button', { name: 'created window' }).click();
+    await screen2.getByLabelText('created after').fill('2026-09-21');
+    await expect.poll(() => pageState.url.searchParams.get('after')).toBe('2026-09-21T00:00:00Z');
+    const manualHref = pageState.url.href;
+    const manualCalls = searchMemoriesSpy.mock.calls.slice(manualCallsBefore);
+
+    expect(suggestedHref).toBe(manualHref);
+    expect(suggestedCalls).toEqual(manualCalls);
+  });
+
+  it('accepts a suggested scope chip to the same URL and SearchMemories calls the manual ScopeCombobox selection produces', async () => {
+    const startUrl = 'http://localhost/search?q=what%20did%20we%20decide';
+    const understandResponse = create(UnderstandQueryResponseSchema, {
+      enabled: true,
+      suggestions: [{ kind: { case: 'scope', value: 'repo:acme/x' }, source: SuggestionSource.DECIDED }]
+    });
+    listScopesSpy.mockReset().mockResolvedValue({ scopes: [{ scope: 'repo:acme/x', count: 5n }], approximate: false });
+    understandQuerySpy.mockReset().mockResolvedValue(understandResponse);
+    pageState.url.href = startUrl;
+
+    const screen = await renderSearch();
+    const chip = screen.getByRole('button', { name: 'Suggested filter, not applied: repo:acme/x' });
+    await expect.element(chip).toBeInTheDocument();
+    const callsBeforeAccept = searchMemoriesSpy.mock.calls.length;
+    await chip.click();
+    await expect.poll(() => pageState.url.searchParams.get('scope')).toBe('repo:acme/x');
+    const suggestedHref = pageState.url.href;
+    const suggestedCalls = searchMemoriesSpy.mock.calls.slice(callsBeforeAccept);
+
+    await screen.unmount();
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    pageState.url.href = startUrl;
+    searchMemoriesSpy.mockReset().mockResolvedValue(emptySearchResult());
+    understandQuerySpy.mockReset().mockResolvedValue({ enabled: false, suggestions: [] });
+
+    const screen2 = await renderSearch();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const manualCallsBefore = searchMemoriesSpy.mock.calls.length;
+    await screen2.getByRole('button', { name: /any scope/ }).click();
+    await screen2.getByText('repo:acme/x').click();
+    await expect.poll(() => pageState.url.searchParams.get('scope')).toBe('repo:acme/x');
+    const manualHref = pageState.url.href;
+    const manualCalls = searchMemoriesSpy.mock.calls.slice(manualCallsBefore);
+
+    expect(suggestedHref).toBe(manualHref);
+    expect(suggestedCalls).toEqual(manualCalls);
+  });
+
+  it('accepts a suggested tag chip to the same URL and SearchMemories calls the manual Tags panel bar click produces', async () => {
+    const startUrl = 'http://localhost/search?q=what%20did%20we%20decide';
+    const understandResponse = create(UnderstandQueryResponseSchema, {
+      enabled: true,
+      suggestions: [{ kind: { case: 'tag', value: 'qdrant' }, source: SuggestionSource.MATCHED }]
+    });
+    understandQuerySpy.mockReset().mockResolvedValue(understandResponse);
+    pageState.url.href = startUrl;
+
+    const screen = await renderSearch();
+    const chip = screen.getByRole('button', { name: 'Suggested filter, not applied: #qdrant' });
+    await expect.element(chip).toBeInTheDocument();
+    const callsBeforeAccept = searchMemoriesSpy.mock.calls.length;
+    await chip.click();
+    await expect.poll(() => pageState.url.searchParams.get('tag')).toBe('qdrant');
+    const suggestedHref = pageState.url.href;
+    const suggestedCalls = searchMemoriesSpy.mock.calls.slice(callsBeforeAccept);
+
+    await screen.unmount();
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    pageState.url.href = startUrl;
+    searchMemoriesSpy.mockReset().mockResolvedValue(emptySearchResult());
+    understandQuerySpy.mockReset().mockResolvedValue({ enabled: false, suggestions: [] });
+
+    const screen2 = await renderSearch();
+    await expect.poll(() => searchMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const manualCallsBefore = searchMemoriesSpy.mock.calls.length;
+    await screen2.getByRole('button', { name: '▦ Tags panel' }).click();
+    await screen2.getByRole('option', { name: /^#qdrant/ }).click();
+    await expect.poll(() => pageState.url.searchParams.get('tag')).toBe('qdrant');
+    const manualHref = pageState.url.href;
+    const manualCalls = searchMemoriesSpy.mock.calls.slice(manualCallsBefore);
+
+    expect(suggestedHref).toBe(manualHref);
+    expect(suggestedCalls).toEqual(manualCalls);
+  });
+
+  it('hides a category suggestion already reflected in the URL while other kinds still render', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide&cat=decision';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [
+        { kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED },
+        { kind: { case: 'tag', value: 'qdrant' }, source: SuggestionSource.MATCHED }
+      ]
+    });
+    const screen = await renderSearch();
+    await expect.element(screen.getByRole('button', { name: 'Suggested filter, not applied: #qdrant' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Suggested filter, not applied: decision' })).not.toBeInTheDocument();
+  });
+
+  it('hides a scope suggestion while any scope is applied', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide&scope=repo%3Aother';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [{ kind: { case: 'scope', value: 'repo:acme/x' }, source: SuggestionSource.DECIDED }]
+    });
+    const screen = await renderSearch();
+    await new Promise((r) => setTimeout(r, 20));
+    await expect.element(screen.getByRole('toolbar', { name: 'Suggested filters' })).not.toBeInTheDocument();
+  });
+
+  it('hides a time_window suggestion while any created bound is applied', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide&after=2020-01-01T00%3A00%3A00Z';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [
+        { kind: { case: 'timeWindow', value: { createdAfter: '2026-09-21T00:00:00Z', createdBefore: '', label: 'past week' } }, source: SuggestionSource.DECIDED }
+      ]
+    });
+    const screen = await renderSearch();
+    await new Promise((r) => setTimeout(r, 20));
+    await expect.element(screen.getByRole('toolbar', { name: 'Suggested filters' })).not.toBeInTheDocument();
+  });
+
+  it('dismissing a chip is per-q, never touches the URL, and forgets the dismissal on a round trip through another q', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [{ kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED }]
+    });
+    const screen = await renderSearch();
+    const chip = screen.getByRole('button', { name: 'Suggested filter, not applied: decision' });
+    await expect.element(chip).toBeInTheDocument();
+
+    gotoSpy.mockClear();
+    const callsBefore = searchMemoriesSpy.mock.calls.length;
+    await screen.getByRole('button', { name: 'Dismiss suggested filter: decision' }).click();
+    await expect.element(chip).not.toBeInTheDocument();
+    expect(gotoSpy).not.toHaveBeenCalled();
+    expect(searchMemoriesSpy.mock.calls.length).toBe(callsBefore);
+
+    pageState.url.href = 'http://localhost/search?q=totally%20different%20query';
+    await new Promise((r) => setTimeout(r, 20));
+    const callsForQ2 = understandQuerySpy.mock.calls.length;
+
+    // Coming back to q1 must be a cache hit (staleTime: Infinity, bare-q key)
+    // — no additional UnderstandQuery call — and the dismissed chip must
+    // reappear, since the dismissal was scoped to q1 and forgotten the
+    // moment q changed away from it (never restored on a later return to
+    // that same q string).
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    await expect.element(screen.getByRole('button', { name: 'Suggested filter, not applied: decision' })).toBeInTheDocument();
+    expect(understandQuerySpy.mock.calls.length).toBe(callsForQ2);
+  });
+
+  it('never calls UnderstandQuery for an id, a short_id, an operator-bearing query, or a single word', async () => {
+    understandQuerySpy.mockReset().mockResolvedValue({ enabled: true, suggestions: [] });
+    for (const q of ['753aba22-0000-4000-8000-000000000001', 'k3m9p2qr7a', '#ci flaky test', 'qdrant']) {
+      understandQuerySpy.mockClear();
+      pageState.url.href = `http://localhost/search?q=${encodeURIComponent(q)}`;
+      const screen = await renderSearch();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(understandQuerySpy).not.toHaveBeenCalled();
+      await screen.unmount();
+      qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    }
+  });
+
+  it('debounces keystrokes into a single UnderstandQuery call for the final committed text', async () => {
+    pageState.url.href = 'http://localhost/search?q=';
+    understandQuerySpy.mockReset().mockResolvedValue({ enabled: true, suggestions: [] });
+    const screen = await renderSearch();
+    const input = screen.getByRole('textbox', { name: 'Search query' }).element() as HTMLInputElement;
+
+    for (const value of ['w', 'wh', 'what', 'what did we decide']) {
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    await new Promise((r) => setTimeout(r, 250));
+    expect(pageState.url.searchParams.get('q')).toBe('what did we decide');
+    expect(understandQuerySpy).toHaveBeenCalledTimes(1);
+    expect(understandQuerySpy.mock.calls[0][0].query).toBe('what did we decide');
+  });
+
+  it('latches off after the first {enabled:false} response and never calls again for a later eligible q', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockResolvedValue({ enabled: false, suggestions: [] });
+    const screen = await renderSearch();
+    await expect.poll(() => understandQuerySpy.mock.calls.length).toBe(1);
+    await expect.element(screen.getByRole('toolbar', { name: 'Suggested filters' })).not.toBeInTheDocument();
+
+    pageState.url.searchParams.set('q', 'another eligible query');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(understandQuerySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a stale response for a superseded q — the earlier response never renders once q has moved on', async () => {
+    pageState.url.href = 'http://localhost/search?q=alpha%20query';
+    let resolveAlpha!: (v: unknown) => void;
+    const alphaPromise = new Promise((resolve) => {
+      resolveAlpha = resolve;
+    });
+    understandQuerySpy.mockReset().mockImplementation((req: { query: string }) => {
+      if (req.query === 'alpha query') return alphaPromise;
+      return Promise.resolve({
+        enabled: true,
+        suggestions: [{ kind: { case: 'category', value: 'gotcha' }, source: SuggestionSource.DECIDED }]
+      });
+    });
+
+    const screen = await renderSearch();
+    await expect.poll(() => understandQuerySpy.mock.calls.some((c) => c[0].query === 'alpha query')).toBe(true);
+
+    pageState.url.searchParams.set('q', 'beta query');
+    await expect.element(screen.getByRole('button', { name: 'Suggested filter, not applied: gotcha' })).toBeInTheDocument();
+
+    resolveAlpha({
+      enabled: true,
+      suggestions: [{ kind: { case: 'category', value: 'convention' }, source: SuggestionSource.DECIDED }]
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    await expect.element(screen.getByRole('button', { name: 'Suggested filter, not applied: convention' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'Suggested filter, not applied: gotcha' })).toBeInTheDocument();
+  });
+
+  it('UnderstandQuery and SearchMemories run independently — neither blocks the other from rendering', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockReturnValue(new Promise(() => {}));
+    searchMemoriesSpy.mockReset().mockResolvedValue({
+      memories: [makeMemory({ id: 'm-x', summary: 'a hit while understanding never resolves' })],
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    const screen = await renderSearch();
+    await expect.element(screen.getByText('a hit while understanding never resolves')).toBeInTheDocument();
+    await screen.unmount();
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [{ kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED }]
+    });
+    searchMemoriesSpy.mockReset().mockReturnValue(new Promise(() => {}));
+    const screen2 = await renderSearch();
+    await expect.element(screen2.getByRole('button', { name: 'Suggested filter, not applied: decision' })).toBeInTheDocument();
+  });
+
+  it('a rejected UnderstandQuery renders no row and no error UI', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockRejectedValue(new ConnectError('unavailable', Code.Unavailable));
+    const screen = await renderSearch();
+    await expect.poll(() => understandQuerySpy.mock.calls.length).toBe(1);
+    await new Promise((r) => setTimeout(r, 20));
+    await expect.element(screen.getByRole('toolbar', { name: 'Suggested filters' })).not.toBeInTheDocument();
+  });
+
+  it('zero suggestions renders no row', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockResolvedValue({ enabled: true, suggestions: [] });
+    const screen = await renderSearch();
+    await expect.poll(() => understandQuerySpy.mock.calls.length).toBe(1);
+    await expect.element(screen.getByRole('toolbar', { name: 'Suggested filters' })).not.toBeInTheDocument();
+  });
+
+  it('dismissing every chip removes the row entirely', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [{ kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED }]
+    });
+    const screen = await renderSearch();
+    const row = screen.getByRole('toolbar', { name: 'Suggested filters' });
+    await expect.element(row).toBeInTheDocument();
+    await screen.getByRole('button', { name: 'Dismiss suggested filter: decision' }).click();
+    await expect.element(row).not.toBeInTheDocument();
+  });
+
+  it('hovering or focusing a suggested chip changes neither the URL nor the SearchMemories calls', async () => {
+    pageState.url.href = 'http://localhost/search?q=what%20did%20we%20decide';
+    understandQuerySpy.mockReset().mockResolvedValue({
+      enabled: true,
+      suggestions: [{ kind: { case: 'category', value: 'decision' }, source: SuggestionSource.DECIDED }]
+    });
+    const screen = await renderSearch();
+    const chip = screen.getByRole('button', { name: 'Suggested filter, not applied: decision' });
+    await expect.element(chip).toBeInTheDocument();
+    const hrefBefore = pageState.url.href;
+    const callsBefore = searchMemoriesSpy.mock.calls.length;
+
+    await chip.element().focus();
+    await userEvent.hover(chip);
+
+    expect(pageState.url.href).toBe(hrefBefore);
+    expect(searchMemoriesSpy.mock.calls.length).toBe(callsBefore);
+  });
 });

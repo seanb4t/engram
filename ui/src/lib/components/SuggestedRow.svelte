@@ -1,29 +1,33 @@
 <script lang="ts">
   import type { FilterSuggestion } from '$lib/gen/engram_pb';
   import type { SearchParams } from '$lib/search/params';
-  import { suggestionLabel, acceptPartial } from '$lib/search/understand';
+  import { suggestionLabel, suggestionKey, acceptPartial } from '$lib/search/understand';
 
-  // NLQ-03/D-11: the Suggested row — unapplied, dashed chips that accept
-  // through the page's own FacetStrip onchange path. Task 1 wires the
-  // accept control only; Task 2 adds the dismiss control and every
-  // suggestion kind; Task 3 adds the roving toolbar keyboard model and the
-  // full visual contract.
+  // NLQ-03/D-11/D-12: the Suggested row — unapplied, dashed chips that
+  // accept through the page's own FacetStrip onchange path, and dismiss
+  // (pointer-only) per query. Task 3 adds the roving toolbar keyboard model
+  // and the full visual contract.
   let {
     suggestions,
     params,
-    onchange
+    onchange,
+    ondismiss
   }: {
     suggestions: FilterSuggestion[];
     params: SearchParams;
     onchange: (partial: Partial<SearchParams>) => void;
+    ondismiss: (key: string) => void;
   } = $props();
 </script>
 
 <div class="suggested-row" role="toolbar" aria-label="Suggested filters">
   <span class="suggested-caption" aria-hidden="true">Suggested</span>
-  {#each suggestions as s, i (i)}
+  {#each suggestions as s (suggestionKey(s))}
     {@const label = suggestionLabel(s)}
     <div class="suggested-chip">
+      {#if s.kind.case === 'category'}
+        <span class="suggested-dot" aria-hidden="true" style={`background: var(--cat-${s.kind.value})`}></span>
+      {/if}
       <button
         type="button"
         class="suggested-accept"
@@ -32,6 +36,15 @@
         onclick={() => onchange(acceptPartial(s, params))}
       >
         <span class="suggested-label">{label}</span>
+      </button>
+      <button
+        type="button"
+        class="suggested-dismiss"
+        tabindex="-1"
+        aria-label={`Dismiss suggested filter: ${label}`}
+        onclick={() => ondismiss(suggestionKey(s))}
+      >
+        ×
       </button>
     </div>
   {/each}
@@ -76,5 +89,26 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+  }
+  .suggested-dot {
+    display: inline-block;
+    width: calc(6 * var(--u));
+    height: calc(6 * var(--u));
+    border-radius: 50%;
+    flex: none;
+  }
+  .suggested-dismiss {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--text-faint);
+    cursor: pointer;
+  }
+  .suggested-dismiss:hover,
+  .suggested-dismiss:focus-visible {
+    color: var(--foreground);
   }
 </style>
