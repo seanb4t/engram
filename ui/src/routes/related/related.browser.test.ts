@@ -704,3 +704,141 @@ describe('/related/[id] — rail Tags tab and the in-view tag filter (Task 1, D-
     await expect.element(screen.getByRole('region', { name: 'Why oacand00001 is related' })).toBeInTheDocument();
   });
 });
+
+const RAIL_TAB_KEY = 'engram.console.relatedRailTab';
+
+describe('/related/[id] — g, remembered tab, trail crumbs, back and Escape tiers (Task 2, D-01/D-04)', () => {
+  beforeEach(() => {
+    localStorage.removeItem(RAIL_TAB_KEY);
+  });
+
+  it('pressing g toggles the rail tab between Graph and Tags and persists it to localStorage', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true, cancelable: true }));
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => localStorage.getItem(RAIL_TAB_KEY)).toBe('tags');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true, cancelable: true }));
+    await expect.element(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => localStorage.getItem(RAIL_TAB_KEY)).toBe('graph');
+  });
+
+  it('mounting with "tags" stored opens on the Tags tab', async () => {
+    localStorage.setItem(RAIL_TAB_KEY, 'tags');
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('mounting with an unrecognized stored value ("bogus") falls back to Graph', async () => {
+    localStorage.setItem(RAIL_TAB_KEY, 'bogus');
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('g typed in the tag filter box does nothing', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await screen.getByRole('tab', { name: 'Tags' }).click();
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+
+    await screen.getByRole('textbox', { name: 'Filter tags' }).fill('g');
+
+    await expect.element(screen.getByRole('tab', { name: 'Tags' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the anchor bar shows "trail", two crumbs and the current short_id when ?trail carries two entries', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?trail=aaaaaaaaaa,bbbbbbbbbb&from=%2Fsearch';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await expect.element(screen.getByText('trail')).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'aaaaaaaaaa' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: 'bbbbbbbbbb' })).toBeInTheDocument();
+    await expect.element(screen.getByText('anchor00001')).toBeInTheDocument();
+  });
+
+  it('clicking the first crumb navigates to it, cutting the trail before it and carrying `from` forward', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?trail=aaaaaaaaaa,bbbbbbbbbb&from=%2Fsearch';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'aaaaaaaaaa' }).click();
+
+    expect(gotoSpy).toHaveBeenCalledTimes(1);
+    const target = gotoSpy.mock.calls[0][0] as string;
+    expect(target.startsWith('/ui/related/aaaaaaaaaa')).toBe(true);
+    expect(target).not.toContain('trail=');
+    expect(target).toContain('from=');
+  });
+
+  it('"← back [" and the [ key call history.back() when the trail is non-empty', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?trail=aaaaaaaaaa,bbbbbbbbbb&from=%2Fsearch';
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: /← back/ }).click();
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    expect(gotoSpy).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true, cancelable: true }));
+    expect(backSpy).toHaveBeenCalledTimes(2);
+
+    backSpy.mockRestore();
+  });
+
+  it('back exits to the `from` path when the trail is empty', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?from=%2Fsearch';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: /← back/ }).click();
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search');
+  });
+
+  it('back exits to /search?sel={anchor id} when both the trail and `from` are empty', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: /← back/ }).click();
+
+    expect(gotoSpy).toHaveBeenCalledTimes(1);
+    const target = gotoSpy.mock.calls[0][0] as string;
+    expect(target.startsWith('/ui/search?')).toBe(true);
+    expect(target).toContain('sel=anchor-uuid');
+  });
+
+  it('Escape clears the selection first (without navigating), then a second Escape navigates to the origin', async () => {
+    pageState.url.href = 'http://localhost/related/anchor-uuid?from=%2Fsearch';
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await screen.getByTestId('lane-row-tag-tagvec-uuid').click();
+    await expect.element(screen.getByRole('region', { name: 'Why tagv0000001 is related' })).toBeInTheDocument();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await expect.poll(() => screen.container.querySelectorAll('.ev').length).toBe(0);
+    expect(gotoSpy).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/search');
+  });
+
+  it("the graph's onleave moves focus to the lanes region", async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    const svg = screen.container.querySelector('svg.graph') as SVGSVGElement;
+    svg.focus();
+    svg.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+
+    await expect.poll(() => document.activeElement === screen.container.querySelector('.lanes')).toBe(true);
+    expect(gotoSpy).not.toHaveBeenCalled();
+  });
+});
