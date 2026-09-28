@@ -8,6 +8,7 @@
 // ui/src/lib/components/FacetStrip.svelte lines 48-54) byte for byte, so a
 // decided time-window suggestion is indistinguishable from a manual one
 // once applied (D-11).
+
 package understand
 
 import (

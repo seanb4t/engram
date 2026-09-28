@@ -114,6 +114,14 @@ type deps struct {
 	// understandDecider in buildDepsFromEnv. nil means UnderstandQuery
 	// answers {enabled:false} — no decision call, no store call.
 	understandDec decide.Decider
+	// understandAudit is ENGRAM_SEARCH_UNDERSTANDING_AUDIT (milestone
+	// 2026-09-25.01 Phase 6, D-16): when true, every understood query also
+	// logs its query text and suggestion labels for an offline grading
+	// pass. Off by default; meaningless without understandDec (an off
+	// understanding path never builds a Result to audit); independent of
+	// rankAudit — the two audit flags gate unrelated features and must
+	// never consult each other.
+	understandAudit bool
 }
 
 // memoryWriteCaps holds the always-enforced memory content/tags write
@@ -371,7 +379,8 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		_, source := understandingEnabled(cfg)
 		logUnderstandingEnabled(cfg, source)
 	}
-	if understandingAudit(cfg) {
+	uAudit := understandingAudit(cfg)
+	if uAudit {
 		logUnderstandingAuditEnabled(udec != nil)
 	}
 	return &deps{
@@ -387,6 +396,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		rankHook:         hook,
 		rankAudit:        audit,
 		understandDec:    udec,
+		understandAudit:  uAudit,
 	}, nil
 }
 

@@ -6,6 +6,7 @@
 // — no decision call, ever. Tags are open-vocabulary and sit outside the
 // advisory decide contract: unlike categories, scope and time_window, a
 // tag can never become a decide.Question.
+
 package understand
 
 import (
@@ -25,7 +26,7 @@ const MaxTagSuggestions = 8
 // tag).
 func queryTokens(q string) map[string]struct{} {
 	fields := strings.FieldsFunc(q, func(r rune) bool {
-		return !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_')
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_'
 	})
 	out := make(map[string]struct{}, len(fields))
 	for _, f := range fields {

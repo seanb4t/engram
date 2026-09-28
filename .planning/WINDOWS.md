@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 17
+open_count: 18
 waived_count: 0
 fixed_count: 7
-total_count: 24
-last_updated: 2026-09-28T03:23:16.265Z
+total_count: 25
+last_updated: 2026-09-28T15:38:49.186Z
 ---
 
 # Broken Windows Ledger
@@ -39,6 +39,7 @@ last_updated: 2026-09-28T03:23:16.265Z
 | 22 | 04 | deviation | .planning/REQUIREMENTS.md |  | Traceability table Status column parked at 'Mapped' for every Phase 4 row (and every other phase); requirements.mark-complete only accepts Pending/Gaps Found and cannot flip any of them -- milestone-wide, pre-existing, not caused by plan 04-09 | open |  | 2026-09-27T17:28:55.623Z |  |
 | 23 | 04 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete rejects DSYS-04/CUR-01/CUR-02 (and every other v1 requirement): traceability Status column reads Mapped repo-wide, not the tool's Pending/Complete vocabulary | open |  | 2026-09-27T20:17:06.822Z |  |
 | 24 | 05 | deviation | ui/src/routes/rules/rules.browser.test.ts |  | Updated delete-only legend/action-button assertions after wiring the D-03 Related entry point onto /rules (Rule 1 auto-fix, not a defect) | open |  | 2026-09-28T03:23:16.265Z |  |
+| 25 | 6 | deviation | .planning/REQUIREMENTS.md |  | requirements mark-complete NLQ-02 is a no-op: traceability table Status column holds the roadmap-mapping value 'Mapped' (not 'Pending'/'Complete'), so cmdRequirementsMarkComplete rejects the transition and rolls back even the checkbox flip; 0 requirements anywhere in this milestone's REQUIREMENTS.md have ever been marked complete via this tool, pre-existing and project-wide | open |  | 2026-09-28T15:38:49.186Z |  |
 
 ````json
 [
@@ -342,6 +343,19 @@ last_updated: 2026-09-28T03:23:16.265Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-28T03:23:16.265Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 25,
+    "kind": "deviation",
+    "phase": "6",
+    "file": ".planning/REQUIREMENTS.md",
+    "line": null,
+    "description": "requirements mark-complete NLQ-02 is a no-op: traceability table Status column holds the roadmap-mapping value 'Mapped' (not 'Pending'/'Complete'), so cmdRequirementsMarkComplete rejects the transition and rolls back even the checkbox flip; 0 requirements anywhere in this milestone's REQUIREMENTS.md have ever been marked complete via this tool, pre-existing and project-wide",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-28T15:38:49.186Z",
     "resolved_at": null,
     "milestone": null
   }
