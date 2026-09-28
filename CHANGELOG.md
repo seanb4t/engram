@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.22.0](https://github.com/seanb4t/engram/compare/v0.21.0...v0.22.0) (2026-09-28)
+
+
+### Features
+
+* **console:** recall-first search, curation workbench, related graph, query understanding (2026-09-25.01) ([#664](https://github.com/seanb4t/engram/issues/664)) ([2ca3d64](https://github.com/seanb4t/engram/commit/2ca3d6408015bb766fda25c5892f0bb24dfcf9c0))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/chromedp/cdproto digest to a19bff2 ([#625](https://github.com/seanb4t/engram/issues/625)) ([5e3f041](https://github.com/seanb4t/engram/commit/5e3f041e4981402f4b05a2af4cca565f030e70c9))
+* **deps:** update module connectrpc.com/otelconnect to v0.10.0 ([#634](https://github.com/seanb4t/engram/issues/634)) ([2954811](https://github.com/seanb4t/engram/commit/2954811ba4fddfe4b5cca877598e537cb191e6c7))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.8.28 ([#670](https://github.com/seanb4t/engram/issues/670)) ([8bb73ca](https://github.com/seanb4t/engram/commit/8bb73ca74f8fd32ea57c5a4049faa45d76e9acfc))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.8.29 ([#672](https://github.com/seanb4t/engram/issues/672)) ([a88f1dc](https://github.com/seanb4t/engram/commit/a88f1dce508d1678d9546d14a049dc7bb74126e0))
+
 ## [0.21.0](https://github.com/seanb4t/engram/compare/v0.20.0...v0.21.0) (2026-09-25)
 
 
