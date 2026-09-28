@@ -302,6 +302,32 @@ describe('search route — toggle pane', () => {
   });
 });
 
+describe('search route — related entry point (D-03/D-04)', () => {
+  it("the pane's Related button navigates to /related/{id} carrying where it came from", async () => {
+    pageState.url.href = 'http://localhost/search?q=github&sel=m-1';
+    const memory = makeMemory({ id: 'm-1', summary: 'related me' });
+    searchMemoriesSpy.mockResolvedValue({
+      memories: [memory],
+      searchedScopes: ['repo:test'],
+      scopesTruncated: false,
+      scopesUnknown: false
+    });
+    getMemorySpy.mockResolvedValue({ memory });
+
+    const screen = await renderSearch();
+    // Force the wide (non-overlay) RecallSplit layout so the pane's action
+    // row is a normal in-flow element, not the narrow-mode absolute overlay
+    // (RecallSplit.browser.test.ts's own convention for reliable clicks).
+    screen.container.style.width = '1200px';
+    await expect.poll(() => screen.container.querySelector('[aria-label="Memory detail"]') !== null).toBe(true);
+    await expect.element(screen.getByRole('heading', { name: 'related me' })).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Related' }).click();
+
+    expect(gotoSpy).toHaveBeenCalledWith(`/ui/related/m-1?from=${encodeURIComponent('/search?q=github&sel=m-1')}`);
+  });
+});
+
 describe('search route — row-action keys', () => {
   it("'e' on the active row prefetches the record for editing via WriteSurfaces.openEdit", async () => {
     pageState.url.href = 'http://localhost/search?q=github';

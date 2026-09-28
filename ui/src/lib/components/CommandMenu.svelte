@@ -15,6 +15,8 @@
   import { classifyInput } from '$lib/search/classify';
   import { handoffToHeaderSearch } from '$lib/search/header-search.svelte';
   import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
+  import { relatedPath } from '$lib/search/related-params';
+  import { normalizeReturnPath } from '$lib/resume';
   import { stepTextSize, resetTextSize } from '$lib/display.svelte';
   import { curationHost, type CurationAction } from '$lib/curation/host.svelte.ts';
   import type { Memory } from '$lib/gen/engram_pb';
@@ -112,6 +114,15 @@
     curationHost.current?.run(action, [sel]);
   }
 
+  // D-03: navigate to the selected record's related view, carrying where it
+  // was opened from.
+  function selectRelated() {
+    open = false;
+    goto(
+      `${base}${relatedPath(sel, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })}`
+    );
+  }
+
   const recordItems = $derived.by(() => {
     if (!sel) return [] as { label: string; onSelect: () => void }[];
     const items: { label: string; onSelect: () => void }[] = [
@@ -120,6 +131,7 @@
     if (selMemory?.shortId) {
       const shortId = selMemory.shortId;
       items.push({ label: `Copy short_id ${shortId}`, onSelect: () => copyText(shortId) });
+      items.push({ label: `Related to ${shortId}`, onSelect: selectRelated });
     }
     if (curationHost.current && selMemory) {
       const shortId = selMemory.shortId;

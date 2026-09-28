@@ -38,6 +38,7 @@
     onarchive,
     onrestore,
     onchain,
+    onrelated,
     rowActions = defaultActionsFor,
     rowTrailing,
     groupKey,
@@ -63,6 +64,7 @@
     onarchive?: (ids: string[]) => void;
     onrestore?: (ids: string[]) => void;
     onchain?: (id: string) => void;
+    onrelated?: (id: string) => void;
     rowActions?: (m: Memory) => CurationAction[];
     rowTrailing?: Snippet<[Memory]>;
     groupKey?: (m: Memory) => string;
@@ -588,6 +590,11 @@
         if (m) void copyToClipboard(m.id, 'copied id');
         break;
       }
+      case 'r': {
+        const m = memories[current];
+        if (m) onrelated?.(m.id);
+        break;
+      }
     }
   }
 
@@ -624,7 +631,7 @@
   // (Shift+x) extends it as a range from the anchor, a archives, A (Shift+a)
   // restores, S (Shift+s) supersedes the selection (or the active row alone
   // when nothing is selected).
-  const ROW_ACTION_KEYS = new Set(['e', 's', '#', 'c', 'C', 'x', 'X', 'a', 'A', 'S']);
+  const ROW_ACTION_KEYS = new Set(['e', 's', '#', 'c', 'C', 'x', 'X', 'a', 'A', 'S', 'r']);
   const HANDLED_KEYS = new Set([...NAV_KEYS, ...ROW_ACTION_KEYS, 'Escape']);
 
   function isTypingTarget(target: EventTarget | null): boolean {
@@ -821,6 +828,9 @@
       · <Kbd>#</Kbd> delete
     {/if}
     · <Kbd>c</Kbd> copy short_id · <Kbd>⇧C</Kbd> copy id
+    {#if onrelated}
+      · <Kbd>r</Kbd> related
+    {/if}
     {#if selectable}
       · <Kbd>x</Kbd> select · <Kbd>⇧X</Kbd> range
     {/if}

@@ -15,6 +15,7 @@
   import { persistResume, redirectToLogin, peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import { parseRulesParams, encodeRulesParams, type RulesParams } from '$lib/search/rules-params';
+  import { relatedPath } from '$lib/search/related-params';
   import { rulesHeaderParts, rulesEmptyHeading, type HeaderPart } from '$lib/search/recall-header';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';
@@ -65,6 +66,14 @@
   function toggleOpen(id: string) {
     if (params.sel === id) closeSel();
     else navigate({ sel: id });
+  }
+
+  // D-03/D-04: navigate to the record's related view, carrying where it was
+  // opened from.
+  function openRelated(id: string) {
+    goto(
+      `${base}${relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })}`
+    );
   }
 
   // D-12: honest header — count, scope coverage, scopes_truncated/unknown —
@@ -220,6 +229,7 @@
             onopen={toggleOpen}
             onescape={closeSel}
             ondelete={requestDelete}
+            onrelated={openRelated}
             groupKey={(m) => m.scope}
             groupHeader={scopeGroupHeader}
             rowTrailing={sharedChip}
@@ -236,6 +246,7 @@
           onclose={closeSel}
           onselect={(id) => navigate({ sel: id })}
           ondelete={requestDelete}
+          onrelated={openRelated}
         />
       {/snippet}
     </RecallSplit>

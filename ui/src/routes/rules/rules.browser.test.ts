@@ -369,7 +369,7 @@ describe('rules route — delete only (D-12, CUR-05)', () => {
 
     const legend = screen.container.querySelector('.results-legend') as HTMLElement;
     const kbdTexts = Array.from(legend.querySelectorAll('kbd')).map((el) => el.textContent);
-    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', '#', 'c', '⇧C']);
+    expect(kbdTexts).toEqual(['j', 'k', '↵', 'esc', '#', 'c', '⇧C', 'r']);
     expect(screen.container.querySelector('.row-check')).toBeNull();
 
     (screen.container.querySelector('[role="option"]') as HTMLElement).click();
@@ -377,7 +377,7 @@ describe('rules route — delete only (D-12, CUR-05)', () => {
 
     const detail = screen.container.querySelector('[aria-label="Memory detail"]') as HTMLElement;
     const actionButtons = Array.from(detail.querySelectorAll('.d-actions button')).map((b) => b.textContent?.trim());
-    expect(actionButtons).toEqual(['Delete']);
+    expect(actionButtons).toEqual(['Related', 'Delete']);
   });
 
   it('# opens the delete confirm for the active row', async () => {

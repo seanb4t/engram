@@ -29,6 +29,7 @@
     type SearchParams
   } from '$lib/search/params';
   import { classifyInput, type OperatorChip } from '$lib/search/classify';
+  import { relatedPath } from '$lib/search/related-params';
   import {
     rankedHeaderParts,
     listingHeaderParts,
@@ -227,6 +228,15 @@
     } else {
       navigate({ sel: id });
     }
+  }
+
+  // D-03/D-04: navigate to the record's related view, carrying where it was
+  // opened from so the related view (and, later, its own Escape) can return
+  // here.
+  function openRelated(id: string) {
+    goto(
+      `${base}${relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })}`
+    );
   }
 
   const detailQ = createQuery(() => ({
@@ -598,6 +608,7 @@
             onarchive={(ids) => curation?.openArchive(ids)}
             onrestore={(ids) => curation?.openRestore(ids)}
             onchain={(id) => curation?.openChain(id)}
+            onrelated={openRelated}
           />
           {#if classified.kind === 'text' && memories.length === effective.k && nextK(effective.k) !== undefined}
             <div class="show-more-row">
@@ -626,6 +637,7 @@
           onarchive={(id) => curation?.openArchive([id])}
           onrestore={(id) => curation?.openRestore([id])}
           onchain={(id) => curation?.openChain(id)}
+          onrelated={openRelated}
         />
       {/snippet}
     </RecallSplit>

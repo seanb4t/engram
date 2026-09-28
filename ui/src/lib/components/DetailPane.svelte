@@ -38,7 +38,8 @@
     onarchive,
     onrestore,
     onsupersede,
-    onchain
+    onchain,
+    onrelated
   }: {
     memory: Memory | undefined;
     loading: boolean;
@@ -56,6 +57,7 @@
     onrestore?: (id: string) => void;
     onsupersede?: (id: string) => void;
     onchain?: (id: string) => void;
+    onrelated?: (id: string) => void;
   } = $props();
 
   // D-15/D-16 rule fence (mechanical, not "parent omits callbacks"): a rule
@@ -144,6 +146,10 @@
       {/if}
       <h2 class="d-title">{title}</h2>
       <div class="d-actions">
+        {#if onrelated}
+          <Button variant="outline" size="sm" onclick={() => onrelated?.(memory!.id)}>Related</Button>
+        {/if}
+
         {#if onedit && !isRule && !isDiscovery}
           <Button variant="outline" size="sm" onclick={() => onedit?.(memory!.id)}>Edit</Button>
         {/if}

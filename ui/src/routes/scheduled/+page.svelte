@@ -12,6 +12,7 @@
   import { createInfiniteQuery, createQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { engram } from '$lib/client';
   import { parseScheduledParams, encodeScheduledParams, type ScheduledParams, type ScheduledState } from '$lib/search/scheduled-params';
+  import { relatedPath } from '$lib/search/related-params';
   import { scheduledHeaderParts, scheduledEmptyHeading, type HeaderPart } from '$lib/search/recall-header';
   import { windowRange, windowPhrase } from '$lib/time';
   import { memoryStateWords } from '$lib/memorystate';
@@ -96,6 +97,14 @@
   function toggleOpen(id: string) {
     if (effectiveSel === id) closeSel();
     else navigate({ sel: id });
+  }
+
+  // D-03/D-04: navigate to the record's related view, carrying where it was
+  // opened from.
+  function openRelated(id: string) {
+    goto(
+      `${base}${relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })}`
+    );
   }
 
   const detailQ = createQuery(() => ({
@@ -200,6 +209,7 @@
             selectionKey={params.state}
             rowActions={(m) => (isExpired(m) ? ['archive'] : [])}
             onarchive={archiveExpired}
+            onrelated={openRelated}
           >
             {#snippet rowTrailing(m: Memory)}
               <span class="win" title={windowRange(m)}>
@@ -234,6 +244,7 @@
           onclose={closeSel}
           onselect={(id) => navigate({ sel: id })}
           onarchive={selectedMemory && isExpired(selectedMemory) ? (id) => archiveExpired([id]) : undefined}
+          onrelated={openRelated}
         />
       {/snippet}
     </RecallSplit>
