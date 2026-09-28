@@ -1,7 +1,9 @@
 import '../../app.css';
 import { render } from 'vitest-browser-svelte';
+import { page } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+import { ConnectError, Code } from '@connectrpc/connect';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import {
   MemorySchema,
@@ -153,5 +155,102 @@ describe('/related/[id] — fetches one RelatedMemories response and draws the n
     expect(screen.container.querySelector('#gn-pred-uuid')).not.toBeNull();
     expect(screen.container.querySelector('#gn-tag-uuid')).not.toBeNull();
     expect(screen.container.querySelector('#gn-tagvec-uuid')).not.toBeNull();
+  });
+});
+
+function zeroCandidateResponse(truncated = false) {
+  const anchor = makeMemory({ id: 'anchor-uuid', shortId: 'anchor00001', category: 'decision', summary: 'Anchor summary' });
+  return create(RelatedMemoriesResponseSchema, { anchor, truncated, related: [] });
+}
+
+describe('/related/[id] — route shell states (Task 3)', () => {
+  it('shows the loading copy and four skeleton lane placeholders while RelatedMemories is pending', async () => {
+    let resolveIt!: (v: unknown) => void;
+    relatedMemoriesSpy.mockReset().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveIt = resolve;
+        })
+    );
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/resolving anchor, 4 typed sub-queries in flight/)).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('[data-testid="lane-skeleton"]').length).toBe(4);
+    expect(screen.container.querySelectorAll('[role="option"]').length).toBe(0);
+    resolveIt(fixtureResponse());
+  });
+
+  it('renders the not-found copy (and nothing else below) for Code.NotFound', async () => {
+    relatedMemoriesSpy.mockReset().mockRejectedValue(new ConnectError('not found', Code.NotFound));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('No memory with id anchor-uuid that you can read')).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('[role="option"]').length).toBe(0);
+  });
+
+  it('renders the rejected envelope for a FailedPrecondition field=/hint= rejection', async () => {
+    relatedMemoriesSpy
+      .mockReset()
+      .mockRejectedValue(new ConnectError('field=id hint=invalid_value: id must be a UUID or short_id', Code.FailedPrecondition));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('Server rejected the request')).toBeInTheDocument();
+    await expect.poll(() => screen.container.textContent ?? '').toContain('field=id hint=invalid_value: id must be a UUID or short_id');
+  });
+
+  it('renders the opaque-failure block for an Internal error, with a Retry that refetches', async () => {
+    relatedMemoriesSpy.mockReset().mockRejectedValue(new ConnectError('boom', Code.Internal));
+    const screen = await renderRelated();
+    await expect
+      .element(screen.getByText('RelatedMemories failed — nothing was related. related_memories returned code=Internal'))
+      .toBeInTheDocument();
+    await expect.element(screen.getByText('Nothing was searched, so this is not an empty neighbourhood')).toBeInTheDocument();
+
+    relatedMemoriesSpy.mockClear().mockResolvedValue(fixtureResponse());
+    await screen.getByRole('button', { name: 'Retry' }).click();
+    await expect.poll(() => relatedMemoriesSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders one role=option (the anchor alone) and "0 related" for a zero-candidate response', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(zeroCandidateResponse());
+    const screen = await renderRelated();
+    await expect.poll(() => screen.container.querySelectorAll('[role="option"]').length).toBe(1);
+    await expect.poll(() => screen.container.textContent ?? '').toContain('0 related');
+  });
+
+  it('appends a millisecond figure to the call line after the fetch resolves', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.poll(() => /\d+ms/.test(screen.container.textContent ?? '')).toBe(true);
+  });
+
+  it('renders the truncated=true word with the warning class when the response was truncated', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(zeroCandidateResponse(true));
+    const screen = await renderRelated();
+    await expect.poll(() => screen.container.querySelector('.trunc-on')?.textContent ?? '').toBe('truncated=true');
+  });
+
+  it('screenshots the loading state', async () => {
+    let resolveIt!: (v: unknown) => void;
+    relatedMemoriesSpy.mockReset().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveIt = resolve;
+        })
+    );
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/resolving anchor, 4 typed sub-queries in flight/)).toBeInTheDocument();
+    await page.screenshot();
+    resolveIt(fixtureResponse());
+  });
+
+  it('screenshots the not-found state', async () => {
+    relatedMemoriesSpy.mockReset().mockRejectedValue(new ConnectError('not found', Code.NotFound));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('No memory with id anchor-uuid that you can read')).toBeInTheDocument();
+    await page.screenshot();
+  });
+
+  it('screenshots the populated state', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await page.screenshot();
   });
 });
