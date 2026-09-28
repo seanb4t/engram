@@ -403,9 +403,11 @@ export function visibleMembership(
   const visibleCandidatesForEdges: Candidate[] = orderedCandidates.map((c) => ({ ...c, types: visibleTypesFor(c.id) }));
   const starEdges = graphEdges(model.anchor.id, visibleCandidatesForEdges);
 
+  // Hiding supersession hides its chain arrows too, even between members
+  // still drawn through another edge type.
   const drawnIds = new Set(orderedCandidates.map((c) => c.id));
   const chainEdges: GraphEdge[] = [];
-  for (const c of orderedCandidates) {
+  for (const c of opts.hiddenTypes.has('supersession') ? [] : orderedCandidates) {
     const supersededBy = c.memory.supersededBy;
     if (supersededBy && drawnIds.has(supersededBy)) {
       chainEdges.push({

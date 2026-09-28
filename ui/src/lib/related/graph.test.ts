@@ -283,6 +283,19 @@ describe('visibleMembership', () => {
     expect(chainEdges.every((e) => e.source !== 'anchor-id' && e.target !== 'anchor-id')).toBe(true);
   });
 
+  it('hiding supersession drops chain arrows between members still drawn through another type', () => {
+    const older = candidate('older-member', {
+      types: ['supersession', 'tag'],
+      signedDepth: -2,
+      memory: { supersededBy: 'newer-member' }
+    });
+    const newer = candidate('newer-member', { types: ['supersession', 'tag'], signedDepth: -1 });
+    const model = emptyModel([older, newer]);
+    const membership = visibleMembership(model, { hiddenTypes: new Set(['supersession']), vectorExpanded: false });
+    expect(membership.nodes.map((n) => n.id).sort()).toEqual(['anchor-id', 'newer-member', 'older-member']);
+    expect(membership.edges.some((e) => e.type === 'supersession')).toBe(false);
+  });
+
   it('zero candidates yield one node (the anchor) and no edges', () => {
     const model = emptyModel([]);
     const membership = visibleMembership(model, { hiddenTypes: new Set(), vectorExpanded: false });
