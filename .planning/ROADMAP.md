@@ -623,7 +623,7 @@ existing consumers and is flagged for a research pass at plan time.
   3. A test proves search results are unchanged until a suggested chip is clicked, and an accepted chip is indistinguishable from a manually added one
   4. A test proves no query text appears in logs unless the explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans executed
 **UI hint**: yes
 
 Plans:
@@ -643,7 +643,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 06-06-PLAN.md — live-server chromedp round trip, vendored SPA, Helm explicit-off values, configure/upgrade/deploy docs and the phase gates (NLQ-01, NLQ-03, NLQ-04)
+- [x] 06-06-PLAN.md — live-server chromedp round trip, vendored SPA, Helm explicit-off values, configure/upgrade/deploy docs and the phase gates (NLQ-01, NLQ-03, NLQ-04)
 
 ## Progress
 
