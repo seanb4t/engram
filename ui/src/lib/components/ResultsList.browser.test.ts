@@ -390,6 +390,64 @@ describe('ResultsList', () => {
   });
 });
 
+describe('ResultsList — related view row key (D-03)', () => {
+  it('r on the focused listbox calls onrelated with the active row id, once', async () => {
+    const onopen = vi.fn();
+    const onrelated = vi.fn();
+    const mem = create(MemorySchema, { id: 'rel1', category: 'convention', summary: 'x', scope: 's', shortId: 'sid0000006' });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen, onrelated });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+
+    await userEvent.keyboard('r');
+    expect(onrelated).toHaveBeenCalledTimes(1);
+    expect(onrelated).toHaveBeenCalledWith('rel1');
+  });
+
+  it('r with metaKey or ctrlKey does not call onrelated', async () => {
+    const onopen = vi.fn();
+    const onrelated = vi.fn();
+    const mem = create(MemorySchema, { id: 'rel2', category: 'convention', summary: 'x', scope: 's', shortId: 'sid0000007' });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen, onrelated });
+    const listbox = screen.getByRole('listbox', { name: 'Search results' });
+    listbox.element().focus();
+
+    fireKey(listbox.element(), 'r', { metaKey: true });
+    fireKey(listbox.element(), 'r', { ctrlKey: true });
+    expect(onrelated).not.toHaveBeenCalled();
+  });
+
+  it('r typed into a text input inside the container does not call onrelated', async () => {
+    const onopen = vi.fn();
+    const onrelated = vi.fn();
+    const mem = create(MemorySchema, { id: 'rel3', category: 'convention', summary: 'x', scope: 's', shortId: 'sid0000008' });
+    const screen = await render(ResultsList, { memories: [mem], label: 'Search results', onopen, onrelated });
+    const wrapper = screen.container.querySelector('.results-listbox-wrapper') as HTMLElement;
+    const input = document.createElement('input');
+    wrapper.appendChild(input);
+    input.focus();
+
+    fireKey(input, 'r');
+    expect(onrelated).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it("the legend shows the 'r related' hint only when onrelated is supplied", async () => {
+    const onopen = vi.fn();
+    const onrelated = vi.fn();
+    const three = makeMemories(3);
+
+    const withCallback = await render(ResultsList, { memories: three, label: 'Search results', onopen, onrelated });
+    const legendWith = withCallback.container.querySelector('.results-legend') as HTMLElement;
+    expect(legendWith.textContent).toContain('r');
+    expect(legendWith.textContent).toContain('related');
+
+    const withoutCallback = await render(ResultsList, { memories: three, label: 'Search results', onopen });
+    const legendWithout = withoutCallback.container.querySelector('.results-legend') as HTMLElement;
+    expect(legendWithout.textContent).not.toContain('related');
+  });
+});
+
 describe('ResultsList — multi-select (D-01, D-02, D-03)', () => {
   it('x on row 1 sets the anchor; moving to row 4 and pressing Shift+X selects the inclusive range 1-4', async () => {
     const onopen = vi.fn();
