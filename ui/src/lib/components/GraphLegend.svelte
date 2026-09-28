@@ -26,7 +26,12 @@
       <span class="g g-{type}" aria-hidden="true">{LANE_GLYPH[type]}</span>
       <span class="name">{type}</span>
       <span class="cnt">{laneCountLabel(type, model)}</span>
-      <Checkbox checked={!hiddenTypes.has(type)} onCheckedChange={() => ontoggle(type)} aria-label={`Show ${type} edges`} />
+      <Checkbox
+        class="legend-cb"
+        checked={!hiddenTypes.has(type)}
+        onCheckedChange={() => ontoggle(type)}
+        aria-label={`Show ${type} edges`}
+      />
     </div>
   {/each}
 </div>
@@ -76,5 +81,14 @@
   }
   .g-vector {
     border-color: var(--border);
+  }
+  /* WCAG 2.2 SC 2.5.8 (target size): the checkbox's own h-3.5/w-3.5 (14px)
+     falls under the 24 CSS px minimum, and there is no adjacent text label
+     to widen the clickable region (unlike FacetStrip's <label> wrapping) --
+     min-width/min-height floor the box at 24px regardless of the --u
+     scaling, same technique as RowActions.svelte's .ra-btn. */
+  :global(.legend-cb) {
+    min-width: max(calc(24 * var(--u)), 24px);
+    min-height: max(calc(24 * var(--u)), 24px);
   }
 </style>

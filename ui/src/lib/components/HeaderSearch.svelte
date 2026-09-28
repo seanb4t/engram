@@ -36,6 +36,14 @@
   // runs, and the dropdown is server-driven (ENTRY-01/02/04) — never a
   // client-filtered palette (see recall-surface.md "What to Avoid").
 
+  // WCAG 4.1.2 (aria-required-attr): CommandPrimitive.Input sets
+  // role="combobox"/aria-expanded, but its aria-controls only populates from
+  // an (unused here) Command.Viewport -- an explicit id/aria-controls pair
+  // closes the gap without adopting Viewport (mergeProps keeps our
+  // aria-controls since bits-ui's own value is undefined without one).
+  const uid = $props.id();
+  const listId = `${uid}-list`;
+
   let debouncedText = $state('');
   let open = $state(false);
   let inputWrapperEl = $state<HTMLElement | null>(null);
@@ -396,6 +404,7 @@
         bind:value={headerSearch.text}
         bind:ref={inputEl}
         aria-label="Search memories"
+        aria-controls={listId}
         placeholder="Search, paste an id, scope: #tag is:"
         class="flex-1 bg-transparent text-sm outline-none"
         onfocus={() => (open = true)}
@@ -510,7 +519,7 @@
           </Command.Group>
         {/snippet}
 
-        <Command.List class="max-h-[calc(540*var(--u))]">
+        <Command.List id={listId} class="max-h-[calc(540*var(--u))]">
           {#if tagPrefixInProgress !== null && classified.kind !== 'text'}
             {@render tagsGroup()}
           {/if}

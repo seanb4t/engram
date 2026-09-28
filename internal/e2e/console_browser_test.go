@@ -1184,12 +1184,12 @@ func locationPathPrefixPollExpr(prefix string) string {
 }
 
 // graphOptionCountPollExpr is satisfied once the rail graph
-// (RelatedGraph.svelte) has rendered at least min role="option" nodes
+// (RelatedGraph.svelte) has rendered at least minCount role="option" nodes
 // inside its role="listbox" svg — the anchor plus at least one candidate.
 // Scoped to svg[role="listbox"] specifically so it can never be satisfied
 // by an unrelated listbox elsewhere on the page (e.g. the results list).
-func graphOptionCountPollExpr(min int) string {
-	return fmt.Sprintf(`(() => document.querySelectorAll('svg[role="listbox"] [role="option"]').length >= %d)()`, min)
+func graphOptionCountPollExpr(minCount int) string {
+	return fmt.Sprintf(`(() => document.querySelectorAll('svg[role="listbox"] [role="option"]').length >= %d)()`, minCount)
 }
 
 // TestConsoleRelatedView drives a REAL headless Chrome against the REAL
