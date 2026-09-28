@@ -813,7 +813,7 @@ func TestUnderstandDeciderBoundedNoRetry(t *testing.T) {
 	t.Run("hung", func(t *testing.T) {
 		var reqs int32
 		release := make(chan struct{})
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&reqs, 1)
 			select {
 			case <-r.Context().Done():

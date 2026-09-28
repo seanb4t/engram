@@ -8,6 +8,7 @@
 // audit line is the ONE place this package deliberately logs query text —
 // only behind the operator's opt-in (deps.understandAudit); content never
 // exists on this path.
+
 package understand
 
 import (

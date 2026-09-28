@@ -7,7 +7,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +22,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/decide"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/understand"
@@ -417,5 +423,244 @@ func TestUnderstandQuerySpanTelemetry(t *testing.T) {
 		}
 
 		assertNoLeakedText(t, sr.Ended(), understandAuditSentinel)
+	})
+}
+
+// TestUnderstandQueryNoQueryTextWithoutAudit sweeps every understanding
+// path — success, decision fallback, a malformed answer, a scope-store
+// failure, a tag-store failure, and an oversized rejection — through the
+// real Connect interceptor chain with d.understandAudit false, proving the
+// sentinel query never reaches the captured log output (which includes the
+// access-log "connect rpc" line and every Warn) on any of them (NLQ-04).
+func TestUnderstandQueryNoQueryTextWithoutAudit(t *testing.T) {
+	assertNoSentinelAndAccessLogged := func(t *testing.T, out string) {
+		t.Helper()
+		if strings.Contains(out, understandAuditSentinel) {
+			t.Errorf("log output contains the sentinel query, want none: %q", out)
+		}
+		if !strings.Contains(out, "connect rpc") {
+			t.Errorf("log output has no \"connect rpc\" access-log record, want at least one: %q", out)
+		}
+	}
+
+	t.Run("success", func(t *testing.T) {
+		buf := captureSlogJSON(t)
+		d, sp := newSpyDeps()
+		sp.tags = []store.TagCount{{Tag: "zeta", Count: 3}}
+		d.understandDec = newUnderstandAuditScriptedDecider()
+		d.understandAudit = false
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		t.Cleanup(srv.Close)
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+		assertNoSentinelAndAccessLogged(t, buf.String())
+	})
+
+	t.Run("decision_fallback", func(t *testing.T) {
+		buf := captureSlogJSON(t)
+		d, sp := newSpyDeps()
+		sp.tags = []store.TagCount{{Tag: "zeta", Count: 3}}
+		d.understandDec = &scriptedDecider{err: &decide.Error{Kind: decide.ErrDecisionUnavailable}}
+		d.understandAudit = false
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		t.Cleanup(srv.Close)
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+		assertNoSentinelAndAccessLogged(t, buf.String())
+	})
+
+	t.Run("malformed_answer", func(t *testing.T) {
+		buf := captureSlogJSON(t)
+		d, sp := newSpyDeps()
+		sp.tags = []store.TagCount{{Tag: "zeta", Count: 3}}
+		// convention's probability is out of [0,1]: FromResponse rejects it
+		// as a malformed response before any other question is examined
+		// (Categories order: convention is first).
+		d.understandDec = &scriptedDecider{resp: decide.Response{Answers: map[string]decide.Answer{
+			understand.CategoryQuestion("convention"): {Type: decide.QuestionNoul, Probability: 1.5},
+		}}}
+		d.understandAudit = false
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		t.Cleanup(srv.Close)
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+		assertNoSentinelAndAccessLogged(t, buf.String())
+	})
+
+	t.Run("scope_store_failure", func(t *testing.T) {
+		buf := captureSlogJSON(t)
+		sp := newSpyStore()
+		fs := &failingListScopesStore{spyStore: sp, listErr: errors.New("boom")}
+		d := &deps{st: fs, em: fakeEmbedder{}}
+		d.understandDec = newUnderstandAuditScriptedDecider()
+		d.understandAudit = false
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		t.Cleanup(srv.Close)
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+		assertNoSentinelAndAccessLogged(t, buf.String())
+	})
+
+	t.Run("tag_store_failure", func(t *testing.T) {
+		buf := captureSlogJSON(t)
+		sp := newSpyStore()
+		fs := &failingListTagsStore{spyStore: sp, listErr: errors.New("boom")}
+		d := &deps{st: fs, em: fakeEmbedder{}}
+		d.understandDec = newUnderstandAuditScriptedDecider()
+		d.understandAudit = false
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		t.Cleanup(srv.Close)
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+		assertNoSentinelAndAccessLogged(t, buf.String())
+	})
+
+	t.Run("oversized", func(t *testing.T) {
+		buf := captureSlogJSON(t)
+		d, sp := newSpyDeps()
+		sp.tags = []store.TagCount{{Tag: "zeta", Count: 3}}
+		d.understandDec = newUnderstandAuditScriptedDecider()
+		d.understandAudit = false
+		mux := http.NewServeMux()
+		if err := d.mountConnect(mux, csrfStubResolve, csrfTestVerify, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(mux)
+		t.Cleanup(srv.Close)
+		client := engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
+
+		tags1001 := make([]string, 1001)
+		for i := range tags1001 {
+			tags1001[i] = fmt.Sprintf("t%d", i)
+		}
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel, Tags: tags1001})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		_, err := client.UnderstandQuery(context.Background(), req)
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("code = %v, want CodeInvalidArgument: %v", connect.CodeOf(err), err)
+		}
+		assertNoSentinelAndAccessLogged(t, buf.String())
+	})
+}
+
+// TestUnderstandQueryAuditEmptyQueryLogsNothing proves the empty/whitespace-
+// only query path never calls Decide and never emits an audit record, even
+// with the audit flag on (NLQ-04).
+func TestUnderstandQueryAuditEmptyQueryLogsNothing(t *testing.T) {
+	buf := captureSlogJSON(t)
+	d, _ := newSpyDeps()
+	dec := newUnderstandAuditScriptedDecider()
+	d.understandDec = dec
+	d.understandAudit = true
+	client := understandTestClient(t, d)
+
+	req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: "  \t "})
+	req.Header().Set("X-Test-Actor", "actor-A")
+	resp, err := client.UnderstandQuery(context.Background(), req)
+	if err != nil {
+		t.Fatalf("UnderstandQuery: %v", err)
+	}
+	if !resp.Msg.GetEnabled() {
+		t.Error("Enabled = false, want true")
+	}
+	if got := len(resp.Msg.GetSuggestions()); got != 0 {
+		t.Errorf("len(Suggestions) = %d, want 0", got)
+	}
+	decideCalls, decideManyCalls := dec.counts()
+	if decideCalls != 0 || decideManyCalls != 0 {
+		t.Errorf("scriptedDecider saw %d Decide, %d DecideMany calls, want 0, 0", decideCalls, decideManyCalls)
+	}
+	if records := logRecordsWithMsg(t, buf.String(), "query understanding audit"); len(records) != 0 {
+		t.Errorf("audit records = %v, want none (empty query)", records)
+	}
+}
+
+// TestUnderstandingAuditIndependentOfRerankAudit proves the understanding
+// audit flag and the search-rerank audit flag never consult each other, at
+// both the runtime deps level and the config-resolver level (NLQ-04).
+func TestUnderstandingAuditIndependentOfRerankAudit(t *testing.T) {
+	t.Run("runtime: rankAudit true, understandAudit false", func(t *testing.T) {
+		buf := captureSlogJSON(t)
+		d, sp := newSpyDeps()
+		sp.tags = []store.TagCount{{Tag: "zeta", Count: 3}}
+		d.understandDec = newUnderstandAuditScriptedDecider()
+		d.rankAudit = true
+		d.understandAudit = false
+		client := understandTestClient(t, d)
+
+		req := connect.NewRequest(&engramv1.UnderstandQueryRequest{Query: understandAuditSentinel})
+		req.Header().Set("X-Test-Actor", "actor-A")
+		if _, err := client.UnderstandQuery(context.Background(), req); err != nil {
+			t.Fatalf("UnderstandQuery: %v", err)
+		}
+
+		out := buf.String()
+		if records := logRecordsWithMsg(t, out, "query understanding audit"); len(records) != 0 {
+			t.Errorf("audit records = %v, want none (understandAudit false)", records)
+		}
+		if strings.Contains(out, understandAuditSentinel) {
+			t.Errorf("log output contains the sentinel query, want none: %q", out)
+		}
+	})
+
+	t.Run("config: the two audit flags resolve independently", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.Search.RerankAudit = "true"
+		cfg.Search.UnderstandingAudit = "false"
+		if got := understandingAudit(cfg); got {
+			t.Error("understandingAudit = true, want false (RerankAudit must not leak in)")
+		}
+
+		cfg2 := &config.Config{}
+		cfg2.Search.UnderstandingAudit = "true"
+		cfg2.Search.RerankAudit = "false"
+		if got := searchRerankAudit(cfg2); got {
+			t.Error("searchRerankAudit = true, want false (UnderstandingAudit must not leak in)")
+		}
 	})
 }
