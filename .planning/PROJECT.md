@@ -43,7 +43,8 @@ TanStack Query 6).
 - Related-memories graph (supersession, shared tags, shared citations, vector neighbours), tag
   cloud with counts, scope autocomplete
 - Natural-language query understanding rendered as removable, user-confirmed filter chips —
-  provider-neutral, off by default, advisory only
+  provider-neutral, advisory only; on by default when a decisions provider is configured
+  (amended 2026-09-28, Phase 6 D-01), explicit `off` disables it
 - Project-local skills `engram-console-conventions` and `engram-connect-client`; vetted
   third-party design/a11y skills
 
@@ -669,7 +670,7 @@ absorb.
 - [x] Connect RPCs: SupersedeMemory, ArchiveMemory, RestoreMemory, ListRules, ListScheduled, RelatedMemories, ListTags — Phase 3
 - [x] Curation surfaces: supersede, archive/restore, rules and scheduled views — Phase 4
 - [x] Related-memories graph, tag popularity list (Phase 5); scope autocomplete (Phase 2)
-- [ ] Natural-language query understanding as advisory, user-confirmed filter chips
+- [x] Natural-language query understanding as advisory, user-confirmed filter chips — Phase 6
 - [x] Console conventions + Connect client skills (Phase 2); vetted design/a11y skills and WCAG 2.2 AA audit (Phase 4, DSYS-03)
 
 ### Deferred (carry-forward for next milestone)
@@ -1086,6 +1087,8 @@ and `.planning/intel/merge-adrs/decisions.md`; the `refines →` note names the 
 | axe-core pinned as a test-only devDependency for WCAG 2.2 AA checks in vitest-browser, never bundled (2026-09-25.01 Phase 4, 04-03) | A maintained rule engine beats a hand-rolled contrast checker; legitimacy verified by the user before install | ✓ Good — 9 AA defects found and fixed |
 | The related graph is Svelte-owned SVG: d3-force only computes a seeded, fixed-budget layout (d3-zoom/d3-drag drive the transform), and edge curve offsets are fixed per edge type (2026-09-25.01 Phase 5, 05-01/05-05) | A deterministic settle keeps screenshots and tests stable and the same candidate always draws the same curves; letting Svelte own the DOM keeps ARIA, selection and theme tokens in one place instead of a d3-managed subtree | ✓ Good — refit tracks only membership, so selection, focus and drag never re-fit the view |
 | Tag surfaces share one cached `ListTags(scope, 1000)` query and draw linear bars from zero with printed counts, replacing the quantile-sized cloud (2026-09-25.01 Phase 5, D-12/D-13) | Font-size clouds misreport magnitude and break reading order; one query per scope key keeps the panel, the /related Tags tab, the picker and the header group consistent | ✓ Good — TAGS-01 amended; counts identical across all four surfaces |
+| Query understanding defaults on whenever `ENGRAM_DECISIONS_PROVIDER=jev` (explicit `ENGRAM_SEARCH_UNDERSTANDING=off` opts out), with a startup line disclosing that console query text goes to the provider (2026-09-25.01 Phase 6, D-01/D-15) | The user chose default-on over an opt-in gate; the egress trade-off is made visible at startup rather than hidden behind a second switch | ✓ Good — NLQ-01 amended; off stays byte-identical with no decision call |
+| `UnderstandQuery` is Connect-only (no MCP tool or CLI verb) and returns one `FilterSuggestion` oneof per chip; time windows are UTC-midnight aligned with a month-end clamp (2026-09-25.01 Phase 6, D-02/D-03, 06-01 option-a) | Chips are a console affordance and a second lane would be another query-text egress path; day alignment makes an accepted chip byte-identical to a manual FacetStrip chip | ✓ Good — accepted chips go through FacetStrip's own `onchange` path; `buf breaking` clean |
 
 ## Evolution
 
@@ -1106,4 +1109,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-09-28 after 2026-09-25.01 Phase 5*
+*Last updated: 2026-09-28 after 2026-09-25.01 Phase 6*

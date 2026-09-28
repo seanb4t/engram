@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-28 after 2026-09-25.01 Phase 5)
+See: .planning/PROJECT.md (updated 2026-09-28 after 2026-09-25.01 Phase 6)
 
 **Core value:** Correctable recall precision — a coding agent gets back the RIGHT memory for its context, and wrong/stale memories can be corrected or superseded.
-**Current focus:** Phase 6 — Query Understanding
+**Current focus:** Milestone 2026-09-25.01 lifecycle — audit → complete → cleanup
 
 ## Current Position
 
@@ -466,6 +466,9 @@ milestone needs in working memory.
 - [Phase 05]: 05-01/05-05: the related graph is Svelte-owned SVG; d3-force only computes a seeded fixed-budget layout, edge offsets are fixed per type, and the refit effect tracks membership alone so selection/focus/drag never re-fit.
 - [Phase 05]: 05-03 (D-12/D-13): every tag surface shares one cached ListTags(scope, 1000) query and draws linear bars from zero with printed counts (the quantile cloud was dropped).
 - [Phase 05]: 05-09: bits-ui Command.Input lacks aria-controls; patched in TagCombobox and HeaderSearch, ScopeCombobox left as-is (same gap, out of scope).
+- [Phase 06]: D-01: query understanding defaults on when ENGRAM_DECISIONS_PROVIDER=jev (explicit ENGRAM_SEARCH_UNDERSTANDING=off opts out) with a startup egress disclosure; NLQ-01 amended.
+- [Phase 06]: 06-01 option-a: UnderstandQuery is Connect-only with a FilterSuggestion oneof per chip; time windows are UTC-midnight aligned (month-end clamped after WR-01) so an accepted chip equals a manual FacetStrip chip.
+- [Phase 06]: search.browser.test.ts "row toolbar Chain button" is a pre-existing load flake (hover-revealed button detaches before click) that now trips most full-suite runs; tracked as a follow-up issue, not a Phase 6 regression.
 
 ### Pending Todos
 
@@ -566,8 +569,8 @@ Both prior entries were delivered and had simply never been closed out:
 ## Session Continuity
 
 Last session: 2026-09-28T12:20:28.628Z
-Stopped at: Phase 6 complete — all phases complete
-Resume file: .planning/phases/06-query-understanding/06-UI-SPEC.md
+Stopped at: 2026-09-25.01 Phase 6 complete — all phases complete, milestone lifecycle next
+Resume file: None
 
 ## Performance Metrics
 
