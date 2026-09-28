@@ -346,7 +346,7 @@
     {
       "number": "5",
       "name": "Related-Memories Graph & Tag Cloud",
-      "status": "in_progress"
+      "status": "pending"
     },
     {
       "number": "6",
@@ -356,8 +356,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 5)",
-    "reason": "Phase 5 of 7 — needs a plan"
+    "label": "Advance to the next step",
+    "reason": "Phase 05 of 7 · 14% · executing"
   },
-  "updated_at": "2026-09-27T21:08:41.389Z"
+  "updated_at": "2026-09-28T02:58:40.140Z"
 }
