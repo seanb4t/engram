@@ -111,6 +111,19 @@ export interface SupersedeFields {
   tags: string[];
 }
 
+// A resume envelope's `fields` is only checked to be a plain object, so each
+// field is read defensively: a missing or mistyped value becomes empty.
+export function supersedeFieldsFrom(raw: Record<string, unknown>): SupersedeFields {
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  return {
+    summary: str(raw.summary),
+    content: str(raw.content),
+    category: str(raw.category),
+    scope: str(raw.scope),
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((t): t is string => typeof t === 'string') : []
+  };
+}
+
 // A supersede draft: the target set (ids, caller order), the correcting
 // record's fields, and the ONE idempotency key minted on open (crypto.
 // randomUUID) and reused across every preview/commit/resend of this draft.

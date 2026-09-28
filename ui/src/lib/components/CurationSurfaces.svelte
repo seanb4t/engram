@@ -14,11 +14,12 @@
     changedIds,
     type ArchiveSubmitOutcome,
     type SupersedeDraft,
+    supersedeFieldsFrom,
     type SupersedeFields
   } from '$lib/mutations/curation';
   import { parseConnectError } from '$lib/errors/connect-error';
   import { persistResume, redirectToLogin, type CurationResumeEnvelope } from '$lib/resume';
-  import { flashRows } from '$lib/curation/flash.svelte.ts';
+  import { flashRows } from '$lib/curation/flash.svelte';
   import { headIdFrom } from '$lib/curation/chain';
   import ArchiveConfirmDialog from './ArchiveConfirmDialog.svelte';
   import SupersedeDialog from './SupersedeDialog.svelte';
@@ -410,7 +411,7 @@
     if (env.kind === 'supersede') {
       const records = await resolveRecordsKeepAll(env.targets);
       supersedeTargets = records;
-      supersedeFields = env.fields as SupersedeFields;
+      supersedeFields = supersedeFieldsFrom(env.fields);
       supersedePrefillShortId = '';
       supersedeIdempotencyKey = env.idempotencyKey;
       supersedeNotice = 'Signed in again — review and resend';
