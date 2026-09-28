@@ -20,7 +20,9 @@
   import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
   import RelatedGraph from '$lib/components/RelatedGraph.svelte';
   import EdgeLane from '$lib/components/EdgeLane.svelte';
+  import SupersessionLane from '$lib/components/SupersessionLane.svelte';
   import EvidenceSection from '$lib/components/EvidenceSection.svelte';
+  import { noNeighboursLines, TRUNCATION_BANNER } from '$lib/related/lanes';
   import { Skeleton } from '$lib/components/ui/skeleton';
   import { Button } from '$lib/components/ui/button';
 
@@ -71,6 +73,18 @@
   function toggleHidden(type: LaneType) {
     if (hiddenTypes.has(type)) hiddenTypes.delete(type);
     else hiddenTypes.add(type);
+  }
+
+  // Shared by every lane (EdgeLane and SupersessionLane alike): clicking the
+  // anchor's own supersession card clears the selection, matching the
+  // graph's anchor-node click (D-05: the anchor is never related to itself
+  // and never carries an evidence section).
+  function selectFromLane(candidateId: string, lane: LaneType) {
+    if (model && candidateId === model.anchor.id) {
+      selection = null;
+    } else {
+      selection = { id: candidateId, lane };
+    }
   }
 
   // recenter walks the trail to a new anchor (D-04): pushes a history entry
@@ -183,20 +197,41 @@
         {call.before}<span class="trunc" class:trunc-on={model.truncated}>{call.truncatedText}</span>{call.after}
       </div>
     </div>
+    {#if model.truncated}
+      <p class="truncation-banner">{TRUNCATION_BANNER}</p>
+    {/if}
     <div class="s-grid">
       <div class="lanes">
-        {#each EDGE_LANE_TYPES as laneType (laneType)}
-          <EdgeLane
-            type={laneType}
-            rows={membership.lanes[laneType]}
+        {#if model.candidates.length === 0}
+          <div class="no-neighbours" data-testid="no-neighbours">
+            <p class="nn-heading">Nothing related to {model.anchor.shortId}</p>
+            {#each noNeighboursLines(model) as line (line)}
+              <p class="nn-line">{line}</p>
+            {/each}
+            <a class="nn-link" href={openHrefFor(model.anchor.id)}>Open {model.anchor.shortId} in search ↗</a>
+          </div>
+        {:else}
+          <SupersessionLane
             {model}
-            hidden={hiddenTypes.has(laneType)}
+            hidden={hiddenTypes.has('supersession')}
             selectedId={selection?.id ?? null}
             selectedLane={selection?.lane ?? null}
-            onselect={(cid, lane) => (selection = { id: cid, lane })}
-            ontogglehidden={() => toggleHidden(laneType)}
+            onselect={selectFromLane}
+            ontogglehidden={() => toggleHidden('supersession')}
           />
-        {/each}
+          {#each EDGE_LANE_TYPES as laneType (laneType)}
+            <EdgeLane
+              type={laneType}
+              rows={membership.lanes[laneType]}
+              {model}
+              hidden={hiddenTypes.has(laneType)}
+              selectedId={selection?.id ?? null}
+              selectedLane={selection?.lane ?? null}
+              onselect={selectFromLane}
+              ontogglehidden={() => toggleHidden(laneType)}
+            />
+          {/each}
+        {/if}
       </div>
       <aside class="rail">
         <RelatedGraph
@@ -281,6 +316,33 @@
   .trunc-on {
     color: var(--warning);
     font-weight: 600;
+  }
+  .truncation-banner {
+    font-size: calc(12 * var(--u));
+    font-weight: 600;
+    color: var(--warning);
+  }
+  .no-neighbours {
+    display: flex;
+    flex-direction: column;
+    gap: calc(4 * var(--u));
+    padding: calc(8 * var(--u)) calc(12 * var(--u));
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(4 * var(--u));
+  }
+  .nn-heading {
+    font-weight: 600;
+    font-size: calc(13 * var(--u));
+  }
+  .nn-line {
+    font-size: calc(12 * var(--u));
+    color: var(--muted-foreground);
+  }
+  .nn-link {
+    align-self: flex-start;
+    font-size: calc(12 * var(--u));
+    color: var(--primary);
   }
   .s-grid {
     display: grid;

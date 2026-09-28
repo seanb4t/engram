@@ -316,3 +316,111 @@ describe('/related/[id] — route shell states (Task 3)', () => {
     await page.screenshot();
   });
 });
+
+// Fixture: an anchor with a two-predecessor, one-successor supersession
+// chain -- pred1 (depth 1, itself superseded by the anchor -- a genuine
+// hidden-state member), pred2 (depth 2), succ1 (depth 1 successor).
+function chainFixtureResponse(truncated = false) {
+  const anchor = makeMemory({ id: 'anchor-uuid', shortId: 'anchor00001', category: 'decision', summary: 'Anchor summary' });
+  const pred1 = makeMemory({
+    id: 'pred1-uuid',
+    shortId: 'pred1000001',
+    category: 'gotcha',
+    summary: 'Predecessor one',
+    supersededBy: 'anchor-uuid'
+  });
+  const pred2 = makeMemory({ id: 'pred2-uuid', shortId: 'pred2000001', category: 'gotcha', summary: 'Predecessor two', supersededBy: 'pred1-uuid' });
+  const succ1 = makeMemory({ id: 'succ1-uuid', shortId: 'succ1000001', category: 'decision', summary: 'Successor one' });
+
+  const pred1Edge = create(RelatedEdgeSchema, {
+    type: EdgeType.SUPERSESSION,
+    evidence: { case: 'supersession', value: create(SupersessionEvidenceSchema, { direction: SupersessionDirection.PREDECESSOR, depth: 1 }) }
+  });
+  const pred2Edge = create(RelatedEdgeSchema, {
+    type: EdgeType.SUPERSESSION,
+    evidence: { case: 'supersession', value: create(SupersessionEvidenceSchema, { direction: SupersessionDirection.PREDECESSOR, depth: 2 }) }
+  });
+  const succ1Edge = create(RelatedEdgeSchema, {
+    type: EdgeType.SUPERSESSION,
+    evidence: { case: 'supersession', value: create(SupersessionEvidenceSchema, { direction: SupersessionDirection.SUCCESSOR, depth: 1 }) }
+  });
+
+  return create(RelatedMemoriesResponseSchema, {
+    anchor,
+    truncated,
+    related: [
+      create(RelatedMemorySchema, { memory: pred1, edges: [pred1Edge] }),
+      create(RelatedMemorySchema, { memory: pred2, edges: [pred2Edge] }),
+      create(RelatedMemorySchema, { memory: succ1, edges: [succ1Edge] })
+    ]
+  });
+}
+
+describe('/related/[id] — supersession timeline, truncation and empty states (Task 2)', () => {
+  it('renders four columns headed −2, −1, anchor, +1 with the anchor .is-anchor and a superseded member .hidden-state', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(chainFixtureResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await expect.poll(() => Array.from(screen.container.querySelectorAll('.ccol-h')).map((el) => el.textContent)).toEqual([
+      '−2',
+      '−1',
+      'anchor',
+      '+1'
+    ]);
+
+    expect(screen.container.querySelector('[data-testid="chain-card-anchor-uuid"]')?.classList.contains('is-anchor')).toBe(true);
+    expect(screen.container.querySelector('[data-testid="chain-card-pred1-uuid"]')?.classList.contains('hidden-state')).toBe(true);
+  });
+
+  it('clicking a chain card selects it everywhere', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(chainFixtureResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByTestId('chain-card-succ1-uuid')).toBeInTheDocument();
+
+    await screen.getByTestId('chain-card-succ1-uuid').click();
+
+    await expect
+      .poll(() => screen.container.querySelector('[data-testid="chain-card-succ1-uuid"]')?.classList.contains('sel-here'))
+      .toBe(true);
+    expect(screen.container.querySelector('#gn-succ1-uuid')?.classList.contains('sel')).toBe(true);
+    await expect.element(screen.getByRole('region', { name: 'Why succ1000001 is related' })).toBeInTheDocument();
+  });
+
+  it('renders the ceiling banner when truncated=true', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(chainFixtureResponse(true));
+    const screen = await renderRelated();
+    await expect
+      .element(screen.getByText('▲ truncated=true — total ceiling 64 reached; only the vector lane is cut.'))
+      .toBeInTheDocument();
+  });
+
+  it("shows the citation lane's empty reason beside a populated tag lane", async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByText('none — no recall-visible record shares a citation (kind + ref)')).toBeInTheDocument();
+    await expect.element(screen.getByTestId('lane-row-tag-tag-uuid')).toBeInTheDocument();
+  });
+
+  it('renders the no-neighbours card with an Open-in-search link and no lane cards for a zero-candidate response', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(zeroCandidateResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('Nothing related to anchor00001')).toBeInTheDocument();
+    await expect.element(screen.getByRole('link', { name: 'Open anchor00001 in search ↗' })).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('.lane').length).toBe(0);
+  });
+
+  it('screenshots the populated supersession-timeline state', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(chainFixtureResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await page.screenshot();
+  });
+
+  it('screenshots the no-neighbours state', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(zeroCandidateResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('Nothing related to anchor00001')).toBeInTheDocument();
+    await page.screenshot();
+  });
+});

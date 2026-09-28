@@ -5,6 +5,9 @@
 // module computes -- it owns no DOM, mirroring graph.ts's split.
 import { SupersessionDirection } from '$lib/gen/engram_pb';
 import { LANE_CAP, LANE_ORDER, type Candidate, type LaneType, type RelatedModel } from './graph';
+import { compareChainNodes, type ChainNode } from '$lib/curation/chain';
+import { memoryStateWords } from '$lib/memorystate';
+import { timestampDate } from '@bufbuild/protobuf/wkt';
 
 export interface EvidenceLine {
   type: LaneType;
@@ -118,29 +121,84 @@ export interface ChainColumn {
   cards: LaneCard[];
 }
 
-// TODO(Task 2 GREEN): supersessionColumns must place every supersession
-// candidate's signedDepth into its own column (plus the anchor at depth 0),
-// sorted by depth ascending, each column's cards ordered by
-// compareChainNodes, and labelled '−{n}' (U+2212) / 'anchor' / '+{n}'. This
-// stub only returns an empty list so lanes.test.ts's RED phase fails on
-// genuine ordering/labelling assertions rather than a missing-export error.
-export function supersessionColumns(_model: RelatedModel): ChainColumn[] {
-  return [];
+function laneCard(id: string, shortId: string, category: string, summary: string, createdAt: Date | undefined, states: readonly string[], signedDepth: number, isAnchor: boolean, types: LaneType[]): LaneCard {
+  return { id, shortId, category, summary, createdAt, states, signedDepth, isAnchor, types };
+}
+
+// supersessionColumns groups every supersession candidate's signedDepth
+// (plus the anchor, fixed at 0) into ChainColumns sorted by depth ascending
+// -- oldest predecessor first, head-right -- each column's cards ordered by
+// compareChainNodes (createdAt ascending, ties by id). Labels use U+2212
+// MINUS SIGN, never a hyphen-minus: '−{n}' / 'anchor' / '+{n}'.
+export function supersessionColumns(model: RelatedModel): ChainColumn[] {
+  const byDepth = new Map<number, LaneCard[]>();
+  byDepth.set(0, [
+    laneCard(
+      model.anchor.id,
+      model.anchor.shortId,
+      model.anchor.category,
+      model.anchor.summary,
+      model.anchor.createdAt ? timestampDate(model.anchor.createdAt) : undefined,
+      memoryStateWords(model.anchor),
+      0,
+      true,
+      []
+    )
+  ]);
+  for (const c of model.candidates) {
+    if (c.signedDepth === undefined) continue;
+    const card = laneCard(
+      c.id,
+      c.shortId,
+      c.memory.category,
+      c.memory.summary,
+      c.memory.createdAt ? timestampDate(c.memory.createdAt) : undefined,
+      memoryStateWords(c.memory),
+      c.signedDepth,
+      false,
+      c.types
+    );
+    const arr = byDepth.get(c.signedDepth) ?? [];
+    arr.push(card);
+    byDepth.set(c.signedDepth, arr);
+  }
+
+  return Array.from(byDepth.keys())
+    .sort((a, b) => a - b)
+    .map((depth) => {
+      const cards = byDepth
+        .get(depth)!
+        .slice()
+        .sort((a, b) => compareChainNodes({ id: a.id, createdAt: a.createdAt } as ChainNode, { id: b.id, createdAt: b.createdAt } as ChainNode));
+      const label = depth === 0 ? 'anchor' : depth < 0 ? `−${Math.abs(depth)}` : `+${depth}`;
+      return { depth, label, cards };
+    });
 }
 
 // TRUNCATION_BANNER (D-07): the ceiling banner naming the vector lane as the
-// one cut. TODO(Task 2 GREEN): wire this into the route.
-export const TRUNCATION_BANNER = '';
+// one cut -- the only lane a widened k can push past the total ceiling.
+export const TRUNCATION_BANNER = '▲ truncated=true — total ceiling 64 reached; only the vector lane is cut.';
 
-// TODO(Task 2 GREEN): collapsedRowCopy must render
-// "showing {shown} of {total} · k={k}" plus " · ceiling cut the rest" only
-// when truncated, then " · show all {total} ▸".
-export function collapsedRowCopy(_input: { shown: number; total: number; k: number; truncated: boolean }): string {
-  return '';
+// collapsedRowCopy is the vector lane's collapsed-row copy: the ceiling-cut
+// clause is inserted only when the response itself was truncated (a
+// collapsed-but-untruncated lane just has more rows than the client shows).
+export function collapsedRowCopy(input: { shown: number; total: number; k: number; truncated: boolean }): string {
+  const { shown, total, k, truncated } = input;
+  const ceiling = truncated ? ' · ceiling cut the rest' : '';
+  return `showing ${shown} of ${total} · k=${k}${ceiling} · show all ${total} ▸`;
 }
 
-// TODO(Task 2 GREEN): noNeighboursLines must list the chain walk, citations,
-// the anchor's tags (or "none — anchor carries no tags") and the vector k.
-export function noNeighboursLines(_model: RelatedModel): string[] {
-  return [];
+// noNeighboursLines names what every edge type searched and found nothing
+// (E1 empty, honest-feedback rule) -- never a bare "no results".
+export function noNeighboursLines(model: RelatedModel): string[] {
+  const tagsLine =
+    model.anchor.tags.length === 0
+      ? 'tags probed: none — anchor carries no tags'
+      : `tags probed: ${model.anchor.tags.map((t) => `#${t}`).join(' · ')}`;
+  return [
+    'chain walk: no superseded_by, no supersedes',
+    'citations: no recall-visible record shares a kind + ref',
+    tagsLine,
+    `vector k=${model.k}: 0 recall-visible neighbours`
+  ];
 }
