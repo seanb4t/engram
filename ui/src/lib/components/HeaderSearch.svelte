@@ -7,6 +7,7 @@
   import { Kbd } from '$lib/components/ui/kbd';
   import { Badge } from '$lib/components/ui/badge';
   import ScopeChip from './ScopeChip.svelte';
+  import TagMatchRow from './TagMatchRow.svelte';
   import SearchIcon from '@lucide/svelte/icons/search';
   import ScrollTextIcon from '@lucide/svelte/icons/scroll-text';
   import CalendarClockIcon from '@lucide/svelte/icons/calendar-clock';
@@ -19,6 +20,8 @@
   import { parseConnectError, fixRowsFor, type FixRow } from '$lib/errors/connect-error';
   import { defaultSearchParams, encodeSearchParams, applyChips } from '$lib/search/params';
   import { headerSearch } from '$lib/search/header-search.svelte';
+  import { listTagsQuery } from '$lib/tags/query';
+  import { toTagRows, rankTagMatches, scopeLabel } from '$lib/tags/tags';
 
   type ScopeChipT = Extract<OperatorChip, { kind: 'scope' }>;
   type TagChipT = Extract<OperatorChip, { kind: 'tag' }>;
@@ -236,6 +239,34 @@
     return null;
   });
 
+  // Tags autocomplete group (TAGS-02, D-16..D-19): detected from the raw last
+  // token directly, NOT from classify.ts's chip kind — '#qd' already forms a
+  // complete { kind: 'tag' } chip (its value is non-empty), but the user is
+  // still typing more characters for it, so the group must stay keyed off
+  // whether the last token is an unfinished '#'/'tag:' prefix, not whether
+  // classify.ts considers it "pending".
+  const tagPrefixInProgress = $derived.by(() => {
+    if (!debouncedText || /\s$/.test(debouncedText)) return null;
+    const tokens = debouncedText.trim().split(/\s+/);
+    const last = tokens[tokens.length - 1];
+    if (last.startsWith('#')) return last.slice(1);
+    if (last.toLowerCase().startsWith('tag:')) return last.slice('tag:'.length);
+    return null;
+  });
+
+  // Shares the identical cached ListTags(scope, 1000) query key TagBars and
+  // TagCombobox use for the same scope key (D-16 "one fetch, two surfaces"
+  // extended to a third) — only enabled while a tag token is in progress.
+  const tagsQuery = createQuery(() => ({
+    ...listTagsQuery(effectiveScope),
+    enabled: tagPrefixInProgress !== null
+  }));
+  const tagRows = $derived(toTagRows(tagsQuery.data));
+  const tagMax = $derived(tagRows.length > 0 ? tagRows[0].count : 0);
+  const tagRank = $derived(
+    rankTagMatches(tagRows, tagPrefixInProgress ?? '', { more: tagsQuery.data?.more ?? false })
+  );
+
   const listScopesQuery = createQuery(() => ({
     queryKey: ['listScopes'],
     queryFn: ({ signal }) => engram.listScopes({}, { signal }),
@@ -324,7 +355,12 @@
   function completeToken(newToken: string) {
     const raw = headerSearch.text.trim();
     const tokens = raw.length ? raw.split(/\s+/) : [];
-    if (pendingChip && tokens.length > 0) tokens[tokens.length - 1] = newToken;
+    // A tag token in progress ('#qd', 'tag:q') already forms a complete chip
+    // per classify.ts (its value is non-empty), so pendingChip alone would
+    // miss it — completeToken must still replace the whole unfinished last
+    // token, not append a duplicate one (D-16..D-19: "replaces the partial
+    // token").
+    if ((pendingChip || tagPrefixInProgress !== null) && tokens.length > 0) tokens[tokens.length - 1] = newToken;
     else tokens.push(newToken);
     headerSearch.text = `${tokens.join(' ')} `;
   }
@@ -432,6 +468,16 @@
         {/if}
 
         <Command.List class="max-h-[calc(540*var(--u))]">
+          {#if tagPrefixInProgress !== null}
+            <Command.Group heading={'Tags · counts in ' + scopeLabel(effectiveScope)}>
+              {#each tagRank.matches as m (m.tag)}
+                <Command.Item value={`tag-${m.tag}`} onSelect={() => completeToken('#' + m.tag)}>
+                  <TagMatchRow match={m} max={tagMax} />
+                </Command.Item>
+              {/each}
+            </Command.Group>
+          {/if}
+
           {#if classified.kind === 'text'}
             {#if searchError?.kind === 'rejected'}
               <div class="px-2 py-1.5 text-sm">
