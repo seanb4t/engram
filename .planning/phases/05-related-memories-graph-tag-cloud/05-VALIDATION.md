@@ -22,7 +22,7 @@ created: "2026-09-27"
 | **Framework** | vitest 5.0.1 — `node` project (pure functions) + `browser` project (vitest-browser-svelte, Chromium via Playwright) |
 | **Config file** | `ui/vite.config.ts` |
 | **Quick run command** | `pnpm --dir ui vitest run --project browser <touched *.browser.test.ts>` / `pnpm --dir ui vitest run --project node <touched *.test.ts>` |
-| **Full suite command** | `pnpm --dir ui test && pnpm --dir ui check && pnpm --dir ui build` |
+| **Full suite command** | `pnpm --dir ui test && pnpm --dir ui build` (svelte-check excluded — crashes under TS7, #632) |
 | **Estimated runtime** | ~120 seconds |
 
 `task test` does not run the `ui/` vitest suite — invoke pnpm under `ui/` directly.

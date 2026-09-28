@@ -583,8 +583,30 @@ this codebase and is flagged for a research/UI-spec pass at plan time.
   3. The graph renders correctly in light and dark mode using the category colour tokens, and clicking a node selects it in the detail pane
   4. A tag popularity list drawn as linear bars with printed counts (amended 2026-09-27 from a quantile-sized cloud; Phase 5 D-12), in DOM order matching reading order, is built from `ListTags` counts; clicking a tag adds it as a filter chip, and the same counts are available via chip autocomplete without opening the cloud
 
-**Plans:** 0/? plans (not yet planned)
+**Plans:** 9 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — /related/<id> route, pure related model and the Svelte-owned d3-force graph with seeded 300-tick settle, edge encoding and honest route states (D-01, D-02, D-06–D-09, D-20; GRAPH-01–GRAPH-03)
+- [ ] 05-02-PLAN.md — entry points: DetailPane Related button, row key r, ⌘K item, and the /related URL codec recording the origin (D-03, D-04; GRAPH-01)
+- [ ] 05-03-PLAN.md — shared TagBars and TagCombobox over one cached ListTags(scope, 1000) query per scope key (D-12, D-13, D-15–D-19; TAGS-01, TAGS-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 05-04-PLAN.md — edge-type lanes, supersession timeline, shared selection, evidence under the graph, re-centre, vector collapse mirrored in the graph, legend toggles (D-02, D-04, D-05, D-07, D-10; GRAPH-01, GRAPH-03)
+- [ ] 05-05-PLAN.md — graph keyboard and ARIA equivalence, live summary, Escape tiers, corner zoom, ⌘-wheel gate, refit, spring-back drag (D-04, D-09–D-11, D-20; GRAPH-01, GRAPH-02)
+- [ ] 05-06-PLAN.md — header search Tags group with counts, scope-following, unknown-tag row (D-16–D-19; TAGS-02)
+- [ ] 05-07-PLAN.md — /search docked Tags panel sharing the pane slot, bottom sheet when narrow, + tag picker in the facet strip (D-13, D-16, D-17; TAGS-01, TAGS-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 05-08-PLAN.md — /related rail Graph | Tags tabs, in-view tag filter, g key, trail, back and Escape to origin (D-01, D-04, D-11, D-13–D-15; TAGS-01, GRAPH-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 05-09-PLAN.md — chromedp related-view round trip, WCAG 2.2 AA audits of every new surface, skills brought current, vendored SPA, phase gates (D-01, D-03; GRAPH-01–GRAPH-03, TAGS-01, TAGS-02)
 
 ### Phase 6: Query Understanding
 
