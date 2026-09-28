@@ -176,7 +176,7 @@ describe('/related/[id] — lanes, shared selection and evidence under the graph
 
     const rail = screen.container.querySelector('.rail');
     const railChildren = Array.from(rail?.children ?? []);
-    const graphIdx = railChildren.findIndex((el) => el.matches('svg.graph'));
+    const graphIdx = railChildren.findIndex((el) => el.querySelector('svg.graph') !== null);
     const evIdx = railChildren.findIndex((el) => el.matches('.ev'));
     expect(graphIdx).toBeGreaterThanOrEqual(0);
     expect(evIdx).toBeGreaterThan(graphIdx);
