@@ -14,7 +14,14 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { toast } from 'svelte-sonner';
   import { engram } from '$lib/client';
-  import { buildRelatedModel, visibleMembership, callLineParts, RELATED_K, type LaneType } from '$lib/related/graph';
+  import {
+    buildRelatedModel,
+    visibleMembership,
+    callLineParts,
+    neighbourhoodSummary,
+    RELATED_K,
+    type LaneType
+  } from '$lib/related/graph';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import { parseRelatedParams, relatedPath } from '$lib/search/related-params';
   import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
@@ -23,9 +30,12 @@
   import SupersessionLane from '$lib/components/SupersessionLane.svelte';
   import EvidenceSection from '$lib/components/EvidenceSection.svelte';
   import GraphLegend from '$lib/components/GraphLegend.svelte';
+  import TagBars from '$lib/components/TagBars.svelte';
   import { noNeighboursLines, TRUNCATION_BANNER } from '$lib/related/lanes';
   import { Skeleton } from '$lib/components/ui/skeleton';
   import { Button } from '$lib/components/ui/button';
+  import { Kbd } from '$lib/components/ui/kbd';
+  import * as Tabs from '$lib/components/ui/tabs';
 
   const id = $derived(page.params.id ?? '');
   const params = $derived(parseRelatedParams(page.url.searchParams));
@@ -55,11 +65,62 @@
   let vectorExpanded = $state(false);
   const hiddenTypes = new SvelteSet<LaneType>();
 
+  // D-01: which rail tab is showing -- Task 2 wires the `g` key and
+  // localStorage persistence; Task 1 only drives it from state and from
+  // D-05 continuity (a lane/chain-card selection switches back to Graph).
+  let railTab = $state<'graph' | 'tags'>('graph');
+
+  // D-14: the view's own in-place tag filter -- never GRAPH-05, never
+  // touches membership, the lanes' order or the RelatedMemories request.
+  let filterTag = $state<string | null>(null);
+
   const membership = $derived(model ? visibleMembership(model, { hiddenTypes, vectorExpanded }) : undefined);
 
   const selectedCandidate = $derived.by(() => {
     if (!selection || !model) return undefined;
     return model.candidates.find((c) => c.id === selection.id);
+  });
+
+  // D-14 counts: N candidates (of the model's full candidate set, not just
+  // the drawn/visible membership) carry filterTag; M is that same total.
+  const filterCounts = $derived.by(() => {
+    if (!filterTag || !model) return null;
+    const total = model.candidates.length;
+    const carriers = model.candidates.filter((c) => c.memory.tags.includes(filterTag)).length;
+    return { carriers, total };
+  });
+
+  // D-14 dimming: every candidate whose OWN tags lack filterTag -- applied
+  // identically to lane rows, chain cards and graph nodes via one shared
+  // set, never the anchor (which is never a member of model.candidates).
+  const filterDimmed = $derived.by(() => {
+    if (!filterTag || !model) return new Set<string>();
+    return new Set(model.candidates.filter((c) => !c.memory.tags.includes(filterTag)).map((c) => c.id));
+  });
+
+  // D-15: rarity is read from the candidates' own tag-edge evidence
+  // (WeightedTag.weight = ln(n/df)) -- never merged with ListTags' raw
+  // popularity count, and absent for a tag no tag edge actually carries.
+  const tagRarity = $derived.by(() => {
+    const map = new Map<string, number>();
+    if (!model) return map;
+    for (const c of model.candidates) {
+      const edge = c.edges.tag;
+      if (edge && edge.evidence.case === 'tag') {
+        for (const t of edge.evidence.value.sharedTags) map.set(t.tag, t.weight);
+      }
+    }
+    return map;
+  });
+
+  // D-11: the graph's polite live summary is the neighbourhood summary plus,
+  // while a tag filter is active, the same "N of M carry it" clause the chip
+  // shows -- so re-centres, toggles and filter results are all announced.
+  const graphSummary = $derived.by(() => {
+    if (!membership) return undefined;
+    const base = neighbourhoodSummary(membership.nodes);
+    if (!filterTag || !filterCounts) return base;
+    return `${base} · #${filterTag} ${filterCounts.carriers} of ${filterCounts.total} carry it`;
   });
 
   // D-04: the anchor never carries its own change, so this effect fires
@@ -68,6 +129,7 @@
     void id;
     selection = null;
     vectorExpanded = false;
+    filterTag = null;
   });
 
   function toggleHidden(type: LaneType) {
@@ -78,12 +140,16 @@
   // Shared by every lane (EdgeLane and SupersessionLane alike): clicking the
   // anchor's own supersession card clears the selection, matching the
   // graph's anchor-node click (D-05: the anchor is never related to itself
-  // and never carries an evidence section).
+  // and never carries an evidence section). Selecting a real candidate also
+  // switches the rail to Graph (D-05 continuity) so the evidence section --
+  // which lives under the graph -- is visible even if the Tags tab was
+  // showing.
   function selectFromLane(candidateId: string, lane: LaneType) {
     if (model && candidateId === model.anchor.id) {
       selection = null;
     } else {
       selection = { id: candidateId, lane };
+      railTab = 'graph';
     }
   }
 
@@ -202,6 +268,12 @@
     {/if}
     <div class="s-grid">
       <div class="lanes">
+        {#if filterTag && filterCounts}
+          <div class="tag-filter-chip" data-testid="tag-filter-chip">
+            <span class="mono">#{filterTag} {filterCounts.carriers} of {filterCounts.total} carry it</span>
+            <button type="button" class="chip-clear" aria-label="Clear tag filter" onclick={() => (filterTag = null)}>×</button>
+          </div>
+        {/if}
         {#if model.candidates.length === 0}
           <div class="no-neighbours" data-testid="no-neighbours">
             <p class="nn-heading">Nothing related to {model.anchor.shortId}</p>
@@ -216,6 +288,7 @@
             hidden={hiddenTypes.has('supersession')}
             selectedId={selection?.id ?? null}
             selectedLane={selection?.lane ?? null}
+            dimmedIds={filterDimmed}
             onselect={selectFromLane}
             ontogglehidden={() => toggleHidden('supersession')}
           />
@@ -236,6 +309,7 @@
                     onexpand: () => (vectorExpanded = true)
                   }
                 : null}
+              dimmedIds={filterDimmed}
               onselect={selectFromLane}
               ontogglehidden={() => toggleHidden(laneType)}
             />
@@ -243,24 +317,46 @@
         {/if}
       </div>
       <aside class="rail">
-        <RelatedGraph
-          anchorId={model.anchor.id}
-          nodes={membership.nodes}
-          edges={membership.edges}
-          selectedId={selection?.id ?? null}
-          onselect={(nid) => (selection = nid ? { id: nid, lane: 'graph' } : null)}
-          onrecenter={recenter}
-        />
-        {#if selectedCandidate}
-          <EvidenceSection
-            candidate={selectedCandidate}
-            anchor={model.anchor}
-            openHref={openHrefFor(selectedCandidate.id)}
-            onclose={() => (selection = null)}
-            onrecenter={() => recenter(selectedCandidate.id)}
+        <div class="rail-tabs-row">
+          <Tabs.Root value={railTab} onValueChange={(v) => (railTab = v === 'tags' ? 'tags' : 'graph')}>
+            <Tabs.List>
+              <Tabs.Trigger value="graph">Graph</Tabs.Trigger>
+              <Tabs.Trigger value="tags">Tags</Tabs.Trigger>
+            </Tabs.List>
+          </Tabs.Root>
+          <Kbd>g</Kbd>
+        </div>
+        {#if railTab === 'graph'}
+          <RelatedGraph
+            anchorId={model.anchor.id}
+            nodes={membership.nodes}
+            edges={membership.edges}
+            selectedId={selection?.id ?? null}
+            dimmedIds={filterDimmed}
+            summary={graphSummary}
+            onselect={(nid) => (selection = nid ? { id: nid, lane: 'graph' } : null)}
+            onrecenter={recenter}
+          />
+          {#if selectedCandidate}
+            <EvidenceSection
+              candidate={selectedCandidate}
+              anchor={model.anchor}
+              openHref={openHrefFor(selectedCandidate.id)}
+              onclose={() => (selection = null)}
+              onrecenter={() => recenter(selectedCandidate.id)}
+            />
+          {/if}
+          <GraphLegend {model} {hiddenTypes} ontoggle={toggleHidden} />
+        {:else}
+          <TagBars
+            scope=""
+            mode="rail"
+            markedTags={new Set(model.anchor.tags)}
+            selectedTags={filterTag ? new Set([filterTag]) : new Set()}
+            rarity={tagRarity}
+            ontoggle={(t) => (filterTag = filterTag === t ? null : t)}
           />
         {/if}
-        <GraphLegend {model} {hiddenTypes} ontoggle={toggleHidden} />
       </aside>
     </div>
   {/if}
@@ -354,6 +450,25 @@
     font-size: calc(12 * var(--u));
     color: var(--primary);
   }
+  /* D-14: the in-view tag filter chip, rendered above the lanes so it stays
+     visible regardless of which rail tab is showing. */
+  .tag-filter-chip {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--u));
+    align-self: flex-start;
+    font-size: calc(11 * var(--u));
+    background: var(--surface-2);
+    border: 1px solid var(--primary);
+    border-radius: calc(4 * var(--u));
+    padding: calc(2 * var(--u)) calc(4 * var(--u)) calc(2 * var(--u)) calc(8 * var(--u));
+  }
+  .chip-clear {
+    font-family: var(--font-mono, monospace);
+    color: var(--muted-foreground);
+    border-radius: calc(4 * var(--u));
+    padding: 0 calc(4 * var(--u));
+  }
   .s-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) calc(340 * var(--u));
@@ -381,6 +496,12 @@
   .rail :global(svg.graph) {
     width: 100%;
     aspect-ratio: 440 / 380;
+  }
+  .rail-tabs-row {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--u));
+    padding-bottom: calc(4 * var(--u));
   }
   @container frame (max-width: 900px) {
     .s-grid {
