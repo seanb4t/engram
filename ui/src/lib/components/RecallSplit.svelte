@@ -20,13 +20,15 @@
     onclose,
     autoSaveId,
     list,
-    detail
+    detail,
+    narrow = $bindable(false)
   }: {
     open: boolean;
     onclose: () => void;
     autoSaveId: string;
     list: Snippet;
     detail: Snippet;
+    narrow?: boolean;
   } = $props();
 
   let containerEl: HTMLElement | undefined = $state();
@@ -61,6 +63,14 @@
     if (!detailPane || isNarrow) return;
     if (open) detailPane.expand();
     else detailPane.collapse();
+  });
+
+  // D-13 (05-07 Task 3): exposes the same narrow/wide breakpoint the host
+  // needs to decide whether the Tags panel renders in the shared slot or as
+  // a bottom sheet -- a second width measurement on the page would drift
+  // from this component's own breakpoint.
+  $effect(() => {
+    narrow = isNarrow;
   });
 </script>
 

@@ -1,6 +1,6 @@
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent } from 'vitest/browser';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
@@ -26,6 +26,7 @@ const {
   getMemorySpy,
   listScopesSpy,
   listMemoriesSpy,
+  listTagsSpy,
   consumeResumeSpy,
   archiveMemorySpy,
   restoreMemorySpy,
@@ -46,6 +47,7 @@ const {
     getMemorySpy: vi.fn(),
     listScopesSpy: vi.fn(),
     listMemoriesSpy: vi.fn(),
+    listTagsSpy: vi.fn(),
     consumeResumeSpy: vi.fn(),
     archiveMemorySpy: vi.fn(),
     restoreMemorySpy: vi.fn(),
@@ -68,6 +70,7 @@ vi.mock('$lib/client', async (importOriginal) => {
       getMemory: getMemorySpy,
       listScopes: listScopesSpy,
       listMemories: listMemoriesSpy,
+      listTags: listTagsSpy,
       relatedMemories: relatedMemoriesSpy
     },
     engramWrite: {
@@ -125,6 +128,13 @@ beforeEach(() => {
   getMemorySpy.mockReset();
   listScopesSpy.mockReset().mockResolvedValue({ scopes: [], approximate: false });
   listMemoriesSpy.mockReset().mockResolvedValue(emptyListResult());
+  listTagsSpy.mockReset().mockResolvedValue({
+    tags: [
+      { tag: 'qdrant', count: 400n },
+      { tag: 'mcp', count: 200n }
+    ],
+    more: false
+  });
   consumeResumeSpy.mockReset();
   archiveMemorySpy.mockReset();
   restoreMemorySpy.mockReset();
@@ -1175,5 +1185,144 @@ describe('search route — bulk-bar busy during a pending curation call (E4)', (
     // entirely rather than staying visibly re-enabled.
     resolveArchive({ results: [{ requested: 'm1', id: 'm1', outcome: ArchiveOutcome.ARCHIVED }] });
     await expect.element(bulkToolbar).not.toBeInTheDocument();
+  });
+});
+
+describe('search route — docked Tags panel toggle (TAGS-01, D-13)', () => {
+  it('starts closed; clicking "▦ Tags panel" opens it and draws bars from ListTags(scope="", limit=1000)', async () => {
+    pageState.url.href = 'http://localhost/search';
+    const screen = await renderSearch();
+    screen.container.style.width = '1200px';
+
+    const toggle = screen.getByRole('button', { name: '▦ Tags panel' });
+    await expect.element(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    await toggle.click();
+    await expect.element(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    await expect.poll(() => listTagsSpy).toHaveBeenCalledTimes(1);
+    expect(listTagsSpy).toHaveBeenCalledWith({ scope: '', limit: 1000n }, expect.anything());
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).toBeInTheDocument();
+    await expect.element(screen.getByText('qdrant')).toBeInTheDocument();
+  });
+
+  it('with ?scope=repo:acme/x set, the panel calls ListTags with that scope and names it in the header', async () => {
+    pageState.url.href = 'http://localhost/search?scope=repo:acme/x';
+    const screen = await renderSearch();
+    screen.container.style.width = '1200px';
+
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+
+    await expect.poll(() => listTagsSpy).toHaveBeenCalledTimes(1);
+    expect(listTagsSpy).toHaveBeenCalledWith({ scope: 'repo:acme/x', limit: 1000n }, expect.anything());
+    await expect.element(screen.getByText('Tags · counts in repo:acme/x')).toBeInTheDocument();
+  });
+
+  it('clicking the "qdrant" bar adds it as a #tag URL filter with sel cleared; clicking it again removes it', async () => {
+    pageState.url.href = 'http://localhost/search';
+    const screen = await renderSearch();
+    screen.container.style.width = '1200px';
+
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+    await expect.element(screen.getByText('qdrant')).toBeInTheDocument();
+
+    screen.getByRole('option', { name: /qdrant/ }).element().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await expect.poll(() => pageState.url.searchParams.getAll('tag')).toEqual(['qdrant']);
+    expect(pageState.url.searchParams.get('sel')).toBe(null);
+    expect(gotoSpy.mock.calls.at(-1)?.[0]).toMatch(/^\/ui\/search\?/);
+
+    screen.getByRole('option', { name: /qdrant/ }).element().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await expect.poll(() => pageState.url.searchParams.getAll('tag')).toEqual([]);
+  });
+});
+
+describe('search route — Tags panel shares the slot with the detail pane, narrow sheet (D-13)', () => {
+  afterEach(async () => {
+    await page.viewport(1024, 800);
+  });
+
+  it('opening a record hides the panel; closing the record shows the panel again', async () => {
+    pageState.url.href = 'http://localhost/search?q=github';
+    const memory = makeMemory({ id: 'm-1', summary: 'toggle panel record' });
+    searchMemoriesSpy.mockResolvedValue({ memories: [memory], searchedScopes: ['repo:test'], scopesTruncated: false, scopesUnknown: false });
+    getMemorySpy.mockResolvedValue({ memory });
+
+    const screen = await renderSearch();
+    screen.container.style.width = '1200px';
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).toBeInTheDocument();
+
+    (screen.container.querySelector('[role="option"]') as HTMLElement).click();
+    await expect.poll(() => screen.container.querySelector('[aria-label="Memory detail"]') !== null).toBe(true);
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).not.toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'close' }).click();
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).toBeInTheDocument();
+    await expect.element(screen.getByRole('button', { name: '▦ Tags panel' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it("the slot's close control with no record open turns the toggle off", async () => {
+    pageState.url.href = 'http://localhost/search';
+    const screen = await renderSearch();
+    screen.container.style.width = '1200px';
+
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'close' }).click();
+    await expect.element(screen.getByRole('button', { name: '▦ Tags panel' })).toHaveAttribute('aria-pressed', 'false');
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).not.toBeInTheDocument();
+  });
+
+  it('an active tag from ?tag=qdrant renders marked with the ● marker and aria-selected', async () => {
+    pageState.url.href = 'http://localhost/search?tag=qdrant';
+    const screen = await renderSearch();
+    screen.container.style.width = '1200px';
+
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+    const row = screen.getByRole('option', { name: /qdrant/ });
+    await expect.element(row).toHaveAttribute('aria-selected', 'true');
+    await expect.element(row.getByText('●')).toBeInTheDocument();
+  });
+
+  it('at a 700px-wide viewport the panel opens as a bottom sheet instead of the slot; closing it clears the toggle', async () => {
+    await page.viewport(700, 800);
+    pageState.url.href = 'http://localhost/search';
+    const screen = await renderSearch();
+
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+    const dialog = screen.getByRole('dialog');
+    await expect.element(dialog).toBeInTheDocument();
+    await expect.element(dialog.getByText('qdrant')).toBeInTheDocument();
+
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await expect.element(screen.getByRole('button', { name: '▦ Tags panel' })).toHaveAttribute('aria-pressed', 'false');
+    await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('captures the docked panel and the narrow sheet in both themes', async () => {
+    // Both phases drive the real viewport (not an inline container width) --
+    // an explicit CSS width set on the mount root would keep overriding
+    // RecallSplit's own ResizeObserver measurement after the later
+    // page.viewport(700, ...) call, since a literal px width is not
+    // viewport-relative.
+    await page.viewport(1200, 800);
+    pageState.url.href = 'http://localhost/search';
+    const screen = await renderSearch();
+    await screen.getByRole('button', { name: '▦ Tags panel' }).click();
+    await expect.element(screen.getByText('Tags · counts in all readable scopes')).toBeInTheDocument();
+
+    document.documentElement.classList.remove('dark');
+    await page.screenshot();
+    document.documentElement.classList.add('dark');
+    await page.screenshot();
+    document.documentElement.classList.remove('dark');
+
+    await page.viewport(700, 800);
+    await expect.element(screen.getByRole('dialog')).toBeInTheDocument();
+    await page.screenshot();
+    document.documentElement.classList.add('dark');
+    await page.screenshot();
+    document.documentElement.classList.remove('dark');
   });
 });
