@@ -106,6 +106,9 @@ func (d *deps) understandQuery(ctx context.Context, c caller, a understandArgs) 
 		Tags:   vocab,
 		Now:    time.Now(),
 	})
+	if d.understandAudit {
+		rep.Audit(ctx, q)
+	}
 	return understandResult{Enabled: true, Suggestions: rep.Suggestions, Report: rep}, nil
 }
 
