@@ -1,0 +1,1 @@
+function e(e,t){let n=RegExp(`^`+t.toUpperCase()+`\\s*\\(?\\s*[:\\-]?\\s*`,``);return e.replace(n,``).trimStart()}export{e as t};
