@@ -99,3 +99,48 @@ export function emptyLaneReason(type: LaneType, model: RelatedModel): string {
       return `none — 0 recall-visible neighbours at k=${model.k}`;
   }
 }
+
+export interface LaneCard {
+  id: string;
+  shortId: string;
+  category: string;
+  summary: string;
+  createdAt?: Date;
+  states: readonly string[];
+  signedDepth: number;
+  isAnchor: boolean;
+  types: LaneType[];
+}
+
+export interface ChainColumn {
+  depth: number;
+  label: string;
+  cards: LaneCard[];
+}
+
+// TODO(Task 2 GREEN): supersessionColumns must place every supersession
+// candidate's signedDepth into its own column (plus the anchor at depth 0),
+// sorted by depth ascending, each column's cards ordered by
+// compareChainNodes, and labelled '−{n}' (U+2212) / 'anchor' / '+{n}'. This
+// stub only returns an empty list so lanes.test.ts's RED phase fails on
+// genuine ordering/labelling assertions rather than a missing-export error.
+export function supersessionColumns(_model: RelatedModel): ChainColumn[] {
+  return [];
+}
+
+// TRUNCATION_BANNER (D-07): the ceiling banner naming the vector lane as the
+// one cut. TODO(Task 2 GREEN): wire this into the route.
+export const TRUNCATION_BANNER = '';
+
+// TODO(Task 2 GREEN): collapsedRowCopy must render
+// "showing {shown} of {total} · k={k}" plus " · ceiling cut the rest" only
+// when truncated, then " · show all {total} ▸".
+export function collapsedRowCopy(_input: { shown: number; total: number; k: number; truncated: boolean }): string {
+  return '';
+}
+
+// TODO(Task 2 GREEN): noNeighboursLines must list the chain walk, citations,
+// the anchor's tags (or "none — anchor carries no tags") and the vector k.
+export function noNeighboursLines(_model: RelatedModel): string[] {
+  return [];
+}
