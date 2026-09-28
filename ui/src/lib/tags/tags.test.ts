@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { barPercent, TAG_TOP, visibleTagRows, tagListFooter, type TagRow } from './tags';
+import { barPercent, TAG_TOP, visibleTagRows, tagListFooter, rankTagMatches, matchFooter, type TagRow } from './tags';
 
 function rows(n: number, startCount = n): TagRow[] {
   return Array.from({ length: n }, (_, i) => ({ tag: `tag${i}`, count: startCount - i }));
@@ -80,5 +80,87 @@ describe('tagListFooter', () => {
 describe('TAG_TOP', () => {
   it('is 30', () => {
     expect(TAG_TOP).toBe(30);
+  });
+});
+
+const MATCH_FIXTURE: TagRow[] = [
+  { tag: 'qdrant', count: 9 },
+  { tag: 'sqlite', count: 12 },
+  { tag: 'qdr-ops', count: 2 },
+  { tag: 'quad', count: 9 }
+];
+
+describe('rankTagMatches', () => {
+  it('"qd" returns qdrant then qdr-ops (prefix first, by count), total 2, plus an unknown row', () => {
+    const r = rankTagMatches(MATCH_FIXTURE, 'qd', { more: true });
+    expect(r.matches.map((m) => m.tag)).toEqual(['qdrant', 'qdr-ops']);
+    expect(r.total).toBe(2);
+    expect(r.unknown).toEqual({ tag: 'qd', reason: '#qd — not among the loaded tags' });
+  });
+
+  it('"q" puts prefix matches (qdrant, quad, qdr-ops -- tied counts break by tag ascending) before the non-prefix match (sqlite)', () => {
+    const r = rankTagMatches(MATCH_FIXTURE, 'q', { more: false });
+    expect(r.matches.map((m) => m.tag)).toEqual(['qdrant', 'quad', 'qdr-ops', 'sqlite']);
+  });
+
+  it('a query equal to a loaded tag (case-insensitive) yields no unknown row', () => {
+    const r = rankTagMatches(MATCH_FIXTURE, 'SQLite', { more: true });
+    expect(r.unknown).toBeNull();
+  });
+
+  it('strips a leading "#" or "tag:" before matching', () => {
+    const hash = rankTagMatches(MATCH_FIXTURE, '#qd', { more: true });
+    const prefixed = rankTagMatches(MATCH_FIXTURE, 'tag:qd', { more: true });
+    const bare = rankTagMatches(MATCH_FIXTURE, 'qd', { more: true });
+    expect(hash).toEqual(bare);
+    expect(prefixed).toEqual(bare);
+  });
+
+  it('unknown reason depends on more: "not among the loaded tags" vs "0 recall-visible records"', () => {
+    expect(rankTagMatches(MATCH_FIXTURE, 'qd', { more: true }).unknown?.reason).toBe('#qd — not among the loaded tags');
+    expect(rankTagMatches(MATCH_FIXTURE, 'qd', { more: false }).unknown?.reason).toBe('#qd — 0 recall-visible records');
+  });
+
+  it('more than 8 matches return 8 rows with total the full count', () => {
+    const many: TagRow[] = Array.from({ length: 10 }, (_, i) => ({ tag: `alpha${i}`, count: 10 - i }));
+    const r = rankTagMatches(many, 'alpha', { more: false });
+    expect(r.matches.length).toBe(8);
+    expect(r.total).toBe(10);
+  });
+
+  it('each match splits into parts with the hit flagged', () => {
+    const r = rankTagMatches(MATCH_FIXTURE, 'q', { more: false });
+    const sqliteMatch = r.matches.find((m) => m.tag === 'sqlite')!;
+    expect(sqliteMatch.parts).toEqual([
+      { text: 's', hit: false },
+      { text: 'q', hit: true },
+      { text: 'lite', hit: false }
+    ]);
+    const qdrantMatch = r.matches.find((m) => m.tag === 'qdrant')!;
+    expect(qdrantMatch.parts).toEqual([
+      { text: 'qd', hit: true },
+      { text: 'rant', hit: false }
+    ]);
+  });
+
+  it('an empty query returns the first 8 rows unranked (server order), total = rows.length, no unknown', () => {
+    const r = rankTagMatches(MATCH_FIXTURE, '', { more: false });
+    expect(r.matches.map((m) => m.tag)).toEqual(['qdrant', 'sqlite', 'qdr-ops', 'quad']);
+    expect(r.total).toBe(4);
+    expect(r.unknown).toBeNull();
+  });
+});
+
+describe('matchFooter', () => {
+  it('uses the same template regardless of total -- no singular special case (E5 zero-one-many backstop)', () => {
+    expect(matchFooter({ total: 1, more: false, loaded: 1000 })).toEqual({ text: '1 matches · top 8 shown', warn: null });
+    expect(matchFooter({ total: 8, more: false, loaded: 1000 })).toEqual({ text: '8 matches · top 8 shown', warn: null });
+  });
+
+  it('adds the warning line when more is true', () => {
+    expect(matchFooter({ total: 3, more: true, loaded: 1000 })).toEqual({
+      text: '3 matches · top 8 shown',
+      warn: 'matching among the 1,000 most-used tags'
+    });
   });
 });
