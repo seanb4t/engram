@@ -77,7 +77,7 @@ function citationEdge(refs: Array<[string, string]>) {
   });
 }
 
-function candidate(id: string, opts: Partial<Candidate> & { memory?: MessageInitShape<typeof MemorySchema> } = {}): Candidate {
+function candidate(id: string, opts: Omit<Partial<Candidate>, 'memory'> & { memory?: MessageInitShape<typeof MemorySchema> } = {}): Candidate {
   const memory = mem(id, opts.memory ?? {});
   return {
     id,

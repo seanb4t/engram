@@ -15,6 +15,7 @@ import { ConnectError, Code } from '@connectrpc/connect';
 import {
   MemorySchema,
   ArchiveOutcome,
+  ArchiveResultSchema,
   SupersedeMemoryResponseSchema,
   GetMemoryResponseSchema,
   RelatedMemoriesResponseSchema,
@@ -347,7 +348,7 @@ function baseArchiveProps(overrides: Record<string, unknown> = {}) {
     onsubmit: vi.fn(
       async (): Promise<ArchiveSubmitOutcome> => ({
         kind: 'ok',
-        results: [{ requested: 'm1', id: 'm1', outcome: ArchiveOutcome.ARCHIVED }]
+        results: [create(ArchiveResultSchema, { requested: 'm1', id: 'm1', outcome: ArchiveOutcome.ARCHIVED })]
       })
     ),
     oncancel: vi.fn(),
@@ -414,7 +415,9 @@ function renderSupersede(overrides: Record<string, unknown> = {}) {
     onpreview: vi.fn(async () =>
       create(SupersedeMemoryResponseSchema, { id: '', shortId: '', validated: true, supersedes: [], targets: [] })
     ),
-    onsubmit: vi.fn(async () => ({ id: 'n1', shortId: 'N1SHORT001', validated: false, supersedes: [], targets: [] })),
+    onsubmit: vi.fn(async () =>
+      create(SupersedeMemoryResponseSchema, { id: 'n1', shortId: 'N1SHORT001', validated: false, supersedes: [], targets: [] })
+    ),
     onlookup: vi.fn(),
     onresolvehead: vi.fn(),
     oncancel: vi.fn(),

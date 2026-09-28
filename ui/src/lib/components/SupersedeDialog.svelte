@@ -303,11 +303,12 @@
     };
   });
 
+  let submitPending = $state(false);
+
   const canSubmit = $derived(
     gateReady && !previewPending && previewValidated && previewValidatedRevision === previewRevision && !submitPending
   );
 
-  let submitPending = $state(false);
   let result = $state<{ id: string; shortId: string } | undefined>(undefined);
 
   async function handleSubmit() {

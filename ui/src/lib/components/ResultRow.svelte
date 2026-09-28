@@ -5,7 +5,7 @@
   import { relativeTime } from '$lib/time';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
   import { memoryStateWords, isPastState, type RecordStateWord } from '$lib/memorystate';
-  import { flashing } from '$lib/curation/flash.svelte.ts';
+  import { flashing } from '$lib/curation/flash.svelte';
   import ScopeChip from './ScopeChip.svelte';
   import CheckIcon from '@lucide/svelte/icons/check';
 

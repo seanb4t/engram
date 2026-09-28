@@ -1,7 +1,7 @@
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { create } from '@bufbuild/protobuf';
+import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
 import {
   MemorySchema,
@@ -15,7 +15,7 @@ import {
   type Memory,
   type SupersedeMemoryRequest
 } from '$lib/gen/engram_pb';
-import { flashing, FLASH_MS } from '$lib/curation/flash.svelte.ts';
+import { flashing, FLASH_MS } from '$lib/curation/flash.svelte';
 import { peekResume, type SupersedeResumeEnvelope, type ArchiveResumeEnvelope } from '$lib/resume';
 import CurationSurfaces from './CurationSurfaces.svelte';
 
@@ -58,7 +58,7 @@ vi.mock('$lib/resume', async (importOriginal) => {
   return { ...actual, redirectToLogin: redirectToLoginSpy };
 });
 
-function makeMemory(overrides: Partial<Memory> = {}): Memory {
+function makeMemory(overrides: MessageInitShape<typeof MemorySchema> = {}): Memory {
   return create(MemorySchema, {
     id: 'm1',
     category: 'convention',

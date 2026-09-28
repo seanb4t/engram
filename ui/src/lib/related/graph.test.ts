@@ -87,7 +87,7 @@ function citationEdge(refs: string[]) {
 // candidate builds a bare Candidate for laneRows/nodeAccessibleName-level
 // tests -- bypasses buildRelatedModel so ordering/formatting can be tested
 // in isolation from evidence-mapping.
-function candidate(id: string, opts: Partial<Candidate> & { memory?: MessageInitShape<typeof MemorySchema> } = {}): Candidate {
+function candidate(id: string, opts: Omit<Partial<Candidate>, 'memory'> & { memory?: MessageInitShape<typeof MemorySchema> } = {}): Candidate {
   const memory = mem(id, opts.memory ?? {});
   return {
     id,

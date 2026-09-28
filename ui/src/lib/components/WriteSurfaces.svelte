@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { ConnectError, Code } from '@connectrpc/connect';
   import { toast } from 'svelte-sonner';
@@ -44,7 +45,7 @@
   let sheetMode = $state<'create' | 'edit'>('create');
   let sheetOpen = $state(false);
   let editMemory = $state<Memory | undefined>(undefined);
-  let createScope = $state(scope);
+  let createScope = $state(untrack(() => scope));
   let sheetInstanceKey = $state(0);
   const sheetKey = $derived(`${sheetMode}-${editMemory?.id ?? 'none'}-${sheetInstanceKey}`);
 

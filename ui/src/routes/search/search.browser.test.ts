@@ -39,7 +39,7 @@ const {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/search');
   const pageState = { url };
-  const gotoSpy = vi.fn((href: string) => {
+  const gotoSpy = vi.fn((href: string, _opts?: { replaceState?: boolean }) => {
     const next = new URL(href, 'http://localhost');
     pageState.url.href = next.href;
   });
@@ -678,7 +678,7 @@ describe('search route — typing is debounced (ENTRY-06)', () => {
     expect(gotoSpy).not.toHaveBeenCalled();
 
     await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
-    const [href, opts] = gotoSpy.mock.calls[0] as [string, { replaceState?: boolean }];
+    const [href, opts] = gotoSpy.mock.calls[0];
     expect(href).toContain('q=abc');
     expect(opts).toMatchObject({ replaceState: true });
 
@@ -979,7 +979,7 @@ describe('search route — supersede with ⇧S (CUR-01 tracer)', () => {
     const rows = screen.container.querySelectorAll('[role="option"]');
     expect(rows.length).toBe(2);
     for (const row of rows) {
-      await expect.element(row.querySelector('.states')).toHaveTextContent('superseded');
+      await expect.element(row.querySelector<HTMLElement>('.states')).toHaveTextContent('superseded');
       expect(row.querySelector('.sum')?.classList.contains('dim')).toBe(true);
     }
   });

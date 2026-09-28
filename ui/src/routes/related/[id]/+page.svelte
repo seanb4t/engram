@@ -95,16 +95,18 @@
   const membership = $derived(model ? visibleMembership(model, { hiddenTypes, vectorExpanded }) : undefined);
 
   const selectedCandidate = $derived.by(() => {
-    if (!selection || !model) return undefined;
-    return model.candidates.find((c) => c.id === selection.id);
+    const sel = selection;
+    if (!sel || !model) return undefined;
+    return model.candidates.find((c) => c.id === sel.id);
   });
 
   // D-14 counts: N candidates (of the model's full candidate set, not just
   // the drawn/visible membership) carry filterTag; M is that same total.
   const filterCounts = $derived.by(() => {
-    if (!filterTag || !model) return null;
+    const tag = filterTag;
+    if (!tag || !model) return null;
     const total = model.candidates.length;
-    const carriers = model.candidates.filter((c) => c.memory.tags.includes(filterTag)).length;
+    const carriers = model.candidates.filter((c) => c.memory.tags.includes(tag)).length;
     return { carriers, total };
   });
 
@@ -112,8 +114,9 @@
   // identically to lane rows, chain cards and graph nodes via one shared
   // set, never the anchor (which is never a member of model.candidates).
   const filterDimmed = $derived.by(() => {
-    if (!filterTag || !model) return new Set<string>();
-    return new Set(model.candidates.filter((c) => !c.memory.tags.includes(filterTag)).map((c) => c.id));
+    const tag = filterTag;
+    if (!tag || !model) return new Set<string>();
+    return new Set(model.candidates.filter((c) => !c.memory.tags.includes(tag)).map((c) => c.id));
   });
 
   // D-15: rarity is read from the candidates' own tag-edge evidence

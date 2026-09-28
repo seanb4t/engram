@@ -12,8 +12,8 @@
   import { engram } from '$lib/client';
   import { peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
   import { normalizeVisibility } from '$lib/mutations/memory';
-  import { flashRows } from '$lib/curation/flash.svelte.ts';
-  import { registerCurationHost, defaultActionsFor } from '$lib/curation/host.svelte.ts';
+  import { flashRows } from '$lib/curation/flash.svelte';
+  import { registerCurationHost, defaultActionsFor } from '$lib/curation/host.svelte';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import {
     parseSearchParams,
@@ -105,7 +105,7 @@
   // focus when a Suggested-row accept/dismiss empties the last chip
   // (a11y gap-fill, not in D-13 — focus must never fall back to <body>).
   let searchInputEl: HTMLInputElement | undefined = $state();
-  let inputText = $state(params.q);
+  let inputText = $state(untrack(() => params.q));
   $effect(() => {
     inputText = params.q;
   });
@@ -201,7 +201,7 @@
   // back to a q seen before (the effect keeps `dismissed.q` synced to the
   // live q the instant it changes, so returning to an old q value never
   // resurrects a stale dismissal that happened to share that same q).
-  let dismissed = $state<{ q: string; keys: string[] }>({ q: params.q, keys: [] });
+  let dismissed = $state<{ q: string; keys: string[] }>({ q: untrack(() => params.q), keys: [] });
   $effect(() => {
     if (params.q !== dismissed.q) dismissed = { q: params.q, keys: [] };
   });

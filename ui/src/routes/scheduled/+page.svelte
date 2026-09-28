@@ -18,7 +18,7 @@
   import { memoryStateWords } from '$lib/memorystate';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
   import { peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
-  import { registerCurationHost } from '$lib/curation/host.svelte.ts';
+  import { registerCurationHost } from '$lib/curation/host.svelte';
   import type { Memory } from '$lib/gen/engram_pb';
   import ResultsHeader from '$lib/components/ResultsHeader.svelte';
   import ResultsList from '$lib/components/ResultsList.svelte';

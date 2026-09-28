@@ -7,7 +7,7 @@
   import ResultRow from './ResultRow.svelte';
   import ResultHoverCard from './ResultHoverCard.svelte';
   import RowActions from './RowActions.svelte';
-  import { defaultActionsFor, type CurationAction } from '$lib/curation/host.svelte.ts';
+  import { defaultActionsFor, type CurationAction } from '$lib/curation/host.svelte';
 
   // D-11/D-12/D-13: a group-header item, or a row item carrying its index
   // into `memories` (never re-derived from the virtual list's own index,

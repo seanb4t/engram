@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { ConnectError, Code } from '@connectrpc/connect';
   import type { Memory } from '$lib/gen/engram_pb';
   import { CATEGORIES } from '$lib/queries';
@@ -42,20 +43,21 @@
     onresumeapplied?: () => void;
   } = $props();
 
-  const isEdit = mode === 'edit';
-
   // Initial-value capture: the host keys this component by mode+recordId
   // (Plan 06), so a fresh instance is mounted per edit target -- reading
-  // `memory`/`defaultScope` once at $state init time is correct, not a
+  // `mode`/`memory`/`defaultScope` once at mount is correct, not a
   // reactivity gap.
-  let content = $state(isEdit && memory ? memory.content : '');
-  let scopeVal = $state(isEdit && memory ? memory.scope : defaultScope);
-  let category = $state<string>(isEdit && memory ? memory.category : (CATEGORIES[0] ?? 'convention'));
-  let tags = $state<string[]>(isEdit && memory ? [...memory.tags] : []);
+  const initial = untrack(() => ({ mode, memory, defaultScope }));
+  const isEdit = initial.mode === 'edit';
+  const editing = isEdit ? initial.memory : undefined;
+  let content = $state(editing ? editing.content : '');
+  let scopeVal = $state(editing ? editing.scope : initial.defaultScope);
+  let category = $state<string>(editing ? editing.category : (CATEGORIES[0] ?? 'convention'));
+  let tags = $state<string[]>(editing ? [...editing.tags] : []);
   let tagInput = $state('');
-  let summary = $state(isEdit && memory ? memory.summary : '');
+  let summary = $state(editing ? editing.summary : '');
   // Stored '' reads as private (Codex+grok MEDIUM normalization).
-  let visibility = $state<'private' | 'shared'>(isEdit && memory ? normalizeVisibility(memory.visibility) : 'private');
+  let visibility = $state<'private' | 'shared'>(editing ? normalizeVisibility(editing.visibility) : 'private');
   // Only set true by an explicit ShareWarningInline confirm -- the `shared`
   // intent (sharedIntent below) never fires until this is true.
   let shareAcknowledged = $state(false);

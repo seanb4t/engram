@@ -6,7 +6,7 @@ import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { MemorySchema, ArchiveOutcome, type Memory } from '$lib/gen/engram_pb';
-import { curationHost } from '$lib/curation/host.svelte.ts';
+import { curationHost } from '$lib/curation/host.svelte';
 import { persistResume, peekResume, type ArchiveResumeEnvelope } from '$lib/resume';
 import ScheduledPage from './+page.svelte';
 

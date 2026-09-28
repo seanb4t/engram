@@ -18,7 +18,7 @@
   import { relatedPath } from '$lib/search/related-params';
   import { normalizeReturnPath } from '$lib/resume';
   import { stepTextSize, resetTextSize } from '$lib/display.svelte';
-  import { curationHost, type CurationAction } from '$lib/curation/host.svelte.ts';
+  import { curationHost, type CurationAction } from '$lib/curation/host.svelte';
   import type { Memory } from '$lib/gen/engram_pb';
 
   // D-11: ⌘K is a command menu of static actions (navigation, display,

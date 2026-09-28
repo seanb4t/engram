@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { ConnectError, Code } from '@connectrpc/connect';
   import { describeError } from '$lib/errors';
   import { persistResume, normalizeReturnPath, redirectToLogin } from '$lib/resume';
@@ -30,7 +31,7 @@
 
   let content = $state('');
   let kind = $state<'map' | 'fact'>('map');
-  let scopeVal = $state(defaultScope);
+  let scopeVal = $state(untrack(() => defaultScope));
   let citations = $state<DiscoveryCitationInput[]>([{ kind: 'file', ref: '' }]);
   let tags = $state<string[]>([]);
   let tagInput = $state('');

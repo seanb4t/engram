@@ -4,10 +4,10 @@
 import '../../app.css';
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent } from 'vitest/browser';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, type Mock } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { FilterSuggestionSchema, SuggestionSource, type FilterSuggestion } from '$lib/gen/engram_pb';
-import { defaultSearchParams } from '$lib/search/params';
+import { defaultSearchParams, type SearchParams } from '$lib/search/params';
 import SuggestedRow from './SuggestedRow.svelte';
 
 function categorySuggestion(value: string): FilterSuggestion {
@@ -26,10 +26,14 @@ function threeSuggestions(): FilterSuggestion[] {
 
 async function renderRow(
   suggestions: FilterSuggestion[],
-  overrides: { onchange?: ReturnType<typeof vi.fn>; ondismiss?: ReturnType<typeof vi.fn>; onempty?: ReturnType<typeof vi.fn> } = {}
+  overrides: {
+    onchange?: Mock<(partial: Partial<SearchParams>) => void>;
+    ondismiss?: Mock<(key: string) => void>;
+    onempty?: Mock<() => void>;
+  } = {}
 ) {
-  const onchange = overrides.onchange ?? vi.fn();
-  const ondismiss = overrides.ondismiss ?? vi.fn();
+  const onchange = overrides.onchange ?? vi.fn<(partial: Partial<SearchParams>) => void>();
+  const ondismiss = overrides.ondismiss ?? vi.fn<(key: string) => void>();
   const screen = await render(SuggestedRow, {
     suggestions,
     params: defaultSearchParams(),

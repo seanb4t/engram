@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
+import type { ResumeEnvelope } from '$lib/resume';
 import RulesPage from './+page.svelte';
 
 // `vi.hoisted` runs before the module's own imports are linked — mirrors
@@ -36,7 +37,7 @@ const {
     deleteMemorySpy: vi.fn(),
     persistResumeSpy: vi.fn(),
     redirectToLoginSpy: vi.fn(),
-    peekResumeSpy: vi.fn(() => null),
+    peekResumeSpy: vi.fn((): ResumeEnvelope | null => null),
     consumeResumeSpy: vi.fn()
   };
 });

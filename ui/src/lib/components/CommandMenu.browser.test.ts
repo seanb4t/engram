@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
 import { headerSearch } from '$lib/search/header-search.svelte';
 import { DEFAULT_TEXT_SIZE } from '$lib/display.svelte';
-import { registerCurationHost } from '$lib/curation/host.svelte.ts';
+import { registerCurationHost } from '$lib/curation/host.svelte';
 import CommandMenu from './CommandMenu.svelte';
 
 const { gotoSpy, searchMemoriesSpy, getMemorySpy, setModeSpy, pageState } = vi.hoisted(() => ({
