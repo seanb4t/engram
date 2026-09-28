@@ -200,6 +200,39 @@ describe('CommandMenu', () => {
     await expect.element(screen.getByText(/copy full id/i)).not.toBeInTheDocument();
     await expect.element(screen.getByText(/copy short_id/i)).not.toBeInTheDocument();
   });
+
+  it('lists "Related to {short_id}" when a record is selected, and navigates to /related/{id} on select (D-03)', async () => {
+    const uuid = '753aba22-0000-4000-8000-000000000001';
+    pageState.url = new URL(`http://localhost/ui/search?sel=${uuid}`);
+    qc.setQueryData(['getMemory', uuid], { memory: fakeMemory({ id: uuid, shortId: 'k3m9p2qr7a' }) });
+
+    const screen = await renderMenu();
+    const related = screen.getByRole('option', { name: 'Related to k3m9p2qr7a', exact: true });
+    await expect.element(related).toBeInTheDocument();
+
+    await related.click();
+
+    expect(gotoSpy).toHaveBeenCalledWith(
+      `/ui/related/${uuid}?from=${encodeURIComponent('/search?sel=' + uuid)}`
+    );
+    await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('omits "Related to" when there is no ?sel=', async () => {
+    const screen = await renderMenu();
+    await expect.element(screen.getByText(/related to/i)).not.toBeInTheDocument();
+  });
+
+  it('typing "rel" filters to the Related item', async () => {
+    const uuid = '753aba22-0000-4000-8000-000000000001';
+    pageState.url = new URL(`http://localhost/ui/search?sel=${uuid}`);
+    qc.setQueryData(['getMemory', uuid], { memory: fakeMemory({ id: uuid, shortId: 'k3m9p2qr7a' }) });
+
+    const screen = await renderMenu();
+    await screen.getByRole('combobox', { name: 'Command menu' }).fill('rel');
+
+    await expect.element(screen.getByRole('option', { name: 'Related to k3m9p2qr7a', exact: true })).toBeInTheDocument();
+  });
 });
 
 describe('CommandMenu — curation row actions from the registered host (Phase 2 D-11)', () => {
