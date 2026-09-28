@@ -623,7 +623,7 @@ existing consumers and is flagged for a research pass at plan time.
   3. A test proves search results are unchanged until a suggested chip is clicked, and an accepted chip is indistinguishable from a manually added one
   4. A test proves no query text appears in logs unless the explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set
 
-**Plans:** 1/6 plans executed
+**Plans:** 4/6 plans executed
 **UI hint**: yes
 
 Plans:
@@ -633,9 +633,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-02-PLAN.md — scope Choice over the caller's own scopes, day-aligned time window, local tag matching, zero-suggestion fallbacks within a bounded budget (D-05..D-09; NLQ-02)
-- [ ] 06-03-PLAN.md — console Suggested row: unapplied chips that accept through the facet path, hide/dismiss rules, trigger gate, latch, roving toolbar, AA audit (D-10..D-13; NLQ-03)
-- [ ] 06-04-PLAN.md — Config.Validate for the three keys, the startup egress disclosure, the audit flag's config half (D-01, D-01a, D-15, D-16; NLQ-01, NLQ-04)
+- [x] 06-02-PLAN.md — scope Choice over the caller's own scopes, day-aligned time window, local tag matching, zero-suggestion fallbacks within a bounded budget (D-05..D-09; NLQ-02)
+- [x] 06-03-PLAN.md — console Suggested row: unapplied chips that accept through the facet path, hide/dismiss rules, trigger gate, latch, roving toolbar, AA audit (D-10..D-13; NLQ-03)
+- [x] 06-04-PLAN.md — Config.Validate for the three keys, the startup egress disclosure, the audit flag's config half (D-01, D-01a, D-15, D-16; NLQ-01, NLQ-04)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
