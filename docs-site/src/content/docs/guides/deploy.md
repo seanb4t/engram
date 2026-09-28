@@ -43,6 +43,9 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 | `memory.search.ranker` | `ENGRAM_SEARCH_RANKER` | Search ranker; `lexical` (default; renders no variable) or `jev` (opt-in reranking of `search_memory` and `search_discovery` by the decision provider, adding a per-hit `relevance`; requires `memory.decisions.provider`) |
 | `memory.search.rerankTimeout` | `ENGRAM_SEARCH_RERANK_TIMEOUT` | Per-search rerank call timeout, one attempt and no retry (empty → binary default `2s`) |
 | `memory.search.rerankAudit` | `ENGRAM_SEARCH_RERANK_AUDIT` | `"true"` logs every reranked search's query text and candidate ids (never content) for offline grading; empty renders no variable (off). Only rendered with `ranker: jev` |
+| `memory.search.understanding` | `ENGRAM_SEARCH_UNDERSTANDING` | Console query-understanding switch; empty (default) follows `memory.decisions.provider` (on once a provider is set), `"off"` opts out explicitly, `"jev"` turns it on explicitly |
+| `memory.search.understandingTimeout` | `ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT` | Per-query understanding call timeout, one attempt and no retry (empty → binary default `2s`) |
+| `memory.search.understandingAudit` | `ENGRAM_SEARCH_UNDERSTANDING_AUDIT` | `"true"` logs each understood console query's text and suggestion labels (never record content) for offline grading; empty renders no variable (off) |
 
 `ENGRAM_QDRANT_ADDR` is set automatically by the chart to the in-cluster Qdrant service address and does not need a Helm value.
 
@@ -53,14 +56,24 @@ empty, the server inherits the `ENGRAM_OPENAI_API_KEY` secret. Every
 `memory.decisions.*` variable renders only when `memory.decisions.provider`
 is set.
 
-Both `memory.search.*` variables render only when `memory.search.ranker` is
-set to a value other than `lexical`, so a default install is unchanged.
-`jev` needs `memory.decisions.provider` with its base URL and key, and
-without it the server refuses to start and names both variables. While
-`jev` is on, every search sends the query and candidate record text to the
-decisions provider, and a failed or slow call falls back to lexical order
-without failing the search — read [Search reranking (Jev)](/guides/configure/#search-reranking-jev)
-before enabling it.
+Both `memory.search.rerankTimeout` and `memory.search.rerankAudit` render
+only when `memory.search.ranker` is set to a value other than `lexical`, so
+a default install is unchanged. `jev` needs `memory.decisions.provider`
+with its base URL and key, and without it the server refuses to start and
+names both variables. While `jev` is on, every search sends the query and
+candidate record text to the decisions provider, and a failed or slow call
+falls back to lexical order without failing the search — read
+[Search reranking (Jev)](/guides/configure/#search-reranking-jev) before
+enabling it.
+
+The three `memory.search.understanding*` values render only when set,
+independent of `memory.search.ranker`. With `memory.decisions.provider` set
+and `memory.search.understanding` left empty, console query understanding
+is **ON**: `/search` sends console query text to that provider for
+advisory filter suggestions. Set `memory.search.understanding: off` to
+disable it while keeping the provider for other features — read
+[Query understanding (Jev)](/guides/configure/#query-understanding-jev)
+before deploying with a decisions provider configured.
 
 For the full environment variable reference, see [Configure](/guides/configure/).
 

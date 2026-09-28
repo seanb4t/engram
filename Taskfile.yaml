@@ -356,6 +356,44 @@ tasks:
           echo "chart:validate: memory.decisions.provider=jev must still emit ENGRAM_DECISIONS_PROVIDER alongside the search ranker"
           exit 1
         fi
+        # Query understanding (Jev, milestone 2026-09-25.01 Phase 6, D-01).
+        # The three ENGRAM_SEARCH_UNDERSTANDING* rows are INDEPENDENT of
+        # memory.search.ranker — asserted in both directions, same reasoning
+        # as the ranker block above.
+        if helm template charts/engram | grep -q 'ENGRAM_SEARCH_UNDERSTANDING'; then
+          echo "chart:validate: default render must NOT emit any ENGRAM_SEARCH_UNDERSTANDING var (memory.search.understanding unset, D-01)"
+          exit 1
+        fi
+        UNDERSTANDING_OFF_RENDER=$(helm template charts/engram \
+          --set memory.search.understanding=off)
+        if ! echo "$UNDERSTANDING_OFF_RENDER" | grep -q 'name: ENGRAM_SEARCH_UNDERSTANDING, value: "off"'; then
+          echo "chart:validate: --set memory.search.understanding=off must emit ENGRAM_SEARCH_UNDERSTANDING with value off"
+          exit 1
+        fi
+        if echo "$UNDERSTANDING_OFF_RENDER" | grep -q 'ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT\|ENGRAM_SEARCH_UNDERSTANDING_AUDIT'; then
+          echo "chart:validate: memory.search.understanding=off alone must NOT emit ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT or _AUDIT"
+          exit 1
+        fi
+        UNDERSTANDING_FULL_RENDER=$(helm template charts/engram \
+          --set memory.search.understanding=jev \
+          --set memory.search.understandingTimeout=1500ms \
+          --set memory.search.understandingAudit=true)
+        if ! echo "$UNDERSTANDING_FULL_RENDER" | grep -q 'name: ENGRAM_SEARCH_UNDERSTANDING, value: "jev"'; then
+          echo "chart:validate: memory.search.understanding=jev must emit ENGRAM_SEARCH_UNDERSTANDING with that value"
+          exit 1
+        fi
+        if ! echo "$UNDERSTANDING_FULL_RENDER" | grep -q 'name: ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT, value: "1500ms"'; then
+          echo "chart:validate: memory.search.understandingTimeout=1500ms must emit ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT with that value"
+          exit 1
+        fi
+        if ! echo "$UNDERSTANDING_FULL_RENDER" | grep -q 'name: ENGRAM_SEARCH_UNDERSTANDING_AUDIT, value: "true"'; then
+          echo "chart:validate: memory.search.understandingAudit=true must emit ENGRAM_SEARCH_UNDERSTANDING_AUDIT"
+          exit 1
+        fi
+        if echo "$UNDERSTANDING_FULL_RENDER" | grep -q 'name: ENGRAM_SEARCH_RANKER'; then
+          echo "chart:validate: setting only memory.search.understanding* must NOT emit ENGRAM_SEARCH_RANKER (independent of the ranker)"
+          exit 1
+        fi
         helm lint charts/engram
         # Drift pin: engram.containerEnv is the single source of the
         # Deployment+CronJob container env (D-09). Any edit to this block
@@ -383,8 +421,14 @@ tasks:
         # block stays byte-identical to the pre-phase render. Re-pinned
         # 2026-09-25 for the with-guarded ENGRAM_SEARCH_RERANK_AUDIT row
         # (GH-618): the default render still omits every ENGRAM_SEARCH_* var
-        # and the rest of the block is byte-identical.
-        EXPECTED_CHECKSUM="dfd9b5ce9b8981774e3eaf611f20a4f413bfa5439a68ff27bbc1943a24206fb7"
+        # and the rest of the block is byte-identical. Re-pinned 2026-09-28
+        # for the three with-guarded ENGRAM_SEARCH_UNDERSTANDING /
+        # _TIMEOUT / _AUDIT rows (milestone 2026-09-25.01 Phase 6, D-01):
+        # the default render still omits them, and the rest of the
+        # engram.containerEnv block is byte-identical to the pre-change
+        # render (verified via a helm template charts/engram diff before and
+        # after this edit).
+        EXPECTED_CHECKSUM="79fe372f995a97546c7ed3192103af96fb93e2007919b65d7fb26dc824a491fa"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

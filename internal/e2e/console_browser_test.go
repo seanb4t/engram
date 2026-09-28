@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -192,6 +193,16 @@ type consoleFixture struct {
 // needed (verified_facts item 2).
 func startConsoleServer(t *testing.T) *consoleFixture {
 	t.Helper()
+	return startConsoleServerWithEnv(t, nil)
+}
+
+// startConsoleServerWithEnv is startConsoleServer generalized to accept
+// extra environment variables merged over the console baseline (extra may
+// override a baseline key) — used by TestConsoleQueryUnderstanding to point
+// ENGRAM_DECISIONS_* at a fake provider while every other startConsoleServer
+// caller (passing nil) keeps its exact prior behavior.
+func startConsoleServerWithEnv(t *testing.T, extra map[string]string) *consoleFixture {
+	t.Helper()
 
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
@@ -200,14 +211,17 @@ func startConsoleServer(t *testing.T) *consoleFixture {
 
 	oidc := stubOIDCProvider(t)
 
-	srv := startServer(t, map[string]string{
+	env := map[string]string{
 		"ENGRAM_UI_ENABLED":         "true",
 		"ENGRAM_UI_ISSUER":          oidc.URL,
 		"ENGRAM_OIDC_CLIENT_ID":     "console-e2e-client",
 		"ENGRAM_OIDC_CLIENT_SECRET": "console-e2e-secret",
 		"ENGRAM_UI_REDIRECT_URL":    "http://127.0.0.1/auth/callback",
 		"ENGRAM_UI_COOKIE_KEY":      hex.EncodeToString(key), // decodeCookieKey tries hex first (verified_facts item 3)
-	})
+	}
+	maps.Copy(env, extra)
+
+	srv := startServer(t, env)
 
 	codec, err := webauth.NewSessionCodec(key)
 	if err != nil {
@@ -1338,6 +1352,239 @@ func TestConsoleRelatedView(t *testing.T) {
 	}
 	if !deepLinkCallLineShown {
 		t.Fatal("deep link call line poll returned without error but deepLinkCallLineShown=false")
+	}
+
+	obs.assertClean(t)
+}
+
+// understandFakeAnswerRequest is the subset of the Decisions API wire
+// request body (internal/decide/jev/wire.go's wireRequest) this fake server
+// needs: the state map (to prove the round trip sends only the query text,
+// D-05) and each question's type and criteria (to answer every one it is
+// asked, mirroring the shape encodeRequest actually produces).
+type understandFakeAnswerRequest struct {
+	Model     string                                  `json:"model"`
+	State     map[string]any                          `json:"state"`
+	Questions map[string]understandFakeAnswerQuestion `json:"questions"`
+}
+
+type understandFakeAnswerQuestion struct {
+	Type         string          `json:"type"`
+	Instructions string          `json:"instructions"`
+	Criteria     json.RawMessage `json:"criteria"`
+}
+
+// understandFakeDecisionsServer is an httptest server standing in for the
+// real Decisions API: it decodes every request, records it under a mutex
+// (requests), and answers EVERY asked question — a noul question 0.1
+// (0.95 for "category_decision"), a choice question always "none" at
+// probability 0.97 plus every other offered option at 0.01 — the exact
+// per-task answer shape TestConsoleQueryUnderstanding's plan action
+// specifies. Building the response from the REQUEST's own question set
+// (never a hardcoded question-name list) means it answers correctly
+// regardless of how many scopes/tags exist when the test runs.
+type understandFakeDecisionsServer struct {
+	srv *httptest.Server
+
+	mu       sync.Mutex
+	requests []understandFakeAnswerRequest
+}
+
+func newUnderstandFakeDecisionsServer(t *testing.T) *understandFakeDecisionsServer {
+	t.Helper()
+	f := &understandFakeDecisionsServer{}
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req understandFakeAnswerRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("decode request: %v", err), http.StatusBadRequest)
+			return
+		}
+		f.mu.Lock()
+		f.requests = append(f.requests, req)
+		f.mu.Unlock()
+
+		answers := make(map[string]map[string]any, len(req.Questions))
+		for name, q := range req.Questions {
+			switch q.Type {
+			case "noul":
+				p := 0.1
+				if name == "category_decision" {
+					p = 0.95
+				}
+				answers[name] = map[string]any{"type": "noul", "noul": p}
+			case "choice":
+				var opts map[string]string
+				_ = json.Unmarshal(q.Criteria, &opts)
+				probs := map[string]float64{"none": 0.97}
+				for opt := range opts {
+					if opt == "none" {
+						continue
+					}
+					probs[opt] = 0.01
+				}
+				answers[name] = map[string]any{"type": "choice", "choice": "none", "probabilities": probs}
+			}
+		}
+		resp := map[string]any{
+			"model":    "typesafe/jev-1.13-20260917",
+			"answers":  answers,
+			"usage":    map[string]any{"input_tokens": 1, "output_tokens": 1, "cost": 0.00001},
+			"id":       "gen-e2e",
+			"provider": "TypeSafe",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+// seen returns a snapshot of every request recorded so far.
+func (f *understandFakeDecisionsServer) seen() []understandFakeAnswerRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]understandFakeAnswerRequest(nil), f.requests...)
+}
+
+// ariaLabelButtonVisiblePollExpr is satisfied once a <button> whose
+// aria-label attribute is EXACTLY label exists in the live rendered page —
+// used to wait for the Suggested row's accept control (D-11's
+// `Suggested filter, not applied: <label>` contract) without depending on
+// CSS-selector attribute-value escaping.
+func ariaLabelButtonVisiblePollExpr(label string) string {
+	labelJSON, _ := json.Marshal(label)
+	return fmt.Sprintf(`(() => [...document.querySelectorAll('button')].some((b) => b.getAttribute('aria-label') === %s))()`, labelJSON)
+}
+
+// locationSearchContainsPollExpr is satisfied once the live page's URL query
+// string contains needle — used to prove a client-side navigation actually
+// updated the URL (FacetStrip's onchange path), not merely that a click
+// handler ran.
+func locationSearchContainsPollExpr(needle string) string {
+	needleJSON, _ := json.Marshal(needle)
+	return fmt.Sprintf(`(() => location.search.includes(%s))()`, needleJSON)
+}
+
+// resultsHeaderPresentPollExpr is satisfied once ResultsHeader.svelte's
+// `.results-header` element is in the live DOM — proof the search actually
+// ran and rendered (a result count of zero still renders this element).
+const resultsHeaderPresentPollExpr = `(() => !!document.querySelector('.results-header'))()`
+
+// understandFixtureScope is the scope the seed record for
+// TestConsoleQueryUnderstanding is written under — its own scope, per
+// DSYS-04 ordering (no shared scope, no dependence on another test's
+// state). Named so ListScopes returns exactly this one scope for
+// testFixtureOwner, keeping the D-08 scope Choice question's option set
+// small and deterministic.
+const understandFixtureScope = "repo:e2e-console-understand"
+
+// TestConsoleQueryUnderstanding drives a REAL headless Chrome against the
+// REAL engram binary and Qdrant, with ENGRAM_DECISIONS_PROVIDER pointed at a
+// fake Decisions API server, proving the phase's live integration slice
+// (NLQ-02, NLQ-03) over the shipped vendored bundle: navigating to
+// /ui/search?q=what+did+we+decide renders an unapplied "Suggested filter,
+// not applied: decision" chip, the fake saw exactly one request whose state
+// carries only the query text (D-05 — no record content, no tags), and
+// clicking the chip applies it through the SAME path a manual FacetStrip
+// click would (cat=decision in the URL) with the results still rendering.
+//
+// ENGRAM_SEARCH_UNDERSTANDING is deliberately left UNSET: this proves the
+// D-01 default-on-with-provider path, not the explicit-jev path.
+func TestConsoleQueryUnderstanding(t *testing.T) {
+	chromePath := skipOrFailNoBrowser(t) // before startServer: a browser-less run must not pay for a Qdrant boot.
+
+	fake := newUnderstandFakeDecisionsServer(t)
+
+	fixture := startConsoleServerWithEnv(t, map[string]string{
+		"ENGRAM_DECISIONS_PROVIDER": "jev",
+		"ENGRAM_DECISIONS_BASE_URL": fake.srv.URL + "/api",
+		"ENGRAM_DECISIONS_API_KEY":  "e2e-key",
+	})
+
+	marker := mintFixtureMarker(t)
+	// Seeded BEFORE navigation so ListScopes reports understandFixtureScope
+	// as the caller's only scope when the first UnderstandQuery call fires,
+	// and so the record itself is a legitimate, addressable fixture (even
+	// though the accepted category filter excludes it from the post-click
+	// results — the "results still rendered" assertion below checks for the
+	// results region, not this record specifically).
+	seedFixtureRecord(context.Background(), t, fixture, understandFixtureScope, marker)
+
+	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
+		chromedp.NoSandbox, // Ubuntu 24.04 restricts unprivileged user namespaces for a non-root CI user (verified_facts item 10).
+		chromedp.ExecPath(chromePath),
+	)
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
+	t.Cleanup(allocCancel)
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	t.Cleanup(browserCancel)
+
+	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
+	defer runCancel()
+
+	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
+		return setConsoleCookies(ctx, fixture)
+	})
+
+	obs := newBrowserObserver()
+	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
+
+	const suggestedLabel = "Suggested filter, not applied: decision"
+
+	searchURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("what did we decide")
+	var suggestionVisible bool
+	if err := chromedp.Run(runCtx,
+		setCookies,
+		chromedp.Navigate(searchURL),
+		chromedp.Poll(ariaLabelButtonVisiblePollExpr(suggestedLabel), &suggestionVisible,
+			chromedp.WithPollingTimeout(45*time.Second),
+			chromedp.WithPollingInterval(200*time.Millisecond),
+		),
+	); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("suggested category chip wait failed: %v", err)
+	}
+	if !suggestionVisible {
+		t.Fatal("suggested chip poll returned without error but suggestionVisible=false")
+	}
+
+	requests := fake.seen()
+	if len(requests) != 1 {
+		t.Fatalf("fake decisions server saw %d requests, want exactly 1: %+v", len(requests), requests)
+	}
+	if got := requests[0].State; len(got) != 1 || got["query"] != "what did we decide" {
+		t.Fatalf("fake decisions server request state = %#v, want exactly {\"query\": \"what did we decide\"}", got)
+	}
+
+	if err := chromedp.Run(runCtx, chromedp.Click(
+		fmt.Sprintf(`//button[@aria-label=%q]`, suggestedLabel), chromedp.BySearch,
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("click suggested chip: %v", err)
+	}
+
+	var applied bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(locationSearchContainsPollExpr("cat=decision"), &applied,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("wait for cat=decision navigation failed: %v", err)
+	}
+	if !applied {
+		t.Fatal("cat=decision navigation poll returned without error but applied=false")
+	}
+
+	var resultsRendered bool
+	if err := chromedp.Run(runCtx, chromedp.Poll(resultsHeaderPresentPollExpr, &resultsRendered,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)); err != nil {
+		logConsoleDiagnostics(browserCtx, t)
+		t.Fatalf("wait for results header failed: %v", err)
+	}
+	if !resultsRendered {
+		t.Fatal("results header poll returned without error but resultsRendered=false")
 	}
 
 	obs.assertClean(t)

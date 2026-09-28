@@ -40,6 +40,7 @@ one predictable, migration-safe contract.
 | rely on `ENGRAM_EMBED_TIMEOUT=0` / `ENGRAM_SUMMARY_TIMEOUT=0` meaning no request deadline at all | §18 |
 | script `spine-review consolidate` without `--scope` or `--all-scopes` | §19 |
 | script `list_rules`/`ListRules` with no `scopes` expecting a rejection, or pattern-match `list_scheduled`/`ListScheduled`'s missing-scope hint as `required` rather than `conditional_required` | §21 |
+| set `ENGRAM_DECISIONS_PROVIDER=jev` (or Helm `memory.decisions.provider: jev`) and do not want console `/search` query text sent to the provider | §22 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -555,6 +556,34 @@ empty `scopes` to reject, or who pattern-matched `list_scheduled`/
 branching on `field`/`hint` generically. Client-tier CLI verbs for the new
 capabilities (`engram related`, `engram tags`, archive/restore over Connect)
 are tracked separately as [issue #630](https://github.com/seanb4t/engram/issues/630).
+
+### 22. Console query understanding (milestone 2026-09-25.01 Phase 6)
+
+A new Connect RPC, `UnderstandQuery`, lands on the server — purely
+**additive**: no MCP tool, no CLI verb, and no existing RPC changes shape.
+It backs the operator console's `/search` "Suggested" row: a written query
+can now be turned into advisory, unapplied filter chips (category, time
+window, scope, tag) that a person accepts explicitly.
+
+Three new environment variables (and matching Helm values) control it:
+`ENGRAM_SEARCH_UNDERSTANDING` (`memory.search.understanding`),
+`ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT` (`memory.search.understandingTimeout`),
+and `ENGRAM_SEARCH_UNDERSTANDING_AUDIT` (`memory.search.understandingAudit`).
+Leaving `ENGRAM_SEARCH_UNDERSTANDING` unset makes it **follow
+`ENGRAM_DECISIONS_PROVIDER`**: once a decisions provider is configured for
+any purpose (typed decisions or search reranking), console query text starts
+flowing to it for filter suggestions too, and startup logs a Warn — `search
+understanding enabled: console query text is sent to <host>` — every time
+this is on, by default or explicitly. See
+[Query understanding (Jev)](/guides/configure/#query-understanding-jev) for
+the full contract.
+
+**Who should act:** operators with a decisions provider configured
+(`ENGRAM_DECISIONS_PROVIDER`/`memory.decisions.provider: jev`) who do not
+want console query text sent to it — set `ENGRAM_SEARCH_UNDERSTANDING=off`
+(Helm `memory.search.understanding: off`). Everyone else: nothing — no
+decisions provider means this stays off, and a provider you already accepted
+Typed decisions' data policy for gains one more, documented consumer.
 
 ---
 
