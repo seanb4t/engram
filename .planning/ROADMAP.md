@@ -623,13 +623,13 @@ existing consumers and is flagged for a research pass at plan time.
   3. A test proves search results are unchanged until a suggested chip is clicked, and an accepted chip is indistinguishable from a manually added one
   4. A test proves no query text appears in logs unless the explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set
 
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 **UI hint**: yes
 
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — UnderstandQuery wire contract (decision gate) and the end-to-end category slice: config resolution, dedicated no-retry client, internal/understand, core, Connect handler (D-01..D-06; NLQ-01, NLQ-02)
+- [x] 06-01-PLAN.md — UnderstandQuery wire contract (decision gate) and the end-to-end category slice: config resolution, dedicated no-retry client, internal/understand, core, Connect handler (D-01..D-06; NLQ-01, NLQ-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -707,7 +707,7 @@ Plans:
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-09-27 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-09-27 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
-| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-08-17 |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | In Progress|  |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
 | 2. Interface Discoverability | v0.13.x | 6/6 | Complete | 2026-08-05 |
 | 3. Spine Curation — Structural (CLI) | v0.13.x | 7/7 | Complete | 2026-08-07 |
