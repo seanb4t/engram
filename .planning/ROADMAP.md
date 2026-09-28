@@ -377,7 +377,7 @@ out to the CLI.
 - [x] **Phase 3: Curation RPCs & MCP Tools** - SupersedeMemory, ArchiveMemory/RestoreMemory, ListRules/ListScheduled, RelatedMemories, and ListTags land as Connect RPCs, CSRF-protected and MCP-parity-decided (completed 2026-09-27)
 - [x] **Phase 4: Curation Surfaces** - Supersede, archive/restore, rules, and scheduled views for operators, with resume-envelope coverage, an a11y audit, and an e2e round trip (completed 2026-09-27)
 - [x] **Phase 5: Related-Memories Graph & Tag Cloud** - A local, keyboard/ARIA-equivalent related-memories graph and a count-based tag cloud (completed 2026-09-28)
-- [ ] **Phase 6: Query Understanding** - Advisory, off-by-default NL-query-understanding filter chips
+- [x] **Phase 6: Query Understanding** - Advisory, off-by-default NL-query-understanding filter chips (completed 2026-09-28)
 
 ### Phase 1: Store Prerequisites
 
@@ -623,7 +623,7 @@ existing consumers and is flagged for a research pass at plan time.
   3. A test proves search results are unchanged until a suggested chip is clicked, and an accepted chip is indistinguishable from a manually added one
   4. A test proves no query text appears in logs unless the explicit opt-in audit flag (mirroring `ENGRAM_SEARCH_RERANK_AUDIT`) is set
 
-**Plans:** 6/6 plans executed
+**Plans:** 6/6 plans complete
 **UI hint**: yes
 
 Plans:
@@ -707,7 +707,7 @@ Plans:
 | 3. Cross-Spine Memory Recall | v0.12.x | 3/3 | Complete    | 2026-09-27 |
 | 4. Diagnosability | v0.12.x | 4/4 | Complete    | 2026-09-27 |
 | 5. Operator Config & Reindex Correctness | v0.12.x | 3/3 | In Progress|  |
-| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | In Progress|  |
+| 6. Rule Capture — Investigation & Fix | v0.12.x | 3/3 | Complete    | 2026-09-28 |
 | 1. Interface Enforceability | v0.13.x | 9/9 | Complete | 2026-08-04 |
 | 2. Interface Discoverability | v0.13.x | 6/6 | Complete | 2026-08-05 |
 | 3. Spine Curation — Structural (CLI) | v0.13.x | 7/7 | Complete | 2026-08-07 |
