@@ -323,3 +323,32 @@ export function callLineParts(model: RelatedModel, ms?: number): CallLineParts {
   const after = ms === undefined ? '' : ` · ${ms}ms`;
   return { before, truncatedText, after };
 }
+
+// TODO(Task 2 GREEN): laneRows must sort each lane by its own strength
+// (supersession: signedDepth ascending then compareChainNodes; every other
+// lane: strength descending, ties by id ascending). This stub only filters
+// so graph.test.ts's RED phase fails on genuine ordering assertions rather
+// than a missing-export module error.
+export function laneRows(model: RelatedModel, type: LaneType): Candidate[] {
+  return model.candidates.filter((c) => c.types.includes(type));
+}
+
+// TODO(Task 2 GREEN): nodeAccessibleName must return
+// "{shortId}, {category}, {types joined by ' and '}[, {states joined by ', '}]"
+// (anchor form: "{shortId}, {category}, anchor[, {states}]").
+export function nodeAccessibleName(_input: {
+  shortId: string;
+  category: string;
+  isAnchor: boolean;
+  types: LaneType[];
+  states: readonly string[];
+}): string {
+  return '';
+}
+
+// TODO(Task 2 GREEN): neighbourhoodSummary must return
+// "{n} related · supersession {a} · citation {b} · tag {c} · vector {d}"
+// over the non-anchor nodes' visible types.
+export function neighbourhoodSummary(_nodes: readonly GraphNode[]): string {
+  return '';
+}
