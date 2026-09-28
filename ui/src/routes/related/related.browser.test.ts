@@ -158,6 +158,68 @@ describe('/related/[id] — fetches one RelatedMemories response and draws the n
   });
 });
 
+describe('/related/[id] — lanes, shared selection and evidence under the graph (Task 1)', () => {
+  it('clicking a tag-lane row lights every appearance of that candidate and opens the evidence section under the graph', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByTestId('lane-row-tag-tagvec-uuid')).toBeInTheDocument();
+
+    await screen.getByTestId('lane-row-tag-tagvec-uuid').click();
+
+    await expect.poll(() => screen.container.querySelector('[data-testid="lane-row-tag-tagvec-uuid"]')?.classList.contains('sel')).toBe(true);
+    expect(screen.container.querySelector('[data-testid="lane-row-tag-tagvec-uuid"]')?.classList.contains('sel-here')).toBe(true);
+
+    const vectorRow = screen.container.querySelector('[data-testid="lane-row-vector-tagvec-uuid"]');
+    expect(vectorRow?.classList.contains('sel')).toBe(true);
+    expect(vectorRow?.classList.contains('sel-here')).toBe(false);
+
+    expect(screen.container.querySelector('#gn-tagvec-uuid')?.classList.contains('sel')).toBe(true);
+
+    const rail = screen.container.querySelector('.rail');
+    const railChildren = Array.from(rail?.children ?? []);
+    const graphIdx = railChildren.findIndex((el) => el.matches('svg.graph'));
+    const evIdx = railChildren.findIndex((el) => el.matches('.ev'));
+    expect(graphIdx).toBeGreaterThanOrEqual(0);
+    expect(evIdx).toBeGreaterThan(graphIdx);
+
+    await expect.element(screen.getByRole('region', { name: 'Why tagv0000001 is related' })).toBeInTheDocument();
+    await expect.poll(() => rail?.querySelector('.ev')?.textContent ?? '').toContain('Why it is related · 2 edge types');
+    await expect.poll(() => rail?.querySelector('.ev')?.textContent ?? '').toContain('#engram 1.40');
+    await expect.element(screen.getByText('Evidence is per type; there is no blended score.')).toBeInTheDocument();
+  });
+
+  it('clicking the node opens the same evidence section', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('#gn-tagvec-uuid')).not.toBeNull();
+    screen.container.querySelector('#gn-tagvec-uuid')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await expect.element(screen.getByRole('region', { name: 'Why tagv0000001 is related' })).toBeInTheDocument();
+  });
+
+  it('esc × clears the selection and removes the evidence section', async () => {
+    const screen = await renderRelated();
+    await screen.getByTestId('lane-row-tag-tagvec-uuid').click();
+    await expect.element(screen.getByRole('region', { name: 'Why tagv0000001 is related' })).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'Clear selection' }).click();
+    await expect.poll(() => screen.container.querySelectorAll('.ev').length).toBe(0);
+  });
+
+  it('Re-centre navigates to the selected candidate, carrying the anchor onto the trail', async () => {
+    const screen = await renderRelated();
+    await screen.getByTestId('lane-row-tag-tagvec-uuid').click();
+    await screen.getByRole('button', { name: 'Re-centre ↵' }).click();
+    expect(gotoSpy).toHaveBeenCalledWith('/ui/related/tagv0000001?trail=anchor00001');
+  });
+
+  it('clicking the anchor node selects nothing', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('#gn-anchor-uuid')).not.toBeNull();
+    screen.container.querySelector('#gn-anchor-uuid')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(screen.container.querySelectorAll('.ev').length).toBe(0);
+  });
+});
+
 function zeroCandidateResponse(truncated = false) {
   const anchor = makeMemory({ id: 'anchor-uuid', shortId: 'anchor00001', category: 'decision', summary: 'Anchor summary' });
   return create(RelatedMemoriesResponseSchema, { anchor, truncated, related: [] });
@@ -252,5 +314,199 @@ describe('/related/[id] — route shell states (Task 3)', () => {
     const screen = await renderRelated();
     await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
     await page.screenshot();
+  });
+});
+
+// Fixture: an anchor with a two-predecessor, one-successor supersession
+// chain -- pred1 (depth 1, itself superseded by the anchor -- a genuine
+// hidden-state member), pred2 (depth 2), succ1 (depth 1 successor).
+function chainFixtureResponse(truncated = false) {
+  const anchor = makeMemory({ id: 'anchor-uuid', shortId: 'anchor00001', category: 'decision', summary: 'Anchor summary' });
+  const pred1 = makeMemory({
+    id: 'pred1-uuid',
+    shortId: 'pred1000001',
+    category: 'gotcha',
+    summary: 'Predecessor one',
+    supersededBy: 'anchor-uuid'
+  });
+  const pred2 = makeMemory({ id: 'pred2-uuid', shortId: 'pred2000001', category: 'gotcha', summary: 'Predecessor two', supersededBy: 'pred1-uuid' });
+  const succ1 = makeMemory({ id: 'succ1-uuid', shortId: 'succ1000001', category: 'decision', summary: 'Successor one' });
+
+  const pred1Edge = create(RelatedEdgeSchema, {
+    type: EdgeType.SUPERSESSION,
+    evidence: { case: 'supersession', value: create(SupersessionEvidenceSchema, { direction: SupersessionDirection.PREDECESSOR, depth: 1 }) }
+  });
+  const pred2Edge = create(RelatedEdgeSchema, {
+    type: EdgeType.SUPERSESSION,
+    evidence: { case: 'supersession', value: create(SupersessionEvidenceSchema, { direction: SupersessionDirection.PREDECESSOR, depth: 2 }) }
+  });
+  const succ1Edge = create(RelatedEdgeSchema, {
+    type: EdgeType.SUPERSESSION,
+    evidence: { case: 'supersession', value: create(SupersessionEvidenceSchema, { direction: SupersessionDirection.SUCCESSOR, depth: 1 }) }
+  });
+
+  return create(RelatedMemoriesResponseSchema, {
+    anchor,
+    truncated,
+    related: [
+      create(RelatedMemorySchema, { memory: pred1, edges: [pred1Edge] }),
+      create(RelatedMemorySchema, { memory: pred2, edges: [pred2Edge] }),
+      create(RelatedMemorySchema, { memory: succ1, edges: [succ1Edge] })
+    ]
+  });
+}
+
+describe('/related/[id] — supersession timeline, truncation and empty states (Task 2)', () => {
+  it('renders four columns headed −2, −1, anchor, +1 with the anchor .is-anchor and a superseded member .hidden-state', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(chainFixtureResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await expect.poll(() => Array.from(screen.container.querySelectorAll('.ccol-h')).map((el) => el.textContent)).toEqual([
+      '−2',
+      '−1',
+      'anchor',
+      '+1'
+    ]);
+
+    expect(screen.container.querySelector('[data-testid="chain-card-anchor-uuid"]')?.classList.contains('is-anchor')).toBe(true);
+    expect(screen.container.querySelector('[data-testid="chain-card-pred1-uuid"]')?.classList.contains('hidden-state')).toBe(true);
+  });
+
+  it('clicking a chain card selects it everywhere', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(chainFixtureResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByTestId('chain-card-succ1-uuid')).toBeInTheDocument();
+
+    await screen.getByTestId('chain-card-succ1-uuid').click();
+
+    await expect
+      .poll(() => screen.container.querySelector('[data-testid="chain-card-succ1-uuid"]')?.classList.contains('sel-here'))
+      .toBe(true);
+    expect(screen.container.querySelector('#gn-succ1-uuid')?.classList.contains('sel')).toBe(true);
+    await expect.element(screen.getByRole('region', { name: 'Why succ1000001 is related' })).toBeInTheDocument();
+  });
+
+  it('renders the ceiling banner when truncated=true', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(chainFixtureResponse(true));
+    const screen = await renderRelated();
+    await expect
+      .element(screen.getByText('▲ truncated=true — total ceiling 64 reached; only the vector lane is cut.'))
+      .toBeInTheDocument();
+  });
+
+  it("shows the citation lane's empty reason beside a populated tag lane", async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.element(screen.getByText('none — no recall-visible record shares a citation (kind + ref)')).toBeInTheDocument();
+    await expect.element(screen.getByTestId('lane-row-tag-tag-uuid')).toBeInTheDocument();
+  });
+
+  it('renders the no-neighbours card with an Open-in-search link and no lane cards for a zero-candidate response', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(zeroCandidateResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('Nothing related to anchor00001')).toBeInTheDocument();
+    await expect.element(screen.getByRole('link', { name: 'Open anchor00001 in search ↗' })).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('.lane').length).toBe(0);
+  });
+
+  it('screenshots the populated supersession-timeline state', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(chainFixtureResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await page.screenshot();
+  });
+
+  it('screenshots the no-neighbours state', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(zeroCandidateResponse());
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('Nothing related to anchor00001')).toBeInTheDocument();
+    await page.screenshot();
+  });
+});
+
+// Fixture: an anchor with n vector-only candidates (no other edge types),
+// so the vector lane and the graph's non-anchor nodes are exactly this set.
+function vectorHitsResponse(n: number, truncated = false) {
+  const anchor = makeMemory({ id: 'anchor-uuid', shortId: 'anchor00001', category: 'decision', summary: 'Anchor summary' });
+  const related = Array.from({ length: n }, (_, i) => {
+    const mem = makeMemory({
+      id: `v${i}-uuid`,
+      shortId: `vhit${String(i).padStart(2, '0')}0001`,
+      category: 'discovery',
+      summary: `Vector candidate ${i}`
+    });
+    const edge = create(RelatedEdgeSchema, {
+      type: EdgeType.VECTOR,
+      evidence: { case: 'vector', value: create(VectorEvidenceSchema, { score: 0.9 - i * 0.01 }) }
+    });
+    return create(RelatedMemorySchema, { memory: mem, edges: [edge] });
+  });
+  return create(RelatedMemoriesResponseSchema, { anchor, truncated, related });
+}
+
+describe('/related/[id] — vector "show all" mirrored in the graph, and legend/lane switches (Task 3)', () => {
+  it('collapses the vector lane to 8 rows with a "show all" row, and the graph draws only those 8 vector nodes', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(vectorHitsResponse(20));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(8);
+    await expect.element(screen.getByText('showing 8 of 20 · k=64 · show all 20 ▸')).toBeInTheDocument();
+    expect(screen.container.querySelectorAll('[id^="gn-v"]').length).toBe(8);
+  });
+
+  it('expanding "show all" reveals every vector row and node with no second RelatedMemories call', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(vectorHitsResponse(20));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('showing 8 of 20 · k=64 · show all 20 ▸')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'showing 8 of 20 · k=64 · show all 20 ▸' }).click();
+
+    await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(20);
+    expect(screen.container.querySelectorAll('[id^="gn-v"]').length).toBe(20);
+    expect(relatedMemoriesSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('inserts the ceiling-cut clause in the collapsed row when the response is truncated', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(vectorHitsResponse(20, true));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('showing 8 of 20 · k=64 · ceiling cut the rest · show all 20 ▸')).toBeInTheDocument();
+  });
+
+  it('unchecking the tag legend checkbox hides the tag lane body, removes tag-only nodes from the graph, and flips the lane button to "show"', async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+    await expect.poll(() => screen.container.querySelector('#gn-tag-uuid')).not.toBeNull();
+
+    await screen.getByRole('checkbox', { name: 'Show tag edges' }).click();
+
+    await expect.poll(() => screen.container.querySelector('#gn-tag-uuid')).toBeNull();
+    expect(screen.container.querySelectorAll('[data-testid^="lane-row-tag-"]').length).toBe(0);
+    await expect.element(screen.getByTestId('lane-toggle-tag')).toHaveTextContent('show');
+  });
+
+  it("pressing the tag lane's hide button unchecks the legend checkbox", async () => {
+    const screen = await renderRelated();
+    await expect.element(screen.getByText(/RelatedMemories\(subj/)).toBeInTheDocument();
+
+    await screen.getByTestId('lane-toggle-tag').click();
+
+    await expect.element(screen.getByRole('checkbox', { name: 'Show tag edges' })).not.toBeChecked();
+  });
+
+  it('re-centring resets the vector lane back to collapsed', async () => {
+    relatedMemoriesSpy.mockReset().mockResolvedValue(vectorHitsResponse(20));
+    const screen = await renderRelated();
+    await expect.element(screen.getByText('showing 8 of 20 · k=64 · show all 20 ▸')).toBeInTheDocument();
+
+    await screen.getByRole('button', { name: 'showing 8 of 20 · k=64 · show all 20 ▸' }).click();
+    await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(20);
+
+    await screen.getByTestId('lane-row-vector-v0-uuid').click();
+    relatedMemoriesSpy.mockClear().mockResolvedValue(vectorHitsResponse(20));
+    await screen.getByRole('button', { name: 'Re-centre ↵' }).click();
+
+    await expect.poll(() => screen.container.querySelectorAll('[data-testid^="lane-row-vector-"]').length).toBe(8);
   });
 });

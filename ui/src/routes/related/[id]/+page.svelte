@@ -11,16 +11,24 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { createQuery } from '@tanstack/svelte-query';
-  import { SvelteMap } from 'svelte/reactivity';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { toast } from 'svelte-sonner';
   import { engram } from '$lib/client';
-  import { buildRelatedModel, visibleMembership, callLineParts, RELATED_K } from '$lib/related/graph';
+  import { buildRelatedModel, visibleMembership, callLineParts, RELATED_K, type LaneType } from '$lib/related/graph';
   import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
+  import { parseRelatedParams, relatedPath } from '$lib/search/related-params';
+  import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
   import RelatedGraph from '$lib/components/RelatedGraph.svelte';
+  import EdgeLane from '$lib/components/EdgeLane.svelte';
+  import SupersessionLane from '$lib/components/SupersessionLane.svelte';
+  import EvidenceSection from '$lib/components/EvidenceSection.svelte';
+  import GraphLegend from '$lib/components/GraphLegend.svelte';
+  import { noNeighboursLines, TRUNCATION_BANNER } from '$lib/related/lanes';
   import { Skeleton } from '$lib/components/ui/skeleton';
   import { Button } from '$lib/components/ui/button';
 
   const id = $derived(page.params.id ?? '');
+  const params = $derived(parseRelatedParams(page.url.searchParams));
 
   // Keyed by id so a re-centre to a different anchor doesn't carry the
   // previous anchor's measured duration into the new call line.
@@ -38,12 +46,63 @@
     meta: { silent: true }
   }));
 
-  let selectedId = $state<string | null>(null);
+  // The model and its membership projection are lifted to the top level
+  // (not computed inline in the template) so recenter() and the
+  // evidence-section lookup below can read them too.
+  const model = $derived(relatedQ.data ? buildRelatedModel(relatedQ.data, RELATED_K) : undefined);
 
-  function recenter(nextId: string) {
-    selectedId = null;
-    goto(`${base}/related/${nextId}`);
+  let selection = $state<{ id: string; lane: LaneType | 'graph' } | null>(null);
+  let vectorExpanded = $state(false);
+  const hiddenTypes = new SvelteSet<LaneType>();
+
+  const membership = $derived(model ? visibleMembership(model, { hiddenTypes, vectorExpanded }) : undefined);
+
+  const selectedCandidate = $derived.by(() => {
+    if (!selection || !model) return undefined;
+    return model.candidates.find((c) => c.id === selection.id);
+  });
+
+  // D-04: the anchor never carries its own change, so this effect fires
+  // only on a genuine re-centre/direct navigation to a new anchor.
+  $effect(() => {
+    void id;
+    selection = null;
+    vectorExpanded = false;
+  });
+
+  function toggleHidden(type: LaneType) {
+    if (hiddenTypes.has(type)) hiddenTypes.delete(type);
+    else hiddenTypes.add(type);
   }
+
+  // Shared by every lane (EdgeLane and SupersessionLane alike): clicking the
+  // anchor's own supersession card clears the selection, matching the
+  // graph's anchor-node click (D-05: the anchor is never related to itself
+  // and never carries an evidence section).
+  function selectFromLane(candidateId: string, lane: LaneType) {
+    if (model && candidateId === model.anchor.id) {
+      selection = null;
+    } else {
+      selection = { id: candidateId, lane };
+    }
+  }
+
+  // recenter walks the trail to a new anchor (D-04): pushes a history entry
+  // via goto, carrying the origin (`from`) and the growing trail forward.
+  function recenter(nodeId: string) {
+    if (!model) return;
+    const candidate = model.candidates.find((c) => c.id === nodeId);
+    if (!candidate) return;
+    goto(`${base}${relatedPath(candidate.shortId, { from: params.from, trail: [...params.trail, model.anchor.shortId] })}`);
+  }
+
+  function openHrefFor(candidateId: string): string {
+    return `${base}/search?${encodeSearchParams({ ...defaultSearchParams(), sel: candidateId })}`;
+  }
+
+  // The three one-line-row lanes rendered by EdgeLane, in canonical order --
+  // supersession renders separately via SupersessionLane (plan 05-04 Task 2).
+  const EDGE_LANE_TYPES: LaneType[] = ['citation', 'tag', 'vector'];
 
   const parsedError = $derived(relatedQ.isError ? parseConnectError(relatedQ.error) : undefined);
 
@@ -118,9 +177,7 @@
         <Button variant="outline" size="sm" onclick={() => copyError(parsed.detail)}>Copy error</Button>
       </div>
     </div>
-  {:else if relatedQ.data}
-    {@const model = buildRelatedModel(relatedQ.data, RELATED_K)}
-    {@const membership = visibleMembership(model, { hiddenTypes: new Set(), vectorExpanded: false })}
+  {:else if model && membership}
     {@const call = callLineParts(model, durations.get(id))}
     <div class="anchor-card">
       <div class="meta">
@@ -140,17 +197,70 @@
         {call.before}<span class="trunc" class:trunc-on={model.truncated}>{call.truncatedText}</span>{call.after}
       </div>
     </div>
+    {#if model.truncated}
+      <p class="truncation-banner">{TRUNCATION_BANNER}</p>
+    {/if}
     <div class="s-grid">
-      <div class="lanes"><!-- plan 05-04 renders edge-type lanes here --></div>
+      <div class="lanes">
+        {#if model.candidates.length === 0}
+          <div class="no-neighbours" data-testid="no-neighbours">
+            <p class="nn-heading">Nothing related to {model.anchor.shortId}</p>
+            {#each noNeighboursLines(model) as line (line)}
+              <p class="nn-line">{line}</p>
+            {/each}
+            <a class="nn-link" href={openHrefFor(model.anchor.id)}>Open {model.anchor.shortId} in search ↗</a>
+          </div>
+        {:else}
+          <SupersessionLane
+            {model}
+            hidden={hiddenTypes.has('supersession')}
+            selectedId={selection?.id ?? null}
+            selectedLane={selection?.lane ?? null}
+            onselect={selectFromLane}
+            ontogglehidden={() => toggleHidden('supersession')}
+          />
+          {#each EDGE_LANE_TYPES as laneType (laneType)}
+            <EdgeLane
+              type={laneType}
+              rows={membership.lanes[laneType]}
+              {model}
+              hidden={hiddenTypes.has(laneType)}
+              selectedId={selection?.id ?? null}
+              selectedLane={selection?.lane ?? null}
+              collapsed={laneType === 'vector' && membership.vectorCollapsed
+                ? {
+                    shown: membership.lanes.vector.length,
+                    total: membership.vectorTotal,
+                    k: model.k,
+                    truncated: model.truncated,
+                    onexpand: () => (vectorExpanded = true)
+                  }
+                : null}
+              onselect={selectFromLane}
+              ontogglehidden={() => toggleHidden(laneType)}
+            />
+          {/each}
+        {/if}
+      </div>
       <aside class="rail">
         <RelatedGraph
           anchorId={model.anchor.id}
           nodes={membership.nodes}
           edges={membership.edges}
-          {selectedId}
-          onselect={(nid) => (selectedId = nid)}
+          selectedId={selection?.id ?? null}
+          onselect={(nid) => (selection = nid ? { id: nid, lane: 'graph' } : null)}
           onrecenter={recenter}
         />
+        {#if selectedCandidate}
+          <EvidenceSection
+            candidate={selectedCandidate}
+            anchor={model.anchor}
+            openHref={openHrefFor(selectedCandidate.id)}
+            onclose={() => (selection = null)}
+            onrecenter={() => recenter(selectedCandidate.id)}
+          />
+        {/if}
+        <GraphLegend {model} {hiddenTypes} ontoggle={toggleHidden} />
       </aside>
     </div>
   {/if}
@@ -217,11 +327,44 @@
     color: var(--warning);
     font-weight: 600;
   }
+  .truncation-banner {
+    font-size: calc(12 * var(--u));
+    font-weight: 600;
+    color: var(--warning);
+  }
+  .no-neighbours {
+    display: flex;
+    flex-direction: column;
+    gap: calc(4 * var(--u));
+    padding: calc(8 * var(--u)) calc(12 * var(--u));
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(4 * var(--u));
+  }
+  .nn-heading {
+    font-weight: 600;
+    font-size: calc(13 * var(--u));
+  }
+  .nn-line {
+    font-size: calc(12 * var(--u));
+    color: var(--muted-foreground);
+  }
+  .nn-link {
+    align-self: flex-start;
+    font-size: calc(12 * var(--u));
+    color: var(--primary);
+  }
   .s-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) calc(340 * var(--u));
     gap: calc(8 * var(--u));
     align-items: start;
+  }
+  .lanes {
+    display: flex;
+    flex-direction: column;
+    gap: calc(8 * var(--u));
+    min-width: 0;
   }
   .rail {
     position: sticky;
@@ -229,6 +372,8 @@
     max-height: var(--rail-max-h);
     overflow-y: auto;
     min-height: calc(460 * var(--u));
+    display: flex;
+    flex-direction: column;
   }
   /* The graph is scoped inside RelatedGraph.svelte, but this route owns the
      rail's sizing contract -- reach into the child component's own .graph
