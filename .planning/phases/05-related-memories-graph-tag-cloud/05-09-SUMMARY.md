@@ -263,3 +263,13 @@ underlying capability is shipped and verified.
 ---
 *Phase: 05-related-memories-graph-tag-cloud*
 *Completed: 2026-09-28*
+
+## Self-Check: PASSED
+
+- `test -f .planning/phases/05-related-memories-graph-tag-cloud/05-09-SUMMARY.md` → FOUND
+- `test -f internal/e2e/console_browser_test.go` → FOUND
+- `test -f ui/src/lib/components/GraphLegend.svelte` → FOUND
+- `git log --oneline --all --grep="05-09"` → FOUND (docs(05-09) metadata commit)
+- All four task commits present on `worktree-agent-ae9f1feefa17de435`: `db8ffd25`, `cf1e41e1`,
+  `5cdcedcf`, `3027e7b6`
+- Re-ran every plan-level `<verify>` command in this session; all passed (see Accomplishments)
