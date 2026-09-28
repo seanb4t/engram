@@ -69,13 +69,17 @@ Every `createQuery`/`createInfiniteQuery` in this codebase follows the same shap
 
 ## URL state
 
-`ui/src/lib/search/params.ts` (`/search`), `ui/src/lib/search/rules-params.ts` (`/rules`), and
-`ui/src/lib/search/scheduled-params.ts` (`/scheduled`) are the codecs between a route's
-`URLSearchParams` and its typed params object. `/` (root) has none — its "recent memories" feed is
-a fixed, unparametrized `ListMemories` read with no URL state of its own (D-14: the offset-mode
-listing route this once lived on was retired in Phase 4 and folded into `/`'s recent feed;
-`queries.ts`'s former parse/search helpers for that route no longer exist). Rules all three codecs
-follow:
+`ui/src/lib/search/params.ts` (`/search`), `ui/src/lib/search/rules-params.ts` (`/rules`),
+`ui/src/lib/search/scheduled-params.ts` (`/scheduled`), and `ui/src/lib/search/related-params.ts`
+(`/related`) are the codecs between a route's `URLSearchParams` and its typed params object. `/`
+(root) has none — its "recent memories" feed is a fixed, unparametrized `ListMemories` read with no
+URL state of its own (D-14: the offset-mode listing route this once lived on was retired in Phase 4
+and folded into `/`'s recent feed; `queries.ts`'s former parse/search helpers for that route no
+longer exist). `related-params.ts` carries two fields: `from` (where `/related` was opened from,
+kept only when `isAllowedDestination` accepts it — the same open-redirect guard `resume.ts` uses)
+and `trail` (the comma-joined ids walked so far via re-centre, each validated against `UUID_RE`/
+`SHORT_ID_RE` and capped at `RELATED_TRAIL_MAX`); canonical encode order is `from, trail`. Rules all
+four codecs follow:
 
 - **One parse function, one encode function, per route** — declared once so the two cannot drift
   out of sync (a param the encoder writes that the parser does not read, or vice versa, is a bug).
@@ -167,8 +171,8 @@ query.
 | `RestoreMemory` | `engramWrite` | `ids` | `results[]` (`ArchiveResult`, same shape) | n/a (write) |
 | `ListRules` | `engram` | `scopes, tags, full` (`scopes` empty = every readable `rule:*` scope, one cross-scope read) | `rules[], advisory, searchedScopes[], scopesTruncated, scopesUnknown` (the coverage triple present only on the all-scopes read) | `'listRules'` |
 | `ListScheduled` | `engram` | `scope, state, limit, createdAfter, createdBefore, crossSpine, pageToken` | `memories[], nextPageToken, searchedScopes[], scopesTruncated, scopesUnknown` (coverage triple present only when `crossSpine`) | `'listScheduled'` |
-| `RelatedMemories` | `engram` | `id, k, full` | `anchor, related[]` (`RelatedMemory`: `memory, edges[]`), `truncated` | `'relatedMemories'` |
-| `ListTags` | `engram` | `scope, limit` (`scope` empty = every readable scope) | `tags[]` (`TagCount`: `tag, count`), `more` | `'listTags'` |
+| `RelatedMemories` | `engram` | `id, k, full` | `anchor, related[]` (`RelatedMemory`: `memory, edges[]`), `truncated` | `'relatedMemories'` — `/related`'s own query key is `['relatedMemories', id, 64, false]` (`RELATED_K`); `ChainDialog`'s per-node peeks use `['relatedMemories', id, 1, false]` (k=1, no vector/tag edges needed for a chain timeline) |
+| `ListTags` | `engram` | `scope, limit` (`scope` empty = every readable scope) | `tags[]` (`TagCount`: `tag, count`), `more` | `'listTags'` — `['listTags', scope \|\| '__all_readable__', 1000]` via `ui/src/lib/tags/query.ts`'s `listTagsQuery(scope)`, `staleTime: Infinity` (D-15 "one fetch"); shared verbatim by `TagBars`, `TagCombobox` and the header search's Tags autocomplete group (D-16) |
 
 `RelatedEdge.evidence` is a **discriminated union** (`{ case, value }`, connect-es's oneof
 shape) keyed by `RelatedEdge.type` (`vector | tag | citation | supersession`) — read `case`
