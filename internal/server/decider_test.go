@@ -1059,3 +1059,126 @@ func TestSearchRerankAudit(t *testing.T) {
 		})
 	}
 }
+
+// TestUnderstandingEnabledResolver proves understandingEnabled's D-01
+// resolution table: an explicit "off"/"jev" wins outright, an empty value
+// follows cfg.Decisions.Provider, and an unrecognized value stays off with a
+// Warn naming ENGRAM_SEARCH_UNDERSTANDING.
+func TestUnderstandingEnabledResolver(t *testing.T) {
+	cases := []struct {
+		understanding string
+		provider      string
+		wantEnabled   bool
+		wantSource    string
+	}{
+		{"", "", false, "default"},
+		{"", "jev", true, "default"},
+		{"off", "jev", false, "explicit"},
+		{"jev", "jev", true, "explicit"},
+		{"jev", "", true, "explicit"},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("understanding=%q,provider=%q", tc.understanding, tc.provider), func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Search.Understanding = tc.understanding
+			cfg.Decisions.Provider = tc.provider
+
+			enabled, source := understandingEnabled(cfg)
+			if enabled != tc.wantEnabled || source != tc.wantSource {
+				t.Errorf("understandingEnabled() = (%v, %q), want (%v, %q)", enabled, source, tc.wantEnabled, tc.wantSource)
+			}
+		})
+	}
+
+	t.Run("unknown value warns and stays off", func(t *testing.T) {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		cfg := &config.Config{}
+		cfg.Search.Understanding = "JEV"
+		cfg.Decisions.Provider = "jev"
+
+		enabled, source := understandingEnabled(cfg)
+		if enabled {
+			t.Error("enabled = true, want false")
+		}
+		if source != "explicit" {
+			t.Errorf("source = %q, want explicit", source)
+		}
+
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &rec); err != nil {
+			t.Fatalf("unmarshal log line %q: %v", buf.String(), err)
+		}
+		if rec["level"] != "WARN" {
+			t.Errorf("level = %v, want WARN", rec["level"])
+		}
+		if rec["value"] != "JEV" {
+			t.Errorf("value = %v, want JEV", rec["value"])
+		}
+		if msg, _ := rec["msg"].(string); !strings.Contains(msg, "ENGRAM_SEARCH_UNDERSTANDING") {
+			t.Errorf("msg = %q, want substring ENGRAM_SEARCH_UNDERSTANDING", msg)
+		}
+	})
+}
+
+// TestUnderstandingTimeoutResolver proves understandingTimeout's D-01a
+// resolution table: 2s default on empty; an explicit valid value honored; 0,
+// negative and unparseable values all fall back to 2s (never
+// jev.WithMaxTimeout's 10m ceiling, unacceptable on this synchronous path).
+func TestUnderstandingTimeoutResolver(t *testing.T) {
+	cfg := &config.Config{}
+	if got := understandingTimeout(cfg); got != 2*time.Second {
+		t.Errorf("empty = %v, want 2s", got)
+	}
+	cfg.Search.UnderstandingTimeout = "150ms"
+	if got := understandingTimeout(cfg); got != 150*time.Millisecond {
+		t.Errorf("150ms = %v, want 150ms", got)
+	}
+	for _, bad := range []string{"0", "-1s", "soon"} {
+		cfg.Search.UnderstandingTimeout = bad
+		if got := understandingTimeout(cfg); got != 2*time.Second {
+			t.Errorf("%q = %v, want fallback 2s", bad, got)
+		}
+	}
+}
+
+// TestUnderstandDeciderGate proves understandDecider's D-04 gate: a non-nil
+// Decider only when a provider is configured AND understanding resolves on;
+// every other combination — including provider empty with understanding
+// explicitly "jev", a misconfiguration Config.Validate (plan 06-04) rejects
+// before production ever reaches here — returns (nil, nil).
+func TestUnderstandDeciderGate(t *testing.T) {
+	cases := []struct {
+		name          string
+		provider      string
+		understanding string
+		wantNil       bool
+	}{
+		{"provider jev, understanding unset", "jev", "", false},
+		{"provider jev, understanding off", "jev", "off", true},
+		{"provider empty, understanding empty", "", "", true},
+		{"provider empty, understanding jev", "", "jev", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Decisions.Provider = tc.provider
+			cfg.Decisions.BaseURL = "https://example.invalid/api"
+			cfg.Search.Understanding = tc.understanding
+
+			dec, err := understandDecider(cfg)
+			if err != nil {
+				t.Fatalf("understandDecider: %v", err)
+			}
+			if tc.wantNil && dec != nil {
+				t.Error("understandDecider returned non-nil, want nil")
+			}
+			if !tc.wantNil && dec == nil {
+				t.Error("understandDecider returned nil, want non-nil")
+			}
+		})
+	}
+}
