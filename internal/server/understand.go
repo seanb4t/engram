@@ -29,8 +29,18 @@ import (
 // caller's search, so the core can skip a question whose answer is already
 // applied.
 type understandArgs struct {
-	Query         string
-	Scope         string
+	Query string
+	Scope string
+	// CrossSpine carries the caller's cross-spine search state (D-03), but
+	// is intentionally not consulted anywhere in understandQuery: the D-08
+	// scope-suggestion gate below checks only whether Scope is empty.
+	// Suggesting a single scope would narrow, not clarify, a query the
+	// caller already broadened to span every readable scope, so "already
+	// cross-spine" and "no scope, single-spine" are deliberately treated
+	// alike here. The field is still threaded through from the wire
+	// request (see proto/engram/v1/engram.proto UnderstandQueryRequest.
+	// cross_spine) so a future gate change has it available without a
+	// wire-contract change.
 	CrossSpine    bool
 	Categories    []string
 	Tags          []string
