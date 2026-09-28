@@ -285,6 +285,6 @@ func validConfigForServiceAuthTests() *Config {
 		Connect: ConnectConfig{
 			Headless: "false",
 		},
-		Search: SearchConfig{RerankAudit: "false"},
+		Search: SearchConfig{RerankAudit: "false", UnderstandingTimeout: "2s", UnderstandingAudit: "false"},
 	}
 }

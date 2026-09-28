@@ -393,6 +393,41 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// search.understanding (D-01, milestone 2026-09-25.01 Phase 6): checked
+	// unconditionally, unlike search.understanding_timeout below — a typo in
+	// the enum must fail startup even when understanding is otherwise off.
+	// Accepted values are exactly "", "off", "jev" — no case folding or
+	// trimming (D-01 encoding: same parse rules as ENGRAM_SEARCH_RANKER).
+	if c.Search.Understanding != "" && c.Search.Understanding != "off" && c.Search.Understanding != "jev" {
+		errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_UNDERSTANDING %q: must be empty (follow ENGRAM_DECISIONS_PROVIDER), \"off\", or \"jev\"", c.Search.Understanding))
+	}
+
+	if c.Search.Understanding == "jev" && c.Decisions.Provider == "" {
+		errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_UNDERSTANDING=jev requires ENGRAM_DECISIONS_PROVIDER to be set (naming both: ENGRAM_SEARCH_UNDERSTANDING=%q, ENGRAM_DECISIONS_PROVIDER=%q)", c.Search.Understanding, c.Decisions.Provider))
+	}
+
+	// understandingOn mirrors internal/server's understandingEnabled (D-01):
+	// explicit "jev" turns it on; an empty value follows Decisions.Provider —
+	// on when it is "jev", off otherwise. internal/server holds the OTHER
+	// copy of this exact resolution (milestone 2026-09-25.01 Phase 6 D-01) —
+	// the two must stay in sync by hand.
+	understandingOn := c.Search.Understanding == "jev" || (c.Search.Understanding == "" && c.Decisions.Provider == "jev")
+	if understandingOn {
+		// search.understanding_timeout (D-01a): UNLIKE decisions.timeout, zero
+		// is always rejected — a zero here would resolve to the 10m decisions
+		// max-timeout ceiling on the synchronous understanding path, which is
+		// unacceptable, mirroring search.rerank_timeout's own rule. Gated on
+		// EFFECTIVE enablement (explicit jev, or unset with provider jev) so a
+		// default-on deployment cannot start with a bad timeout that only
+		// fails later; a no-provider deployment never has it checked.
+		switch d, err := time.ParseDuration(c.Search.UnderstandingTimeout); {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT %q: must be a Go duration (e.g. 2s, 500ms): %w", c.Search.UnderstandingTimeout, err))
+		case d <= 0:
+			errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_UNDERSTANDING_TIMEOUT %q: must be a positive duration", c.Search.UnderstandingTimeout))
+		}
+	}
+
 	// These three run unconditionally (not gated by Summarize.Model), since the
 	// fields carry safe defaults and the runtime "both model set AND on_write
 	// true" AND-gate (D-01) is decided later in buildDepsFromEnv, not here.
@@ -408,6 +443,13 @@ func (c *Config) Validate() error {
 	// so a typo fails startup even while the ranker is off.
 	if _, err := strconv.ParseBool(c.Search.RerankAudit); err != nil {
 		errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_RERANK_AUDIT %q: must be a boolean: %w", c.Search.RerankAudit, err))
+	}
+
+	// search.understanding_audit (D-16) is a boolean like search.rerank_audit
+	// above; unconditional so a typo fails startup even while understanding
+	// is off.
+	if _, err := strconv.ParseBool(c.Search.UnderstandingAudit); err != nil {
+		errs = append(errs, fmt.Errorf("ENGRAM_SEARCH_UNDERSTANDING_AUDIT %q: must be a boolean: %w", c.Search.UnderstandingAudit, err))
 	}
 
 	// connect.headless (D-10) is validated at load, not only at point of use,
