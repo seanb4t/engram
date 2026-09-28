@@ -165,3 +165,13 @@ None - no external service configuration required.
 ---
 *Phase: 06-query-understanding*
 *Completed: 2026-09-28*
+
+## Self-Check: PASSED
+
+- FOUND: internal/config/understanding_config_test.go
+- FOUND: .planning/phases/06-query-understanding/06-04-SUMMARY.md
+- FOUND commit 675df917 (Task 1)
+- FOUND commit e5b4b147 (Task 2)
+- FOUND commit 2242f937 (Task 3)
+- `go test ./internal/config/ -count=1` and the named `internal/server` tests (`ENGRAM_REQUIRE_QDRANT=1 -v`) both PASS
+- `golangci-lint run ./internal/server/... ./internal/config/...`: 0 issues
