@@ -21,7 +21,7 @@
   import { defaultSearchParams, encodeSearchParams, applyChips } from '$lib/search/params';
   import { headerSearch } from '$lib/search/header-search.svelte';
   import { listTagsQuery } from '$lib/tags/query';
-  import { toTagRows, rankTagMatches, scopeLabel } from '$lib/tags/tags';
+  import { toTagRows, rankTagMatches, scopeLabel, matchFooter, tagsLoadingLine, tagsErrorCopy } from '$lib/tags/tags';
 
   type ScopeChipT = Extract<OperatorChip, { kind: 'scope' }>;
   type TagChipT = Extract<OperatorChip, { kind: 'tag' }>;
@@ -467,15 +467,52 @@
           </div>
         {/if}
 
-        <Command.List class="max-h-[calc(540*var(--u))]">
-          {#if tagPrefixInProgress !== null}
-            <Command.Group heading={'Tags · counts in ' + scopeLabel(effectiveScope)}>
+        {#snippet tagsGroup()}
+          <Command.Group heading={'Tags · counts in ' + scopeLabel(effectiveScope)}>
+            {#if tagsQuery.isPending}
+              <div class="px-2 py-1.5 text-xs font-mono text-muted-foreground">
+                {tagsLoadingLine(effectiveScope)}
+              </div>
+            {:else if tagsQuery.isError}
+              {@const tagsParsed = parseConnectError(tagsQuery.error)}
+              {@const tagsCopy = tagsErrorCopy(tagsParsed)}
+              <div class="px-2 py-1.5 text-sm">
+                <p>{tagsCopy.heading}</p>
+                {#if tagsCopy.kind === 'rejected'}
+                  <pre class="whitespace-pre-wrap rounded border border-destructive bg-card p-1.5 font-mono text-xs text-destructive">{tagsCopy.envelope}</pre>
+                {/if}
+              </div>
+            {:else}
               {#each tagRank.matches as m (m.tag)}
                 <Command.Item value={`tag-${m.tag}`} onSelect={() => completeToken('#' + m.tag)}>
                   <TagMatchRow match={m} max={tagMax} />
                 </Command.Item>
               {/each}
-            </Command.Group>
+              {#if tagRank.unknown}
+                {@const unk = tagRank.unknown}
+                <Command.Item value={`tag-add-${unk.tag}`} onSelect={() => completeToken('#' + unk.tag)}>
+                  <span>Add #{unk.tag}</span>
+                  <span class="block font-mono text-[calc(11*var(--u))] text-[var(--warning)]">{unk.reason}</span>
+                </Command.Item>
+              {/if}
+              {@const tagFooter = matchFooter({
+                total: tagRank.total,
+                more: tagsQuery.data?.more ?? false,
+                loaded: tagRows.length
+              })}
+              <div class="px-2 py-1.5 text-xs font-mono text-muted-foreground">
+                <span>{tagFooter.text}</span>
+                {#if tagFooter.warn}
+                  <span class="block text-[var(--warning)]">{tagFooter.warn}</span>
+                {/if}
+              </div>
+            {/if}
+          </Command.Group>
+        {/snippet}
+
+        <Command.List class="max-h-[calc(540*var(--u))]">
+          {#if tagPrefixInProgress !== null && classified.kind !== 'text'}
+            {@render tagsGroup()}
           {/if}
 
           {#if classified.kind === 'text'}
@@ -503,6 +540,10 @@
                 </Command.Item>
               </Command.Group>
             {/if}
+          {/if}
+
+          {#if tagPrefixInProgress !== null && classified.kind === 'text'}
+            {@render tagsGroup()}
           {/if}
 
           {#if classified.kind === 'operators'}
