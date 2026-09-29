@@ -132,7 +132,7 @@ func seedBenchTags(b *testing.B, s *Store) {
 		}
 		m := Memory{
 			ID:        fmt.Sprintf("00000000-0000-4000-8000-%012d", i),
-			Content:   strings.Repeat("x", 800+r.IntN(4400)),
+			Content:   strings.Repeat("x", 800+r.IntN(3400)),
 			Summary:   strings.Repeat("s", 200),
 			Scope:     fmt.Sprintf("repo:bench/%02d", i%12),
 			Owner:     owners[i%len(owners)],
