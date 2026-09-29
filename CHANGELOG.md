@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.3](https://github.com/seanb4t/engram/compare/v0.22.2...v0.22.3) (2026-09-29)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/qdrant/go-client to v1.19.3 ([#688](https://github.com/seanb4t/engram/issues/688)) ([ed315cf](https://github.com/seanb4t/engram/commit/ed315cf511a76c26d3e7d4c9cf209585a5139ab4))
+* **store:** size tag-count pages from observed payload bytes ([#685](https://github.com/seanb4t/engram/issues/685)) ([5a33b0b](https://github.com/seanb4t/engram/commit/5a33b0b971338272a0fd9028d93ab58ea34a3a76))
+
 ## [0.22.2](https://github.com/seanb4t/engram/compare/v0.22.1...v0.22.2) (2026-09-29)
 
 
