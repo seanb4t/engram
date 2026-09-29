@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.2](https://github.com/seanb4t/engram/compare/v0.22.1...v0.22.2) (2026-09-29)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.8.31 ([#679](https://github.com/seanb4t/engram/issues/679)) ([25dbc15](https://github.com/seanb4t/engram/commit/25dbc1570c48d7936a0b599db70a8911f011cacb))
+* **store:** index every recall-gate field ([#682](https://github.com/seanb4t/engram/issues/682)) ([0e6304a](https://github.com/seanb4t/engram/commit/0e6304a0ee92f3bec5450393a34db9dee9254e1f))
+
 ## [0.22.1](https://github.com/seanb4t/engram/compare/v0.22.0...v0.22.1) (2026-09-29)
 
 
