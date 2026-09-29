@@ -338,9 +338,8 @@ var recallEmissionMethods = map[string]bool{
 	"Scroll":          true,
 	"ScrollAndOffset": true,
 	"Count":           true,
-	// The filtered Facet in Store.facetTags (ListTags, plan 01-02) is a
-	// recall emission; Store.MigrateStatus's unfiltered Facet stays
-	// operator-tier (see its operatorMigrationEmitters row below).
+	// Store.MigrateStatus's unfiltered Facet is the only Facet today
+	// (operator-tier); kept so a future filtered Facet is classified.
 	"Facet": true,
 }
 
@@ -526,7 +525,7 @@ var recallTransmitters = []recallEmissionClassification{
 	},
 	{
 		enclosingFunc: "Store.facetTags",
-		justification: "Emits Facet (listtags.go), its own transmission — the package's ONLY filtered Facet call. Reachable from both the Store.ListTags seed (Store.ListTags itself emits nothing directly, so it gets no row of its own) and, as of plan 01-04, the Store.RelatedMemories seed via Store.relatedTagEdges' rarity-weight lookup (D-07). Serves ListTags (exposed through BOTH Connect and MCP once Phase 3 lands, RPC-04) AND RelatedMemories' shared-tag edges — both read the same numbers from this one helper, so D-16's operator-tier exclusion rationale does not reach either. The filter it carries is recallVisibleFilter's composition: ownerScopeFilter plus the three recall-gate conditions.",
+		justification: "Emits ScrollAndOffset (listtags.go), its own transmission — a tags-only paged Scroll counted in Go (#675). Reachable from both the Store.ListTags seed (Store.ListTags itself emits nothing directly, so it gets no row of its own) and, as of plan 01-04, the Store.RelatedMemories seed via Store.relatedTagEdges' rarity-weight lookup (D-07). Serves ListTags (exposed through BOTH Connect and MCP once Phase 3 lands, RPC-04) AND RelatedMemories' shared-tag edges — both read the same numbers from this one helper, so D-16's operator-tier exclusion rationale does not reach either. The filter it carries is recallVisibleFilter's composition: ownerScopeFilter plus the three recall-gate conditions.",
 	},
 	{
 		enclosingFunc: "Store.relatedTagEdges",
@@ -1229,7 +1228,7 @@ var recallInvocationRows = []recallInvocationRow{
 	},
 	{
 		name: "ListTags/anonymous", entryPoint: "Store.ListTags",
-		expectCount: 1, expectMethods: []string{"Facet"},
+		expectCount: 1, expectMethods: []string{"Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
 			if _, _, err := s.ListTags(ctx, recallGateAnonymousSubject, recallGateScope, 0); err != nil {
@@ -1239,7 +1238,7 @@ var recallInvocationRows = []recallInvocationRow{
 	},
 	{
 		name: "ListTags/owner", entryPoint: "Store.ListTags",
-		expectCount: 1, expectMethods: []string{"Facet"},
+		expectCount: 1, expectMethods: []string{"Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
 			if _, _, err := s.ListTags(ctx, recallGateOwnerSubject, recallGateScope, 0); err != nil {
@@ -1248,13 +1247,13 @@ var recallInvocationRows = []recallInvocationRow{
 		},
 	},
 	{
-		// Visible-set Count (relatedTagEdges), the facet (relatedTagEdges,
-		// via Store.facetTags — the tag is in the facet, so no fallback
-		// Count), the tag probe Scroll, the citation probe Scroll
+		// Visible-set Count (relatedTagEdges), the tag-count Scroll
+		// (relatedTagEdges, via Store.facetTags — the tag is counted, so no
+		// fallback Count), the tag probe Scroll, the citation probe Scroll
 		// (relatedCitationEdges), the vector Query, and one payload-fetch
 		// Scroll batch (Store.fetchPayloadBatch) — six captures total.
 		name: "RelatedMemories/anonymous", entryPoint: "Store.RelatedMemories",
-		expectCount: 6, expectMethods: []string{"Count", "Facet", "Query", "Scroll", "Scroll", "Scroll"},
+		expectCount: 6, expectMethods: []string{"Count", "Query", "Scroll", "Scroll", "Scroll", "Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
 			if _, err := s.RelatedMemories(ctx, recallGateRelatedAnonAnchorID, recallGateAnonymousSubject, 0, false); err != nil {
@@ -1266,7 +1265,7 @@ var recallInvocationRows = []recallInvocationRow{
 		// Same capture shape as the anonymous row above — the owner subject's
 		// fixtures are the identical n=4/df=2 shape.
 		name: "RelatedMemories/owner", entryPoint: "Store.RelatedMemories",
-		expectCount: 6, expectMethods: []string{"Count", "Facet", "Query", "Scroll", "Scroll", "Scroll"},
+		expectCount: 6, expectMethods: []string{"Count", "Query", "Scroll", "Scroll", "Scroll", "Scroll"},
 		invoke: func(t *testing.T, ctx context.Context, s *Store) {
 			t.Helper()
 			if _, err := s.RelatedMemories(ctx, recallGateRelatedOwnerAnchorID, recallGateOwnerSubject, 0, false); err != nil {

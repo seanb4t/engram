@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -16,8 +17,8 @@ import (
 )
 
 // TagCount is one tag plus the exact number of the caller's recall-visible
-// records that carry it (D-13) — never an estimate, since facetTags always
-// requests Exact counting.
+// records that carry it (D-13) — never an estimate, since facetTags counts
+// every visible point.
 type TagCount struct {
 	Tag   string
 	Count uint64
@@ -46,47 +47,76 @@ func (s *Store) recallVisibleFilter(ctx context.Context, scope string, subj Subj
 	return f
 }
 
-// facetTags is the ONLY Facet call site in internal/store that carries a
-// Filter — f must already carry the caller's read predicate and the recall
-// gate (see recallVisibleFilter). It requests Limit: limit+1 and Exact: true
-// because FacetResponse carries no truncation flag of its own (see
-// Store.MigrateStatus's doc comment); the +1 over-ask is the only signal that
-// more distinct tags exist than limit. Results are sorted by count
-// descending, then tag ascending, so the ordering is deterministic at equal
-// counts. Shared by ListTags and, from plan 01-04 onward, RelatedMemories'
-// rarity weights (D-07) — both read the same numbers from this one helper.
+// facetTags counts the tags of every point matching f (the caller's
+// recallVisibleFilter) with one paged Scroll, counted in Go. An exact Facet
+// under that filter took ~18 s on production data (#675); Exact: false would
+// break D-13. It pages like scrollAllPoints but cannot call it: that iterator
+// is classified operator-tier by the recall-gate test.
 func (s *Store) facetTags(ctx context.Context, f *qdrant.Filter, limit uint64) ([]TagCount, bool, error) {
-	hits, err := s.client.Facet(ctx, &qdrant.FacetCounts{
-		CollectionName: s.collection,
-		Key:            "tags",
-		Filter:         f,
-		Exact:          qdrant.PtrOf(true),
-		Limit:          qdrant.PtrOf(limit + 1),
-	})
-	if err != nil {
-		return nil, false, err
-	}
-	out := make([]TagCount, 0, len(hits))
-	for _, h := range hits {
-		tag := h.GetValue().GetStringValue()
-		if tag == "" {
-			// A stored tag is never empty (mirrors tagMatchConditions) — skip
-			// defensively rather than surface a meaningless facet bucket.
-			continue
+	view := s.tagsView()
+	counts := map[string]uint64{}
+	seen := map[string]bool{}
+	var offset *qdrant.PointId
+	var fallbackLeft int
+	for {
+		batch := sweepLimit(view)
+		if fallbackLeft > 0 {
+			batch = 1
 		}
-		out = append(out, TagCount{Tag: tag, Count: h.GetCount()})
+		pts, next, err := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
+			CollectionName: s.collection,
+			Filter:         f,
+			Limit:          qdrant.PtrOf(batch),
+			Offset:         offset,
+			WithPayload:    view.selector,
+			WithVectors:    qdrant.NewWithVectors(false),
+		})
+		if err != nil {
+			if batch > 1 && errors.Is(err, ErrResponseTooLarge) {
+				fallbackLeft = int(batch)
+				continue
+			}
+			return nil, false, err
+		}
+		for _, p := range pts {
+			clear(seen)
+			for _, tag := range tagsFromPayload(p.GetPayload()) {
+				if tag == "" || seen[tag] {
+					continue
+				}
+				seen[tag] = true
+				counts[tag]++
+			}
+		}
+		if fallbackLeft > 0 {
+			fallbackLeft--
+		}
+		if next == nil {
+			break
+		}
+		offset = next
 	}
+
+	out := make([]TagCount, 0, len(counts))
+	for tag, n := range counts {
+		out = append(out, TagCount{Tag: tag, Count: n})
+	}
+	sortTagCounts(out)
+	more := uint64(len(out)) > limit
+	if more {
+		out = out[:limit]
+	}
+	return out, more, nil
+}
+
+// sortTagCounts orders by count descending, then tag ascending.
+func sortTagCounts(out []TagCount) {
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
 			return out[i].Count > out[j].Count
 		}
 		return out[i].Tag < out[j].Tag
 	})
-	more := len(out) > int(limit)
-	if more {
-		out = out[:limit]
-	}
-	return out, more, nil
 }
 
 // ListTags returns exact, recall-visible, caller-readable tag counts (D-13):

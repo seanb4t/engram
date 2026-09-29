@@ -270,6 +270,64 @@ func TestScrollAllPointsBatchOfOneFallback(t *testing.T) {
 	}
 }
 
+// TestListTagsBatchOfOneFallback proves ListTags survives D-07's fallback:
+// three legacy records whose tag lists alone overflow a multi-record page
+// are re-read one at a time, and every tag still counts all three.
+func TestListTagsBatchOfOneFallback(t *testing.T) {
+	rec := &scrollRecorder{}
+	c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(rec.intercept))
+	name := store.PrefixedTestCollection("oversized_listtags_fallback_" + uuid.NewString())
+	st := store.NewTestStore(t, c, name)
+	ctx := context.Background()
+	if err := st.EnsureCollection(ctx, 3); err != nil {
+		t.Fatalf("EnsureCollection: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := c.DeleteCollection(ctx, name); err != nil {
+			t.Errorf("DeleteCollection(%q): %v", name, err)
+		}
+	})
+
+	owner := "storetest-owner-" + uuid.NewString()
+	const tagBytes = 128
+	tags := make([]string, storetest.RecvLimit*5/8/tagBytes)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("%0*d", tagBytes, i)
+	}
+	for i := range 3 {
+		m := store.Memory{
+			ID: uuid.NewString(), Content: "legacy", Scope: "storetest-fallback:" + uuid.NewString(),
+			Owner: owner, Actor: owner, Category: "decision", Tags: tags, CreatedAt: time.Now().UTC(),
+		}
+		if err := st.Upsert(ctx, m, []float32{0.1, 0.2, 0.3}); err != nil {
+			t.Fatalf("Upsert legacy record %d: %v", i, err)
+		}
+	}
+
+	rec.reset()
+	got, more, err := st.ListTags(ctx, store.Authenticated(owner), "", 5)
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if len(got) != 5 || !more {
+		t.Fatalf("ListTags returned %d tags (more=%v), want 5 (more=true)", len(got), more)
+	}
+	for _, tc := range got {
+		if tc.Count != 3 {
+			t.Errorf("tag %.12s… count = %d, want 3", tc.Tag, tc.Count)
+		}
+	}
+	var sawOverflow bool
+	for _, call := range rec.snapshot() {
+		if call.limit > 1 && call.code == codes.ResourceExhausted {
+			sawOverflow = true
+		}
+	}
+	if !sawOverflow {
+		t.Error("no multi-record page overflowed; the fixture did not exercise the fallback")
+	}
+}
+
 // TestScrollAllPointsSingleOversizedRecordFailsNamed proves D-07's failure
 // half: one record larger than storetest.RecvLimit, alongside two small
 // records, fails the full-view sweep with errors.Is(err,
