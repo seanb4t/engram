@@ -37,7 +37,7 @@ func TestEnsureIndexesCreatesTagsIndex(t *testing.T) {
 }
 
 // TestListTagsCountsOwnedTags is the phase's tracer test: one owner's tags
-// come back as exact, sorted counts through the filtered Facet, and another
+// come back as exact, sorted counts, and another
 // owner's private tags are absent.
 func TestListTagsCountsOwnedTags(t *testing.T) {
 	s := newSpineTestStore(t, "listtags_tracer")

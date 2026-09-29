@@ -374,6 +374,19 @@ func keysView() readView {
 	return readView{selector: qdrant.NewWithPayloadInclude("created_at"), maxRecordBytes: keysRecordCeiling}
 }
 
+// tagsRecordCeiling is the tags term plus id and framing overhead.
+func tagsRecordCeiling(c RecordCaps) int {
+	return tagsTerm(c) + keysRecordCeiling
+}
+
+// tagsView returns only the tags payload, for Store.facetTags.
+func (s *Store) tagsView() readView {
+	return readView{
+		selector:       qdrant.NewWithPayloadInclude("tags"),
+		maxRecordBytes: tagsRecordCeiling(s.RecordCaps()),
+	}
+}
+
 // sweepLimit is the per-RPC record count scrollAllPoints requests for v:
 // spineScrollBatch when v is unbudgeted (today's behavior, unchanged), else
 // the smaller of spineScrollBatch and v's byte-derived perRPCLimit.

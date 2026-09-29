@@ -89,7 +89,7 @@ func newTestStore(t testing.TB, c *qdrant.Client, name string, opts ...Option) *
 // internal/store's external TestMain (main_test.go, package store_test) sets
 // via storetest.Run before any test runs; the skip-or-fail decision comes from
 // noQdrantHandler, installed the same way (D-07/D-10).
-func dialTestClient(t *testing.T, opts ...grpc.DialOption) *qdrant.Client {
+func dialTestClient(t testing.TB, opts ...grpc.DialOption) *qdrant.Client {
 	t.Helper()
 	addr := os.Getenv("ENGRAM_QDRANT_TEST_ADDR")
 	if addr == "" {
