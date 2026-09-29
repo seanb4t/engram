@@ -2960,7 +2960,8 @@ func TestPayloadRoundTripsSchemaVersion(t *testing.T) {
 }
 
 // TestEnsureCollectionCreatesIndexes pins that EnsureCollection provisions the
-// owner/scope/created_at payload indexes and is idempotent on a second call.
+// owner/scope/created_at payload indexes plus one index, of the stored value's
+// type, for every recall-gate field (#675), and is idempotent on a second call.
 func TestEnsureCollectionCreatesIndexes(t *testing.T) {
 	s := testStore(t) // testStore already calls EnsureCollection(ctx, 3) once
 	ctx := context.Background()
@@ -2973,6 +2974,17 @@ func TestEnsureCollectionCreatesIndexes(t *testing.T) {
 	for _, field := range []string{"owner", "scope", "created_at"} {
 		if _, ok := schema[field]; !ok {
 			t.Errorf("payload index missing for %q; have %v", field, keysOf(schema))
+		}
+	}
+	for field, want := range map[string]qdrant.PayloadSchemaType{
+		"visibility":    qdrant.PayloadSchemaType_Keyword,
+		"superseded_by": qdrant.PayloadSchemaType_Keyword,
+		"archived_at":   qdrant.PayloadSchemaType_Integer,
+		"not_before":    qdrant.PayloadSchemaType_Integer,
+		"not_after":     qdrant.PayloadSchemaType_Integer,
+	} {
+		if got := schema[field].GetDataType(); got != want {
+			t.Errorf("payload index for %q = %v, want %v", field, got, want)
 		}
 	}
 
