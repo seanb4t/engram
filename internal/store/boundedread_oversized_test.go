@@ -270,10 +270,11 @@ func TestScrollAllPointsBatchOfOneFallback(t *testing.T) {
 	}
 }
 
-// TestListTagsBatchOfOneFallback proves ListTags survives D-07's fallback:
+// TestListTagsOverflowFallback proves ListTags survives an overflowing page:
 // three legacy records whose tag lists alone overflow a multi-record page
-// are re-read one at a time, and every tag still counts all three.
-func TestListTagsBatchOfOneFallback(t *testing.T) {
+// are re-read at halving page sizes down to one, and every tag still counts
+// all three.
+func TestListTagsOverflowFallback(t *testing.T) {
 	rec := &scrollRecorder{}
 	c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(rec.intercept))
 	name := store.PrefixedTestCollection("oversized_listtags_fallback_" + uuid.NewString())
@@ -317,10 +318,15 @@ func TestListTagsBatchOfOneFallback(t *testing.T) {
 			t.Errorf("tag %.12s… count = %d, want 3", tc.Tag, tc.Count)
 		}
 	}
+	calls := rec.snapshot()
 	var sawOverflow bool
-	for _, call := range rec.snapshot() {
-		if call.limit > 1 && call.code == codes.ResourceExhausted {
-			sawOverflow = true
+	for i, call := range calls {
+		if call.limit <= 1 || call.code != codes.ResourceExhausted {
+			continue
+		}
+		sawOverflow = true
+		if i+1 >= len(calls) || calls[i+1].limit != call.limit/2 {
+			t.Fatalf("overflow at limit %d was retried at %v, want limit %d (halving)", call.limit, calls[i+1:], call.limit/2)
 		}
 	}
 	if !sawOverflow {
