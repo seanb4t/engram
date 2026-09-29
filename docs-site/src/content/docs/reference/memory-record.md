@@ -90,10 +90,12 @@ as structured output on the MCP lane, and the Connect `Memory` message carries
 `archived_at` alongside `superseded_by`, `supersedes`, `not_before`, `not_after`,
 and `schema_version` — the full record-state contract is the same on either lane.
 
-`archived_at` is deliberately **not** a Qdrant payload index: it is filtered with
-`IsEmpty`, the identical access pattern `superseded_by` already has unindexed, so
-the cost is already accepted for an equivalent predicate at equivalent
-cardinality. See `engram spine-review scan`'s `archived` bucket (in
+`archived_at` is a Qdrant integer payload index, like `not_before` and
+`not_after`, and `superseded_by` and `visibility` are keyword indexes. Together
+they cover every condition of the recall gate, so Qdrant evaluates the gate
+from its indexes instead of reading each record's payload. Server startup creates
+any missing index; no migration is needed. See `engram spine-review scan`'s
+`archived` bucket (in
 [the CLI guide](/guides/cli/)) for a spine-wide count of archived records,
 separate from its `expired` bucket.
 

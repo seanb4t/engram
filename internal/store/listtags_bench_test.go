@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,7 +17,8 @@ import (
 )
 
 // Shaped after production on 2026-09-28: 4,101 records, ~26 tags each,
-// 72,235 distinct tags of which 64,439 appear once.
+// 72,235 distinct tags of which 64,439 appear once, and a stored payload of
+// median 4.1 KB (content median 2.5 KB, p90 5.1 KB).
 const (
 	benchTagsRecords = 4000
 	benchTagsCommon  = 8    // per record, Zipf-drawn from benchTagsVocab
@@ -130,7 +132,8 @@ func seedBenchTags(b *testing.B, s *Store) {
 		}
 		m := Memory{
 			ID:        fmt.Sprintf("00000000-0000-4000-8000-%012d", i),
-			Content:   fmt.Sprintf("bench record %d", i),
+			Content:   strings.Repeat("x", 800+r.IntN(4400)),
+			Summary:   strings.Repeat("s", 200),
 			Scope:     fmt.Sprintf("repo:bench/%02d", i%12),
 			Owner:     owners[i%len(owners)],
 			Category:  "gotcha",

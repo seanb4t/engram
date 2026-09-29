@@ -660,6 +660,12 @@ func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) e
 // Store.ListTags' filtered Facet (internal/store/listtags.go) possible. It
 // reaches an existing collection through this same idempotent,
 // AlreadyExists-tolerant loop on the next boot — no separate backfill step.
+//
+// visibility, superseded_by, archived_at, not_before and not_after back the
+// recall gate's conditions (#675). Qdrant evaluates an unindexed condition by
+// reading each point's whole payload; indexed, the gate runs from RAM. Index
+// all five or none: measured at production shape, indexing only some of them
+// was no faster, and visibility alone was ~2.7x slower.
 func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 	type idx struct {
 		field  string
@@ -674,6 +680,11 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 		{"short_id", qdrant.FieldType_FieldTypeKeyword, nil},
 		{schemaVersionKey, qdrant.FieldType_FieldTypeInteger, nil},
 		{"tags", qdrant.FieldType_FieldTypeKeyword, nil},
+		{"visibility", qdrant.FieldType_FieldTypeKeyword, nil},
+		{"superseded_by", qdrant.FieldType_FieldTypeKeyword, nil},
+		{"archived_at", qdrant.FieldType_FieldTypeInteger, nil},
+		{"not_before", qdrant.FieldType_FieldTypeInteger, nil},
+		{"not_after", qdrant.FieldType_FieldTypeInteger, nil},
 	}
 	for _, ix := range idxs {
 		req := &qdrant.CreateFieldIndexCollection{

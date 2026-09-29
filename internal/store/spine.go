@@ -148,18 +148,6 @@ func expiredFilter(before time.Time) *qdrant.Filter {
 	}}
 }
 
-// Deliberately NOT indexed: ensureIndexes (store.go) creates payload indexes
-// for owner, scope, created_at and short_id only. archived_at is filtered
-// with IsEmpty at five call sites (the four recall sites in store.go plus
-// this expiry filter), the exact same access pattern superseded_by already
-// has at four of those five sites, and superseded_by has never been indexed
-// either — the cost is already accepted for an identical predicate at
-// identical cardinality. An index would help a Range query, not an IsEmpty
-// filter, so adding one here would buy little while changing ensureIndexes
-// for every existing deployment on next start. If plan 03-07's
-// archived-past-retention purge class later needs a Range query over this
-// key, revisit indexing there — not here.
-
 // CountExpired returns the number of records whose not_after is strictly
 // before the given instant — the exact Count PruneExpired's applied path
 // issues, extracted here so the preview path and the applied path read the
