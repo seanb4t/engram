@@ -72,10 +72,13 @@ func nextTagsBatch(first uint32, bytes, records int) uint32 {
 //
 // The first page is sized for the tag caps' worst case; later pages are sized
 // from the bytes actually seen (nextTagsBatch), since real tag lists are far
-// below the caps. A page that still overflows is retried at half the size,
-// and the smaller size caps every later page; one record that overflows alone
-// fails the call, never skipped. Page, point, byte and overflow counts are
-// stamped on the caller's span.
+// below the caps. rpcByteBudget is therefore a target here, not a guarantee:
+// if later records are much larger than earlier ones, one page can exceed it,
+// by at most tagsScrollMaxBatch records at the cap (~18 MB at the default
+// caps), which the client's receive limit still bounds. A page that overflows
+// that limit is retried at half the size, and the smaller size caps every
+// later page; one record that overflows alone fails the call, never skipped.
+// Page, point, byte and overflow counts are stamped on the caller's span.
 func (s *Store) facetTags(ctx context.Context, f *qdrant.Filter, limit uint64) ([]TagCount, bool, error) {
 	view := s.tagsView()
 	counts := map[string]uint64{}

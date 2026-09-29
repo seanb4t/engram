@@ -318,10 +318,15 @@ func TestListTagsOverflowFallback(t *testing.T) {
 			t.Errorf("tag %.12s… count = %d, want 3", tc.Tag, tc.Count)
 		}
 	}
+	calls := rec.snapshot()
 	var sawOverflow bool
-	for _, call := range rec.snapshot() {
-		if call.limit > 1 && call.code == codes.ResourceExhausted {
-			sawOverflow = true
+	for i, call := range calls {
+		if call.limit <= 1 || call.code != codes.ResourceExhausted {
+			continue
+		}
+		sawOverflow = true
+		if i+1 >= len(calls) || calls[i+1].limit != call.limit/2 {
+			t.Fatalf("overflow at limit %d was retried at %v, want limit %d (halving)", call.limit, calls[i+1:], call.limit/2)
 		}
 	}
 	if !sawOverflow {
