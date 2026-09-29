@@ -270,10 +270,11 @@ func TestScrollAllPointsBatchOfOneFallback(t *testing.T) {
 	}
 }
 
-// TestListTagsBatchOfOneFallback proves ListTags survives D-07's fallback:
+// TestListTagsOverflowFallback proves ListTags survives an overflowing page:
 // three legacy records whose tag lists alone overflow a multi-record page
-// are re-read one at a time, and every tag still counts all three.
-func TestListTagsBatchOfOneFallback(t *testing.T) {
+// are re-read at halving page sizes down to one, and every tag still counts
+// all three.
+func TestListTagsOverflowFallback(t *testing.T) {
 	rec := &scrollRecorder{}
 	c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(rec.intercept))
 	name := store.PrefixedTestCollection("oversized_listtags_fallback_" + uuid.NewString())

@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/proto"
 )
 
 // TagCount is one tag plus the exact number of the caller's recall-visible
@@ -47,22 +48,52 @@ func (s *Store) recallVisibleFilter(ctx context.Context, scope string, subj Subj
 	return f
 }
 
+// tagsScrollMaxBatch caps the records one facetTags page requests. A var so a
+// test can force small pages.
+var tagsScrollMaxBatch uint32 = 1024
+
+// nextTagsBatch sizes the next facetTags page from the payload bytes seen so
+// far: twice the observed average per record, so a page targets half of
+// rpcByteBudget. With nothing seen yet it returns first, the worst-case size
+// from tagsView's ceiling.
+func nextTagsBatch(first uint32, bytes, records int) uint32 {
+	if records == 0 {
+		return first
+	}
+	perRecord := max(1, 2*bytes/records)
+	return uint32(min(max(1, rpcByteBudget/perRecord), int(tagsScrollMaxBatch)))
+}
+
 // facetTags counts the tags of every point matching f (the caller's
 // recallVisibleFilter) with one paged Scroll, counted in Go. An exact Facet
 // under that filter took ~18 s on production data (#675); Exact: false would
 // break D-13. It pages like scrollAllPoints but cannot call it: that iterator
 // is classified operator-tier by the recall-gate test.
+//
+// The first page is sized for the tag caps' worst case; later pages are sized
+// from the bytes actually seen (nextTagsBatch), since real tag lists are far
+// below the caps. A page that still overflows is retried at half the size,
+// and the smaller size caps every later page; one record that overflows alone
+// fails the call, never skipped. Page, point, byte and overflow counts are
+// stamped on the caller's span.
 func (s *Store) facetTags(ctx context.Context, f *qdrant.Filter, limit uint64) ([]TagCount, bool, error) {
 	view := s.tagsView()
 	counts := map[string]uint64{}
 	seen := map[string]bool{}
 	var offset *qdrant.PointId
-	var fallbackLeft int
+	first := sweepLimit(view)
+	ceiling := tagsScrollMaxBatch
+	var pages, points, bytes, overflows int
+	defer func() {
+		trace.SpanFromContext(ctx).SetAttributes(
+			attribute.Int("engram.tags_scroll.pages", pages),
+			attribute.Int("engram.tags_scroll.points", points),
+			attribute.Int("engram.tags_scroll.bytes", bytes),
+			attribute.Int("engram.tags_scroll.overflows", overflows),
+		)
+	}()
+	batch := first
 	for {
-		batch := sweepLimit(view)
-		if fallbackLeft > 0 {
-			batch = 1
-		}
 		pts, next, err := s.client.ScrollAndOffset(ctx, &qdrant.ScrollPoints{
 			CollectionName: s.collection,
 			Filter:         f,
@@ -73,12 +104,17 @@ func (s *Store) facetTags(ctx context.Context, f *qdrant.Filter, limit uint64) (
 		})
 		if err != nil {
 			if batch > 1 && errors.Is(err, ErrResponseTooLarge) {
-				fallbackLeft = int(batch)
+				overflows++
+				batch /= 2
+				ceiling = batch
 				continue
 			}
 			return nil, false, err
 		}
+		pages++
 		for _, p := range pts {
+			points++
+			bytes += proto.Size(p)
 			clear(seen)
 			for _, tag := range tagsFromPayload(p.GetPayload()) {
 				if tag == "" || seen[tag] {
@@ -88,13 +124,11 @@ func (s *Store) facetTags(ctx context.Context, f *qdrant.Filter, limit uint64) (
 				counts[tag]++
 			}
 		}
-		if fallbackLeft > 0 {
-			fallbackLeft--
-		}
 		if next == nil {
 			break
 		}
 		offset = next
+		batch = min(nextTagsBatch(first, bytes, points), ceiling)
 	}
 
 	out := make([]TagCount, 0, len(counts))

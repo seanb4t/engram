@@ -6,12 +6,15 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
+	"google.golang.org/grpc"
 )
 
 // TestEnsureIndexesCreatesTagsIndex pins D-16: ensureIndexes creates a tags
@@ -364,9 +367,9 @@ func TestListTagsLimitAndMore(t *testing.T) {
 // counts must accumulate across pages, and a tag repeated within one
 // record's list counts that record once.
 func TestListTagsCountsAcrossPages(t *testing.T) {
-	orig := spineScrollBatch
-	spineScrollBatch = 1
-	t.Cleanup(func() { spineScrollBatch = orig })
+	origFirst, origMax := spineScrollBatch, tagsScrollMaxBatch
+	spineScrollBatch, tagsScrollMaxBatch = 1, 1
+	t.Cleanup(func() { spineScrollBatch, tagsScrollMaxBatch = origFirst, origMax })
 
 	s := newSpineTestStore(t, "listtags_pages")
 	scope := "listtags:project:pages"
@@ -383,5 +386,68 @@ func TestListTagsCountsAcrossPages(t *testing.T) {
 	want := []TagCount{{Tag: "go", Count: 3}, {Tag: "a", Count: 2}}
 	if !reflect.DeepEqual(got, want) || !more {
 		t.Fatalf("ListTags = %+v (more=%v), want %+v (more=true)", got, more, want)
+	}
+}
+
+// TestListTagsSizesPagesFromObservedBytes proves pages after the first are
+// sized from the bytes actually read, not the tag caps' worst case: with a
+// worst-case first page of 2 records, 40 small records take two Scroll RPCs
+// instead of twenty, and the counts stay exact.
+func TestListTagsSizesPagesFromObservedBytes(t *testing.T) {
+	orig := spineScrollBatch
+	spineScrollBatch = 2
+	t.Cleanup(func() { spineScrollBatch = orig })
+
+	var scrolls atomic.Int32
+	c := dialTestClient(t, grpc.WithChainUnaryInterceptor(func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if _, ok := req.(*qdrant.ScrollPoints); ok {
+			scrolls.Add(1)
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}))
+	collection := testCollection("listtags_adaptive")
+	_ = c.DeleteCollection(context.Background(), collection)
+	t.Cleanup(func() { _ = c.DeleteCollection(context.Background(), collection) })
+	s := newTestStore(t, c, collection)
+	if err := s.EnsureCollection(context.Background(), 3); err != nil {
+		t.Fatal(err)
+	}
+	const owner, records = "listtags-owner-a", 40
+	for i := range records {
+		seedSpineMemory(t, s, Memory{
+			ID: fmt.Sprintf("eeeeeeee-0000-0000-0000-%012d", i), Content: "r", Scope: "listtags:project:adaptive",
+			Owner: owner, Category: "note", Tags: []string{"shared", fmt.Sprintf("t%02d", i)}, CreatedAt: time.Now().UTC(),
+		})
+	}
+
+	scrolls.Store(0)
+	got, _, err := s.ListTags(context.Background(), Authenticated(owner), "", 1)
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if want := []TagCount{{Tag: "shared", Count: records}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListTags = %+v, want %+v", got, want)
+	}
+	if n := scrolls.Load(); n != 2 {
+		t.Fatalf("ListTags issued %d Scroll RPCs, want 2 (one worst-case page, then one sized from observed bytes)", n)
+	}
+}
+
+func TestNextTagsBatch(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		bytes, records int
+		want           uint32
+	}{
+		{"nothing seen yet uses the worst-case first page", 0, 0, 118},
+		{"small records are capped at tagsScrollMaxBatch", 800 * 100, 100, tagsScrollMaxBatch},
+		{"sized to twice the observed average", 100 * 4096, 100, uint32(rpcByteBudget / 8192)},
+		{"records larger than the budget still get one", 10 * rpcByteBudget, 10, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := nextTagsBatch(118, tc.bytes, tc.records); got != tc.want {
+				t.Fatalf("nextTagsBatch(118, %d, %d) = %d, want %d", tc.bytes, tc.records, got, tc.want)
+			}
+		})
 	}
 }
