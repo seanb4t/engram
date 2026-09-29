@@ -359,3 +359,29 @@ func TestListTagsLimitAndMore(t *testing.T) {
 		}
 	})
 }
+
+// TestListTagsCountsAcrossPages forces one record per Scroll page so the
+// counts must accumulate across pages, and a tag repeated within one
+// record's list counts that record once.
+func TestListTagsCountsAcrossPages(t *testing.T) {
+	orig := spineScrollBatch
+	spineScrollBatch = 1
+	t.Cleanup(func() { spineScrollBatch = orig })
+
+	s := newSpineTestStore(t, "listtags_pages")
+	scope := "listtags:project:pages"
+	const owner = "listtags-owner-a"
+	now := time.Now().UTC()
+	seedSpineMemory(t, s, Memory{ID: "dddddddd-0000-0000-0000-000000000001", Content: "p1", Scope: scope, Owner: owner, Category: "note", Tags: []string{"go", "go", "a"}, CreatedAt: now})
+	seedSpineMemory(t, s, Memory{ID: "dddddddd-0000-0000-0000-000000000002", Content: "p2", Scope: scope, Owner: owner, Category: "note", Tags: []string{"go", "b"}, CreatedAt: now})
+	seedSpineMemory(t, s, Memory{ID: "dddddddd-0000-0000-0000-000000000003", Content: "p3", Scope: scope, Owner: owner, Category: "note", Tags: []string{"go", "a"}, CreatedAt: now})
+
+	got, more, err := s.ListTags(context.Background(), Authenticated(owner), "", 2)
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	want := []TagCount{{Tag: "go", Count: 3}, {Tag: "a", Count: 2}}
+	if !reflect.DeepEqual(got, want) || !more {
+		t.Fatalf("ListTags = %+v (more=%v), want %+v (more=true)", got, more, want)
+	}
+}
