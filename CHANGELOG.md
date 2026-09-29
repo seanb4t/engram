@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.1](https://github.com/seanb4t/engram/compare/v0.22.0...v0.22.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.8.30 ([#673](https://github.com/seanb4t/engram/issues/673)) ([ccfbdac](https://github.com/seanb4t/engram/commit/ccfbdacc513a9fb9c2f32eb23bd48d89c2cc21ea))
+* **store:** count tags with a paged Scroll instead of an exact Facet ([#676](https://github.com/seanb4t/engram/issues/676)) ([2518e27](https://github.com/seanb4t/engram/commit/2518e27aa0608501300845dab8aeb28ea479f6ed))
+
 ## [0.22.0](https://github.com/seanb4t/engram/compare/v0.21.0...v0.22.0) (2026-09-28)
 
 
