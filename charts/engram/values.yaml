@@ -5,7 +5,7 @@
 
 image:
   repository: ghcr.io/seanb4t/engram
-  tag: "@sha256:3e82e0a5f13916cf5fdeca9856b7e131a07c087fd30231a1d68ec89d7a7474fd" # defaults to .Chart.AppVersion
+  tag: "@sha256:a91f48c65dcb51aa7055eec991f53240952ebd02a77e669a47f4f9f01aaa748d" # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 
 # e.g. [{ name: ghcr-pull-secret }] — the cluster sets this for a private image.
