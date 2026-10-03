@@ -404,6 +404,30 @@ tasks:
           echo "chart:validate: setting only memory.search.understanding* must NOT emit ENGRAM_SEARCH_RANKER (independent of the ranker)"
           exit 1
         fi
+        # Startup budgets (#698/#683): the default render carries the
+        # quantization and schema-timeout env and a startupProbe, and a raised
+        # schema timeout must widen the probe window to at least 15 s plus
+        # the timeout, so liveness never starts during provisioning.
+        STARTUP_DEFAULT_RENDER=$(helm template charts/engram)
+        if ! echo "$STARTUP_DEFAULT_RENDER" | grep -q 'name: ENGRAM_QDRANT_QUANTIZATION, value: "int8"'; then
+          echo "chart:validate: the default render must emit ENGRAM_QDRANT_QUANTIZATION=int8"
+          exit 1
+        fi
+        if ! echo "$STARTUP_DEFAULT_RENDER" | grep -q 'startupProbe:'; then
+          echo "chart:validate: the default render must define a startupProbe on memory-mcp"
+          exit 1
+        fi
+        STARTUP_RAISED_RENDER=$(helm template charts/engram --set memory.qdrant.schemaTimeoutSeconds=600)
+        if ! echo "$STARTUP_RAISED_RENDER" | grep -q 'name: ENGRAM_QDRANT_SCHEMA_TIMEOUT, value: "600s"'; then
+          echo "chart:validate: memory.qdrant.schemaTimeoutSeconds=600 must emit ENGRAM_QDRANT_SCHEMA_TIMEOUT=600s"
+          exit 1
+        fi
+        STARTUP_PERIOD=$(echo "$STARTUP_RAISED_RENDER" | awk '/startupProbe:/{f=1} f && /periodSeconds:/{print $2; exit}')
+        STARTUP_THRESHOLD=$(echo "$STARTUP_RAISED_RENDER" | awk '/startupProbe:/{f=1} f && /failureThreshold:/{print $2; exit}')
+        if [ $((STARTUP_PERIOD * STARTUP_THRESHOLD)) -lt 615 ]; then
+          echo "chart:validate: startupProbe window ${STARTUP_PERIOD}s x ${STARTUP_THRESHOLD} is under 615s for schemaTimeoutSeconds=600"
+          exit 1
+        fi
         helm lint charts/engram
         # Drift pin: engram.containerEnv is the single source of the
         # Deployment+CronJob container env (D-09). Any edit to this block
@@ -437,8 +461,12 @@ tasks:
         # the default render still omits them, and the rest of the
         # engram.containerEnv block is byte-identical to the pre-change
         # render (verified via a helm template charts/engram diff before and
-        # after this edit).
-        EXPECTED_CHECKSUM="79fe372f995a97546c7ed3192103af96fb93e2007919b65d7fb26dc824a491fa"
+        # after this edit). Re-pinned 2026-10-02 for the two unguarded
+        # ENGRAM_QDRANT_QUANTIZATION / ENGRAM_QDRANT_SCHEMA_TIMEOUT rows
+        # (#698/#683): unlike the rows above, the default render emits both
+        # (int8, 120s), and a helm template diff before and after this edit
+        # shows only those two env lines plus the new startupProbe.
+        EXPECTED_CHECKSUM="2f217781a44ce29c7a9e8def4c71f706bbab381ec7758963df383c5ef8d50d8e"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

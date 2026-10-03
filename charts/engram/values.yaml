@@ -168,6 +168,16 @@ memory:
     understandingAudit: "" # ENGRAM_SEARCH_UNDERSTANDING_AUDIT; "true" logs each understood console query's TEXT and suggestion labels, never content; empty means off
   qdrant:
     collection: "memory"
+    # ENGRAM_QDRANT_QUANTIZATION: "int8" keeps an int8 copy of every vector
+    # pinned in Qdrant's RAM (~3 KB per record) so a search does not stall
+    # re-reading evicted vectors from disk; "off" removes quantization;
+    # "unmanaged" leaves the collection's quantization as it is. Applied by
+    # the server on each start.
+    quantization: "int8"
+    # ENGRAM_QDRANT_SCHEMA_TIMEOUT, in whole seconds: the startup budget for
+    # the quantization change plus building any missing payload index. The
+    # startupProbe below is sized from it, so raise this rather than the probe.
+    schemaTimeoutSeconds: 120
   oidc:
     issuer: "" # set → enables bearer-token enforcement (signature/issuer/expiry)
     audience: "" # ENGRAM_OIDC_AUDIENCE (optional aud pin)
