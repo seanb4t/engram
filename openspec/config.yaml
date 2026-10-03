@@ -1,32 +1,89 @@
 schema: spec-driven
 
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
+# Project context: injected into every artifact, and into apply and archive.
+# Holds only constraints an agent cannot infer from the code. Conventions and the
+# memory contract live in CLAUDE.md (AGENTS.md is a symlink to it).
+context: |
+  engram is a self-hosted memory MCP server for coding agents (Go, Qdrant). CLAUDE.md is the
+  authority for conventions and for the memory contract. Read it before writing any artifact.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Design intent every change must preserve:
+  - Memory is explicit, zero-junk and correctable. Never add auto-extraction, automatic
+    supersession, automatic rule promotion, or any other write the user did not ask for.
+  - One core, up to three lanes: MCP tools, the Connect EngramService, and the engram CLI.
+    A change to one lane states what happens on the others, including "deliberately unchanged".
+  - An agent-facing capability is incomplete without its guidance. The skill under
+    skill/engram/, the CLAUDE.md memory contract, and the docs-site reference pages change
+    together with the capability.
+  - Payload evolution is additive-only through the internal/migrate registry. No migration ever
+    applies automatically. A mutating operator verb previews by default and mutates under --apply.
+  - Each caller sees and mutates only their own records; `shared` records are read-only to other
+    authenticated callers. `actor` and `owner` are server-set and never client-supplied.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  Process constraints:
+  - .planning/ is a read-only archive of the retired GSD workflow. It holds the requirements,
+    decisions and phase contexts for everything shipped through milestone 2026-09-25.01. Read
+    the relevant part before changing an existing capability. Never write under .planning/.
+  - Specs grow from changes. Do not write or backfill specs for behaviour the change leaves alone.
+  - The backlog is GitHub Issues. A change names the issue it comes from.
+  - Releases are SemVer, owned by release-please and driven by Conventional Commit types. Never
+    plan a version number, a tag or a CHANGELOG edit.
+  - Prefer an established OSS or idiomatic solution over a hand-rolled one.
+  - Tests verify our own behaviour. Never plan a test or gate that asserts a dependency's
+    behaviour, and never a test for a test or a gate for a gate.
+  - Files under openspec/ carry no SPDX header, and every Markdown file there must pass
+    `task lint:markdown`.
+
+rules:
+  proposal:
+    - Name the originating GitHub issue as `#NNN` under Why, or state that there is none.
+    - State what is out of scope.
+    - >-
+      Under Impact, name each surface as affected or deliberately unchanged: MCP tool schemas, Connect proto, CLI, console
+      (`ui/`), Helm chart, docs-site, and the engram skill.
+    - >-
+      Treat a change to the wire contract as a compatibility decision and say so: proto fields, MCP input schemas, error hint
+      codes, `ENGRAM_` config keys, and stored payload keys.
+  specs:
+    - Specify externally observable behaviour only. Implementation detail belongs in design.md.
+    - >-
+      Give every rejected input a scenario that names the failing `field` and the machine-stable `hint` code (docs-site `reference/errors.md`).
+    - >-
+      For a requirement that affects recall, state the behaviour for each derived state (archived, superseded, expired, scheduled)
+      and for a caller who does not own the record.
+  design:
+    - Record each alternative considered and why it was rejected.
+    - >-
+      Give every new setting an `ENGRAM_` env-first key in `internal/config`, its default, its validation, and its Helm chart
+      value.
+    - >-
+      Where the design rests on measured behaviour (Qdrant, an embedder, a provider), cite the measurement or mark it as a
+      measurement to take before shipping.
+  tasks:
+    - Give each task its own verification, as a command or an observable result.
+    - >-
+      Add a regeneration task whenever a generated tree's source changes: `task proto:gen` for `proto/`, `task ui:build` for
+      `ui/`, `task surfaces:gen` for the surface catalog, and `task skills:vendor` for `skill/engram/skills/`.
+    - >-
+      Add tasks for the documentation that moves with the change: docs-site guides and reference, the engram skill, and the
+      CLAUDE.md memory contract.
+    - >-
+      End with the quality gate: `task` (lint and test), plus `task chart:validate` when `charts/` changes.
+# Guidance for the apply and archive steps. Keep this comment, not a blank line, above
+# `operations`: yamlfmt 0.21.0 writes its blank-line marker into a folded scalar that a blank
+# line follows.
+operations:
+  apply:
+    guidance:
+      - Work on a branch and open a PR. Never commit to `main`.
+      - >-
+        Commit in coherent groups with Conventional Commits, and pass an explicit pathspec to `git commit`, because other
+        agents may share this working directory.
+      - >-
+        Run `task ui:build` and `task chart:validate` yourself when `ui/` or `charts/` change. CI requires both and `task`
+        runs neither.
+      - Store durable decisions and gotchas in engram when they are established, not at the end.
+  archive:
+    guidance:
+      - Check that the merged specs pass `task lint:markdown` before committing the archive.
+      - Keep the completion summary concise.
