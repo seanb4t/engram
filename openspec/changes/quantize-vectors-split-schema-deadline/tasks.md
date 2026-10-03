@@ -33,8 +33,8 @@
 
 ## 6. Recall-quality gate (before shipping)
 
-- [ ] 6.1 Make `task eval:retrieval` able to run with quantization on and off, for example by honouring `ENGRAM_QDRANT_QUANTIZATION` in `retrievaleval`'s store construction. In the quantized run, force optimization of each eval collection (low `indexing_threshold`, wait for status green) so quantized segments actually exist. Verify by logging, per eval collection, that its info reports the int8 config and status green before any query runs.
-- [ ] 6.2 Run `task eval:retrieval` with `int8` and with `off` against a live gateway, and record recall@k and MRR for both in the PR description. Verify that `int8` shows no regression versus `off`. If it does, stop and raise it before merging.
+- [x] 6.1 Make `task eval:retrieval` able to run with quantization on and off, for example by honouring `ENGRAM_QDRANT_QUANTIZATION` in `retrievaleval`'s store construction. In the quantized run, force optimization of each eval collection (low `indexing_threshold`, wait for status green) so quantized segments actually exist. Verify by logging, per eval collection, that its info reports the int8 config and status green before any query runs.
+- [x] 6.2 Run `task eval:retrieval` with `int8` and with `off` against a live gateway, and record recall@k and MRR for both in the PR description. Verify that `int8` shows no regression versus `off`. If it does, stop and raise it before merging. (2026-10-02, `gemini-embedding-2` at 3072 dimensions, two runs per mode. The shipped ranking is identical in both modes: recall@8 0.950, MRR 0.817, #261 at rank 1. Vector-only recall@8 is 1.000 in both, and its MRR is 0.568 and 0.576 under `int8` against 0.579 and 0.579 under `off`. Raised with Sean and accepted; the fallback is query-time oversampling in a follow-up change.)
 
 ## 7. Upgrade notes and integration
 
