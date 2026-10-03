@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/seanb4t/engram/compare/v0.23.0...v0.23.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.12 ([#721](https://github.com/seanb4t/engram/issues/721)) ([88bd91c](https://github.com/seanb4t/engram/commit/88bd91c2a2772847be10107eb1ff10e84c51ea4d))
+
 ## [0.23.0](https://github.com/seanb4t/engram/compare/v0.22.3...v0.23.0) (2026-10-03)
 
 
