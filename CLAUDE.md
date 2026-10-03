@@ -10,22 +10,14 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 
 ## Conventions
 
-- **VCS:** git. Branch + PR; never push to `main` directly (protect-main ruleset). Planning/workflow via GSD (`.planning/`, `/gsd-*`).
-- **Milestone labels:** CalVer `YYYY-MM-DD.NN` — the milestone's **start** date
-  (local date, matching GSD's own `date +%Y-%m-%d`), plus a two-digit counter
-  from `01` disambiguating milestones opened the same day. The label is stamped
-  once at `/gsd-new-milestone` and never rewritten to a ship date. Adopted
-  2026-08-12 and **forward-only**: milestones through `v0.13.x` keep their
-  SemVer-style labels, so milestone history stays valid as written.
-  These label GSD milestones in `.planning/` **only** — they are not release
-  versions (see **Releases** below), so milestone → release is now a lookup,
-  never an inference. Two constraints to respect when writing one:
-  - Any *version-bearing milestone heading* added to `ROADMAP.md` must carry a
-    `✅`/`📋`/`🚧` marker. GSD ends a milestone section at the next heading
-    matching `/v\d+\.\d+|✅|📋|🚧/`; a CalVer heading with no marker is invisible
-    as a boundary, so the current milestone silently swallows the next one.
-  - `roadmap-command-router` and `roadmap-upgrade` hardcode `v(\d+)\.(\d+)` and
-    will not recognize a CalVer milestone heading at all.
+- **VCS:** git. Branch + PR; never push to `main` directly (protect-main ruleset).
+- **Planning:** OpenSpec (`openspec/`, `/opsx:*`). GSD is retired and `.planning/` is a read-only
+  archive — see **Planning** below.
+- **Milestone labels (legacy):** the archived GSD milestones in `.planning/` are labelled CalVer
+  `YYYY-MM-DD.NN` (the milestone's local **start** date plus a two-digit same-day counter) from
+  2026-08-12 onward; milestones through `v0.13.x` keep their SemVer-style labels. They label
+  milestones **only** — they are not release versions (see **Releases** below), so
+  milestone → release is a lookup, never an inference. No new milestone label is ever stamped.
 - **Task runner:** `task` (see `Taskfile.yaml`). `task` = lint + test.
 - **Protobuf/buf:** the `EngramService` Connect API is defined in `proto/` and
   generated via `go tool buf` (`task proto:lint` / `task proto:gen`); the
@@ -36,9 +28,8 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 - **License:** every **in-scope** Go/Markdown file carries the Apache-2.0 SPDX
   header (`task license:check`). `task license:add` applies it. Scope is owned
   by `.licenserc.yaml` — never by hand. **Do not add an SPDX header to any file
-  whose first line must be `---` YAML frontmatter**: `.planning/**` (GSD parses
-  it, and a header above the frontmatter makes a passed VERIFICATION.md read as
-  `missing`, re-dispatching a completed phase), `skill/**/SKILL.md`, slash-command
+  whose first line must be `---` YAML frontmatter**: `.planning/**` (the
+  archived GSD artifacts), `skill/**/SKILL.md`, slash-command
   markdown, and `docs-site/**`. All are excluded in `.licenserc.yaml`; if
   `license:check` is green, the file does not need one.
 - **Lint/format:** `task lint` (golangci-lint, yamlfmt, actionlint, rumdl) and
@@ -71,6 +62,24 @@ OAuth-secured memory MCP server for coding agents (Go + Qdrant).
 - **Sketch findings for engram** (console design decisions, CSS patterns, visual direction) → `Skill("sketch-findings-engram")`
 - **Console conventions for engram** (tokens, state words, classifier, honest feedback, keyboard) → `Skill("engram-console-conventions")`
 - **SPA ↔ Connect client for engram** (clients, CSRF, query keys, resume, per-RPC contract) → `Skill("engram-connect-client")`
+
+## Planning
+
+OpenSpec is the planning workflow: `openspec/` holds the specs and changes, driven by `/opsx:*`.
+GSD was retired on 2026-10-03.
+
+- **Never use GSD here.** Do not invoke or offer a `/gsd-*` skill or command, a `gsd-*` agent, or a
+  GSD MCP tool. GSD is installed globally, so this repo switches it off in `.claude/settings.json`
+  (`skillOverrides` and `permissions.deny`). If a GSD surface still appears, ignore it and say so.
+- **`.planning/` is a read-only archive.** Never create, edit, move, or regenerate a file under it.
+  Read it as legacy context when exploring a change: the requirements, decisions, and phase contexts
+  for everything shipped through milestone `2026-09-25.01` live there.
+- **Specs grow from changes — do not backfill.** `openspec/specs/` starts nearly empty and fills in
+  as each archived change merges its delta. Do not generate baseline specs from existing code or
+  from `.planning/` history, and do not convert old requirements wholesale. Bring the relevant
+  slice into the change being proposed instead.
+- **Backlog is GitHub Issues.** Work with no exploration or proposal yet lives as an issue (see
+  **Issue Tracking**) and leaves that stage when an OpenSpec change is created for it.
 
 ## Memory contract (stable)
 
@@ -253,9 +262,10 @@ the memory `actor`. No issuer → validation disabled (logged loudly).
 ## Issue Tracking
 
 **GitHub Issues** is the tracker (`gh issue list`, `gh issue create`). Beads was retired
-2026-07-08: the full export is archived at `.planning/archive/`, active work was migrated to
-GitHub Issues (label `from-beads`), and `.planning/BACKLOG.md` indexes it for GSD milestone
-promotion (`/gsd-review-backlog`). Do not use markdown TODO lists for durable tracking.
+2026-07-08: the full export is archived at `.planning/archive/` and active work was migrated to
+GitHub Issues (label `from-beads`). The GSD backlog was migrated the same way on 2026-10-03
+(label `from-gsd`); `.planning/BACKLOG.md` is a stale index, so list issues with `gh` instead.
+Do not use markdown TODO lists for durable tracking.
 
 Durable project memory (decisions, conventions, gotchas) → the **engram** MCP store (see
 "Memory contract" above) — not `MEMORY.md` files.
