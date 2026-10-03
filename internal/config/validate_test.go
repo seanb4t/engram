@@ -12,7 +12,7 @@ import (
 // Tests mutate one field to exercise a single rule.
 func validConfig() *Config {
 	return &Config{
-		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval"},
+		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval", Quantization: "int8", SchemaTimeout: "2m"},
 		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
 		Memory:    MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
@@ -40,6 +40,12 @@ func TestValidateFieldRules(t *testing.T) {
 		{"qdrant addr non-numeric port", func(c *Config) { c.Qdrant.Addr = "localhost:nope" }, "ENGRAM_QDRANT_ADDR"},
 		{"qdrant addr port out of range", func(c *Config) { c.Qdrant.Addr = "localhost:70000" }, "out of range"},
 		{"qdrant collection empty", func(c *Config) { c.Qdrant.Collection = "" }, "ENGRAM_QDRANT_COLLECTION"},
+		{"qdrant quantization empty", func(c *Config) { c.Qdrant.Quantization = "" }, "ENGRAM_QDRANT_QUANTIZATION"},
+		{"qdrant quantization unknown", func(c *Config) { c.Qdrant.Quantization = "binary" }, "ENGRAM_QDRANT_QUANTIZATION"},
+		{"qdrant quantization wrong case", func(c *Config) { c.Qdrant.Quantization = "INT8" }, "ENGRAM_QDRANT_QUANTIZATION"},
+		{"qdrant schema timeout not a duration", func(c *Config) { c.Qdrant.SchemaTimeout = "120" }, "ENGRAM_QDRANT_SCHEMA_TIMEOUT"},
+		{"qdrant schema timeout zero", func(c *Config) { c.Qdrant.SchemaTimeout = "0s" }, "ENGRAM_QDRANT_SCHEMA_TIMEOUT"},
+		{"qdrant schema timeout negative", func(c *Config) { c.Qdrant.SchemaTimeout = "-1m" }, "ENGRAM_QDRANT_SCHEMA_TIMEOUT"},
 		{"embed model empty", func(c *Config) { c.Embed.Model = "" }, "ENGRAM_EMBED_MODEL"},
 		{"embed dim empty", func(c *Config) { c.Embed.Dim = "" }, "ENGRAM_EMBED_DIM"},
 		{"embed dim non-numeric", func(c *Config) { c.Embed.Dim = "abc" }, "ENGRAM_EMBED_DIM"},

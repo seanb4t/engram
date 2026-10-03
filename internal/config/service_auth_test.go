@@ -259,8 +259,10 @@ func TestServiceAuthValidate_EnablementSubsets(t *testing.T) {
 func validConfigForServiceAuthTests() *Config {
 	return &Config{
 		Qdrant: QdrantConfig{
-			Addr:       "localhost:6334",
-			Collection: "mem_eval",
+			Addr:          "localhost:6334",
+			Collection:    "mem_eval",
+			Quantization:  "int8",
+			SchemaTimeout: "2m",
 		},
 		Embed: EmbedConfig{
 			Model:        "ollama/bge-m3",
