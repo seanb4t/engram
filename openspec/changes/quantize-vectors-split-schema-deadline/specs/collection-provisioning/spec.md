@@ -36,12 +36,17 @@ engram SHALL ensure its recall payload indexes on every provisioning of a collec
 
 ### Requirement: Payload index build time is logged
 
-engram SHALL log each payload index it ensures during provisioning, with the field name and the time the operation took.
+engram SHALL log each payload index it builds during provisioning at info level, with the field name and the time the build took. An index that already existed SHALL be logged at debug level only, so CLI commands stay quiet on a provisioned collection.
 
-#### Scenario: Startup logs index timing
+#### Scenario: Provisioning builds missing indexes
 
-- **WHEN** `engram serve` provisions its collection
-- **THEN** the log contains one entry per recall payload index naming the field and its duration
+- **WHEN** a collection with no payload indexes is provisioned
+- **THEN** the log contains one info-level entry per recall payload index naming the field and its duration
+
+#### Scenario: Provisioning an already-indexed collection
+
+- **WHEN** a collection that already carries every recall payload index is provisioned
+- **THEN** no index entry is logged above debug level
 
 ### Requirement: Quantization mode setting
 

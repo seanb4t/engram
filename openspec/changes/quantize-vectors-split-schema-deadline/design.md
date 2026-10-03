@@ -31,21 +31,21 @@ Current state:
 
 ### D1. Split provisioning into two store calls
 
-`EnsureCollection(ctx, dim)` keeps exists-then-create and nothing else. A new `EnsureSchema(ctx)` runs the quantization reconcile, then `ensureIndexes`. `ensureStoreFromConfig` calls each with its own context: 15 s for connecting and `EnsureCollection`, then `ENGRAM_QDRANT_SCHEMA_TIMEOUT` for `EnsureSchema`. Errors are wrapped with the step and budget, for example `schema provisioning (ENGRAM_QDRANT_SCHEMA_TIMEOUT=2m0s): ensure index "tags": context deadline exceeded`.
+A new `CreateCollectionIfAbsent(ctx, dim)` does exists-then-create and nothing else. A new `EnsureSchema(ctx)` runs the quantization reconcile, then `ensureIndexes`. `EnsureCollection(ctx, dim)` keeps its name and becomes the helper that runs both under one context, so its ~60 existing call sites (tests, the eval, e2e) are unchanged. `ensureStoreFromConfig` calls the two steps with their own contexts: 15 s for connecting and `CreateCollectionIfAbsent`, then `ENGRAM_QDRANT_SCHEMA_TIMEOUT` for `EnsureSchema`. Errors are wrapped with the step and budget, for example `schema provisioning (ENGRAM_QDRANT_SCHEMA_TIMEOUT=2m0s): ensure index "tags": context deadline exceeded`.
 
-- *Alternative:* keep one call and pass two contexts. Rejected because it hides two budgets behind one method, and callers such as the eval and tests want the composed behavior anyway. A thin helper composes the two calls for them.
+- *Alternative:* keep one call and pass two contexts. Rejected because it hides two budgets behind one method, and callers such as the eval and tests want the composed behavior anyway, which `EnsureCollection` keeps giving them.
 - *Why order quantization before indexes:* the reconcile is cheap and fails loudly on a bad config, such as Qdrant rejecting a setting. Index builds are the slow part, so a config error should not wait behind them.
 
 ### D2. Quantization mode is a store option, set only by the server
 
 `store.WithQuantization(mode)` sets the mode, where mode is `int8`, `off`, or `unmanaged`. The zero value is `unmanaged`. `buildDepsFromEnv` (the `serve` path) passes the configured mode. `StoreFromEnv` and the other CLI constructors pass nothing, so CLI verbs never change quantization (spec: "Only the server reconciles quantization").
 
-- *Alternative:* a per-call parameter on `EnsureSchema`. Rejected because the store also needs the mode at create time inside `EnsureCollection`. One option, set once, keeps the two calls consistent.
+- *Alternative:* a per-call parameter on `EnsureSchema`. Rejected because the store also needs the mode at create time inside `CreateCollectionIfAbsent`. One option, set once, keeps the two calls consistent.
 - `StoreAndDeciderFromEnv` is also `serve`-adjacent wiring. Its callers must be checked when implementing, so that only `engram serve` sets the mode.
 
 ### D3. Create-time quantization versus reconcile
 
-When `EnsureCollection` creates a collection and the mode is `int8`, the `CreateCollection` request carries the quantization config. This avoids a create-then-update round trip. In `off` or `unmanaged` mode the create carries none. `EnsureSchema` then reconciles:
+When `CreateCollectionIfAbsent` creates a collection and the mode is `int8`, the `CreateCollection` request carries the quantization config. This avoids a create-then-update round trip. In `off` or `unmanaged` mode the create carries none. `EnsureSchema` then reconciles:
 
 | Mode | Current config | Action |
 |---|---|---|
@@ -53,7 +53,7 @@ When `EnsureCollection` creates a collection and the mode is `int8`, the `Create
 | `int8` | absent or different | `UpdateCollection` with the int8 diff |
 | `off` | absent | none |
 | `off` | present | `UpdateCollection` with the `Disabled` diff |
-| `unmanaged` | any | none, and the config is never read |
+| `unmanaged` | any | none: no quantization update is ever sent |
 
 The target is `ScalarQuantization{Type: Int8, Quantile: 0.99, Memory: Pinned}`. Equality compares only those three fields, read from `GetCollectionInfo().Config.QuantizationConfig`. The server may echo the deprecated `always_ram` field, so a whole-message `proto.Equal` would report false drift and re-send the update on every boot.
 
@@ -77,7 +77,7 @@ When a different scalar config or another quantization type (binary, product, tu
 
 ### D7. Logging
 
-`ensureIndexes` logs one Info entry per index, with `field` and `duration`, whether the result was a create or AlreadyExists. A quantization update logs the mode and the before and after config. A no-op logs at Debug.
+`ensureIndexes` reads the collection's payload schema once, still calls `CreateFieldIndex` for every index as before, and logs each one with `field`, `built` and `duration`: at Info when the field was absent beforehand (a real build), at Debug when it already existed. Logging every index at Info was rejected because CLI verbs run on Go's default slog handler, which prints Info to stderr, so every `engram prune-expired` would print 11 lines. A quantization update logs the mode and the previous config at Info; a no-op logs at Debug.
 
 ### D8. Testing
 
