@@ -52,7 +52,13 @@ var reindexCmd = &cobra.Command{
 		// one at the new dimension. dim is the currently-configured embedder's
 		// ENGRAM_EMBED_DIM — reused as the target collection's dimension. Store and
 		// embedder come from a single config load.
-		st, dim, em, identity, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
+		st, dim, em, identity, cfg, err := server.StoreAndEmbedderFromEnvNoEnsure()
+		if err != nil {
+			return classifyOperatorErrConstruction(err)
+		}
+		// A target reindex creates gets the configured quantization; the
+		// source store itself stays unmanaged like every CLI verb's.
+		quantization, err := store.ParseQuantizationMode(cfg.Qdrant.Quantization)
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
 		}
@@ -70,12 +76,13 @@ var reindexCmd = &cobra.Command{
 		// Per-batch progress goes to stderr so it never pollutes the single
 		// parseable summary line on stdout (engram-xddn).
 		res, err := st.Reindex(ctx, store.ReindexOptions{
-			Target:   reindexTarget,
-			Source:   reindexSource,
-			Dim:      dim,
-			DryRun:   reindexDryRun,
-			Resume:   reindexResume,
-			Identity: identity,
+			Target:       reindexTarget,
+			Source:       reindexSource,
+			Dim:          dim,
+			DryRun:       reindexDryRun,
+			Resume:       reindexResume,
+			Identity:     identity,
+			Quantization: quantization,
 			Progress: func(r store.ReindexResult) {
 				cmd.PrintErrf("reindex progress: scanned %d, upserted %d, skipped %d, unchanged %d\n",
 					r.Scanned, r.Upserted, r.Skipped, r.Unchanged)

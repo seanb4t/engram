@@ -148,12 +148,12 @@ func testCollection(name string) string {
 // check alone could be routed around by assigning the raw name to a variable
 // first, but a t.Fatalf inside the one function every test store is built by
 // cannot (CONTEXT.md D-16, plan 01-05).
-func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
+func newTestStore(t testing.TB, c *qdrant.Client, name string, opts ...store.Option) *store.Store {
 	t.Helper()
 	if !strings.HasPrefix(name, testCollectionPrefix) {
 		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
 	}
-	return store.New(c, name)
+	return store.New(c, name, opts...)
 }
 
 // TestMain delegates this package's Qdrant container lifecycle to storetest:

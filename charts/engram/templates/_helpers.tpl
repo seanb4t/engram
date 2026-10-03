@@ -2,6 +2,8 @@
 - { name: ENGRAM_LISTEN_ADDR, value: "{{ .Values.memory.listenAddr }}" }
 - { name: ENGRAM_QDRANT_ADDR, value: "qdrant.{{ .Release.Namespace }}.svc.cluster.local:6334" }
 - { name: ENGRAM_QDRANT_COLLECTION, value: "{{ .Values.memory.qdrant.collection }}" }
+- { name: ENGRAM_QDRANT_QUANTIZATION, value: "{{ .Values.memory.qdrant.quantization }}" }
+- { name: ENGRAM_QDRANT_SCHEMA_TIMEOUT, value: "{{ int .Values.memory.qdrant.schemaTimeoutSeconds }}s" }
 - { name: ENGRAM_OPENAI_BASE_URL, value: "{{ .Values.memory.openai.baseURL }}" }
 - { name: ENGRAM_EMBED_MODEL, value: "{{ .Values.memory.embed.model }}" }
 - { name: ENGRAM_EMBED_DIM, value: "{{ .Values.memory.embed.dim }}" }

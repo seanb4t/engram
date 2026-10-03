@@ -488,6 +488,12 @@ type Store struct {
 	// DefaultRecordCaps() (RecordCaps() resolves the default); WithRecordCaps
 	// sets a normalized value here.
 	caps *RecordCaps
+
+	// quantization is the vector quantization mode CreateCollectionIfAbsent
+	// creates with and EnsureSchema reconciles to (provision.go). The zero
+	// value behaves as QuantizationUnmanaged: only `engram serve` sets it,
+	// via WithQuantization.
+	quantization QuantizationMode
 }
 
 // Option configures a Store at construction.
@@ -600,7 +606,9 @@ func New(c *qdrant.Client, collection string, opts ...Option) *Store {
 	return s
 }
 
-// EnsureCollection is idempotent: creates the collection at the given vector size if absent.
+// EnsureCollection is idempotent: it runs CreateCollectionIfAbsent then
+// EnsureSchema under one context. Callers that need the two steps under
+// separate budgets (the server's startup, #683) call them directly.
 func (s *Store) EnsureCollection(ctx context.Context, dim uint64) (err error) {
 	ctx, span := tracer.Start(ctx, "store.EnsureCollection")
 	defer span.End()
@@ -613,32 +621,10 @@ func (s *Store) EnsureCollection(ctx context.Context, dim uint64) (err error) {
 		}
 	}()
 
-	return s.ensureCollection(ctx, s.collection, dim)
-}
-
-// ensureCollection idempotently creates a named collection at the given vector
-// size (distance Cosine) if absent, then ensures the recall payload indexes on
-// every call. Factored out of EnsureCollection so reindex can provision a
-// *target* collection distinct from s.collection.
-func (s *Store) ensureCollection(ctx context.Context, name string, dim uint64) error {
-	exists, err := s.client.CollectionExists(ctx, name)
-	if err != nil {
+	if err := s.CreateCollectionIfAbsent(ctx, dim); err != nil {
 		return err
 	}
-	if !exists {
-		if err := s.client.CreateCollection(ctx, &qdrant.CreateCollection{
-			CollectionName: name,
-			VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-				Size: dim, Distance: qdrant.Distance_Cosine,
-			}),
-		}); err != nil {
-			return err
-		}
-	}
-	// Indexes are ensured on every boot (idempotently) so existing collections
-	// gain them without a data migration: Qdrant backfills the index over the
-	// already-stored RFC3339 created_at strings and keyword payloads.
-	return s.ensureIndexes(ctx, name)
+	return s.EnsureSchema(ctx)
 }
 
 // ensureIndexes idempotently creates the recall payload indexes. owner is a
@@ -686,6 +672,13 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 		{"not_before", qdrant.FieldType_FieldTypeInteger, nil},
 		{"not_after", qdrant.FieldType_FieldTypeInteger, nil},
 	}
+	// The payload schema read up front only decides the log level below:
+	// every index is still ensured on every call.
+	info, err := s.client.GetCollectionInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("ensure indexes: read payload schema: %w", err)
+	}
+	existing := info.GetPayloadSchema()
 	for _, ix := range idxs {
 		req := &qdrant.CreateFieldIndexCollection{
 			CollectionName:   name,
@@ -694,12 +687,19 @@ func (s *Store) ensureIndexes(ctx context.Context, name string) error {
 			FieldIndexParams: ix.params,
 			Wait:             qdrant.PtrOf(true),
 		}
-		if _, err := s.client.CreateFieldIndex(ctx, req); err != nil {
-			if st, ok := status.FromError(err); ok && st.Code() == grpccodes.AlreadyExists {
-				continue
-			}
+		begin := time.Now()
+		if _, err := s.client.CreateFieldIndex(ctx, req); err != nil && status.Code(err) != grpccodes.AlreadyExists {
 			return fmt.Errorf("ensure index %q: %w", ix.field, err)
 		}
+		// A build is logged at Info so a slow one is attributable to its field
+		// (#683); an index that already existed is Debug, so CLI verbs on the
+		// default handler stay quiet.
+		level := slog.LevelInfo
+		if _, ok := existing[ix.field]; ok {
+			level = slog.LevelDebug
+		}
+		slog.Log(ctx, level, "ensured payload index",
+			"collection", name, "field", ix.field, "built", level == slog.LevelInfo, "duration", time.Since(begin))
 	}
 	return nil
 }
@@ -3462,6 +3462,10 @@ type ReindexOptions struct {
 	// Empty means no stamp is written (e.g. an unstamped source or a caller
 	// that has not computed one).
 	Identity string
+	// Quantization is the mode a missing Target is created with
+	// (ENGRAM_QDRANT_QUANTIZATION). An existing Target is never changed. The
+	// zero value creates the target without quantization.
+	Quantization QuantizationMode
 }
 
 // Validate checks the options that depend only on the options themselves,
@@ -3620,7 +3624,13 @@ func (s *Store) Reindex(ctx context.Context, opts ReindexOptions, embed EmbedFun
 	}
 
 	if !opts.DryRun {
-		if err = s.ensureCollection(ctx, opts.Target, opts.Dim); err != nil {
+		// A missing target is created with the configured quantization; an
+		// existing one keeps whatever it has (a resumed reindex never
+		// reconciles it). The reindex Store itself stays unmanaged.
+		if err = s.createCollectionIfAbsent(ctx, opts.Target, opts.Dim, opts.Quantization); err != nil {
+			return res, fmt.Errorf("reindex: ensure target %q: %w", opts.Target, err)
+		}
+		if err = s.ensureIndexes(ctx, opts.Target); err != nil {
 			return res, fmt.Errorf("reindex: ensure target %q: %w", opts.Target, err)
 		}
 	}

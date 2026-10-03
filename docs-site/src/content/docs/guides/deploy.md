@@ -32,6 +32,8 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 | `memory.summarize.model` | `ENGRAM_SUMMARY_MODEL` | Auto-summary chat model, served by `memory.openai.baseURL` (empty disables auto-summary) |
 | `memory.summarize.maxChars` | `ENGRAM_SUMMARY_MAX_CHARS` | Max generated-summary length (default `280`) |
 | `memory.qdrant.collection` | `ENGRAM_QDRANT_COLLECTION` | Qdrant collection name (default `memory`) |
+| `memory.qdrant.quantization` | `ENGRAM_QDRANT_QUANTIZATION` | Vector quantization of the collection: `int8` (default), `off`, or `unmanaged` |
+| `memory.qdrant.schemaTimeoutSeconds` | `ENGRAM_QDRANT_SCHEMA_TIMEOUT` | Startup schema-provisioning budget in whole seconds (default `120`); also sizes the startup probe |
 | `memory.oidc.issuer` | `ENGRAM_OIDC_ISSUER` | OIDC issuer URL; setting it enables bearer-token enforcement |
 | `memory.oidc.audience` | `ENGRAM_OIDC_AUDIENCE` | Expected OIDC audience (optional) |
 | `memory.oidc.resourceMetadata` | `ENGRAM_OIDC_RESOURCE_METADATA` | WWW-Authenticate resource metadata URL (optional) |
@@ -76,6 +78,18 @@ disable it while keeping the provider for other features — read
 before deploying with a decisions provider configured.
 
 For the full environment variable reference, see [Configure](/guides/configure/).
+
+### Startup probe
+
+The server opens its HTTP port only after it has provisioned its Qdrant
+collection: up to 15 seconds to connect and create the collection, then up to
+`memory.qdrant.schemaTimeoutSeconds` to apply the quantization setting and
+build any missing payload index. The `memory-mcp` container's `startupProbe`
+is sized from that same value (15 s + the schema timeout + 15 s for process
+start, rounded up to its 5 s period), and Kubernetes holds the liveness and
+readiness probes until it passes. If index builds on a large collection need
+longer, raise `memory.qdrant.schemaTimeoutSeconds`; the probe follows. A value
+of zero or less fails the render.
 
 ### Upgrade
 

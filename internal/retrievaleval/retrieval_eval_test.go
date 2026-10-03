@@ -49,12 +49,12 @@ func testCollection(name string) string {
 // offending value — a runtime assertion a source-level check could be routed
 // around, but a t.Fatalf inside the one function every test store is built by
 // cannot (CONTEXT.md D-16, plan 01-05).
-func newTestStore(t testing.TB, c *qdrant.Client, name string) *store.Store {
+func newTestStore(t testing.TB, c *qdrant.Client, name string, opts ...store.Option) *store.Store {
 	t.Helper()
 	if !strings.HasPrefix(name, testCollectionPrefix) {
 		t.Fatalf("collection name %q does not carry this package's prefix %q: route it through testCollection()", name, testCollectionPrefix)
 	}
-	return store.New(c, name)
+	return store.New(c, name, opts...)
 }
 
 // requireEvalEnabled skips t unless the resolved koanf gate (D-15) is
@@ -161,10 +161,19 @@ func TestRetrievalEval(t *testing.T) {
 	// ambient ENGRAM_QDRANT_ADDR), which is NEVER where this eval seeds/searches
 	// (round-2 finding 1) — the eval store below is built directly from
 	// storetest's resolved test Qdrant address instead.
-	_, dim, em, _, _, err := server.StoreAndEmbedderFromEnvNoEnsure()
+	_, dim, em, _, cfg, err := server.StoreAndEmbedderFromEnvNoEnsure()
 	if err != nil {
 		t.Fatalf("build prod-parity embedder: %v", err)
 	}
+
+	// The eval runs at the configured quantization (#698): the default int8
+	// matches production, and ENGRAM_QDRANT_QUANTIZATION=off gives the
+	// unquantized baseline to compare recall@k/MRR against.
+	quantization, err := store.ParseQuantizationMode(cfg.Qdrant.Quantization)
+	if err != nil {
+		t.Fatalf("ENGRAM_QDRANT_QUANTIZATION: %v", err)
+	}
+	t.Logf("QUANT-EVAL | mode=%s", quantization)
 
 	// D-02: the Jev slot is enabled whenever a decisions provider is
 	// configured, independently of ENGRAM_SEARCH_RANKER — this eval must
@@ -212,7 +221,7 @@ func TestRetrievalEval(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// A fresh, uniquely-named collection per case avoids cross-case /
 			// cross-run contamination without needing cleanup.
-			st := newTestcontainerStore(t, dim)
+			st, awaitIndexed := newTestcontainerStore(t, dim, quantization)
 			scope := "retrieval-eval:project:" + tc.name
 
 			idByKey := make(map[string]string, len(tc.seedRecords))
@@ -243,6 +252,7 @@ func TestRetrievalEval(t *testing.T) {
 					t.Fatalf("harness: seed %s: upsert: %v", rec.key, err)
 				}
 			}
+			awaitIndexed()
 			ceilingK := uint64(len(tc.seedRecords)) + 5
 
 			for _, q := range tc.queries {
@@ -562,16 +572,56 @@ func TestRetrievalEval_AsymmetryDiffer(t *testing.T) {
 // collection ensured at dim, routed through newTestStore so the collection
 // name is prefix-asserted at runtime like every other Qdrant-backed
 // package's test stores (plan 01-05).
-func newTestcontainerStore(t testing.TB, dim uint64) *store.Store {
+//
+// The collection is created with the given quantization mode and an indexing
+// threshold low enough that Qdrant optimizes even a few seeded records into
+// an indexed segment, as production's collection is. Qdrant builds the
+// quantized copy only for optimized segments, so without this an int8 run
+// over the eval's tiny fixtures would never touch quantized vectors. The
+// returned awaitIndexed must be called after seeding: it blocks until every
+// point is indexed and the collection is green, and logs the quantization in
+// effect, so each query runs against the configuration being measured.
+func newTestcontainerStore(t testing.TB, dim uint64, mode store.QuantizationMode) (*store.Store, func()) {
 	t.Helper()
 	qc := storetest.Dial(t, storetest.RecvLimit)
-	st := newTestStore(t, qc, testCollection(uuid.NewString()))
+	collection := testCollection(uuid.NewString())
+	st := newTestStore(t, qc, collection, store.WithQuantization(mode))
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := st.EnsureCollection(ctx, dim); err != nil {
 		t.Fatalf("EnsureCollection: %v", err)
 	}
-	return st
+	if err := qc.UpdateCollection(ctx, &qdrant.UpdateCollection{
+		CollectionName:   collection,
+		OptimizersConfig: &qdrant.OptimizersConfigDiff{IndexingThreshold: qdrant.PtrOf(uint64(1))},
+	}); err != nil {
+		t.Fatalf("lower indexing threshold: %v", err)
+	}
+	awaitIndexed := func() {
+		t.Helper()
+		deadline := time.Now().Add(60 * time.Second)
+		for {
+			info, err := qc.GetCollectionInfo(context.Background(), collection)
+			if err != nil {
+				t.Fatalf("GetCollectionInfo: %v", err)
+			}
+			points, indexed := info.GetPointsCount(), info.GetIndexedVectorsCount()
+			if info.GetStatus() == qdrant.CollectionStatus_Green && points > 0 && indexed == points {
+				q := info.GetConfig().GetQuantizationConfig()
+				if mode == store.QuantizationInt8 && q.GetScalar().GetType() != qdrant.QuantizationType_Int8 {
+					t.Fatalf("collection %s: quantization %v, want int8 for an int8 run", collection, q)
+				}
+				t.Logf("QUANT-EVAL | collection=%s mode=%s quantization={%v} status=green indexed=%d/%d",
+					collection, mode, q, indexed, points)
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("collection %s not optimized within 60s: status=%v indexed=%d/%d", collection, info.GetStatus(), indexed, points)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	return st, awaitIndexed
 }
 
 // TestMain gates the whole package on the resolved ENGRAM_RETRIEVAL_EVAL

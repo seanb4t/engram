@@ -174,6 +174,34 @@ func TestMemoryCapDefaultsAndEnv(t *testing.T) {
 	}
 }
 
+func TestQdrantProvisioningDefaultsAndEnv(t *testing.T) {
+	t.Setenv("ENGRAM_QDRANT_QUANTIZATION", "")
+	t.Setenv("ENGRAM_QDRANT_SCHEMA_TIMEOUT", "")
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.Qdrant.Quantization != "int8" {
+		t.Errorf("Qdrant.Quantization default = %q, want int8", c.Qdrant.Quantization)
+	}
+	if c.Qdrant.SchemaTimeout != "2m" {
+		t.Errorf("Qdrant.SchemaTimeout default = %q, want 2m", c.Qdrant.SchemaTimeout)
+	}
+
+	t.Setenv("ENGRAM_QDRANT_QUANTIZATION", "unmanaged")
+	t.Setenv("ENGRAM_QDRANT_SCHEMA_TIMEOUT", "10m")
+	c, err = Load(nil)
+	if err != nil {
+		t.Fatalf("Load with env: %v", err)
+	}
+	if c.Qdrant.Quantization != "unmanaged" {
+		t.Errorf("Qdrant.Quantization = %q, want unmanaged", c.Qdrant.Quantization)
+	}
+	if c.Qdrant.SchemaTimeout != "10m" {
+		t.Errorf("Qdrant.SchemaTimeout = %q, want 10m", c.Qdrant.SchemaTimeout)
+	}
+}
+
 func TestOwnerClaimDefaultAndOverride(t *testing.T) {
 	c, err := Load(nil)
 	if err != nil {
@@ -243,7 +271,7 @@ func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 
 func TestValidateIgnoresSummaryWhenDisabled(t *testing.T) {
 	c := &Config{
-		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c"},
+		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c", Quantization: "int8", SchemaTimeout: "2m"},
 		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
 		Memory:    MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},

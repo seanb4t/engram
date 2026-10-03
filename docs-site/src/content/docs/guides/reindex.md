@@ -35,7 +35,12 @@ If you are keeping the same embedder, you never need this command.
    ```
 
 3. **Run the reindex.** This creates the target collection at the new dimension
-   and populates it. The source is never modified:
+   and populates it. The source is never modified. A target that reindex
+   creates gets the vector quantization `ENGRAM_QDRANT_QUANTIZATION` selects
+   (default `int8`; see [Configuration](/guides/configure/)); a target that
+   already exists, as on a `--resume`, keeps whatever quantization it has. Once
+   you cut over, `engram serve` reconciles the collection to the server's own
+   setting on its next start:
 
    ```sh
    engram reindex --target memory_v2

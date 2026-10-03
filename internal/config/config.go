@@ -59,6 +59,17 @@ type ServerConfig struct {
 type QdrantConfig struct {
 	Addr       string `koanf:"addr"`
 	Collection string `koanf:"collection"`
+	// Quantization is the memory collection's vector quantization mode
+	// (ENGRAM_QDRANT_QUANTIZATION, default "int8"): "int8", "off" (actively
+	// removes quantization), or "unmanaged" (never touched). Only `engram
+	// serve` reconciles it; CLI verbs leave an existing collection's
+	// quantization alone whatever this holds.
+	Quantization string `koanf:"quantization"`
+	// SchemaTimeout bounds startup schema provisioning — the quantization
+	// reconcile plus every payload index build — separately from the 15 s
+	// connect-and-create budget (ENGRAM_QDRANT_SCHEMA_TIMEOUT, default "2m";
+	// always positive).
+	SchemaTimeout string `koanf:"schema_timeout"`
 }
 
 // EmbedConfig selects the embedding model and the vector dimension the memory

@@ -22,6 +22,8 @@ Source: `cmd/engram/serve.go` (flag registration via `internal/config`)
 | `ENGRAM_QDRANT_ADDR` | — | `localhost:6334` | Qdrant gRPC address (`host:port`) |
 | `ENGRAM_QDRANT_COLLECTION` | — | `mem_eval` | Qdrant collection name for memories (binary default; the Helm chart sets this to `memory` — see [Deploy](/guides/deploy/)) |
 | `ENGRAM_EMBED_DIM` | — | `1024` | Vector dimension; must match the embedding model |
+| `ENGRAM_QDRANT_QUANTIZATION` | — | `int8` | Vector quantization of the memory collection. `int8` keeps an int8 scalar copy of every vector pinned in Qdrant's RAM (quantile 0.99; about 3 KB per record), so a search does not stall re-reading evicted vectors from disk; final scores are still computed from the original vectors. `off` removes quantization from the collection. `unmanaged` leaves whatever quantization the collection has untouched — use it to tune quantization by hand. Only `engram serve` applies this setting; CLI commands never change an existing collection's quantization, whatever this variable holds in their environment. Any other value fails startup. |
+| `ENGRAM_QDRANT_SCHEMA_TIMEOUT` | — | `2m` | Time budget for startup schema provisioning: the quantization change above plus building any missing payload index. Separate from the fixed 15 s budget for connecting to Qdrant and creating the collection. The server opens its port only after both finish; exceeding either fails startup with an error naming the step. Must be a positive Go duration. The Helm chart derives its startup probe from this value — see [Deploy](/guides/deploy/). |
 
 Source: `internal/server/tools.go` (`StoreAndEmbedderFromEnvNoEnsure`).
 

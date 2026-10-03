@@ -246,7 +246,7 @@ func loadAndValidate() (*config.Config, error) {
 // the WithRecordCaps option below (D-02/D-09) — plan 03-02's read-side
 // per-record ceiling is derived from exactly the caps this same config
 // enforces on write, not a second, independent read.
-func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
+func storeFromConfig(cfg *config.Config, opts ...store.Option) (*store.Store, uint64, error) {
 	embedDim, err := strconv.ParseUint(cfg.Embed.Dim, 10, 64)
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid ENGRAM_EMBED_DIM %q: %w", cfg.Embed.Dim, err)
@@ -263,22 +263,50 @@ func storeFromConfig(cfg *config.Config) (*store.Store, uint64, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("qdrant client: %w", err)
 	}
-	return store.New(qc, cfg.Qdrant.Collection, store.WithRecordCaps(recordCapsFromConfig(cfg))), embedDim, nil
+	opts = append([]store.Option{store.WithRecordCaps(recordCapsFromConfig(cfg))}, opts...)
+	return store.New(qc, cfg.Qdrant.Collection, opts...), embedDim, nil
 }
 
-// ensureStoreFromConfig builds the Store from an already-loaded config and ensures
-// its collection exists at the configured embed dimension.
-func ensureStoreFromConfig(cfg *config.Config) (*store.Store, error) {
-	st, embedDim, err := storeFromConfig(cfg)
+// collectionCreateBudget bounds connecting to Qdrant and creating the
+// collection at startup. Schema provisioning has its own, configurable budget
+// (ENGRAM_QDRANT_SCHEMA_TIMEOUT), so a slow index build cannot eat this one
+// (#683).
+const collectionCreateBudget = 15 * time.Second
+
+// ensureStoreFromConfig builds the Store from an already-loaded config and
+// provisions its collection: created at the configured embed dimension if
+// absent, then its schema ensured. opts are passed to the Store; only the
+// server's construction path passes store.WithQuantization, so every CLI
+// verb's Store leaves an existing collection's quantization alone.
+func ensureStoreFromConfig(cfg *config.Config, opts ...store.Option) (*store.Store, error) {
+	schemaBudget, err := time.ParseDuration(cfg.Qdrant.SchemaTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ENGRAM_QDRANT_SCHEMA_TIMEOUT %q: %w", cfg.Qdrant.SchemaTimeout, err)
+	}
+	st, embedDim, err := storeFromConfig(cfg, opts...)
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := st.EnsureCollection(ctx, embedDim); err != nil {
-		return nil, fmt.Errorf("EnsureCollection: %w", err)
+	if err := provisionStore(st, embedDim, collectionCreateBudget, schemaBudget); err != nil {
+		return nil, err
 	}
 	return st, nil
+}
+
+// provisionStore runs the two startup provisioning steps, each under its own
+// budget, and names the step and budget in any error.
+func provisionStore(st *store.Store, dim uint64, createBudget, schemaBudget time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), createBudget)
+	defer cancel()
+	if err := st.CreateCollectionIfAbsent(ctx, dim); err != nil {
+		return fmt.Errorf("create collection (budget %s): %w", createBudget, err)
+	}
+	sctx, scancel := context.WithTimeout(context.Background(), schemaBudget)
+	defer scancel()
+	if err := st.EnsureSchema(sctx); err != nil {
+		return fmt.Errorf("schema provisioning (ENGRAM_QDRANT_SCHEMA_TIMEOUT=%s): %w", schemaBudget, err)
+	}
+	return nil
 }
 
 // StoreFromEnv builds a Qdrant-backed Store from the ENGRAM_QDRANT_* / ENGRAM_EMBED_DIM
@@ -339,7 +367,12 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if err != nil {
 		return nil, err
 	}
-	st, err := ensureStoreFromConfig(cfg)
+	quantization, err := store.ParseQuantizationMode(cfg.Qdrant.Quantization)
+	if err != nil {
+		return nil, fmt.Errorf("ENGRAM_QDRANT_QUANTIZATION: %w", err)
+	}
+	// The server is the only caller that reconciles quantization (#698).
+	st, err := ensureStoreFromConfig(cfg, store.WithQuantization(quantization))
 	if err != nil {
 		return nil, err
 	}

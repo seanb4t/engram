@@ -41,6 +41,7 @@ one predictable, migration-safe contract.
 | script `spine-review consolidate` without `--scope` or `--all-scopes` | §19 |
 | script `list_rules`/`ListRules` with no `scopes` expecting a rejection, or pattern-match `list_scheduled`/`ListScheduled`'s missing-scope hint as `required` rather than `conditional_required` | §21 |
 | set `ENGRAM_DECISIONS_PROVIDER=jev` (or Helm `memory.decisions.provider: jev`) and do not want console `/search` query text sent to the provider | §22 |
+| hand-tune the Qdrant collection's quantization, run Qdrant with little memory headroom, or have a collection whose index builds take minutes | §23 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -584,6 +585,47 @@ want console query text sent to it — set `ENGRAM_SEARCH_UNDERSTANDING=off`
 (Helm `memory.search.understanding: off`). Everyone else: nothing — no
 decisions provider means this stays off, and a provider you already accepted
 Typed decisions' data policy for gains one more, documented consumer.
+
+### 23. The memory collection is quantized by default, and startup provisioning has its own budget
+
+On its first start after this upgrade, `engram serve` adds **int8 scalar
+quantization** to its memory collection (#698): Qdrant keeps an int8 copy of
+every vector pinned in RAM, so a search no longer stalls re-reading evicted
+vectors from disk after an idle period. Nothing to run — no migration step,
+no reindex. Qdrant applies the change in milliseconds and builds the
+quantized copy in the background (under a second at a few thousand
+records); searches keep working throughout and still score against the
+original vectors. It costs about 3 KB of Qdrant memory per record.
+
+Startup also splits its time budget (#683). Connecting to Qdrant and creating
+the collection keep their 15 seconds; applying the quantization setting and
+building any missing payload index now get their own budget,
+`ENGRAM_QDRANT_SCHEMA_TIMEOUT` (default `2m`). The server still opens its
+port only after both finish, and logs each index it actually builds with its
+duration. The Helm chart adds a `startupProbe` on `memory-mcp` sized from the
+same value (`memory.qdrant.schemaTimeoutSeconds`, default `120`), so the
+liveness probe no longer starts while a large collection is still being
+indexed.
+
+Two new environment variables (and Helm values), documented in the
+[configuration guide](/guides/configure/#qdrant-vector-store):
+`ENGRAM_QDRANT_QUANTIZATION` (`memory.qdrant.quantization`: `int8`, `off`, or
+`unmanaged`) and `ENGRAM_QDRANT_SCHEMA_TIMEOUT`
+(`memory.qdrant.schemaTimeoutSeconds`). Only `engram serve` applies the
+quantization setting; CLI commands never change an existing collection's
+quantization.
+
+**Who should act:**
+
+- Operators who tuned quantization on the collection by hand: set
+  `ENGRAM_QDRANT_QUANTIZATION=unmanaged` before upgrading, or the server
+  replaces your settings with int8 (quantile 0.99, pinned).
+- Operators who cannot spare the extra Qdrant memory, or want to roll back:
+  set `ENGRAM_QDRANT_QUANTIZATION=off` and restart, which removes the
+  quantization. Rolling back to an older engram image instead leaves the
+  quantization in place, which is harmless — older versions never read it.
+- Operators whose index builds take longer than two minutes: raise
+  `ENGRAM_QDRANT_SCHEMA_TIMEOUT` (Helm: `memory.qdrant.schemaTimeoutSeconds`).
 
 ---
 

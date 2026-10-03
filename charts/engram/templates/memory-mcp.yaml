@@ -35,6 +35,19 @@ spec:
               readOnly: true
           {{- end }}
           resources: {{ toYaml .Values.memory.resources | nindent 12 }}
+          {{- $schemaTimeout := int .Values.memory.qdrant.schemaTimeoutSeconds }}
+          {{- if le $schemaTimeout 0 }}
+          {{- fail "memory.qdrant.schemaTimeoutSeconds must be a positive number of seconds" }}
+          {{- end }}
+          {{- /* The server opens its port only after provisioning its
+                 collection: a 15 s connect-and-create budget plus the schema
+                 budget. The window covers both plus 15 s for process start,
+                 rounded up to the 5 s period; liveness and readiness start only
+                 once it passes. */}}
+          startupProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 5
+            failureThreshold: {{ div (add $schemaTimeout 34) 5 }}
           livenessProbe:
             tcpSocket: { port: http }
             initialDelaySeconds: 10

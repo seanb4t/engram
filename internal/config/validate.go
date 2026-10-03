@@ -50,6 +50,21 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("ENGRAM_QDRANT_COLLECTION is empty"))
 	}
 
+	// The accepted set mirrors store.QuantizationMode; config stays free of a
+	// store import.
+	switch c.Qdrant.Quantization {
+	case "int8", "off", "unmanaged":
+	default:
+		errs = append(errs, fmt.Errorf("ENGRAM_QDRANT_QUANTIZATION %q: must be int8, off, or unmanaged", c.Qdrant.Quantization))
+	}
+
+	switch d, err := time.ParseDuration(c.Qdrant.SchemaTimeout); {
+	case err != nil:
+		errs = append(errs, fmt.Errorf("ENGRAM_QDRANT_SCHEMA_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Qdrant.SchemaTimeout, err))
+	case d <= 0:
+		errs = append(errs, fmt.Errorf("ENGRAM_QDRANT_SCHEMA_TIMEOUT %q: must be a positive duration", c.Qdrant.SchemaTimeout))
+	}
+
 	if c.Embed.Model == "" {
 		errs = append(errs, errors.New("ENGRAM_EMBED_MODEL is empty"))
 	}
