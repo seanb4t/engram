@@ -21,6 +21,7 @@ exclude = [
   ".agents", # agent-tool-managed skill mirrors
   ".claude",
   ".codex",
+  ".opencode", # OpenSpec-generated commands and skill mirrors (openspec update)
   "dist",
   "node_modules",
   "vendor",
