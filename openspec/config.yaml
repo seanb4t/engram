@@ -68,7 +68,10 @@ rules:
       Add tasks for the documentation that moves with the change: docs-site guides and reference, the engram skill, and the
       CLAUDE.md memory contract.
     - >-
-      End with the quality gate: `task` (lint and test), plus `task chart:validate` when `charts/` changes. #magic___^_^___line
+      End with the quality gate: `task` (lint and test), plus `task chart:validate` when `charts/` changes.
+# Guidance for the apply and archive steps. Keep this comment, not a blank line, above
+# `operations`: yamlfmt 0.21.0 writes its blank-line marker into a folded scalar that a blank
+# line follows.
 operations:
   apply:
     guidance:
