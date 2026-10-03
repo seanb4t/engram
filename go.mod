@@ -8,7 +8,7 @@ require (
 	connectrpc.com/connect v1.21.0
 	connectrpc.com/otelconnect v0.10.0
 	github.com/cedar-policy/cedar-go v1.8.0
-	github.com/cenkalti/backoff/v7 v7.0.0
+	github.com/cenkalti/backoff/v7 v7.0.1
 	github.com/chromedp/cdproto v0.0.0-20260922220944-a19bff23514f
 	github.com/chromedp/chromedp v0.16.0
 	github.com/coreos/go-oidc/v3 v3.21.0
