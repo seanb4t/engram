@@ -179,8 +179,8 @@ importers:
         specifier: ^2.1.1
         version: 2.2.0(@bufbuild/protobuf@2.16.0)(@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.16.0))
       '@humanspeak/svelte-virtual-list':
-        specifier: 0.5.14
-        version: 0.5.14(svelte@5.57.1)
+        specifier: 0.5.15
+        version: 0.5.15(svelte@5.57.1)
       '@internationalized/date':
         specifier: ^3.12.2
         version: 3.12.4
@@ -404,8 +404,8 @@ packages:
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
-  '@humanspeak/svelte-virtual-list@0.5.14':
-    resolution: {integrity: sha512-zvswwad2vg6b+LWGWWqqPDdVxh9BnMk3FqDjE23OlgAy/1fy41P87v0mDA4IU0xZ480OuMUKFXnUHmkesy7WDg==}
+  '@humanspeak/svelte-virtual-list@0.5.15':
+    resolution: {integrity: sha512-GzXFgcDCPOi9YFTWU1ae5T5IG6uo15XgDnQmGKop60ba/inmhv+0hLEyGC8MJyLYHJmH61OWLG+Guj5jCwZMsw==}
     peerDependencies:
       svelte: ^5.0.0
 
@@ -1876,7 +1876,7 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
-  '@humanspeak/svelte-virtual-list@0.5.14(svelte@5.57.1)':
+  '@humanspeak/svelte-virtual-list@0.5.15(svelte@5.57.1)':
     dependencies:
       esm-env: 1.2.2
       svelte: 5.57.1
