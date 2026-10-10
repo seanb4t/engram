@@ -134,10 +134,13 @@ memory:
     provider: "" # ENGRAM_DECISIONS_PROVIDER; "" (default, off) | "jev"
     # ENGRAM_DECISIONS_BASE_URL; required when provider=jev. Deliberately
     # does NOT fall back to memory.openai.baseURL — the embeddings/chat
-    # gateway does not serve Decisions. engram appends /alpha/decisions.
+    # gateway does not serve Decisions. engram appends `path` below.
     #   OpenRouter directly: https://openrouter.ai/api
     #   LiteLLM pass-through: https://litellm.example.com/openrouter
+    #   LiteLLM native route: https://litellm.example.com, with path
+    #     /v1/systemone and model set to a LiteLLM model name
     baseURL: ""
+    path: "" # ENGRAM_DECISIONS_PATH; empty means the binary default /alpha/decisions
     apiKeySecret:
       name: "" # empty inherits memory.openai.apiKeySecret's key
       key: ""

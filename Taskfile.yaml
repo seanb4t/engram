@@ -261,6 +261,7 @@ tasks:
         fi
         DECISIONS_UNSET_PROVIDER_RENDER=$(helm template charts/engram \
           --set memory.decisions.baseURL=https://openrouter.example/api \
+          --set memory.decisions.path=/v1/systemone \
           --set memory.decisions.model=m \
           --set memory.decisions.timeout=5s \
           --set memory.decisions.concurrency=2 \
@@ -283,6 +284,18 @@ tasks:
         fi
         if echo "$DECISIONS_RENDER" | grep -q 'ENGRAM_DECISIONS_API_KEY'; then
           echo "chart:validate: ENGRAM_DECISIONS_API_KEY must NOT render when memory.decisions.apiKeySecret.name is unset"
+          exit 1
+        fi
+        if echo "$DECISIONS_RENDER" | grep -q 'ENGRAM_DECISIONS_PATH'; then
+          echo "chart:validate: ENGRAM_DECISIONS_PATH must NOT render when memory.decisions.path is unset (binary default applies)"
+          exit 1
+        fi
+        DECISIONS_PATH_RENDER=$(helm template charts/engram \
+          --set memory.decisions.provider=jev \
+          --set memory.decisions.baseURL=https://litellm.example \
+          --set memory.decisions.path=/v1/systemone)
+        if ! echo "$DECISIONS_PATH_RENDER" | grep -q 'name: ENGRAM_DECISIONS_PATH, value: "/v1/systemone"'; then
+          echo "chart:validate: --set memory.decisions.path must emit ENGRAM_DECISIONS_PATH with the configured value (#793)"
           exit 1
         fi
         DECISIONS_KEY_RENDER=$(helm template charts/engram \
@@ -466,7 +479,11 @@ tasks:
         # (#698/#683): unlike the rows above, the default render emits both
         # (int8, 120s), and a helm template diff before and after this edit
         # shows only those two env lines plus the new startupProbe.
-        EXPECTED_CHECKSUM="2f217781a44ce29c7a9e8def4c71f706bbab381ec7758963df383c5ef8d50d8e"
+        # Re-pinned 2026-10-10 for the with-guarded ENGRAM_DECISIONS_PATH row
+        # (#793), inside the provider gate: the default render and a
+        # provider=jev render without memory.decisions.path are both
+        # byte-identical to the pre-change render.
+        EXPECTED_CHECKSUM="a0245cd58c9987bcca82a4e32a924451dd42da43e5236db997b865011d1e1c4f"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."
