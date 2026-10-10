@@ -62,7 +62,7 @@ type wireUsage struct {
 	Cost         *float64 `json:"cost"`
 }
 
-// encodeRequest builds the JSON body Decide sends to {base}/alpha/decisions
+// encodeRequest builds the JSON body Decide sends to the Decisions endpoint
 // for model and req (DEC-02): a noul question's criteria is an object with
 // keys "true"/"false", a choice question's criteria is its Options map
 // verbatim, and a score question's criteria is its Scale slice in order.

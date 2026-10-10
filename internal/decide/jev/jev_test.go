@@ -6,8 +6,10 @@ package jev
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -449,4 +451,57 @@ func TestJevRetryAndBounds(t *testing.T) {
 			t.Errorf("CostUSD = %v, want within 1e-12 of %v", got, want)
 		}
 	})
+}
+
+// TestJevPath proves the endpoint rule: the request URL is the base URL with
+// its trailing slashes trimmed plus the path (default /alpha/decisions,
+// WithPath overrides it, an empty WithPath keeps the default), and the path
+// changes nothing else — the same request carries the same method, headers
+// and body on every path, and the same response decodes the same way.
+func TestJevPath(t *testing.T) {
+	type sent struct {
+		method, path, auth, contentType, body string
+	}
+	call := func(t *testing.T, base string, opts ...Option) (sent, decide.Response) {
+		t.Helper()
+		var got sent
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			got = sent{r.Method, r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("Content-Type"), string(b)}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(fixtureNoulOK))
+		}))
+		defer srv.Close()
+
+		c := New(srv.URL+base, "k", "m", opts...)
+		noRetryDelay(c)
+		resp, err := c.Decide(context.Background(), oneNoulRequest())
+		if err != nil {
+			t.Fatalf("Decide: %v", err)
+		}
+		return got, resp
+	}
+
+	defSent, defResp := call(t, "/api")
+	if defSent.path != "/api/alpha/decisions" {
+		t.Errorf("default path = %q, want /api/alpha/decisions", defSent.path)
+	}
+
+	emptySent, _ := call(t, "/api", WithPath(""))
+	if emptySent.path != "/api/alpha/decisions" {
+		t.Errorf("WithPath(\"\") path = %q, want the default /api/alpha/decisions", emptySent.path)
+	}
+
+	nativeSent, nativeResp := call(t, "/", WithPath("/v1/systemone"))
+	if nativeSent.path != "/v1/systemone" {
+		t.Errorf("WithPath(\"/v1/systemone\") with a trailing-slash base: path = %q, want /v1/systemone", nativeSent.path)
+	}
+
+	defSent.path, nativeSent.path = "", ""
+	if defSent != nativeSent {
+		t.Errorf("request differs by path beyond the URL:\ndefault: %+v\nnative:  %+v", defSent, nativeSent)
+	}
+	if !reflect.DeepEqual(defResp, nativeResp) {
+		t.Errorf("response decodes differently by path:\ndefault: %+v\nnative:  %+v", defResp, nativeResp)
+	}
 }
