@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.24.0](https://github.com/seanb4t/engram/compare/v0.23.0...v0.24.0) (2026-10-10)
+
+
+### Features
+
+* **config:** add ENGRAM_DECISIONS_PATH for LiteLLM's native decisions route ([#795](https://github.com/seanb4t/engram/issues/795)) ([233e971](https://github.com/seanb4t/engram/commit/233e971de5cdbbea66b4b0075651cfcea8884ff3))
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#784](https://github.com/seanb4t/engram/issues/784)) ([2362fad](https://github.com/seanb4t/engram/commit/2362fad30a5288743af3b58016aec94977dc416d))
+* **deps:** update dependency @humanspeak/svelte-virtual-list to v0.5.15 ([#783](https://github.com/seanb4t/engram/issues/783)) ([a11dbe6](https://github.com/seanb4t/engram/commit/a11dbe65b43cf29724a1c40b466c90bd7a3ad607))
+* **deps:** update module github.com/cenkalti/backoff/v7 to v7.0.1 ([#749](https://github.com/seanb4t/engram/issues/749)) ([d1fb3e2](https://github.com/seanb4t/engram/commit/d1fb3e243ee7467717136f0cb23217faaae55ed0))
+* **deps:** update module github.com/knadh/koanf/providers/env/v2 to v2.0.2 ([#776](https://github.com/seanb4t/engram/issues/776)) ([d08e623](https://github.com/seanb4t/engram/commit/d08e623501b545f6cf46b159a92df70c9897e455))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.8 ([#790](https://github.com/seanb4t/engram/issues/790)) ([d75e560](https://github.com/seanb4t/engram/commit/d75e560dd88fce62def281af14d000300f10973e))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.12 ([#721](https://github.com/seanb4t/engram/issues/721)) ([88bd91c](https://github.com/seanb4t/engram/commit/88bd91c2a2772847be10107eb1ff10e84c51ea4d))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.13 ([#747](https://github.com/seanb4t/engram/issues/747)) ([2afcb55](https://github.com/seanb4t/engram/commit/2afcb55490f6d1cc0a4efd3b0fbb8a524bdaece9))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.14 ([#751](https://github.com/seanb4t/engram/issues/751)) ([4b04ce3](https://github.com/seanb4t/engram/commit/4b04ce3860317964884ee04355a966fe279384d7))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.15 ([#753](https://github.com/seanb4t/engram/issues/753)) ([f029dd8](https://github.com/seanb4t/engram/commit/f029dd8df0584c6bcf6af40e75dab84fe8008181))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.16 ([#756](https://github.com/seanb4t/engram/issues/756)) ([5de1e33](https://github.com/seanb4t/engram/commit/5de1e3339116796e09ea8ed19b0768d7bb2f5612))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.17 ([#757](https://github.com/seanb4t/engram/issues/757)) ([b7d703a](https://github.com/seanb4t/engram/commit/b7d703a0fd2f0438ed37e36c30295afb5fad66c1))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.18 ([#761](https://github.com/seanb4t/engram/issues/761)) ([ffa1cfa](https://github.com/seanb4t/engram/commit/ffa1cfa42fc824d312f5fb070f8a2f7a9344b25b))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.19 ([#762](https://github.com/seanb4t/engram/issues/762)) ([c12123d](https://github.com/seanb4t/engram/commit/c12123d2aa5d95f36b8c1ff027bb9db9ee67b559))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.20 ([#767](https://github.com/seanb4t/engram/issues/767)) ([a87c642](https://github.com/seanb4t/engram/commit/a87c642c9a3a594ccdc7a7af7a4185d71b0e693e))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.21 ([#768](https://github.com/seanb4t/engram/issues/768)) ([f676ec1](https://github.com/seanb4t/engram/commit/f676ec18caba0f173807919310a75f3a5b4152df))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.23 ([#777](https://github.com/seanb4t/engram/issues/777)) ([f85b415](https://github.com/seanb4t/engram/commit/f85b415ef2aa3a8ba79f783e4b59ef0b539e6703))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.25 ([#785](https://github.com/seanb4t/engram/issues/785)) ([fa131a9](https://github.com/seanb4t/engram/commit/fa131a97a4ff976e1258ea4ecf831312b3da81ea))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.26 ([#786](https://github.com/seanb4t/engram/issues/786)) ([3161999](https://github.com/seanb4t/engram/commit/3161999c77010a6fc62c6b6182447fe70a50c564))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.27 ([#787](https://github.com/seanb4t/engram/issues/787)) ([e3587f4](https://github.com/seanb4t/engram/commit/e3587f485b72296934ae4e4b9cfe63f1f00163e6))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.28 ([#788](https://github.com/seanb4t/engram/issues/788)) ([53c6ed5](https://github.com/seanb4t/engram/commit/53c6ed59b18abbaea0f1bdf792521d06df79687e))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.29 ([#789](https://github.com/seanb4t/engram/issues/789)) ([5047b53](https://github.com/seanb4t/engram/commit/5047b539fe234500837dc6b8bff1eb727328741b))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.30 ([#794](https://github.com/seanb4t/engram/issues/794)) ([f6dad4f](https://github.com/seanb4t/engram/commit/f6dad4f5d2b483db6834d1d1fc26faa42ccbc171))
+
 ## [0.23.0](https://github.com/seanb4t/engram/compare/v0.22.3...v0.23.0) (2026-10-03)
 
 
