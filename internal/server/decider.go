@@ -41,6 +41,7 @@ func deciderFromConfig(cfg *config.Config) (decide.Decider, error) {
 	case "jev":
 		apiKey := cmp.Or(cfg.Decisions.APIKey, cfg.OpenAI.APIKey)
 		return jev.New(cfg.Decisions.BaseURL, apiKey, cfg.Decisions.Model,
+			jev.WithPath(cfg.Decisions.Path),
 			jev.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 			jev.WithTimeout(decisionsTimeout(cfg)),
 			jev.WithMaxTimeout(decisionsMaxTimeout(cfg)),
@@ -211,6 +212,7 @@ func searchDeciderFromConfig(cfg *config.Config) (decide.Decider, error) {
 	case "jev":
 		apiKey := cmp.Or(cfg.Decisions.APIKey, cfg.OpenAI.APIKey)
 		return jev.New(cfg.Decisions.BaseURL, apiKey, cfg.Decisions.Model,
+			jev.WithPath(cfg.Decisions.Path),
 			jev.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 			jev.WithTimeout(searchRerankTimeout(cfg)),
 			jev.WithMaxTimeout(decisionsMaxTimeout(cfg)),
@@ -346,6 +348,7 @@ func understandDeciderFromConfig(cfg *config.Config) (decide.Decider, error) {
 	case "jev":
 		apiKey := cmp.Or(cfg.Decisions.APIKey, cfg.OpenAI.APIKey)
 		return jev.New(cfg.Decisions.BaseURL, apiKey, cfg.Decisions.Model,
+			jev.WithPath(cfg.Decisions.Path),
 			jev.WithHTTPTransport(otelhttp.NewTransport(http.DefaultTransport)),
 			jev.WithTimeout(understandingTimeout(cfg)),
 			jev.WithMaxTimeout(decisionsMaxTimeout(cfg)),

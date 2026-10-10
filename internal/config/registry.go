@@ -115,6 +115,9 @@ var registry = []field{
 	// than silently inheriting the chat/embeddings base URL (D-03). The
 	// success-path response-bytes bound is an internal constant in
 	// internal/decide/jev, not a registry row (RESEARCH.md Pitfall 4).
+	// decisions.path (#793) is the suffix appended to decisions.base_url:
+	// OpenRouter's /alpha/decisions by default, or e.g. /v1/systemone for
+	// LiteLLM's native System One route.
 	//
 	// decisions.verdict_threshold (D-08) and decisions.verdict_state_chars
 	// (D-09) are consumed by the operator CLI's verdict pass (spine-review
@@ -124,6 +127,7 @@ var registry = []field{
 	// second config source.
 	{Key: "decisions.provider", Env: "ENGRAM_DECISIONS_PROVIDER"},
 	{Key: "decisions.base_url", Env: "ENGRAM_DECISIONS_BASE_URL"},
+	{Key: "decisions.path", Env: "ENGRAM_DECISIONS_PATH", Default: "/alpha/decisions"},
 	{Key: "decisions.api_key", Env: "ENGRAM_DECISIONS_API_KEY"},
 	{Key: "decisions.model", Env: "ENGRAM_DECISIONS_MODEL", Default: "typesafe/jev-1.13"},
 	{Key: "decisions.timeout", Env: "ENGRAM_DECISIONS_TIMEOUT", Default: "10s"},

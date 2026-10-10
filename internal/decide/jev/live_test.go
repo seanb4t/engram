@@ -89,7 +89,7 @@ func TestJevLive(t *testing.T) {
 	}
 
 	apiKey := cmp.Or(cfg.Decisions.APIKey, cfg.OpenAI.APIKey)
-	c := New(cfg.Decisions.BaseURL, apiKey, cfg.Decisions.Model, WithTimeout(30*time.Second))
+	c := New(cfg.Decisions.BaseURL, apiKey, cfg.Decisions.Model, WithPath(cfg.Decisions.Path), WithTimeout(30*time.Second))
 
 	req := decide.Request{
 		State: decide.State{
@@ -185,6 +185,6 @@ func TestJevLive(t *testing.T) {
 	if resp.Usage.CostUSD != nil {
 		costUSD = *resp.Usage.CostUSD
 	}
-	t.Logf("host=%s model_snapshot=%s input_tokens=%d output_tokens=%d cost_usd=%v latency=%s",
-		host, resp.Model, resp.Usage.InputTokens, resp.Usage.OutputTokens, costUSD, latency)
+	t.Logf("host=%s path=%s model_snapshot=%s input_tokens=%d output_tokens=%d cost_usd=%v latency=%s",
+		host, cfg.Decisions.Path, resp.Model, resp.Usage.InputTokens, resp.Usage.OutputTokens, costUSD, latency)
 }

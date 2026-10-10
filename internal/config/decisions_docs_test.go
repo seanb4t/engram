@@ -76,8 +76,8 @@ func missingDecisionsDocs(section string, envs []string) []string {
 // the disclosure anchors an operator needs before enabling the feature.
 func TestDecisionsVarsDocumented(t *testing.T) {
 	envs := decisionsRegistryEnvNames()
-	if len(envs) != 11 {
-		t.Fatalf("decisionsRegistryEnvNames() returned %d names, want 11 (positive control -- an empty or short derivation must not pass vacuously): %v", len(envs), envs)
+	if len(envs) != 12 {
+		t.Fatalf("decisionsRegistryEnvNames() returned %d names, want 12 (positive control -- an empty or short derivation must not pass vacuously): %v", len(envs), envs)
 	}
 
 	t.Run("red control: missingDecisionsDocs catches an omitted var", func(t *testing.T) {
@@ -86,6 +86,7 @@ func TestDecisionsVarsDocumented(t *testing.T) {
 			"|---------------------|------|---------|-------------|\n" +
 			"| `ENGRAM_DECISIONS_PROVIDER` | — | _(empty)_ | ... |\n" +
 			"| `ENGRAM_DECISIONS_BASE_URL` | — | _(empty)_ | ... |\n" +
+			"| `ENGRAM_DECISIONS_PATH` | — | /alpha/decisions | ... |\n" +
 			"| `ENGRAM_DECISIONS_API_KEY` | — | _(empty)_ | ... |\n" +
 			"| `ENGRAM_DECISIONS_MODEL` | — | typesafe/jev-1.13 | ... |\n" +
 			"| `ENGRAM_DECISIONS_TIMEOUT` | — | 10s | ... |\n" +

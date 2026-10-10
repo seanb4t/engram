@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// decisionsField is one of the eleven ENGRAM_DECISIONS_* registry rows
-// (D-01, D-02, D-08, D-09).
+// decisionsField is one of the twelve ENGRAM_DECISIONS_* registry rows
+// (D-01, D-02, D-08, D-09, #793).
 type decisionsField struct {
 	key string
 	env string
@@ -18,11 +18,12 @@ type decisionsField struct {
 	get func(*Config) string
 }
 
-// decisionsFields is the eleven-key table both TestDecisionsRegistryEntries
+// decisionsFields is the twelve-key table both TestDecisionsRegistryEntries
 // subtests drive, so no key is asserted by a hand-written one-off block.
 var decisionsFields = []decisionsField{
 	{"decisions.provider", "ENGRAM_DECISIONS_PROVIDER", "", func(c *Config) string { return c.Decisions.Provider }},
 	{"decisions.base_url", "ENGRAM_DECISIONS_BASE_URL", "", func(c *Config) string { return c.Decisions.BaseURL }},
+	{"decisions.path", "ENGRAM_DECISIONS_PATH", "/alpha/decisions", func(c *Config) string { return c.Decisions.Path }},
 	{"decisions.api_key", "ENGRAM_DECISIONS_API_KEY", "", func(c *Config) string { return c.Decisions.APIKey }},
 	{"decisions.model", "ENGRAM_DECISIONS_MODEL", "typesafe/jev-1.13", func(c *Config) string { return c.Decisions.Model }},
 	{"decisions.timeout", "ENGRAM_DECISIONS_TIMEOUT", "10s", func(c *Config) string { return c.Decisions.Timeout }},
@@ -107,6 +108,7 @@ func decisionsJevEnabled() *Config {
 	c.Decisions = DecisionsConfig{
 		Provider:          "jev",
 		BaseURL:           "https://openrouter.ai/api",
+		Path:              "/alpha/decisions",
 		Model:             "typesafe/jev-1.13",
 		Timeout:           "10s",
 		MaxTimeout:        "10m",
@@ -131,6 +133,7 @@ func TestDecisionsValidate(t *testing.T) {
 		c.Decisions = DecisionsConfig{
 			Provider:          "",
 			BaseURL:           "ftp://",
+			Path:              "not-a-path",
 			Timeout:           "x",
 			MaxTimeout:        "0",
 			DrainBytes:        "-1",
@@ -170,6 +173,11 @@ func TestDecisionsValidate(t *testing.T) {
 		{"base scheme not http(s)", func(c *Config) { c.Decisions.BaseURL = "ftp://x" }, true, "ENGRAM_DECISIONS_BASE_URL"},
 		{"base missing host", func(c *Config) { c.Decisions.BaseURL = "https://" }, true, "ENGRAM_DECISIONS_BASE_URL"},
 		{"base valid", func(c *Config) { c.Decisions.BaseURL = "https://openrouter.ai/api" }, false, ""},
+		{"path missing leading slash rejected", func(c *Config) { c.Decisions.Path = "v1/systemone" }, true, "ENGRAM_DECISIONS_PATH"},
+		{"path full URL rejected", func(c *Config) { c.Decisions.Path = "https://llm.example.com/v1/systemone" }, true, "ENGRAM_DECISIONS_PATH"},
+		{"path query rejected", func(c *Config) { c.Decisions.Path = "/v1/systemone?x=1" }, true, "ENGRAM_DECISIONS_PATH"},
+		{"path fragment rejected", func(c *Config) { c.Decisions.Path = "/v1/systemone#a" }, true, "ENGRAM_DECISIONS_PATH"},
+		{"path native LiteLLM route accepted", func(c *Config) { c.Decisions.Path = "/v1/systemone" }, false, ""},
 		{"timeout zero accepted", func(c *Config) { c.Decisions.Timeout = "0" }, false, ""},
 		{"timeout negative rejected", func(c *Config) { c.Decisions.Timeout = "-1s" }, true, "ENGRAM_DECISIONS_TIMEOUT"},
 		{"max_timeout zero rejected", func(c *Config) { c.Decisions.MaxTimeout = "0" }, true, "ENGRAM_DECISIONS_MAX_TIMEOUT"},

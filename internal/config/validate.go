@@ -320,6 +320,14 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_BASE_URL %q: missing host", c.Decisions.BaseURL))
 		}
 
+		// decisions.path (#793): appended verbatim to the base URL, so it
+		// must be a path — a leading "/" (which also rules out a full URL)
+		// and no query or fragment. An explicit empty value never reaches
+		// here through Load: it reads back as the registry default.
+		if !strings.HasPrefix(c.Decisions.Path, "/") || strings.ContainsAny(c.Decisions.Path, "?#") {
+			errs = append(errs, fmt.Errorf("ENGRAM_DECISIONS_PATH %q: must start with / and carry no query or fragment (e.g. /alpha/decisions, /v1/systemone)", c.Decisions.Path))
+		}
+
 		if c.Decisions.Model == "" {
 			errs = append(errs, errors.New("ENGRAM_DECISIONS_MODEL is empty"))
 		}
