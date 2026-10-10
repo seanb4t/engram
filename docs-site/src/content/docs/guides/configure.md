@@ -170,16 +170,28 @@ when `ENGRAM_SEARCH_RANKER=jev` (see
 understanding (see [Query understanding (Jev)](#query-understanding-jev)
 below).
 
-**Base URL.** `ENGRAM_DECISIONS_BASE_URL` is required when the provider is
-enabled, and it deliberately does **not** inherit `ENGRAM_OPENAI_BASE_URL` —
-the embeddings/chat gateway does not serve Decisions. engram appends
-`/alpha/decisions` to whatever you set, so `https://openrouter.ai/api`
-resolves to `https://openrouter.ai/api/alpha/decisions`, and a LiteLLM
-pass-through at `https://litellm.example.com/openrouter` resolves to
-`https://litellm.example.com/openrouter/alpha/decisions`. The LiteLLM key
-needs the `/openrouter/alpha/decisions` pass-through route granted, or the
-gateway answers 403. The most likely first failure is a base URL ending in
-`/v1` (or `/api` on the LiteLLM form) — that yields 404.
+**Base URL and path.** `ENGRAM_DECISIONS_BASE_URL` is required when the
+provider is enabled, and it deliberately does **not** inherit
+`ENGRAM_OPENAI_BASE_URL` — the embeddings/chat gateway does not serve
+Decisions. engram appends `ENGRAM_DECISIONS_PATH` (default
+`/alpha/decisions`) to whatever you set, after trimming any trailing `/`:
+
+- **OpenRouter directly:** base `https://openrouter.ai/api` resolves to
+  `https://openrouter.ai/api/alpha/decisions`.
+- **LiteLLM pass-through:** base `https://litellm.example.com/openrouter`
+  resolves to `https://litellm.example.com/openrouter/alpha/decisions`. The
+  LiteLLM key needs the `/openrouter/alpha/decisions` pass-through route
+  granted, or the gateway answers 403.
+- **LiteLLM native route** (LiteLLM v1.105.0-rc.3 and later): base
+  `https://litellm.example.com` with `ENGRAM_DECISIONS_PATH=/v1/systemone`
+  resolves to `https://litellm.example.com/v1/systemone`. This route goes
+  through LiteLLM's model pipeline, so `ENGRAM_DECISIONS_MODEL` must be the
+  name of a model configured in LiteLLM (not `typesafe/jev-1.13`), and the
+  key needs that model in its allow-list instead of the pass-through grant.
+
+The path must start with `/` and carry no query or fragment; startup fails
+otherwise. The most likely first failure is a base URL ending in `/v1` (or
+`/api` on the pass-through form) — that yields 404.
 
 **Key.** An empty `ENGRAM_DECISIONS_API_KEY` **inherits**
 `ENGRAM_OPENAI_API_KEY` and sends it to the decisions host. This mirrors the
@@ -190,6 +202,9 @@ is `memory.decisions.apiKeySecret`.
 
 **Model.** Pinned to `typesafe/jev-1.13`. Do not use the floating
 `~typesafe/jev-latest` — it moves probability thresholds between releases.
+On the LiteLLM native route (`ENGRAM_DECISIONS_PATH=/v1/systemone`), set it
+to the LiteLLM model name that maps to `typesafe/jev-1.13` instead; that
+model must still pin a version, never a floating alias.
 
 **What leaves your deployment.** Each decision call sends the state and
 questions a feature builds (for curation and reranking features, that is
@@ -213,8 +228,9 @@ the operation that asked for it.
 |---------------------|------|---------|-------------|
 | `ENGRAM_DECISIONS_PROVIDER` | — | _(empty)_ | Decision provider; empty disables typed decisions, `jev` enables it |
 | `ENGRAM_DECISIONS_BASE_URL` | — | _(empty)_ | Decisions API base URL; required when the provider is set, never falls back to `ENGRAM_OPENAI_BASE_URL` |
+| `ENGRAM_DECISIONS_PATH` | — | `/alpha/decisions` | Path appended to the base URL to form the decisions endpoint; must start with `/`. Set `/v1/systemone` for LiteLLM's native route |
 | `ENGRAM_DECISIONS_API_KEY` | — | _(empty)_ | API key for the decisions host; empty inherits `ENGRAM_OPENAI_API_KEY` |
-| `ENGRAM_DECISIONS_MODEL` | — | `typesafe/jev-1.13` | Decision model; pinned, do not use a floating alias |
+| `ENGRAM_DECISIONS_MODEL` | — | `typesafe/jev-1.13` | Decision model; pinned, do not use a floating alias. On the LiteLLM native route, the LiteLLM model name |
 | `ENGRAM_DECISIONS_TIMEOUT` | — | `10s` | Per-request HTTP client timeout for a decision call. A non-positive value (including `0`) resolves to the `ENGRAM_DECISIONS_MAX_TIMEOUT` ceiling below |
 | `ENGRAM_DECISIONS_MAX_TIMEOUT` | — | `10m` | Ceiling a non-positive `ENGRAM_DECISIONS_TIMEOUT` resolves to. There is deliberately no value meaning "unbounded" |
 | `ENGRAM_DECISIONS_DRAIN_BYTES` | — | `262144` | Byte bound on draining the rest of the response body after a decode, so the underlying connection can be reused. `0` skips the drain entirely |

@@ -1351,3 +1351,53 @@ func TestUnderstandingAuditEnabledLogLine(t *testing.T) {
 		})
 	}
 }
+
+// TestDeciderPathAllCallers proves ENGRAM_DECISIONS_PATH (#793) reaches every
+// Jev client the server builds — the sweep decider, the search re-rank
+// decider and the query-understanding decider — and that an empty path keeps
+// the default {base}/alpha/decisions.
+func TestDeciderPathAllCallers(t *testing.T) {
+	constructors := map[string]func(*config.Config) (decide.Decider, error){
+		"deciderFromConfig":           deciderFromConfig,
+		"searchDeciderFromConfig":     searchDeciderFromConfig,
+		"understandDeciderFromConfig": understandDeciderFromConfig,
+	}
+	for _, tc := range []struct {
+		name, path, wantPath string
+	}{
+		{"native route", "/v1/systemone", "/api/v1/systemone"},
+		{"empty keeps default", "", "/api/alpha/decisions"},
+	} {
+		for name, build := range constructors {
+			t.Run(tc.name+"/"+name, func(t *testing.T) {
+				var gotPath string
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					gotPath = r.URL.Path
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(tracerNoulResponse))
+				}))
+				defer srv.Close()
+
+				cfg := &config.Config{}
+				cfg.Decisions.Provider = "jev"
+				cfg.Decisions.BaseURL = srv.URL + "/api"
+				cfg.Decisions.Path = tc.path
+
+				d, err := build(cfg)
+				if err != nil || d == nil {
+					t.Fatalf("%s = (%v, %v), want a decider", name, d, err)
+				}
+				req := decide.Request{
+					State:     decide.State{"k": "v"},
+					Questions: map[string]decide.Question{"same_subject": decide.Noul("same?", "yes", "no")},
+				}
+				if _, err := d.Decide(context.Background(), req); err != nil {
+					t.Fatalf("Decide: %v", err)
+				}
+				if gotPath != tc.wantPath {
+					t.Errorf("request path = %q, want %q", gotPath, tc.wantPath)
+				}
+			})
+		}
+	}
+}

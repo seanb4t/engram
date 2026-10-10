@@ -2,11 +2,12 @@
 // Copyright 2026 Sean Brandt
 
 // Package jev implements the Jev backend over OpenRouter's Decisions API at
-// {base}/alpha/decisions. It works against OpenRouter directly
-// (https://openrouter.ai/api) and through a LiteLLM pass-through
-// (https://<gateway>/openrouter), and it never uses the chat base URL (D-03):
-// the decision base URL is a dedicated setting, never inherited from the
-// embeddings/chat lane.
+// {base}/alpha/decisions by default. It works against OpenRouter directly
+// (https://openrouter.ai/api), through a LiteLLM pass-through
+// (https://<gateway>/openrouter), and through LiteLLM's native System One
+// route (https://<gateway> with WithPath("/v1/systemone")), and it never uses
+// the chat base URL (D-03): the decision base URL is a dedicated setting,
+// never inherited from the embeddings/chat lane.
 //
 // Hand-written on net/http + encoding/json (DEC-05/D-06): OpenRouter's Go SDK
 // was evaluated and rejected — see
@@ -42,10 +43,10 @@ var tracer = otel.Tracer("github.com/seanb4t/engram/internal/decide/jev")
 // used here.
 const DefaultModel = "typesafe/jev-1.13"
 
-// decisionsPath is the fixed suffix appended to the operator's base URL
-// (D-03) — never the chat or embeddings URL, and never shape-aware like
-// internal/openaiurl.Join (that heuristic is OpenAI-/v1-specific and does not
-// apply to Decisions).
+// decisionsPath is the default suffix appended to the operator's base URL
+// (D-03), overridable with WithPath — never the chat or embeddings URL, and
+// never shape-aware like internal/openaiurl.Join (that heuristic is
+// OpenAI-/v1-specific and does not apply to Decisions).
 const decisionsPath = "/alpha/decisions"
 
 const (
@@ -83,6 +84,7 @@ type Client struct {
 	baseURL          string
 	apiKey           string
 	model            string
+	path             string
 	endpoint         string
 	http             *http.Client
 	timeout          time.Duration
@@ -165,6 +167,19 @@ func WithConcurrency(n int) Option {
 	return func(c *Client) { c.concurrency = n }
 }
 
+// WithPath sets the suffix appended to the base URL in place of the default
+// /alpha/decisions — e.g. "/v1/systemone" for LiteLLM's native System One
+// route. An empty p is ignored and the default survives, mirroring
+// WithMaxTimeout's convention. The request body and response handling are
+// the same on every path.
+func WithPath(p string) Option {
+	return func(c *Client) {
+		if p != "" {
+			c.path = p
+		}
+	}
+}
+
 // WithNoRetry disables D-11's single retry entirely. A caller on a
 // latency-bound synchronous path (search reranking, D-09) gets exactly one
 // attempt inside its timeout budget instead of risking a second attempt
@@ -183,9 +198,9 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 	}
 	c := &Client{
 		baseURL: baseURL, apiKey: apiKey, model: model,
-		endpoint: strings.TrimRight(baseURL, "/") + decisionsPath,
-		http:     &http.Client{},
-		timeout:  defaultTimeout,
+		path:    decisionsPath,
+		http:    &http.Client{},
+		timeout: defaultTimeout,
 		// Drain defaults are set HERE, in the struct literal, before the
 		// options loop runs below — mirrors internal/embed's New: this is
 		// what lets WithDrainBytes(0)/WithDrainTimeout(0) be honored as 0
@@ -202,6 +217,7 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 	for _, o := range opts {
 		o(c)
 	}
+	c.endpoint = strings.TrimRight(c.baseURL, "/") + c.path
 	if c.maxTimeout <= 0 {
 		c.maxTimeout = defaultMaxTimeout
 	}
@@ -224,7 +240,7 @@ func New(baseURL, apiKey, model string, opts ...Option) *Client {
 
 var _ decide.Decider = (*Client)(nil)
 
-// Decide sends req to {base}/alpha/decisions and decodes the typed noul,
+// Decide sends req to {base}{path} (default {base}/alpha/decisions) and decodes the typed noul,
 // choice and score answers, model snapshot, id, provider and usage into a
 // decide.Response (encodeRequest/decodeResponse in wire.go). Every call
 // emits one "decide" span (D-13) and exactly one debug-level slog line;

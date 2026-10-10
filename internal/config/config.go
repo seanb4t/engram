@@ -234,7 +234,9 @@ type OpenAIConfig struct {
 // seam (internal/server/decider.go), not here, mirroring ChatAPIKey's own
 // fallback precedent. BaseURL never falls back: it fails Config.Validate when
 // empty and Provider is "jev" instead (D-03) — the decisions endpoint must
-// never silently inherit the chat/embeddings gateway's base URL.
+// never silently inherit the chat/embeddings gateway's base URL. Path (#793)
+// is appended to BaseURL to form that endpoint: "/alpha/decisions"
+// (OpenRouter's Decisions API) by default.
 //
 // Values stay strings and are validated by Config.Validate only when the
 // provider is set, following this package's "keep as strings, consumer
@@ -242,6 +244,7 @@ type OpenAIConfig struct {
 type DecisionsConfig struct {
 	Provider     string `koanf:"provider"`
 	BaseURL      string `koanf:"base_url"`
+	Path         string `koanf:"path"`
 	APIKey       string `koanf:"api_key"`
 	Model        string `koanf:"model"`
 	Timeout      string `koanf:"timeout"`

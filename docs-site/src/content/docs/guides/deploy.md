@@ -39,6 +39,7 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 | `memory.oidc.resourceMetadata` | `ENGRAM_OIDC_RESOURCE_METADATA` | WWW-Authenticate resource metadata URL (optional) |
 | `memory.decisions.provider` | `ENGRAM_DECISIONS_PROVIDER` | Typed-decision provider; empty (default) disables it, `jev` enables it |
 | `memory.decisions.baseURL` | `ENGRAM_DECISIONS_BASE_URL` | Decisions API base URL; required when `provider` is set, never falls back to `memory.openai.baseURL` |
+| `memory.decisions.path` | `ENGRAM_DECISIONS_PATH` | Path appended to the base URL (empty → binary default `/alpha/decisions`; `/v1/systemone` for LiteLLM's native route) |
 | `memory.decisions.model` | `ENGRAM_DECISIONS_MODEL` | Decision model (default `typesafe/jev-1.13`, pinned) |
 | `memory.decisions.timeout` | `ENGRAM_DECISIONS_TIMEOUT` | Per-request decision call timeout (empty → binary default `10s`) |
 | `memory.decisions.concurrency` | `ENGRAM_DECISIONS_CONCURRENCY` | Cap on concurrent decision calls per batch (empty → binary default `4`) |

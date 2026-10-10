@@ -65,6 +65,9 @@
 {{- with .Values.memory.decisions.baseURL }}
 - { name: ENGRAM_DECISIONS_BASE_URL, value: "{{ . }}" }
 {{- end }}
+{{- with .Values.memory.decisions.path }}
+- { name: ENGRAM_DECISIONS_PATH, value: "{{ . }}" }
+{{- end }}
 {{- with .Values.memory.decisions.model }}
 - { name: ENGRAM_DECISIONS_MODEL, value: "{{ . }}" }
 {{- end }}
