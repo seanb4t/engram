@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.1](https://github.com/seanb4t/engram/compare/v0.24.0...v0.24.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.31 ([#797](https://github.com/seanb4t/engram/issues/797)) ([28efc71](https://github.com/seanb4t/engram/commit/28efc710077ca1d738a9941cb036e80533350288))
+* **deps:** update module github.com/openrouterteam/go-sdk to v0.9.32 ([#800](https://github.com/seanb4t/engram/issues/800)) ([36bde0c](https://github.com/seanb4t/engram/commit/36bde0c20a9779141ce3b1e7c8bc40cd6dfba63d))
+
 ## [0.24.0](https://github.com/seanb4t/engram/compare/v0.23.0...v0.24.0) (2026-10-10)
 
 
