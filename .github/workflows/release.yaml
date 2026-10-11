@@ -135,6 +135,28 @@ jobs:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      # A published version tag never changes, and GHCR cannot make a tag
+      # immutable, so the release refuses a version that exists. The manual
+      # re-ship skips this step, because it re-publishes an existing tag.
+      - if: ${{ steps.target.outputs.ship == 'true' && github.event_name == 'push' }}
+        name: Make sure that the version is new
+        env:
+          IMAGE: ghcr.io/seanb4t/engram
+          TAG_NAME: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#v}"
+          if out="$(docker buildx imagetools inspect "${IMAGE}:${version}" 2>&1)"; then
+            echo "::error::${IMAGE}:${version} exists. A published version never changes."
+            exit 1
+          fi
+          case "${out}" in
+            *": not found"*) echo "${IMAGE}:${version} does not exist yet." ;;
+            *)
+              echo "::error::Could not tell whether ${IMAGE}:${version} exists: ${out}"
+              exit 1
+              ;;
+          esac
       # `gomod.proxy: true` in .goreleaser.yaml means GoReleaser fetches this
       # module from proxy.golang.org at the tag and validates it against
       # sum.golang.org (verifiable builds). Both need to have INDEXED a tag that
