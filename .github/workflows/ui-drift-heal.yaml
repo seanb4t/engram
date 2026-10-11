@@ -1,0 +1,121 @@
+name: ui-drift-heal
+
+# Pushes the vendored-SPA rebuild onto a drifted Renovate branch (#812).
+#
+# ci.yaml's `ui-drift` job runs branch code, so it holds no secret: on a
+# same-repo Renovate branch it only uploads the rebuilt tree as the
+# `ui-drift-static` artifact. This workflow runs from main's definition on
+# `workflow_run`, never executes branch code, and treats the artifact as data:
+# it copies the files into a clone of the branch, commits that one path, and
+# pushes. The App token is minted only once there is something to push.
+#
+# The push uses a GitHub App installation token, not GITHUB_TOKEN: a
+# GITHUB_TOKEN push never re-triggers `pull_request: synchronize` (GitHub's
+# anti-recursion guard), which would leave the pushed SHA with zero check runs
+# and the protect-main ruleset's required checks stuck on "Expected". The heal
+# commit's own run has the App as its actor, so it never heals again.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  heal:
+    name: heal renovate vendored-SPA drift
+    if: >-
+      github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'renovate/')
+      && !github.event.workflow_run.head_repository.fork && github.event.workflow_run.actor.login == 'fzymgc-renovate[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # list and download the triggering run's artifact
+      contents: read
+    concurrency:
+      group: ui-drift-heal-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: true
+    steps:
+      # Pass event values via env instead of interpolating ${{ }} into the
+      # script: Actions substitutes expressions as literal text before bash
+      # parses it, so a hostile branch name could break out of quoting.
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CLONE: ${{ runner.temp }}/branch
+        # Commit onto the true head branch, not the merge ref the PR run built
+        # from: pushing a merge-ref HEAD would silently merge main into the
+        # Renovate branch. Skip when the branch has moved on since that run;
+        # the newer head's own run decides.
+        run: |
+          count=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?name=ui-drift-static" \
+            --jq '[.artifacts[] | select(.expired | not)] | length')
+          if [[ "$count" == 0 ]]; then
+            echo "run ${RUN_ID} uploaded no ui-drift-static artifact; nothing to heal"
+            echo "heal=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git clone --depth 1 --branch "$HEAD_BRANCH" "https://github.com/${REPO}.git" "$CLONE"
+          head=$(git -C "$CLONE" rev-parse HEAD)
+          if [[ "$head" != "$HEAD_SHA" ]]; then
+            echo "${HEAD_BRANCH} moved from ${HEAD_SHA} to ${head}; its newer run decides"
+            echo "heal=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "heal=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        if: steps.find.outputs.heal == 'true'
+        with:
+          name: ui-drift-static
+          path: ${{ runner.temp }}/ui-drift-static
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
+        if: steps.find.outputs.heal == 'true'
+        with:
+          client-id: ${{ secrets.CI_BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
+          permission-contents: 'write'
+      # Derive the bot's git identity at runtime (app-slug output + bot user
+      # id) rather than hardcoding a provisioning-time literal. Assign on its
+      # own line so `set -e` aborts the step if `gh api` fails — a nested $()
+      # inside echo's argument would let echo exit 0 and emit an empty user-id,
+      # degrading the commit to a malformed committer email.
+      - id: get-user-id
+        if: steps.find.outputs.heal == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          echo "user-id=$user_id" >> "$GITHUB_OUTPUT"
+      - name: push the rebuild
+        if: steps.find.outputs.heal == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          BOT_USER_ID: ${{ steps.get-user-id.outputs.user-id }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          CLONE: ${{ runner.temp }}/branch
+          STATIC: ${{ runner.temp }}/ui-drift-static
+        # No force: if the branch moved after the head check, GitHub rejects
+        # the push as non-fast-forward and the job goes red.
+        run: |-
+          gh auth setup-git
+          rm -rf "$CLONE/internal/webauth/static"
+          mkdir -p "$CLONE/internal/webauth/static"
+          cp -R "$STATIC/." "$CLONE/internal/webauth/static/"
+          cd "$CLONE"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${BOT_USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git add internal/webauth/static/
+          if git diff --cached --quiet; then
+            echo "${HEAD_BRANCH} already carries this build; nothing to push"
+            exit 0
+          fi
+          git commit -m "fix(ui): regenerate vendored spa (renovate drift self-heal)"
+          git push origin "HEAD:refs/heads/${HEAD_BRANCH}"
