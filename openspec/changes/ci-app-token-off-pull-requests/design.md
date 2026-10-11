@@ -40,7 +40,7 @@ Alternatives considered:
 
 ### D2: The heal workflow's gate and order
 
-The job-level `if` requires all of: `workflow_run.event == 'pull_request'`, `startsWith(workflow_run.head_branch, 'renovate/')`, `workflow_run.head_repository.full_name == github.repository`, and `workflow_run.actor.login == 'fzymgc-renovate[bot]'`. The self-heal commit's own run has the CI App as its actor, so it never heals again. The life agent's App cannot re-run a workflow, because it has no `actions: write`.
+The job-level `if` requires all of: `workflow_run.event == 'pull_request'`, `startsWith(workflow_run.head_branch, 'renovate/')`, `!workflow_run.head_repository.fork` (the same-repository test, in a form yamlfmt keeps on one line), and `workflow_run.actor.login == 'fzymgc-renovate[bot]'`. The self-heal commit's own run has the CI App as its actor, so it never heals again. The life agent's App cannot re-run a workflow, because it has no `actions: write`.
 
 The steps run in this order, so the App token exists only when a push will happen:
 
