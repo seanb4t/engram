@@ -126,6 +126,20 @@ memory:
       restartPolicy: OnFailure
       successfulJobsHistoryLimit: 3
       failedJobsHistoryLimit: 1
+      backoffLimit: 2 # retries of a failed sweep within one scheduled run
+      # Hard cap of one scheduled run in seconds, retries included. Keep it above
+      # timeout, so the sweep stops on its own before Kubernetes kills it. A
+      # sweep that reaches timeout leaves no time for a retry. The retries cover
+      # a failure early in the sweep.
+      activeDeadlineSeconds: 1800
+      timeout: 25m # summarize-missing --timeout: the wall-clock cap of the sweep
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
   # Typed decisions (Jev over OpenRouter's Decisions API). Off by default: an
   # empty provider renders no ENGRAM_DECISIONS_* var, so the server
   # constructs no decider and makes no call (D-01). Advisory only — verdicts

@@ -188,6 +188,12 @@ tasks:
           echo "chart:validate: enabled CronJob render must default to the daily schedule '0 3 * * *' (D-08)"
           exit 1
         fi
+        # The image entrypoint is "/engram serve", so a CronJob that sets only
+        # args runs the server with the sweep's flags and fails at once.
+        if ! echo "$ENABLED_RENDER" | grep -q 'command: \["/engram"\]'; then
+          echo "chart:validate: enabled CronJob render must set command [\"/engram\"] (the entrypoint is /engram serve)"
+          exit 1
+        fi
         # Per-lane chat credential (v0.12.x phase 05, REQ-per-lane-api-key /
         # D-04a/D-04b). The containerEnv checksum below pins the template block
         # against silent drift, but it cannot assert the SET path renders

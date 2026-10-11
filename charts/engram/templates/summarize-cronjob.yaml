@@ -1,18 +1,25 @@
 {{- if .Values.memory.summarize.cronjob.enabled }}
+{{- $cronjob := .Values.memory.summarize.cronjob }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: memory-mcp-summarize
 spec:
-  schedule: {{ .Values.memory.summarize.cronjob.schedule | quote }}
-  concurrencyPolicy: {{ .Values.memory.summarize.cronjob.concurrencyPolicy }}
-  successfulJobsHistoryLimit: {{ .Values.memory.summarize.cronjob.successfulJobsHistoryLimit }}
-  failedJobsHistoryLimit: {{ .Values.memory.summarize.cronjob.failedJobsHistoryLimit }}
+  schedule: {{ $cronjob.schedule | quote }}
+  concurrencyPolicy: {{ $cronjob.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ $cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ $cronjob.failedJobsHistoryLimit }}
   jobTemplate:
     spec:
+      backoffLimit: {{ $cronjob.backoffLimit }}
+      activeDeadlineSeconds: {{ $cronjob.activeDeadlineSeconds }}
       template:
         spec:
-          restartPolicy: {{ .Values.memory.summarize.cronjob.restartPolicy }}
+          restartPolicy: {{ $cronjob.restartPolicy }}
+          automountServiceAccountToken: false
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
           {{- with .Values.imagePullSecrets }}
           imagePullSecrets: {{ toYaml . | nindent 12 }}
           {{- end }}
@@ -20,8 +27,19 @@ spec:
             - name: summarize-missing
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
-              args: ["summarize-missing", "--all-scopes"]
+              {{- /* The image entrypoint is "/engram serve". Without this command
+                     the pod runs "/engram serve summarize-missing", which fails. */}}
+              command: ["/engram"]
+              args: ["summarize-missing", "--all-scopes", "--timeout", {{ $cronjob.timeout | quote }}]
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532 # the nonroot user of the distroless base image
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               env: {{- include "engram.containerEnv" . | nindent 16 }}
+              resources: {{ toYaml $cronjob.resources | nindent 16 }}
               {{- if .Values.memory.openai.caBundle.configMapName }}
               volumeMounts:
                 - name: ca-bundle

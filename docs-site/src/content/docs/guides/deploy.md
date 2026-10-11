@@ -80,6 +80,21 @@ before deploying with a decisions provider configured.
 
 For the full environment variable reference, see [Configure](/guides/configure/).
 
+### Summary sweep
+
+`memory.summarize.cronjob.enabled: true` adds the CronJob `memory-mcp-summarize`. It runs
+`engram summarize-missing --all-scopes` with the image and the environment of the Deployment, so
+it needs `memory.summarize.model`. The container runs as the nonroot user of the image, with a
+read-only root filesystem.
+
+| Helm value | Default | Description |
+|-----------|---------|-------------|
+| `memory.summarize.cronjob.schedule` | `0 3 * * *` | Cron schedule of the sweep |
+| `memory.summarize.cronjob.timeout` | `25m` | `--timeout` of the sweep, its wall-clock cap |
+| `memory.summarize.cronjob.activeDeadlineSeconds` | `1800` | Hard cap of one scheduled run in seconds, retries included. Keep it above `timeout` |
+| `memory.summarize.cronjob.backoffLimit` | `2` | Retries of a failed sweep within one scheduled run. A sweep that reaches `timeout` leaves no time for a retry |
+| `memory.summarize.cronjob.resources` | requests `25m`/`64Mi`, limits `200m`/`128Mi` | Resources of the sweep container |
+
 ### Startup probe
 
 The server opens its HTTP port only after it has provisioned its Qdrant
