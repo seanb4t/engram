@@ -14,10 +14,10 @@
 
 ## 3. Verify the change as a whole
 
-- [ ] 3.1 Run the life agent's check on the branch's local workflow files: a one-off script in the session scratchpad (never committed) that imports `scripts/github_check.py` from `seanb4t/life-agent` and calls `check_workflows` on every `.github/workflows/*.yaml` with `default_branch="main"` and `default_write=False`. Verify: it returns an empty list. Before this change, the same script reports `ci.yaml: the job ui-drift can operate for pull_request and reads a secret`.
-- [ ] 3.2 Check that the specs hold on paper for the paths that cannot run before merge: walk the job-level `if` and step conditions of `ui-drift-heal.yaml` against each scenario in `specs/vendored-spa-drift/spec.md` and `specs/ci-pull-request-isolation/spec.md`, and record the result in the pull request description. Verify: every scenario names the condition that produces its outcome.
-- [ ] 3.3 Run `openspec validate ci-app-token-off-pull-requests --strict`. Verify: it reports the change as valid.
-- [ ] 3.4 Run the quality gate: `task` (lint and test). Verify: it exits 0.
+- [x] 3.1 Run the life agent's check on the branch's local workflow files: a one-off script in the session scratchpad (never committed) that imports `scripts/github_check.py` from `seanb4t/life-agent` and calls `check_workflows` on every `.github/workflows/*.yaml` with `default_branch="main"` and `default_write=False`. Verify: it returns an empty list. Before this change, the same script reports `ci.yaml: the job ui-drift can operate for pull_request and reads a secret`.
+- [x] 3.2 Check that the specs hold on paper for the paths that cannot run before merge: walk the job-level `if` and step conditions of `ui-drift-heal.yaml` against each scenario in `specs/vendored-spa-drift/spec.md` and `specs/ci-pull-request-isolation/spec.md`, and record the result in the pull request description. Verify: every scenario names the condition that produces its outcome.
+- [x] 3.3 Run `openspec validate ci-app-token-off-pull-requests --strict`. Verify: it reports the change as valid.
+- [x] 3.4 Run the quality gate: `task` (lint and test). Verify: it exits 0.
 
 ## Workflow follow-up
 
