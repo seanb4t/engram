@@ -91,8 +91,8 @@ read-only root filesystem.
 |-----------|---------|-------------|
 | `memory.summarize.cronjob.schedule` | `0 3 * * *` | Cron schedule of the sweep |
 | `memory.summarize.cronjob.timeout` | `25m` | `--timeout` of the sweep, its wall-clock cap |
-| `memory.summarize.cronjob.activeDeadlineSeconds` | `1800` | Hard cap of one run, in seconds. Keep it above `timeout` |
-| `memory.summarize.cronjob.backoffLimit` | `2` | Retries of a failed run |
+| `memory.summarize.cronjob.activeDeadlineSeconds` | `1800` | Hard cap of one scheduled run in seconds, retries included. Keep it above `timeout` |
+| `memory.summarize.cronjob.backoffLimit` | `2` | Retries of a failed sweep within one scheduled run. A sweep that reaches `timeout` leaves no time for a retry |
 | `memory.summarize.cronjob.resources` | requests `25m`/`64Mi`, limits `200m`/`128Mi` | Resources of the sweep container |
 
 ### Startup probe
