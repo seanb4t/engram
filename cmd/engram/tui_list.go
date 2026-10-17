@@ -298,10 +298,10 @@ func (m *consoleModel) columns(s *screen, w int) rowColumns {
 		c.scope = min(longestScope, 28)
 	}
 	if summary() < 24 {
-		c.scope = 0
+		c.tags = 0
 	}
 	if summary() < 24 {
-		c.tags = 0
+		c.scope = 0
 	}
 	return c
 }

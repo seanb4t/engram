@@ -219,6 +219,22 @@ func TestTUIRowContent(t *testing.T) {
 	}
 }
 
+// TestTUIColumnsDropTagsBeforeScope: when a row cannot fit every column,
+// the tags column goes first and the scope column stays.
+func TestTUIColumnsDropTagsBeforeScope(t *testing.T) {
+	one := testMemory("aaaaaaaaa1", "first")
+	one.Scope, one.Tags = "repo:github.com/example/a-long-scope-name", []string{"helm"}
+	two := testMemory("bbbbbbbbb2", "second")
+	two.Scope, two.SupersededBy = "repo:github.com/example/another-long-scope", stringPtr("id-x")
+	m := newConsoleModel(context.Background(), nil, time.Second, &engramv1.ListScopesResponse{}, consoleSettings{theme: "engram"})
+	m.now = func() time.Time { return consoleNow }
+	s := &screen{kind: screenMemories, rows: []*engramv1.Memory{one, two}}
+	c := m.columns(s, 110)
+	if c.scope == 0 || c.tags != 0 {
+		t.Errorf("at width 110: scope %d, tags %d; want the scope kept and the tags dropped", c.scope, c.tags)
+	}
+}
+
 func TestTUIPastStatesAreMuted(t *testing.T) {
 	archived := testMemory("aaaaaaaaa1", "archived one")
 	archived.ArchivedAt = timestamppb.New(consoleNow)
