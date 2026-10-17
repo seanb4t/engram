@@ -11,7 +11,7 @@ import "github.com/spf13/cobra"
 // its own usage and exits 0 for a bare, non-runnable parent command
 // (cobra v1.10.2 command.go:935, :1152), but that default is pinned
 // explicitly by TestSpineReviewBareInvocationPrintsHelp rather than
-// trusted, the same discipline TestRootBareInvocationEmitsCatalog already
+// trusted, the same discipline TestRootBareInvocationNeedsTerminal already
 // applies to rootCmd's own bare invocation.
 var spineReviewCmd = &cobra.Command{
 	Use:   "spine-review",

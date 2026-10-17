@@ -14,8 +14,8 @@ import (
 	"github.com/seanb4t/engram/internal/surfaces"
 )
 
-// catalogDoc is the self-describe document a bare `engram` invocation emits
-// on stdout (D-15). This is the CLI's own contract, not a wire message, so
+// catalogDoc is the self-describe document `engram catalog` emits on stdout
+// (D-15). This is the CLI's own contract, not a wire message, so
 // it is hand-declared rather than protobuf-derived. Field names use
 // snake_case JSON tags, matching the convention the client commands' own
 // output (client_common.go's renderJSON) already uses.
@@ -225,8 +225,22 @@ func collectFlags(cmd *cobra.Command) []catalogFlag {
 	return flags
 }
 
-// runSelfDescribe is rootCmd's RunE (D-15): it builds the catalog from the
-// live tree and encodes it as one JSON document to cmd.OutOrStdout().
+// catalogCmd is the agent's discovery path (D-15). It moved here from the
+// bare invocation, which now opens the terminal console, so one command
+// carries one contract whatever the caller's terminal state.
+var catalogCmd = &cobra.Command{
+	Use:   "catalog",
+	Short: "Print the machine-readable catalog of every command, flag and exit code as JSON",
+	Args:  noPositionalArgs,
+	RunE:  runSelfDescribe,
+}
+
+func init() {
+	rootCmd.AddCommand(catalogCmd)
+}
+
+// runSelfDescribe is catalogCmd's RunE (D-15): it builds the catalog from
+// the live tree and encodes it as one JSON document to cmd.OutOrStdout().
 // Nothing is written to stderr on this path (D-07). Writing through the
 // command's writer rather than the package-level print family is what lets
 // tests capture it via rootCmd.SetOut.

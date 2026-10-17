@@ -172,7 +172,7 @@ func TestSpineScanSummaryFormat(t *testing.T) {
 // contract as a published operator-facing behavior, not an incidental
 // framework default: cobra v1.10.2 prints a non-runnable parent's own help
 // and exits 0 (command.go:935, :1152), but this repo already pins the
-// analogous root behavior explicitly (TestRootBareInvocationEmitsCatalog)
+// analogous root behavior explicitly (TestRootBareInvocationNeedsTerminal)
 // rather than trusting cobra's default to keep doing this across upgrades.
 func TestSpineReviewBareInvocationPrintsHelp(t *testing.T) {
 	resetClientFlags(t)

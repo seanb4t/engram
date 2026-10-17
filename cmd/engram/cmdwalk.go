@@ -73,14 +73,18 @@ func commandKey(cmd *cobra.Command) string {
 //     Run (nil RunE), so today's structural filter alone already excludes
 //     it; named here anyway so the exclusion survives a future change to
 //     Run/RunE without silently widening operatorCommands' membership.
+//   - "catalog": describes the binary itself — it has a RunE and no
+//     "server" flag, but it is one JSON document by contract (D-15), with
+//     no human summary to render through --output.
 //
-// TestOperatorCommands asserts this set is EXACTLY {"serve", "version"}
+// TestOperatorCommands asserts this set is EXACTLY {"serve", "version", "catalog"}
 // and that every name in it resolves to a live command in the tree, so a
 // future addition to this set cannot go unnoticed and a stale entry
 // (naming a command that no longer exists) cannot silently persist.
 var operatorCommandExclusions = map[string]bool{
 	"serve":   true,
 	"version": true,
+	"catalog": true,
 }
 
 // operatorCommands returns every operator-tier command in the live cobra

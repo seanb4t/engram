@@ -44,6 +44,15 @@ import (
 // --help` against `engram reindex --help` must not be left to infer the
 // difference.
 func addClientFlags(cmd *cobra.Command) {
+	addConnectionFlags(cmd)
+	cmd.Flags().String("output", config.FlagDefault("output"),
+		`output format: "json" or "text" (default: detect from stdout)`)
+}
+
+// addConnectionFlags binds the four client flags that decide how to reach
+// the server, without --output: `engram tui` takes these, because no output
+// format applies to a full-screen program.
+func addConnectionFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.String("server", config.FlagDefault("server"),
 		"engram server base URL (default: ENGRAM_SERVER_URL)")
@@ -51,8 +60,6 @@ func addClientFlags(cmd *cobra.Command) {
 		"path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)")
 	f.Bool("insecure", false,
 		"skip TLS certificate verification (always warns on stderr; no environment fallback)")
-	f.String("output", config.FlagDefault("output"),
-		`output format: "json" or "text" (default: detect from stdout)`)
 	f.String("timeout", config.FlagDefault("timeout"),
 		"per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, "+
 			"never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)")

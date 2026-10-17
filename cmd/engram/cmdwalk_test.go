@@ -116,7 +116,7 @@ func TestWalkCommands(t *testing.T) {
 // "server" flag check) and never spine-review or migrate itself as a
 // non-runnable parent (migrate DOES have its own RunE via
 // registerDestructive, so it IS a member; only spine-review, the
-// non-runnable group, is excluded by the RunE check) or serve/version (the
+// non-runnable group, is excluded by the RunE check) or serve/version/catalog (the
 // named exclusion set).
 var wantOperatorCommandKeys = map[string]bool{
 	"reindex":                  true,
@@ -157,8 +157,8 @@ func commandKeySet(cmds []*cobra.Command) map[string]bool {
 //  1. operatorCommands()'s commandKey set equals the hand-known expected
 //     set over the live tree, in both directions — a command silently
 //     dropped from (or added to) the predicate is caught either way.
-//  2. The named exclusion set is EXACTLY {"serve", "version"}, and both
-//     names resolve to a live command in the tree — a future command
+//  2. The named exclusion set is EXACTLY {"serve", "version", "catalog"},
+//     and every name resolves to a live command in the tree — a future command
 //     added to the exclusion set without also existing in the tree (or a
 //     stale entry left behind after a rename) is caught.
 func TestOperatorCommands(t *testing.T) {
@@ -175,7 +175,7 @@ func TestOperatorCommands(t *testing.T) {
 		}
 	}
 
-	wantExclusions := map[string]bool{"serve": true, "version": true}
+	wantExclusions := map[string]bool{"serve": true, "version": true, "catalog": true}
 	if len(operatorCommandExclusions) != len(wantExclusions) {
 		t.Fatalf("operatorCommandExclusions has %d entries, want %d: %v", len(operatorCommandExclusions), len(wantExclusions), operatorCommandExclusions)
 	}

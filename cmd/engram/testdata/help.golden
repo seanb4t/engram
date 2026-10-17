@@ -8,6 +8,7 @@ Usage:
   engram [command]
 
 Available Commands:
+  catalog             Print the machine-readable catalog of every command, flag and exit code as JSON
   completion          Generate the autocompletion script for the specified shell
   get                 Fetch one memory by id or short id and render its full state
   help                Help about any command
@@ -25,6 +26,7 @@ Available Commands:
   spine-review        Inventory, verify, and curate the memory spine
   store               Store a memory on a remote engram server
   summarize-missing   Fill empty recall summaries with the configured cheap model
+  tui                 Open the read-only terminal console for browsing memories
   version             Print the engram version
 
 Flags:
@@ -47,6 +49,18 @@ Flags:
   -h, --help               help for backfill-short-ids
       --output string      output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --timeout duration   max wall-clock (0 disables); also cancellable via Ctrl-C (default 5m0s)
+```
+
+## engram catalog
+
+```
+Print the machine-readable catalog of every command, flag and exit code as JSON
+
+Usage:
+  engram catalog [flags]
+
+Flags:
+  -h, --help   help for catalog
 ```
 
 ## engram get
@@ -624,6 +638,22 @@ Flags:
       --output string         output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
       --scope string          only summarize records in this scope
       --timeout duration      max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 30m0s)
+```
+
+## engram tui
+
+```
+Open the read-only terminal console for browsing memories. A bare engram opens the same console with settings from the environment only. The console needs a terminal on stdin and stdout; agents and scripts read the machine-readable catalog with engram catalog.
+
+Usage:
+  engram tui [flags]
+
+Flags:
+  -h, --help                help for tui
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```
 
 ## engram version

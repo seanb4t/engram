@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
@@ -75,8 +76,21 @@ func TestCLIExitCodes(t *testing.T) {
 		}
 	})
 
-	t.Run("bare invocation exits 0 with one JSON doc on stdout and empty stderr", func(t *testing.T) {
+	t.Run("bare invocation without a terminal exits 2 and points at engram catalog", func(t *testing.T) {
 		stdout, stderr, code := runCLI(t)
+		if code != 2 {
+			t.Fatalf("exit code = %d, want 2\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		}
+		if stdout != "" {
+			t.Errorf("stdout = %q, want empty", stdout)
+		}
+		if !strings.Contains(stderr, "engram catalog") || strings.Count(strings.TrimSpace(stderr), "\n") != 0 {
+			t.Errorf("stderr = %q, want one line naming engram catalog", stderr)
+		}
+	})
+
+	t.Run("catalog exits 0 with one JSON doc on stdout and empty stderr", func(t *testing.T) {
+		stdout, stderr, code := runCLI(t, "catalog")
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
