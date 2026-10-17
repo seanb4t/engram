@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.26.0](https://github.com/seanb4t/engram/compare/v0.25.0...v0.26.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** open a read-only terminal console from bare engram ([#832](https://github.com/seanb4t/engram/issues/832))
+
+### Features
+
+* **cli:** open a read-only terminal console from bare engram ([#832](https://github.com/seanb4t/engram/issues/832)) ([da2cbd9](https://github.com/seanb4t/engram/commit/da2cbd9921a8a6d9b2d3b1943d571269d09331e8))
+
 ## [0.25.0](https://github.com/seanb4t/engram/compare/v0.24.1...v0.25.0) (2026-10-17)
 
 
