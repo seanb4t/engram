@@ -2,7 +2,7 @@
 
 ## Why
 
-The engram CLI can authenticate only with a bearer credential that the user gets somewhere else and puts in `ENGRAM_TOKEN` or a `--token-file`. A human who wants to run `engram search` against an OIDC-protected server has no supported way to get that token, and an OIDC access token expires within minutes, so a hand-copied token stops working almost at once. There is no originating GitHub issue. The need came from an explore session on 2026-10-17, and the planned `engram prime` session primer (change `cli-prime`) depends on this one.
+The engram CLI can authenticate only with a bearer credential that the user gets somewhere else and puts in `ENGRAM_TOKEN` or a `--token-file`. A human who wants to run `engram search` against an OIDC-protected server has no supported way to get that token, and an OIDC access token expires within minutes, so a hand-copied token stops working almost at once. This change comes from #818, filed after an explore session on 2026-10-17, and the planned `engram prime` session primer (change `cli-prime`, #820) depends on this one.
 
 ## What Changes
 

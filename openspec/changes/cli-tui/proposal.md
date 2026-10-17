@@ -2,7 +2,7 @@
 
 ## Why
 
-Running `engram` with no arguments writes the self-describe catalog (D-15) to the terminal: one large JSON document that is useful to an agent and unreadable to a person. A human who types `engram` gets a wall of JSON instead of a way to work with their memories. There is no originating GitHub issue. The need came from an explore session on 2026-10-17.
+Running `engram` with no arguments writes the self-describe catalog (D-15) to the terminal: one large JSON document that is useful to an agent and unreadable to a person. A human who types `engram` gets a wall of JSON instead of a way to work with their memories. This change comes from #819, filed after an explore session on 2026-10-17.
 
 ## What Changes
 
@@ -37,5 +37,5 @@ None. No existing spec covers the CLI.
 - **engram skill:** deliberately unchanged. No skill text runs bare `engram`.
 - **CLAUDE.md memory contract:** deliberately unchanged.
 - **Dependencies:** new Go dependencies for the TUI: Bubble Tea v2 (`charm.land/bubbletea/v2`) and the libraries it pairs with for components and styling. Design.md confirms the exact modules and that each one is the maintained upstream.
-- **Credentials:** the TUI works with `ENGRAM_TOKEN` and `--token-file` today. It picks up the login cache automatically once change `cli-login` lands, because both use the same credential chain. This change does not depend on `cli-login`.
-- **Out of scope:** curation writes from the TUI (store, update, supersede, archive, restore, delete), which can follow in a later change; the agent session primer, which is change `cli-prime`; and any change to `engram --help`.
+- **Credentials:** the TUI works with `ENGRAM_TOKEN` and `--token-file` today. It picks up the login cache automatically once change `cli-login` (#818) lands, because both use the same credential chain. This change does not depend on `cli-login`.
+- **Out of scope:** curation writes from the TUI (store, update, supersede, archive, restore, delete), which can follow in a later change; the agent session primer, which is change `cli-prime` (#820); and any change to `engram --help`.
