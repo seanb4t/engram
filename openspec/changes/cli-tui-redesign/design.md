@@ -176,7 +176,7 @@ Alternatives considered:
 | `client.tui_theme` | `ENGRAM_TUI_THEME` | `theme` | `""` | `""` or a theme name |
 | `client.tui_mouse` | `ENGRAM_TUI_MOUSE` | `mouse` | `""` | `""` or anything `strconv.ParseBool` accepts |
 
-- **Validation.** `config.ValidateClient` checks both. A bad value is a usage error (exit 2) that names the setting and the valid values, before the console opens.
+- **Validation.** A console-only `config.ValidateConsole` checks both, kept apart from `config.ValidateClient` so an `ENGRAM_TUI_THEME` meant for the console can never fail `engram search`. A bad value is a usage error (exit 2) that names the setting and the valid values, before the console opens.
 - **Helm.** No Helm value, like every other `client.*` row: the chart deploys only the server.
 - **Flags.** `engram tui` binds `--theme` and `--mouse`, with `--mouse` a bool flag as `--insecure` is. Bare `engram` takes no flags, so it reads the environment and the saved preference.
 - **Resolution order.** The empty default means "not set", so the model falls back in order: flag, environment, saved preference, then `engram` and mouse off.
