@@ -222,8 +222,8 @@ importers:
         version: 3.3.1(tailwind-merge@3.7.0)(tailwindcss@4.3.3)
     devDependencies:
       '@lucide/svelte':
-        specifier: 1.53.0
-        version: 1.53.0(svelte@5.57.2)
+        specifier: 1.57.0
+        version: 1.57.0(svelte@5.57.2)
       '@sveltejs/adapter-static':
         specifier: 3.0.10
         version: 3.0.10(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@26.0.0)(jiti@2.7.0)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@26.0.0)(jiti@2.7.0)))
@@ -431,8 +431,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lucide/svelte@1.53.0':
-    resolution: {integrity: sha512-RZTHcLAwwjAz+rO1S4IPQSTzDycGZWhSYa0GS3sXAoJ3GTHdBZyHCXutIxJketIAoaIkcmFK5Ucfo2+WBYpKLA==}
+  '@lucide/svelte@1.57.0':
+    resolution: {integrity: sha512-KWO10Jo80+Rd/JGBQkVcwkF1czJH+CwjHtfjZzLfRsmcI42YuMai3SCiRtdo5+3yo7fhT3oHKHaSBvN8GHEVpQ==}
     peerDependencies:
       svelte: ^5
 
@@ -1914,7 +1914,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lucide/svelte@1.53.0(svelte@5.57.2)':
+  '@lucide/svelte@1.57.0(svelte@5.57.2)':
     dependencies:
       svelte: 5.57.2
 
@@ -2354,7 +2354,7 @@ snapshots:
   css-tree@3.2.1:
     dependencies:
       mdn-data: 2.27.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
     optional: true
 
   css.escape@1.5.1: {}
