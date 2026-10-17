@@ -42,7 +42,7 @@
 
 ## 6. Integration
 
-- [ ] 6.1 Build the binary again with the same flags as task 3.1 and record the size difference in the PR description. Verify both sizes appear there.
+- [x] 6.1 Build the binary again with the same flags as task 3.1 and record the size difference in the PR description. Verify both sizes appear there.
 - [x] 6.2 Against a reachable engram server, run `engram` in an interactive terminal, open each view, toggle each include option and quit. Then run `engram | cat; echo $?` and `engram catalog | jq -e .binary`. Verify the console behaves as `specs/terminal-console/spec.md` describes, the pipe prints the pointer and `2`, and the catalog parses.
 - [x] 6.3 Run the quality gate `task` (lint and test). Verify it exits 0.
 
