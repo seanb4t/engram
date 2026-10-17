@@ -36,6 +36,15 @@ type stubEngramService struct {
 	storeFn         func(context.Context, *engramv1.StoreMemoryRequest) (*engramv1.StoreMemoryResponse, error)
 	getFn           func(context.Context, *engramv1.GetMemoryRequest) (*engramv1.GetMemoryResponse, error)
 	migrateStatusFn func(context.Context, *engramv1.MigrateStatusRequest) (*engramv1.MigrateStatusResponse, error)
+	listScopesFn    func(context.Context, *engramv1.ListScopesRequest) (*engramv1.ListScopesResponse, error)
+	relatedFn       func(context.Context, *engramv1.RelatedMemoriesRequest) (*engramv1.RelatedMemoriesResponse, error)
+	listTagsFn      func(context.Context, *engramv1.ListTagsRequest) (*engramv1.ListTagsResponse, error)
+	listRulesFn     func(context.Context, *engramv1.ListRulesRequest) (*engramv1.ListRulesResponse, error)
+	listScheduledFn func(context.Context, *engramv1.ListScheduledRequest) (*engramv1.ListScheduledResponse, error)
+
+	// readOnly, when set, fails that test on any write RPC: the evidence
+	// that the terminal console only reads.
+	readOnly *testing.T
 
 	searchCalls        int
 	listCalls          int
@@ -75,6 +84,9 @@ func (s *stubEngramService) ListMemories(ctx context.Context, req *connect.Reque
 }
 
 func (s *stubEngramService) StoreMemory(ctx context.Context, req *connect.Request[engramv1.StoreMemoryRequest]) (*connect.Response[engramv1.StoreMemoryResponse], error) {
+	if s.readOnly != nil {
+		return nil, s.rejectWrite("StoreMemory")
+	}
 	s.storeCalls++
 	s.lastAuthHeader = req.Header().Get("Authorization")
 	if s.storeFn == nil {
@@ -111,6 +123,79 @@ func (s *stubEngramService) MigrateStatus(ctx context.Context, req *connect.Requ
 		return nil, err
 	}
 	return connect.NewResponse(resp), nil
+}
+
+// stubRead runs fn for a read RPC, or answers unimplemented when it is unset.
+func stubRead[Req, Resp any](ctx context.Context, req *connect.Request[Req], fn func(context.Context, *Req) (*Resp, error)) (*connect.Response[Resp], error) {
+	if fn == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errUnimplementedStub)
+	}
+	resp, err := fn(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *stubEngramService) ListScopes(ctx context.Context, req *connect.Request[engramv1.ListScopesRequest]) (*connect.Response[engramv1.ListScopesResponse], error) {
+	return stubRead(ctx, req, s.listScopesFn)
+}
+
+func (s *stubEngramService) RelatedMemories(ctx context.Context, req *connect.Request[engramv1.RelatedMemoriesRequest]) (*connect.Response[engramv1.RelatedMemoriesResponse], error) {
+	return stubRead(ctx, req, s.relatedFn)
+}
+
+func (s *stubEngramService) ListTags(ctx context.Context, req *connect.Request[engramv1.ListTagsRequest]) (*connect.Response[engramv1.ListTagsResponse], error) {
+	return stubRead(ctx, req, s.listTagsFn)
+}
+
+func (s *stubEngramService) ListRules(ctx context.Context, req *connect.Request[engramv1.ListRulesRequest]) (*connect.Response[engramv1.ListRulesResponse], error) {
+	return stubRead(ctx, req, s.listRulesFn)
+}
+
+func (s *stubEngramService) ListScheduled(ctx context.Context, req *connect.Request[engramv1.ListScheduledRequest]) (*connect.Response[engramv1.ListScheduledResponse], error) {
+	return stubRead(ctx, req, s.listScheduledFn)
+}
+
+// rejectWrite fails the readOnly test, if one is set, and answers
+// unimplemented. Errorf, not Fatalf: it runs on the server's goroutine.
+func (s *stubEngramService) rejectWrite(procedure string) error {
+	if s.readOnly != nil {
+		s.readOnly.Errorf("the server received the write RPC %s", procedure)
+	}
+	return connect.NewError(connect.CodeUnimplemented, errUnimplementedStub)
+}
+
+func (s *stubEngramService) StoreDiscovery(context.Context, *connect.Request[engramv1.StoreDiscoveryRequest]) (*connect.Response[engramv1.StoreDiscoveryResponse], error) {
+	return nil, s.rejectWrite("StoreDiscovery")
+}
+
+func (s *stubEngramService) UpdateMemory(context.Context, *connect.Request[engramv1.UpdateMemoryRequest]) (*connect.Response[engramv1.UpdateMemoryResponse], error) {
+	return nil, s.rejectWrite("UpdateMemory")
+}
+
+func (s *stubEngramService) DeleteMemory(context.Context, *connect.Request[engramv1.DeleteMemoryRequest]) (*connect.Response[engramv1.DeleteMemoryResponse], error) {
+	return nil, s.rejectWrite("DeleteMemory")
+}
+
+func (s *stubEngramService) SetVisibility(context.Context, *connect.Request[engramv1.SetVisibilityRequest]) (*connect.Response[engramv1.SetVisibilityResponse], error) {
+	return nil, s.rejectWrite("SetVisibility")
+}
+
+func (s *stubEngramService) ScheduleMemory(context.Context, *connect.Request[engramv1.ScheduleMemoryRequest]) (*connect.Response[engramv1.ScheduleMemoryResponse], error) {
+	return nil, s.rejectWrite("ScheduleMemory")
+}
+
+func (s *stubEngramService) ArchiveMemory(context.Context, *connect.Request[engramv1.ArchiveMemoryRequest]) (*connect.Response[engramv1.ArchiveMemoryResponse], error) {
+	return nil, s.rejectWrite("ArchiveMemory")
+}
+
+func (s *stubEngramService) RestoreMemory(context.Context, *connect.Request[engramv1.RestoreMemoryRequest]) (*connect.Response[engramv1.RestoreMemoryResponse], error) {
+	return nil, s.rejectWrite("RestoreMemory")
+}
+
+func (s *stubEngramService) SupersedeMemory(context.Context, *connect.Request[engramv1.SupersedeMemoryRequest]) (*connect.Response[engramv1.SupersedeMemoryResponse], error) {
+	return nil, s.rejectWrite("SupersedeMemory")
 }
 
 // startStubServer mounts svc's real generated Connect handler on an

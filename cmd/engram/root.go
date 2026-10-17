@@ -28,19 +28,22 @@ var rootCmd = &cobra.Command{
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	// RunE makes the root runnable, so a bare invocation reaches the D-15
-	// self-describe catalog instead of falling into cobra's
-	// help-and-exit-0 path. Args is REQUIRED alongside it, not optional and
-	// coupled to RunE — do not remove one without the other. cobra's own
-	// legacyArgs fallback (used when Args is nil) happens to reject an
-	// unmatched first argument for a root command with subcommands too, but
-	// that is an incidental property of cobra's internals, not a contract
-	// this package should rely on: any future Args value more permissive
-	// than cobra.NoArgs (e.g. cobra.ArbitraryArgs) would route a mistyped
-	// verb into this RunE and print the catalog at exit 0 instead of
-	// failing (see 02-03-PLAN.md's landmine table and 02-03-SUMMARY.md's
-	// RED observations).
-	RunE: runSelfDescribe,
+	// RunE makes the root runnable, so a bare invocation opens the terminal
+	// console (the same entry point as `engram tui`, reading only the
+	// environment) instead of falling into cobra's help-and-exit-0 path.
+	// Without a terminal on both stdin and stdout it opens nothing: it
+	// prints one line naming `engram catalog`, the D-15 self-describe
+	// catalog's home since the console took the bare invocation, and exits
+	// 2. Args is REQUIRED alongside RunE, not optional and coupled to it —
+	// do not remove one without the other. cobra's own legacyArgs fallback
+	// (used when Args is nil) happens to reject an unmatched first argument
+	// for a root command with subcommands too, but that is an incidental
+	// property of cobra's internals, not a contract this package should
+	// rely on: any future Args value more permissive than cobra.NoArgs
+	// (e.g. cobra.ArbitraryArgs) would route a mistyped verb into this RunE
+	// instead of failing (see 02-03-PLAN.md's landmine table and
+	// 02-03-SUMMARY.md's RED observations).
+	RunE: runConsole,
 	Args: cobra.NoArgs,
 	// cmd is the LEAF command cobra is executing (cobra passes the running
 	// subcommand, not rootCmd itself, into a parent's PersistentPreRunE when
@@ -87,6 +90,15 @@ func init() {
 	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return usageErrorf("%s", err)
 	})
+}
+
+// noPositionalArgs is cobra.NoArgs with the usage exit code: a stray
+// argument is the caller's own mistake (exit 2), not an unclassified one.
+func noPositionalArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return usageErrorf("%s takes no arguments, got %q", cmd.CommandPath(), args)
+	}
+	return nil
 }
 
 // Execute runs the root command and exits non-zero on error, printing the error

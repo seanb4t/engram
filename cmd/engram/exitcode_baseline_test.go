@@ -257,11 +257,21 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		changes: false,
 	},
 	{
-		name:    "root/self-describe",
+		// The bare invocation emitted the catalog (exit 0) until the
+		// terminal console took it; with no terminal it now points at
+		// `engram catalog` and exits 2.
+		name:    "root/no-terminal",
 		args:    noArgs,
 		before:  exitOK,
-		after:   exitOK,
-		changes: false,
+		after:   exitUsage,
+		changes: true,
+		landed:  true,
+	},
+	{
+		name:       "catalog",
+		args:       []string{"catalog"},
+		after:      exitOK,
+		introduced: true,
 	},
 	{
 		// The accepted, documented gap: cobra's Find() fails before
@@ -524,7 +534,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 44
+	const wantRows = 45
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}

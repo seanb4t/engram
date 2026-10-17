@@ -103,16 +103,16 @@ type decodedCatalog struct {
 	Notes []string `json:"notes"`
 }
 
-// decodeCatalog runs a bare invocation and decodes the whole of stdout as a
+// decodeCatalog runs `engram catalog` and decodes the whole of stdout as a
 // single JSON object, failing the test on any parse error rather than a
 // substring check — a substring check would pass even if help text were
 // prepended ahead of the JSON payload.
 func decodeCatalog(t *testing.T) decodedCatalog {
 	t.Helper()
 	resetClientFlags(t)
-	stdout, _, err := runClient(t, noArgs...)
+	stdout, _, err := runClient(t, "catalog")
 	if err != nil {
-		t.Fatalf("bare invocation returned error: %v", err)
+		t.Fatalf("engram catalog returned error: %v", err)
 	}
 	var doc decodedCatalog
 	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
@@ -137,14 +137,13 @@ func wantCommandNames(t *testing.T) map[string]bool {
 	return want
 }
 
-// TestRootBareInvocationEmitsCatalog is D-15's core gate: a bare
-// invocation writes one JSON document to stdout and exits 0, with stderr
-// empty.
-func TestRootBareInvocationEmitsCatalog(t *testing.T) {
+// TestCatalogCommandEmitsCatalog is D-15's core gate: `engram catalog`
+// writes one JSON document to stdout and exits 0, with stderr empty.
+func TestCatalogCommandEmitsCatalog(t *testing.T) {
 	resetClientFlags(t)
-	stdout, stderr, err := runClient(t, noArgs...)
+	stdout, stderr, err := runClient(t, "catalog")
 	if err != nil {
-		t.Fatalf("bare invocation returned error: %v", err)
+		t.Fatalf("engram catalog returned error: %v", err)
 	}
 	var doc map[string]any
 	if uErr := json.Unmarshal([]byte(stdout), &doc); uErr != nil {
@@ -320,15 +319,38 @@ func TestRootExistingSubcommandsStillResolve(t *testing.T) {
 // path specifically: stderr is empty and stdout is the whole document.
 func TestCatalogGoesToStdoutNotStderr(t *testing.T) {
 	resetClientFlags(t)
-	stdout, stderr, err := runClient(t, noArgs...)
+	stdout, stderr, err := runClient(t, "catalog")
 	if err != nil {
-		t.Fatalf("bare invocation returned error: %v", err)
+		t.Fatalf("engram catalog returned error: %v", err)
 	}
 	if stderr != "" {
 		t.Errorf("stderr = %q, want empty", stderr)
 	}
 	if !isJSON(stdout) {
 		t.Errorf("stdout did not parse as JSON: %q", stdout)
+	}
+}
+
+// TestCatalogRejectsPositionalArgument: a stray argument is a usage error
+// with nothing on stdout, never the catalog.
+func TestCatalogRejectsPositionalArgument(t *testing.T) {
+	resetClientFlags(t)
+	stdout, _, err := runClient(t, "catalog", "search")
+	if stdout != "" {
+		t.Errorf("stdout = %q, want empty", stdout)
+	}
+	if got := exitCodeFromError(err); got != exitUsage {
+		t.Errorf("exitCodeFromError(err) = %d, want %d (err=%v)", got, exitUsage, err)
+	}
+}
+
+// TestCatalogNeedsNoServer: the catalog describes the binary, so it needs
+// no --server or ENGRAM_SERVER_URL and makes no request.
+func TestCatalogNeedsNoServer(t *testing.T) {
+	t.Setenv("ENGRAM_SERVER_URL", "")
+	doc := decodeCatalog(t)
+	if len(doc.Commands) == 0 || len(doc.ExitCodes) == 0 {
+		t.Errorf("catalog without a server is incomplete: %d commands, %d exit codes", len(doc.Commands), len(doc.ExitCodes))
 	}
 }
 
@@ -654,17 +676,17 @@ func TestCatalogCarriesCrossSpineGuidance(t *testing.T) {
 	}
 }
 
-// TestHelpAndCatalogAreDifferentOutputs pins the bare-invocation catalog
-// and --help's human output as a pair: a change that made help emit JSON,
-// or the catalog emit help text, breaks this even if each half's own test
-// were somehow satisfied.
+// TestHelpAndCatalogAreDifferentOutputs pins `engram catalog` and --help's
+// human output as a pair: a change that made help emit JSON, or the
+// catalog emit help text, breaks this even if each half's own test were
+// somehow satisfied.
 func TestHelpAndCatalogAreDifferentOutputs(t *testing.T) {
 	resetClientFlags(t)
 	resetHelpFlag(t, rootCmd)
 
-	catalogOut, _, err := runClient(t, noArgs...)
+	catalogOut, _, err := runClient(t, "catalog")
 	if err != nil {
-		t.Fatalf("bare invocation returned error: %v", err)
+		t.Fatalf("engram catalog returned error: %v", err)
 	}
 	helpOut, _, err2 := runClient(t, "--help")
 	if err2 != nil {
@@ -672,7 +694,7 @@ func TestHelpAndCatalogAreDifferentOutputs(t *testing.T) {
 	}
 
 	if catalogOut == helpOut {
-		t.Fatal("bare invocation and --help produced identical stdout")
+		t.Fatal("engram catalog and --help produced identical stdout")
 	}
 	catalogIsJSON := isJSON(catalogOut)
 	helpIsJSON := isJSON(helpOut)

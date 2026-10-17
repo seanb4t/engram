@@ -623,7 +623,7 @@ type timeoutGroup struct {
 var timeoutGroups = []timeoutGroup{
 	{
 		name:         "reject-zero-client",
-		commands:     map[string]bool{"search": true, "list": true, "store": true, "get": true, "migration-status": true},
+		commands:     map[string]bool{"search": true, "list": true, "store": true, "get": true, "migration-status": true, "tui": true},
 		zeroRejected: true,
 	},
 	{
@@ -666,6 +666,11 @@ func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[str
 		return []string{"get", "some-id", "--server", deadServer, "--timeout", "0"}, nil
 	case "migration-status":
 		return []string{"migration-status", "--server", deadServer, "--timeout", "0"}, nil
+	case "tui":
+		// Past the no-terminal guard, so --timeout 0 meets the client
+		// validator instead of the guard's own exit 2.
+		forceTerminal(t)
+		return []string{"tui", "--server", deadServer, "--timeout", "0"}, nil
 	case "reindex":
 		return []string{"reindex", "--target", "t", "--timeout", "0"}, env
 	case "prune-expired":
