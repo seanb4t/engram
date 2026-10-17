@@ -203,7 +203,7 @@ func (m *consoleModel) applyResult(r rpcResult) {
 	if r.err != nil {
 		// The server's message goes out unchanged, field=/hint= envelope
 		// included, and the session goes on.
-		m.status, m.statusErr = "error: "+r.err.Error(), true
+		m.status, m.statusErr = "error: "+consoleText(r.err.Error(), false), true
 		return
 	}
 	s.loaded = true
@@ -526,7 +526,7 @@ func (m *consoleModel) call(s *screen, token string) func(context.Context) (func
 				s.rows = r.GetRules()
 				s.footer = recallFooter(true, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown(), nil)
 				if a := r.GetAdvisory(); a != "" {
-					s.footer += a + "\n"
+					s.footer += consoleText(a, false) + "\n"
 				}
 			}, nil
 		}

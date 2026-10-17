@@ -514,3 +514,43 @@ func TestTUIReadOnlySession(t *testing.T) {
 		t.Errorf("session ended with an error: %s", h.m.status)
 	}
 }
+
+// TestTUIServerTextCannotEscape: text from the server (here another
+// actor's shared record, a scope name, a tag and an error) never reaches
+// the terminal with a control sequence of its own.
+func TestTUIServerTextCannotEscape(t *testing.T) {
+	const osc52 = "\x1b]52;c;cHduZWQ=\x07"
+	const c1CSI = "\u009b2J"
+	hostile := "x" + osc52 + c1CSI + "\r"
+	rec := testMemory("rrrrrrrrr7", "summary "+hostile)
+	rec.Content = "line one " + hostile + "\nline two"
+	rec.Visibility, rec.Owner, rec.Scope = "shared", "owner "+hostile, "repo:"+hostile
+	rec.Tags = []string{"tag " + hostile}
+	svc := &stubEngramService{
+		listFn: listOf(rec),
+		getFn: func(context.Context, *engramv1.GetMemoryRequest) (*engramv1.GetMemoryResponse, error) {
+			return &engramv1.GetMemoryResponse{Memory: rec}, nil
+		},
+		listTagsFn: func(context.Context, *engramv1.ListTagsRequest) (*engramv1.ListTagsResponse, error) {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("boom "+hostile))
+		},
+	}
+	h := newConsoleHarness(t, svc, "repo:"+hostile)
+	check := func(where string) {
+		t.Helper()
+		v := h.m.View().Content
+		for _, bad := range []string{"\x1b]", "\x07", "\u009b", "\r"} {
+			if strings.Contains(v, bad) {
+				t.Errorf("%s: view carries %q from server text", where, bad)
+			}
+		}
+	}
+	check("list")
+	h.press("f")
+	check("filters")
+	h.press("esc", "enter")
+	check("detail")
+	h.wantView("line two")
+	h.press("esc", "2")
+	check("error status")
+}

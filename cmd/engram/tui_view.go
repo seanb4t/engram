@@ -36,6 +36,23 @@ var edgeTypeWords = map[engramv1.EdgeType]string{
 
 const consoleNotFound = "not found: no record you can read has that id"
 
+// consoleText makes server-supplied text safe to draw. Every C0 and C1
+// control rune and DEL becomes a space, so no stored record (another
+// actor's shared one included) can send the terminal an escape sequence.
+// keepNewlines keeps line breaks for the detail view's content body. It
+// runs on raw text, before any styling adds the console's own sequences.
+func consoleText(s string, keepNewlines bool) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' && keepNewlines:
+			return r
+		case r < 0x20, r >= 0x7f && r <= 0x9f:
+			return ' '
+		}
+		return r
+	}, s)
+}
+
 func (m *consoleModel) View() tea.View {
 	s := m.active()
 	top := []string{m.headerLine(), m.inputLine(), consoleTitle.Render(m.title(s))}
@@ -89,7 +106,7 @@ func (m *consoleModel) where() string {
 	if m.crossSpine {
 		return "every readable scope"
 	}
-	return m.scope
+	return consoleText(m.scope, false)
 }
 
 func (m *consoleModel) headerLine() string {
@@ -141,6 +158,10 @@ func (m *consoleModel) statusLine() string {
 }
 
 func (m *consoleModel) title(s *screen) string {
+	return consoleText(m.rawTitle(s), false)
+}
+
+func (m *consoleModel) rawTitle(s *screen) string {
 	n := s.rowCount()
 	more := ""
 	if s.nextToken != "" {
@@ -227,6 +248,7 @@ func (m *consoleModel) rowLines(s *screen, h int) []string {
 			cols = append(cols, truncateSummary(text, max(m.width, 20)))
 			line = strings.Join(cols, "  ")
 		}
+		line = consoleText(line, false)
 		switch {
 		case i == s.cursor:
 			line = consoleSelected.Render(line)
@@ -277,6 +299,7 @@ func (m *consoleModel) filterLines(h int) []string {
 		entries = append(entries, fmt.Sprintf("%s %s  %s%d", radio(!m.crossSpine && m.scope == sc.GetScope()), sc.GetScope(), approx, sc.GetCount()))
 	}
 	for i := range entries {
+		entries[i] = consoleText(entries[i], false)
 		if i == m.filterCursor {
 			entries[i] = consoleSelected.Render(entries[i])
 		}
@@ -304,7 +327,7 @@ func (m *consoleModel) renderDetail(s *screen) string {
 	var b strings.Builder
 	field := func(name, value string) {
 		if value != "" {
-			fmt.Fprintf(&b, "%-15s %s\n", name+":", value)
+			fmt.Fprintf(&b, "%-15s %s\n", name+":", consoleText(value, false))
 		}
 	}
 	ts := func(name string, t *timestamppb.Timestamp) {
@@ -338,6 +361,6 @@ func (m *consoleModel) renderDetail(s *screen) string {
 	field("schema_version", strconv.FormatUint(uint64(r.GetSchemaVersion()), 10))
 	field("summary", r.GetSummary())
 	b.WriteString("\n")
-	b.WriteString(r.GetContent())
+	b.WriteString(consoleText(r.GetContent(), true))
 	return b.String()
 }
