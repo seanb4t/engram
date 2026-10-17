@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/seanb4t/engram/compare/v0.24.1...v0.25.0) (2026-10-17)
+
+
+### Features
+
+* **cli:** add engram login and logout with a cached, refreshing credential ([#825](https://github.com/seanb4t/engram/issues/825)) ([25ef049](https://github.com/seanb4t/engram/commit/25ef049c50c55275c505b86eb5483e6cc087bafe))
+
 ## [0.24.1](https://github.com/seanb4t/engram/compare/v0.24.0...v0.24.1) (2026-10-11)
 
 
