@@ -678,9 +678,9 @@ The console opens on your latest memories across every scope you can read.
 - **4 scheduled** shows your own records that are not active yet. `tab`
   switches to your expired records.
 
-Enter opens the selected record. The record is fetched by id, so the detail
-view also shows archived, superseded, expired and scheduled records, and the
-successor's id for a superseded record. `r` shows the record's related
+Enter opens the selected record. The console fetches it by id, so the
+detail view also shows a record that is archived, superseded, expired or
+scheduled. For a superseded record, it shows the successor's id. `r` shows the record's related
 memories, with the type of each edge.
 
 List and search show only the records the recall gate returns. The footer

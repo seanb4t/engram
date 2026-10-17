@@ -42,6 +42,7 @@ one predictable, migration-safe contract.
 | script `list_rules`/`ListRules` with no `scopes` expecting a rejection, or pattern-match `list_scheduled`/`ListScheduled`'s missing-scope hint as `required` rather than `conditional_required` | §21 |
 | set `ENGRAM_DECISIONS_PROVIDER=jev` (or Helm `memory.decisions.provider: jev`) and do not want console `/search` query text sent to the provider | §22 |
 | hand-tune the Qdrant collection's quantization, run Qdrant with little memory headroom, or have a collection whose index builds take minutes | §23 |
+| run a bare `engram` from a script or an agent to read the self-describe catalog | §24 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -626,6 +627,26 @@ quantization.
   quantization in place, which is harmless — older versions never read it.
 - Operators whose index builds take longer than two minutes: raise
   `ENGRAM_QDRANT_SCHEMA_TIMEOUT` (Helm: `memory.qdrant.schemaTimeoutSeconds`).
+
+### 24. The self-describe catalog moves to `engram catalog`
+
+A bare `engram` no longer prints the self-describe catalog (#819). The same
+JSON document now comes from `engram catalog`. Its shape does not change:
+the same top-level keys, the same command entries, and the same exit-code
+table. It gains entries for the two new commands, `catalog` and `tui`.
+
+A bare `engram` now depends on the terminal:
+
+- When stdin and stdout are both terminals, it opens the read-only
+  [terminal console](/guides/cli/#terminal-console).
+- Otherwise (an agent, a pipe or a script), it opens nothing and does not
+  wait for input. It writes one line to stderr that names `engram catalog`,
+  and exits `2`.
+
+**Who should act:** anyone whose script or agent runs a bare `engram` to read
+the catalog. Run `engram catalog` instead. A caller that is not changed fails
+with exit `2` and empty stdout, and the stderr line names the new command.
+Nothing in this repository runs a bare `engram`.
 
 ---
 
