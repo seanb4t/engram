@@ -1,6 +1,6 @@
 ---
 title: Headless CLI Client
-description: Use engram search, engram list, and engram store from a shell — an agent with no MCP client, a CI step, or a cron loop — including credentials, TLS, exit codes, and the machine-readable self-describe catalog.
+description: Use engram search, engram list, and engram store from a shell — an agent with no MCP client, a CI step, or a cron loop — including credentials, TLS, exit codes, the read-only terminal console, and the machine-readable catalog that engram catalog prints.
 ---
 
 `engram` is one binary that is both the server (`engram serve`) and a client for
@@ -606,7 +606,7 @@ zero-semantics, and it is not uniform across commands:**
 
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
-| `search`, `list`, `store`, `get`, `migration-status` | Per-RPC-call deadline | **Rejected** (usage error) |
+| `search`, `list`, `store`, `get`, `migration-status`, `tui` | Per-RPC-call deadline | **Rejected** (usage error) |
 | `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge`, `migrate`, `migrate status`, `migrate revert` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
@@ -631,20 +631,106 @@ reaches zero. An operator sizing `--timeout` for "one reverse walk of my
 backlog" is actually budgeting for at least two full read-only passes over
 that same range before any inverse is even applied.
 
+## Terminal console
+
+In a terminal, a bare `engram` opens the terminal console: a full-screen,
+read-only view of the memories you can read. `engram tui` opens the same
+console and accepts four of the shared flags: `--server`, `--token-file`,
+`--insecure` and `--timeout`. A bare `engram` accepts no flags. It reads its
+settings from the environment (`ENGRAM_SERVER_URL`, `ENGRAM_TOKEN`,
+`ENGRAM_TIMEOUT`) and from the saved login only. Use `engram tui` when your
+credential is in a file or when you need `--insecure`, because neither has an
+environment form.
+
+The console sends only read requests. It cannot store, update, supersede,
+archive, restore, delete or share a record.
+
+The console needs a terminal on both stdin and stdout. Without one (an agent,
+a pipe or a script), `engram` and `engram tui` open nothing and do not wait
+for input. They write one line to stderr that names `engram catalog`, and
+exit `2`. Agents read [the self-describe catalog](#the-self-describe-catalog)
+instead.
+
+Before the console takes over the screen, it checks its settings and reads
+your scopes from the server. If that fails, the terminal stays as it was, and
+the command exits with the code a client verb gives for the same failure:
+
+| Code | Cause |
+|------|-------|
+| 2 | No `--server`, `ENGRAM_SERVER_URL` or saved login, or a bad flag value |
+| 3 | The server rejected the credential |
+| 5 | The server is unreachable |
+| 6 | The server did not answer within `--timeout` |
+
+Quitting the console exits `0`.
+
+### Views
+
+The console opens on your latest memories across every scope you can read.
+
+- **1 memories** lists your memories, or shows search results. Press `/`,
+  type a query and press Enter. A search runs only on Enter, because the
+  server sends every search query to its embedding provider. A UUID or a
+  `short_id` opens that record instead of searching for it. An empty search
+  returns to the list.
+- **2 tags** shows the tags in the scope, with their counts.
+- **3 rules** shows the rules in every rule scope you can read.
+- **4 scheduled** shows your own records that are not active yet. `tab`
+  switches to your expired records.
+
+Enter opens the selected record. The record is fetched by id, so the detail
+view also shows archived, superseded, expired and scheduled records, and the
+successor's id for a superseded record. `r` shows the record's related
+memories, with the type of each edge.
+
+List and search show only the records the recall gate returns. The footer
+gives the `recall_gate_hidden` counts by state. `f` opens the scope and
+filters panel. There you choose one scope or every readable scope, and you
+can include archived, superseded, or scheduled and expired records.
+
+When a request fails, the status line shows the server's message unchanged,
+including any `field=<name> hint=<code>` envelope, and the console keeps
+running.
+
+### Keys
+
+The console uses the web console's key where the web console has one for the
+same action.
+
+| Key | Action |
+|-----|--------|
+| `/` | Search: type a query, then press Enter |
+| Enter | Open the selected record. In the filters panel, choose the row and close the panel |
+| Esc | Go back: close the full help, leave the search box or the filters panel, or return from a record |
+| `j` / `k`, Down / Up | Move the selection |
+| PgDn / PgUp, Home / End | Move by one page, or to the first or last row |
+| `r` | Show the related memories of the selected record |
+| `n` | Load the next page (memories list and scheduled view) |
+| `1` `2` `3` `4` | Open the memories, tags, rules or scheduled view |
+| `tab` | In the scheduled view, switch between scheduled and expired records |
+| `f` | Open the scope and filters panel. `space` toggles the row |
+| `?` | Show or hide the full key help |
+| `q`, Ctrl-C | Quit |
+
 ## The self-describe catalog
 
-Run `engram` with no arguments. It writes one JSON document to stdout and
-exits `0`: every command in the live binary, every flag with its type,
-default, and usage, and this same exit-code table — derived from the running
-binary's actual command tree and exit-code constants, not maintained by
-hand. `engram --help` is unaffected and still prints ordinary human help.
+Run `engram catalog`. It writes one JSON document to stdout and exits `0`:
+every command in the live binary, every flag with its type, default, and
+usage, and this same exit-code table — derived from the running binary's
+actual command tree and exit-code constants, not maintained by hand. It needs
+no server and no credential. `engram --help` is unaffected and still prints
+ordinary human help.
+
+A bare `engram` printed this document in earlier releases. It now opens the
+[terminal console](#terminal-console). Without a terminal, a bare `engram`
+exits `2` and writes one line to stderr that names `engram catalog`.
 
 This catalog is the **machine-readable, authoritative** form of everything on
 this page. When the two disagree, trust the binary — this page is prose
 describing it, not the contract itself.
 
 ```sh
-engram | jq '.commands[] | select(.name == "search")'
+engram catalog | jq '.commands[] | select(.name == "search")'
 ```
 
 ### Blast radius
