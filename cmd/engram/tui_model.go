@@ -238,6 +238,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case m.narrowIn.Focused():
 			m.narrowIn, cmd = m.narrowIn.Update(msg)
 			m.setNarrow(m.narrowIn.Value())
+			cmd = tea.Batch(cmd, m.selectionChanged())
 		}
 		return m, cmd
 	case tea.KeyPressMsg:

@@ -18,6 +18,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"connectrpc.com/connect"
 	"github.com/charmbracelet/colorprofile"
+	"github.com/sahilm/fuzzy"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
@@ -520,6 +521,43 @@ func TestTUILocalNarrowing(t *testing.T) {
 	if h.m.active().count() != 50 {
 		t.Errorf("after Esc %d rows show, want all 50", h.m.active().count())
 	}
+}
+
+// TestUnderlineMatchesKeepsNonASCII: underlining a fuzzy match keeps a
+// non-ASCII title intact and underlines the matched characters.
+func TestUnderlineMatchesKeepsNonASCII(t *testing.T) {
+	title := "Scope: repo:example/café"
+	matches := fuzzy.Find("café", []string{title})
+	if len(matches) != 1 {
+		t.Fatalf("fuzzy found %d matches, want 1", len(matches))
+	}
+	got := underlineMatches(title, matches[0].MatchedIndexes)
+	if plain := ansiCSI.ReplaceAllString(got, ""); plain != title {
+		t.Errorf("underlined title reads %q, want %q", plain, title)
+	}
+	if !strings.Contains(got, "é") || got == title {
+		t.Errorf("underlined title %q lost the é or underlined nothing", got)
+	}
+}
+
+// TestTUIPastedNarrowingMovesThePreview: a paste into the narrowing box
+// that moves the selection makes the preview follow it.
+func TestTUIPastedNarrowingMovesThePreview(t *testing.T) {
+	// zulu is three rows down, out of the neighbour prefetch, so only a
+	// selection change can load it.
+	rows := []*engramv1.Memory{testMemory("aaaaaaaaa1", "alpha record"), testMemory("ccccccccc3", "beta record"),
+		testMemory("ddddddddd4", "gamma record"), testMemory("bbbbbbbbb2", "zulu record")}
+	h := newConsoleHarness(t, &stubEngramService{listFn: listOf(rows...), getFn: getFrom(nil, rows...)})
+	h.fire()
+	h.wantView("alpha record in full")
+	h.press("=")
+	h.send(tea.PasteMsg{Content: "zulu"})
+	h.fire()
+	if got := h.m.active().selectedID; got != "id-bbbbbbbbb2" {
+		t.Fatalf("after pasting the selection is %q, want the zulu record", got)
+	}
+	h.wantView("zulu record in full")
+	h.noView("alpha record in full")
 }
 
 // --- preview ---

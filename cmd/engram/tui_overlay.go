@@ -428,18 +428,19 @@ func (m *consoleModel) filterMark(row filterRow) string {
 	return check(slices.Contains(m.chosenTags, row.value))
 }
 
-// underlineMatches underlines the characters a fuzzy match hit.
+// underlineMatches underlines the characters a fuzzy match hit. idx holds
+// byte offsets, as sahilm/fuzzy reports them, each the start of a rune.
 func underlineMatches(s string, idx []int) string {
 	if len(idx) == 0 {
 		return s
 	}
 	u := lipgloss.NewStyle().Underline(true)
 	var b strings.Builder
-	for i, r := range []byte(s) {
+	for i, r := range s {
 		if slices.Contains(idx, i) {
 			b.WriteString(u.Render(string(r)))
 		} else {
-			b.WriteByte(r)
+			b.WriteRune(r)
 		}
 	}
 	return b.String()
