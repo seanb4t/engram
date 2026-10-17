@@ -417,6 +417,14 @@ type ClientConfig struct {
 	// (ENGRAM_CLIENT_ID / --client-id). Empty means register a client
 	// through dynamic client registration instead.
 	ClientID string `koanf:"client_id"`
+	// TUITheme names the terminal console's theme (ENGRAM_TUI_THEME /
+	// --theme). Empty means not set, so the console falls back to the
+	// theme saved in its preferences file, then to "engram".
+	TUITheme string `koanf:"tui_theme"`
+	// TUIMouse turns the terminal console's mouse support on or off
+	// (ENGRAM_TUI_MOUSE / --mouse). Empty means not set, so the console
+	// falls back to its saved preference, then to off.
+	TUIMouse string `koanf:"tui_mouse"`
 }
 
 // SetupConfig backs `engram setup` (D-04): the deployment facts an

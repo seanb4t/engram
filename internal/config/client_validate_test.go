@@ -293,3 +293,47 @@ func TestClientConfigValidateFieldRules(t *testing.T) {
 		}
 	})
 }
+
+// TestValidateConsole pins the console-only validator: empty values mean
+// "not set"; an unknown theme names the setting and every valid theme; a
+// non-boolean mouse value names the setting.
+func TestValidateConsole(t *testing.T) {
+	for _, c := range []ClientConfig{
+		{},
+		{TUITheme: "engram", TUIMouse: "true"},
+		{TUITheme: "tokyo-night", TUIMouse: "false"},
+	} {
+		if err := ValidateConsole(c); err != nil {
+			t.Errorf("ValidateConsole(%+v) = %v, want nil", c, err)
+		}
+	}
+
+	err := ValidateConsole(ClientConfig{TUITheme: "nope"})
+	if err == nil {
+		t.Fatal(`ValidateConsole(theme "nope") = nil, want an error`)
+	}
+	for _, want := range append([]string{"--theme", "ENGRAM_TUI_THEME", "nope"}, TUIThemes...) {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("theme error = %q, want it to contain %q", err, want)
+		}
+	}
+
+	err = ValidateConsole(ClientConfig{TUIMouse: "maybe"})
+	if err == nil {
+		t.Fatal(`ValidateConsole(mouse "maybe") = nil, want an error`)
+	}
+	for _, want := range []string{"--mouse", "ENGRAM_TUI_MOUSE", "maybe"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("mouse error = %q, want it to contain %q", err, want)
+		}
+	}
+}
+
+// TestValidateClientIgnoresConsoleSettings: a console setting never fails
+// another client command.
+func TestValidateClientIgnoresConsoleSettings(t *testing.T) {
+	c := ClientConfig{Timeout: "30s", Insecure: "false", TUITheme: "nope", TUIMouse: "maybe"}
+	if err := ValidateClient(c); err != nil {
+		t.Errorf("ValidateClient with bad console settings = %v, want nil", err)
+	}
+}
