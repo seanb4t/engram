@@ -128,6 +128,37 @@ with neither issuer set is a fail-fast startup error.
 
 ---
 
+## CLI login (`engram login`)
+
+[`engram login`](/guides/cli/#log-in-with-engram-login) gets a token for a
+person from the IdP that `ENGRAM_OIDC_ISSUER` names, and the client commands
+send it on the same bearer lane as agents. The server needs no extra setting.
+The IdP must allow these things:
+
+- **The device authorization grant (RFC 8628).** The IdP's discovery document
+  must have a `device_authorization_endpoint`.
+- **A client for the CLI.** Either anonymous dynamic client registration
+  (RFC 7591) of a public client with the `urn:ietf:params:oauth:grant-type:device_code`
+  and `refresh_token` grants, or a public client that an administrator registered
+  with the device grant turned on. The user then passes its ID with `--client-id`
+  or `ENGRAM_CLIENT_ID`.
+- **The `offline_access` scope,** so the IdP issues a refresh token. Without it
+  the login still works, but the user must log in again when the access token
+  expires.
+- **The audience and the owner claim.** When `ENGRAM_OIDC_AUDIENCE` is set, the
+  CLI's tokens must carry that audience. A client created through registration
+  has no mapper of its own, so the audience must come from a mapper that every
+  client gets. On Keycloak, that is an audience mapper on the realm's default
+  `basic` client scope. The token must also carry the owner claim
+  (`ENGRAM_OWNER_CLAIM`, default `email`, with `email_verified`); the CLI asks
+  for the `email` scope.
+
+`engram logout` revokes the refresh token at the IdP's `revocation_endpoint`
+(RFC 7009) and deletes the client that login registered, through its
+registration URI (RFC 7592).
+
+---
+
 ## Service principals (machine-to-machine auth)
 
 Beyond the human/no-issuer OIDC lane above, engram supports headless service

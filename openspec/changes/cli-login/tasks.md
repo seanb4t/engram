@@ -32,8 +32,8 @@
 
 ## 7. Documentation
 
-- [ ] 7.1 Update docs-site `guides/cli.md`: the credentials section (the four-step order, `engram login` and `engram logout`, the cache location and permissions, the default server, `--client-id` / `ENGRAM_CLIENT_ID`, and that `--insecure` never applies to the issuer). Verify: `task lint:markdown` passes and each documented command runs as written against a local `engram serve` with a mock issuer or the fzymgc-house realm.
-- [ ] 7.2 Update docs-site `reference/auth.md` with a CLI login section: what the IdP must allow (anonymous DCR with the device-code grant and `offline_access`, or a pre-registered public client with the device grant), and that DCR clients need the server's audience (for example a realm-wide audience mapper, as the fzymgc-house realm uses). Verify: `task lint:markdown` passes.
+- [x] 7.1 Update docs-site `guides/cli.md`: the credentials section (the four-step order, `engram login` and `engram logout`, the cache location and permissions, the default server, `--client-id` / `ENGRAM_CLIENT_ID`, and that `--insecure` never applies to the issuer). Verify: `task lint:markdown` passes and each documented command runs as written against a local `engram serve` with a mock issuer or the fzymgc-house realm.
+- [x] 7.2 Update docs-site `reference/auth.md` with a CLI login section: what the IdP must allow (anonymous DCR with the device-code grant and `offline_access`, or a pre-registered public client with the device grant), and that DCR clients need the server's audience (for example a realm-wide audience mapper, as the fzymgc-house realm uses). Verify: `task lint:markdown` passes.
 
 ## 8. Quality gate
 

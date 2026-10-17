@@ -38,17 +38,74 @@ server side uses:
 
 | Flag | Purpose |
 |------|---------|
-| `--server` | Server base URL. Falls back to `ENGRAM_SERVER_URL` if unset. Required (from one or the other) — there is no localhost default. |
+| `--server` | Server base URL. Falls back to `ENGRAM_SERVER_URL`, then to the default server that the last [`engram login`](#log-in-with-engram-login) set. With none of the three, the command exits `2` — there is no localhost default. |
 | `--token-file` | Path to a file containing the bearer credential. Falls back to `ENGRAM_TOKEN` (env wins over file if both are set). |
 | `--insecure` | Skip TLS certificate verification. Always prints an unconditional warning to stderr — this cannot be suppressed and **has no environment fallback**, deliberately: it cannot be silently enabled by an inherited environment variable. |
 | `--output` | Force `"json"` or `"text"`. Default: JSON when stdout is not a terminal, a human table when it is. |
 | `--timeout` | Bounds the RPC call. Falls back to `ENGRAM_TIMEOUT`. Default `30s`. `0` is rejected as a usage error — it does not mean unbounded. See [Request timeout](#request-timeout) below. |
 
-**Credential precedence, in order:** `ENGRAM_TOKEN` environment variable, then
-the file named by `--token-file`. **There is no `--token` flag.** This is
+**Credential precedence, in order:** the `ENGRAM_TOKEN` environment variable,
+then the file named by `--token-file`, then the saved login for the server (see
+[Log in with `engram login`](#log-in-with-engram-login)). The first one that is
+set wins, and a later one is not read. **There is no `--token` flag.** This is
 deliberate: a credential must never be able to reach `argv`, `ps` output, or
-shell history. Omitting both is legal — an anonymous call against a
+shell history. Having none of the three is legal — an anonymous call against a
 no-issuer server is a normal request, not an error.
+
+## Log in with `engram login`
+
+`engram login` gets a credential for one server and saves it, so the client
+commands work with no token handling. It works over SSH and on a machine with no
+browser.
+
+```sh
+engram login --server https://engram.example.com
+```
+
+1. The command reads the server's
+   [protected-resource metadata](/reference/auth/#protected-resource-metadata-rfc-9728)
+   to find its authorization server (the IdP).
+2. The first time you log in to a server from a machine, the command registers a
+   client at the IdP through dynamic client registration (RFC 7591). Later logins
+   to the same server reuse that client.
+3. The command prints a URL and a code on stderr. Open the URL in a browser on
+   any device, sign in, and approve the login.
+4. The command saves the credential and makes this server the default server.
+
+The login asks for the `offline_access` scope, so the IdP issues a refresh token:
+you log in once per machine, not once per access-token lifetime. Each client
+command refreshes the access token before its request when the token has
+expired, and saves the new one.
+
+| Flag | Purpose |
+|------|---------|
+| `--server` | The server to log in to. Falls back to `ENGRAM_SERVER_URL`. Required. |
+| `--client-id` | Use a client that an administrator registered at the IdP in advance, for an IdP without dynamic client registration. Falls back to `ENGRAM_CLIENT_ID`. |
+| `--insecure` | Skip TLS certificate verification for the engram server only. Requests to the IdP are always verified. The server's metadata names the IdP, and that metadata now comes over an unverified connection, so the command prints a warning that names the IdP: check that the URL you open is on the IdP host you expect before you approve. |
+
+The IdP and every endpoint it advertises must use `https`; plain `http` is
+accepted only on a loopback host, such as a local test IdP.
+
+**Where the login is saved.** In `$XDG_CONFIG_HOME/engram/credentials.json`, or
+in `~/.config/engram/credentials.json` when `XDG_CONFIG_HOME` is not set, on
+every platform. The file holds one login per server, and only you can read it.
+If other users can read the file, a client command refuses it, exits `2`, and
+names the `chmod` command that fixes it.
+
+**Log out.** `engram logout --server <url>` revokes the refresh token at the
+IdP, deletes the client that `engram login` registered (never a `--client-id`
+client), and removes the saved login. With neither `--server` nor
+`ENGRAM_SERVER_URL` it logs out of the default server. If the IdP cannot be
+reached, the command prints a warning and removes the saved login anyway.
+
+**Exit codes.** `engram login` exits `2` when no server is given, when the
+server has no authorization server (it accepts anonymous calls), or when the
+saved-login file is unsafe; `3` when the IdP refuses the login (you denied it,
+the code expired, the IdP offers no device grant, or it offers no registration
+and no `--client-id` is set); and `5` when the server or the IdP cannot be
+reached. A client command that uses a saved login exits `3` when the IdP rejects
+the refresh (run `engram login` again) and `5` when the IdP cannot be reached.
+In both cases the engram server is not called.
 
 ## Recall scope selection
 
