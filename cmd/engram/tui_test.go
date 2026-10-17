@@ -16,6 +16,7 @@ import (
 	"connectrpc.com/connect"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/config"
 )
 
 // consoleStart records what reached runConsoleProgram: the model, and the
@@ -161,6 +162,43 @@ func TestTUIStartupFailures(t *testing.T) {
 	}
 }
 
+// TestTUIRejectsBadConsoleSettings: an unknown theme or a mouse value that
+// is not a boolean exits 2 before the console opens.
+func TestTUIRejectsBadConsoleSettings(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		env  map[string]string
+		want []string
+	}{
+		{"unknown theme flag", []string{"tui", "--theme", "nope"}, nil,
+			append([]string{"--theme", "nope"}, config.TUIThemes...)},
+		{"mouse environment", []string{"tui"}, map[string]string{"ENGRAM_TUI_MOUSE": "maybe"},
+			[]string{"ENGRAM_TUI_MOUSE", "maybe"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			for k, v := range c.env {
+				t.Setenv(k, v)
+			}
+			resetClientFlags(t)
+			rec := forceTerminal(t)
+			_, _, err := runClient(t, append(c.args, "--server", startStubServer(t, scopesStub()))...)
+			if got := exitCodeFromError(err); got != exitUsage {
+				t.Fatalf("exitCodeFromError(err) = %d, want %d (err=%v)", got, exitUsage, err)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("error = %q, want it to name %q", err, w)
+				}
+			}
+			if rec.started {
+				t.Error("the console started despite a bad setting")
+			}
+		})
+	}
+}
+
 // TestTUIInsecureWarnsBeforeStart: the TLS warning is on stderr before the
 // console would take over the screen.
 func TestTUIInsecureWarnsBeforeStart(t *testing.T) {
@@ -196,7 +234,7 @@ func TestBareEngramOpensConsole(t *testing.T) {
 // TestConsoleProgramQuitExitsZero: a program run that the model quits
 // returns nil, so the process exits 0.
 func TestConsoleProgramQuitExitsZero(t *testing.T) {
-	m := newConsoleModel(context.Background(), nil, time.Second, &engramv1.ListScopesResponse{})
+	m := newConsoleModel(context.Background(), nil, time.Second, &engramv1.ListScopesResponse{}, consoleSettings{theme: "engram"})
 	err := runConsoleProgram(context.Background(), quitOnlyModel{m},
 		tea.WithInput(strings.NewReader("q")), tea.WithOutput(io.Discard), tea.WithWindowSize(80, 24))
 	if err != nil {

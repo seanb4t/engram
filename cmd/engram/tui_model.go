@@ -6,15 +6,13 @@ package main
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
-	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"connectrpc.com/connect"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
@@ -27,6 +25,12 @@ const (
 	// response that runs into response_too_large.
 	consolePageSize = 50
 	consoleTagLimit = 100
+	// previewSettle is how long the selection must rest before the preview
+	// fetches the full record; previewLoadingDelay is how long a fetch may
+	// take before the preview says it is loading.
+	previewSettle       = 100 * time.Millisecond
+	previewLoadingDelay = 200 * time.Millisecond
+	toastLifetime       = 3 * time.Second
 )
 
 // The console's id classifier mirrors the web console's
@@ -37,6 +41,10 @@ var (
 	consoleShortIDRe = regexp.MustCompile(`(?i)^[0-9a-hjkmnp-tv-z]{10}$`)
 )
 
+func isIDShaped(q string) bool {
+	return consoleUUIDRe.MatchString(q) || consoleShortIDRe.MatchString(q)
+}
+
 type consoleTab int
 
 const (
@@ -46,48 +54,14 @@ const (
 	tabScheduled
 )
 
-var consoleTabNames = [...]string{"memories", "tags", "rules", "scheduled"}
+var consoleTabNames = [...]string{"Memories", "Tags", "Rules", "Scheduled"}
 
-type screenKind int
+type consoleFocus int
 
 const (
-	screenMemories screenKind = iota
-	screenTags
-	screenRules
-	screenScheduled
-	screenDetail
-	screenRelated
+	focusList consoleFocus = iota
+	focusPreview
 )
-
-// screen is one view's state. Each tab keeps one; detail and related
-// screens stack above the active tab, and Esc pops them.
-type screen struct {
-	kind screenKind
-	// seq is the request this screen waits on. A result that carries any
-	// other seq is stale and is dropped, so a slow response cannot
-	// overwrite a newer one.
-	seq     uint64
-	loaded  bool
-	loading bool
-	cursor  int
-	top     int
-
-	rows  []*engramv1.Memory
-	edges [][]engramv1.EdgeType // related: parallel to rows
-	tags  []*engramv1.TagCount
-
-	query     string // memories: the search query; "" lists
-	searched  bool   // memories: the rows are search hits
-	nextToken string
-	footer    string
-
-	id       string // detail and related: the record asked for
-	record   *engramv1.Memory
-	notFound bool
-	view     viewport.Model
-
-	expired bool // scheduled: lists expired records instead of scheduled ones
-}
 
 // rpcResult carries one RPC's outcome back to Update. apply writes a
 // successful response into the screen waiting on seq.
@@ -97,6 +71,10 @@ type rpcResult struct {
 	err   error
 }
 
+type toastExpireMsg struct{ seq uint64 }
+
+type prefsSavedMsg struct{ err error }
+
 // consoleModel is the terminal console's Bubble Tea model. It only ever
 // sends read RPCs.
 type consoleModel struct {
@@ -105,9 +83,19 @@ type consoleModel struct {
 	timeout time.Duration
 
 	keys          consoleKeyMap
-	help          help.Model
 	input         textinput.Model
+	narrowIn      textinput.Model
 	width, height int
+	// now and after are the console's clock; a test replaces them so it
+	// can deliver timer messages directly instead of waiting.
+	now   func() time.Time
+	after func(time.Duration, tea.Msg) tea.Cmd
+
+	settings  consoleSettings
+	themeName string
+	dark      bool
+	st        consoleStyles
+	mouse     bool
 
 	scopes            []*engramv1.ScopeCount
 	scopesApproximate bool
@@ -116,61 +104,142 @@ type consoleModel struct {
 	includeArchived   bool
 	includeSuperseded bool
 	includeScheduled  bool
+	chosenTags        []string
 
-	tab   consoleTab
-	tabs  [4]screen
-	stack []screen
-
-	filtersOpen    bool
-	filterCursor   int
-	filtersChanged bool
+	tab           consoleTab
+	tabs          [4]screen
+	stack         []screen
+	focus         consoleFocus
+	previewHidden bool
+	maximised     bool
+	overlays      []*overlay
 
 	seq       uint64
 	status    string
 	statusErr bool
+	toast     string
+	toastSeq  uint64
+
+	preview previewState
 }
 
-func newConsoleModel(ctx context.Context, client engramv1connect.EngramServiceClient, timeout time.Duration, scopes *engramv1.ListScopesResponse) *consoleModel {
-	in := textinput.New()
-	in.Prompt = "/ "
-	in.Placeholder = "search, or a short_id or id to open"
-	// A real terminal cursor instead of the virtual one: the virtual
-	// cursor blinks on a timer, which the console does not need.
-	in.SetVirtualCursor(false)
+func defaultAfter(d time.Duration, msg tea.Msg) tea.Cmd {
+	return tea.Tick(d, func(time.Time) tea.Msg { return msg })
+}
+
+func newConsoleModel(ctx context.Context, client engramv1connect.EngramServiceClient, timeout time.Duration, scopes *engramv1.ListScopesResponse, settings consoleSettings) *consoleModel {
+	newInput := func(prompt, placeholder string) textinput.Model {
+		in := textinput.New()
+		in.Prompt = prompt
+		in.Placeholder = placeholder
+		// A real terminal cursor instead of the virtual one: the virtual
+		// cursor blinks on a timer, which the console does not need.
+		in.SetVirtualCursor(false)
+		return in
+	}
 	m := &consoleModel{
 		ctx:               ctx,
 		client:            client,
 		timeout:           timeout,
 		keys:              newConsoleKeyMap(),
-		help:              help.New(),
-		input:             in,
+		input:             newInput("/ ", "search, or a short_id or id to open"),
+		narrowIn:          newInput("= ", "narrow the loaded rows"),
 		width:             80,
 		height:            24,
+		now:               time.Now,
+		after:             defaultAfter,
+		settings:          settings,
+		dark:              true,
+		mouse:             settings.mouse,
 		scopes:            scopes.GetScopes(),
 		scopesApproximate: scopes.GetApproximate(),
 		crossSpine:        true,
+		preview:           newPreviewState(),
 	}
 	for i := range m.tabs {
 		m.tabs[i].kind = screenKind(i)
 	}
+	m.setTheme(settings.theme)
 	return m
 }
 
 func (m *consoleModel) Init() tea.Cmd {
-	return m.load(&m.tabs[tabMemories])
+	cmds := []tea.Cmd{m.load(&m.tabs[tabMemories]), tea.RequestBackgroundColor}
+	if m.settings.note != "" {
+		cmds = append(cmds, m.showToast(m.settings.note))
+	}
+	return tea.Batch(cmds...)
+}
+
+// setTheme switches to a named theme in the variant that matches the
+// terminal background.
+func (m *consoleModel) setTheme(name string) {
+	m.themeName = name
+	t := themeNamed(name)
+	roles := t.dark
+	if !m.dark {
+		roles = t.light
+	}
+	if m.settings.noColor {
+		roles = noColorRoles()
+	}
+	m.st = newConsoleStyles(roles)
+	m.input.SetStyles(m.st.inputStyles(m.input.Styles()))
+	m.narrowIn.SetStyles(m.st.inputStyles(m.narrowIn.Styles()))
+	for _, o := range m.overlays {
+		o.input.SetStyles(m.st.inputStyles(o.input.Styles()))
+	}
+}
+
+// styleKey names the markdown style in use, for the render cache.
+func (m *consoleModel) styleKey() string {
+	switch {
+	case m.settings.noColor:
+		return "nocolor"
+	case m.dark:
+		return m.themeName + "/dark"
+	}
+	return m.themeName + "/light"
 }
 
 func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.help.SetWidth(msg.Width)
-		m.input.SetWidth(max(msg.Width-lipgloss.Width(m.input.Prompt)-1, 10))
-		for i := range m.stack {
-			m.sizeViewport(&m.stack[i])
-		}
+		m.input.SetWidth(max(m.width/2, 10))
+		m.narrowIn.SetWidth(max(m.width/2, 10))
+		m.clampPreviewOffset()
+		return m, m.ensureRendered()
+	case tea.BackgroundColorMsg:
+		m.dark = msg.IsDark()
+		m.setTheme(m.themeName)
+		return m, m.ensureRendered()
 	case rpcResult:
-		m.applyResult(msg)
+		return m, m.applyResult(msg)
+	case previewSettleMsg, previewLoadingMsg, recordMsg, renderMsg:
+		return m, m.updatePreview(msg)
+	case toastExpireMsg:
+		if msg.seq == m.toastSeq {
+			m.toast = ""
+		}
+	case prefsSavedMsg:
+		if msg.err != nil {
+			m.status, m.statusErr = "error: "+consoleText(msg.err.Error(), false), true
+		}
+	case tea.MouseClickMsg:
+		return m, m.handleClick(msg)
+	case tea.MouseWheelMsg:
+		return m, m.handleWheel(msg)
+	case tea.PasteMsg:
+		var cmd tea.Cmd
+		switch {
+		case m.input.Focused():
+			m.input, cmd = m.input.Update(msg)
+		case m.narrowIn.Focused():
+			m.narrowIn, cmd = m.narrowIn.Update(msg)
+			m.setNarrow(m.narrowIn.Value())
+		}
+		return m, cmd
 	case tea.KeyPressMsg:
 		return m, m.handleKey(msg)
 	}
@@ -184,7 +253,294 @@ func (m *consoleModel) active() *screen {
 	return &m.tabs[m.tab]
 }
 
-func (m *consoleModel) applyResult(r rpcResult) {
+// showToast puts a short note in the message slot and clears it later.
+func (m *consoleModel) showToast(text string) tea.Cmd {
+	m.toastSeq++
+	m.toast = text
+	return m.after(toastLifetime, toastExpireMsg{seq: m.toastSeq})
+}
+
+func (m *consoleModel) handleKey(msg tea.KeyPressMsg) tea.Cmd {
+	k := m.keys
+	if key.Matches(msg, k.ForceQuit) {
+		return tea.Quit
+	}
+	if len(m.overlays) > 0 {
+		return m.overlayKey(msg)
+	}
+	if m.input.Focused() {
+		return m.searchKey(msg)
+	}
+	if m.narrowIn.Focused() {
+		return m.narrowKey(msg)
+	}
+	if m.focus == focusPreview && m.previewVisible() && m.previewKey(msg) {
+		return nil
+	}
+	s := m.active()
+	switch {
+	case key.Matches(msg, k.Quit):
+		return tea.Quit
+	case key.Matches(msg, k.Help):
+		m.openOverlay(newHelpOverlay())
+	case key.Matches(msg, k.Palette):
+		m.openOverlay(m.newPaletteOverlay())
+	case key.Matches(msg, k.Theme):
+		m.openOverlay(m.newThemeOverlay())
+	case key.Matches(msg, k.Filters):
+		m.openOverlay(m.newFiltersOverlay())
+	case key.Matches(msg, k.Back):
+		return m.back()
+	case key.Matches(msg, k.Search):
+		m.stack, m.tab, m.focus = nil, tabMemories, focusList
+		m.input.Reset()
+		return m.input.Focus()
+	case key.Matches(msg, k.Narrow):
+		if s.kind != screenDetail {
+			m.narrowIn.SetValue(s.narrow)
+			m.narrowIn.CursorEnd()
+			return m.narrowIn.Focus()
+		}
+	case key.Matches(msg, k.Memories):
+		return m.openTab(tabMemories)
+	case key.Matches(msg, k.Tags):
+		return m.openTab(tabTags)
+	case key.Matches(msg, k.Rules):
+		return m.openTab(tabRules)
+	case key.Matches(msg, k.Scheduled):
+		return m.openTab(tabScheduled)
+	case key.Matches(msg, k.Focus):
+		if m.previewVisible() {
+			if m.focus == focusList {
+				m.focus = focusPreview
+			} else {
+				m.focus = focusList
+			}
+		}
+	case key.Matches(msg, k.Up):
+		return m.move(s, -1)
+	case key.Matches(msg, k.Down):
+		return m.move(s, 1)
+	case key.Matches(msg, k.PageUp):
+		return m.move(s, -m.listHeight())
+	case key.Matches(msg, k.PageDown):
+		return m.move(s, m.listHeight())
+	case key.Matches(msg, k.Home):
+		return m.move(s, -1<<20)
+	case key.Matches(msg, k.End):
+		return m.move(s, 1<<20)
+	case key.Matches(msg, k.ScrollDown):
+		m.scrollPreview(1)
+	case key.Matches(msg, k.ScrollUp):
+		m.scrollPreview(-1)
+	case key.Matches(msg, k.HalfDown):
+		m.scrollPreview(max(m.previewHeight()/2, 1))
+	case key.Matches(msg, k.HalfUp):
+		m.scrollPreview(-max(m.previewHeight()/2, 1))
+	case key.Matches(msg, k.Open):
+		return m.enter(s)
+	case key.Matches(msg, k.Related):
+		if r := m.selectedRecord(); r != nil {
+			return m.push(screen{kind: screenRelated, id: r.GetId(), anchor: r})
+		}
+	case key.Matches(msg, k.TrailBack):
+		if s.kind == screenRelated && len(m.stack) > 0 {
+			return m.pop()
+		}
+	case key.Matches(msg, k.Choose):
+		if s.kind == screenTags {
+			if t := s.selectedTag(); t != "" {
+				m.toggleTag(t)
+			}
+		}
+	case key.Matches(msg, k.Window):
+		if s.kind == screenScheduled {
+			s.expired = !s.expired
+			return m.load(s)
+		}
+	case key.Matches(msg, k.More):
+		if s.nextToken != "" && !s.loading {
+			return m.loadPage(s, s.nextToken)
+		}
+	case key.Matches(msg, k.HidePreview):
+		if m.tier() != tierSingle {
+			m.previewHidden = !m.previewHidden
+			m.focus = focusList
+			return m.ensureRendered()
+		}
+	case key.Matches(msg, k.Maximise):
+		if m.tier() != tierSingle {
+			m.maximised = !m.maximised
+			return m.ensureRendered()
+		}
+	case key.Matches(msg, k.CopyShort):
+		if r := m.selectedRecord(); r != nil && r.GetShortId() != "" {
+			return tea.Batch(tea.SetClipboard(r.GetShortId()),
+				m.showToast("copied short_id "+consoleText(r.GetShortId(), false)))
+		}
+	case key.Matches(msg, k.CopyID):
+		if r := m.selectedRecord(); r != nil {
+			return tea.Batch(tea.SetClipboard(r.GetId()),
+				m.showToast("copied id "+consoleText(r.GetId(), false)))
+		}
+	}
+	return nil
+}
+
+// back is Esc's tiered step: the narrowing first, then focus, then the
+// screen stack.
+func (m *consoleModel) back() tea.Cmd {
+	s := m.active()
+	switch {
+	case s.narrow != "":
+		m.setNarrow("")
+		return m.selectionChanged()
+	case m.focus == focusPreview:
+		m.focus = focusList
+	case len(m.stack) > 0:
+		return m.pop()
+	}
+	return nil
+}
+
+func (m *consoleModel) searchKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		m.input.Blur()
+		return nil
+	case "enter":
+		m.input.Blur()
+		q := strings.TrimSpace(m.input.Value())
+		if isIDShaped(q) {
+			return m.push(screen{kind: screenDetail, id: q})
+		}
+		s := &m.tabs[tabMemories]
+		s.query, s.narrow, s.selectedID = q, "", ""
+		return m.load(s)
+	}
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return cmd
+}
+
+func (m *consoleModel) narrowKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		m.narrowIn.Blur()
+		m.setNarrow("")
+		return m.selectionChanged()
+	case "enter":
+		m.narrowIn.Blur()
+		return nil
+	}
+	var cmd tea.Cmd
+	m.narrowIn, cmd = m.narrowIn.Update(msg)
+	m.setNarrow(m.narrowIn.Value())
+	return tea.Batch(cmd, m.selectionChanged())
+}
+
+func (m *consoleModel) enter(s *screen) tea.Cmd {
+	switch s.kind {
+	case screenDetail:
+		return nil
+	case screenTags:
+		if len(m.chosenTags) == 0 {
+			if t := s.selectedTag(); t != "" {
+				m.toggleTag(t)
+			}
+		}
+		return m.applyTagFilter()
+	case screenRelated:
+		if m.focus == focusList {
+			if r := m.selectedRecord(); r != nil {
+				return m.push(screen{kind: screenRelated, id: r.GetId(), anchor: r})
+			}
+			return nil
+		}
+	}
+	if r := m.selectedRecord(); r != nil {
+		return m.push(screen{kind: screenDetail, id: r.GetId(), anchor: r})
+	}
+	return nil
+}
+
+func (m *consoleModel) toggleTag(t string) {
+	if i := slices.Index(m.chosenTags, t); i >= 0 {
+		m.chosenTags = slices.Delete(m.chosenTags, i, i+1)
+		return
+	}
+	m.chosenTags = append(m.chosenTags, t)
+}
+
+// applyTagFilter returns to the memories list, filtered by every chosen
+// tag.
+func (m *consoleModel) applyTagFilter() tea.Cmd {
+	m.reloadFiltered()
+	m.tab, m.focus = tabMemories, focusList
+	return m.load(&m.tabs[tabMemories])
+}
+
+// reloadFiltered marks every tab the filters feed as needing a reload.
+func (m *consoleModel) reloadFiltered() {
+	m.tabs[tabMemories].loaded = false
+	m.tabs[tabTags].loaded = false
+	m.tabs[tabScheduled].loaded = false
+	m.stack = nil
+}
+
+func (m *consoleModel) openTab(t consoleTab) tea.Cmd {
+	m.stack, m.tab, m.focus = nil, t, focusList
+	if s := &m.tabs[t]; !s.loaded && !s.loading {
+		return m.load(s)
+	}
+	return m.selectionChanged()
+}
+
+func (m *consoleModel) push(s screen) tea.Cmd {
+	m.stack = append(m.stack, s)
+	m.focus = focusList
+	top := &m.stack[len(m.stack)-1]
+	if top.kind == screenDetail {
+		m.preview.offset = 0
+		return m.showRecord(top.id)
+	}
+	return m.load(top)
+}
+
+func (m *consoleModel) pop() tea.Cmd {
+	m.stack = m.stack[:len(m.stack)-1]
+	m.focus = focusList
+	return m.selectionChanged()
+}
+
+// move shifts the selection and lets the preview and paging follow it.
+func (m *consoleModel) move(s *screen, delta int) tea.Cmd {
+	if s.kind == screenDetail {
+		m.scrollPreview(delta)
+		return nil
+	}
+	before := s.selectedID
+	s.setCursor(s.cursor + delta)
+	cmds := []tea.Cmd{m.autoPage(s)}
+	if s.selectedID != before {
+		cmds = append(cmds, m.selectionChanged())
+	}
+	return tea.Batch(cmds...)
+}
+
+// autoPage requests the next page once the selection is within one
+// screen of the last loaded row.
+func (m *consoleModel) autoPage(s *screen) tea.Cmd {
+	if s.nextToken == "" || s.loading || s.narrow != "" {
+		return nil
+	}
+	if s.cursor < s.count()-m.listHeight() {
+		return nil
+	}
+	return m.loadPage(s, s.nextToken)
+}
+
+func (m *consoleModel) applyResult(r rpcResult) tea.Cmd {
 	var s *screen
 	for i := range m.tabs {
 		if m.tabs[i].seq == r.seq {
@@ -197,235 +553,27 @@ func (m *consoleModel) applyResult(r rpcResult) {
 		}
 	}
 	if s == nil {
-		return
+		return nil
 	}
 	s.loading = false
 	if r.err != nil {
+		s.pageErr = s.loaded
 		// The server's message goes out unchanged, field=/hint= envelope
 		// included, and the session goes on.
 		m.status, m.statusErr = "error: "+consoleText(r.err.Error(), false), true
-		return
+		return nil
 	}
-	s.loaded = true
+	s.loaded, s.pageErr = true, false
 	r.apply(s)
-	if s.kind == screenDetail {
-		m.sizeViewport(s)
-		s.view.SetContent(m.renderDetail(s))
-	}
-	s.cursor = min(s.cursor, max(s.rowCount()-1, 0))
-}
-
-func (s *screen) rowCount() int {
-	if s.kind == screenTags {
-		return len(s.tags)
-	}
-	return len(s.rows)
-}
-
-func (s *screen) selected() *engramv1.Memory {
-	if s.kind == screenDetail {
-		return s.record
-	}
-	if s.kind == screenTags || s.cursor >= len(s.rows) {
+	s.refilter()
+	if s != m.active() {
 		return nil
 	}
-	return s.rows[s.cursor]
-}
-
-func (m *consoleModel) handleKey(msg tea.KeyPressMsg) tea.Cmd {
-	if key.Matches(msg, m.keys.ForceQuit) {
-		return tea.Quit
-	}
-	if m.input.Focused() {
-		return m.handleInputKey(msg)
-	}
-	if m.filtersOpen {
-		return m.handleFilterKey(msg)
-	}
-	s := m.active()
-	switch {
-	case key.Matches(msg, m.keys.Quit):
-		return tea.Quit
-	case key.Matches(msg, m.keys.Help):
-		m.help.ShowAll = !m.help.ShowAll
-	case key.Matches(msg, m.keys.Back):
-		switch {
-		case m.help.ShowAll:
-			m.help.ShowAll = false
-		case len(m.stack) > 0:
-			m.stack = m.stack[:len(m.stack)-1]
-		}
-	case key.Matches(msg, m.keys.Search):
-		m.stack = nil
-		m.tab = tabMemories
-		m.input.Reset()
-		return m.input.Focus()
-	case key.Matches(msg, m.keys.Filters):
-		m.filtersOpen, m.filterCursor, m.filtersChanged = true, 0, false
-	case key.Matches(msg, m.keys.Memories):
-		return m.openTab(tabMemories)
-	case key.Matches(msg, m.keys.Tags):
-		return m.openTab(tabTags)
-	case key.Matches(msg, m.keys.Rules):
-		return m.openTab(tabRules)
-	case key.Matches(msg, m.keys.Scheduled):
-		return m.openTab(tabScheduled)
-	case key.Matches(msg, m.keys.Up):
-		m.move(s, -1)
-	case key.Matches(msg, m.keys.Down):
-		m.move(s, 1)
-	case key.Matches(msg, m.keys.PageUp):
-		m.move(s, -m.listHeight())
-	case key.Matches(msg, m.keys.PageDown):
-		m.move(s, m.listHeight())
-	case key.Matches(msg, m.keys.Home):
-		s.cursor = 0
-		s.view.GotoTop()
-	case key.Matches(msg, m.keys.End):
-		s.cursor = max(s.rowCount()-1, 0)
-		s.view.GotoBottom()
-	case key.Matches(msg, m.keys.Open):
-		if s.kind != screenDetail {
-			if r := s.selected(); r != nil {
-				return m.push(screen{kind: screenDetail, id: r.GetId()})
-			}
-		}
-	case key.Matches(msg, m.keys.Related):
-		if r := s.selected(); r != nil {
-			return m.push(screen{kind: screenRelated, id: r.GetId(), record: r})
-		}
-	case key.Matches(msg, m.keys.More):
-		if s.nextToken != "" && !s.loading {
-			return m.loadPage(s, s.nextToken)
-		}
-	case key.Matches(msg, m.keys.Switch):
-		if s.kind == screenScheduled {
-			s.expired = !s.expired
-			return m.load(s)
-		}
-	}
-	return nil
-}
-
-func (m *consoleModel) handleInputKey(msg tea.KeyPressMsg) tea.Cmd {
-	switch msg.String() {
-	case "esc":
-		m.input.Blur()
-		return nil
-	case "enter":
-		m.input.Blur()
-		q := strings.TrimSpace(m.input.Value())
-		if consoleUUIDRe.MatchString(q) || consoleShortIDRe.MatchString(q) {
-			return m.push(screen{kind: screenDetail, id: q})
-		}
-		s := &m.tabs[tabMemories]
-		s.query = q
-		return m.load(s)
-	}
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
-	return cmd
-}
-
-// filterEntries is the filter panel's row count: the three include
-// toggles, the cross-spine choice, then one row per readable scope.
-func (m *consoleModel) filterEntries() int { return 4 + len(m.scopes) }
-
-func (m *consoleModel) handleFilterKey(msg tea.KeyPressMsg) tea.Cmd {
-	switch {
-	case key.Matches(msg, m.keys.Quit):
-		return tea.Quit
-	case key.Matches(msg, m.keys.Back):
-		return m.closeFilters()
-	case key.Matches(msg, m.keys.Up):
-		m.filterCursor = max(m.filterCursor-1, 0)
-	case key.Matches(msg, m.keys.Down):
-		m.filterCursor = min(m.filterCursor+1, m.filterEntries()-1)
-	case key.Matches(msg, m.keys.Home):
-		m.filterCursor = 0
-	case key.Matches(msg, m.keys.End):
-		m.filterCursor = m.filterEntries() - 1
-	case key.Matches(msg, m.keys.Toggle):
-		m.chooseFilter()
-	case key.Matches(msg, m.keys.Open):
-		m.chooseFilter()
-		return m.closeFilters()
-	}
-	return nil
-}
-
-func (m *consoleModel) chooseFilter() {
-	m.filtersChanged = true
-	switch c := m.filterCursor; c {
-	case 0:
-		m.includeArchived = !m.includeArchived
-	case 1:
-		m.includeSuperseded = !m.includeSuperseded
-	case 2:
-		m.includeScheduled = !m.includeScheduled
-	case 3:
-		m.crossSpine, m.scope = true, ""
-	default:
-		m.crossSpine, m.scope = false, m.scopes[c-4].GetScope()
-	}
-}
-
-// closeFilters reloads every tab the filters feed. The active tab reloads
-// now; the others reload when next opened.
-func (m *consoleModel) closeFilters() tea.Cmd {
-	m.filtersOpen = false
-	if !m.filtersChanged {
-		return nil
-	}
-	m.tabs[tabMemories].loaded = false
-	m.tabs[tabTags].loaded = false
-	m.tabs[tabScheduled].loaded = false
-	m.stack = nil
-	return m.openTab(m.tab)
-}
-
-func (m *consoleModel) openTab(t consoleTab) tea.Cmd {
-	m.stack = nil
-	m.tab = t
-	if s := &m.tabs[t]; !s.loaded && !s.loading {
-		return m.load(s)
-	}
-	return nil
-}
-
-func (m *consoleModel) push(s screen) tea.Cmd {
-	m.sizeViewport(&s)
-	m.stack = append(m.stack, s)
-	return m.load(&m.stack[len(m.stack)-1])
-}
-
-func (m *consoleModel) move(s *screen, delta int) {
-	if s.kind == screenDetail {
-		if delta < 0 {
-			s.view.ScrollUp(-delta)
-		} else {
-			s.view.ScrollDown(delta)
-		}
-		return
-	}
-	s.cursor = max(min(s.cursor+delta, s.rowCount()-1), 0)
-}
-
-func (m *consoleModel) sizeViewport(s *screen) {
-	if s.kind != screenDetail {
-		return
-	}
-	if s.view.Width() == 0 {
-		s.view = viewport.New()
-		s.view.SoftWrap = true
-	}
-	s.view.SetWidth(m.width)
-	s.view.SetHeight(m.listHeight())
+	return m.selectionChanged()
 }
 
 // load starts a screen's first page.
 func (m *consoleModel) load(s *screen) tea.Cmd {
-	s.cursor, s.top = 0, 0
 	return m.loadPage(s, "")
 }
 
@@ -451,11 +599,12 @@ func (m *consoleModel) loadPage(s *screen, token string) tea.Cmd {
 func (m *consoleModel) call(s *screen, token string) func(context.Context) (func(*screen), error) {
 	c := m.client
 	scope, cross := m.scope, m.crossSpine
+	tags := slices.Clone(m.chosenTags)
 	switch s.kind {
 	case screenMemories:
 		if s.query == "" {
 			req := &engramv1.ListMemoriesRequest{
-				Scope: scope, CrossSpine: cross, Limit: consolePageSize,
+				Scope: scope, CrossSpine: cross, Limit: consolePageSize, Tags: tags,
 				IncludeArchived: m.includeArchived, IncludeSuperseded: m.includeSuperseded,
 				IncludeScheduled: m.includeScheduled,
 			}
@@ -471,17 +620,20 @@ func (m *consoleModel) call(s *screen, token string) func(context.Context) (func
 				}
 				r := resp.Msg
 				return func(s *screen) {
+					s.searched, s.nextToken = false, r.GetNextPageToken()
 					if token == "" {
-						s.rows = nil
+						// Coverage describes the listing; a later page
+						// adds rows and its own hidden counts.
+						s.rows, s.hidden = nil, nil
+						s.coverage(cross, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown())
 					}
 					s.rows = append(s.rows, r.GetMemories()...)
-					s.searched, s.nextToken = false, r.GetNextPageToken()
-					s.footer = recallFooter(cross, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown(), r.GetRecallGateHidden())
+					s.hidden = addHidden(s.hidden, r.GetRecallGateHidden())
 				}, nil
 			}
 		}
 		req := &engramv1.SearchMemoriesRequest{
-			Query: s.query, Scope: scope, CrossSpine: cross, K: consolePageSize,
+			Query: s.query, Scope: scope, CrossSpine: cross, K: consolePageSize, Tags: tags,
 			IncludeArchived: m.includeArchived, IncludeSuperseded: m.includeSuperseded,
 			IncludeScheduled: m.includeScheduled,
 		}
@@ -493,7 +645,8 @@ func (m *consoleModel) call(s *screen, token string) func(context.Context) (func
 			r := resp.Msg
 			return func(s *screen) {
 				s.rows, s.searched, s.nextToken = r.GetMemories(), true, ""
-				s.footer = recallFooter(cross, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown(), r.GetRecallGateHidden())
+				s.coverage(cross, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown())
+				s.hidden = r.GetRecallGateHidden()
 			}, nil
 		}
 	case screenTags:
@@ -507,12 +660,7 @@ func (m *consoleModel) call(s *screen, token string) func(context.Context) (func
 				return nil, err
 			}
 			r := resp.Msg
-			return func(s *screen) {
-				s.tags, s.footer = r.GetTags(), ""
-				if r.GetMore() {
-					s.footer = "more: true (more tags exist than shown)\n"
-				}
-			}, nil
+			return func(s *screen) { s.tags, s.moreTags = r.GetTags(), r.GetMore() }, nil
 		}
 	case screenRules:
 		req := &engramv1.ListRulesRequest{}
@@ -524,10 +672,8 @@ func (m *consoleModel) call(s *screen, token string) func(context.Context) (func
 			r := resp.Msg
 			return func(s *screen) {
 				s.rows = r.GetRules()
-				s.footer = recallFooter(true, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown(), nil)
-				if a := r.GetAdvisory(); a != "" {
-					s.footer += consoleText(a, false) + "\n"
-				}
+				s.coverage(true, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown())
+				s.advisory = r.GetAdvisory()
 			}, nil
 		}
 	case screenScheduled:
@@ -546,25 +692,11 @@ func (m *consoleModel) call(s *screen, token string) func(context.Context) (func
 			return func(s *screen) {
 				if token == "" {
 					s.rows = nil
+					s.coverage(cross, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown())
 				}
 				s.rows = append(s.rows, r.GetMemories()...)
 				s.nextToken = r.GetNextPageToken()
-				s.footer = recallFooter(cross, r.GetSearchedScopes(), r.GetScopesTruncated(), r.GetScopesUnknown(), nil)
 			}, nil
-		}
-	case screenDetail:
-		req := &engramv1.GetMemoryRequest{Id: s.id}
-		return func(ctx context.Context) (func(*screen), error) {
-			resp, err := c.GetMemory(ctx, connect.NewRequest(req))
-			if connect.CodeOf(err) == connect.CodeNotFound {
-				// Another actor's private record and a missing one read
-				// the same, by design: one fixed message for both.
-				return func(s *screen) { s.notFound = true }, nil
-			}
-			if err != nil {
-				return nil, err
-			}
-			return func(s *screen) { s.record = resp.Msg.GetMemory() }, nil
 		}
 	default: // screenRelated
 		req := &engramv1.RelatedMemoriesRequest{Id: s.id}
@@ -574,81 +706,22 @@ func (m *consoleModel) call(s *screen, token string) func(context.Context) (func
 				return nil, err
 			}
 			r := resp.Msg
-			return func(s *screen) {
-				if a := r.GetAnchor(); a != nil {
-					s.record = a
-				}
-				s.rows, s.edges = nil, nil
-				for _, rel := range r.GetRelated() {
-					s.rows = append(s.rows, rel.GetMemory())
-					var types []engramv1.EdgeType
-					for _, e := range rel.GetEdges() {
-						types = append(types, e.GetType())
-					}
-					s.edges = append(s.edges, types)
-				}
-				s.footer = ""
-				if r.GetTruncated() {
-					s.footer = "truncated: true (more vector neighbours exist than shown)\n"
-				}
-			}, nil
+			return func(s *screen) { s.applyRelated(r) }, nil
 		}
 	}
 }
 
-// recallFooter renders the coverage and recall-gate footers the text lane
-// of `engram list` and `engram search` prints, from the same helpers.
-func recallFooter(crossSpine bool, searched []string, truncated, unknown bool, hidden *engramv1.RecallGateHidden) string {
-	var b strings.Builder
-	_ = renderCoverageFooter(&b, crossSpine, searched, truncated, unknown)
-	_ = renderRecallHiddenFooter(&b, hidden)
-	return b.String()
-}
-
-// consoleKeyMap uses the web console's key wherever it has one for the
-// same action (engram-console-conventions).
-type consoleKeyMap struct {
-	Search, Open, Back, Up, Down, PageUp, PageDown, Home, End key.Binding
-	Related, More, Filters, Toggle, Switch                    key.Binding
-	Memories, Tags, Rules, Scheduled                          key.Binding
-	Help, Quit, ForceQuit                                     key.Binding
-}
-
-func newConsoleKeyMap() consoleKeyMap {
-	return consoleKeyMap{
-		Search:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-		Open:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
-		Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		Up:        key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/↑", "up")),
-		Down:      key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
-		PageUp:    key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "page up")),
-		PageDown:  key.NewBinding(key.WithKeys("pgdown"), key.WithHelp("pgdown", "page down")),
-		Home:      key.NewBinding(key.WithKeys("home"), key.WithHelp("home", "first")),
-		End:       key.NewBinding(key.WithKeys("end"), key.WithHelp("end", "last")),
-		Related:   key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "related")),
-		More:      key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next page")),
-		Filters:   key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "scope and filters")),
-		Toggle:    key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle")),
-		Switch:    key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "scheduled/expired")),
-		Memories:  key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "memories")),
-		Tags:      key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "tags")),
-		Rules:     key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "rules")),
-		Scheduled: key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "scheduled")),
-		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Quit:      key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
-		ForceQuit: key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
+// addHidden sums the recall gate's hidden counts across loaded pages.
+func addHidden(a, b *engramv1.RecallGateHidden) *engramv1.RecallGateHidden {
+	if a == nil {
+		return b
 	}
-}
-
-func (k consoleKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Search, k.Open, k.Back, k.Related, k.Filters, k.Help, k.Quit}
-}
-
-func (k consoleKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Search, k.Open, k.Back, k.Related, k.More},
-		{k.Up, k.Down, k.PageUp, k.PageDown, k.Home, k.End},
-		{k.Memories, k.Tags, k.Rules, k.Scheduled, k.Switch},
-		{k.Filters, k.Toggle, k.Help, k.Quit, k.ForceQuit},
+	if b == nil {
+		return a
+	}
+	return &engramv1.RecallGateHidden{
+		Total: a.GetTotal() + b.GetTotal(), Archived: a.GetArchived() + b.GetArchived(),
+		Superseded: a.GetSuperseded() + b.GetSuperseded(), Expired: a.GetExpired() + b.GetExpired(),
+		Scheduled: a.GetScheduled() + b.GetScheduled(),
 	}
 }

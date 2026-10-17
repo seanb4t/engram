@@ -346,7 +346,7 @@ func TestHelpGolden(t *testing.T) {
 	checkGolden(t, filepath.Join("testdata", "help.golden"), buildHelpGoldenContent)
 }
 
-// TestCatalogGolden is D-13's gate: the bare `engram` catalog JSON,
+// TestCatalogGolden is D-13's gate: the `engram catalog` JSON,
 // including D-11's blast-radius classification, is pinned by
 // cmd/engram/testdata/catalog.golden.
 func TestCatalogGolden(t *testing.T) {
