@@ -37,5 +37,5 @@
 
 ## 8. Quality gate
 
-- [ ] 8.1 Run `task`. Verify: lint and tests pass with no new failures.
-- [ ] 8.2 End-to-end check with a built binary against the fzymgc-house deployment: `engram login --server https://engram.fzymgc.house`, approve, `engram list --scope repo:github.com/seanb4t/engram --limit 1` with no server or token settings, then `engram logout`. Verify: both commands exit 0, the Keycloak admin console shows the client during the login and not after the logout, and the outputs are recorded in the PR without tokens.
+- [x] 8.1 Run `task`. Verify: lint and tests pass with no new failures.
+- [x] 8.2 End-to-end check with a built binary against the fzymgc-house deployment: `engram login --server https://engram.fzymgc.house`, approve, `engram list --scope repo:github.com/seanb4t/engram --limit 1` with no server or token settings, then `engram logout`. Verify: both commands exit 0, the Keycloak admin console shows the client during the login and not after the logout, and the outputs are recorded in the PR without tokens.
