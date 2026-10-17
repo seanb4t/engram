@@ -1,0 +1,24 @@
+ engram  1 Memories  2 Tags  3 Rules  4 Scheduled
+/ search, or a short_id or id to open
+ scope: every readable scope   f filters · = narrow · ctrl+k commands
+ Latest 6 memories across 3 scopes · unranked · 3 hidden by the recall
+  ● decision   Use git only; jj is retired                          7h
+▌ ● gotcha     go list -m pollutes go.sum under -mod=…              3h
+  ● convention TestMain isolates XDG_CONFIG_HOME for …              1d
+  ● decision   Old upgrade plan                        superseded   9d
+  ● preference Prefer rg over grep for searches                    1mo
+  ● decision   Revisit the release cadence             scheduled    1h
+  end · 6 memories
+
+
+
+
+
+
+
+
+
+
+
+ 2/6 · 3 hidden (2 archived, 1 superseded)
+ enter open · / search · = narrow loaded rows · ? help · q quit

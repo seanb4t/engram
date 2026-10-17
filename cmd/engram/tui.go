@@ -7,18 +7,21 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"connectrpc.com/connect"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/spf13/cobra"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/internal/config"
 )
 
 // tuiCmd opens the terminal console with the client flags. A bare `engram`
 // runs the same entry point with no flags, so it reads only the
-// environment; this command exists because --token-file and --insecure have
-// no environment form (D-13, D-14).
+// environment and the saved preferences; this command exists because
+// --token-file and --insecure have no environment form (D-13, D-14).
 var tuiCmd = &cobra.Command{
 	Use:   "tui",
 	Short: "Open the read-only terminal console for browsing memories",
@@ -31,6 +34,13 @@ var tuiCmd = &cobra.Command{
 
 func init() {
 	addConnectionFlags(tuiCmd)
+	f := tuiCmd.Flags()
+	f.String("theme", config.FlagDefault("theme"),
+		"console theme: "+strings.Join(config.TUIThemes, ", ")+
+			" (default: ENGRAM_TUI_THEME, then the theme chosen in the console, then engram)")
+	f.Bool("mouse", false,
+		"turn on mouse support: click to select, wheel to scroll "+
+			"(default: ENGRAM_TUI_MOUSE, then the choice saved in the console, then off)")
 	rootCmd.AddCommand(tuiCmd)
 }
 
@@ -55,6 +65,15 @@ var runConsoleProgram = func(ctx context.Context, m tea.Model, opts ...tea.Progr
 	return err
 }
 
+// consoleColorProfile is the colour profile the program is forced to, if
+// any: NO_COLOR (any non-empty value) means text attributes only.
+func consoleColorProfile(getenv func(string) string) (colorprofile.Profile, bool) {
+	if getenv("NO_COLOR") != "" {
+		return colorprofile.Ascii, true
+	}
+	return 0, false
+}
+
 // runConsole is the entry point for a bare `engram` and for `engram tui`.
 // Every check that can fail runs before the console takes over the screen,
 // so a failure leaves the terminal as it was and exits with the same code
@@ -67,6 +86,13 @@ func runConsole(cmd *cobra.Command, _ []string) error {
 		}
 		return usageErrorf("%s needs a terminal on stdin and stdout; "+
 			"for the machine-readable catalog run: engram catalog (for help: engram --help)", what)
+	}
+	cfg, err := config.Load(cmd.Flags())
+	if err != nil {
+		return usageErrorf("load client configuration: %w", err)
+	}
+	if err := config.ValidateConsole(cfg.Client); err != nil {
+		return usageErrorf("%w", err)
 	}
 	client, _, timeout, err := clientFromFlags(cmd)
 	if err != nil {
@@ -85,5 +111,10 @@ func runConsole(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return wrapRPCError(err)
 	}
-	return runConsoleProgram(ctx, newConsoleModel(ctx, client, timeout, scopes.Msg))
+	settings := loadConsoleSettings(cfg.Client, os.Getenv)
+	var opts []tea.ProgramOption
+	if p, ok := consoleColorProfile(os.Getenv); ok {
+		opts = append(opts, tea.WithColorProfile(p))
+	}
+	return runConsoleProgram(ctx, newConsoleModel(ctx, client, timeout, scopes.Msg, settings), opts...)
 }

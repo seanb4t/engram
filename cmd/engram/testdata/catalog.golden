@@ -1271,10 +1271,22 @@
           "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
         },
         {
+          "name": "mouse",
+          "type": "bool",
+          "default": "false",
+          "usage": "turn on mouse support: click to select, wheel to scroll (default: ENGRAM_TUI_MOUSE, then the choice saved in the console, then off)"
+        },
+        {
           "name": "server",
           "type": "string",
           "default": "",
           "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "theme",
+          "type": "string",
+          "default": "",
+          "usage": "console theme: engram, terminal, catppuccin, tokyo-night (default: ENGRAM_TUI_THEME, then the theme chosen in the console, then engram)"
         },
         {
           "name": "timeout",
