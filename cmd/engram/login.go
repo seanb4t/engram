@@ -160,7 +160,7 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	printDevicePrompt(cmd, server, da)
+	printDevicePrompt(cmd, server, issuer, da)
 	tok, err := pollDeviceToken(oauthCtx, conf, da)
 	if err != nil {
 		return classifyDeviceTokenError(err)
@@ -202,11 +202,12 @@ func registerLoginClient(ctx context.Context, hc *http.Client, md *issuerMetadat
 	return nil
 }
 
-// printDevicePrompt tells the user where to approve the login. It goes to
+// printDevicePrompt tells the user where to approve the login, naming the
+// issuer next to the URL so the user can compare the two hosts. It goes to
 // stderr, so stdout stays empty for a script.
-func printDevicePrompt(cmd *cobra.Command, server string, da *oauth2.DeviceAuthResponse) {
+func printDevicePrompt(cmd *cobra.Command, server, issuer string, da *oauth2.DeviceAuthResponse) {
 	w := cmd.ErrOrStderr()
-	_, _ = fmt.Fprintf(w, "To log in to %s, open this URL in a browser on any device and approve the login:\n\n", server)
+	_, _ = fmt.Fprintf(w, "To log in to %s through the issuer %s, open this URL in a browser on any device and approve the login:\n\n", server, issuer)
 	if da.VerificationURIComplete != "" {
 		_, _ = fmt.Fprintf(w, "  %s\n\n", da.VerificationURIComplete)
 		_, _ = fmt.Fprintf(w, "If the page asks for a code, enter %s.\n", da.UserCode)

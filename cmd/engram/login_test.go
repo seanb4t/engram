@@ -249,6 +249,9 @@ func TestLoginApprovedCachesCredentialAndDefaultServer(t *testing.T) {
 	if stdout != "" {
 		t.Errorf("stdout = %q, want empty", stdout)
 	}
+	if !strings.Contains(stderr, "through the issuer "+issuer.srv.URL) {
+		t.Errorf("stderr does not name the issuer next to the URL: %q", stderr)
+	}
 	if !strings.Contains(stderr, issuer.srv.URL+"/activate?user_code=ABCD-EFGH") || !strings.Contains(stderr, "ABCD-EFGH") {
 		t.Errorf("stderr does not show the verification URL and code: %q", stderr)
 	}
