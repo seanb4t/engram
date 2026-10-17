@@ -207,6 +207,54 @@
       }
     },
     {
+      "name": "login",
+      "summary": "Log in to an engram server with your browser and cache a refreshable credential",
+      "flags": [
+        {
+          "name": "client-id",
+          "type": "string",
+          "default": "",
+          "usage": "pre-registered OAuth client ID, for an issuer without dynamic client registration (default: ENGRAM_CLIENT_ID)"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification for the engram server only, never for the issuer (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL to log in to (default: ENGRAM_SERVER_URL)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": false,
+        "open_world": false
+      }
+    },
+    {
+      "name": "logout",
+      "summary": "Remove the cached login for an engram server and revoke it at the issuer",
+      "flags": [
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL to log out of (default: ENGRAM_SERVER_URL, else the default server)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "migrate",
       "summary": "Preview or apply the pending forward schema-version sweep",
       "flags": [

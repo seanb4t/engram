@@ -12,6 +12,8 @@ Available Commands:
   get                 Fetch one memory by id or short id and render its full state
   help                Help about any command
   list                List memories on a remote engram server
+  login               Log in to an engram server with your browser and cache a refreshable credential
+  logout              Remove the cached login for an engram server and revoke it at the issuer
   migrate             Preview or apply the pending forward schema-version sweep
   migrate-remap-owner Re-stamp record owner across the collection (sub->email, email->email, owner-less, or anonymous bucket)
   migration-status    Report the server's schema-version migration status
@@ -94,6 +96,50 @@ Flags:
       --timeout string          per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
       --token-file string       path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
       --visibility string       visibility filter: "" (all), "private", or "shared"
+```
+
+## engram login
+
+```
+Log in to an engram server and cache a credential that client commands use and refresh.
+
+The command finds the server's authorization server from its protected-resource
+metadata, registers a client there once per server (or uses --client-id), and
+prints a URL and a code. Open the URL in a browser on any device and approve the
+login. The credential is cached in $XDG_CONFIG_HOME/engram/credentials.json (else
+~/.config/engram/credentials.json), readable only by you, and this server becomes
+the default server for client commands that set neither --server nor
+ENGRAM_SERVER_URL.
+
+ENGRAM_TOKEN and --token-file still take precedence over the cached login.
+Remove the login with engram logout.
+
+Usage:
+  engram login [flags]
+
+Flags:
+      --client-id string   pre-registered OAuth client ID, for an issuer without dynamic client registration (default: ENGRAM_CLIENT_ID)
+  -h, --help               help for login
+      --insecure           skip TLS certificate verification for the engram server only, never for the issuer (always warns on stderr; no environment fallback)
+      --server string      engram server base URL to log in to (default: ENGRAM_SERVER_URL)
+```
+
+## engram logout
+
+```
+Remove the cached login for an engram server.
+
+The command revokes the cached refresh token at the issuer, deletes the client
+that engram login registered (never a --client-id client), and removes the cache
+entry. With neither --server nor ENGRAM_SERVER_URL it logs out of the default
+server. A failure at the issuer is a warning: the cache entry is removed anyway.
+
+Usage:
+  engram logout [flags]
+
+Flags:
+  -h, --help            help for logout
+      --server string   engram server base URL to log out of (default: ENGRAM_SERVER_URL, else the default server)
 ```
 
 ## engram migrate

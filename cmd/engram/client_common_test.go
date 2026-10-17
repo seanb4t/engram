@@ -572,10 +572,12 @@ const surfacesImport = "github.com/seanb4t/engram/internal/surfaces"
 // TestClientFilesImportBoundary's second clause, with the single named
 // exception of surfacesImport (see its doc comment).
 var allowedClientImports = map[string]bool{
-	"connectrpc.com/connect":                                     true,
-	"github.com/spf13/cobra":                                     true,
-	"google.golang.org/protobuf/encoding/protojson":              true,
-	"google.golang.org/protobuf/proto":                           true,
+	"connectrpc.com/connect":                        true,
+	"github.com/spf13/cobra":                        true,
+	"google.golang.org/protobuf/encoding/protojson": true,
+	"google.golang.org/protobuf/proto":              true,
+	// The login cache's refreshing token source.
+	"golang.org/x/oauth2":                                        true,
 	"github.com/seanb4t/engram/gen/go/engram/v1":                 true,
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect": true,
 	surfacesImport: true,

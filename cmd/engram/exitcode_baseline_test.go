@@ -462,6 +462,28 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		after:      exitUsage,
 		introduced: true,
 	},
+	{
+		// login and logout have no meaningful `before`. TestMain points
+		// XDG_CONFIG_HOME at an empty directory, so no developer login
+		// cache leaks in.
+		name:       "login/missing-server",
+		args:       []string{"login"},
+		env:        map[string]string{"ENGRAM_SERVER_URL": ""},
+		after:      exitUsage,
+		introduced: true,
+	},
+	{
+		name:       "login/unreachable-server",
+		args:       []string{"login", "--server", deadServer},
+		after:      exitUnavailable,
+		introduced: true,
+	},
+	{
+		name:       "logout/not-logged-in",
+		args:       []string{"logout", "--server", deadServer},
+		after:      exitOK,
+		introduced: true,
+	},
 }
 
 // TestExitCodeBaselineClaims is the memory nczgrtfec2 discipline applied to
@@ -502,7 +524,7 @@ func TestExitCodeBaselineClaims(t *testing.T) {
 // uniqueness so a silently-deleted row fails the test instead of quietly
 // shrinking coverage.
 func TestExitCodeBaselineRowCount(t *testing.T) {
-	const wantRows = 41
+	const wantRows = 44
 	if got := len(exitCodeBaseline); got != wantRows {
 		t.Errorf("len(exitCodeBaseline) = %d, want %d", got, wantRows)
 	}

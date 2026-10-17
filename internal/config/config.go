@@ -413,6 +413,10 @@ type ClientConfig struct {
 	// --help` against `engram reindex --help` must not have to infer which
 	// convention applies.
 	Timeout string `koanf:"timeout"`
+	// ClientID is a pre-registered OAuth client ID for `engram login`
+	// (ENGRAM_CLIENT_ID / --client-id). Empty means register a client
+	// through dynamic client registration instead.
+	ClientID string `koanf:"client_id"`
 }
 
 // SetupConfig backs `engram setup` (D-04): the deployment facts an

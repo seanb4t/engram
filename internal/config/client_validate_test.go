@@ -109,6 +109,33 @@ func TestClientConfigLoadPrecedence(t *testing.T) {
 		}
 	})
 
+	t.Run("ENGRAM_CLIENT_ID sets ClientID", func(t *testing.T) {
+		t.Setenv("ENGRAM_CLIENT_ID", "engram-cli")
+		cfg, err := Load(nil)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Client.ClientID != "engram-cli" {
+			t.Errorf("Client.ClientID = %q, want engram-cli", cfg.Client.ClientID)
+		}
+	})
+
+	t.Run("--client-id wins over ENGRAM_CLIENT_ID", func(t *testing.T) {
+		t.Setenv("ENGRAM_CLIENT_ID", "from-env")
+		f := flag.NewFlagSet("login", flag.ContinueOnError)
+		f.String("client-id", "", "")
+		if err := f.Parse([]string{"--client-id", "from-flag"}); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		cfg, err := Load(f)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Client.ClientID != "from-flag" {
+			t.Errorf("Client.ClientID = %q, want from-flag", cfg.Client.ClientID)
+		}
+	})
+
 	t.Run("no ENGRAM_TOKEN registry row", func(t *testing.T) {
 		for _, f := range registry {
 			if f.Env == "ENGRAM_TOKEN" {

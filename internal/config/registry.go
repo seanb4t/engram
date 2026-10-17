@@ -203,6 +203,11 @@ var registry = []field{
 	// would weaken that promise silently.
 	{Key: "client.insecure", Flag: "insecure", Default: "false"},
 	{Key: "client.timeout", Env: "ENGRAM_TIMEOUT", Flag: "timeout", Default: "30s"},
+	// client_id is a pre-registered OAuth client for `engram login` on an IdP
+	// without dynamic client registration. It is a public, non-secret
+	// identifier, so unlike token_file it may carry an Env row. Only login
+	// binds the flag: a refresh uses the client ID saved in the login cache.
+	{Key: "client.client_id", Env: "ENGRAM_CLIENT_ID", Flag: "client-id"},
 	// setup.* backs `engram setup` (D-04): --url and --auth are deployment
 	// facts, enrolled env-first with flag override like the 45/48 majority
 	// of this registry — unlike client.token_file/client.output/
