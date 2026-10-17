@@ -576,7 +576,7 @@ var allowedClientImports = map[string]bool{
 	"github.com/spf13/cobra":                        true,
 	"google.golang.org/protobuf/encoding/protojson": true,
 	"google.golang.org/protobuf/proto":              true,
-	// The login cache's refreshing token source (cli-login design D5).
+	// The login cache's refreshing token source.
 	"golang.org/x/oauth2":                                        true,
 	"github.com/seanb4t/engram/gen/go/engram/v1":                 true,
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect": true,

@@ -463,9 +463,9 @@ var exitCodeBaseline = []exitCodeBaselineCase{
 		introduced: true,
 	},
 	{
-		// Introduced by cli-login (#818): login and logout are new, so
-		// there is no meaningful `before`. TestMain points XDG_CONFIG_HOME
-		// at an empty directory, so no developer login cache leaks in.
+		// login and logout have no meaningful `before`. TestMain points
+		// XDG_CONFIG_HOME at an empty directory, so no developer login
+		// cache leaks in.
 		name:       "login/missing-server",
 		args:       []string{"login"},
 		env:        map[string]string{"ENGRAM_SERVER_URL": ""},

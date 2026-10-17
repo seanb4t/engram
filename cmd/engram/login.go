@@ -19,7 +19,7 @@ import (
 
 // loginCmd gets a refreshable credential for one server through the OAuth
 // device authorization grant and caches it, so every client command can
-// call that server with no token handling (cli-login, #818).
+// call that server with no token handling.
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Log in to an engram server with your browser and cache a refreshable credential",
@@ -108,9 +108,8 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 	}
 	if insecure {
 		// The metadata that named the issuer came over an unverified
-		// connection, so a man-in-the-middle could have named a fake one.
-		// The user is the only check left (the user's 2026-10-17 ruling:
-		// keep --insecure on login and warn, rather than drop it).
+		// connection, so a man-in-the-middle could have named a fake one,
+		// and the user is the only check left.
 		_, _ = fmt.Fprintf(stderr,
 			"WARNING: the engram server named the issuer %s over an unverified connection (--insecure). "+
 				"Approve the login only if the URL below is on the issuer host you expect.\n", issuer)

@@ -35,12 +35,12 @@ const deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 var loginScopes = []string{oidc.ScopeOpenID, "email", oidc.ScopeOfflineAccess}
 
 // errInvalidClient is the issuer's invalid_client answer to a device
-// authorization request. Login uses it to re-register a cached client that
-// the issuer no longer knows.
+// authorization request. Login uses it to re-register a cached client the
+// issuer does not recognise.
 var errInvalidClient = errors.New("the issuer does not recognise the client")
 
 // newIssuerHTTPClient builds the client for every request to the issuer.
-// It never takes --insecure (cli-login design D7): that flag exists for a
+// It never takes --insecure: that flag exists for a
 // lab engram server's self-signed certificate, and the party that hands out
 // credentials is never talked to without verification.
 func newIssuerHTTPClient() *http.Client {
@@ -171,7 +171,7 @@ func registrationClientName() string {
 
 // registerClient registers a public client for the device grant (RFC
 // 7591). The body is fixed, so this is one JSON POST rather than a
-// dependency (cli-login design D2).
+// dependency.
 func registerClient(ctx context.Context, hc *http.Client, endpoint string) (*clientRegistration, error) {
 	body, err := json.Marshal(map[string]any{
 		"client_name":                registrationClientName(),
@@ -308,7 +308,7 @@ var pollDeviceToken = func(ctx context.Context, conf *oauth2.Config, da *oauth2.
 }
 
 // classifyDeviceTokenError maps a failed wait for approval onto the exit
-// code taxonomy (cli-login design D8).
+// code taxonomy.
 func classifyDeviceTokenError(err error) error {
 	var re *oauth2.RetrieveError
 	isRetrieve := errors.As(err, &re)

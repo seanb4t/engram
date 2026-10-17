@@ -137,11 +137,12 @@ The IdP must allow these things:
 
 - **The device authorization grant (RFC 8628).** The IdP's discovery document
   must have a `device_authorization_endpoint`.
-- **A client for the CLI.** Either anonymous dynamic client registration
-  (RFC 7591) of a public client with the `urn:ietf:params:oauth:grant-type:device_code`
-  and `refresh_token` grants, or a public client that an administrator registered
-  with the device grant turned on. The user then passes its ID with `--client-id`
-  or `ENGRAM_CLIENT_ID`.
+- **A client for the CLI.** The IdP must allow anonymous dynamic client
+  registration (RFC 7591) of a public client with the
+  `urn:ietf:params:oauth:grant-type:device_code` and `refresh_token` grants.
+  If it does not, an administrator registers a public client with the device
+  grant turned on. The user then passes its ID with `--client-id` or
+  `ENGRAM_CLIENT_ID`.
 - **The `offline_access` scope,** so the IdP issues a refresh token. Without it
   the login still works, but the user must log in again when the access token
   expires.
@@ -150,7 +151,7 @@ The IdP must allow these things:
   has no mapper of its own, so the audience must come from a mapper that every
   client gets. On Keycloak, that is an audience mapper on the realm's default
   `basic` client scope. The token must also carry the owner claim
-  (`ENGRAM_OWNER_CLAIM`, default `email`, with `email_verified`); the CLI asks
+  (`ENGRAM_OWNER_CLAIM`, default `email`, with `email_verified`). The CLI asks
   for the `email` scope.
 
 `engram logout` revokes the refresh token at the IdP's `revocation_endpoint`

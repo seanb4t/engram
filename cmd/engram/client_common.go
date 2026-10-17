@@ -89,9 +89,9 @@ func resolveToken(tokenFilePath string) (string, error) {
 }
 
 // bearerInterceptor attaches the resolved credential to every outgoing
-// request as an Authorization header, asking ts for the token per request
-// so a cached login refreshes even mid-session (cli-login design D5). When
-// ts is nil it sets nothing at all — an anonymous call must never send a
+// request as an Authorization header. It reads the token from ts on each
+// call, so a cached login refreshes even mid-session. When ts is nil it
+// sets nothing at all — an anonymous call must never send a
 // malformed "Bearer " header with an empty credential, which the server's
 // extractor rejects. This mirrors the server-side
 // connect.UnaryInterceptorFunc idiom already used in internal/server, and
@@ -132,7 +132,7 @@ func connectCodeForCredentialErr(err error) connect.Code {
 	return connect.CodeUnknown
 }
 
-// resolveCredential applies the client credential order (cli-login spec):
+// resolveCredential applies the client credential order:
 // ENGRAM_TOKEN, then --token-file, then the login cache entry for
 // serverURL, then none (a nil source). The first source that is set wins,
 // and a later one is never read: loadCache runs only when neither
@@ -176,7 +176,7 @@ func newCachedTokenSource(path, server string, e *cachedLogin) *cachedTokenSourc
 		Endpoint: oauth2.Endpoint{TokenURL: e.TokenURL, AuthStyle: oauth2.AuthStyleInParams},
 	}
 	// The refresh goes to the issuer, so it uses the issuer client, which
-	// never takes --insecure (cli-login design D7).
+	// never takes --insecure.
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, newIssuerHTTPClient())
 	return &cachedTokenSource{
 		path:   path,

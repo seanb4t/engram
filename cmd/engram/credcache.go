@@ -16,7 +16,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// credentialCache is the `engram login` cache (cli-login design D4): one
+// credentialCache is the `engram login` cache: one
 // file per user, one entry per server, plus the server the last login
 // targeted. It holds long-lived refresh tokens, so it is only ever written
 // owner-only and read only when no other user can read it.

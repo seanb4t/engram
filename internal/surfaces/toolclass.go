@@ -279,8 +279,7 @@ var operations = []Operation{
 	{
 		// Removes the caller's own cache entry and the client login itself
 		// registered; nothing it removes is memory, and engram login
-		// restores it. Classified not destructive by the user's ruling on
-		// 2026-10-17, so it runs at once like other CLIs' logout instead of
+		// restores it. Not destructive, so it runs at once instead of
 		// previewing under the --apply gate. A second run finds nothing to
 		// remove: idempotent. OpenWorld stays false (D-10).
 		MCPTool: "", CLICommand: "logout",

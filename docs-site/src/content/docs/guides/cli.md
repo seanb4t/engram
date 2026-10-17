@@ -44,13 +44,18 @@ server side uses:
 | `--output` | Force `"json"` or `"text"`. Default: JSON when stdout is not a terminal, a human table when it is. |
 | `--timeout` | Bounds the RPC call. Falls back to `ENGRAM_TIMEOUT`. Default `30s`. `0` is rejected as a usage error — it does not mean unbounded. See [Request timeout](#request-timeout) below. |
 
-**Credential precedence, in order:** the `ENGRAM_TOKEN` environment variable,
-then the file named by `--token-file`, then the saved login for the server (see
-[Log in with `engram login`](#log-in-with-engram-login)). The first one that is
-set wins, and a later one is not read. **There is no `--token` flag.** This is
-deliberate: a credential must never be able to reach `argv`, `ps` output, or
-shell history. Having none of the three is legal — an anonymous call against a
-no-issuer server is a normal request, not an error.
+**Credential precedence.** A client command uses the first of these that is
+set, and does not read the ones after it:
+
+1. The `ENGRAM_TOKEN` environment variable.
+2. The file that `--token-file` names.
+3. The saved login for the server (see
+   [Log in with `engram login`](#log-in-with-engram-login)).
+
+**There is no `--token` flag.** This is deliberate: a credential must never be
+able to reach `argv`, `ps` output, or shell history. Having none of the three is
+legal. An anonymous call against a server with no issuer is a normal request,
+not an error.
 
 ## Log in with `engram login`
 
@@ -83,12 +88,13 @@ expired, and saves the new one.
 | `--client-id` | Use a client that an administrator registered at the IdP in advance, for an IdP without dynamic client registration. Falls back to `ENGRAM_CLIENT_ID`. |
 | `--insecure` | Skip TLS certificate verification for the engram server only. Requests to the IdP are always verified. The server's metadata names the IdP, and that metadata now comes over an unverified connection, so the command prints a warning that names the IdP: check that the URL you open is on the IdP host you expect before you approve. |
 
-The IdP and every endpoint it advertises must use `https`; plain `http` is
-accepted only on a loopback host, such as a local test IdP.
+The IdP and every endpoint it advertises must use `https`. The command accepts
+plain `http` only on a loopback host, such as a local test IdP.
 
-**Where the login is saved.** In `$XDG_CONFIG_HOME/engram/credentials.json`, or
-in `~/.config/engram/credentials.json` when `XDG_CONFIG_HOME` is not set, on
-every platform. The file holds one login per server, and only you can read it.
+**Where login keeps the credential.** In
+`$XDG_CONFIG_HOME/engram/credentials.json`, or in
+`~/.config/engram/credentials.json` when `XDG_CONFIG_HOME` is not set, on every
+platform. The file holds one login per server, and only you can read it.
 If other users can read the file, a client command refuses it, exits `2`, and
 names the `chmod` command that fixes it.
 
@@ -98,14 +104,16 @@ client), and removes the saved login. With neither `--server` nor
 `ENGRAM_SERVER_URL` it logs out of the default server. If the IdP cannot be
 reached, the command prints a warning and removes the saved login anyway.
 
-**Exit codes.** `engram login` exits `2` when no server is given, when the
-server has no authorization server (it accepts anonymous calls), or when the
-saved-login file is unsafe; `3` when the IdP refuses the login (you denied it,
-the code expired, the IdP offers no device grant, or it offers no registration
-and no `--client-id` is set); and `5` when the server or the IdP cannot be
-reached. A client command that uses a saved login exits `3` when the IdP rejects
-the refresh (run `engram login` again) and `5` when the IdP cannot be reached.
-In both cases the engram server is not called.
+**Exit codes.**
+
+| Code | `engram login` | A client command that uses a saved login |
+|------|----------------|------------------------------------------|
+| `2` | No server is given, the server names no authorization server (it accepts anonymous calls), or other users can read the saved-login file. | Other users can read the saved-login file. |
+| `3` | The IdP refuses the login: you denied it, the code expired, the IdP has no device grant, or it has no registration and no `--client-id` is set. | The IdP rejects the refresh. Run `engram login` again. |
+| `5` | The server or the IdP does not answer. | The IdP does not answer. |
+
+When a client command exits `3` or `5` because of its saved login, it does not
+call the engram server.
 
 ## Recall scope selection
 
