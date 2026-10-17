@@ -1,0 +1,40 @@
+ engram  1 Memories  2 Tags  3 Rules  4 Scheduled                                                                                      every readable scope (3)
+/ search, or a short_id or id to open
+ scope: every readable scope                                                                                             f filters · = narrow · ctrl+k commands
+ Latest 6 memories across 3 scopes · unranked · 3 hidden by the recall gate
+  ● decision   Use git only; jj is retired                                    7h│ go list -m pollutes go.sum under -mod=mod
+▌ ● gotcha     go list -m pollutes go.sum under -mod=mod                      3h│ ● gotcha · repo:example/one · private · owner me@example.com
+  ● convention TestMain isolates XDG_CONFIG_HOME for cmd/engram…              1d│ bbbbbbbbb2 · 2026-10-17 09:00 UTC (3h ago)
+  ● decision   Old upgrade plan                                  superseded   9d│ #go-sum #go-modules #golang #gotcha
+  ● preference Prefer rg over grep f… shared · other@example.com             1mo│ ── content ───────────────────────────────────────────────────────────────────
+  ● decision   Revisit the release cadence                       scheduled    1h│ # go list -m pollutes go.sum under -mod=mod
+  end · 6 memories                                                              │
+                                                                                │ Why it matters, with  inline code .
+                                                                                │
+                                                                                │   git diff --stat go.sum
+                                                                                │
+                                                                                │ • first point
+                                                                                │ • second point
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+                                                                                │
+ 2/6 · 3 hidden (2 archived, 1 superseded)
+ enter open · / search · = narrow loaded rows · r related · f scope and filters · ctrl+k commands · ? help · q quit

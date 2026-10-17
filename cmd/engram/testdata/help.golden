@@ -651,7 +651,9 @@ Usage:
 Flags:
   -h, --help                help for tui
       --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --mouse               turn on mouse support: click to select, wheel to scroll (default: ENGRAM_TUI_MOUSE, then the choice saved in the console, then off)
       --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --theme string        console theme: engram, terminal, catppuccin, tokyo-night (default: ENGRAM_TUI_THEME, then the theme chosen in the console, then engram)
       --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
       --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```

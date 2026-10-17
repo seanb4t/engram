@@ -208,6 +208,12 @@ var registry = []field{
 	// identifier, so unlike token_file it may carry an Env row. Only login
 	// binds the flag: a refresh uses the client ID saved in the login cache.
 	{Key: "client.client_id", Env: "ENGRAM_CLIENT_ID", Flag: "client-id"},
+	// tui_theme and tui_mouse are read only by the terminal console, and
+	// only `engram tui` binds the flags. Empty defaults mean "not set": the
+	// console then falls back to its saved preferences file. No Helm
+	// value: the chart deploys only the server.
+	{Key: "client.tui_theme", Env: "ENGRAM_TUI_THEME", Flag: "theme"},
+	{Key: "client.tui_mouse", Env: "ENGRAM_TUI_MOUSE", Flag: "mouse"},
 	// setup.* backs `engram setup` (D-04): --url and --auth are deployment
 	// facts, enrolled env-first with flag override like the 45/48 majority
 	// of this registry — unlike client.token_file/client.output/

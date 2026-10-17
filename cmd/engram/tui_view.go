@@ -6,33 +6,15 @@ package main
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
-	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"google.golang.org/protobuf/types/known/timestamppb"
+	"github.com/charmbracelet/x/ansi"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
 )
-
-// Basic ANSI colours only, so the console reads on light and dark
-// terminals alike.
-var (
-	consoleSelected = lipgloss.NewStyle().Reverse(true)
-	consolePast     = lipgloss.NewStyle().Faint(true)
-	consoleTitle    = lipgloss.NewStyle().Bold(true)
-	consoleError    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	consoleFaint    = lipgloss.NewStyle().Faint(true)
-)
-
-var edgeTypeWords = map[engramv1.EdgeType]string{
-	engramv1.EdgeType_EDGE_TYPE_SUPERSESSION: "supersession",
-	engramv1.EdgeType_EDGE_TYPE_TAG:          "shared tag",
-	engramv1.EdgeType_EDGE_TYPE_CITATION:     "shared citation",
-	engramv1.EdgeType_EDGE_TYPE_VECTOR:       "vector neighbour",
-}
 
 const consoleNotFound = "not found: no record you can read has that id"
 
@@ -54,52 +36,49 @@ func consoleText(s string, keepNewlines bool) string {
 }
 
 func (m *consoleModel) View() tea.View {
-	s := m.active()
-	top := []string{m.headerLine(), m.inputLine(), consoleTitle.Render(m.title(s))}
-	bottom := []string{}
-	if s.footer != "" {
-		bottom = append(bottom, strings.Split(strings.TrimSuffix(s.footer, "\n"), "\n")...)
-	}
-	bottom = append(bottom, m.statusLine(), m.help.View(m.keys))
-
-	h := m.listHeight()
-	var body []string
-	switch {
-	case m.filtersOpen:
-		body = m.filterLines(h)
-	case s.kind == screenDetail:
-		if s.notFound {
-			body = []string{consoleNotFound}
-		} else if s.record != nil {
-			body = strings.Split(s.view.View(), "\n")
-		}
-	default:
-		body = m.rowLines(s, h)
-	}
-	for len(body) < h {
-		body = append(body, "")
-	}
-
-	lines := slices.Concat(top, body[:min(len(body), h)], bottom)
-	clip := lipgloss.NewStyle().MaxWidth(m.width)
+	lines := make([]string, 0, m.height)
+	lines = append(lines, m.tabLine(), m.inputLine(), m.filterLine(), m.resultsHeader())
+	lines = append(lines, m.bodyLines()...)
+	lines = append(lines, m.statusLine(), m.footerLine())
 	for i, l := range lines {
-		lines[i] = clip.Render(l)
+		lines[i] = fitLine(l, m.width)
 	}
-	v := tea.NewView(strings.Join(lines, "\n"))
+	content := strings.Join(lines, "\n")
+	if len(m.overlays) > 0 {
+		content = m.composeOverlay(content)
+	}
+	v := tea.NewView(content)
 	v.AltScreen = true
 	v.WindowTitle = "engram"
-	if c := m.input.Cursor(); c != nil {
-		c.Y = 1
-		v.Cursor = c
+	if m.mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+	if len(m.overlays) == 0 {
+		c := m.input.Cursor()
+		if c == nil {
+			c = m.narrowIn.Cursor()
+		}
+		if c != nil {
+			c.Y = 1
+			v.Cursor = c
+		}
 	}
 	return v
 }
 
-// listHeight is the number of lines left for rows once the header, input,
-// title, footer, status and help lines are drawn.
-func (m *consoleModel) listHeight() int {
-	chrome := 4 + lipgloss.Height(m.help.View(m.keys)) + strings.Count(m.active().footer, "\n")
-	return max(m.height-chrome, 1)
+// fitLine truncates a styled line to w cells and pads it to w.
+func fitLine(s string, w int) string {
+	s = ansi.Truncate(s, w, "")
+	return s + strings.Repeat(" ", max(w-ansi.StringWidth(s), 0))
+}
+
+// joinRight puts right at the right edge of a w-wide line after left.
+func joinRight(left, right string, w int) string {
+	gap := w - ansi.StringWidth(left) - ansi.StringWidth(right)
+	if gap < 1 {
+		return left
+	}
+	return left + strings.Repeat(" ", gap) + right
 }
 
 func (m *consoleModel) where() string {
@@ -109,17 +88,72 @@ func (m *consoleModel) where() string {
 	return consoleText(m.scope, false)
 }
 
-func (m *consoleModel) headerLine() string {
+func (m *consoleModel) tabLine() string {
+	st := m.st
 	var b strings.Builder
-	b.WriteString("engram ")
+	b.WriteString(st.accent.Bold(true).Render(" engram "))
 	for i, name := range consoleTabNames {
-		label := fmt.Sprintf(" %d %s ", i+1, name)
+		label := fmt.Sprintf("%d %s", i+1, name)
 		if consoleTab(i) == m.tab {
-			label = consoleSelected.Render(label)
+			b.WriteString(st.tabActive.Render(label))
+		} else {
+			b.WriteString(st.tabInactive.Render(label))
 		}
-		b.WriteString(label)
 	}
-	include := []string{}
+	right := m.where()
+	if m.crossSpine {
+		right += fmt.Sprintf(" (%d)", len(m.scopes))
+	}
+	return joinRight(b.String(), st.faint.Render(right+" "), m.width)
+}
+
+// searchHint states what Enter will do with the text in the search box.
+func searchHint(q string) string {
+	q = strings.TrimSpace(q)
+	switch {
+	case q == "":
+		return "enter: list"
+	case isIDShaped(q):
+		return "enter: open"
+	}
+	return "enter: search · 1 embedding"
+}
+
+func (m *consoleModel) inputLine() string {
+	st := m.st
+	switch {
+	case m.narrowIn.Focused():
+		return m.narrowIn.View()
+	case m.tab == tabMemories && len(m.stack) == 0:
+		hint := ""
+		if m.input.Focused() {
+			hint = st.faint.Render(searchHint(m.input.Value()) + " ")
+		}
+		return joinRight(m.input.View(), hint, m.width)
+	}
+	trail := []string{consoleTabNames[m.tab]}
+	for i := range m.stack {
+		trail = append(trail, m.screenTitle(&m.stack[i]))
+	}
+	return st.faint.Render(" " + strings.Join(trail, " › "))
+}
+
+func (m *consoleModel) screenTitle(s *screen) string {
+	id := s.id
+	if s.anchor != nil && s.anchor.GetShortId() != "" {
+		id = s.anchor.GetShortId()
+	}
+	id = consoleText(id, false)
+	if s.kind == screenRelated {
+		return "related to " + id
+	}
+	return id
+}
+
+func (m *consoleModel) filterLine() string {
+	st := m.st
+	parts := []string{"scope: " + m.where()}
+	var include []string
 	if m.includeArchived {
 		include = append(include, "archived")
 	}
@@ -129,238 +163,257 @@ func (m *consoleModel) headerLine() string {
 	if m.includeScheduled {
 		include = append(include, "scheduled and expired")
 	}
-	fmt.Fprintf(&b, "  scope: %s", m.where())
 	if len(include) > 0 {
-		fmt.Fprintf(&b, " · include: %s", strings.Join(include, ", "))
+		parts = append(parts, "include: "+strings.Join(include, ", "))
 	}
-	return b.String()
+	if len(m.chosenTags) > 0 {
+		tags := make([]string, 0, len(m.chosenTags))
+		for _, t := range m.chosenTags {
+			tags = append(tags, "#"+consoleText(t, false))
+		}
+		parts = append(parts, "all of "+strings.Join(tags, " "))
+	}
+	left := st.muted.Render(" " + strings.Join(parts, " · "))
+	right := st.faint.Render("f filters · = narrow · ctrl+k commands ")
+	return joinRight(left, right, m.width)
 }
 
-func (m *consoleModel) inputLine() string {
-	if m.tab == tabMemories && len(m.stack) == 0 {
-		return m.input.View()
+// scopesPhrase is how many scopes a response covered, as the web
+// console's results header words it.
+func scopesPhrase(s *screen) string {
+	switch {
+	case !s.crossSpine:
+		return "1 scope"
+	case s.scopesUnknown:
+		return "every readable scope"
+	case s.scopesTruncated:
+		return fmt.Sprintf("%d scopes (some readable scopes not searched)", len(s.searchedScopes))
 	}
-	trail := []string{consoleTabNames[m.tab]}
-	for _, s := range m.stack {
-		trail = append(trail, m.title(&s))
-	}
-	return consoleFaint.Render(strings.Join(trail, " › "))
+	return fmt.Sprintf("%d scopes", len(s.searchedScopes))
 }
 
-func (m *consoleModel) statusLine() string {
-	if m.statusErr {
-		return consoleError.Render(m.status)
+func hiddenTotal(s *screen) uint64 {
+	if s.hidden == nil {
+		return 0
 	}
-	if m.active().loading {
-		return consoleFaint.Render("loading…")
-	}
-	return m.status
+	return s.hidden.GetTotal()
 }
 
-func (m *consoleModel) title(s *screen) string {
-	return consoleText(m.rawTitle(s), false)
-}
-
-func (m *consoleModel) rawTitle(s *screen) string {
-	n := s.rowCount()
-	more := ""
-	if s.nextToken != "" {
-		more = " · n: next page"
+// resultsHeader states, in words, what the active view searched.
+func (m *consoleModel) resultsHeader() string {
+	s := m.active()
+	st := m.st
+	n := s.count()
+	hidden := ""
+	if h := hiddenTotal(s); h > 0 {
+		hidden = fmt.Sprintf(" · %d hidden by the recall gate", h)
 	}
+	query := fmt.Sprintf("%q", consoleText(s.query, false))
+	var text string
 	switch s.kind {
 	case screenMemories:
 		switch {
-		case s.query == "" && s.loading && !s.loaded:
-			return "Listing memories in " + m.where() + "…"
-		case s.query != "" && s.loading:
-			return fmt.Sprintf("Searching %s for %q…", m.where(), s.query)
-		case !s.searched:
-			return fmt.Sprintf("Latest %d memories in %s · unranked%s", n, m.where(), more)
-		case n == 0:
-			return fmt.Sprintf("No memories match %q in %s", s.query, m.where())
+		case s.loading && s.query != "":
+			text = fmt.Sprintf("Searching %s for %s…", m.where(), query)
+		case s.loading && !s.loaded:
+			text = "Loading memories in " + m.where() + "…"
+		case s.narrow != "":
+			text = fmt.Sprintf("%d of %d loaded match %q", n, s.itemCount(), consoleText(s.narrow, false))
+		case s.searched && n == 0:
+			text = fmt.Sprintf("No memories match %s in %s%s", query, m.where(), hidden)
+		case s.searched:
+			ranking := "ranked by cosine similarity"
+			if slices.ContainsFunc(s.rows, func(r *engramv1.Memory) bool { return r.Relevance != nil }) {
+				ranking = "reranked by jev"
+			}
+			text = fmt.Sprintf("%d hits across %s for %s · %s%s", n, scopesPhrase(s), query, ranking, hidden)
+		case n == 0 && s.loaded:
+			text = "No memories in " + m.where() + hidden
+		default:
+			text = fmt.Sprintf("Latest %d memories across %s · unranked%s", n, scopesPhrase(s), hidden)
 		}
-		ranking := "ranked by cosine"
-		if slices.ContainsFunc(s.rows, func(r *engramv1.Memory) bool { return r.Relevance != nil }) {
-			ranking = "reranked by jev"
-		}
-		return fmt.Sprintf("%d hits for %q in %s · %s", n, s.query, m.where(), ranking)
 	case screenTags:
-		return fmt.Sprintf("%d tags in %s, most used first", n, m.where())
+		text = fmt.Sprintf("%d tags in %s, most used first", n, m.where())
+		if s.moreTags {
+			text += " · more exist than shown"
+		}
 	case screenRules:
-		return fmt.Sprintf("%d rules in your readable rule scopes", n)
+		text = fmt.Sprintf("%d rules across %s", n, strings.Replace(scopesPhrase(s), "scope", "rule scope", 1))
 	case screenScheduled:
 		state, other := "scheduled", "expired"
 		if s.expired {
 			state, other = other, state
 		}
-		return fmt.Sprintf("%d %s records of yours in %s · tab: show %s%s", n, state, m.where(), other, more)
-	case screenDetail:
-		return "memory " + s.id
-	default:
-		anchor := s.id
-		if s.record != nil && s.record.GetShortId() != "" {
-			anchor = s.record.GetShortId()
+		text = fmt.Sprintf("%d %s records of yours in %s · w shows %s", n, state, m.where(), other)
+	case screenRelated:
+		text = fmt.Sprintf("%d %s", n, m.screenTitle(s))
+		if s.relatedTruncated {
+			text += " · more vector neighbours exist than shown"
 		}
-		return fmt.Sprintf("%d related to %s", n, anchor)
+	case screenDetail:
+		text = "memory " + m.screenTitle(s)
 	}
+	return st.bold.Render(" " + text)
 }
 
-// rowLines renders the visible window of s's rows, keeping the cursor in
-// view.
-func (m *consoleModel) rowLines(s *screen, h int) []string {
-	n := s.rowCount()
-	s.top = max(min(s.top, s.cursor), s.cursor-h+1, 0)
-	end := min(s.top+h, n)
-	now := time.Now()
-	stateW, edgeW := 0, 0
-	for i := s.top; i < end && s.kind != screenTags; i++ {
-		stateW = max(stateW, len(strings.Join(memoryStateWords(s.rows[i], now), " ")))
-		if s.kind == screenRelated {
-			edgeW = max(edgeW, len(edgeWords(s.edges[i])))
-		}
+// emptyLines say what was searched and the keys that would widen it.
+func (m *consoleModel) emptyLines(s *screen) []string {
+	st := m.st
+	if s.kind != screenMemories {
+		return []string{st.faint.Render("  nothing here")}
 	}
-	var out []string
-	for i := s.top; i < end; i++ {
-		var line string
-		past := false
-		if s.kind == screenTags {
-			t := s.tags[i]
-			line = fmt.Sprintf("%7d  %s", t.GetCount(), t.GetTag())
-		} else {
-			r := s.rows[i]
-			words := memoryStateWords(r, now)
-			past = slices.ContainsFunc(words, func(w string) bool { return w != "scheduled" })
-			cols := []string{fmt.Sprintf("%-10s", r.GetShortId())}
-			if s.kind == screenRelated {
-				cols = append(cols, fmt.Sprintf("%-*s", edgeW, edgeWords(s.edges[i])))
-			}
-			cols = append(cols, fmt.Sprintf("%-10s", r.GetCategory()), fmt.Sprintf("%-*s", stateW, strings.Join(words, " ")))
-			if m.crossSpine || s.kind == screenRules || s.kind == screenRelated {
-				cols = append(cols, r.GetScope())
-			}
-			if r.GetVisibility() == "shared" {
-				cols = append(cols, "shared · "+r.GetOwner())
-			}
-			text := r.GetSummary()
-			if text == "" {
-				text = r.GetContent()
-			}
-			cols = append(cols, truncateSummary(text, max(m.width, 20)))
-			line = strings.Join(cols, "  ")
-		}
-		line = consoleText(line, false)
-		switch {
-		case i == s.cursor:
-			line = consoleSelected.Render(line)
-		case past:
-			line = consolePast.Render(line)
-		}
-		out = append(out, line)
+	out := []string{"", st.muted.Render("  Nothing matched. To widen it:")}
+	if !m.crossSpine {
+		out = append(out, "  "+st.key.Render("f")+st.muted.Render("  search every readable scope"))
 	}
-	if n == 0 && s.loaded {
-		out = append(out, consoleFaint.Render("nothing here"))
+	if !m.includeArchived {
+		hint := "  include archived records"
+		if s.hidden != nil && s.hidden.GetArchived() > 0 {
+			hint += fmt.Sprintf(" (%d hidden)", s.hidden.GetArchived())
+		}
+		out = append(out, "  "+st.key.Render("f")+st.muted.Render(hint))
+	}
+	if len(m.chosenTags) > 0 {
+		out = append(out, "  "+st.key.Render("f")+st.muted.Render("  clear the chosen tags"))
 	}
 	return out
 }
 
-func edgeWords(types []engramv1.EdgeType) string {
-	words := make([]string, 0, len(types))
-	for _, t := range types {
-		words = append(words, edgeTypeWords[t])
+func (m *consoleModel) bodyLines() []string {
+	l := m.layout()
+	s := m.active()
+	h := m.bodyHeight()
+	listLines := func(w, h int) []string {
+		var out []string
+		switch {
+		case !s.loaded && s.loading:
+			out = []string{m.st.faint.Render("  loading…")}
+		case s.loaded && s.count() == 0:
+			out = m.emptyLines(s)
+		default:
+			out = m.listLines(s, w, h)
+		}
+		for len(out) < h {
+			out = append(out, "")
+		}
+		return out[:h]
 	}
-	return strings.Join(words, ", ")
+	divider := m.st.divider
+	if m.focus == focusPreview {
+		divider = m.st.dividerFocus
+	}
+	switch {
+	case l.showList && l.showPreview && l.tier == tierSide:
+		left, right := listLines(l.list.w, h), m.previewLines(l.preview.w-1, h)
+		out := make([]string, h)
+		for i := range h {
+			out[i] = fitLine(left[i], l.list.w) + divider.Render("│") + " " + right[i]
+		}
+		return out
+	case l.showList && l.showPreview:
+		out := listLines(m.width, l.list.h)
+		out = append(out, divider.Render(strings.Repeat("─", m.width)))
+		return append(out, m.previewLines(m.width, l.preview.h)...)
+	case l.showList:
+		return listLines(m.width, h)
+	}
+	return m.previewLines(m.width, h)
 }
 
-func (m *consoleModel) filterLines(h int) []string {
-	check := func(on bool) string {
-		if on {
-			return "[x]"
+// positionText is where the selection sits among the loaded rows.
+func (m *consoleModel) positionText(s *screen) string {
+	if s.kind == screenDetail {
+		lines := len(m.previewContent(m.previewWidth()))
+		if lines <= m.previewHeight() {
+			return "all shown"
 		}
-		return "[ ]"
+		return fmt.Sprintf("%d%%", min(100, (m.preview.offset+m.previewHeight())*100/lines))
 	}
-	radio := func(on bool) string {
-		if on {
-			return "(•)"
-		}
-		return "( )"
+	n := s.count()
+	if n == 0 {
+		return "0/0"
 	}
-	entries := make([]string, 0, 4+len(m.scopes))
-	entries = append(entries,
-		check(m.includeArchived)+" archived",
-		check(m.includeSuperseded)+" superseded",
-		check(m.includeScheduled)+" scheduled and expired",
-		radio(m.crossSpine)+" every readable scope (cross-spine)",
-	)
-	approx := ""
-	if m.scopesApproximate {
-		approx = "~"
+	pos := s.cursor + 1
+	switch {
+	case s.nextToken != "" && s.narrow == "":
+		return fmt.Sprintf("%d/%d+", pos, n)
+	case s.kind == screenMemories && s.searched && s.itemCount() >= consolePageSize:
+		return fmt.Sprintf("%d/%d · top %d", pos, n, consolePageSize)
 	}
-	for _, sc := range m.scopes {
-		entries = append(entries, fmt.Sprintf("%s %s  %s%d", radio(!m.crossSpine && m.scope == sc.GetScope()), sc.GetScope(), approx, sc.GetCount()))
-	}
-	for i := range entries {
-		entries[i] = consoleText(entries[i], false)
-		if i == m.filterCursor {
-			entries[i] = consoleSelected.Render(entries[i])
-		}
-		entries[i] = "  " + entries[i]
-	}
-	lines := []string{
-		consoleFaint.Render("space: toggle · enter: choose and close · esc: close"),
-		"Include records the recall gate hides",
-	}
-	lines = append(lines, entries[:3]...)
-	lines = append(lines, "Scope")
-	scopes := entries[3:]
-	room := max(h-len(lines), 1)
-	first := max(min(m.filterCursor-3, len(scopes)-room), 0)
-	return append(lines, scopes[first:min(first+room, len(scopes))]...)
+	return fmt.Sprintf("%d/%d", pos, n)
 }
 
-// renderDetail is the detail view's text: every field the spec names, by
-// its proto field name, then the full content.
-func (m *consoleModel) renderDetail(s *screen) string {
-	r := s.record
-	if r == nil {
-		return ""
+func (m *consoleModel) statusLine() string {
+	st := m.st
+	s := m.active()
+	if m.statusErr {
+		return st.errorFg.Render(" " + m.status)
 	}
-	var b strings.Builder
-	field := func(name, value string) {
-		if value != "" {
-			fmt.Fprintf(&b, "%-15s %s\n", name+":", consoleText(value, false))
+	left := " " + m.positionText(s)
+	if s.hidden != nil && s.hidden.GetTotal() > 0 {
+		var by []string
+		for _, b := range []struct {
+			n    uint64
+			name string
+		}{
+			{s.hidden.GetArchived(), "archived"}, {s.hidden.GetSuperseded(), "superseded"},
+			{s.hidden.GetExpired(), "expired"}, {s.hidden.GetScheduled(), "scheduled"},
+		} {
+			if b.n > 0 {
+				by = append(by, fmt.Sprintf("%d %s", b.n, b.name))
+			}
 		}
+		left += fmt.Sprintf(" · %d hidden (%s)", s.hidden.GetTotal(), strings.Join(by, ", "))
 	}
-	ts := func(name string, t *timestamppb.Timestamp) {
-		if t != nil {
-			field(name, t.AsTime().UTC().Format(time.RFC3339))
+	if s.narrow != "" {
+		left += fmt.Sprintf(" · narrowed %d of %d loaded", s.count(), s.itemCount())
+	}
+	if s.advisory != "" {
+		left += " · " + consoleText(s.advisory, false)
+	}
+	right := m.toast
+	if right == "" {
+		right = m.status
+	}
+	return joinRight(st.muted.Render(left), st.success.Render(right+" "), m.width)
+}
+
+// footerLine lists the focused pane's keys, dropping from the end when
+// the line is narrow, and always ends with ? help.
+func (m *consoleModel) footerLine() string {
+	st := m.st
+	render := func(b key.Binding) string {
+		h := b.Help()
+		return st.key.Render(h.Key) + " " + st.muted.Render(h.Desc)
+	}
+	focus := m.focus
+	if m.active().kind == screenDetail {
+		focus = focusPreview
+	}
+	bindings := m.keys.footer(focus)
+	tail := render(m.keys.Help) + st.faint.Render(" · ") + render(m.keys.Quit)
+	for len(bindings) > 0 {
+		parts := make([]string, 0, len(bindings))
+		for _, b := range bindings {
+			parts = append(parts, render(b))
 		}
+		line := " " + strings.Join(parts, st.faint.Render(" · ")) + st.faint.Render(" · ") + tail
+		if ansi.StringWidth(line) <= m.width {
+			return line
+		}
+		bindings = bindings[:len(bindings)-1]
 	}
-	state := strings.Join(memoryStateWords(r, time.Now()), " ")
-	if state == "" {
-		state = "live"
-	}
-	field("short_id", r.GetShortId())
-	field("id", r.GetId())
-	field("state", state)
-	field("superseded_by", r.GetSupersededBy())
-	field("supersedes", strings.Join(r.GetSupersedes(), ", "))
-	field("scope", r.GetScope())
-	field("category", r.GetCategory())
-	visibility := r.GetVisibility()
-	if visibility == "" {
-		// The store keeps a private record's visibility empty.
-		visibility = "private"
-	}
-	field("visibility", visibility)
-	field("owner", r.GetOwner())
-	field("tags", strings.Join(r.GetTags(), ", "))
-	ts("created_at", r.GetCreatedAt())
-	ts("not_before", r.GetNotBefore())
-	ts("not_after", r.GetNotAfter())
-	ts("archived_at", r.GetArchivedAt())
-	field("schema_version", strconv.FormatUint(uint64(r.GetSchemaVersion()), 10))
-	field("summary", r.GetSummary())
-	b.WriteString("\n")
-	b.WriteString(consoleText(r.GetContent(), true))
-	return b.String()
+	return " " + tail
+}
+
+// composeOverlay draws the topmost overlay over the base view.
+func (m *consoleModel) composeOverlay(base string) string {
+	o := m.overlays[len(m.overlays)-1]
+	box := m.renderOverlay(o)
+	x := max((m.width-lipgloss.Width(box))/2, 0)
+	y := max(min(2, m.height-lipgloss.Height(box)), 0)
+	return lipgloss.NewCanvas(m.width, m.height).Compose(lipgloss.NewCompositor(
+		lipgloss.NewLayer(base),
+		lipgloss.NewLayer(box).X(x).Y(y).Z(1),
+	)).Render()
 }

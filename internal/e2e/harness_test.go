@@ -41,6 +41,10 @@ import (
 // that silently stops building the thing it tests is worse than no tier.
 var engramBin string
 
+// childConfigHome is an empty config directory every CLI subprocess gets as
+// XDG_CONFIG_HOME, so none reads the developer's real login cache.
+var childConfigHome string
+
 // testCollectionPrefix namespaces this package's integration-test Qdrant
 // collection names so a single shared Qdrant instance (CI's
 // ENGRAM_QDRANT_TEST_ADDR path) can host every Qdrant-backed package's test
@@ -99,6 +103,12 @@ func TestMain(m *testing.M) {
 	}
 
 	engramBin = filepath.Join(tmp, "engram")
+	childConfigHome = filepath.Join(tmp, "config")
+	if err := os.MkdirAll(childConfigHome, 0o700); err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: config dir: %v\n", err)
+		_ = os.RemoveAll(tmp)
+		os.Exit(1)
+	}
 	build := exec.Command("go", "build", "-o", engramBin, "github.com/seanb4t/engram/cmd/engram")
 	if out, berr := build.CombinedOutput(); berr != nil {
 		fmt.Fprintf(os.Stderr, "fatal: build engram: %v\n%s\n", berr, out)
@@ -128,9 +138,11 @@ func TestSharedQdrantAddressHonored(t *testing.T) {
 // machine instead of the code — and, worse, can send a real API key to whatever
 // endpoint the test configures. Only PATH/HOME (needed for the Go toolchain and
 // container discovery) plus the explicitly-passed ENGRAM_* vars cross into the child.
+// HOME would also lead the CLI to the developer's `engram login` cache, so
+// XDG_CONFIG_HOME points at an empty directory instead.
 func childEnv(vars map[string]string) []string {
-	env := make([]string, 0, 2+len(vars))
-	env = append(env, "PATH="+os.Getenv("PATH"), "HOME="+os.Getenv("HOME"))
+	env := make([]string, 0, 3+len(vars))
+	env = append(env, "PATH="+os.Getenv("PATH"), "HOME="+os.Getenv("HOME"), "XDG_CONFIG_HOME="+childConfigHome)
 	for k, v := range vars {
 		env = append(env, k+"="+v)
 	}
