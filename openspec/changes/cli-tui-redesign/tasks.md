@@ -62,7 +62,7 @@
 
 ## 9. Integration
 
-- [ ] 9.1 Build the binary again with the task 1.1 flags and record the size difference with the 5.5 render times in the PR description. Verify both sizes and both times appear there.
+- [x] 9.1 Build the binary again with the task 1.1 flags and record the size difference with the 5.5 render times in the PR description. Verify both sizes and both times appear there.
 - [x] 9.2 Run the console against the local stack (Qdrant in Docker, a stub embedder, `engram serve` with static tokens, as in engram memory `337hf30teq`) in a pseudo-terminal at 160×40, 90×45 and 70×24, step through every view, the palette, the theme picker and the filters, and quit. Verify the screens match `specs/terminal-console/spec.md`, and that the run exits 0 with no write request in the server log.
 - [x] 9.3 Run the quality gate `task` (lint and test). Verify it exits 0.
 
