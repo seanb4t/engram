@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,11 +14,13 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
@@ -86,21 +89,143 @@ func resolveToken(tokenFilePath string) (string, error) {
 }
 
 // bearerInterceptor attaches the resolved credential to every outgoing
-// request as an Authorization header. When token is empty it sets nothing
-// at all — an anonymous call must never send a malformed "Bearer " header
-// with an empty credential, which the server's extractor rejects. This
-// mirrors the server-side connect.UnaryInterceptorFunc idiom already used
-// in internal/server, and composes with any transport: TLS policy and
-// credential attachment never touch the same object.
-func bearerInterceptor(token string) connect.UnaryInterceptorFunc {
+// request as an Authorization header, asking ts for the token per request
+// so a cached login refreshes even mid-session (cli-login design D5). When
+// ts is nil it sets nothing at all — an anonymous call must never send a
+// malformed "Bearer " header with an empty credential, which the server's
+// extractor rejects. This mirrors the server-side
+// connect.UnaryInterceptorFunc idiom already used in internal/server, and
+// composes with any transport: TLS policy and credential attachment never
+// touch the same object.
+func bearerInterceptor(ts oauth2.TokenSource) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			if token != "" {
-				req.Header().Set("Authorization", "Bearer "+token)
+			if ts != nil {
+				tok, err := ts.Token()
+				if err != nil {
+					return nil, connect.NewError(connectCodeForCredentialErr(err), err)
+				}
+				if tok.AccessToken != "" {
+					req.Header().Set("Authorization", "Bearer "+tok.AccessToken)
+				}
 			}
 			return next(ctx, req)
 		}
 	}
+}
+
+// connectCodeForCredentialErr carries a credential failure's exit code
+// through the Connect error that bearerInterceptor returns, so
+// exitCodeForConnectErr maps it back to the same exit code.
+func connectCodeForCredentialErr(err error) connect.Code {
+	var ec interface{ ExitCode() int }
+	if errors.As(err, &ec) {
+		switch ec.ExitCode() {
+		case exitAuth:
+			return connect.CodeUnauthenticated
+		case exitUnavailable:
+			return connect.CodeUnavailable
+		case exitUsage:
+			return connect.CodeInvalidArgument
+		}
+	}
+	return connect.CodeUnknown
+}
+
+// resolveCredential applies the client credential order (cli-login spec):
+// ENGRAM_TOKEN, then --token-file, then the login cache entry for
+// serverURL, then none (a nil source). The first source that is set wins,
+// and a later one is never read: loadCache runs only when neither
+// ENGRAM_TOKEN nor --token-file supplied a credential.
+func resolveCredential(tokenFilePath, serverURL string, loadCache func() (*credentialCache, string, error)) (oauth2.TokenSource, error) {
+	token, err := resolveToken(tokenFilePath)
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
+		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token}), nil
+	}
+	cache, path, err := loadCache()
+	if err != nil {
+		return nil, err
+	}
+	key := cacheKey(serverURL)
+	entry := cache.Servers[key]
+	if entry == nil || entry.Token == nil {
+		return nil, nil
+	}
+	return newCachedTokenSource(path, key, entry), nil
+}
+
+// cachedTokenSource serves a cached login's access token, refreshing it
+// through x/oauth2 when it is within the library's expiry margin and
+// writing a changed token back to the cache.
+type cachedTokenSource struct {
+	path   string
+	server string
+	issuer string
+
+	mu   sync.Mutex
+	base oauth2.TokenSource
+	last string
+}
+
+func newCachedTokenSource(path, server string, e *cachedLogin) *cachedTokenSource {
+	conf := &oauth2.Config{
+		ClientID: e.ClientID,
+		Endpoint: oauth2.Endpoint{TokenURL: e.TokenURL, AuthStyle: oauth2.AuthStyleInParams},
+	}
+	// The refresh goes to the issuer, so it uses the issuer client, which
+	// never takes --insecure (cli-login design D7).
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, newIssuerHTTPClient())
+	return &cachedTokenSource{
+		path:   path,
+		server: server,
+		issuer: e.Issuer,
+		base:   conf.TokenSource(ctx, e.Token),
+		last:   e.Token.AccessToken,
+	}
+}
+
+func (s *cachedTokenSource) Token() (*oauth2.Token, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tok, err := s.base.Token()
+	if err != nil {
+		var re *oauth2.RetrieveError
+		if errors.As(err, &re) {
+			return nil, authErrorf("the saved login for %s is no longer valid (%s); run: engram login --server %s",
+				s.server, retrieveErrorText(re), s.server)
+		}
+		return nil, unavailableErrorf("refresh the saved login for %s at the issuer %s: %w", s.server, s.issuer, err)
+	}
+	if tok.AccessToken != s.last {
+		if err := s.persist(tok); err != nil {
+			return nil, err
+		}
+		s.last = tok.AccessToken
+	}
+	return tok, nil
+}
+
+// persist writes a refreshed token into the cache. It re-reads the file
+// first, so it keeps other servers' entries another process wrote since
+// this command started, and it never re-creates an entry that a
+// concurrent logout removed.
+func (s *cachedTokenSource) persist(tok *oauth2.Token) error {
+	cache, err := loadCredentialCache(s.path)
+	if err != nil {
+		return err
+	}
+	entry := cache.Servers[s.server]
+	if entry == nil {
+		return nil
+	}
+	entry.Token = tok
+	if err := cache.save(s.path); err != nil {
+		return fmt.Errorf("save the refreshed login for %s: %w", s.server, err)
+	}
+	return nil
 }
 
 // newHTTPClient builds the HTTP client the Connect client is constructed
@@ -139,12 +264,51 @@ func clientFromFlags(cmd *cobra.Command) (engramv1connect.EngramServiceClient, o
 	if err := config.ValidateClient(cfg.Client); err != nil {
 		return nil, formatJSON, 0, usageErrorf("%w", err)
 	}
-	if cfg.Client.ServerURL == "" {
-		return nil, formatJSON, 0, usageErrorf("--server or ENGRAM_SERVER_URL is required")
+	// The login cache is read at most once, and only when it is needed:
+	// for the default server, or for the credential when neither
+	// ENGRAM_TOKEN nor --token-file is set.
+	var (
+		cache     *credentialCache
+		cachePath string
+	)
+	loadCache := func() (*credentialCache, string, error) {
+		if cache != nil {
+			return cache, cachePath, nil
+		}
+		p, err := credentialsPath()
+		if err != nil {
+			return nil, "", usageErrorf("%w", err)
+		}
+		c, err := loadCredentialCache(p)
+		if err != nil {
+			return nil, "", err
+		}
+		cache, cachePath = c, p
+		return cache, cachePath, nil
 	}
-	token, err := resolveToken(cfg.Client.TokenFile)
+	// Server order: --server, ENGRAM_SERVER_URL (both already resolved by
+	// config.Load), then the default server the last engram login set.
+	serverURL := cfg.Client.ServerURL
+	if serverURL == "" {
+		c, _, err := loadCache()
+		if err != nil {
+			return nil, formatJSON, 0, err
+		}
+		serverURL = c.DefaultServer
+	}
+	if serverURL == "" {
+		return nil, formatJSON, 0, usageErrorf("--server or ENGRAM_SERVER_URL is required (or log in with engram login to set a default server)")
+	}
+	tokens, err := resolveCredential(cfg.Client.TokenFile, serverURL, loadCache)
 	if err != nil {
 		return nil, formatJSON, 0, err
+	}
+	// Resolve the token once before any RPC, so a rejected or unreachable
+	// refresh exits with its own code and the server is never called.
+	if tokens != nil {
+		if _, err := tokens.Token(); err != nil {
+			return nil, formatJSON, 0, err
+		}
 	}
 	// ValidateClient has already confirmed cfg.Client.Insecure parses as a
 	// bool; an error here is unreachable by construction.
@@ -165,8 +329,8 @@ func clientFromFlags(cmd *cobra.Command) (engramv1connect.EngramServiceClient, o
 	}
 	format := outputFormatFromConfig(cfg.Client.Output, isTerminal(os.Stdout))
 	client := engramv1connect.NewEngramServiceClient(
-		newHTTPClient(insecure), cfg.Client.ServerURL,
-		connect.WithInterceptors(bearerInterceptor(token)),
+		newHTTPClient(insecure), serverURL,
+		connect.WithInterceptors(bearerInterceptor(tokens)),
 	)
 	return client, format, timeout, nil
 }

@@ -217,9 +217,9 @@ No CLI flag SHALL accept a token value. `engram login`, `engram logout` and ever
 
 ### Requirement: The catalog classifies login and logout
 
-The self-describe catalog SHALL list `login` and `logout` with a blast radius that holds for every invocation: `login` is not read-only, not destructive, not idempotent and open-world; `logout` is not read-only, destructive, idempotent and open-world.
+The self-describe catalog SHALL list `login` and `logout` with a blast radius that holds for every invocation: `login` is not read-only, not destructive and not idempotent; `logout` is not read-only, not destructive and idempotent. Both are closed-world, like every other engram operation. `logout` runs at once, with no preview and no `--apply` flag.
 
 #### Scenario: Catalog entries
 
 - **WHEN** an agent reads the self-describe catalog
-- **THEN** the `login` entry has `read_only: false`, `destructive: false`, `idempotent: false` and `open_world: true`, and the `logout` entry has `read_only: false`, `destructive: true`, `idempotent: true` and `open_world: true`
+- **THEN** the `login` entry has `read_only: false`, `destructive: false`, `idempotent: false` and `open_world: false`, and the `logout` entry has `read_only: false`, `destructive: false`, `idempotent: true` and `open_world: false`

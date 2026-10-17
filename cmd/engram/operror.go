@@ -15,17 +15,19 @@ import (
 	"github.com/seanb4t/engram/internal/store"
 )
 
-// notFoundErrorf and unavailableErrorf are usageErrorf's siblings
-// (client_common.go), carrying exitNotFound and exitUnavailable
-// respectively, in the exact same shape. Kept here, next to their only
-// consumer, rather than in client_common.go alongside usageErrorf -- this
-// plan owns one file.
+// notFoundErrorf, unavailableErrorf and authErrorf are usageErrorf's
+// siblings (client_common.go), carrying exitNotFound, exitUnavailable and
+// exitAuth respectively, in the exact same shape.
 func notFoundErrorf(format string, a ...any) error {
 	return &cliError{code: exitNotFound, err: fmt.Errorf(format, a...)}
 }
 
 func unavailableErrorf(format string, a ...any) error {
 	return &cliError{code: exitUnavailable, err: fmt.Errorf(format, a...)}
+}
+
+func authErrorf(format string, a ...any) error {
+	return &cliError{code: exitAuth, err: fmt.Errorf(format, a...)}
 }
 
 // isUnavailableTransportErr reports whether err represents a transport

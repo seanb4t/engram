@@ -268,6 +268,25 @@ var operations = []Operation{
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
+		// Writes the caller's own login cache entry and may register a
+		// client at the issuer, so not read-only; it only adds or replaces
+		// its own entry, so not destructive. Each run issues new tokens,
+		// so not idempotent. OpenWorld stays false (D-10), as for setup,
+		// which also drives an external system.
+		MCPTool: "", CLICommand: "login",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: false, OpenWorld: false},
+	},
+	{
+		// Removes the caller's own cache entry and the client login itself
+		// registered; nothing it removes is memory, and engram login
+		// restores it. Classified not destructive by the user's ruling on
+		// 2026-10-17, so it runs at once like other CLIs' logout instead of
+		// previewing under the --apply gate. A second run finds nothing to
+		// remove: idempotent. OpenWorld stays false (D-10).
+		MCPTool: "", CLICommand: "logout",
+		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
 		// Found missing during plan 02-05: buildCatalog emits a "serve" entry
 		// (rootCmd.AddCommand(serveCmd, versionCmd), root.go) that this table
 		// never classified, which the both-directions catalog gate
