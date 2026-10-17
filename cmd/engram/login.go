@@ -106,6 +106,15 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	if insecure {
+		// The metadata that named the issuer came over an unverified
+		// connection, so a man-in-the-middle could have named a fake one.
+		// The user is the only check left (the user's 2026-10-17 ruling:
+		// keep --insecure on login and warn, rather than drop it).
+		_, _ = fmt.Fprintf(stderr,
+			"WARNING: the engram server named the issuer %s over an unverified connection (--insecure). "+
+				"Approve the login only if the URL below is on the issuer host you expect.\n", issuer)
+	}
 	issuerHTTP := newIssuerHTTPClient()
 	md, err := discoverIssuerMetadata(ctx, issuerHTTP, issuer)
 	if err != nil {

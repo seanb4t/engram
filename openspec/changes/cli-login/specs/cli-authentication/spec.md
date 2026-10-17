@@ -203,12 +203,22 @@ When a client command uses the cache and the access token has expired or will ex
 
 ### Requirement: A credential never leaves the cache in clear text
 
-No CLI flag SHALL accept a token value. `engram login`, `engram logout` and every client command SHALL NOT write an access token, a refresh token or a registration access token to stdout, stderr or a log line. The `--insecure` flag SHALL apply only to requests to the engram server, never to requests to the issuer.
+No CLI flag SHALL accept a token value, and no command SHALL write a token to stdout, stderr or a log line. `engram login` SHALL refuse an issuer or OAuth endpoint that is not https, except on a loopback host. `--insecure` SHALL apply only to the engram server, and with it login SHALL warn that the issuer was named over an unverified connection.
 
 #### Scenario: Login output carries no token
 
 - **WHEN** a login succeeds
 - **THEN** neither stdout nor stderr contains any token value
+
+#### Scenario: Plain-http issuer refused
+
+- **WHEN** the server's metadata names `http://idp.example/realms/r` as its authorization server
+- **THEN** the command writes an error naming the issuer and the https requirement, caches nothing, and exits with code 3
+
+#### Scenario: Insecure login names the unverified issuer
+
+- **WHEN** a user runs `engram login --insecure`
+- **THEN** stderr carries a warning that names the issuer and says the engram server named it over an unverified connection
 
 #### Scenario: Insecure flag and the issuer
 

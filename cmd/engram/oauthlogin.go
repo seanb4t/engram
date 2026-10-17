@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -70,7 +71,38 @@ func discoverIssuer(ctx context.Context, hc *http.Client, serverURL string) (str
 	if len(doc.AuthorizationServers) == 0 || doc.AuthorizationServers[0] == "" {
 		return "", usageErrorf("%s names no authorization server: it accepts anonymous calls, so there is nothing to log in to", serverURL)
 	}
-	return doc.AuthorizationServers[0], nil
+	issuer := doc.AuthorizationServers[0]
+	if err := requireSecureOAuthURL("issuer", issuer); err != nil {
+		return "", err
+	}
+	return issuer, nil
+}
+
+// requireSecureOAuthURL refuses an issuer or OAuth endpoint that is not an
+// absolute https URL, so a device code, a refresh token or a registration
+// token never crosses the network in clear text. Plain http is allowed
+// only on a loopback host, for a local IdP.
+func requireSecureOAuthURL(what, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || !u.IsAbs() || u.Host == "" {
+		return authErrorf("the %s %q is not an absolute URL", what, raw)
+	}
+	switch {
+	case u.Scheme == "https":
+		return nil
+	case u.Scheme == "http" && isLoopbackHost(u.Hostname()):
+		return nil
+	default:
+		return authErrorf("the %s %s does not use https; engram login sends credentials only over https (plain http only to a loopback host)", what, raw)
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // issuerMetadata is what login and logout need from the issuer's OIDC
@@ -104,6 +136,19 @@ func discoverIssuerMetadata(ctx context.Context, hc *http.Client, issuer string)
 	// Basic header with an empty secret.
 	endpoint := p.Endpoint()
 	endpoint.AuthStyle = oauth2.AuthStyleInParams
+	for what, u := range map[string]string{
+		"token endpoint":                endpoint.TokenURL,
+		"device authorization endpoint": endpoint.DeviceAuthURL,
+		"registration endpoint":         extra.Registration,
+		"revocation endpoint":           extra.Revocation,
+	} {
+		if u == "" {
+			continue
+		}
+		if err := requireSecureOAuthURL(what, u); err != nil {
+			return nil, err
+		}
+	}
 	return &issuerMetadata{provider: p, endpoint: endpoint, registration: extra.Registration, revocation: extra.Revocation}, nil
 }
 
@@ -158,6 +203,11 @@ func registerClient(ctx context.Context, hc *http.Client, endpoint string) (*cli
 	var reg clientRegistration
 	if err := json.Unmarshal(b, &reg); err != nil || reg.ClientID == "" {
 		return nil, authErrorf("the issuer's client registration at %s returned no client_id", endpoint)
+	}
+	if reg.RegistrationClientURI != "" {
+		if err := requireSecureOAuthURL("registration client URI", reg.RegistrationClientURI); err != nil {
+			return nil, err
+		}
 	}
 	return &reg, nil
 }

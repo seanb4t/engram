@@ -346,6 +346,9 @@ func TestLoginInsecureNeverAppliesToIssuer(t *testing.T) {
 	if !strings.Contains(stderr, "WARNING") {
 		t.Errorf("stderr = %q, want the --insecure warning", stderr)
 	}
+	if !strings.Contains(stderr, "named the issuer "+tlsIssuer.URL+" over an unverified connection") {
+		t.Errorf("stderr = %q, want the warning that names the unverified issuer", stderr)
+	}
 }
 
 func TestLoginRegistersOnceAndReuses(t *testing.T) {
@@ -475,5 +478,47 @@ func TestLoginWithoutRefreshTokenWarns(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "no refresh token") {
 		t.Errorf("stderr = %q, want the no-refresh-token warning", stderr)
+	}
+}
+
+func TestLoginRefusesPlainHTTPIssuer(t *testing.T) {
+	cachePath := loginTestEnv(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc(wellKnownPRMBase, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, protectedResourceMetadata{AuthorizationServers: []string{"http://idp.example/realms/r"}})
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	_, _, err := runClient(t, "login", "--server", server.URL)
+	if got := exitCodeFromError(err); got != exitAuth {
+		t.Fatalf("exit code = %d, want %d (err=%v)", got, exitAuth, err)
+	}
+	if !strings.Contains(err.Error(), "https") || !strings.Contains(err.Error(), "http://idp.example/realms/r") {
+		t.Errorf("error %q does not name the issuer and the https requirement", err)
+	}
+	if c := mustLoadCache(t, cachePath); len(c.Servers) != 0 {
+		t.Errorf("cache = %+v, want empty", c)
+	}
+}
+
+func TestRequireSecureOAuthURL(t *testing.T) {
+	for raw, ok := range map[string]bool{
+		"https://idp.example/realms/r": true,
+		"http://127.0.0.1:8080/token":  true,
+		"http://[::1]:8080/token":      true,
+		"http://localhost/token":       true,
+		"http://idp.example/token":     false,
+		"ftp://idp.example/token":      false,
+		"/relative/token":              false,
+		"":                             false,
+	} {
+		err := requireSecureOAuthURL("token endpoint", raw)
+		if (err == nil) != ok {
+			t.Errorf("requireSecureOAuthURL(%q) = %v, want ok=%v", raw, err, ok)
+		}
+		if err != nil && exitCodeFromError(err) != exitAuth {
+			t.Errorf("requireSecureOAuthURL(%q) exit code = %d, want %d", raw, exitCodeFromError(err), exitAuth)
+		}
 	}
 }

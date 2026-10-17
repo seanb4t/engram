@@ -102,7 +102,15 @@ Alternatives considered:
 
 The OAuth and discovery HTTP client is separate from the Connect HTTP client and always verifies TLS. `--insecure` exists for a lab engram server with a self-signed certificate; an IdP that hands out credentials is not something to talk to without verification.
 
-Alternative considered: **one HTTP client for both.** Rejected. It would let one flag silently turn off verification of the credential issuer.
+The issuer and every OAuth endpoint it advertises (token, device, registration, revocation, and the registration client URI) must be https, with plain http allowed only on a loopback host, so a device code, a refresh token or a registration token never crosses the network in clear text.
+
+Under `--insecure`, the metadata that names the issuer itself arrives over an unverified connection, so login prints a warning that names the issuer and asks the user to check the verification URL's host before approving.
+
+Alternatives considered:
+
+- **One HTTP client for both.** Rejected. It would let one flag silently turn off verification of the credential issuer.
+- **Drop `--insecure` from login.** Rejected by the user on 2026-10-17 in favour of the warning. It would close the gap fully, but a lab server with a self-signed certificate could then not use login.
+- **Require the PRM `resource` to equal `--server` (RFC 9728 §3.3).** Rejected. The server's `resource` is its MCP URL, which differs from the Connect URL the CLI calls (in prod, `https://llm.fzymgc.house/engram/mcp` against `https://engram.fzymgc.house`, measured 2026-10-17).
 
 ### D8: Exit codes reuse the existing taxonomy
 
