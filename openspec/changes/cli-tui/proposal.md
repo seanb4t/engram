@@ -8,6 +8,7 @@ Running `engram` with no arguments writes the self-describe catalog (D-15) to th
 
 - **BREAKING:** the self-describe catalog moves from bare `engram` to a new `engram catalog` command. The document keeps its shape and is still derived from the live command tree. It gains entries only for commands that are new in this release, including `catalog` itself.
 - When stdin and stdout are both terminals, bare `engram` opens a terminal user interface (TUI) for the memory store.
+- A new `engram tui` command opens the same TUI and accepts the client flags `--server`, `--token-file`, `--insecure` and `--timeout`. Bare `engram` runs it with no flags, so it reads only the environment. The command exists because `--token-file` and `--insecure` have no environment form.
 - When either one is not a terminal (an agent, a pipe, a script), bare `engram` never starts the TUI and never waits for input. It writes one line to stderr that names `engram catalog` and exits with the usage code (`exitUsage`, 2).
 - The first version of the TUI reads only. It shows search and list results, a record's full detail with its derived state, related memories, tags, rules and scheduled records, across the caller's readable scopes. It uses the same Connect API, server setting and credential order as the other client commands.
 - `engram --help` and every other command are unchanged.
@@ -26,11 +27,11 @@ None. No existing spec covers the CLI.
 ## Impact
 
 - **Wire contract:** the CLI's catalog contract moves to a new command. This is a compatibility decision. It breaks any external agent or script that runs bare `engram` to read the catalog, so the commit is a `feat!`. Nothing in this repository runs bare `engram`: the skills, hooks and `engram setup` were checked on 2026-10-17. The non-terminal pointer exists so a broken caller learns the new command from the failure. No proto field, MCP input schema, error hint code, `ENGRAM_` key or stored payload key changes.
-- **Code:** `cmd/engram` (`root.go` RunE, a new `catalog` command, and the TUI), `internal/surfaces` (a blast-radius row for `catalog`), and the `help.golden` and `catalog.golden` fixtures.
+- **Code:** `cmd/engram` (`root.go` RunE, new `catalog` and `tui` commands, and the TUI), `internal/surfaces` (blast-radius rows for `catalog` and `tui`), and the `help.golden` and `catalog.golden` fixtures.
 - **Server:** deliberately unchanged.
 - **MCP tool schemas:** deliberately unchanged.
 - **Connect proto:** deliberately unchanged. The TUI uses the RPCs the console already calls.
-- **CLI:** bare `engram` changes behaviour; `engram catalog` is new.
+- **CLI:** bare `engram` changes behaviour; `engram catalog` and `engram tui` are new.
 - **Console (`ui/`):** deliberately unchanged. The TUI is a separate client and does not share code with the web console.
 - **Helm chart:** deliberately unchanged.
 - **docs-site:** `guides/cli.md` (the self-describe catalog section becomes `engram catalog`, plus a TUI section) and `contributing/architecture.md` (the catalog golden description).

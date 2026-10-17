@@ -30,9 +30,9 @@ None. No existing spec covers scopes, the CLI or the hook.
 
 ## Impact
 
-- **Wire contract:** one new setting, `ENGRAM_SCOPE`, read only by `engram prime`. This is a compatibility decision. It is additive, and no existing command reads it. The scope values that the hook derives do not change, because the Go derivation adopts the hook's rules. `spine-review verify` can now derive a different repository identity than before in the two buggy cases above; that is the fix. No proto field, MCP input schema, error hint code or stored payload key changes.
+- **Wire contract:** two settings join the Go config registry, both read only by `engram prime`: the new `ENGRAM_SCOPE`, and `ENGRAM_PROJECT`, which the hook already reads to add `rule:project:<name>` rules and which keeps the same meaning. This is a compatibility decision. Both are additive, and no existing Go command reads either. The scope values that the hook derives do not change, because the Go derivation adopts the hook's rules. `spine-review verify` can now derive a different repository identity than before in the two buggy cases above; that is the fix. No proto field, MCP input schema, error hint code or stored payload key changes.
 - **Depends on:** change `cli-login` (#818), because prime calls the server and needs a credential. A server with no issuer configured works without login.
-- **Code:** a new `internal/scope` package, `cmd/engram` (the `prime` command, and `spine_review_verify.go` moving to the new package), `internal/config` (the `ENGRAM_SCOPE` row), `internal/surfaces` (a blast-radius row for `prime`), the `help.golden` and `catalog.golden` fixtures, and the plugin's `skill/engram/hooks/session-start-memory-recall` with its Python tests.
+- **Code:** a new `internal/scope` package, `cmd/engram` (the `prime` command, and `spine_review_verify.go` moving to the new package), `internal/config` (the `ENGRAM_SCOPE` and `ENGRAM_PROJECT` rows), `internal/surfaces` (a blast-radius row for `prime`), the `help.golden` and `catalog.golden` fixtures, and the plugin's `skill/engram/hooks/session-start-memory-recall` with its Python tests.
 - **Server:** deliberately unchanged. Prime uses the existing `ListRules` and `ListMemories` RPCs.
 - **MCP tool schemas:** deliberately unchanged.
 - **Connect proto:** deliberately unchanged.

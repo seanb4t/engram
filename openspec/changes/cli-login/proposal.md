@@ -13,6 +13,7 @@ The engram CLI can authenticate only with a bearer credential that the user gets
   - It requests the `offline_access` scope, so the IdP issues a refresh token and the user logs in once per machine instead of once per access-token lifetime.
 - A `--client-id` setting skips registration and uses a client the operator registered in advance, for an IdP that does not support dynamic client registration. This mirrors the `oauth-client` mode of `engram setup`.
 - Every client command (`search`, `list`, `get`, `store`, `migration-status`) gains the login cache as a third credential source. The order becomes: `ENGRAM_TOKEN`, then `--token-file`, then the login cache, then anonymous. When the cached access token has expired, the command refreshes it before the request. A refresh failure is an authentication error (exit code `exitAuth`) that tells the user to run `engram login` again.
+- The last successful login also becomes the default server. A client command with neither `--server` nor `ENGRAM_SERVER_URL` uses it, so a hook or a new shell needs no server setting. `--server` and `ENGRAM_SERVER_URL` still win.
 - A new `engram logout` command removes the cached credential for a server. It revokes the refresh token when the IdP advertises a revocation endpoint, and it can also delete the registered client through RFC 7592.
 - A credential still never reaches argv, `ps` output or shell history. The cache file is readable only by its owner.
 
