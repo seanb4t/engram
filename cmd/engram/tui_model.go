@@ -311,7 +311,7 @@ func (m *consoleModel) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, k.Scheduled):
 		return m.openTab(tabScheduled)
 	case key.Matches(msg, k.Focus):
-		if m.previewVisible() {
+		if m.previewAvailable() {
 			if m.focus == focusList {
 				m.focus = focusPreview
 			} else {

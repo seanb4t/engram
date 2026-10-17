@@ -683,7 +683,8 @@ The layout follows the terminal's size:
 
 `p` hides or shows the preview. `z` makes the focused pane fill the screen,
 and `z` again restores it. `tab` moves focus between the list and the
-preview. While the preview has focus, `j` and `k` scroll it. From the list,
+preview; with a pane filling the screen, `tab` shows the other pane in its
+place. While the preview has focus, `j` and `k` scroll it. From the list,
 `J` and `K` scroll the preview one line, and Ctrl-D and Ctrl-U scroll it half
 a page.
 

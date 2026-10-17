@@ -82,6 +82,12 @@ func (m *consoleModel) layout() consoleLayout {
 	return l
 }
 
+// previewAvailable reports whether the layout has a preview pane at all,
+// shown or maximised away; Tab moves focus between it and the list.
+func (m *consoleModel) previewAvailable() bool {
+	return m.tier() != tierSingle && !m.previewHidden && m.active().kind != screenDetail
+}
+
 // previewVisible reports whether a preview pane sits beside the list.
 func (m *consoleModel) previewVisible() bool {
 	return m.layout().showPreview && m.active().kind != screenDetail

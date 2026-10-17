@@ -204,6 +204,21 @@ func TestTUIHideAndMaximisePreview(t *testing.T) {
 	}
 }
 
+// TestTUITabSwitchesMaximisedPane: with the list maximised, Tab moves focus
+// to the preview, which then fills the screen, and back.
+func TestTUITabSwitchesMaximisedPane(t *testing.T) {
+	rows := []*engramv1.Memory{testMemory("aaaaaaaaa1", "first")}
+	h := newConsoleHarness(t, &stubEngramService{listFn: listOf(rows...), getFn: getFrom(nil, rows...)})
+	h.press("z", "tab")
+	if l := h.m.layout(); h.m.focus != focusPreview || l.showList || !l.showPreview {
+		t.Errorf("after z tab: focus %v, layout %+v; want the preview focused and maximised", h.m.focus, l)
+	}
+	h.press("tab")
+	if l := h.m.layout(); h.m.focus != focusList || !l.showList || l.showPreview {
+		t.Errorf("after tab again: focus %v, layout %+v; want the list focused and maximised", h.m.focus, l)
+	}
+}
+
 func TestTUIRowContent(t *testing.T) {
 	r := testMemory("aaaaaaaaa1", "a decision with five tags")
 	r.Tags = []string{"tag-aaaaaa", "tag-bbbbbb", "tag-cccccc", "tag-dddddd", "tag-eeeeee"}
