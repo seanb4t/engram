@@ -3,8 +3,8 @@ import { userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
-import { RESUME_KEY } from '$lib/resume';
+import { MemorySchema, type Memory } from '#lib/gen/engram_pb.js';
+import { RESUME_KEY } from '#lib/resume.js';
 import MemoryFormSheet from './MemoryFormSheet.svelte';
 
 const { createMutateSpy, updateMutateSpy, scheduleMutateSpy, redirectToLoginSpy } = vi.hoisted(() => ({
@@ -19,8 +19,8 @@ const { createMutateSpy, updateMutateSpy, scheduleMutateSpy, redirectToLoginSpy 
 // transport double just to exercise the form's own field/validation/D-09
 // logic, which is what this suite targets (the mutation internals themselves
 // are already covered by mutations/memory.test.ts, Plan 04).
-vi.mock('$lib/mutations/memory', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/mutations/memory')>();
+vi.mock('#lib/mutations/memory.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/mutations/memory.js')>();
   return {
     ...actual,
     useCreateMemory: () => ({ mutate: createMutateSpy }),
@@ -33,8 +33,8 @@ vi.mock('$lib/mutations/memory', async (importOriginal) => {
 // tear down the running test page) -- persistResume/peekResume/consumeResume
 // stay real so the sessionStorage assertions below exercise the actual
 // resume.ts module (covered independently by resume.test.ts).
-vi.mock('$lib/resume', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/resume')>();
+vi.mock('#lib/resume.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/resume.js')>();
   return { ...actual, redirectToLogin: redirectToLoginSpy };
 });
 

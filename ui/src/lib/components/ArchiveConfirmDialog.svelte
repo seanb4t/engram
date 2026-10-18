@@ -1,9 +1,9 @@
 <script lang="ts">
-  import * as Dialog from '$lib/components/ui/dialog';
-  import { Button } from '$lib/components/ui/button';
-  import type { Memory } from '$lib/gen/engram_pb';
-  import type { ArchiveSubmitOutcome } from '$lib/mutations/curation';
-  import { ArchiveOutcome } from '$lib/gen/engram_pb';
+  import * as Dialog from '#lib/components/ui/dialog/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import type { Memory } from '#lib/gen/engram_pb.js';
+  import type { ArchiveSubmitOutcome } from '#lib/mutations/curation.js';
+  import { ArchiveOutcome } from '#lib/gen/engram_pb.js';
 
   // Host-authoritative closure, same shape as DeleteConfirmDialog: `open` is
   // driven entirely by the host. `mode`, `pending` and `outcome` are ALSO

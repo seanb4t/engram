@@ -10,7 +10,7 @@
   // handleQueryError (wired as +layout.svelte's QueryCache.onError), which
   // is the single logging owner. A component-level log here would double it.
   import { createQuery } from '@tanstack/svelte-query';
-  import { engram } from '$lib/client';
+  import { engram } from '#lib/client.js';
   import ArrowUpCircleIcon from '@lucide/svelte/icons/arrow-up-circle';
   import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 

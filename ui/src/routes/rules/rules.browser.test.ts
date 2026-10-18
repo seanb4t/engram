@@ -5,8 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
-import type { ResumeEnvelope } from '$lib/resume';
+import { MemorySchema, type Memory } from '#lib/gen/engram_pb.js';
+import type { ResumeEnvelope } from '#lib/resume.js';
 import RulesPage from './+page.svelte';
 
 // `vi.hoisted` runs before the module's own imports are linked — mirrors
@@ -43,11 +43,11 @@ const {
 });
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
-vi.mock('$app/paths', () => ({ base: '/ui' }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/ui/${p}` }));
 vi.mock('$app/state', () => ({ page: pageState }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: {
@@ -62,8 +62,8 @@ vi.mock('$lib/client', async (importOriginal) => {
   };
 });
 
-vi.mock('$lib/resume', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/resume')>();
+vi.mock('#lib/resume.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/resume.js')>();
   return {
     ...actual,
     persistResume: persistResumeSpy,

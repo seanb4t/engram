@@ -10,8 +10,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createRawSnippet } from 'svelte';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
-import { flashing, flashRows, FLASH_MS } from '$lib/curation/flash.svelte';
+import { MemorySchema, type Memory } from '#lib/gen/engram_pb.js';
+import { flashing, flashRows, FLASH_MS } from '#lib/curation/flash.svelte.js';
 import ResultRow from './ResultRow.svelte';
 
 const now = new Date('2030-06-15T12:00:00Z');

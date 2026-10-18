@@ -2,10 +2,10 @@ import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
-import { headerSearch } from '$lib/search/header-search.svelte';
-import { DEFAULT_TEXT_SIZE } from '$lib/display.svelte';
-import { registerCurationHost } from '$lib/curation/host.svelte';
+import { MemorySchema, type Memory } from '#lib/gen/engram_pb.js';
+import { headerSearch } from '#lib/search/header-search.svelte.js';
+import { DEFAULT_TEXT_SIZE } from '#lib/display.svelte.js';
+import { registerCurationHost } from '#lib/curation/host.svelte.js';
 import CommandMenu from './CommandMenu.svelte';
 
 const { gotoSpy, searchMemoriesSpy, getMemorySpy, setModeSpy, pageState } = vi.hoisted(() => ({
@@ -17,7 +17,7 @@ const { gotoSpy, searchMemoriesSpy, getMemorySpy, setModeSpy, pageState } = vi.h
 }));
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
-vi.mock('$app/paths', () => ({ base: '/ui' }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/ui/${p}` }));
 vi.mock('$app/state', () => ({ page: pageState }));
 vi.mock('mode-watcher', () => ({
   setMode: setModeSpy,
@@ -26,9 +26,9 @@ vi.mock('mode-watcher', () => ({
 
 // The menu makes no server call at all (D-11) -- these spies exist so every
 // test below can assert they were never touched, not because CommandMenu
-// imports $lib/client.
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+// imports #lib/client.
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: {

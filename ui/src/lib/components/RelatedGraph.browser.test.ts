@@ -8,8 +8,8 @@ import { page } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
 import { tick } from 'svelte';
 import RelatedGraph from './RelatedGraph.svelte';
-import { EDGE_STYLE, LABEL_ALL_MAX, neighbourhoodSummary, type GraphNode, type GraphEdge } from '$lib/related/graph';
-import { WHEEL_HINT } from '$lib/related/zoom';
+import { EDGE_STYLE, LABEL_ALL_MAX, neighbourhoodSummary, type GraphNode, type GraphEdge } from '#lib/related/graph.js';
+import { WHEEL_HINT } from '#lib/related/zoom.js';
 
 function mkNode(id: string, overrides: Partial<GraphNode> = {}): GraphNode {
   return {

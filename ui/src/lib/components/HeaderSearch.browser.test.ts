@@ -9,9 +9,9 @@ import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { MemorySchema, ListTagsResponseSchema, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, ListTagsResponseSchema, type Memory } from '#lib/gen/engram_pb.js';
 import { tick } from 'svelte';
-import { headerSearch, handoffToHeaderSearch } from '$lib/search/header-search.svelte';
+import { headerSearch, handoffToHeaderSearch } from '#lib/search/header-search.svelte.js';
 import HeaderSearch from './HeaderSearch.svelte';
 
 const { gotoSpy, searchMemoriesSpy, getMemorySpy, listScopesSpy, listMemoriesSpy, listTagsSpy } = vi.hoisted(() => ({
@@ -24,10 +24,10 @@ const { gotoSpy, searchMemoriesSpy, getMemorySpy, listScopesSpy, listMemoriesSpy
 }));
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
-vi.mock('$app/paths', () => ({ base: '/ui' }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/ui/${p}` }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: {

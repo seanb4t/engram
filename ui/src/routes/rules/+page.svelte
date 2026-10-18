@@ -7,28 +7,28 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import { resolve } from '$app/paths';
   import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { ConnectError, Code } from '@connectrpc/connect';
-  import { engram } from '$lib/client';
-  import { useDeleteMemory } from '$lib/mutations/memory';
-  import { persistResume, redirectToLogin, peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
-  import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
-  import { parseRulesParams, encodeRulesParams, type RulesParams } from '$lib/search/rules-params';
-  import { relatedPath } from '$lib/search/related-params';
-  import { rulesHeaderParts, rulesEmptyHeading, type HeaderPart } from '$lib/search/recall-header';
-  import ResultsHeader from '$lib/components/ResultsHeader.svelte';
-  import ResultsList from '$lib/components/ResultsList.svelte';
-  import RecallSplit from '$lib/components/RecallSplit.svelte';
-  import DetailPane from '$lib/components/DetailPane.svelte';
-  import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
-  import DeleteConfirmDialog from '$lib/components/DeleteConfirmDialog.svelte';
-  import { Badge } from '$lib/components/ui/badge';
+  import { engram } from '#lib/client.js';
+  import { useDeleteMemory } from '#lib/mutations/memory.js';
+  import { persistResume, redirectToLogin, peekResume, consumeResume, normalizeReturnPath } from '#lib/resume.js';
+  import { parseConnectError, fixRowsFor } from '#lib/errors/connect-error.js';
+  import { parseRulesParams, encodeRulesParams, type RulesParams } from '#lib/search/rules-params.js';
+  import { relatedPath } from '#lib/search/related-params.js';
+  import { rulesHeaderParts, rulesEmptyHeading, type HeaderPart } from '#lib/search/recall-header.js';
+  import ResultsHeader from '#lib/components/ResultsHeader.svelte';
+  import ResultsList from '#lib/components/ResultsList.svelte';
+  import RecallSplit from '#lib/components/RecallSplit.svelte';
+  import DetailPane from '#lib/components/DetailPane.svelte';
+  import RecallState, { type RecallStateInput } from '#lib/components/RecallState.svelte';
+  import DeleteConfirmDialog from '#lib/components/DeleteConfirmDialog.svelte';
+  import { Badge } from '#lib/components/ui/badge/index.js';
 
-  const params = $derived(parseRulesParams(page.url.searchParams));
+  const params = $derived(parseRulesParams(new URLSearchParams(page.url.search)));
 
   function navigate(next: Partial<RulesParams>) {
-    goto(`${base}/rules?${encodeRulesParams({ ...params, ...next })}`, { keepFocus: true, noScroll: true });
+    goto(`${resolve('rules')}?${encodeRulesParams({ ...params, ...next })}`, { reset: false });
   }
 
   // D-12: one cross-scope read of every readable rule:* scope — empty
@@ -71,9 +71,7 @@
   // D-03/D-04: navigate to the record's related view, carrying where it was
   // opened from.
   function openRelated(id: string) {
-    goto(
-      `${base}${relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })}`
-    );
+    goto(resolve(relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })));
   }
 
   // D-12: honest header — count, scope coverage, scopes_truncated/unknown —

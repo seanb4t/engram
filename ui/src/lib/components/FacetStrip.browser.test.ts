@@ -7,14 +7,14 @@ import { userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { ListTagsResponseSchema } from '$lib/gen/engram_pb';
-import { defaultSearchParams } from '$lib/search/params';
+import { ListTagsResponseSchema } from '#lib/gen/engram_pb.js';
+import { defaultSearchParams } from '#lib/search/params.js';
 import FacetStrip from './FacetStrip.svelte';
 
 const { listTagsSpy } = vi.hoisted(() => ({ listTagsSpy: vi.fn() }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return { ...actual, engram: { ...actual.engram, listTags: listTagsSpy } };
 });
 

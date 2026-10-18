@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { parseScope } from '$lib/scope';
-  import { Badge } from '$lib/components/ui/badge';
-  import * as HoverCard from '$lib/components/ui/hover-card';
+  import { parseScope } from '#lib/scope.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import * as HoverCard from '#lib/components/ui/hover-card/index.js';
 
   // DSYS-03/D-17: `dim` forces every category-hued/opacity-reduced text
   // node here to --muted-foreground (a solid colour proven >4.5:1 against

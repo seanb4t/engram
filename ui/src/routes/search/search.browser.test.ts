@@ -12,8 +12,8 @@ import {
   SuggestionSource,
   type Memory,
   type SupersedeMemoryRequest
-} from '$lib/gen/engram_pb';
-import { persistResume } from '$lib/resume';
+} from '#lib/gen/engram_pb.js';
+import { persistResume } from '#lib/resume.js';
 import SearchPage from './+page.svelte';
 
 // `vi.hoisted` runs before the module's own imports are linked (its factory
@@ -39,7 +39,7 @@ const {
   const { SvelteURL } = await import('svelte/reactivity');
   const url = new SvelteURL('http://localhost/search');
   const pageState = { url };
-  const gotoSpy = vi.fn((href: string, _opts?: { replaceState?: boolean }) => {
+  const gotoSpy = vi.fn((href: string, _opts?: { replace?: boolean }) => {
     const next = new URL(href, 'http://localhost');
     pageState.url.href = next.href;
   });
@@ -61,11 +61,11 @@ const {
 });
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
-vi.mock('$app/paths', () => ({ base: '/ui' }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/ui/${p}` }));
 vi.mock('$app/state', () => ({ page: pageState }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: {
@@ -87,8 +87,8 @@ vi.mock('$lib/client', async (importOriginal) => {
   };
 });
 
-vi.mock('$lib/resume', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/resume')>();
+vi.mock('#lib/resume.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/resume.js')>();
   return {
     ...actual,
     consumeResume: (...args: Parameters<typeof actual.consumeResume>) => {
@@ -663,7 +663,7 @@ describe('search route — re-auth landing recovery', () => {
 });
 
 describe('search route — typing is debounced (ENTRY-06)', () => {
-  it('coalesces rapid keystrokes into a single replaceState navigation for the final value', async () => {
+  it('coalesces rapid keystrokes into a single replace navigation for the final value', async () => {
     pageState.url.href = 'http://localhost/search?q=';
     const screen = await renderSearch();
     gotoSpy.mockClear();
@@ -680,7 +680,7 @@ describe('search route — typing is debounced (ENTRY-06)', () => {
     await expect.poll(() => gotoSpy.mock.calls.length).toBe(1);
     const [href, opts] = gotoSpy.mock.calls[0];
     expect(href).toContain('q=abc');
-    expect(opts).toMatchObject({ replaceState: true });
+    expect(opts).toMatchObject({ replace: true });
 
     await new Promise((r) => setTimeout(r, 250));
     expect(gotoSpy).toHaveBeenCalledTimes(1);

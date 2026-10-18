@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { QueryClient } from '@tanstack/svelte-query';
 import { create } from '@bufbuild/protobuf';
 import { createClient, ConnectError, Code, createRouterTransport } from '@connectrpc/connect';
-import { EngramService, MemorySchema, Visibility, type Memory } from '$lib/gen/engram_pb';
+import { EngramService, MemorySchema, Visibility, type Memory } from '#lib/gen/engram_pb.js';
 import * as discoveryMutations from './discovery';
 import {
   buildStoreDiscoveryRequest,

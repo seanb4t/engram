@@ -29,7 +29,7 @@
 
 <script lang="ts">
   import { Button as ButtonPrimitive } from 'bits-ui';
-  import { cn } from '$lib/utils';
+  import { cn } from '#lib/utils.js';
 
   let {
     class: className,

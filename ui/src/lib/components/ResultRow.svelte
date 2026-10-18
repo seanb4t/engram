@@ -1,11 +1,11 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { Memory } from '$lib/gen/engram_pb';
-  import { stripCategoryPrefix } from '$lib/summary';
-  import { relativeTime } from '$lib/time';
+  import type { Memory } from '#lib/gen/engram_pb.js';
+  import { stripCategoryPrefix } from '#lib/summary.js';
+  import { relativeTime } from '#lib/time.js';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
-  import { memoryStateWords, isPastState, type RecordStateWord } from '$lib/memorystate';
-  import { flashing } from '$lib/curation/flash.svelte';
+  import { memoryStateWords, isPastState, type RecordStateWord } from '#lib/memorystate.js';
+  import { flashing } from '#lib/curation/flash.svelte.js';
   import ScopeChip from './ScopeChip.svelte';
   import CheckIcon from '@lucide/svelte/icons/check';
 

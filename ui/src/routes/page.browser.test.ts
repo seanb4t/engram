@@ -2,9 +2,9 @@ import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
-import { persistResume, RESUME_KEY } from '$lib/resume';
-import { listMemoriesKey, PAGE_LIMIT } from '$lib/queries';
+import { MemorySchema, type Memory } from '#lib/gen/engram_pb.js';
+import { persistResume, RESUME_KEY } from '#lib/resume.js';
+import { listMemoriesKey, PAGE_LIMIT } from '#lib/queries.js';
 import RootPage from './+page.svelte';
 
 function fakeMemory(overrides: Partial<{ id: string; summary: string }> = {}): Memory {
@@ -27,10 +27,10 @@ const { gotoSpy, listScopesSpy, listMemoriesSpy } = vi.hoisted(() => ({
 }));
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
-vi.mock('$app/paths', () => ({ base: '/ui' }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/ui/${p}` }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: { ...actual.engram, listScopes: listScopesSpy, listMemories: listMemoriesSpy }

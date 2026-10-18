@@ -2,14 +2,14 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import { resolve } from '$app/paths';
   import { createQuery } from '@tanstack/svelte-query';
-  import { engram } from '$lib/client';
-  import { peekResume, consumeResume } from '$lib/resume';
-  import MemoryList from '$lib/components/MemoryList.svelte';
-  import MemoryDetail from '$lib/components/MemoryDetail.svelte';
-  import WriteSurfaces from '$lib/components/WriteSurfaces.svelte';
-  import * as Resizable from '$lib/components/ui/resizable';
+  import { engram } from '#lib/client.js';
+  import { peekResume, consumeResume } from '#lib/resume.js';
+  import MemoryList from '#lib/components/MemoryList.svelte';
+  import MemoryDetail from '#lib/components/MemoryDetail.svelte';
+  import WriteSurfaces from '#lib/components/WriteSurfaces.svelte';
+  import * as Resizable from '#lib/components/ui/resizable/index.js';
   const sel = $derived(page.url.searchParams.get('sel') ?? '');
   // Never seed a discovery create scope from a raw memory scope (grok
   // MEDIUM) -- only carry the ?scope param through when it's already
@@ -27,16 +27,16 @@
     const s = page.url.searchParams.get('sel') ?? '';
     return { queryKey: ['getMemory', s], queryFn: () => engram.getMemory({ id: s }), enabled: !!s };
   });
-  function select(id: string) { const sp = new URLSearchParams(page.url.searchParams); sp.set('sel', id); goto(`${base}/discovery?${sp}`); }
+  function select(id: string) { const sp = new URLSearchParams(page.url.search); sp.set('sel', id); goto(`${resolve('discovery')}?${sp}`); }
   // Clear the selection (WR-02): drops the ?sel param so the detail query
   // disables and never refetches a just-deleted tombstone.
-  function clearSelection() { const sp = new URLSearchParams(page.url.searchParams); sp.delete('sel'); goto(`${base}/discovery?${sp}`); }
+  function clearSelection() { const sp = new URLSearchParams(page.url.search); sp.delete('sel'); goto(`${resolve('discovery')}?${sp}`); }
 
   // WriteSurfaces host (Plan 06): kind=discovery -- D-04 fence, no onedit
   // wired below (discovery has no edit surface).
   let writeSurfaces: ReturnType<typeof WriteSurfaces> | undefined = $state();
 
-  // Re-auth landing recovery -- see $lib/resume.ts for the full rationale
+  // Re-auth landing recovery -- see #lib/resume.ts for the full rationale
   // (the route/host is the sole owner of peekResume/consumeResume, a form
   // only ever calls persistResume); consumeResume() fires only via
   // WriteSurfaces' onresumeapplied passthrough, never here directly.

@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/svelte-query';
-import { MigrateStatusResponseSchema } from '$lib/gen/engram_pb';
-import { handleQueryError, errorBanner } from '$lib/errors';
+import { MigrateStatusResponseSchema } from '#lib/gen/engram_pb.js';
+import { handleQueryError, errorBanner } from '#lib/errors.js';
 import { get } from 'svelte/store';
 import MigrationBanner from './MigrationBanner.svelte';
 
@@ -12,8 +12,8 @@ const { migrateStatusSpy } = vi.hoisted(() => ({ migrateStatusSpy: vi.fn() }));
 
 // mapAuthError is real (not overridden) -- the non-auth errors this suite
 // drives through it resolve to null naturally, so no stub is needed.
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return { ...actual, engram: { ...actual.engram, migrateStatus: migrateStatusSpy } };
 });
 

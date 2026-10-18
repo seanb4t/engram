@@ -9,11 +9,12 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import { resolve } from '$app/paths';
+  import type { PathnameWithSearchOrHash } from '$app/types';
   import { createQuery } from '@tanstack/svelte-query';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { toast } from 'svelte-sonner';
-  import { engram } from '$lib/client';
+  import { engram } from '#lib/client.js';
   import {
     buildRelatedModel,
     visibleMembership,
@@ -21,24 +22,24 @@
     neighbourhoodSummary,
     RELATED_K,
     type LaneType
-  } from '$lib/related/graph';
-  import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
-  import { parseRelatedParams, relatedPath } from '$lib/search/related-params';
-  import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
-  import RelatedGraph from '$lib/components/RelatedGraph.svelte';
-  import EdgeLane from '$lib/components/EdgeLane.svelte';
-  import SupersessionLane from '$lib/components/SupersessionLane.svelte';
-  import EvidenceSection from '$lib/components/EvidenceSection.svelte';
-  import GraphLegend from '$lib/components/GraphLegend.svelte';
-  import TagBars from '$lib/components/TagBars.svelte';
-  import { noNeighboursLines, TRUNCATION_BANNER } from '$lib/related/lanes';
-  import { Skeleton } from '$lib/components/ui/skeleton';
-  import { Button } from '$lib/components/ui/button';
-  import { Kbd } from '$lib/components/ui/kbd';
-  import * as Tabs from '$lib/components/ui/tabs';
+  } from '#lib/related/graph.js';
+  import { parseConnectError, fixRowsFor } from '#lib/errors/connect-error.js';
+  import { parseRelatedParams, relatedPath } from '#lib/search/related-params.js';
+  import { defaultSearchParams, encodeSearchParams } from '#lib/search/params.js';
+  import RelatedGraph from '#lib/components/RelatedGraph.svelte';
+  import EdgeLane from '#lib/components/EdgeLane.svelte';
+  import SupersessionLane from '#lib/components/SupersessionLane.svelte';
+  import EvidenceSection from '#lib/components/EvidenceSection.svelte';
+  import GraphLegend from '#lib/components/GraphLegend.svelte';
+  import TagBars from '#lib/components/TagBars.svelte';
+  import { noNeighboursLines, TRUNCATION_BANNER } from '#lib/related/lanes.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Kbd } from '#lib/components/ui/kbd/index.js';
+  import * as Tabs from '#lib/components/ui/tabs/index.js';
 
   const id = $derived(page.params.id ?? '');
-  const params = $derived(parseRelatedParams(page.url.searchParams));
+  const params = $derived(parseRelatedParams(new URLSearchParams(page.url.search)));
 
   // Keyed by id so a re-centre to a different anchor doesn't carry the
   // previous anchor's measured duration into the new call line.
@@ -180,11 +181,11 @@
     if (!model) return;
     const candidate = model.candidates.find((c) => c.id === nodeId);
     if (!candidate) return;
-    goto(`${base}${relatedPath(candidate.shortId, { from: params.from, trail: [...params.trail, model.anchor.shortId] })}`);
+    goto(resolve(relatedPath(candidate.shortId, { from: params.from, trail: [...params.trail, model.anchor.shortId] })));
   }
 
   function openHrefFor(candidateId: string): string {
-    return `${base}/search?${encodeSearchParams({ ...defaultSearchParams(), sel: candidateId })}`;
+    return `${resolve('search')}?${encodeSearchParams({ ...defaultSearchParams(), sel: candidateId })}`;
   }
 
   // D-04: exitToOrigin navigates to where the view was opened from --
@@ -193,11 +194,11 @@
   // the anchor is known), fall back to /search with the anchor selected.
   function exitToOrigin() {
     if (params.from) {
-      goto(`${base}${params.from}`);
+      goto(resolve(params.from.slice(1) as PathnameWithSearchOrHash));
       return;
     }
     if (!model) return;
-    goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), sel: model.anchor.id })}`);
+    goto(`${resolve('search')}?${encodeSearchParams({ ...defaultSearchParams(), sel: model.anchor.id })}`);
   }
 
   // D-04: `[` and "← back" walk back one step along the trail (re-centres
@@ -341,7 +342,7 @@
               type="button"
               class="crumb"
               onclick={() =>
-                goto(`${base}${relatedPath(entry, { from: params.from, trail: params.trail.slice(0, i) })}`)}
+                goto(resolve(relatedPath(entry, { from: params.from, trail: params.trail.slice(0, i) })))}
               >{entry}</button
             >
             <span class="crumb-sep" aria-hidden="true">›</span>

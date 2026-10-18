@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { CATEGORIES } from '$lib/queries';
+import { CATEGORIES } from '#lib/queries.js';
 
 // app.css is read from source rather than imported: `@tailwindcss/vite` consumes
 // `.css` imports (even `?raw` resolves to an empty string), so the raw token text

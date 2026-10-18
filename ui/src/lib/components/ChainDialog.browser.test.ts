@@ -14,13 +14,13 @@ import {
   SupersessionEvidenceSchema,
   EdgeType,
   SupersessionDirection
-} from '$lib/gen/engram_pb';
+} from '#lib/gen/engram_pb.js';
 import ChainDialog from './ChainDialog.svelte';
 
 const { relatedMemoriesSpy, getMemorySpy } = vi.hoisted(() => ({ relatedMemoriesSpy: vi.fn(), getMemorySpy: vi.fn() }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return { ...actual, engram: { ...actual.engram, relatedMemories: relatedMemoriesSpy, getMemory: getMemorySpy } };
 });
 

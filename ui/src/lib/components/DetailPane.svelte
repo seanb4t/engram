@@ -1,17 +1,17 @@
 <script lang="ts">
-  import type { Memory } from '$lib/gen/engram_pb';
+  import type { Memory } from '#lib/gen/engram_pb.js';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
   import { ConnectError, Code } from '@connectrpc/connect';
-  import { Badge } from '$lib/components/ui/badge';
-  import { Button } from '$lib/components/ui/button';
-  import { Separator } from '$lib/components/ui/separator';
-  import { Skeleton } from '$lib/components/ui/skeleton';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Separator } from '#lib/components/ui/separator/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
   import { toast } from 'svelte-sonner';
-  import { relativeTime, fullTimestamp } from '$lib/time';
-  import { memoryStateWords } from '$lib/memorystate';
-  import { renderMarkdown } from '$lib/markdown';
-  import { stripCategoryPrefix } from '$lib/summary';
-  import { normalizeVisibility } from '$lib/mutations/memory';
+  import { relativeTime, fullTimestamp } from '#lib/time.js';
+  import { memoryStateWords } from '#lib/memorystate.js';
+  import { renderMarkdown } from '#lib/markdown.js';
+  import { stripCategoryPrefix } from '#lib/summary.js';
+  import { normalizeVisibility } from '#lib/mutations/memory.js';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import XIcon from '@lucide/svelte/icons/x';
 

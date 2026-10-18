@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import MemoryRow from './MemoryRow.svelte';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { MemorySchema } from '$lib/gen/engram_pb';
+import { MemorySchema } from '#lib/gen/engram_pb.js';
 
 const autoMem = create(MemorySchema, {
   id: '42',

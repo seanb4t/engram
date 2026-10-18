@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { create } from '@bufbuild/protobuf';
-import { FilterSuggestionSchema, SuggestionSource, type FilterSuggestion } from '$lib/gen/engram_pb';
+import { FilterSuggestionSchema, SuggestionSource, type FilterSuggestion } from '#lib/gen/engram_pb.js';
 import { classifyInput } from './classify';
 import { defaultSearchParams, type SearchParams } from './params';
 import {

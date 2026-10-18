@@ -6,8 +6,8 @@ import { render } from 'vitest-browser-svelte';
 import { page, userEvent } from 'vitest/browser';
 import { describe, it, expect, vi, afterEach, type Mock } from 'vitest';
 import { create } from '@bufbuild/protobuf';
-import { FilterSuggestionSchema, SuggestionSource, type FilterSuggestion } from '$lib/gen/engram_pb';
-import { defaultSearchParams, type SearchParams } from '$lib/search/params';
+import { FilterSuggestionSchema, SuggestionSource, type FilterSuggestion } from '#lib/gen/engram_pb.js';
+import { defaultSearchParams, type SearchParams } from '#lib/search/params.js';
 import SuggestedRow from './SuggestedRow.svelte';
 
 function categorySuggestion(value: string): FilterSuggestion {

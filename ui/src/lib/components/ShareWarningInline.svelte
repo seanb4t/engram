@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui/button';
+  import { Button } from '#lib/components/ui/button/index.js';
 
   // Host-controlled: the HOST renders this component while its `shareTarget`
   // is set, and removes it on success (host-authoritative closure, symmetric

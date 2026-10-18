@@ -1,7 +1,7 @@
 <script lang="ts">
-  import * as Popover from '$lib/components/ui/popover';
-  import * as Command from '$lib/components/ui/command';
-  import type { ListScopesResponse } from '$lib/gen/engram_pb';
+  import * as Popover from '#lib/components/ui/popover/index.js';
+  import * as Command from '#lib/components/ui/command/index.js';
+  import type { ListScopesResponse } from '#lib/gen/engram_pb.js';
 
   // ROW-06: a scope combobox over ListScopes — every readable scope with its
   // readable-record count, plus an "Every readable scope (cross_spine)" entry.

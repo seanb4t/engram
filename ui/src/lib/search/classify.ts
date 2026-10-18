@@ -1,4 +1,4 @@
-import { CATEGORIES } from '$lib/queries';
+import { CATEGORIES } from '#lib/queries.js';
 
 // This is the ONE classifier every id-accepting box in the console uses
 // (header search, /search, the ⌘K hand-off row). It decides which RPC a raw

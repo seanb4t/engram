@@ -97,9 +97,9 @@ export type ResumeDraft = ResumeEnvelope extends infer E
     : never
   : never;
 
-// SvelteKit's static-adapter base path (svelte.config.js: `paths.base =
+// SvelteKit's static-adapter base path (vite.config.ts: `paths.base =
 // '/ui'`). A raw `window.location.pathname` carries this prefix; stripping
-// it here means a later `goto(base + path)` on the `/ui/` landing can never
+// it here means a later `goto(resolve(path))` on the `/ui/` landing can never
 // double-prefix to `/ui/ui/...`.
 const BASE_PREFIX = '/ui';
 

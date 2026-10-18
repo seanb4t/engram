@@ -15,7 +15,7 @@ import {
   EdgeType,
   SupersessionDirection,
   type Memory
-} from '$lib/gen/engram_pb';
+} from '#lib/gen/engram_pb.js';
 import {
   buildRelatedModel,
   laneRows,

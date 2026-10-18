@@ -1,24 +1,24 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { ConnectError, Code } from '@connectrpc/connect';
-  import type { Memory } from '$lib/gen/engram_pb';
-  import { CATEGORIES } from '$lib/queries';
-  import { describeError } from '$lib/errors';
-  import { persistResume, normalizeReturnPath, redirectToLogin } from '$lib/resume';
+  import type { Memory } from '#lib/gen/engram_pb.js';
+  import { CATEGORIES } from '#lib/queries.js';
+  import { describeError } from '#lib/errors.js';
+  import { persistResume, normalizeReturnPath, redirectToLogin } from '#lib/resume.js';
   import {
     useCreateMemory,
     useUpdateMemory,
     useScheduleMemory,
     normalizeVisibility,
     type CreateMemoryVars
-  } from '$lib/mutations/memory';
-  import * as Sheet from '$lib/components/ui/sheet';
-  import { Button } from '$lib/components/ui/button';
-  import { Input } from '$lib/components/ui/input';
-  import { Textarea } from '$lib/components/ui/textarea';
-  import { Select } from '$lib/components/ui/select';
-  import { Checkbox } from '$lib/components/ui/checkbox';
-  import { Badge } from '$lib/components/ui/badge';
+  } from '#lib/mutations/memory.js';
+  import * as Sheet from '#lib/components/ui/sheet/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Textarea } from '#lib/components/ui/textarea/index.js';
+  import { Select } from '#lib/components/ui/select/index.js';
+  import { Checkbox } from '#lib/components/ui/checkbox/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
   import ShareWarningInline from './ShareWarningInline.svelte';
 
   // MemoryFormSheet ONLY persists a resume envelope on a hard PRIMARY-write

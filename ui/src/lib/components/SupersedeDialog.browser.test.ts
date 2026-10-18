@@ -7,8 +7,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { create } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { MemorySchema, SupersedeMemoryResponseSchema, type Memory, type SupersedeMemoryResponse } from '$lib/gen/engram_pb';
-import type { SupersedeDraft, SupersedeFields } from '$lib/mutations/curation';
+import { MemorySchema, SupersedeMemoryResponseSchema, type Memory, type SupersedeMemoryResponse } from '#lib/gen/engram_pb.js';
+import type { SupersedeDraft, SupersedeFields } from '#lib/mutations/curation.js';
 import SupersedeDialog from './SupersedeDialog.svelte';
 
 function mem(id: string, overrides: Partial<Record<string, unknown>> = {}): Memory {

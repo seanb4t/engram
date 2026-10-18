@@ -10,17 +10,17 @@
   // its own supersede-target state; this component closes only via oncancel
   // (a bits-ui-initiated dismiss with no result yet) or ondone (a
   // bits-ui-initiated dismiss AFTER a successful commit).
-  import * as Dialog from '$lib/components/ui/dialog';
-  import * as Command from '$lib/components/ui/command';
-  import { Button } from '$lib/components/ui/button';
-  import { Input } from '$lib/components/ui/input';
-  import { Textarea } from '$lib/components/ui/textarea';
-  import { Select } from '$lib/components/ui/select';
-  import type { Memory, SupersedeMemoryResponse } from '$lib/gen/engram_pb';
-  import { CATEGORIES } from '$lib/queries';
-  import { classifyInput } from '$lib/search/classify';
-  import type { SupersedeDraft, SupersedeFields } from '$lib/mutations/curation';
-  import { parseSupersedeRejection, TARGET_ISSUE_COPY, NOT_FOUND_NOTE, type SupersedeRejection } from '$lib/curation/supersede-rejection';
+  import * as Dialog from '#lib/components/ui/dialog/index.js';
+  import * as Command from '#lib/components/ui/command/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Textarea } from '#lib/components/ui/textarea/index.js';
+  import { Select } from '#lib/components/ui/select/index.js';
+  import type { Memory, SupersedeMemoryResponse } from '#lib/gen/engram_pb.js';
+  import { CATEGORIES } from '#lib/queries.js';
+  import { classifyInput } from '#lib/search/classify.js';
+  import type { SupersedeDraft, SupersedeFields } from '#lib/mutations/curation.js';
+  import { parseSupersedeRejection, TARGET_ISSUE_COPY, NOT_FOUND_NOTE, type SupersedeRejection } from '#lib/curation/supersede-rejection.js';
 
   // The debounce window between the last draft edit and the auto-fired
   // validate_only preview (Task 1 action text).

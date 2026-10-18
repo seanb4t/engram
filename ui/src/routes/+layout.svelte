@@ -4,12 +4,12 @@
   import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/svelte-query';
   import { ModeWatcher } from 'mode-watcher';
   import { beforeNavigate } from '$app/navigation';
-  import { errorBanner, handleQueryError, clearError } from '$lib/errors';
-  import { Toaster } from '$lib/components/ui/sonner';
-  import { Button } from '$lib/components/ui/button';
-  import { display, readTextSize, installDisplayShortcuts } from '$lib/display.svelte';
-  import AppShell from '$lib/components/AppShell.svelte';
-  import CommandMenu from '$lib/components/CommandMenu.svelte';
+  import { errorBanner, handleQueryError, clearError } from '#lib/errors.js';
+  import { Toaster } from '#lib/components/ui/sonner/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { display, readTextSize, installDisplayShortcuts } from '#lib/display.svelte.js';
+  import AppShell from '#lib/components/AppShell.svelte';
+  import CommandMenu from '#lib/components/CommandMenu.svelte';
   let { children } = $props();
 
   // D-13: apply the persisted text-size preference (the anti-flash script in

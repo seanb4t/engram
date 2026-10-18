@@ -5,7 +5,7 @@ import '../../app.css';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
-import { rankedHeaderParts, type HeaderPart, type HiddenCounts } from '$lib/search/recall-header';
+import { rankedHeaderParts, type HeaderPart, type HiddenCounts } from '#lib/search/recall-header.js';
 import ResultsHeader from './ResultsHeader.svelte';
 
 const zeroHidden: HiddenCounts = { total: 0, archived: 0, superseded: 0, expired: 0, scheduled: 0 };

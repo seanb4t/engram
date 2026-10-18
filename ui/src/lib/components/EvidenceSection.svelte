@@ -3,13 +3,13 @@
   // over it: the candidate header, "Why it is related" per-type lines in
   // canonical order, Re-centre/Open record, and the closing note. Renders
   // exactly what lanes.ts computes -- it owns no evidence derivation itself.
-  import type { Candidate } from '$lib/related/graph';
-  import type { Memory } from '$lib/gen/engram_pb';
-  import { evidenceHeader, evidenceLines } from '$lib/related/lanes';
-  import { memoryStateWords } from '$lib/memorystate';
-  import { relativeTime } from '$lib/time';
+  import type { Candidate } from '#lib/related/graph.js';
+  import type { Memory } from '#lib/gen/engram_pb.js';
+  import { evidenceHeader, evidenceLines } from '#lib/related/lanes.js';
+  import { memoryStateWords } from '#lib/memorystate.js';
+  import { relativeTime } from '#lib/time.js';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
-  import { Button } from '$lib/components/ui/button';
+  import { Button } from '#lib/components/ui/button/index.js';
 
   let {
     candidate,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import lockup from '$lib/assets/engram-lockup.svg?raw';
+  import lockup from '#lib/assets/engram-lockup.svg?raw';
   let { class: klass = '' }: { class?: string } = $props();
 </script>
 

@@ -8,13 +8,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { ListTagsResponseSchema } from '$lib/gen/engram_pb';
+import { ListTagsResponseSchema } from '#lib/gen/engram_pb.js';
 import TagCombobox from './TagCombobox.svelte';
 
 const { listTagsSpy } = vi.hoisted(() => ({ listTagsSpy: vi.fn() }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return { ...actual, engram: { ...actual.engram, listTags: listTagsSpy } };
 });
 
