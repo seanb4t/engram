@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.27.1](https://github.com/seanb4t/engram/compare/v0.27.0...v0.27.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#811](https://github.com/seanb4t/engram/issues/811)) ([bc82f42](https://github.com/seanb4t/engram/commit/bc82f42b40a4a80722e21b92aa75b77201b0dd84))
+* **deps:** update opentelemetry-go monorepo (core + contrib) ([#763](https://github.com/seanb4t/engram/issues/763)) ([b84eaaa](https://github.com/seanb4t/engram/commit/b84eaaafb34e1a07f3e6a8efadf7355b59eb0911))
+
 ## [0.27.0](https://github.com/seanb4t/engram/compare/v0.26.0...v0.27.0) (2026-10-18)
 
 
