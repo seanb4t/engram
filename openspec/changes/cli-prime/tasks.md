@@ -18,7 +18,7 @@
 
 ## 4. Prime settings
 
-- [ ] 4.1 Add the `prime.scope` (`ENGRAM_SCOPE`, `--scope`) and `prime.project` (`ENGRAM_PROJECT`, no flag) registry rows with the comments design D6 calls for, and a validator for the scope rules (blank when the flag was passed, `rule:` or `discovery:` prefix) whose message names the flag or the variable. Verify: `go test ./internal/config/ -count=1` with new table cases for each rejection and for flag-over-env precedence.
+- [x] 4.1 Add the `prime.scope` (`ENGRAM_SCOPE`, `--scope`) and `prime.project` (`ENGRAM_PROJECT`, no flag) registry rows with the comments design D6 calls for, and a validator for the scope rules (blank when the flag was passed, `rule:` or `discovery:` prefix) whose message names the flag or the variable. Verify: `go test ./internal/config/ -count=1` with new table cases for each rejection and for flag-over-env precedence.
 
 ## 5. The prime command
 

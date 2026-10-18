@@ -111,3 +111,29 @@ func ValidateConsole(c ClientConfig) error {
 	}
 	return fmt.Errorf("invalid console configuration: %w", errors.Join(errs...))
 }
+
+// ValidatePrimeScope checks engram prime's scope override. fromFlag reports
+// whether --scope was passed, which decides the setting the message names
+// and makes an empty value an error: an empty ENGRAM_SCOPE means "not
+// set", but an explicitly passed --scope "" is never silently dropped. A
+// rule: or discovery: scope is rejected because prime reads memories from
+// a memory scope and derives the rule scope from it.
+func ValidatePrimeScope(scope string, fromFlag bool) error {
+	name := "ENGRAM_SCOPE"
+	if fromFlag {
+		name = "--scope"
+	}
+	if strings.TrimSpace(scope) == "" {
+		if fromFlag || scope != "" {
+			return fmt.Errorf("%s %q: must not be blank; omit it to derive the scope from git", name, scope)
+		}
+		return nil
+	}
+	for _, prefix := range []string{"rule:", "discovery:"} {
+		if strings.HasPrefix(scope, prefix) {
+			return fmt.Errorf("%s %q: is a %s scope, not a memory scope; pass the memory scope (for example repo:<host>/<org>/<repo>), and the rule scope is derived from the memory scope",
+				name, scope, strings.TrimSuffix(prefix, ":"))
+		}
+	}
+	return nil
+}

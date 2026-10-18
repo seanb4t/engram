@@ -214,6 +214,16 @@ var registry = []field{
 	// value: the chart deploys only the server.
 	{Key: "client.tui_theme", Env: "ENGRAM_TUI_THEME", Flag: "theme"},
 	{Key: "client.tui_mouse", Env: "ENGRAM_TUI_MOUSE", Flag: "mouse"},
+	// prime.* is read only by `engram prime`. scope replaces the scope prime
+	// derives from git; --scope wins over ENGRAM_SCOPE, and an empty value
+	// means derive. Other commands bind a --scope flag of their own, which
+	// this row also captures, but nothing else reads prime.scope. project is
+	// the variable the plugin's session-start hook already reads to add the
+	// rule:project:<name> rule scope; registering it here is additive and
+	// keeps that meaning, and it binds no flag. Neither has a Helm value:
+	// the chart deploys only the server.
+	{Key: "prime.scope", Env: "ENGRAM_SCOPE", Flag: "scope"},
+	{Key: "prime.project", Env: "ENGRAM_PROJECT"},
 	// setup.* backs `engram setup` (D-04): --url and --auth are deployment
 	// facts, enrolled env-first with flag override like the 45/48 majority
 	// of this registry — unlike client.token_file/client.output/

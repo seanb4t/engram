@@ -36,6 +36,7 @@ type Config struct {
 	Log         LogConfig         `koanf:"log"`
 	Usage       UsageConfig       `koanf:"usage"`
 	Client      ClientConfig      `koanf:"client"`
+	Prime       PrimeConfig       `koanf:"prime"`
 	Setup       SetupConfig       `koanf:"setup"`
 }
 
@@ -425,6 +426,18 @@ type ClientConfig struct {
 	// (ENGRAM_TUI_MOUSE / --mouse). Empty means not set, so the console
 	// falls back to its saved preference, then to off.
 	TUIMouse string `koanf:"tui_mouse"`
+}
+
+// PrimeConfig backs `engram prime`. Both fields are client-side, and
+// ValidatePrimeScope checks Scope.
+type PrimeConfig struct {
+	// Scope is the memory scope prime uses exactly as given, instead of
+	// deriving one from git (--scope / ENGRAM_SCOPE). Empty means derive.
+	Scope string `koanf:"scope"`
+	// Project names the rule:project:<name> rule scope prime adds to its
+	// rules index (ENGRAM_PROJECT). prime trims it; empty means no project
+	// rules.
+	Project string `koanf:"project"`
 }
 
 // SetupConfig backs `engram setup` (D-04): the deployment facts an
