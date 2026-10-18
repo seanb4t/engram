@@ -33,7 +33,7 @@ import (
 // container lifecycle, D-10) so a version bump trips the guard in
 // TestSetVisibilityTOCTOU and forces a conscious re-verification rather than
 // silently tracking the new image.
-const qdrantTOCTOUVerifiedVersion = "1.19.1"
+const qdrantTOCTOUVerifiedVersion = "1.19.2"
 
 // noQdrantHandler is storetest's skip-or-fail decision, handed across the
 // store/store_test package boundary by internal/store's external TestMain
@@ -1011,7 +1011,7 @@ func TestSetVisibilityOwnerGate(t *testing.T) {
 // record deleted between the ownership gate (getWritable) and the SetPayload
 // call must not cause SetVisibility to return nil.
 //
-// Qdrant v1.19.1 (as v1.18.2 before it) with a point-ID selector returns a NotFound gRPC error from
+// Qdrant v1.19.2 (as v1.19.1 and v1.18.2 before it) with a point-ID selector returns a NotFound gRPC error from
 // SetPayload when the target ID does not exist — so the error propagates
 // through SetVisibility without a separate re-fetch. Parts 1 and 2 are the
 // load-bearing TOCTOU assertions: they confirm at the raw Qdrant level that
