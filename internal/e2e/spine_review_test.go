@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/qdrant/go-client/qdrant"
 
+	"github.com/seanb4t/engram/internal/scope"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/store/storetest"
 )
@@ -249,33 +251,25 @@ func fillerID(prefix string, i int) string {
 	return fmt.Sprintf("%s000000-0000-4000-8000-%012d", prefix, i)
 }
 
-// verifyRepoScope derives a "repo:<identity>" scope segment matching what
-// `spine-review verify` (cmd/engram/spine_review_verify.go's
-// repoIdentityFromCWD/normalizeGitRemote) derives from THIS process's git
-// origin remote -- so a citation seeded under this scope is classified
-// "broken" (same repo, file genuinely missing) rather than "unverifiable"
-// (different repo). A minimal, test-local duplicate of that normalisation
-// rather than an import: cmd/engram's function is unexported and this
-// package cannot reach it.
+// verifyRepoScope derives the "repo:<identity>" scope that `spine-review
+// verify` derives from THIS process's working directory, through the same
+// internal/scope package -- so a citation seeded under this scope is
+// classified "broken" (same repo, file genuinely missing) rather than
+// "unverifiable" (different repo).
 func verifyRepoScope(t *testing.T) string {
 	t.Helper()
-	out, err := exec.Command("git", "remote", "get-url", "origin").Output()
+	wd, err := os.Getwd()
 	if err != nil {
-		t.Skipf("no git origin remote available to derive a same-repo verify scope: %v", err)
+		t.Fatal(err)
 	}
-	remote := strings.TrimSpace(string(out))
-	if i := strings.Index(remote, "://"); i >= 0 {
-		remote = remote[i+3:]
+	s, err := scope.Derive(context.Background(), wd)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if i := strings.Index(remote, "@"); i >= 0 {
-		remote = remote[i+1:]
+	if s.Spine() == "" {
+		t.Skip("not inside a git repository: no same-repo verify scope to derive")
 	}
-	if i := strings.Index(remote, ":"); i >= 0 {
-		remote = remote[:i] + "/" + remote[i+1:]
-	}
-	remote = strings.TrimSuffix(remote, ".git")
-	remote = strings.TrimSuffix(remote, "/")
-	return "repo:" + remote
+	return s.Spine()
 }
 
 // TestE2EPhaseAcceptance is the phase's ONE end-to-end acceptance run

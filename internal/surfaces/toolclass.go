@@ -278,6 +278,12 @@ var operations = []Operation{
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
+		// The session primer sends only read RPCs (ListRules, ListMemories),
+		// like list.
+		MCPTool: "", CLICommand: "prime",
+		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
+	},
+	{
 		// Writes the caller's own login cache entry and may register a
 		// client at the issuer, so not read-only; it only adds or replaces
 		// its own entry, so not destructive. Each run issues new tokens,

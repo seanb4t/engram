@@ -337,3 +337,89 @@ func TestValidateClientIgnoresConsoleSettings(t *testing.T) {
 		t.Errorf("ValidateClient with bad console settings = %v, want nil", err)
 	}
 }
+
+// TestValidatePrimeScope: every rejection names the setting the value came
+// from, and an empty value is an error only when --scope was passed.
+func TestValidatePrimeScope(t *testing.T) {
+	accepted := []struct {
+		scope    string
+		fromFlag bool
+	}{
+		{"", false},
+		{"repo:github.com/org/repo", true},
+		{"repo:github.com/org/repo:ws:feat", false},
+		{"project:infra", true},
+	}
+	for _, c := range accepted {
+		if err := ValidatePrimeScope(c.scope, c.fromFlag); err != nil {
+			t.Errorf("ValidatePrimeScope(%q, %v) = %v, want nil", c.scope, c.fromFlag, err)
+		}
+	}
+
+	rejected := []struct {
+		name     string
+		scope    string
+		fromFlag bool
+		want     []string
+	}{
+		{"empty flag", "", true, []string{"--scope", "blank"}},
+		{"blank flag", "  ", true, []string{"--scope", "blank"}},
+		{"blank env", " ", false, []string{"ENGRAM_SCOPE", "blank"}},
+		{"rule flag", "rule:repo:github.com/org/repo", true, []string{"--scope", "rule scope is derived from the memory scope"}},
+		{"rule env", "rule:repo:github.com/org/repo", false, []string{"ENGRAM_SCOPE", "rule"}},
+		{"discovery flag", "discovery:repo:github.com/org/repo", true, []string{"--scope", "discovery"}},
+		{"discovery env", "discovery:repo:github.com/org/repo", false, []string{"ENGRAM_SCOPE", "discovery"}},
+	}
+	for _, c := range rejected {
+		t.Run(c.name, func(t *testing.T) {
+			err := ValidatePrimeScope(c.scope, c.fromFlag)
+			if err == nil {
+				t.Fatalf("ValidatePrimeScope(%q, %v) = nil, want an error", c.scope, c.fromFlag)
+			}
+			for _, want := range c.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q, want it to contain %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+// TestLoadPrimeSettings: --scope wins over ENGRAM_SCOPE, ENGRAM_SCOPE
+// applies alone, and ENGRAM_PROJECT has no flag.
+func TestLoadPrimeSettings(t *testing.T) {
+	load := func(t *testing.T, args ...string) PrimeConfig {
+		t.Helper()
+		f := flag.NewFlagSet("prime", flag.ContinueOnError)
+		f.String("scope", "", "")
+		if err := f.Parse(args); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		cfg, err := Load(f)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		return cfg.Prime
+	}
+
+	t.Run("--scope wins over ENGRAM_SCOPE", func(t *testing.T) {
+		t.Setenv("ENGRAM_SCOPE", "repo:a/b")
+		if got := load(t, "--scope", "repo:c/d").Scope; got != "repo:c/d" {
+			t.Errorf("Prime.Scope = %q, want repo:c/d", got)
+		}
+	})
+
+	t.Run("ENGRAM_SCOPE alone", func(t *testing.T) {
+		t.Setenv("ENGRAM_SCOPE", "repo:a/b")
+		if got := load(t).Scope; got != "repo:a/b" {
+			t.Errorf("Prime.Scope = %q, want repo:a/b", got)
+		}
+	})
+
+	t.Run("ENGRAM_PROJECT", func(t *testing.T) {
+		t.Setenv("ENGRAM_PROJECT", "selfhosted-cluster")
+		if got := load(t).Project; got != "selfhosted-cluster" {
+			t.Errorf("Prime.Project = %q, want selfhosted-cluster", got)
+		}
+	})
+}

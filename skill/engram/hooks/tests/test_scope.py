@@ -5,8 +5,13 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # hooks/
 from lib import scope
@@ -153,3 +158,67 @@ def test_run_silent_on_clean_nonzero(capsys, tmp_path):
     # repo" negative — it must return None WITHOUT logging, or every session spams.
     assert scope._run(["git", "rev-parse", "--show-toplevel"], str(tmp_path)) is None
     assert capsys.readouterr().err == ""
+
+
+# The case table internal/scope's Go tests also read (design D3). Each suite
+# checks its own derivation against the same inputs.
+CASES = json.loads(
+    (
+        Path(__file__).resolve().parents[4]
+        / "internal"
+        / "scope"
+        / "testdata"
+        / "cases.json"
+    ).read_text()
+)
+
+
+@pytest.mark.parametrize("case", CASES["remotes"], ids=lambda c: c["name"])
+def test_normalize_remote_shared_cases(case):
+    assert scope._normalize_remote(case["remote"]) == case["identity"]
+
+
+def _git(*args, cwd):
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _build_layout(root: Path, kind: str, remote: str | None) -> Path:
+    """Build one layout kind under root, per cases.json's layout_conventions."""
+    if kind == "not_a_repository":
+        scratch = root / "scratch"
+        scratch.mkdir()
+        return scratch
+    repo = root / "myrepo"
+    repo.mkdir()
+    _git("init", "-q", "-b", "main", cwd=repo)
+    if remote is not None:
+        _git("remote", "add", "origin", remote, cwd=repo)
+    _git("commit", "-q", "--allow-empty", "-m", "init", cwd=repo)
+    if kind == "primary_checkout":
+        return repo
+    if kind == "subdirectory":
+        sub = repo / "cmd" / "tool"
+        sub.mkdir(parents=True)
+        return sub
+    if kind == "linked_worktree":
+        wt = root / "wt" / "feat"
+        _git("worktree", "add", "-q", str(wt), cwd=repo)
+        return wt
+    raise AssertionError(f"unknown layout kind {kind!r}")
+
+
+@pytest.mark.parametrize("case", CASES["layouts"], ids=lambda c: c["name"])
+def test_derive_scopes_shared_layouts(case, tmp_path, monkeypatch):
+    # Keep the developer's git config and any repository above tmp_path out
+    # of both the fixture and the derivation's own probes.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.resolve()))
+    cwd = _build_layout(tmp_path, case["kind"], case["remote"])
+    assert scope.derive_scopes(str(cwd)) == (case["spine"], case["overlay"])

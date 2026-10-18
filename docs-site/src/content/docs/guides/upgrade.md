@@ -309,7 +309,7 @@ channel for everyone else.
 | `Taskfile.yaml` | Only builds the binary (`go build ... -o bin/engram`). No invocation of the CLI, no exit-status branch. |
 | `.github/workflows/` (`ci.yaml`, `docs-site.yaml`, `release.yaml`) | No workflow invokes the built `engram` binary or branches on its exit status. |
 | `charts/engram/templates/summarize-cronjob.yaml` | Runs `summarize-missing --all-scopes` as a CronJob container. Kubernetes CronJob semantics distinguish only zero from nonzero exit — confirmed no numeric status branch in the template. |
-| `skill/engram/hooks/` | Both hooks (`session-start-memory-recall`, `posttooluse-memory-capture-nudge`) are Python scripts with no `subprocess`/HTTP-client import — they never shell out to the CLI or call the Connect API directly. |
+| `skill/engram/hooks/` | `posttooluse-memory-capture-nudge` never shells out to the CLI or calls the Connect API. `session-start-memory-recall` runs `engram prime` (added after this audit) and distinguishes only a zero exit from a nonzero one: any nonzero exit falls back to its instruction text. Neither branches on a specific exit code. |
 | `docs-site/` | `reference/errors.md` links to this guide's sibling [exit-code table](/guides/cli/#exit-codes) rather than duplicating it; no example in the docs site branches on a specific exit code. |
 | `internal/e2e/cli_exitcode_test.go` | **One consumer found.** `TestCLIExitCodes` asserts specific numeric exit codes end to end. Its `unknown flag` case expected `1` and now expects `2`; its `unknown verb` case still expects `1` and is unchanged. Updated in this release. |
 

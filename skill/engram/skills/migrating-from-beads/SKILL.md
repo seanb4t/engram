@@ -57,8 +57,9 @@ Run it once per repo at adoption, not on a schedule.
 Keeping both copies recreates the exact split the engram-vs-beads precedence
 rules forbid: `bd prime` keeps auto-injecting the beads copy at session start, so
 the two records drift and a reader can't tell which is authoritative. Moving
-makes engram the single source of truth; the strengthened session-start recall
-hook ensures the migrated facts still load every session via `list_memory`.
+makes engram the single source of truth; the session-start recall hook ensures
+the migrated facts still load every session, through `engram prime` when the CLI
+is installed or, without it, through `list_memory`.
 
 Keep the spine zero-junk: migrate only facts that are genuinely durable and
 repo-wide, applying the same junk taxonomy as `curating-memory`.

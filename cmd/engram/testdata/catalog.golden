@@ -482,6 +482,54 @@
       }
     },
     {
+      "name": "prime",
+      "summary": "Print a session primer for an agent: memory scope, rules index and recent memories",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "text",
+          "usage": "output format: \"text\" or \"json\"; text whether or not stdout is a terminal"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "memory scope to read, used exactly as given with no workspace overlay (default: ENGRAM_SCOPE, then the scope derived from local git)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "deadline for the whole command: git probes, the credential and every request together (must be \u003e 0, e.g. 3s, 30s; a value of 0 is rejected)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "prune-expired",
       "summary": "Delete memories whose validity window (not_after) has lapsed",
       "flags": [

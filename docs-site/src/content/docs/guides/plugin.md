@@ -89,9 +89,30 @@ If `engram setup` reports the registration as `preserved` — it carries somethi
 
 ## SessionStart hook — memory recall
 
-At the start of every session the `session-start-memory-recall` hook computes the two-tier memory scope (spine + optional workspace overlay) from the local git context and injects an instruction for Claude to call `list_memory` over its own OAuth-authenticated MCP connection. Recall is model-mediated because hooks cannot hold OAuth tokens.
+At the start of every session, the `session-start-memory-recall` hook finds the two-tier memory scope from the local git context. The scope is the spine, plus a workspace overlay in a linked git worktree. Outside a git repository it adds nothing to the session.
 
-If engram returns `401`/`403`, Claude reports once that memories are unavailable and continues — it does not block.
+In a git repository, the hook takes one of two paths.
+
+**The primer path.** When the `engram` binary is on `PATH`, the hook runs [`engram prime`](/guides/cli/#session-primer-engram-prime) from the session's directory, with a 3-second deadline. prime reads the rules index and the most recent memories with the CLI's own credential. The hook puts that primer in the session context, together with the guidance on store precedence and memory capture. Claude then starts the session with its memory already loaded and does not spend MCP calls on recall.
+
+**The fallback path.** The hook uses the fallback in these cases:
+
+- The binary is not installed.
+- prime exits with an error. For example, there is no credential, or the installed binary is too old to have `prime`.
+- prime writes nothing.
+- prime does not finish within 4 seconds.
+
+The hook then tells Claude to call `list_rules` and `list_memory` over its own OAuth-authenticated MCP connection. A hook cannot hold that OAuth token. If engram returns `401`/`403`, Claude reports once that memories are unavailable. Claude then continues and does not block.
+
+The hook always finishes within its 10-second limit, and it never fails the session start.
+
+To use the primer path:
+
+1. Install the `engram` binary (see [Install](/guides/install/)) so that it is on the `PATH` that Claude Code gives to hooks.
+2. Run `engram login --server <url>`. The login saves a credential and records `<url>` as the default server. The hook then needs no other settings. If you use `ENGRAM_TOKEN` or `--token-file` instead of a login, there is no default server. Then set `ENGRAM_SERVER_URL` in the environment that Claude Code runs hooks in.
+3. Log in to the CLI as the same user as the MCP connection. If the two logins are different users, the primer shows one user's memories while Claude writes as the other.
+
+`ENGRAM_PROJECT`, when set, adds the `rule:project:<name>` rules on both paths.
 
 ## PostToolUse hook — capture nudge
 
