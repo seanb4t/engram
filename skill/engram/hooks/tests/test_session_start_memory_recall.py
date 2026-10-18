@@ -6,13 +6,18 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
 HOOK = Path(__file__).resolve().parent.parent / "session-start-memory-recall"
+# Resolved before the bin_dir fixture narrows PATH.
+SLEEP = shutil.which("sleep")
 
 
 def run_hook(cwd: str) -> subprocess.CompletedProcess:
@@ -24,6 +29,19 @@ def run_hook(cwd: str) -> subprocess.CompletedProcess:
         timeout=15,
         check=False,
     )
+
+
+@pytest.fixture(autouse=True)
+def bin_dir(tmp_path: Path, monkeypatch) -> Path:
+    """PATH holds only git, plus any stub engram a test adds, so the developer's
+    own engram binary never runs; git reads no global or system config."""
+    d = tmp_path / "bin"
+    d.mkdir()
+    (d / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(d))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    return d
 
 
 def git(*args, cwd):
@@ -129,3 +147,91 @@ def test_rules_index_includes_project_scope_when_configured(
         "additionalContext"
     ]
     assert "rule:project:selfhosted-cluster" in ctx
+
+
+PRIMER = """# engram session primer
+
+Memory spine scope: repo:github.com/org/repo
+Spine scope source: git origin remote
+Rule scopes: rule:repo:github.com/org/repo
+
+## Rules
+
+- abcdefgh12 — MUST pass an explicit pathspec [git]
+"""
+
+
+def stub_engram(bin_dir: Path, body: str) -> Path:
+    stub = bin_dir / "engram"
+    stub.write_text("#!/bin/sh\n" + body)
+    stub.chmod(0o755)
+    return stub
+
+
+def context_of(result: subprocess.CompletedProcess) -> str:
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+
+
+def assert_fallback(ctx: str) -> None:
+    assert "Memory spine scope: repo:github.com/org/repo" in ctx
+    assert "REQUIRED FIRST ACTION" in ctx
+    assert "mcp__engram__list_memory" in ctx
+    assert "mcp__engram__list_rules" in ctx
+
+
+def test_primer_injected_when_prime_succeeds(git_repo: Path, bin_dir: Path):
+    log = bin_dir.parent / "prime-log"
+    log.mkdir()
+    stub_engram(
+        bin_dir,
+        f"""printf '%s\\n' "$*" > "{log}/args"
+pwd -P > "{log}/cwd"
+if [ -p /dev/stdin ]; then echo pipe; else echo other; fi > "{log}/stdin"
+printf '%s' '{PRIMER}'
+""",
+    )
+    ctx = context_of(run_hook(str(git_repo)))
+    assert ctx.startswith(PRIMER.rstrip())
+    assert "already recalled" in ctx
+    assert "MUST-follow" in ctx
+    assert "Memory store precedence" in ctx
+    assert "curating-memory" in ctx
+    assert "REQUIRED FIRST ACTION" not in ctx
+    assert "mcp__engram__list_memory" not in ctx
+    assert "mcp__engram__list_rules" not in ctx
+    assert (log / "args").read_text().split() == ["prime", "--timeout", "3s"]
+    assert (log / "cwd").read_text().strip() == str(git_repo.resolve())
+    assert (log / "stdin").read_text().strip() == "other"
+
+
+def test_fallback_when_engram_missing(git_repo: Path):
+    assert_fallback(context_of(run_hook(str(git_repo))))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "echo 'Error: the saved login is no longer valid' >&2\nexit 3\n",
+        'echo \'Error: unknown command "prime" for "engram"\' >&2\nexit 1\n',
+        "exit 0\n",
+    ],
+    ids=["no credential", "older binary without prime", "empty output"],
+)
+def test_fallback_when_prime_fails(git_repo: Path, bin_dir: Path, body: str):
+    stub_engram(bin_dir, body)
+    result = run_hook(str(git_repo))
+    assert_fallback(context_of(result))
+    assert "using the instruction text" in result.stderr
+
+
+def test_fallback_when_prime_does_not_finish(git_repo: Path, bin_dir: Path):
+    # sleep runs as a child of the stub shell, not exec'd, so it keeps the
+    # stdout pipe open unless the hook kills the whole process group.
+    stub_engram(bin_dir, f'"{SLEEP}" 30\n')
+    start = time.monotonic()
+    result = run_hook(str(git_repo))
+    elapsed = time.monotonic() - start
+    assert_fallback(context_of(result))
+    assert "did not finish" in result.stderr
+    assert elapsed < 10, f"hook took {elapsed:.1f} s, over its 10 s limit"
