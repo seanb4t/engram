@@ -607,6 +607,7 @@ zero-semantics, and it is not uniform across commands:**
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
 | `search`, `list`, `store`, `get`, `migration-status`, `tui` | Per-RPC-call deadline | **Rejected** (usage error) |
+| `prime` | One deadline for the whole command: the git probes, the credential and every RPC call together | **Rejected** (usage error) |
 | `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge`, `migrate`, `migrate status`, `migrate revert` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
@@ -800,6 +801,116 @@ same action. Every key also shows in the `?` overlay and the command palette.
 
 The copy keys send the text through the terminal's clipboard sequence (OSC
 52), which also works over SSH. Some terminals turn that sequence off.
+
+## Session primer: `engram prime`
+
+`engram prime` writes a session primer for an agent: the memory scope it read
+from, the rules index for that scope, and a short digest of recent memories. It
+is one read, so an agent can start a session with its memory already in
+context. The Claude Code plugin's session-start hook runs it for you (see
+[the plugin guide](/guides/plugin/#sessionstart-hook--memory-recall)).
+
+```sh
+engram prime
+```
+
+The primer has four parts, in this order:
+
+1. **The scope header.** `Memory spine scope: <scope>` and a line that names
+   where the scope came from. In a linked git worktree it adds
+   `Memory workspace scope: <scope>` and its source. A last line names the
+   rule scopes that prime read.
+2. **The rules index.** One line per rule: its full `short_id`, its summary and
+   its tags. There is no rule content. Fetch a rule's full text with
+   `engram get <short_id>`. When there are no rules, this part is not shown.
+3. **The recall digest.** Up to the 10 most recent records you can recall in
+   each scope, one line per record: its full `short_id` and its summary. The
+   groups are "Repo-wide memories" and "This workspace's memories". A record in
+   both groups shows only in the first group. A group of 10 ends with a note
+   that older records exist. An empty group is not shown. Archived,
+   superseded, expired and not-yet-active records are never shown, and another
+   user's record shows only when it is `shared`.
+4. **The catalog line.** It names `engram catalog`, the command that prints
+   [the machine-readable catalog](#the-self-describe-catalog).
+
+prime only reads. It never writes to the store, starts a login, prompts, or
+reads stdin.
+
+### Where the scope comes from
+
+prime uses the first of these that is set:
+
+| Source | What prime uses | The header names |
+|---|---|---|
+| `--scope <scope>` | That scope, exactly as given | `--scope` |
+| `ENGRAM_SCOPE` | That scope, exactly as given | `ENGRAM_SCOPE` |
+| The git `origin` remote | `repo:<host>/<org>/<repo>`, with the scheme, the user name, a port number and `.git` removed | `git origin remote` |
+| No `origin` remote | `repo:<name>`, where `<name>` is the name of the main repository's directory | The repository directory name. The header also says that this is probably not a scope on the server. |
+
+prime reads git on your machine only. It makes no network call to find the
+scope. In a linked git worktree it also reads the workspace overlay,
+`<spine>:ws:<worktree directory name>`. A scope from `--scope` or
+`ENGRAM_SCOPE` has no overlay.
+
+The rule scopes come from the memory scope. When the memory scope starts with
+`repo:<repo-id>`, prime reads `rule:repo:<repo-id>`. When `ENGRAM_PROJECT` is
+set, prime also reads `rule:project:<ENGRAM_PROJECT>`. This is the same
+variable that the session-start hook reads.
+
+prime rejects these values with exit `2` before it calls the server, and the
+error names the flag or the variable:
+
+- An empty `--scope ""`.
+- A `--scope` or `ENGRAM_SCOPE` value that starts with `rule:` or
+  `discovery:`. Give the memory scope instead. prime finds the rule scope from
+  it.
+
+### Outside a git repository
+
+With no `--scope` and no `ENGRAM_SCOPE`, outside a git repository, prime writes
+a short primer that says no scope was found and that `--scope` sets one. It
+calls no server, needs no credential, and exits `0`. This means a session start
+never fails because of prime.
+
+```sh
+engram prime --scope repo:github.com/org/repo
+```
+
+### Output
+
+prime writes the text primer by default, also when stdout is not a terminal.
+This is different from the other client commands, which write JSON to a pipe.
+The reason is that prime's output is usually put straight into an agent's
+context.
+
+`--output json` writes one JSON document with the same facts:
+
+```sh
+engram prime --output json | jq '.spine, .rule_scopes'
+```
+
+| Key | Value |
+|---|---|
+| `spine`, `overlay` | `{"scope": ..., "source": ...}`, or `null`. `source` is one of `flag`, `env`, `git_origin_remote`, `repo_directory_name` and `linked_worktree`. |
+| `rule_scopes` | The rule scopes that prime read |
+| `rules` | The rules, in the record shape that `engram list` writes |
+| `memories.spine`, `memories.overlay` | The digest records, in the same shape |
+| `catalog_command` | `engram catalog` |
+
+### Server, credential and exit codes
+
+prime finds the server and the credential in the same way as the other client
+commands (see [Shared flags](#shared-flags)). Its `--timeout` is one deadline
+for the whole command. When a call fails, prime writes nothing to stdout and
+exits with the client exit code:
+
+| Code | Cause |
+|------|-------|
+| 0 | The primer was written. This includes a primer outside a git repository. |
+| 2 | No `--server`, `ENGRAM_SERVER_URL` or saved login; a rejected scope; an `--output` other than `text` or `json`; or a scope that the server rejected (its `field=` / `hint=` message is passed through) |
+| 3 | The server rejected the credential |
+| 5 | The server is unreachable |
+| 6 | The server did not answer within `--timeout` |
 
 ## The self-describe catalog
 
