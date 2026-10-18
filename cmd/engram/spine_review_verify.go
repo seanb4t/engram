@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/seanb4t/engram/internal/scope"
 	"github.com/seanb4t/engram/internal/server"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/surfaces"
@@ -171,58 +171,30 @@ func parseLocatorStart(locator string) (int, bool) {
 	return n, true
 }
 
-// repoIdentityFromCWD derives this working tree's repo identity from `git
-// remote get-url origin`, normalised via normalizeGitRemote to the
-// host/path form the repo's live scope values already use
-// (repo:<host>/<path>). This is a deliberate runtime dependency on the git
-// CLI: D-05 rejects git as a verification mechanism for `commit` citations
-// specifically (verifying a commit's content is out of scope, per
-// CONTEXT.md), but deriving "which repo is this working tree" is a
-// different job, and describing this command as having "no git
-// dependency" would be inaccurate. Falls back to the working directory's
-// base name when there is no origin remote or git is unavailable --
-// RESEARCH.md's Assumptions Log row A1, chosen to fail SAFE: a
-// mis-derivation here produces "unverifiable" citations downstream, never
-// a confident wrong verdict.
-func repoIdentityFromCWD() (string, error) {
-	out, err := exec.Command("git", "remote", "get-url", "origin").Output()
+// verifyRepoIdentity derives this working tree's repository identity with
+// internal/scope, the derivation the session-start hook and engram prime
+// share (origin remote with a numeric port dropped, else the main
+// repository root's directory name). This is a deliberate runtime
+// dependency on the git CLI: D-05 rejects git as a verification mechanism
+// for `commit` citations specifically, but deriving "which repo is this
+// working tree" is a different job. Outside a repository, or when git
+// cannot run, the identity is empty, which matches no repo: segment, so
+// every citation fails SAFE to "unverifiable" rather than to a confident
+// wrong verdict.
+func verifyRepoIdentity(ctx context.Context) (string, error) {
+	wd, err := os.Getwd()
 	if err != nil {
-		wd, wderr := os.Getwd()
-		if wderr != nil {
-			return "", fmt.Errorf("repo identity: no origin remote, and cannot read the working directory: %w", wderr)
-		}
-		return filepath.Base(wd), nil
+		return "", fmt.Errorf("repo identity: cannot read the working directory: %w", err)
 	}
-	return normalizeGitRemote(strings.TrimSpace(string(out))), nil
-}
-
-// normalizeGitRemote reduces a git remote URL to the host/path form this
-// repo's live scope values already use (repo:<host>/<path>): strip the
-// scheme, strip user info (git@ or user@), replace the FIRST colon after
-// the host with a slash (so an SCP-style remote like
-// git@github.com:seanb4t/engram.git normalises the same as its HTTPS
-// equivalent, rather than leaving a colon that would misclassify every
-// same-repo citation on an SSH-remote clone as "different repo" -- this
-// repo's own remote is HTTPS, so the #355 fixture alone would have hidden
-// that bug), strip a trailing ".git", and strip a trailing slash.
-func normalizeGitRemote(remote string) string {
-	s := remote
-	if i := strings.Index(s, "://"); i >= 0 {
-		s = s[i+3:]
+	s, err := scope.Derive(ctx, wd)
+	if err != nil {
+		return "", err
 	}
-	if i := strings.Index(s, "@"); i >= 0 {
-		s = s[i+1:]
-	}
-	if i := strings.Index(s, ":"); i >= 0 {
-		s = s[:i] + "/" + s[i+1:]
-	}
-	s = strings.TrimSuffix(s, ".git")
-	s = strings.TrimSuffix(s, "/")
-	return s
+	return s.RepoID, nil
 }
 
 // sameRepoAsCWD reports whether scope names the SAME repo as
-// derivedIdentity (repoIdentityFromCWD's return value), by an EXACT SEGMENT
+// derivedIdentity (verifyRepoIdentity's return value), by an EXACT SEGMENT
 // match on scope's colon-delimited token sequence -- never a substring
 // match, which would false-positive on an unrelated scope like
 // "myrepo:x". The rule, spelled out:
@@ -243,8 +215,12 @@ func normalizeGitRemote(remote string) string {
 // citation-bearing categories with a leading category prefix). A scope with
 // no "repo" segment at all (project:<name>, discovery:<name>) has no repo
 // identity to compare and correctly reports false -- the same fail-safe
-// disposition as a genuine mismatch.
+// disposition as a genuine mismatch. An empty derivedIdentity (outside a
+// repository) matches nothing, not even a malformed "repo:" scope.
 func sameRepoAsCWD(scope, derivedIdentity string) bool {
+	if derivedIdentity == "" {
+		return false
+	}
 	segments := strings.Split(scope, ":")
 	for i, seg := range segments {
 		if seg == "repo" {
@@ -647,7 +623,7 @@ var spineReviewVerifyCmd = &cobra.Command{
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
 		}
-		repoIdentity, err := repoIdentityFromCWD()
+		repoIdentity, err := verifyRepoIdentity(ctx)
 		if err != nil {
 			return classifyOperatorErrConstruction(err)
 		}

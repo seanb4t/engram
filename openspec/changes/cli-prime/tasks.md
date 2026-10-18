@@ -13,8 +13,8 @@
 
 ## 3. spine-review verify on the shared derivation
 
-- [ ] 3.1 Replace `repoIdentityFromCWD` and `normalizeGitRemote` in `cmd/engram/spine_review_verify.go` with `internal/scope`, keeping `sameRepoAsCWD` and the current-directory working root. Outside a repository the identity is empty. Move `TestNormalizeGitRemote`'s cases into `cases.json` if any are missing there, and delete the test. Verify: `go test ./cmd/engram/ -run 'Verify|SameRepo' -count=1`.
-- [ ] 3.2 Add `spine_review_verify_test.go` cases for the spec's three verify scenarios: an `ssh://` remote with a port is the same repository, a subdirectory of a clone with no origin is the same repository, and outside a repository every citation is `unverifiable`. Verify: `go test ./cmd/engram/ -run 'Verify' -count=1`.
+- [x] 3.1 Replace `repoIdentityFromCWD` and `normalizeGitRemote` in `cmd/engram/spine_review_verify.go` with `internal/scope`, keeping `sameRepoAsCWD` and the current-directory working root. Outside a repository the identity is empty. Move `TestNormalizeGitRemote`'s cases into `cases.json` if any are missing there, and delete the test. Verify: `go test ./cmd/engram/ -run 'Verify|SameRepo' -count=1`.
+- [x] 3.2 Add `spine_review_verify_test.go` cases for the spec's three verify scenarios: an `ssh://` remote with a port is the same repository, a subdirectory of a clone with no origin is the same repository, and outside a repository every citation is `unverifiable`. Verify: `go test ./cmd/engram/ -run 'Verify' -count=1`.
 
 ## 4. Prime settings
 
