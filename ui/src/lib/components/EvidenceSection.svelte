@@ -40,7 +40,7 @@
     </span>
     <span class="short-id">{candidate.shortId}</span>
     {#if when}<span class="when">{when}</span>{/if}
-    <button type="button" class="close" aria-label="Clear selection" onclick={onclose}>esc ×</button>
+    <button type="button" class="close" aria-label="Clear selection, esc" onclick={onclose}>esc ×</button>
   </div>
   <p class="sum">{candidate.memory.summary}</p>
   {#if candidate.memory.tags.length > 0}
