@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { Memory } from '$lib/gen/engram_pb';
+  import type { Memory } from '#lib/gen/engram_pb.js';
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
   import { toast } from 'svelte-sonner';
-  import { Kbd } from '$lib/components/ui/kbd';
+  import { Kbd } from '#lib/components/ui/kbd/index.js';
   import ResultRow from './ResultRow.svelte';
   import ResultHoverCard from './ResultHoverCard.svelte';
   import RowActions from './RowActions.svelte';
-  import { defaultActionsFor, type CurationAction } from '$lib/curation/host.svelte';
+  import { defaultActionsFor, type CurationAction } from '#lib/curation/host.svelte.js';
 
   // D-11/D-12/D-13: a group-header item, or a row item carrying its index
   // into `memories` (never re-derived from the virtual list's own index,

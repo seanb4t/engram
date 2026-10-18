@@ -4,10 +4,10 @@
   // type, n/cap, caption, hide/show) and a body of one-line rows, each
   // selectable and lit by the ONE shared selection (D-02, D-05). Container
   // query `lane` swaps --cols and drops the evidence cell below 520px.
-  import type { Candidate, LaneType, RelatedModel } from '$lib/related/graph';
-  import { EDGE_STYLE } from '$lib/related/graph';
-  import { collapsedRowCopy, emptyLaneReason, formatCosine, formatWeight, laneCaption, laneCountLabel } from '$lib/related/lanes';
-  import { memoryStateWords } from '$lib/memorystate';
+  import type { Candidate, LaneType, RelatedModel } from '#lib/related/graph.js';
+  import { EDGE_STYLE } from '#lib/related/graph.js';
+  import { collapsedRowCopy, emptyLaneReason, formatCosine, formatWeight, laneCaption, laneCountLabel } from '#lib/related/lanes.js';
+  import { memoryStateWords } from '#lib/memorystate.js';
 
   let {
     type,

@@ -4,10 +4,10 @@
   // that lane's hide/show button, sharing one hiddenTypes source of truth
   // with EdgeLane/SupersessionLane. Rendered in the rail after the evidence
   // section.
-  import type { LaneType, RelatedModel } from '$lib/related/graph';
-  import { LANE_ORDER } from '$lib/related/graph';
-  import { LANE_GLYPH, laneCountLabel } from '$lib/related/lanes';
-  import { Checkbox } from '$lib/components/ui/checkbox';
+  import type { LaneType, RelatedModel } from '#lib/related/graph.js';
+  import { LANE_ORDER } from '#lib/related/graph.js';
+  import { LANE_GLYPH, laneCountLabel } from '#lib/related/lanes.js';
+  import { Checkbox } from '#lib/components/ui/checkbox/index.js';
 
   let {
     model,

@@ -3,7 +3,7 @@
 // of how many surfaces render its tags. limit is fixed at TAGS_LIMIT (1000,
 // the server maximum) -- callers slice/filter the cached response client-side
 // rather than requesting a narrower page (D-15's "one fetch" pattern).
-import { engram } from '$lib/client';
+import { engram } from '#lib/client.js';
 
 // Sentinel for "every readable scope" in the query key -- ListTags itself
 // takes an empty string for this meaning; the sentinel exists only so the key

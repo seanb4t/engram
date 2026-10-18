@@ -3,10 +3,10 @@
 // GRAPH-03, D-02, D-05, D-10). EdgeLane.svelte, SupersessionLane.svelte,
 // EvidenceSection.svelte and GraphLegend.svelte render exactly what this
 // module computes -- it owns no DOM, mirroring graph.ts's split.
-import { SupersessionDirection } from '$lib/gen/engram_pb';
+import { SupersessionDirection } from '#lib/gen/engram_pb.js';
 import { LANE_CAP, LANE_ORDER, type Candidate, type LaneType, type RelatedModel } from './graph';
-import { compareChainNodes, type ChainNode } from '$lib/curation/chain';
-import { memoryStateWords } from '$lib/memorystate';
+import { compareChainNodes, type ChainNode } from '#lib/curation/chain.js';
+import { memoryStateWords } from '#lib/memorystate.js';
 import { timestampDate } from '@bufbuild/protobuf/wkt';
 
 export interface EvidenceLine {

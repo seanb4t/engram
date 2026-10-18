@@ -3,9 +3,9 @@ import { page } from 'vitest/browser';
 import { describe, it, expect, vi } from 'vitest';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { MemorySchema, ArchiveOutcome, type Memory, type ArchiveResult } from '$lib/gen/engram_pb';
-import { parseConnectError, type ParsedConnectError } from '$lib/errors/connect-error';
-import type { ArchiveSubmitOutcome } from '$lib/mutations/curation';
+import { MemorySchema, ArchiveOutcome, type Memory, type ArchiveResult } from '#lib/gen/engram_pb.js';
+import { parseConnectError, type ParsedConnectError } from '#lib/errors/connect-error.js';
+import type { ArchiveSubmitOutcome } from '#lib/mutations/curation.js';
 import ArchiveConfirmDialog from './ArchiveConfirmDialog.svelte';
 
 function deferred<T>() {

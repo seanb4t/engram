@@ -8,7 +8,7 @@
 // <inputs>`. Inputs are the caller's own strings (id or short_id),
 // comma-separated.
 import { ConnectError, Code } from '@connectrpc/connect';
-import { parseConnectError } from '$lib/errors/connect-error';
+import { parseConnectError } from '#lib/errors/connect-error.js';
 
 export type SupersedeRejection =
   | { kind: 'targets'; issue: 'not-found' | 'rule' | 'already-superseded'; inputs: string[] }

@@ -29,9 +29,9 @@ import {
   SupersessionDirection,
   SuggestionSource,
   type Memory
-} from '$lib/gen/engram_pb';
-import { headerSearch } from '$lib/search/header-search.svelte';
-import type { ArchiveSubmitOutcome, SupersedeFields } from '$lib/mutations/curation';
+} from '#lib/gen/engram_pb.js';
+import { headerSearch } from '#lib/search/header-search.svelte.js';
+import type { ArchiveSubmitOutcome, SupersedeFields } from '#lib/mutations/curation.js';
 import { auditAA, formatViolations } from './axe';
 import SearchPage from '../../routes/search/+page.svelte';
 import RulesPage from '../../routes/rules/+page.svelte';
@@ -110,14 +110,14 @@ const {
 });
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
-vi.mock('$app/paths', () => ({ base: '/ui' }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/ui/${p}` }));
 vi.mock('$app/state', () => ({ page: pageState }));
 
-// One consolidated $lib/client mock covers every surface this file audits
+// One consolidated #lib/client mock covers every surface this file audits
 // (Task 1's /search route plus Task 2's dialogs and /rules, /scheduled) --
-// vi.mock('$lib/client', ...) applies once per test file, not per describe.
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+// vi.mock('#lib/client.js', ...) applies once per test file, not per describe.
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: {
@@ -142,8 +142,8 @@ vi.mock('$lib/client', async (importOriginal) => {
   };
 });
 
-vi.mock('$lib/resume', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/resume')>();
+vi.mock('#lib/resume.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/resume.js')>();
   return {
     ...actual,
     consumeResume: (...args: Parameters<typeof actual.consumeResume>) => {

@@ -1,7 +1,7 @@
 import { createMutation, useQueryClient, type QueryClient } from '@tanstack/svelte-query';
 import { create } from '@bufbuild/protobuf';
 import { toast } from 'svelte-sonner';
-import { engramWrite } from '$lib/client';
+import { engramWrite } from '#lib/client.js';
 import {
   StoreDiscoveryRequestSchema,
   CitationSchema,
@@ -10,7 +10,7 @@ import {
   Visibility,
   type Memory,
   type StoreDiscoveryRequest
-} from '$lib/gen/engram_pb';
+} from '#lib/gen/engram_pb.js';
 import { type CacheEntry, type EngramWriteClient, type WriteResult } from './memory';
 
 // Mirrors ui/src/lib/mutations/memory.ts's thunk/onMutate/onError/onSettled

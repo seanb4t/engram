@@ -1,4 +1,4 @@
-import type { Memory } from '$lib/gen/engram_pb';
+import type { Memory } from '#lib/gen/engram_pb.js';
 
 // The active curation host registry: a single shared reactive module (same
 // "one shared reactive module" shape as flash.svelte.ts/display.svelte.ts)

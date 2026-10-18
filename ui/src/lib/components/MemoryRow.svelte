@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { Memory } from '$lib/gen/engram_pb';
+  import type { Memory } from '#lib/gen/engram_pb.js';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
-  import { stripCategoryPrefix } from '$lib/summary';
-  import { relativeTime } from '$lib/time';
-  import { memoryStateWords, isPastState } from '$lib/memorystate';
-  import { Button } from '$lib/components/ui/button';
-  import { Badge } from '$lib/components/ui/badge';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+  import { stripCategoryPrefix } from '#lib/summary.js';
+  import { relativeTime } from '#lib/time.js';
+  import { memoryStateWords, isPastState } from '#lib/memorystate.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
   import ScopeChip from './ScopeChip.svelte';
   import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
   import PencilIcon from '@lucide/svelte/icons/pencil';

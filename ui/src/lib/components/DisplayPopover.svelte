@@ -5,10 +5,10 @@
   // scales with the preference it demonstrates.
   import { toast } from 'svelte-sonner';
   import { RadioGroup } from 'bits-ui';
-  import * as Popover from '$lib/components/ui/popover';
-  import { Button } from '$lib/components/ui/button';
-  import { Kbd } from '$lib/components/ui/kbd';
-  import { display, MIN_TEXT_SIZE, MAX_TEXT_SIZE, DEFAULT_TEXT_SIZE, setTextSize } from '$lib/display.svelte';
+  import * as Popover from '#lib/components/ui/popover/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Kbd } from '#lib/components/ui/kbd/index.js';
+  import { display, MIN_TEXT_SIZE, MAX_TEXT_SIZE, DEFAULT_TEXT_SIZE, setTextSize } from '#lib/display.svelte.js';
 
   const sizes = $derived(
     Array.from({ length: MAX_TEXT_SIZE - MIN_TEXT_SIZE + 1 }, (_, i) => MIN_TEXT_SIZE + i)

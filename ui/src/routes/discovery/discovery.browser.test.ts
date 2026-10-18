@@ -1,7 +1,7 @@
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { persistResume } from '$lib/resume';
+import { persistResume } from '#lib/resume.js';
 import DiscoveryPage from './+page.svelte';
 
 const { gotoSpy, pageState, searchDiscoveriesSpy, getMemorySpy, consumeResumeSpy } = vi.hoisted(() => ({
@@ -13,19 +13,19 @@ const { gotoSpy, pageState, searchDiscoveriesSpy, getMemorySpy, consumeResumeSpy
 }));
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
-vi.mock('$app/paths', () => ({ base: '/ui' }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/ui/${p}` }));
 vi.mock('$app/state', () => ({ page: pageState }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: { ...actual.engram, searchDiscoveries: searchDiscoveriesSpy, getMemory: getMemorySpy }
   };
 });
 
-vi.mock('$lib/resume', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/resume')>();
+vi.mock('#lib/resume.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/resume.js')>();
   return {
     ...actual,
     consumeResume: (...args: Parameters<typeof actual.consumeResume>) => {

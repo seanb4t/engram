@@ -1,4 +1,4 @@
-import type { Memory } from '$lib/gen/engram_pb';
+import type { Memory } from '#lib/gen/engram_pb.js';
 import { timestampDate } from '@bufbuild/protobuf/wkt';
 
 // `now` is injectable for deterministic tests; defaults to current time at call.

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { HeaderPart } from '$lib/search/recall-header';
-  import { Kbd } from '$lib/components/ui/kbd';
+  import type { HeaderPart } from '#lib/search/recall-header.js';
+  import { Kbd } from '#lib/components/ui/kbd/index.js';
 
   // D-03: the bulk-selection bar. A pure prop the route computes from its
   // own selectedIds/curation state -- this component never counts a

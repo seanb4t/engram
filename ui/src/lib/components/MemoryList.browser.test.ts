@@ -2,7 +2,7 @@ import { render } from 'vitest-browser-svelte';
 import { describe, it, expect } from 'vitest';
 import MemoryList from './MemoryList.svelte';
 import { create } from '@bufbuild/protobuf';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, type Memory } from '#lib/gen/engram_pb.js';
 
 const mem = create(MemorySchema, { id: '1', summary: 'GOTCHA (path must match) upstream', category: 'gotcha', visibility: 'private', tags: ['mcp', 'routing'] });
 

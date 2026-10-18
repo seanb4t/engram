@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { Memory } from '$lib/gen/engram_pb';
-  import { Skeleton } from '$lib/components/ui/skeleton';
-  import * as Empty from '$lib/components/ui/empty';
+  import type { Memory } from '#lib/gen/engram_pb.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import * as Empty from '#lib/components/ui/empty/index.js';
   import MemoryRow from './MemoryRow.svelte';
   let { memories, total, approximate = false, loading, error, selectedId, onselect, showScope = false, scopeSelected = true, onedit, ondelete, onshare }: {
     memories: Memory[]; total: bigint; approximate?: boolean; loading: boolean; error: unknown; selectedId: string; onselect: (id: string) => void; showScope?: boolean; scopeSelected?: boolean;

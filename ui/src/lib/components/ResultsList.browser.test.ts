@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createRawSnippet } from 'svelte';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, type Memory } from '#lib/gen/engram_pb.js';
 import ResultsList from './ResultsList.svelte';
 
 function makeMemories(count: number): Memory[] {

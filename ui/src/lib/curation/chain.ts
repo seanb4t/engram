@@ -3,8 +3,8 @@
 // the live head via a SUCCESSOR edge, and one read from the head to walk its
 // PREDECESSOR edges. ChainDialog.svelte renders this model — it never walks
 // the chain itself (key_links: buildChain).
-import type { Memory, RelatedMemoriesResponse } from '$lib/gen/engram_pb';
-import { EdgeType, SupersessionDirection } from '$lib/gen/engram_pb';
+import type { Memory, RelatedMemoriesResponse } from '#lib/gen/engram_pb.js';
+import { EdgeType, SupersessionDirection } from '#lib/gen/engram_pb.js';
 import { timestampDate } from '@bufbuild/protobuf/wkt';
 
 export interface ChainNode {

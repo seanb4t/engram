@@ -4,12 +4,12 @@
   // per gotcha 3tz15e733n, manual substring ranking over the already-loaded
   // list). Shares the identical cached ListTags(scope, 1000) query TagBars
   // uses for the same scope key -- one fetch, two surfaces.
-  import * as Popover from '$lib/components/ui/popover';
-  import * as Command from '$lib/components/ui/command';
+  import * as Popover from '#lib/components/ui/popover/index.js';
+  import * as Command from '#lib/components/ui/command/index.js';
   import { createQuery } from '@tanstack/svelte-query';
-  import { listTagsQuery } from '$lib/tags/query';
-  import { toTagRows, rankTagMatches, matchFooter, tagsLoadingLine, tagsErrorCopy } from '$lib/tags/tags';
-  import { parseConnectError } from '$lib/errors/connect-error';
+  import { listTagsQuery } from '#lib/tags/query.js';
+  import { toTagRows, rankTagMatches, matchFooter, tagsLoadingLine, tagsErrorCopy } from '#lib/tags/tags.js';
+  import { parseConnectError } from '#lib/errors/connect-error.js';
   import TagMatchRow from './TagMatchRow.svelte';
 
   let { scope, onadd }: { scope: string; onadd: (tag: string) => void } = $props();

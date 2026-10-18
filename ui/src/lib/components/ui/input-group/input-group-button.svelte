@@ -20,10 +20,10 @@
 </script>
 
 <script lang="ts">
-	import { cn } from "$lib/utils.js";
+	import { cn } from "#lib/utils.js";
 	import type { Snippet } from "svelte";
 	import type { HTMLButtonAttributes } from "svelte/elements";
-	import { Button, type ButtonVariant } from "$lib/components/ui/button/index.js";
+	import { Button, type ButtonVariant } from "#lib/components/ui/button/index.js";
 
 	// Typed on HTMLButtonAttributes (button mode) rather than
 	// ComponentProps<typeof Button>: the latter is the bits-ui anchor+button

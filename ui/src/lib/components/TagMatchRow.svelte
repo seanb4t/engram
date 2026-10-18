@@ -2,7 +2,7 @@
   // One ranked match row inside TagCombobox's popover and the header search
   // Tags group (D-16, D-18). Renders every part of the tag as a text node --
   // the matched substring is wrapped in <b>, never raw-HTML interpolation.
-  import { barPercent, type TagMatch } from '$lib/tags/tags';
+  import { barPercent, type TagMatch } from '#lib/tags/tags.js';
 
   let { match, max }: { match: TagMatch; max: number } = $props();
 </script>

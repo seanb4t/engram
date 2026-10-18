@@ -1,4 +1,4 @@
-import { INCLUDE_STATES } from '$lib/queries';
+import { INCLUDE_STATES } from '#lib/queries.js';
 import type { OperatorChip } from './classify';
 
 // The one URL/request codec for /search, the header search hand-off (D-10)

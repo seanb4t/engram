@@ -4,8 +4,8 @@
   import { create } from '@bufbuild/protobuf';
   import { ConnectError, Code } from '@connectrpc/connect';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
-  import { MemorySchema, type Memory, type SupersedeMemoryResponse } from '$lib/gen/engram_pb';
-  import { engram } from '$lib/client';
+  import { MemorySchema, type Memory, type SupersedeMemoryResponse } from '#lib/gen/engram_pb.js';
+  import { engram } from '#lib/client.js';
   import {
     useArchiveMemory,
     useRestoreMemory,
@@ -16,11 +16,11 @@
     type SupersedeDraft,
     supersedeFieldsFrom,
     type SupersedeFields
-  } from '$lib/mutations/curation';
-  import { parseConnectError } from '$lib/errors/connect-error';
-  import { persistResume, redirectToLogin, type CurationResumeEnvelope } from '$lib/resume';
-  import { flashRows } from '$lib/curation/flash.svelte';
-  import { headIdFrom } from '$lib/curation/chain';
+  } from '#lib/mutations/curation.js';
+  import { parseConnectError } from '#lib/errors/connect-error.js';
+  import { persistResume, redirectToLogin, type CurationResumeEnvelope } from '#lib/resume.js';
+  import { flashRows } from '#lib/curation/flash.svelte.js';
+  import { headIdFrom } from '#lib/curation/chain.js';
   import ArchiveConfirmDialog from './ArchiveConfirmDialog.svelte';
   import SupersedeDialog from './SupersedeDialog.svelte';
   import ChainDialog from './ChainDialog.svelte';

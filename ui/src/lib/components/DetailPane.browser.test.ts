@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { MemorySchema, CitationSchema } from '$lib/gen/engram_pb';
+import { MemorySchema, CitationSchema } from '#lib/gen/engram_pb.js';
 import DetailPane from './DetailPane.svelte';
 
 const NOW = new Date();

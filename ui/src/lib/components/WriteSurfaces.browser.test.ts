@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { ConnectError, Code } from '@connectrpc/connect';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { MemorySchema, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, type Memory } from '#lib/gen/engram_pb.js';
 import WriteSurfaces from './WriteSurfaces.svelte';
 
 const {
@@ -25,8 +25,8 @@ const {
 // Only engram.getMemory is faked (WriteSurfaces' openEdit fetch path) --
 // engramWrite is untouched but never invoked directly (all writes go
 // through the mocked mutation hooks below).
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return { ...actual, engram: { ...actual.engram, getMemory: getMemorySpy } };
 });
 
@@ -35,24 +35,24 @@ vi.mock('$lib/client', async (importOriginal) => {
 // useCreateMemory/useUpdateMemory/useScheduleMemory stay real since a real
 // QueryClientProvider wrapper is present below and these hooks' mutationFns
 // are never invoked in this suite (no Create/Save clicks).
-vi.mock('$lib/mutations/memory', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/mutations/memory')>();
+vi.mock('#lib/mutations/memory.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/mutations/memory.js')>();
   return {
     ...actual,
     useDeleteMemory: () => ({ mutate: deleteMemoryMutateSpy }),
     useSetMemoryVisibility: () => ({ mutate: setMemoryVisibilityMutateSpy })
   };
 });
-vi.mock('$lib/mutations/discovery', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/mutations/discovery')>();
+vi.mock('#lib/mutations/discovery.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/mutations/discovery.js')>();
   return {
     ...actual,
     useDeleteDiscovery: () => ({ mutate: deleteDiscoveryMutateSpy }),
     useSetDiscoveryVisibility: () => ({ mutate: setDiscoveryVisibilityMutateSpy })
   };
 });
-vi.mock('$lib/resume', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/resume')>();
+vi.mock('#lib/resume.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/resume.js')>();
   return { ...actual, redirectToLogin: redirectToLoginSpy };
 });
 

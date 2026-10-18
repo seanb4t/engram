@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ParsedConnectError } from '$lib/errors/connect-error';
+  import type { ParsedConnectError } from '#lib/errors/connect-error.js';
 
   // The empty-state fix rows come from +page.svelte (search-every-scope,
   // include-archived/superseded/scheduled, clear-category) — a DIFFERENT
@@ -14,7 +14,7 @@
 
 <script lang="ts">
   import { toast } from 'svelte-sonner';
-  import { Button } from '$lib/components/ui/button';
+  import { Button } from '#lib/components/ui/button/index.js';
 
   // ENTRY-03/ENTRY-05/D-04: the one component every honest empty/failure
   // state on /search renders through — never a bare empty list, and never a

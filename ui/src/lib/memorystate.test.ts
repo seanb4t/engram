@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { MemorySchema } from '$lib/gen/engram_pb';
+import { MemorySchema } from '#lib/gen/engram_pb.js';
 import { memoryStateWords, isPastState, STATE_WORD_ORDER, type RecordStateWord } from './memorystate';
 
 const now = new Date('2030-06-15T12:00:00Z');

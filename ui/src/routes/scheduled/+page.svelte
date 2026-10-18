@@ -8,31 +8,31 @@
   import { toast } from 'svelte-sonner';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import { resolve } from '$app/paths';
   import { createInfiniteQuery, createQuery, keepPreviousData } from '@tanstack/svelte-query';
-  import { engram } from '$lib/client';
-  import { parseScheduledParams, encodeScheduledParams, type ScheduledParams, type ScheduledState } from '$lib/search/scheduled-params';
-  import { relatedPath } from '$lib/search/related-params';
-  import { scheduledHeaderParts, scheduledEmptyHeading, type HeaderPart } from '$lib/search/recall-header';
-  import { windowRange, windowPhrase } from '$lib/time';
-  import { memoryStateWords } from '$lib/memorystate';
-  import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
-  import { peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
-  import { registerCurationHost } from '$lib/curation/host.svelte';
-  import type { Memory } from '$lib/gen/engram_pb';
-  import ResultsHeader from '$lib/components/ResultsHeader.svelte';
-  import ResultsList from '$lib/components/ResultsList.svelte';
-  import RecallSplit from '$lib/components/RecallSplit.svelte';
-  import DetailPane from '$lib/components/DetailPane.svelte';
-  import CurationSurfaces from '$lib/components/CurationSurfaces.svelte';
-  import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
-  import * as Tabs from '$lib/components/ui/tabs';
-  import { Button } from '$lib/components/ui/button';
+  import { engram } from '#lib/client.js';
+  import { parseScheduledParams, encodeScheduledParams, type ScheduledParams, type ScheduledState } from '#lib/search/scheduled-params.js';
+  import { relatedPath } from '#lib/search/related-params.js';
+  import { scheduledHeaderParts, scheduledEmptyHeading, type HeaderPart } from '#lib/search/recall-header.js';
+  import { windowRange, windowPhrase } from '#lib/time.js';
+  import { memoryStateWords } from '#lib/memorystate.js';
+  import { parseConnectError, fixRowsFor } from '#lib/errors/connect-error.js';
+  import { peekResume, consumeResume, normalizeReturnPath } from '#lib/resume.js';
+  import { registerCurationHost } from '#lib/curation/host.svelte.js';
+  import type { Memory } from '#lib/gen/engram_pb.js';
+  import ResultsHeader from '#lib/components/ResultsHeader.svelte';
+  import ResultsList from '#lib/components/ResultsList.svelte';
+  import RecallSplit from '#lib/components/RecallSplit.svelte';
+  import DetailPane from '#lib/components/DetailPane.svelte';
+  import CurationSurfaces from '#lib/components/CurationSurfaces.svelte';
+  import RecallState, { type RecallStateInput } from '#lib/components/RecallState.svelte';
+  import * as Tabs from '#lib/components/ui/tabs/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
 
-  const params = $derived(parseScheduledParams(page.url.searchParams));
+  const params = $derived(parseScheduledParams(new URLSearchParams(page.url.search)));
 
   function navigate(next: Partial<ScheduledParams>) {
-    goto(`${base}/scheduled?${encodeScheduledParams({ ...params, ...next })}`, { keepFocus: true, noScroll: true });
+    goto(`${resolve('scheduled')}?${encodeScheduledParams({ ...params, ...next })}`, { reset: false });
   }
 
   const listQ = createInfiniteQuery(() => ({
@@ -102,9 +102,7 @@
   // D-03/D-04: navigate to the record's related view, carrying where it was
   // opened from.
   function openRelated(id: string) {
-    goto(
-      `${base}${relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })}`
-    );
+    goto(resolve(relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })));
   }
 
   const detailQ = createQuery(() => ({

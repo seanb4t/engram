@@ -1,4 +1,4 @@
-import type { Memory } from '$lib/gen/engram_pb';
+import type { Memory } from '#lib/gen/engram_pb.js';
 import { timestampDate } from '@bufbuild/protobuf/wkt';
 
 // The console's ONLY state-word derivation (D-13). It reads the same wire

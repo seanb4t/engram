@@ -1,4 +1,4 @@
-import type { FilterSuggestion } from '$lib/gen/engram_pb';
+import type { FilterSuggestion } from '#lib/gen/engram_pb.js';
 import type { Classified } from './classify';
 import type { SearchParams } from './params';
 

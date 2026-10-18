@@ -2,7 +2,7 @@ import { createMutation, useQueryClient, type QueryClient } from '@tanstack/svel
 import { create } from '@bufbuild/protobuf';
 import { FieldMaskSchema, timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { toast } from 'svelte-sonner';
-import { engramWrite } from '$lib/client';
+import { engramWrite } from '#lib/client.js';
 import {
   StoreMemoryRequestSchema,
   UpdateMemoryRequestSchema,
@@ -14,7 +14,7 @@ import {
   type StoreMemoryRequest,
   type UpdateMemoryRequest,
   type ScheduleMemoryRequest
-} from '$lib/gen/engram_pb';
+} from '#lib/gen/engram_pb.js';
 
 // Stable source identifier stamped on every console-originated write, so
 // records created via this UI are distinguishable in `source` from MCP-tool

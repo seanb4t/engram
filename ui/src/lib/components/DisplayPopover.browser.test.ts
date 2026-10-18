@@ -2,7 +2,7 @@ import { render } from 'vitest-browser-svelte';
 import { userEvent } from 'vitest/browser';
 import { describe, it, expect, beforeEach } from 'vitest';
 import DisplayPopover from './DisplayPopover.svelte';
-import { display, DEFAULT_TEXT_SIZE, TEXT_SIZE_KEY } from '$lib/display.svelte';
+import { display, DEFAULT_TEXT_SIZE, TEXT_SIZE_KEY } from '#lib/display.svelte.js';
 
 beforeEach(() => {
   display.size = DEFAULT_TEXT_SIZE;

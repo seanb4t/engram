@@ -3,20 +3,20 @@
   // columns, oldest-left -> head-right, built from two RelatedMemories reads
   // — the anchor (to discover the live head via a SUCCESSOR edge) and the
   // head (to walk its PREDECESSOR edges). Renders the pure model from
-  // $lib/curation/chain — never walks the chain itself.
+  // #lib/curation/chain — never walks the chain itself.
   //
   // Host-authoritative `open` (DeleteConfirmDialog's pattern): the host
   // drives `open` from its own chain-target state; this component closes
   // only via oncancel (bits-ui-initiated close), never by setting
   // `open = false` itself.
-  import * as Dialog from '$lib/components/ui/dialog';
-  import * as ScrollArea from '$lib/components/ui/scroll-area';
-  import { Button } from '$lib/components/ui/button';
+  import * as Dialog from '#lib/components/ui/dialog/index.js';
+  import * as ScrollArea from '#lib/components/ui/scroll-area/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
   import { createQuery } from '@tanstack/svelte-query';
   import { ConnectError, Code } from '@connectrpc/connect';
-  import { engram } from '$lib/client';
-  import { headIdFrom, buildChain, type ChainNode } from '$lib/curation/chain';
-  import { EdgeType, SupersessionDirection } from '$lib/gen/engram_pb';
+  import { engram } from '#lib/client.js';
+  import { headIdFrom, buildChain, type ChainNode } from '#lib/curation/chain.js';
+  import { EdgeType, SupersessionDirection } from '#lib/gen/engram_pb.js';
 
   let {
     open = $bindable(false),

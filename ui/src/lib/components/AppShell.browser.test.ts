@@ -2,13 +2,13 @@ import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from '@bufbuild/protobuf';
 import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-import { MigrateStatusResponseSchema } from '$lib/gen/engram_pb';
+import { MigrateStatusResponseSchema } from '#lib/gen/engram_pb.js';
 import AppShell from './AppShell.svelte';
 
 const { migrateStatusSpy } = vi.hoisted(() => ({ migrateStatusSpy: vi.fn() }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return { ...actual, engram: { ...actual.engram, migrateStatus: migrateStatusSpy } };
 });
 
