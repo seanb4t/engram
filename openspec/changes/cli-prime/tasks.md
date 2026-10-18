@@ -2,14 +2,14 @@
 
 ## 1. Shared scope derivation in Go
 
-- [ ] 1.1 Create `internal/scope/testdata/cases.json` with the `remotes` list (HTTPS, HTTPS with port 443, `ssh://` with port 22, `ssh://` without a port, scp-style, an already-normalised `github.com/o/r`, and scp-style `git@host:1234/repo.git` read as a port) and the `layouts` list (primary checkout, subdirectory, linked worktree, no origin from a subdirectory, no origin in a linked worktree, not a repository), each with its expected identity, spine and overlay from `specs/scope-derivation/spec.md`. Verify: `python3 -m json.tool internal/scope/testdata/cases.json` parses it.
-- [ ] 1.2 Add `internal/scope` (design D1): remote normalisation with `scope.py`'s rules, the three git probes under a context deadline with a relative `--git-common-dir` resolved against the working directory, the no-origin fallback, the worktree overlay, and "no scope" when git fails or the directory is outside a repository. Verify: `go build ./...`.
-- [ ] 1.3 Add Go tests that read `cases.json`: a table test over `remotes`, and a test that builds each `layouts` case as a real git repository (with `git worktree add` for the linked cases) in `t.TempDir()` and checks the derived scopes; plus a case with `PATH` set so `git` cannot run. Verify: `go test ./internal/scope/ -count=1`.
+- [x] 1.1 Create `internal/scope/testdata/cases.json` with the `remotes` list (HTTPS, HTTPS with port 443, `ssh://` with port 22, `ssh://` without a port, scp-style, an already-normalised `github.com/o/r`, and scp-style `git@host:1234/repo.git` read as a port) and the `layouts` list (primary checkout, subdirectory, linked worktree, no origin from a subdirectory, no origin in a linked worktree, not a repository), each with its expected identity, spine and overlay from `specs/scope-derivation/spec.md`. Verify: `python3 -m json.tool internal/scope/testdata/cases.json` parses it.
+- [x] 1.2 Add `internal/scope` (design D1): remote normalisation with `scope.py`'s rules, the three git probes under a context deadline with a relative `--git-common-dir` resolved against the working directory, the no-origin fallback, the worktree overlay, and "no scope" when git fails or the directory is outside a repository. Verify: `go build ./...`.
+- [x] 1.3 Add Go tests that read `cases.json`: a table test over `remotes`, and a test that builds each `layouts` case as a real git repository (with `git worktree add` for the linked cases) in `t.TempDir()` and checks the derived scopes; plus a case with `PATH` set so `git` cannot run. Verify: `go test ./internal/scope/ -count=1`.
 
 ## 2. Hook derivation against the shared table
 
-- [ ] 2.1 Add tests to `skill/engram/hooks/tests/test_scope.py` that read `internal/scope/testdata/cases.json` through a path relative to the repository root and check `_normalize_remote` over `remotes` and `derive_scopes` over `layouts` built as real git repositories in `tmp_path`. Keep the existing fake-`_run` tests. Verify: `task test:python`.
-- [ ] 2.2 Lower the `scope.py` probe timeout from 5 s to 1.5 s (design D9), with no change to any derived value. Verify: `task test:python` and `task lint:python`.
+- [x] 2.1 Add tests to `skill/engram/hooks/tests/test_scope.py` that read `internal/scope/testdata/cases.json` through a path relative to the repository root and check `_normalize_remote` over `remotes` and `derive_scopes` over `layouts` built as real git repositories in `tmp_path`. Keep the existing fake-`_run` tests. Verify: `task test:python`.
+- [x] 2.2 Lower the `scope.py` probe timeout from 5 s to 1.5 s (design D9), with no change to any derived value. Verify: `task test:python` and `task lint:python`.
 
 ## 3. spine-review verify on the shared derivation
 

@@ -17,6 +17,10 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
+# A local git probe takes milliseconds. Three probes at this bound leave the
+# session-start hook room to run `engram prime` inside its 10 s limit.
+PROBE_TIMEOUT_SECONDS = 1.5
+
 
 class Scopes(NamedTuple):
     spine: str | None
@@ -39,7 +43,12 @@ def _run(args: list[str], cwd: str) -> str | None:
     """
     try:
         proc = subprocess.run(
-            args, cwd=cwd, capture_output=True, text=True, timeout=5, check=False
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT_SECONDS,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         print(
