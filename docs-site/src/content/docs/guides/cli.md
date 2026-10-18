@@ -804,9 +804,9 @@ The copy keys send the text through the terminal's clipboard sequence (OSC
 
 ## Session primer: `engram prime`
 
-`engram prime` writes a session primer for an agent: the memory scope it read
-from, the rules index for that scope, and a short digest of recent memories. It
-is one read, so an agent can start a session with its memory already in
+`engram prime` writes a session primer for an agent. The primer holds the
+memory scope, the rules index for that scope, and a short digest of recent
+memories. It is one read, so an agent can start a session with its memory already in
 context. The Claude Code plugin's session-start hook runs it for you (see
 [the plugin guide](/guides/plugin/#sessionstart-hook--memory-recall)).
 
@@ -823,8 +823,9 @@ The primer has four parts, in this order:
 2. **The rules index.** One line per rule: its full `short_id`, its summary and
    its tags. There is no rule content. Fetch a rule's full text with
    `engram get <short_id>`. When there are no rules, this part is not shown.
-3. **The recall digest.** Up to the 10 most recent records you can recall in
-   each scope, one line per record: its full `short_id` and its summary. The
+3. **The recall digest.** It lists up to 10 recent records in each scope that
+   you can recall. Each record has one line: its full `short_id` and its
+   summary. The
    groups are "Repo-wide memories" and "This workspace's memories". A record in
    both groups shows only in the first group. A group of 10 ends with a note
    that older records exist. An empty group is not shown. Archived,
@@ -867,8 +868,9 @@ error names the flag or the variable:
 
 ### Outside a git repository
 
-With no `--scope` and no `ENGRAM_SCOPE`, outside a git repository, prime writes
-a short primer that says no scope was found and that `--scope` sets one. It
+Outside a git repository, with no `--scope` and no `ENGRAM_SCOPE`, prime writes
+a short primer. The primer says that prime found no scope and that `--scope`
+sets one. It
 calls no server, needs no credential, and exits `0`. This means a session start
 never fails because of prime.
 
