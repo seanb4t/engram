@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -24,7 +25,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/chromedp/cdproto/input"
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
@@ -256,18 +257,50 @@ func startConsoleServerWithEnv(t *testing.T, extra map[string]string) *consoleFi
 // double-submit pattern). Secure is deliberately false: the server never
 // inspects the Secure attribute, which removes any dependence on Chrome's
 // trustworthy-origin handling of http://127.0.0.1.
-func setConsoleCookies(ctx context.Context, fixture *consoleFixture) error {
-	if err := network.SetCookie(sessionCookieName, fixture.sessionCookie).
-		WithDomain("127.0.0.1").WithPath("/").WithSecure(false).WithHTTPOnly(true).
-		Do(ctx); err != nil {
+func setConsoleCookies(ctx context.Context, t *chromedp.Target, fixture *consoleFixture) error {
+	if _, err := cdp.Call(ctx, t, network.SetCookie, network.SetCookieParams{
+		Name:     sessionCookieName,
+		Value:    fixture.sessionCookie,
+		Domain:   "127.0.0.1",
+		Path:     "/",
+		Secure:   new(false),
+		HTTPOnly: new(true),
+	}); err != nil {
 		return fmt.Errorf("set session cookie: %w", err)
 	}
-	if err := network.SetCookie(webauth.CSRFCookieName, fixture.csrfToken).
-		WithDomain("127.0.0.1").WithPath("/").WithSecure(false).WithHTTPOnly(false).
-		Do(ctx); err != nil {
+	if _, err := cdp.Call(ctx, t, network.SetCookie, network.SetCookieParams{
+		Name:     webauth.CSRFCookieName,
+		Value:    fixture.csrfToken,
+		Domain:   "127.0.0.1",
+		Path:     "/",
+		Secure:   new(false),
+		HTTPOnly: new(false),
+	}); err != nil {
 		return fmt.Errorf("set csrf cookie: %w", err)
 	}
 	return nil
+}
+
+// setConsoleCookiesAction wraps setConsoleCookies as a step for a Do pipeline.
+func setConsoleCookiesAction(fixture *consoleFixture) chromedp.Action[chromedp.Void] {
+	return chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
+		return setConsoleCookies(ctx, t, fixture)
+	})
+}
+
+// pollTruthy waits for expr to evaluate truthy with the polling cadence every
+// wait in this file shares, writing the predicate's value to out so the wait
+// can sit in a Do pipeline right after the navigation it observes.
+func pollTruthy(expr string, out *bool) chromedp.Action[chromedp.Void] {
+	poll := chromedp.Poll[bool](expr,
+		chromedp.WithPollingTimeout(45*time.Second),
+		chromedp.WithPollingInterval(200*time.Millisecond),
+	)
+	return func(ctx context.Context, t *chromedp.Target) (chromedp.Void, error) {
+		v, err := poll(ctx, t)
+		*out = v
+		return chromedp.Void{}, err
+	}
 }
 
 // mintFixtureMarker returns a per-run-unique ASCII marker with enough
@@ -468,21 +501,16 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
 	defer runCancel()
 
-	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
-		return setConsoleCookies(ctx, fixture)
-	})
+	setCookies := setConsoleCookiesAction(fixture)
 
 	obs := newBrowserObserver()
 	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
 
 	var hydrated bool
-	hydrateErr := chromedp.Run(runCtx,
+	hydrateErr := chromedp.Do(runCtx,
 		setCookies,
 		chromedp.Navigate(fixture.srv.baseURL()+"/ui/"),
-		chromedp.Poll(hydrationPollExpr, &hydrated,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(hydrationPollExpr, &hydrated),
 	)
 	if hydrateErr != nil {
 		logConsoleDiagnostics(browserCtx, t)
@@ -495,12 +523,7 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	}
 
 	var rootRouteRendered bool
-	rootRouteErr := chromedp.Run(runCtx,
-		chromedp.Poll(rootRoutePollExpr(marker), &rootRouteRendered,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
-	)
+	rootRouteErr := chromedp.Do(runCtx, pollTruthy(rootRoutePollExpr(marker), &rootRouteRendered))
 	if rootRouteErr != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("root-route Recent memories render wait failed (cross_spine ListMemories, #500): %v", rootRouteErr)
@@ -508,8 +531,8 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 	if !rootRouteRendered {
 		t.Fatal("root-route poll returned without error but rootRouteRendered=false")
 	}
-	var rootRouteBody string
-	if err := chromedp.Run(runCtx, chromedp.Evaluate(`document.body.innerText`, &rootRouteBody)); err != nil {
+	rootRouteBody, err := chromedp.Run(runCtx, chromedp.Evaluate[string](`document.body.innerText`))
+	if err != nil {
 		t.Fatalf("read root-route body text: %v", err)
 	}
 	if strings.Contains(rootRouteBody, "failed to load") {
@@ -518,12 +541,9 @@ func TestConsoleBundleRendersRecordInBrowser(t *testing.T) {
 
 	scopeURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("scope:"+fixtureScope)
 	var rendered bool
-	renderErr := chromedp.Run(runCtx,
+	renderErr := chromedp.Do(runCtx,
 		chromedp.Navigate(scopeURL),
-		chromedp.Poll(markerPollExpr(marker), &rendered,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(markerPollExpr(marker), &rendered),
 	)
 	if renderErr != nil {
 		logConsoleDiagnostics(browserCtx, t)
@@ -545,17 +565,16 @@ func logConsoleDiagnostics(browserCtx context.Context, t *testing.T) {
 	t.Helper()
 	diagCtx, diagCancel := context.WithTimeout(browserCtx, 5*time.Second)
 	defer diagCancel()
-	var loc, body string
-	_ = chromedp.Run(diagCtx, chromedp.Location(&loc))
-	_ = chromedp.Run(diagCtx, chromedp.Evaluate(`document.body.innerText`, &body))
+	loc, _ := chromedp.Run(diagCtx, chromedp.Location())
+	body, _ := chromedp.Run(diagCtx, chromedp.Evaluate[string](`document.body.innerText`))
 	t.Logf("diagnostics: location=%q body=%q", loc, body)
 }
 
 // browserObserver records every network failure and uncaught JS exception the
-// browser reports across BOTH navigations in this test. Its callback runs
-// SYNCHRONOUSLY on chromedp's event goroutine (chromedp.ListenTarget's
-// contract), so it does nothing but append to guarded maps/slices — never a
-// CDP action, never a blocking call.
+// browser reports across BOTH navigations in this test. Each event type
+// arrives on its own chromedp.Events iterator, drained by its own goroutine,
+// so the handlers do nothing but update guarded maps/slices — never a CDP
+// action, never a blocking call.
 type browserObserver struct {
 	mu sync.Mutex
 
@@ -564,57 +583,106 @@ type browserObserver struct {
 	successAppURLs map[string]struct{} // distinct _app/immutable URLs that loaded with a non-error status
 	exceptions     []string
 	failedRPCs     map[string]string // ListScopes/ListMemories RPC url -> "HTTP <status>"
+
+	// pendingFailures holds a loading failure whose requestWillBeSent has not
+	// been seen yet. The four event streams are drained independently, so the
+	// failure can be observed before the request that names its URL; the
+	// request handler then re-keys the failure under the URL.
+	pendingFailures map[network.RequestID]string
+	// subscriptionErrs holds every non-context error an event iterator ended
+	// with: a dead subscription would otherwise silently blind the observer.
+	subscriptionErrs []string
 }
 
 func newBrowserObserver() *browserObserver {
 	return &browserObserver{
-		urlsByRequest:  make(map[network.RequestID]string),
-		failedURLs:     make(map[string]string),
-		successAppURLs: make(map[string]struct{}),
-		failedRPCs:     make(map[string]string),
+		urlsByRequest:   make(map[network.RequestID]string),
+		failedURLs:      make(map[string]string),
+		successAppURLs:  make(map[string]struct{}),
+		failedRPCs:      make(map[string]string),
+		pendingFailures: make(map[network.RequestID]string),
 	}
 }
 
-// attach registers the observer on ctx. Must be called BEFORE navigation:
-// chromedp enables the network/runtime CDP domains by default, so events for
-// the very first request are only visible if the listener is already
-// registered when that request fires.
+// attach subscribes the observer on ctx. Must be called BEFORE navigation:
+// chromedp enables the network/runtime CDP domains by default, and a
+// chromedp.Events subscription starts buffering when Events returns, so
+// events for the very first request are only visible if every subscription
+// already exists when that request fires. The draining goroutines end when
+// ctx ends.
 func (o *browserObserver) attach(ctx context.Context) {
-	chromedp.ListenTarget(ctx, func(ev any) {
-		o.mu.Lock()
-		defer o.mu.Unlock()
-		switch e := ev.(type) {
-		case *network.EventRequestWillBeSent:
-			if e.Request != nil {
-				o.urlsByRequest[e.RequestID] = e.Request.URL
+	requests := chromedp.Events(ctx, network.RequestWillBeSent)
+	responses := chromedp.Events(ctx, network.ResponseReceived)
+	failures := chromedp.Events(ctx, network.LoadingFailed)
+	exceptions := chromedp.Events(ctx, runtime.ExceptionThrown)
+
+	go drainEvents(ctx, o, requests, o.onRequestWillBeSent)
+	go drainEvents(ctx, o, responses, o.onResponseReceived)
+	go drainEvents(ctx, o, failures, o.onLoadingFailed)
+	go drainEvents(ctx, o, exceptions, o.onExceptionThrown)
+}
+
+// drainEvents ranges over events until the iterator ends, calling handle
+// under the observer's mutex for each payload; an iterator error that is not
+// the context ending is recorded for assertClean.
+func drainEvents[E any](ctx context.Context, o *browserObserver, events iter.Seq2[E, error], handle func(E)) {
+	for ev, err := range events {
+		if err != nil {
+			if ctx.Err() == nil {
+				o.mu.Lock()
+				o.subscriptionErrs = append(o.subscriptionErrs, err.Error())
+				o.mu.Unlock()
 			}
-		case *network.EventResponseReceived:
-			if e.Response == nil {
-				return
-			}
-			u := e.Response.URL
-			switch {
-			case e.Response.Status >= 400:
-				o.failedURLs[u] = fmt.Sprintf("HTTP %d", e.Response.Status)
-				if strings.Contains(u, engramv1connect.EngramServiceListScopesProcedure) ||
-					strings.Contains(u, engramv1connect.EngramServiceListMemoriesProcedure) {
-					o.failedRPCs[u] = fmt.Sprintf("HTTP %d", e.Response.Status)
-				}
-			case strings.Contains(u, consoleAssetPathPrefix):
-				o.successAppURLs[u] = struct{}{}
-			}
-		case *network.EventLoadingFailed:
-			u := o.urlsByRequest[e.RequestID]
-			if u == "" {
-				u = string(e.RequestID)
-			}
-			o.failedURLs[u] = e.ErrorText
-		case *runtime.EventExceptionThrown:
-			if e.ExceptionDetails != nil {
-				o.exceptions = append(o.exceptions, e.ExceptionDetails.Error())
-			}
+			return
 		}
-	})
+		o.mu.Lock()
+		handle(ev)
+		o.mu.Unlock()
+	}
+}
+
+func (o *browserObserver) onRequestWillBeSent(e network.EventRequestWillBeSent) {
+	if e.Request == nil {
+		return
+	}
+	o.urlsByRequest[e.RequestID] = e.Request.URL
+	if reason, ok := o.pendingFailures[e.RequestID]; ok {
+		delete(o.pendingFailures, e.RequestID)
+		delete(o.failedURLs, string(e.RequestID))
+		o.failedURLs[e.Request.URL] = reason
+	}
+}
+
+func (o *browserObserver) onResponseReceived(e network.EventResponseReceived) {
+	if e.Response == nil {
+		return
+	}
+	u := e.Response.URL
+	switch {
+	case e.Response.Status >= 400:
+		o.failedURLs[u] = fmt.Sprintf("HTTP %d", e.Response.Status)
+		if strings.Contains(u, engramv1connect.EngramServiceListScopesProcedure) ||
+			strings.Contains(u, engramv1connect.EngramServiceListMemoriesProcedure) {
+			o.failedRPCs[u] = fmt.Sprintf("HTTP %d", e.Response.Status)
+		}
+	case strings.Contains(u, consoleAssetPathPrefix):
+		o.successAppURLs[u] = struct{}{}
+	}
+}
+
+func (o *browserObserver) onLoadingFailed(e network.EventLoadingFailed) {
+	u := o.urlsByRequest[e.RequestID]
+	if u == "" {
+		u = string(e.RequestID)
+		o.pendingFailures[e.RequestID] = e.ErrorText
+	}
+	o.failedURLs[u] = e.ErrorText
+}
+
+func (o *browserObserver) onExceptionThrown(e runtime.EventExceptionThrown) {
+	if e.ExceptionDetails != nil {
+		o.exceptions = append(o.exceptions, (&chromedp.ExceptionError{ExceptionDetails: e.ExceptionDetails}).Error())
+	}
 }
 
 // assertClean fails t if the browser observed any failed request under
@@ -628,6 +696,9 @@ func (o *browserObserver) assertClean(t *testing.T) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
+	if len(o.subscriptionErrs) > 0 {
+		t.Fatalf("browser observer lost an event subscription: %v", o.subscriptionErrs)
+	}
 	var offenders []string
 	for u, reason := range o.failedURLs {
 		if strings.Contains(u, consoleAssetPathPrefix) {
@@ -755,22 +826,17 @@ func TestConsoleArchiveUndoRoundTrip(t *testing.T) {
 	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
 	defer runCancel()
 
-	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
-		return setConsoleCookies(ctx, fixture)
-	})
+	setCookies := setConsoleCookiesAction(fixture)
 
 	obs := newBrowserObserver()
 	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
 
 	scopeURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("scope:"+archiveScope)
 	var rendered bool
-	navErr := chromedp.Run(runCtx,
+	navErr := chromedp.Do(runCtx,
 		setCookies,
 		chromedp.Navigate(scopeURL),
-		chromedp.Poll(markerPollExpr(marker), &rendered,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(markerPollExpr(marker), &rendered),
 	)
 	if navErr != nil {
 		logConsoleDiagnostics(browserCtx, t)
@@ -782,20 +848,17 @@ func TestConsoleArchiveUndoRoundTrip(t *testing.T) {
 
 	// Focus the listbox so its own keydown model (ResultsList.svelte) sees
 	// the 'a' key rather than a browser-native scroll/no-op.
-	if err := chromedp.Run(runCtx, chromedp.Focus(`[role="listbox"]`, chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.Focus(chromedp.CSS(`[role="listbox"]`))); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("focus listbox: %v", err)
 	}
-	if err := chromedp.Run(runCtx, chromedp.KeyEvent("a")); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.KeyEvent("a")); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("send 'a' key: %v", err)
 	}
 
 	var dialogShown bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("Archive 1 records?"), &dialogShown,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr("Archive 1 records?"), &dialogShown)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("archive confirm dialog wait failed: %v", err)
 	}
@@ -805,17 +868,15 @@ func TestConsoleArchiveUndoRoundTrip(t *testing.T) {
 
 	// Scoped to role="dialog" so this can never match RowActions' own
 	// per-row "Archive" button or the bulk bar's "Archive <Kbd>a</Kbd>"
-	// button, neither of which lives inside the dialog's DOM subtree.
-	if err := chromedp.Run(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Archive"]`, chromedp.BySearch)); err != nil {
+	// button, neither of which lives inside the dialog's DOM subtree. A plain
+	// string selector is an XPath search.
+	if err := chromedp.Do(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Archive"]`)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("click Archive: %v", err)
 	}
 
 	var archived bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("✓ 1 archived"), &archived,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr("✓ 1 archived"), &archived)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("archive result wait failed: %v", err)
 	}
@@ -831,16 +892,13 @@ func TestConsoleArchiveUndoRoundTrip(t *testing.T) {
 		t.Fatalf("archive result: ArchivedAt is nil for %s after archiving through the console", id)
 	}
 
-	if err := chromedp.Run(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Undo — restore 1"]`, chromedp.BySearch)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Undo — restore 1"]`)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("click Undo: %v", err)
 	}
 
 	var restored bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("✓ 1 restored"), &restored,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr("✓ 1 restored"), &restored)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("restore result wait failed: %v", err)
 	}
@@ -889,22 +947,17 @@ func TestConsoleSupersedeRoundTrip(t *testing.T) {
 	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
 	defer runCancel()
 
-	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
-		return setConsoleCookies(ctx, fixture)
-	})
+	setCookies := setConsoleCookiesAction(fixture)
 
 	obs := newBrowserObserver()
 	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
 
 	scopeURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("scope:"+supersedeScope)
 	var rendered bool
-	navErr := chromedp.Run(runCtx,
+	navErr := chromedp.Do(runCtx,
 		setCookies,
 		chromedp.Navigate(scopeURL),
-		chromedp.Poll(markerPollExpr(marker), &rendered,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(markerPollExpr(marker), &rendered),
 	)
 	if navErr != nil {
 		logConsoleDiagnostics(browserCtx, t)
@@ -916,20 +969,17 @@ func TestConsoleSupersedeRoundTrip(t *testing.T) {
 
 	// Focus the listbox so its own keydown model (ResultsList.svelte) sees
 	// Shift+S rather than a browser-native no-op.
-	if err := chromedp.Run(runCtx, chromedp.Focus(`[role="listbox"]`, chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.Focus(chromedp.CSS(`[role="listbox"]`))); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("focus listbox: %v", err)
 	}
-	if err := chromedp.Run(runCtx, chromedp.KeyEvent("S", chromedp.KeyModifiers(input.ModifierShift))); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.KeyEvent("S", chromedp.KeyModifiers(kb.ModifierShift))); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("send Shift+S: %v", err)
 	}
 
 	var dialogShown bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("Supersede 1 records into one"), &dialogShown,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr("Supersede 1 records into one"), &dialogShown)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("supersede dialog wait failed: %v", err)
 	}
@@ -941,7 +991,7 @@ func TestConsoleSupersedeRoundTrip(t *testing.T) {
 	// within the field is irrelevant — the assertion below only checks the
 	// successor's content CONTAINS the suffix.
 	suffix := mintFixtureMarker(t)
-	if err := chromedp.Run(runCtx, chromedp.SendKeys(`textarea[aria-label="content"]`, " "+suffix, chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.SendKeys(chromedp.CSS(`textarea[aria-label="content"]`), " "+suffix)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("append content suffix: %v", err)
 	}
@@ -950,10 +1000,7 @@ func TestConsoleSupersedeRoundTrip(t *testing.T) {
 	// merely on the dialog being open — wait for the button to actually
 	// enable before clicking it.
 	var submitEnabled bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(submitButtonEnabledPollExpr("Supersede 1 → 1"), &submitEnabled,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(submitButtonEnabledPollExpr("Supersede 1 → 1"), &submitEnabled)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("supersede submit-enabled wait failed: %v", err)
 	}
@@ -961,16 +1008,13 @@ func TestConsoleSupersedeRoundTrip(t *testing.T) {
 		t.Fatal("supersede submit-enabled poll returned without error but submitEnabled=false")
 	}
 
-	if err := chromedp.Run(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Supersede 1 → 1"]`, chromedp.BySearch)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.Click(`//div[@role="dialog"]//button[normalize-space()="Supersede 1 → 1"]`)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("click Supersede: %v", err)
 	}
 
 	var noUndo bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("No undo."), &noUndo,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr("No undo."), &noUndo)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("supersede result wait failed: %v", err)
 	}
@@ -1020,26 +1064,21 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
 	defer runCancel()
 
-	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
-		return setConsoleCookies(ctx, fixture)
-	})
+	setCookies := setConsoleCookiesAction(fixture)
 
 	obs := newBrowserObserver()
 	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
 
-	if err := chromedp.Run(runCtx, setCookies); err != nil {
+	if err := chromedp.Do(runCtx, setCookies); err != nil {
 		t.Fatalf("set console cookies: %v", err)
 	}
 
 	// (1) Resolve by full UUID via /ui/search?q=<uuid>.
 	idURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape(id)
 	var idRendered bool
-	if err := chromedp.Run(runCtx,
+	if err := chromedp.Do(runCtx,
 		chromedp.Navigate(idURL),
-		chromedp.Poll(detailPaneMarkerPollExpr(marker), &idRendered,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(detailPaneMarkerPollExpr(marker), &idRendered),
 	); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("id-resolved pane render wait failed: %v", err)
@@ -1048,10 +1087,7 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 		t.Fatal("id-resolved pane render poll returned without error but idRendered=false")
 	}
 	var idResolutionShown bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(fmt.Sprintf("Resolved id %s → 1 memory", id)), &idResolutionShown,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr(fmt.Sprintf("Resolved id %s → 1 memory", id)), &idResolutionShown)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("id resolution line wait failed: %v", err)
 	}
@@ -1062,12 +1098,9 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 	// (2) Resolve by short_id via /ui/search?q=<short_id>.
 	shortIDURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape(shortID)
 	var shortIDRendered bool
-	if err := chromedp.Run(runCtx,
+	if err := chromedp.Do(runCtx,
 		chromedp.Navigate(shortIDURL),
-		chromedp.Poll(detailPaneMarkerPollExpr(marker), &shortIDRendered,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(detailPaneMarkerPollExpr(marker), &shortIDRendered),
 	); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("short_id-resolved pane render wait failed: %v", err)
@@ -1076,10 +1109,7 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 		t.Fatal("short_id-resolved pane render poll returned without error but shortIDRendered=false")
 	}
 	var shortIDResolutionShown bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(fmt.Sprintf("Resolved short_id %s → 1 memory", shortID)), &shortIDResolutionShown,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr(fmt.Sprintf("Resolved short_id %s → 1 memory", shortID)), &shortIDResolutionShown)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("short_id resolution line wait failed: %v", err)
 	}
@@ -1092,12 +1122,9 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 	// (the single command-item its getMemory-by-id/short_id lookup renders).
 	rootURL := fixture.srv.baseURL() + "/ui/"
 	var rootHydrated bool
-	if err := chromedp.Run(runCtx,
+	if err := chromedp.Do(runCtx,
 		chromedp.Navigate(rootURL),
-		chromedp.Poll(hydrationPollExpr, &rootHydrated,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(hydrationPollExpr, &rootHydrated),
 	); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("root route hydration wait failed: %v", err)
@@ -1119,7 +1146,7 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 	// way a genuine dispatched mouse click (mousedown → focus → click, the
 	// browser's own native click-to-focus path) does — confirmed live: after
 	// chromedp.Focus alone the popover never mounted, but a click opens it.
-	if err := chromedp.Run(runCtx, chromedp.Click(`[aria-label="Search memories"]`, chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.Click(chromedp.CSS(`[aria-label="Search memories"]`))); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("click header search: %v", err)
 	}
@@ -1131,22 +1158,19 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 	// single value write + one 'input' event lands atomically, same as
 	// Svelte's bind:value reads it, with nothing to race against.
 	setValueJS, _ := json.Marshal(shortID)
-	if err := chromedp.Run(runCtx, chromedp.Evaluate(fmt.Sprintf(`(() => {
+	if err := chromedp.Do(runCtx, chromedp.Evaluate[chromedp.Void](fmt.Sprintf(`(() => {
 		const el = document.querySelector('[aria-label="Search memories"]');
 		if (!el) return false;
 		const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
 		setter.call(el, %s);
 		el.dispatchEvent(new Event('input', { bubbles: true }));
 		return true;
-	})()`, setValueJS), nil)); err != nil {
+	})()`, setValueJS))); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("set header search value: %v", err)
 	}
 	var headerResolved bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr("→ 1 memory"), &headerResolved,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr("→ 1 memory"), &headerResolved)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("header search resolution wait failed: %v", err)
 	}
@@ -1157,19 +1181,16 @@ func TestConsoleEntryPointResolution(t *testing.T) {
 	// write above may have moved DOM focus away from the input (the same
 	// bits-ui behavior noted above), and cmdk's Enter-selects-highlighted-
 	// item handling is wired to the input's own keydown.
-	if err := chromedp.Run(runCtx, chromedp.Focus(`[aria-label="Search memories"]`, chromedp.ByQuery)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.Focus(chromedp.CSS(`[aria-label="Search memories"]`))); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("re-focus header search before Enter: %v", err)
 	}
-	if err := chromedp.Run(runCtx, chromedp.KeyEvent(kb.Enter)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.KeyEvent(kb.Enter)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("send Enter: %v", err)
 	}
 	var enterRendered bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(detailPaneMarkerPollExpr(marker), &enterRendered,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(detailPaneMarkerPollExpr(marker), &enterRendered)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("header search Enter render wait failed: %v", err)
 	}
@@ -1240,14 +1261,12 @@ func TestConsoleRelatedView(t *testing.T) {
 	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
 	defer runCancel()
 
-	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
-		return setConsoleCookies(ctx, fixture)
-	})
+	setCookies := setConsoleCookiesAction(fixture)
 
 	obs := newBrowserObserver()
 	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
 
-	if err := chromedp.Run(runCtx, setCookies); err != nil {
+	if err := chromedp.Do(runCtx, setCookies); err != nil {
 		t.Fatalf("set console cookies: %v", err)
 	}
 
@@ -1256,12 +1275,9 @@ func TestConsoleRelatedView(t *testing.T) {
 	// plus its vector neighbour with the correct call line.
 	selURL := fixture.srv.baseURL() + "/ui/search?sel=" + url.QueryEscape(anchorID)
 	var paneRendered bool
-	if err := chromedp.Run(runCtx,
+	if err := chromedp.Do(runCtx,
 		chromedp.Navigate(selURL),
-		chromedp.Poll(detailPaneMarkerPollExpr(anchorMarker), &paneRendered,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(detailPaneMarkerPollExpr(anchorMarker), &paneRendered),
 	); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("anchor detail pane render wait failed: %v", err)
@@ -1270,16 +1286,13 @@ func TestConsoleRelatedView(t *testing.T) {
 		t.Fatal("anchor detail pane render poll returned without error but paneRendered=false")
 	}
 
-	if err := chromedp.Run(runCtx, chromedp.Click(`//button[normalize-space()="Related"]`, chromedp.BySearch)); err != nil {
+	if err := chromedp.Do(runCtx, chromedp.Click(`//button[normalize-space()="Related"]`)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("click Related button: %v", err)
 	}
 
 	var onRelatedRoute bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(locationPathPrefixPollExpr("/ui/related/"), &onRelatedRoute,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(locationPathPrefixPollExpr("/ui/related/"), &onRelatedRoute)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("wait for /ui/related/ navigation failed: %v", err)
 	}
@@ -1288,10 +1301,7 @@ func TestConsoleRelatedView(t *testing.T) {
 	}
 
 	var graphRendered bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(graphOptionCountPollExpr(2), &graphRendered,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(graphOptionCountPollExpr(2), &graphRendered)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("wait for graph nodes failed: %v", err)
 	}
@@ -1300,10 +1310,7 @@ func TestConsoleRelatedView(t *testing.T) {
 	}
 
 	var callLineShown bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(fmt.Sprintf(`RelatedMemories(subj, "%s"`, anchorShortID)), &callLineShown,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr(fmt.Sprintf(`RelatedMemories(subj, "%s"`, anchorShortID)), &callLineShown)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("call line wait failed: %v", err)
 	}
@@ -1312,10 +1319,7 @@ func TestConsoleRelatedView(t *testing.T) {
 	}
 
 	var vectorLaneShown bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(neighbourShortID), &vectorLaneShown,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr(neighbourShortID), &vectorLaneShown)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("vector lane short_id wait failed: %v", err)
 	}
@@ -1328,12 +1332,9 @@ func TestConsoleRelatedView(t *testing.T) {
 	// plus short_id resolution, with no prior SPA navigation.
 	deepLinkURL := fixture.srv.baseURL() + "/ui/related/" + url.PathEscape(neighbourShortID)
 	var deepLinkGraphRendered bool
-	if err := chromedp.Run(runCtx,
+	if err := chromedp.Do(runCtx,
 		chromedp.Navigate(deepLinkURL),
-		chromedp.Poll(graphOptionCountPollExpr(2), &deepLinkGraphRendered,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(graphOptionCountPollExpr(2), &deepLinkGraphRendered),
 	); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("deep link graph render wait failed: %v", err)
@@ -1343,10 +1344,7 @@ func TestConsoleRelatedView(t *testing.T) {
 	}
 
 	var deepLinkCallLineShown bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(uiTextPollExpr(fmt.Sprintf(`RelatedMemories(subj, "%s"`, neighbourShortID)), &deepLinkCallLineShown,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(uiTextPollExpr(fmt.Sprintf(`RelatedMemories(subj, "%s"`, neighbourShortID)), &deepLinkCallLineShown)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("deep link call line wait failed: %v", err)
 	}
@@ -1522,9 +1520,7 @@ func TestConsoleQueryUnderstanding(t *testing.T) {
 	runCtx, runCancel := context.WithTimeout(browserCtx, 150*time.Second)
 	defer runCancel()
 
-	setCookies := chromedp.ActionFunc(func(ctx context.Context) error {
-		return setConsoleCookies(ctx, fixture)
-	})
+	setCookies := setConsoleCookiesAction(fixture)
 
 	obs := newBrowserObserver()
 	obs.attach(runCtx) // BEFORE any navigation, so the first request's events are not missed.
@@ -1533,13 +1529,10 @@ func TestConsoleQueryUnderstanding(t *testing.T) {
 
 	searchURL := fixture.srv.baseURL() + "/ui/search?q=" + url.QueryEscape("what did we decide")
 	var suggestionVisible bool
-	if err := chromedp.Run(runCtx,
+	if err := chromedp.Do(runCtx,
 		setCookies,
 		chromedp.Navigate(searchURL),
-		chromedp.Poll(ariaLabelButtonVisiblePollExpr(suggestedLabel), &suggestionVisible,
-			chromedp.WithPollingTimeout(45*time.Second),
-			chromedp.WithPollingInterval(200*time.Millisecond),
-		),
+		pollTruthy(ariaLabelButtonVisiblePollExpr(suggestedLabel), &suggestionVisible),
 	); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("suggested category chip wait failed: %v", err)
@@ -1556,18 +1549,15 @@ func TestConsoleQueryUnderstanding(t *testing.T) {
 		t.Fatalf("fake decisions server request state = %#v, want exactly {\"query\": \"what did we decide\"}", got)
 	}
 
-	if err := chromedp.Run(runCtx, chromedp.Click(
-		fmt.Sprintf(`//button[@aria-label=%q]`, suggestedLabel), chromedp.BySearch,
+	if err := chromedp.Do(runCtx, chromedp.Click(
+		fmt.Sprintf(`//button[@aria-label=%q]`, suggestedLabel),
 	)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("click suggested chip: %v", err)
 	}
 
 	var applied bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(locationSearchContainsPollExpr("cat=decision"), &applied,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(locationSearchContainsPollExpr("cat=decision"), &applied)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("wait for cat=decision navigation failed: %v", err)
 	}
@@ -1576,10 +1566,7 @@ func TestConsoleQueryUnderstanding(t *testing.T) {
 	}
 
 	var resultsRendered bool
-	if err := chromedp.Run(runCtx, chromedp.Poll(resultsHeaderPresentPollExpr, &resultsRendered,
-		chromedp.WithPollingTimeout(45*time.Second),
-		chromedp.WithPollingInterval(200*time.Millisecond),
-	)); err != nil {
+	if err := chromedp.Do(runCtx, pollTruthy(resultsHeaderPresentPollExpr, &resultsRendered)); err != nil {
 		logConsoleDiagnostics(browserCtx, t)
 		t.Fatalf("wait for results header failed: %v", err)
 	}
