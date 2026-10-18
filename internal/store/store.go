@@ -128,7 +128,7 @@ func (e *MultiTargetError) Unwrap() error {
 }
 
 // qdrantPayloadOpBatchSize mirrors the pinned Qdrant server's own
-// payload-operation batch size (qdrant/qdrant:v1.19.1,
+// payload-operation batch size (qdrant/qdrant:v1.19.2,
 // lib/shard/src/update/payload.rs, PAYLOAD_OP_BATCH_SIZE — unchanged at 32
 // since v1.18.2's lib/shard/src/update.rs): the server chunks a
 // multi-ID payload write (SetPayload/DeletePayload/UpdateVectors/
@@ -2706,7 +2706,7 @@ func (s *Store) lockTargets(ctx context.Context, targets []string) (unlock func(
 // if a target is deleted between its getWritable ownership gate and the
 // back-stamp SetPayload, Qdrant's point-ID-selector SetPayload returns a
 // NotFound gRPC error that propagates unchanged — fail-closed, no re-fetch
-// needed (D-02). At the pinned server (qdrant/qdrant:v1.19.1,
+// needed (D-02). At the pinned server (qdrant/qdrant:v1.19.2,
 // lib/shard/src/update/payload.rs) a multi-ID SetPayload chunks point ids (in
 // batches of qdrantPayloadOpBatchSize) and mutates every point it finds
 // BEFORE raising a missing-id error for one it doesn't, so an error from

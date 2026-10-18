@@ -18,6 +18,7 @@ Available Commands:
   migrate             Preview or apply the pending forward schema-version sweep
   migrate-remap-owner Re-stamp record owner across the collection (sub->email, email->email, owner-less, or anonymous bucket)
   migration-status    Report the server's schema-version migration status
+  prime               Print a session primer for an agent: memory scope, rules index and recent memories
   prune-expired       Delete memories whose validity window (not_after) has lapsed
   reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
   search              Search memories on a remote engram server
@@ -256,6 +257,24 @@ Flags:
       --output string       output format: "json" or "text" (default: detect from stdout)
       --server string       engram server base URL (default: ENGRAM_SERVER_URL)
       --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
+## engram prime
+
+```
+Print a session primer for an agent: the memory scope and where it came from, the rules index for that scope, the most recent memories in the spine and the workspace overlay, and the command that prints the machine-readable catalog. Without --scope or ENGRAM_SCOPE the scope is derived from local git. Outside a git repository it says so, calls no server and exits 0. It only reads: it never writes, prompts, starts a login or reads stdin.
+
+Usage:
+  engram prime [flags]
+
+Flags:
+  -h, --help                help for prime
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "text" or "json"; text whether or not stdout is a terminal (default "text")
+      --scope string        memory scope to read, used exactly as given with no workspace overlay (default: ENGRAM_SCOPE, then the scope derived from local git)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      deadline for the whole command: git probes, the credential and every request together (must be > 0, e.g. 3s, 30s; a value of 0 is rejected) (default "30s")
       --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```
 
@@ -651,7 +670,9 @@ Usage:
 Flags:
   -h, --help                help for tui
       --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --mouse               turn on mouse support: click to select, wheel to scroll (default: ENGRAM_TUI_MOUSE, then the choice saved in the console, then off)
       --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --theme string        console theme: engram, terminal, catppuccin, tokyo-night (default: ENGRAM_TUI_THEME, then the theme chosen in the console, then engram)
       --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
       --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```

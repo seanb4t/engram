@@ -1,0 +1,84 @@
+{
+  "layout_conventions": "Each layout builds its main repository at <tmp>/myrepo with one commit, adds remote origin when remote is not null, and derives from: <tmp>/myrepo (primary_checkout), <tmp>/myrepo/cmd/tool (subdirectory), a linked worktree added at <tmp>/wt/feat (linked_worktree), or <tmp>/scratch with no repository (not_a_repository).",
+  "remotes": [
+    {
+      "name": "https",
+      "remote": "https://github.com/org/repo.git",
+      "identity": "github.com/org/repo"
+    },
+    {
+      "name": "https with port 443",
+      "remote": "https://github.com:443/org/repo.git",
+      "identity": "github.com/org/repo"
+    },
+    {
+      "name": "ssh url with port 22",
+      "remote": "ssh://git@host.example:22/org/repo",
+      "identity": "host.example/org/repo"
+    },
+    {
+      "name": "ssh url without a port",
+      "remote": "ssh://git@github.com/org/repo",
+      "identity": "github.com/org/repo"
+    },
+    {
+      "name": "scp-style",
+      "remote": "git@github.com:org/repo.git",
+      "identity": "github.com/org/repo"
+    },
+    {
+      "name": "already normalised",
+      "remote": "github.com/o/r",
+      "identity": "github.com/o/r"
+    },
+    {
+      "name": "scp-style path of digits is read as a port",
+      "remote": "git@host:1234/repo.git",
+      "identity": "host/repo"
+    }
+  ],
+  "layouts": [
+    {
+      "name": "primary checkout",
+      "kind": "primary_checkout",
+      "remote": "git@github.com:org/repo.git",
+      "spine": "repo:github.com/org/repo",
+      "overlay": null
+    },
+    {
+      "name": "subdirectory",
+      "kind": "subdirectory",
+      "remote": "git@github.com:org/repo.git",
+      "spine": "repo:github.com/org/repo",
+      "overlay": null
+    },
+    {
+      "name": "linked worktree",
+      "kind": "linked_worktree",
+      "remote": "git@github.com:org/repo.git",
+      "spine": "repo:github.com/org/repo",
+      "overlay": "repo:github.com/org/repo:ws:feat"
+    },
+    {
+      "name": "no origin from a subdirectory",
+      "kind": "subdirectory",
+      "remote": null,
+      "spine": "repo:myrepo",
+      "overlay": null
+    },
+    {
+      "name": "no origin in a linked worktree",
+      "kind": "linked_worktree",
+      "remote": null,
+      "spine": "repo:myrepo",
+      "overlay": "repo:myrepo:ws:feat"
+    },
+    {
+      "name": "not a repository",
+      "kind": "not_a_repository",
+      "remote": null,
+      "spine": null,
+      "overlay": null
+    }
+  ]
+}

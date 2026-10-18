@@ -5,7 +5,7 @@
 
 image:
   repository: ghcr.io/seanb4t/engram
-  tag: "@sha256:8e6a7ddd11414f1a54246a7b6e0cb54c54c3686ee35e7b8b256fd6791658d066" # defaults to .Chart.AppVersion
+  tag: "@sha256:4f75f2f23093f68b0ec11ed4e19c97eb30a07b0976258e8782267376e1ec291e" # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 
 # e.g. [{ name: ghcr-pull-secret }] — the cluster sets this for a private image.
@@ -336,7 +336,7 @@ observability:
     stdout: true # also write logs to stdout
 
 qdrant:
-  image: qdrant/qdrant:v1.19.1@sha256:12364fe851b9f17356fc88189fc06d1b521262e04659ec7345975b00c9246a10
+  image: qdrant/qdrant:v1.19.2@sha256:b7b0444c4c351c970b98e90a6f89c2ee4287c65b44e52b4cb503fa5b2aa927ad
   storage:
     size: 5Gi
     className: longhorn-encrypted

@@ -33,7 +33,7 @@ describe('DiscoveryFormSheet — field set', () => {
     const screen = await render(DiscoveryFormSheet, { open: true, scope: 'discovery:repo:x' });
     await expect.element(screen.getByText('New discovery')).toBeInTheDocument();
     await expect.element(screen.getByLabelText('content')).toBeInTheDocument();
-    await expect.element(screen.getByRole('button', { name: 'kind', exact: true })).toHaveTextContent('map');
+    await expect.element(screen.getByRole('button', { name: /^kind: / })).toHaveTextContent('map');
     await expect.element(screen.getByTestId('citation-row')).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'citation 1 kind' })).toBeInTheDocument();
     await expect.element(screen.getByLabelText('citation 1 ref')).toBeInTheDocument();
@@ -181,7 +181,7 @@ describe('DiscoveryFormSheet — D-09 inline re-auth + resume', () => {
       onresumeapplied
     });
     await expect.element(screen.getByLabelText('content')).toHaveValue('restored discovery content');
-    await expect.element(screen.getByRole('button', { name: 'kind', exact: true })).toHaveTextContent('fact');
+    await expect.element(screen.getByRole('button', { name: /^kind: / })).toHaveTextContent('fact');
     await expect.element(screen.getByRole('textbox', { name: 'scope' })).toHaveValue('discovery:repo:restored');
     await expect.element(screen.getByLabelText('citation 1 ref')).toHaveValue('https://example.com');
     expect(onresumeapplied).toHaveBeenCalledTimes(1);

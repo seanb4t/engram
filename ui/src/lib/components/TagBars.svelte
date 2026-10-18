@@ -148,7 +148,9 @@
       {#each visible.rows as row, i (row.tag)}
         {@const rarityVal = rarity?.get(row.tag)}
         {@const title = rarityVal !== undefined ? `count ${row.count}\nrarity ln(n/df) ${rarityVal.toFixed(2)}` : `count ${row.count}`}
-        {@const label = rarityVal !== undefined ? `#${row.tag}, count ${row.count}, rarity ${rarityVal.toFixed(2)}` : `#${row.tag}, count ${row.count}`}
+        <!-- WCAG 2.5.3 label-in-name: the visible "tag count" text must appear
+             contiguously in the accessible name, so the label leads with it. -->
+        {@const label = rarityVal !== undefined ? `#${row.tag} ${row.count}, rarity ${rarityVal.toFixed(2)}` : `#${row.tag} ${row.count}`}
         <!-- WAI-ARIA APG listbox: options are NOT tab stops and take no
              keyboard handler of their own -- the container (role="listbox")
              owns all keyboard interaction via aria-activedescendant, and

@@ -607,6 +607,7 @@ zero-semantics, and it is not uniform across commands:**
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
 | `search`, `list`, `store`, `get`, `migration-status`, `tui` | Per-RPC-call deadline | **Rejected** (usage error) |
+| `prime` | One deadline for the whole command: the git probes, the credential and every RPC call together | **Rejected** (usage error) |
 | `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge`, `migrate`, `migrate status`, `migrate revert` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |
 
@@ -635,12 +636,13 @@ that same range before any inverse is even applied.
 
 In a terminal, a bare `engram` opens the terminal console: a full-screen,
 read-only view of the memories you can read. `engram tui` opens the same
-console and accepts four of the shared flags: `--server`, `--token-file`,
-`--insecure` and `--timeout`. A bare `engram` accepts no flags. It reads its
-settings from the environment (`ENGRAM_SERVER_URL`, `ENGRAM_TOKEN`,
-`ENGRAM_TIMEOUT`) and from the saved login only. Use `engram tui` when your
-credential is in a file or when you need `--insecure`, because neither has an
-environment form.
+console. It accepts four of the shared flags (`--server`, `--token-file`,
+`--insecure` and `--timeout`) and two of its own (`--theme` and `--mouse`). A
+bare `engram` accepts no flags. It reads its settings from the environment
+(`ENGRAM_SERVER_URL`, `ENGRAM_TOKEN`, `ENGRAM_TIMEOUT`, `ENGRAM_TUI_THEME`,
+`ENGRAM_TUI_MOUSE`), the saved login and the console's saved choices. Use
+`engram tui` when your credential is in a file or when you need `--insecure`,
+because neither has an environment form.
 
 The console sends only read requests. It cannot store, update, supersede,
 archive, restore, delete or share a record.
@@ -657,60 +659,260 @@ the command exits with the code a client verb gives for the same failure:
 
 | Code | Cause |
 |------|-------|
-| 2 | No `--server`, `ENGRAM_SERVER_URL` or saved login, or a bad flag value |
+| 2 | No `--server`, `ENGRAM_SERVER_URL` or saved login, an unknown `--theme`, a `--mouse` value that is not a boolean, or another bad flag value |
 | 3 | The server rejected the credential |
 | 5 | The server is unreachable |
 | 6 | The server did not answer within `--timeout` |
 
 Quitting the console exits `0`.
 
+### Layout
+
+The results list sits on the left and a preview of the selected record sits
+on the right. The preview follows the selection. It shows the summary, the
+category, scope, visibility and owner, the age, the tags and the state words
+at once. The record's full content, rendered as markdown, follows when the
+selection stops moving.
+
+The layout follows the terminal's size:
+
+| Terminal | Layout |
+|---|---|
+| 100 columns or wider | List and preview side by side |
+| Narrower than 100 columns and at least 32 rows | Preview below the list |
+| Smaller | List only. Enter opens the selected record full screen, and Esc returns to the list |
+
+`p` hides or shows the preview. `z` makes the focused pane fill the screen,
+and `z` again restores it. `tab` moves focus between the list and the
+preview; with a pane filling the screen, `tab` shows the other pane in its
+place. While the preview has focus, `j` and `k` scroll it. From the list,
+`J` and `K` scroll the preview one line, and Ctrl-D and Ctrl-U scroll it half
+a page.
+
+Each row shows the category, the summary, the state words (`archived`,
+`superseded`, `expired`, `scheduled`), the tags with a `+N` for those that do
+not fit, and the age (`7h`, `2d`, `1mo`). When the rows come from more than
+one scope and there is room, a row also shows its scope. Rows for archived,
+superseded and expired records are drawn muted.
+
+The line above the rows states what the view searched: how many records it
+shows, across how many scopes, the query, how the rows are ordered, and how
+many records the recall gate hid. The line below the rows shows the
+selection's position (`12/50+` while more pages exist), the hidden counts by
+state, and short notes such as `copied short_id …`. When a request fails, it
+shows the server's message unchanged, including any `field=<name>
+hint=<code>` envelope, and the console keeps running.
+
 ### Views
 
 The console opens on your latest memories across every scope you can read.
 
-- **1 memories** lists your memories, or shows search results. Press `/`,
-  type a query and press Enter. A search runs only on Enter, because the
-  server sends every search query to its embedding provider. A UUID or a
-  `short_id` opens that record instead of searching for it. An empty search
-  returns to the list.
-- **2 tags** shows the tags in the scope, with their counts.
-- **3 rules** shows the rules in every rule scope you can read.
-- **4 scheduled** shows your own records that are not active yet. `tab`
-  switches to your expired records.
+- **1 Memories** lists your memories, or shows search results. Press `/`,
+  type a query and press Enter. The search box says what Enter will do:
+  `enter: search · 1 embedding` for a query, `enter: open` for a UUID or a
+  `short_id` (which opens that record instead of searching), and
+  `enter: list` for an empty query. A search runs only on Enter, because the
+  server sends every search query to its embedding provider. The next page of
+  a list loads on its own when the selection nears the end, and `n` loads it
+  at once.
+- **2 Tags** shows the tags in the scope, with a bar for each count. `space`
+  chooses a tag, and Enter lists the memories that carry every chosen tag. The
+  filter line shows them as `all of #helm #oci`.
+- **3 Rules** shows the rules in every rule scope you can read. The preview
+  shows a rule's full text.
+- **4 Scheduled** shows your own records that are not active yet, with each
+  window in words (`reveals in 3d`). `w` switches to your expired records
+  (`expired 2d ago`).
 
-Enter opens the selected record. The console fetches it by id, so the
-detail view also shows a record that is archived, superseded, expired or
-scheduled. For a superseded record, it shows the successor's id. `r` shows the record's related
-memories, with the type of each edge.
+`r` shows the selected record's related memories. They are grouped by edge
+type, in the order supersession (`S`), shared citation (`C`), shared tag
+(`T`) and vector neighbour (`V`). Each group heading shows its count, and each
+row says why it is related. Enter walks to the selected record's own related
+memories, and `[` or Esc walks back.
 
-List and search show only the records the recall gate returns. The footer
-gives the `recall_gate_hidden` counts by state. `f` opens the scope and
-filters panel. There you choose one scope or every readable scope, and you
-can include archived, superseded, or scheduled and expired records.
+`=` narrows the rows already loaded as you type, without asking the server.
+The line above the rows then reads, for example, `7 of 50 loaded match "oci"`.
+Esc clears the narrowing.
 
-When a request fails, the status line shows the server's message unchanged,
-including any `field=<name> hint=<code>` envelope, and the console keeps
-running.
+List and search show only the records the recall gate returns. `f` opens the
+scope and filters panel. There you choose one scope or every readable scope
+(type to filter the scopes), include archived, superseded, or scheduled and
+expired records, and remove chosen tags. When nothing matches, the console
+names what it searched and the filters that would widen it.
+
+### Command palette, themes and mouse
+
+Ctrl-K opens the command palette. It lists every view, filter and action,
+each with its key, and narrows the list as you type. Enter runs the
+highlighted entry, and Esc closes the palette.
+
+`T` opens the theme picker. The themes are `engram` (the web console's
+colours), `terminal` (only your terminal's own colours), `catppuccin` and
+`tokyo-night`. Each picks its light or dark colours from the terminal's
+background. Moving through the picker shows each theme at once. Enter keeps
+the theme and saves it, and Esc goes back to the theme you started with. With
+`NO_COLOR` set to any value, the console draws no colour. Every state and edge
+type also has a word or letter, so colour is never the only signal.
+
+Mouse support is off by default, so your terminal's own text selection keeps
+working. Turn it on with `--mouse`, `ENGRAM_TUI_MOUSE=true`, or the palette's
+"Mouse" entry. With it on, a click selects a row and the wheel scrolls the
+pane under the pointer.
+
+The theme and mouse setting are chosen in this order: the flag, then the
+environment variable, then the choice saved from inside the console, then the
+default (`engram`, mouse off). A choice saved in the console goes to
+`console.json` in the engram configuration directory, next to the login
+cache. It holds no credential and is never sent to the server. A missing or
+invalid file leaves the console on its defaults. When `--theme` or
+`ENGRAM_TUI_THEME` is set, a theme you save from the picker applies only once
+neither is set, and the console says so.
 
 ### Keys
 
 The console uses the web console's key where the web console has one for the
-same action.
+same action. Every key also shows in the `?` overlay and the command palette.
 
 | Key | Action |
 |-----|--------|
-| `/` | Search: type a query, then press Enter |
-| Enter | Open the selected record. In the filters panel, choose the row and close the panel |
-| Esc | Go back: close the full help, leave the search box or the filters panel, or return from a record |
-| `j` / `k`, Down / Up | Move the selection |
+| `j` / `k`, Down / Up | Move the selection, or scroll the preview when it has focus |
 | PgDn / PgUp, Home / End | Move by one page, or to the first or last row |
-| `r` | Show the related memories of the selected record |
-| `n` | Load the next page (memories list and scheduled view) |
+| Enter | Open the selected record full screen; in the related view, walk to it; in the tags view, list the memories with the chosen tags |
+| Esc | Go back: close an overlay, clear the narrowing, return focus to the list, or leave a record or related view |
+| `tab`, Shift-Tab | Move focus between the list and the preview |
+| `J` / `K` | Scroll the preview one line from the list |
+| Ctrl-D / Ctrl-U | Scroll the preview half a page from the list |
+| `p` | Hide or show the preview |
+| `z` | Make the focused pane fill the screen, or restore it |
+| `/` | Search: type a query, then press Enter |
+| `=` | Narrow the loaded rows |
+| `f` | Open the scope and filters panel; `space` toggles a row and Enter chooses it |
+| `n` | Load the next page now |
 | `1` `2` `3` `4` | Open the memories, tags, rules or scheduled view |
-| `tab` | In the scheduled view, switch between scheduled and expired records |
-| `f` | Open the scope and filters panel. `space` toggles the row |
-| `?` | Show or hide the full key help |
+| `r` | Show the related memories of the selected record |
+| `[` | Walk back along the related trail |
+| `space` | In the tags view, choose or drop a tag |
+| `w` | In the scheduled view, switch between scheduled and expired records |
+| `c` / `C` | Copy the selected record's `short_id` / full id to the clipboard |
+| `T` | Open the theme picker |
+| Ctrl-K | Open the command palette |
+| `?` | Show all keys |
 | `q`, Ctrl-C | Quit |
+
+The copy keys send the text through the terminal's clipboard sequence (OSC
+52), which also works over SSH. Some terminals turn that sequence off.
+
+## Session primer: `engram prime`
+
+`engram prime` writes a session primer for an agent. The primer holds the
+memory scope, the rules index for that scope, and a short digest of recent
+memories. It is one read, so an agent can start a session with its memory already in
+context. The Claude Code plugin's session-start hook runs it for you (see
+[the plugin guide](/guides/plugin/#sessionstart-hook--memory-recall)).
+
+```sh
+engram prime
+```
+
+The primer has four parts, in this order:
+
+1. **The scope header.** `Memory spine scope: <scope>` and a line that names
+   where the scope came from. In a linked git worktree it adds
+   `Memory workspace scope: <scope>` and its source. A last line names the
+   rule scopes that prime read.
+2. **The rules index.** One line per rule: its full `short_id`, its summary and
+   its tags. There is no rule content. Fetch a rule's full text with
+   `engram get <short_id>`. When there are no rules, this part is not shown.
+3. **The recall digest.** It lists up to 10 recent records in each scope that
+   you can recall. Each record has one line: its full `short_id` and its
+   summary. The
+   groups are "Repo-wide memories" and "This workspace's memories". A record in
+   both groups shows only in the first group. A group of 10 ends with a note
+   that older records exist. An empty group is not shown. Archived,
+   superseded, expired and not-yet-active records are never shown, and another
+   user's record shows only when it is `shared`.
+4. **The catalog line.** It names `engram catalog`, the command that prints
+   [the machine-readable catalog](#the-self-describe-catalog).
+
+prime only reads. It never writes to the store, starts a login, prompts, or
+reads stdin.
+
+### Where the scope comes from
+
+prime uses the first of these that is set:
+
+| Source | What prime uses | The header names |
+|---|---|---|
+| `--scope <scope>` | That scope, exactly as given | `--scope` |
+| `ENGRAM_SCOPE` | That scope, exactly as given | `ENGRAM_SCOPE` |
+| The git `origin` remote | `repo:<host>/<org>/<repo>`, with the scheme, the user name, a port number and `.git` removed | `git origin remote` |
+| No `origin` remote | `repo:<name>`, where `<name>` is the name of the main repository's directory | The repository directory name. The header also says that this is probably not a scope on the server. |
+
+prime reads git on your machine only. It makes no network call to find the
+scope. In a linked git worktree it also reads the workspace overlay,
+`<spine>:ws:<worktree directory name>`. A scope from `--scope` or
+`ENGRAM_SCOPE` has no overlay.
+
+The rule scopes come from the memory scope. When the memory scope starts with
+`repo:<repo-id>`, prime reads `rule:repo:<repo-id>`. When `ENGRAM_PROJECT` is
+set, prime also reads `rule:project:<ENGRAM_PROJECT>`. This is the same
+variable that the session-start hook reads.
+
+prime rejects these values with exit `2` before it calls the server, and the
+error names the flag or the variable:
+
+- An empty `--scope ""`.
+- A `--scope` or `ENGRAM_SCOPE` value that starts with `rule:` or
+  `discovery:`. Give the memory scope instead. prime finds the rule scope from
+  it.
+
+### Outside a git repository
+
+Outside a git repository, with no `--scope` and no `ENGRAM_SCOPE`, prime writes
+a short primer. The primer says that prime found no scope and that `--scope`
+sets one. It
+calls no server, needs no credential, and exits `0`. This means a session start
+never fails because of prime.
+
+```sh
+engram prime --scope repo:github.com/org/repo
+```
+
+### Output
+
+prime writes the text primer by default, also when stdout is not a terminal.
+This is different from the other client commands, which write JSON to a pipe.
+The reason is that prime's output is usually put straight into an agent's
+context.
+
+`--output json` writes one JSON document with the same facts:
+
+```sh
+engram prime --output json | jq '.spine, .rule_scopes'
+```
+
+| Key | Value |
+|---|---|
+| `spine`, `overlay` | `{"scope": ..., "source": ...}`, or `null`. `source` is one of `flag`, `env`, `git_origin_remote`, `repo_directory_name` and `linked_worktree`. |
+| `rule_scopes` | The rule scopes that prime read |
+| `rules` | The rules, in the record shape that `engram list` writes |
+| `memories.spine`, `memories.overlay` | The digest records, in the same shape |
+| `catalog_command` | `engram catalog` |
+
+### Server, credential and exit codes
+
+prime finds the server and the credential in the same way as the other client
+commands (see [Shared flags](#shared-flags)). Its `--timeout` is one deadline
+for the whole command. When a call fails, prime writes nothing to stdout and
+exits with the client exit code:
+
+| Code | Cause |
+|------|-------|
+| 0 | The primer was written. This includes a primer outside a git repository. |
+| 2 | No `--server`, `ENGRAM_SERVER_URL` or saved login; a rejected scope; an `--output` other than `text` or `json`; or a scope that the server rejected (its `field=` / `hint=` message is passed through) |
+| 3 | The server rejected the credential |
+| 5 | The server is unreachable |
+| 6 | The server did not answer within `--timeout` |
 
 ## The self-describe catalog
 

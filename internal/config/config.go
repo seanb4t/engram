@@ -36,6 +36,7 @@ type Config struct {
 	Log         LogConfig         `koanf:"log"`
 	Usage       UsageConfig       `koanf:"usage"`
 	Client      ClientConfig      `koanf:"client"`
+	Prime       PrimeConfig       `koanf:"prime"`
 	Setup       SetupConfig       `koanf:"setup"`
 }
 
@@ -417,6 +418,26 @@ type ClientConfig struct {
 	// (ENGRAM_CLIENT_ID / --client-id). Empty means register a client
 	// through dynamic client registration instead.
 	ClientID string `koanf:"client_id"`
+	// TUITheme names the terminal console's theme (ENGRAM_TUI_THEME /
+	// --theme). Empty means not set, so the console falls back to the
+	// theme saved in its preferences file, then to "engram".
+	TUITheme string `koanf:"tui_theme"`
+	// TUIMouse turns the terminal console's mouse support on or off
+	// (ENGRAM_TUI_MOUSE / --mouse). Empty means not set, so the console
+	// falls back to its saved preference, then to off.
+	TUIMouse string `koanf:"tui_mouse"`
+}
+
+// PrimeConfig backs `engram prime`. Both fields are client-side, and
+// ValidatePrimeScope checks Scope.
+type PrimeConfig struct {
+	// Scope is the memory scope prime uses exactly as given, instead of
+	// deriving one from git (--scope / ENGRAM_SCOPE). Empty means derive.
+	Scope string `koanf:"scope"`
+	// Project names the rule:project:<name> rule scope prime adds to its
+	// rules index (ENGRAM_PROJECT). prime trims it; empty means no project
+	// rules.
+	Project string `koanf:"project"`
 }
 
 // SetupConfig backs `engram setup` (D-04): the deployment facts an

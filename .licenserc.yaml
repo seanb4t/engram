@@ -80,6 +80,9 @@ header:
     # license-eye and not runtime-CI-gated; repo LICENSE covers provenance.
     - "internal/authz/policies/*.cedar"
     - "internal/authz/schema.json"
+    # The scope-derivation case table both the Go and the Python tests
+    # read (cli-prime D3). JSON has no comment syntax for a header.
+    - "internal/scope/testdata/*.json"
     # internal/keylinks's committed testdata/*.md fixtures are synthetic
     # plan-shaped documents the guard's own fixture-pair test parses as
     # frontmatter (D-06, Phase 1 gate-ci-integrity) — not real docs, and a

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -46,6 +47,8 @@ type stubEngramService struct {
 	// that the terminal console only reads.
 	readOnly *testing.T
 
+	mu sync.Mutex
+
 	searchCalls        int
 	listCalls          int
 	storeCalls         int
@@ -71,8 +74,11 @@ func (s *stubEngramService) SearchMemories(ctx context.Context, req *connect.Req
 }
 
 func (s *stubEngramService) ListMemories(ctx context.Context, req *connect.Request[engramv1.ListMemoriesRequest]) (*connect.Response[engramv1.ListMemoriesResponse], error) {
+	// engram prime calls ListMemories concurrently.
+	s.mu.Lock()
 	s.listCalls++
 	s.lastAuthHeader = req.Header().Get("Authorization")
+	s.mu.Unlock()
 	if s.listFn == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errUnimplementedStub)
 	}

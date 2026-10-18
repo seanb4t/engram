@@ -6,7 +6,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -82,4 +84,56 @@ func ValidateSetupAuth(v string) error {
 	default:
 		return fmt.Errorf(`--auth %q: must be "oauth", "oauth-client", "bearer", "none", or empty`, v)
 	}
+}
+
+// TUIThemes are the terminal console's theme names, in the order its
+// picker lists them. The console defines each theme; this list is the
+// contract its settings are validated against.
+var TUIThemes = []string{"engram", "terminal", "catppuccin", "tokyo-night"}
+
+// ValidateConsole checks the terminal console's own settings. It is kept
+// apart from ValidateClient so a theme or mouse value meant for the
+// console never fails another client command. Empty values are valid and
+// mean "not set".
+func ValidateConsole(c ClientConfig) error {
+	var errs []error
+	if c.TUITheme != "" && !slices.Contains(TUIThemes, c.TUITheme) {
+		errs = append(errs, fmt.Errorf("--theme or ENGRAM_TUI_THEME %q: unknown theme; valid themes: %s",
+			c.TUITheme, strings.Join(TUIThemes, ", ")))
+	}
+	if c.TUIMouse != "" {
+		if _, err := strconv.ParseBool(c.TUIMouse); err != nil {
+			errs = append(errs, fmt.Errorf("--mouse or ENGRAM_TUI_MOUSE %q: must be a boolean (true or false)", c.TUIMouse))
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("invalid console configuration: %w", errors.Join(errs...))
+}
+
+// ValidatePrimeScope checks engram prime's scope override. fromFlag reports
+// whether --scope was passed, which decides the setting the message names
+// and makes an empty value an error: an empty ENGRAM_SCOPE means "not
+// set", but an explicitly passed --scope "" is never silently dropped. A
+// rule: or discovery: scope is rejected because prime reads memories from
+// a memory scope and derives the rule scope from it.
+func ValidatePrimeScope(scope string, fromFlag bool) error {
+	name := "ENGRAM_SCOPE"
+	if fromFlag {
+		name = "--scope"
+	}
+	if strings.TrimSpace(scope) == "" {
+		if fromFlag || scope != "" {
+			return fmt.Errorf("%s %q: must not be blank; omit it to derive the scope from git", name, scope)
+		}
+		return nil
+	}
+	for _, prefix := range []string{"rule:", "discovery:"} {
+		if strings.HasPrefix(scope, prefix) {
+			return fmt.Errorf("%s %q: is a %s scope, not a memory scope; pass the memory scope (for example repo:<host>/<org>/<repo>), and the rule scope is derived from the memory scope",
+				name, scope, strings.TrimSuffix(prefix, ":"))
+		}
+	}
+	return nil
 }

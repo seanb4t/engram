@@ -22,8 +22,11 @@
 </script>
 
 <SelectPrimitive.Root type="single" bind:value {onValueChange} items={options}>
+  <!-- The accessible name carries the visible value after the field name
+       (WCAG 2.5.3 label-in-name: the trigger's visible text must appear in
+       its name). -->
   <SelectPrimitive.Trigger
-    aria-label={ariaLabel}
+    aria-label={ariaLabel ? `${ariaLabel}: ${selectedLabel}` : undefined}
     class={cn(
       'inline-flex h-7 items-center gap-1 rounded border border-border bg-background px-2 text-[13px] text-foreground focus-visible:outline-none focus-visible:ring-1',
       className
