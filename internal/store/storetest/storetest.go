@@ -46,7 +46,7 @@ const RecvLimit = 4 << 20
 // fallback across this module. CI's services.qdrant.image must stay
 // byte-identical to this value; bumping it requires re-verifying the TOCTOU
 // contract guarded by internal/store's separate qdrantTOCTOUVerifiedVersion.
-const QdrantImage = "qdrant/qdrant:v1.19.1"
+const QdrantImage = "qdrant/qdrant:v1.19.2"
 
 // Package state set only by Run.
 var (
