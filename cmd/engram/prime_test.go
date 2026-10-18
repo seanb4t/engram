@@ -72,7 +72,7 @@ func (f *primeFixture) start(t *testing.T) string {
 func (f *primeFixture) listedScopes() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []string
+	out := make([]string, 0, len(f.listReqs))
 	for _, r := range f.listReqs {
 		out = append(out, r.GetScope())
 	}
@@ -384,7 +384,7 @@ func TestPrimeRulesIndex(t *testing.T) {
 func TestPrimeFullSpineFooter(t *testing.T) {
 	_, repo := testGitRepo(t, "https://github.com/org/repo.git")
 	f := defaultPrimeFixture()
-	var mems []*engramv1.Memory
+	mems := make([]*engramv1.Memory, 0, 25)
 	for i := range 25 {
 		mems = append(mems, primeMem(fmt.Sprintf("mem%07d", i), fmt.Sprintf("record %d", i), primeRepoScope))
 	}

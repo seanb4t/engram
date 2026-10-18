@@ -28,7 +28,7 @@
 - [x] 5.4 Add a test that prime completes with stdin attached to a pipe that never closes. Verify: `go test ./cmd/engram/ -run 'PrimeStdin' -count=1`.
 - [x] 5.5 Add the `prime` row to `internal/surfaces/toolclass.go` (read-only, idempotent, not destructive, not open-world), then run `task surfaces:gen` to regenerate the anchored regions and the `help.golden` and `catalog.golden` fixtures. Verify: `git diff` on the goldens shows only the new `prime` entry and its flags, and `go test ./cmd/engram/ -run 'Golden|Catalog' -count=1` passes.
 - [x] 5.6 Point the primer's catalog line at the catalog command on `main` when this task runs: `engram catalog` if `cli-tui` (#819) has merged, otherwise bare `engram`. Verify: the `Prime` test asserts the line matches the command that runs the catalog in the live cobra tree.
-- [ ] 5.7 Add an `engram prime` section to docs-site `guides/cli.md`: what it emits, the scope sources and precedence, `ENGRAM_SCOPE` and `ENGRAM_PROJECT`, text by default and `--output json`, the outside-a-repository behaviour, and the exit codes. Verify: `task lint:markdown`, and the documented commands run as written against a local `engram serve`.
+- [x] 5.7 Add an `engram prime` section to docs-site `guides/cli.md`: what it emits, the scope sources and precedence, `ENGRAM_SCOPE` and `ENGRAM_PROJECT`, text by default and `--output json`, the outside-a-repository behaviour, and the exit codes. Verify: `task lint:markdown`, and the documented commands run as written against a local `engram serve`.
 
 ## 6. Session-start hook on the primer
 
@@ -39,8 +39,8 @@
 
 ## 7. Integration
 
-- [ ] 7.1 End-to-end check in this repository with a locally built binary on `PATH` and `ENGRAM_SERVER_URL` set: pipe a SessionStart JSON payload with this checkout's `cwd` into the hook and confirm the injected context holds the real rules index and digest. Then repeat with no credential and confirm the fallback text. Record both outputs in the PR.
-- [ ] 7.2 Quality gate: `task` (lint and test) passes.
+- [x] 7.1 End-to-end check in this repository with a locally built binary on `PATH` and `ENGRAM_SERVER_URL` set: pipe a SessionStart JSON payload with this checkout's `cwd` into the hook and confirm the injected context holds the real rules index and digest. Then repeat with no credential and confirm the fallback text. Record both outputs in the PR.
+- [x] 7.2 Quality gate: `task` (lint and test) passes.
 
 ## Workflow follow-up
 

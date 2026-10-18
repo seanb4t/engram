@@ -113,7 +113,7 @@ func TestPrimeRecallGateAndIsolation(t *testing.T) {
 	if doc.Spine.Scope != spine || doc.Spine.Source != "git_origin_remote" {
 		t.Errorf("spine = %+v, want %s from git_origin_remote", doc.Spine, spine)
 	}
-	var got []string
+	got := make([]string, 0, len(doc.Memories.Spine))
 	for _, m := range doc.Memories.Spine {
 		got = append(got, m.Summary)
 	}
