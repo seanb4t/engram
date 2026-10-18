@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.27.0](https://github.com/seanb4t/engram/compare/v0.26.0...v0.27.0) (2026-10-18)
+
+
+### Features
+
+* **cli:** add engram prime and inject it at session start ([#841](https://github.com/seanb4t/engram/issues/841)) ([b1c1880](https://github.com/seanb4t/engram/commit/b1c18803098cee3f234a6a1891cb3e87f11a8378))
+* **cli:** redesign the terminal console with split panes and a live preview ([#837](https://github.com/seanb4t/engram/issues/837)) ([6d5fe89](https://github.com/seanb4t/engram/commit/6d5fe89c24463a3bce05ace283596a8403eddc1e))
+
 ## [0.26.0](https://github.com/seanb4t/engram/compare/v0.25.0...v0.26.0) (2026-10-17)
 
 
