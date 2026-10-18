@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -163,34 +162,6 @@ func TestExcerptOffsetAt(t *testing.T) {
 	}
 }
 
-// verifyGitRepo builds a git repository named myrepo under a fresh,
-// symlink-resolved temp root, with origin set to remote unless it is
-// empty, and keeps the developer's git configuration and any repository
-// above the root out of every git command the test runs.
-func verifyGitRepo(t *testing.T, remote string) (root, repo string) {
-	t.Helper()
-	root = resolvedTempDir(t)
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("GIT_CEILING_DIRECTORIES", root)
-	repo = filepath.Join(root, "myrepo")
-	if err := os.Mkdir(repo, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	args := [][]string{{"init", "-q", "-b", "main"}}
-	if remote != "" {
-		args = append(args, []string{"remote", "add", "origin", remote})
-	}
-	for _, a := range args {
-		cmd := exec.Command("git", a...)
-		cmd.Dir = repo
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", a, err, out)
-		}
-	}
-	return root, repo
-}
-
 // verifyFromDir runs the verify classifier from dir, the way the command
 // does: the repository identity and the working root both come from the
 // current directory. dir holds the one cited file.
@@ -218,7 +189,7 @@ func verifyFromDir(t *testing.T, dir, recordScope string) verifyReport {
 // TestVerifySameRepoWithPortRemote: an ssh:// origin with a port is the
 // same repository as a record scoped without the port.
 func TestVerifySameRepoWithPortRemote(t *testing.T) {
-	_, repo := verifyGitRepo(t, "ssh://git@host.example:22/org/repo")
+	_, repo := testGitRepo(t, "ssh://git@host.example:22/org/repo")
 	report := verifyFromDir(t, repo, "repo:host.example/org/repo")
 	if report.ValidCount != 1 || report.UnverifiableCount != 0 {
 		t.Errorf("report = %+v, want the citation checked and valid", report)
@@ -228,7 +199,7 @@ func TestVerifySameRepoWithPortRemote(t *testing.T) {
 // TestVerifySameRepoFromSubdirectoryWithoutOrigin: with no origin remote,
 // the identity is the main repository root's name from any subdirectory.
 func TestVerifySameRepoFromSubdirectoryWithoutOrigin(t *testing.T) {
-	_, repo := verifyGitRepo(t, "")
+	_, repo := testGitRepo(t, "")
 	sub := filepath.Join(repo, "cmd")
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatal(err)
@@ -243,7 +214,7 @@ func TestVerifySameRepoFromSubdirectoryWithoutOrigin(t *testing.T) {
 // identity is empty, so every citation is unverifiable, including one in a
 // scope named after the working directory.
 func TestVerifyOutsideRepositoryIsUnverifiable(t *testing.T) {
-	root, _ := verifyGitRepo(t, "")
+	root, _ := testGitRepo(t, "")
 	scratch := filepath.Join(root, "scratch")
 	if err := os.Mkdir(scratch, 0o755); err != nil {
 		t.Fatal(err)
