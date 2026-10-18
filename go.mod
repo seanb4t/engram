@@ -9,7 +9,7 @@ require (
 	charm.land/bubbletea/v2 v2.1.0
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
-	connectrpc.com/connect v1.21.0
+	connectrpc.com/connect/v2 v2.0.0
 	connectrpc.com/otelconnect v0.10.0
 	github.com/cedar-policy/cedar-go v1.8.0
 	github.com/cenkalti/backoff/v7 v7.0.1
@@ -53,6 +53,8 @@ require (
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 )
+
+require connectrpc.com/connect v1.20.0
 
 require (
 	buf.build/gen/go/bufbuild/bufplugin/protocolbuffers/go v1.36.12-20260722160903-4d94f3df3a7b.2 // indirect
