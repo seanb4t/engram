@@ -3,6 +3,14 @@
   "extends": [
     "config:best-practices"
   ],
+  "description": [
+    "ignorePaths replaces the preset default, so the two preset entries are repeated here. `.planning/**` is the retired GSD planning archive (read-only by convention, see CLAUDE.md); it carries a frozen sdk-eval go.mod that must never be bumped (measured 2026-10-18: #811 touched .planning/**/sdk-eval/go.mod)."
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    ".planning/**"
+  ],
   "postUpdateOptions": [
     "gomodTidy"
   ],
@@ -117,6 +125,27 @@
       ],
       "matchDepNames": [
         "typescript"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Keep @sveltejs/kit and @sveltejs/adapter-static in ONE group: adapter-static 4 requires kit 3 (its only breaking change), so a lone adapter bump is peer-mismatched and a lone kit bump leaves the adapter on the old builder API (measured 2026-10-18: #759 and #760 open and red since 2026-10-05). Grouping them lands the coupled major as one buildable change.",
+      "matchPackageNames": [
+        "@sveltejs/kit",
+        "@sveltejs/adapter-static"
+      ],
+      "groupName": "sveltekit (kit + adapter-static)"
+    },
+    {
+      "description": "Hold connectrpc.com/connect at major 1. v2 is a new major of the Go API (plain-message handlers, *connect.Server + connecthttp, new interceptor signature, no error-message leak) touching ~890 call sites in 80 files plus regenerated gen/ code (measured 2026-10-18: #817). v1 is supported upstream indefinitely. The migration is planned as its own change in #847; remove this rule when it lands.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "connectrpc.com/connect"
       ],
       "matchUpdateTypes": [
         "major"
