@@ -8,10 +8,10 @@
   // keyboard model, and every E4 state (empty/loading/error/populated/
   // partial/overflow).
   import { createQuery } from '@tanstack/svelte-query';
-  import { Input } from '$lib/components/ui/input';
-  import { Button } from '$lib/components/ui/button';
-  import { Skeleton } from '$lib/components/ui/skeleton';
-  import { listTagsQuery } from '$lib/tags/query';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { listTagsQuery } from '#lib/tags/query.js';
   import {
     toTagRows,
     barPercent,
@@ -20,8 +20,8 @@
     scopeLabel,
     tagsLoadingLine,
     tagsErrorCopy
-  } from '$lib/tags/tags';
-  import { parseConnectError } from '$lib/errors/connect-error';
+  } from '#lib/tags/tags.js';
+  import { parseConnectError } from '#lib/errors/connect-error.js';
 
   let {
     scope,

@@ -1,15 +1,15 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { ConnectError, Code } from '@connectrpc/connect';
-  import { describeError } from '$lib/errors';
-  import { persistResume, normalizeReturnPath, redirectToLogin } from '$lib/resume';
-  import { useCreateDiscovery, type DiscoveryCitationInput } from '$lib/mutations/discovery';
-  import * as Sheet from '$lib/components/ui/sheet';
-  import { Button } from '$lib/components/ui/button';
-  import { Input } from '$lib/components/ui/input';
-  import { Textarea } from '$lib/components/ui/textarea';
-  import { Select } from '$lib/components/ui/select';
-  import { Badge } from '$lib/components/ui/badge';
+  import { describeError } from '#lib/errors.js';
+  import { persistResume, normalizeReturnPath, redirectToLogin } from '#lib/resume.js';
+  import { useCreateDiscovery, type DiscoveryCitationInput } from '#lib/mutations/discovery.js';
+  import * as Sheet from '#lib/components/ui/sheet/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Textarea } from '#lib/components/ui/textarea/index.js';
+  import { Select } from '#lib/components/ui/select/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
   import ShareWarningInline from './ShareWarningInline.svelte';
 
   // Create-only Sheet (D-04 fence -- no edit surface, no memory/recordId

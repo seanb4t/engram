@@ -1,6 +1,6 @@
 <script lang="ts">
-  import * as Dialog from '$lib/components/ui/dialog';
-  import { Button } from '$lib/components/ui/button';
+  import * as Dialog from '#lib/components/ui/dialog/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
 
   // Host-authoritative closure (Codex round-5 HIGH): `open` is driven entirely
   // by the host from its `deleteTarget`. This component never sets `open =

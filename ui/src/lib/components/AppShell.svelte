@@ -1,13 +1,13 @@
 <script lang="ts">
   import { setMode, mode } from 'mode-watcher';
-  import { base } from '$app/paths';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import BrandMark from './BrandMark.svelte';
   import MigrationBanner from './MigrationBanner.svelte';
   import DisplayPopover from './DisplayPopover.svelte';
   import HeaderSearch from './HeaderSearch.svelte';
-  import { Button } from '$lib/components/ui/button';
-  import { Kbd } from '$lib/components/ui/kbd';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Kbd } from '#lib/components/ui/kbd/index.js';
   import ScrollTextIcon from '@lucide/svelte/icons/scroll-text';
   import CalendarClockIcon from '@lucide/svelte/icons/calendar-clock';
   import SearchIcon from '@lucide/svelte/icons/search';
@@ -15,10 +15,10 @@
   import SunMoonIcon from '@lucide/svelte/icons/sun-moon';
   let { children, oncommand }: { children?: import('svelte').Snippet; oncommand?: () => void } = $props();
   const nav = [
-    { href: `${base}/rules`, label: 'Rules', icon: ScrollTextIcon },
-    { href: `${base}/scheduled`, label: 'Scheduled', icon: CalendarClockIcon },
-    { href: `${base}/search`, label: 'Search', icon: SearchIcon },
-    { href: `${base}/discovery`, label: 'Discovery', icon: CompassIcon }
+    { href: resolve('rules'), label: 'Rules', icon: ScrollTextIcon },
+    { href: resolve('scheduled'), label: 'Scheduled', icon: CalendarClockIcon },
+    { href: resolve('search'), label: 'Search', icon: SearchIcon },
+    { href: resolve('discovery'), label: 'Discovery', icon: CompassIcon }
   ];
   function cycleTheme() { setMode(mode.current === 'dark' ? 'light' : 'dark'); }
 </script>

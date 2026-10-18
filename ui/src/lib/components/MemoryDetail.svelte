@@ -1,16 +1,16 @@
 <script lang="ts">
-  import type { Memory } from '$lib/gen/engram_pb';
+  import type { Memory } from '#lib/gen/engram_pb.js';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
   import { ConnectError, Code } from '@connectrpc/connect';
-  import { Badge } from '$lib/components/ui/badge';
-  import { Button } from '$lib/components/ui/button';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-  import { ScrollArea } from '$lib/components/ui/scroll-area';
-  import * as Tabs from '$lib/components/ui/tabs';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+  import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
+  import * as Tabs from '#lib/components/ui/tabs/index.js';
   import { toast } from 'svelte-sonner';
-  import { relativeTime, fullTimestamp } from '$lib/time';
-  import { memoryStateWords } from '$lib/memorystate';
-  import { renderMarkdown } from '$lib/markdown';
+  import { relativeTime, fullTimestamp } from '#lib/time.js';
+  import { memoryStateWords } from '#lib/memorystate.js';
+  import { renderMarkdown } from '#lib/markdown.js';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
   import PencilIcon from '@lucide/svelte/icons/pencil';

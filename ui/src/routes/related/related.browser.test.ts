@@ -18,7 +18,7 @@ import {
   EdgeType,
   SupersessionDirection,
   type Memory
-} from '$lib/gen/engram_pb';
+} from '#lib/gen/engram_pb.js';
 import RelatedPage from './[id]/+page.svelte';
 
 // vi.hoisted runs before this module's own imports are linked, so a dynamic
@@ -44,11 +44,11 @@ const { gotoSpy, pageState, relatedMemoriesSpy, listTagsSpy } = await vi.hoisted
 });
 
 vi.mock('$app/navigation', () => ({ goto: gotoSpy }));
-vi.mock('$app/paths', () => ({ base: '/ui' }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/ui/${p}` }));
 vi.mock('$app/state', () => ({ page: pageState }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: { ...actual.engram, relatedMemories: relatedMemoriesSpy, listTags: listTagsSpy }

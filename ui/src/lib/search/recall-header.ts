@@ -1,4 +1,4 @@
-import type { RecallGateHidden } from '$lib/gen/engram_pb';
+import type { RecallGateHidden } from '#lib/gen/engram_pb.js';
 
 // The ONE formatter for the /search results header (D-05, D-06, ENTRY-03).
 // Every clause's copy is pinned by recall-header.test.ts, including the

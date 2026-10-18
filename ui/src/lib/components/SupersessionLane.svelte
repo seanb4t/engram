@@ -5,11 +5,11 @@
   // distinct from ChainDialog's `d2 / d1 / head · d0` modal grid (05-UI-SPEC
   // Deltas table). Shares EdgeLane's header shape and shared-selection
   // convention, never its row grid.
-  import type { LaneType, RelatedModel } from '$lib/related/graph';
-  import { EDGE_STYLE } from '$lib/related/graph';
-  import { laneCaption, laneCountLabel, supersessionColumns } from '$lib/related/lanes';
-  import { relativeTime } from '$lib/time';
-  import { ScrollArea } from '$lib/components/ui/scroll-area';
+  import type { LaneType, RelatedModel } from '#lib/related/graph.js';
+  import { EDGE_STYLE } from '#lib/related/graph.js';
+  import { laneCaption, laneCountLabel, supersessionColumns } from '#lib/related/lanes.js';
+  import { relativeTime } from '#lib/time.js';
+  import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
 
   let {
     model,

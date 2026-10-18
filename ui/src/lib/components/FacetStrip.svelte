@@ -1,10 +1,10 @@
 <script lang="ts">
-  import * as ScrollArea from '$lib/components/ui/scroll-area';
-  import * as Popover from '$lib/components/ui/popover';
-  import { Checkbox } from '$lib/components/ui/checkbox';
-  import { CATEGORIES } from '$lib/queries';
-  import type { SearchParams } from '$lib/search/params';
-  import type { ListScopesResponse } from '$lib/gen/engram_pb';
+  import * as ScrollArea from '#lib/components/ui/scroll-area/index.js';
+  import * as Popover from '#lib/components/ui/popover/index.js';
+  import { Checkbox } from '#lib/components/ui/checkbox/index.js';
+  import { CATEGORIES } from '#lib/queries.js';
+  import type { SearchParams } from '#lib/search/params.js';
+  import type { ListScopesResponse } from '#lib/gen/engram_pb.js';
   import ScopeCombobox from './ScopeCombobox.svelte';
   import TagCombobox from './TagCombobox.svelte';
 

@@ -17,7 +17,7 @@
     type GraphEdge,
     type LaneType,
     type SimNode
-  } from '$lib/related/graph';
+  } from '#lib/related/graph.js';
   import {
     SCALE_MIN,
     SCALE_MAX,
@@ -30,7 +30,7 @@
     zoomPercent,
     isOutsideView,
     type ZoomTransform
-  } from '$lib/related/zoom';
+  } from '#lib/related/zoom.js';
   import { zoom as d3zoom, zoomIdentity } from 'd3-zoom';
   import { drag as d3drag } from 'd3-drag';
   import { select } from 'd3-selection';

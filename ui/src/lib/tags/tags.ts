@@ -2,8 +2,8 @@
 // TagCombobox (TAGS-02). No network calls live here -- everything is a pure
 // function over an already-fetched ListTagsResponse (or its toTagRows()
 // projection), so it is trivially unit-testable in node (tags.test.ts).
-import type { ListTagsResponse } from '$lib/gen/engram_pb';
-import type { ParsedConnectError } from '$lib/errors/connect-error';
+import type { ListTagsResponse } from '#lib/gen/engram_pb.js';
+import type { ParsedConnectError } from '#lib/errors/connect-error.js';
 
 export interface TagRow {
   tag: string;

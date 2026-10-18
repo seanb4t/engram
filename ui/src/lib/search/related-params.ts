@@ -4,7 +4,7 @@
 // entry half); `trail` records the walk across the related view's own graph
 // (consumed starting in plan 05-08).
 
-import { isAllowedDestination } from '$lib/resume';
+import { isAllowedDestination } from '#lib/resume.js';
 import { UUID_RE, SHORT_ID_RE } from './classify';
 
 export const RELATED_TRAIL_MAX = 32;
@@ -40,8 +40,8 @@ export function encodeRelatedParams(p: RelatedParams): string {
   return sp.toString();
 }
 
-// Base-less: callers prefix `${base}` (SvelteKit's static-adapter base path).
-export function relatedPath(id: string, p: RelatedParams): string {
+// Base-less pathname: callers wrap it in resolve() from $app/paths.
+export function relatedPath(id: string, p: RelatedParams): `related/${string}` {
   const query = encodeRelatedParams(p);
-  return `/related/${encodeURIComponent(id)}${query ? `?${query}` : ''}`;
+  return `related/${encodeURIComponent(id)}${query ? `?${query}` : ''}`;
 }

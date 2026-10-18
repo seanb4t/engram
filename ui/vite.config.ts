@@ -1,3 +1,5 @@
+import adapter from '@sveltejs/adapter-static';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { playwright } from '@vitest/browser-playwright';
@@ -5,7 +7,7 @@ import { playwright } from '@vitest/browser-playwright';
 // defineConfig from vitest/config so the inline test block type-checks.
 import { defineConfig, type Plugin } from 'vitest/config';
 
-// svelte.config.js pins kit.paths.base = '/ui', so the sveltekit() plugin sets
+// sveltekit() below pins paths.base = '/ui', so the plugin sets
 // Vite's `base` to '/ui'. Vitest 4 browser mode serves its orchestrator/client
 // assets at root-absolute URLs (/__vitest_browser__/*, /@fs/*) that carry no
 // base prefix, so under '/ui' they 404 and the browser session never connects
@@ -13,11 +15,24 @@ import { defineConfig, type Plugin } from 'vitest/config';
 // '/' under Vitest only; the real `vite build` keeps '/ui'.
 const forceTestBase: Plugin = {
   name: 'engram:force-test-base',
-  config: () => (process.env.VITEST ? { base: '/' } : {})
+  config: () => process.env.VITEST ? { base: '/' } : {}
 };
 
 export default defineConfig({
-  plugins: [tailwindcss(), sveltekit(), forceTestBase],
+  plugins: [
+    tailwindcss(),
+    sveltekit({
+      preprocess: vitePreprocess(),
+      adapter: adapter({ fallback: 'index.html' }),
+      paths: { base: '/ui', relative: false },
+      // Pin the app version so the build is byte-reproducible: SvelteKit's default
+      // version is a Date.now() timestamp (written to _app/version.json and folded
+      // into entry-chunk hashes), which makes the vendored SPA differ on every
+      // rebuild and breaks the ui-drift CI gate. The binary carries the real version.
+      version: { name: 'engram' }
+    }),
+    forceTestBase
+  ],
   test: {
     projects: [
       {

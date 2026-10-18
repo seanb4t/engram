@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Memory } from '$lib/gen/engram_pb';
-  import type { CurationAction } from '$lib/curation/host.svelte';
+  import type { Memory } from '#lib/gen/engram_pb.js';
+  import type { CurationAction } from '#lib/curation/host.svelte.js';
   import ReplaceIcon from '@lucide/svelte/icons/replace';
   import ArchiveIcon from '@lucide/svelte/icons/archive';
   import ArchiveRestoreIcon from '@lucide/svelte/icons/archive-restore';

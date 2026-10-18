@@ -4,8 +4,8 @@ import { ConnectError, Code } from '@connectrpc/connect';
 import MemoryDetail from './MemoryDetail.svelte';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { MemorySchema } from '$lib/gen/engram_pb';
-import { fullTimestamp } from '$lib/time';
+import { MemorySchema } from '#lib/gen/engram_pb.js';
+import { fullTimestamp } from '#lib/time.js';
 
 const withSummary = create(MemorySchema, {
   id: '1', content: 'full **body** here', summary: 'terse digest line',

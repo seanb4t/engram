@@ -1,7 +1,7 @@
 import { createMutation, useQueryClient, type QueryClient } from '@tanstack/svelte-query';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { engramWrite } from '$lib/client';
+import { engramWrite } from '#lib/client.js';
 import { applyToMemoryCaches, CONSOLE_SOURCE } from './memory';
 import {
   ArchiveMemoryRequestSchema,
@@ -11,8 +11,8 @@ import {
   type ArchiveResult,
   type SupersedeMemoryRequest,
   type SupersedeMemoryResponse
-} from '$lib/gen/engram_pb';
-import type { ParsedConnectError } from '$lib/errors/connect-error';
+} from '#lib/gen/engram_pb.js';
+import type { ParsedConnectError } from '#lib/errors/connect-error.js';
 
 // ArchiveSubmitOutcome is what CurationSurfaces' onsubmit resolves to (never
 // throws) -- ArchiveConfirmDialog switches its body on `kind` alone.

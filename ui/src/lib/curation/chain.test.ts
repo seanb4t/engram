@@ -10,7 +10,7 @@ import {
   VectorEvidenceSchema,
   EdgeType,
   SupersessionDirection
-} from '$lib/gen/engram_pb';
+} from '#lib/gen/engram_pb.js';
 import { headIdFrom, buildChain, compareChainNodes, type ChainNode } from './chain';
 
 const NOW = new Date('2030-01-01T00:00:00Z');

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { Memory } from '$lib/gen/engram_pb';
+  import type { Memory } from '#lib/gen/engram_pb.js';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
-  import * as HoverCard from '$lib/components/ui/hover-card';
-  import { memoryStateWords } from '$lib/memorystate';
-  import { fullTimestamp, relativeTime } from '$lib/time';
-  import { stripCategoryPrefix } from '$lib/summary';
+  import * as HoverCard from '#lib/components/ui/hover-card/index.js';
+  import { memoryStateWords } from '#lib/memorystate.js';
+  import { fullTimestamp, relativeTime } from '#lib/time.js';
+  import { stripCategoryPrefix } from '#lib/summary.js';
 
   // ROW-02: the overlay hover card. `open` is driven entirely by the HOST
   // (ResultsList's own pointer/keyboard state machine) — never by this

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Checkbox as CheckboxPrimitive } from 'bits-ui';
-  import { cn } from '$lib/utils';
+  import { cn } from '#lib/utils.js';
 
   let {
     class: className,

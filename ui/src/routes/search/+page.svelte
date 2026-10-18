@@ -6,15 +6,15 @@
   import { onMount, onDestroy, untrack } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import { resolve } from '$app/paths';
   import { ConnectError, Code } from '@connectrpc/connect';
   import { createQuery, createInfiniteQuery, keepPreviousData } from '@tanstack/svelte-query';
-  import { engram } from '$lib/client';
-  import { peekResume, consumeResume, normalizeReturnPath } from '$lib/resume';
-  import { normalizeVisibility } from '$lib/mutations/memory';
-  import { flashRows } from '$lib/curation/flash.svelte';
-  import { registerCurationHost, defaultActionsFor } from '$lib/curation/host.svelte';
-  import { parseConnectError, fixRowsFor } from '$lib/errors/connect-error';
+  import { engram } from '#lib/client.js';
+  import { peekResume, consumeResume, normalizeReturnPath } from '#lib/resume.js';
+  import { normalizeVisibility } from '#lib/mutations/memory.js';
+  import { flashRows } from '#lib/curation/flash.svelte.js';
+  import { registerCurationHost, defaultActionsFor } from '#lib/curation/host.svelte.js';
+  import { parseConnectError, fixRowsFor } from '#lib/errors/connect-error.js';
   import {
     parseSearchParams,
     encodeSearchParams,
@@ -27,16 +27,16 @@
     K_STEPS,
     DEFAULT_K,
     type SearchParams
-  } from '$lib/search/params';
-  import { classifyInput, type OperatorChip } from '$lib/search/classify';
+  } from '#lib/search/params.js';
+  import { classifyInput, type OperatorChip } from '#lib/search/classify.js';
   import {
     understandEligible,
     understandQueryKey,
     understandQueryRequest,
     visibleSuggestions,
     suggestionAnnouncement
-  } from '$lib/search/understand';
-  import { relatedPath } from '$lib/search/related-params';
+  } from '#lib/search/understand.js';
+  import { relatedPath } from '#lib/search/related-params.js';
   import {
     rankedHeaderParts,
     listingHeaderParts,
@@ -47,23 +47,23 @@
     type HeaderPart,
     type ResolutionInput,
     type HiddenCounts
-  } from '$lib/search/recall-header';
-  import ResultsHeader from '$lib/components/ResultsHeader.svelte';
-  import FacetStrip from '$lib/components/FacetStrip.svelte';
-  import SuggestedRow from '$lib/components/SuggestedRow.svelte';
-  import ResultsList from '$lib/components/ResultsList.svelte';
-  import RecallSplit from '$lib/components/RecallSplit.svelte';
-  import DetailPane from '$lib/components/DetailPane.svelte';
-  import TagBars from '$lib/components/TagBars.svelte';
-  import WriteSurfaces from '$lib/components/WriteSurfaces.svelte';
-  import CurationSurfaces from '$lib/components/CurationSurfaces.svelte';
-  import RecallState, { type RecallStateInput } from '$lib/components/RecallState.svelte';
-  import { Button } from '$lib/components/ui/button';
-  import * as Sheet from '$lib/components/ui/sheet';
-  import { scopeLabel } from '$lib/tags/tags';
+  } from '#lib/search/recall-header.js';
+  import ResultsHeader from '#lib/components/ResultsHeader.svelte';
+  import FacetStrip from '#lib/components/FacetStrip.svelte';
+  import SuggestedRow from '#lib/components/SuggestedRow.svelte';
+  import ResultsList from '#lib/components/ResultsList.svelte';
+  import RecallSplit from '#lib/components/RecallSplit.svelte';
+  import DetailPane from '#lib/components/DetailPane.svelte';
+  import TagBars from '#lib/components/TagBars.svelte';
+  import WriteSurfaces from '#lib/components/WriteSurfaces.svelte';
+  import CurationSurfaces from '#lib/components/CurationSurfaces.svelte';
+  import RecallState, { type RecallStateInput } from '#lib/components/RecallState.svelte';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import * as Sheet from '#lib/components/ui/sheet/index.js';
+  import { scopeLabel } from '#lib/tags/tags.js';
   import XIcon from '@lucide/svelte/icons/x';
 
-  const params = $derived(parseSearchParams(page.url.searchParams));
+  const params = $derived(parseSearchParams(new URLSearchParams(page.url.search)));
   const classified = $derived(classifyInput(params.q));
 
   // Facet-strip state (scope/tags/categories) lives directly in the URL
@@ -83,7 +83,7 @@
   const effective = $derived(applyChips(params, [...facetChips, ...inlineChips]));
 
   function navigate(next: Partial<SearchParams>) {
-    goto(`${base}/search?${encodeSearchParams({ ...params, ...next })}`, { keepFocus: true, noScroll: true });
+    goto(`${resolve('search')}?${encodeSearchParams({ ...params, ...next })}`, { reset: false });
   }
 
   // TAGS-01/D-13: the docked Tags panel's open state is page-local, not URL
@@ -100,7 +100,7 @@
     navigate({ tags: params.tags.includes(tag) ? params.tags.filter((t) => t !== tag) : [...params.tags, tag], sel: '' });
   }
 
-  // The page's own query input (debounced 160ms into the URL, replaceState so
+  // The page's own query input (debounced 160ms into the URL, replace: true so
   // typing doesn't spam browser history). `searchInputEl` also receives
   // focus when a Suggested-row accept/dismiss empties the last chip
   // (a11y gap-fill, not in D-13 — focus must never fall back to <body>).
@@ -115,10 +115,9 @@
     inputText = value;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      goto(`${base}/search?${encodeSearchParams({ ...params, q: value, sel: '' })}`, {
-        replaceState: true,
-        keepFocus: true,
-        noScroll: true
+      goto(`${resolve('search')}?${encodeSearchParams({ ...params, q: value, sel: '' })}`, {
+        replace: true,
+        reset: false
       });
     }, 160);
   }
@@ -321,9 +320,7 @@
   // opened from so the related view (and, later, its own Escape) can return
   // here.
   function openRelated(id: string) {
-    goto(
-      `${base}${relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })}`
-    );
+    goto(resolve(relatedPath(id, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })));
   }
 
   const detailQ = createQuery(() => ({

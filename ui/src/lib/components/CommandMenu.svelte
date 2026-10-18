@@ -1,8 +1,8 @@
 <script lang="ts">
-  import * as Command from '$lib/components/ui/command';
-  import { Kbd } from '$lib/components/ui/kbd';
+  import * as Command from '#lib/components/ui/command/index.js';
+  import { Kbd } from '#lib/components/ui/kbd/index.js';
   import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { setMode, mode } from 'mode-watcher';
@@ -12,14 +12,14 @@
   import CalendarClockIcon from '@lucide/svelte/icons/calendar-clock';
   import SearchIcon from '@lucide/svelte/icons/search';
   import CompassIcon from '@lucide/svelte/icons/compass';
-  import { classifyInput } from '$lib/search/classify';
-  import { handoffToHeaderSearch } from '$lib/search/header-search.svelte';
-  import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
-  import { relatedPath } from '$lib/search/related-params';
-  import { normalizeReturnPath } from '$lib/resume';
-  import { stepTextSize, resetTextSize } from '$lib/display.svelte';
-  import { curationHost, type CurationAction } from '$lib/curation/host.svelte';
-  import type { Memory } from '$lib/gen/engram_pb';
+  import { classifyInput } from '#lib/search/classify.js';
+  import { handoffToHeaderSearch } from '#lib/search/header-search.svelte.js';
+  import { defaultSearchParams, encodeSearchParams } from '#lib/search/params.js';
+  import { relatedPath } from '#lib/search/related-params.js';
+  import { normalizeReturnPath } from '#lib/resume.js';
+  import { stepTextSize, resetTextSize } from '#lib/display.svelte.js';
+  import { curationHost, type CurationAction } from '#lib/curation/host.svelte.js';
+  import type { Memory } from '#lib/gen/engram_pb.js';
 
   // D-11: ⌘K is a command menu of static actions (navigation, display,
   // theme, copy-id) filtered client-side against their own labels -- honest,
@@ -43,11 +43,11 @@
   }
 
   const navItems = [
-    { label: 'Home', href: `${base}/`, icon: HouseIcon },
-    { label: 'Rules', href: `${base}/rules`, icon: ScrollTextIcon },
-    { label: 'Scheduled', href: `${base}/scheduled`, icon: CalendarClockIcon },
-    { label: 'Search', href: `${base}/search`, icon: SearchIcon },
-    { label: 'Discovery', href: `${base}/discovery`, icon: CompassIcon }
+    { label: 'Home', href: resolve(''), icon: HouseIcon },
+    { label: 'Rules', href: resolve('rules'), icon: ScrollTextIcon },
+    { label: 'Scheduled', href: resolve('scheduled'), icon: CalendarClockIcon },
+    { label: 'Search', href: resolve('search'), icon: SearchIcon },
+    { label: 'Discovery', href: resolve('discovery'), icon: CompassIcon }
   ];
   const visibleNavItems = $derived(navItems.filter((item) => matchesQuery(item.label)));
 
@@ -118,9 +118,7 @@
   // was opened from.
   function selectRelated() {
     open = false;
-    goto(
-      `${base}${relatedPath(sel, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })}`
-    );
+    goto(resolve(relatedPath(sel, { from: normalizeReturnPath(page.url.pathname + page.url.search), trail: [] })));
   }
 
   const recordItems = $derived.by(() => {
@@ -169,7 +167,7 @@
     const text = q.trim();
     if (!text) return;
     if (isId) {
-      goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), q: idValue })}`);
+      goto(`${resolve('search')}?${encodeSearchParams({ ...defaultSearchParams(), q: idValue })}`);
     } else {
       handoffToHeaderSearch(text);
     }

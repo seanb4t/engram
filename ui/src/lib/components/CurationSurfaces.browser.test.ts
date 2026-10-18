@@ -14,9 +14,9 @@ import {
   SupersessionDirection,
   type Memory,
   type SupersedeMemoryRequest
-} from '$lib/gen/engram_pb';
-import { flashing, FLASH_MS } from '$lib/curation/flash.svelte';
-import { peekResume, type SupersedeResumeEnvelope, type ArchiveResumeEnvelope } from '$lib/resume';
+} from '#lib/gen/engram_pb.js';
+import { flashing, FLASH_MS } from '#lib/curation/flash.svelte.js';
+import { peekResume, type SupersedeResumeEnvelope, type ArchiveResumeEnvelope } from '#lib/resume.js';
 import CurationSurfaces from './CurationSurfaces.svelte';
 
 const {
@@ -37,8 +37,8 @@ const {
   redirectToLoginSpy: vi.fn()
 }));
 
-vi.mock('$lib/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/client')>();
+vi.mock('#lib/client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/client.js')>();
   return {
     ...actual,
     engram: { ...actual.engram, getMemory: getMemorySpy, relatedMemories: relatedMemoriesSpy },
@@ -53,8 +53,8 @@ vi.mock('$lib/client', async (importOriginal) => {
 
 vi.mock('svelte-sonner', () => ({ toast: toastSpy }));
 
-vi.mock('$lib/resume', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/resume')>();
+vi.mock('#lib/resume.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/resume.js')>();
   return { ...actual, redirectToLogin: redirectToLoginSpy };
 });
 

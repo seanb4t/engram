@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { QueryClient } from '@tanstack/svelte-query';
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { MemorySchema, ArchiveOutcome, type ArchiveResult, type Memory } from '$lib/gen/engram_pb';
+import { MemorySchema, ArchiveOutcome, type ArchiveResult, type Memory } from '#lib/gen/engram_pb.js';
 import {
   applyArchiveResultsOptimistic,
   changedIds,

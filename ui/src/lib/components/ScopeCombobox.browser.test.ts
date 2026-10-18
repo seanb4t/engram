@@ -5,7 +5,7 @@ import '../../app.css';
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi } from 'vitest';
 import { create, type MessageInitShape } from '@bufbuild/protobuf';
-import { ListScopesResponseSchema, type ListScopesResponse } from '$lib/gen/engram_pb';
+import { ListScopesResponseSchema, type ListScopesResponse } from '#lib/gen/engram_pb.js';
 import ScopeCombobox from './ScopeCombobox.svelte';
 
 function makeScopes(overrides: MessageInitShape<typeof ListScopesResponseSchema> = {}): ListScopesResponse {

@@ -60,14 +60,14 @@ describe('related-params', () => {
   });
 
   it('builds the related path with an encoded from parameter', () => {
-    expect(relatedPath('q7kf2m9x0c', { from: '/search?q=a', trail: [] })).toBe('/related/q7kf2m9x0c?from=%2Fsearch%3Fq%3Da');
+    expect(relatedPath('q7kf2m9x0c', { from: '/search?q=a', trail: [] })).toBe('related/q7kf2m9x0c?from=%2Fsearch%3Fq%3Da');
   });
 
   it('builds a bare path with no query when params are defaults', () => {
-    expect(relatedPath('q7kf2m9x0c', defaultRelatedParams())).toBe('/related/q7kf2m9x0c');
+    expect(relatedPath('q7kf2m9x0c', defaultRelatedParams())).toBe('related/q7kf2m9x0c');
   });
 
   it('URI-encodes the id path segment', () => {
-    expect(relatedPath(UUID_1, defaultRelatedParams())).toBe(`/related/${UUID_1}`);
+    expect(relatedPath(UUID_1, defaultRelatedParams())).toBe(`related/${UUID_1}`);
   });
 });

@@ -2,10 +2,10 @@
   import { Command as CommandPrimitive } from 'bits-ui';
   import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
-  import * as Popover from '$lib/components/ui/popover';
-  import * as Command from '$lib/components/ui/command';
-  import { Kbd } from '$lib/components/ui/kbd';
-  import { Badge } from '$lib/components/ui/badge';
+  import * as Popover from '#lib/components/ui/popover/index.js';
+  import * as Command from '#lib/components/ui/command/index.js';
+  import { Kbd } from '#lib/components/ui/kbd/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
   import ScopeChip from './ScopeChip.svelte';
   import TagMatchRow from './TagMatchRow.svelte';
   import SearchIcon from '@lucide/svelte/icons/search';
@@ -13,15 +13,15 @@
   import CalendarClockIcon from '@lucide/svelte/icons/calendar-clock';
   import CompassIcon from '@lucide/svelte/icons/compass';
   import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
-  import { engram } from '$lib/client';
-  import { classifyInput, KNOWN_CATEGORIES, type OperatorChip } from '$lib/search/classify';
-  import { relativeTime } from '$lib/time';
-  import { parseConnectError, fixRowsFor, type FixRow } from '$lib/errors/connect-error';
-  import { defaultSearchParams, encodeSearchParams, applyChips } from '$lib/search/params';
-  import { headerSearch } from '$lib/search/header-search.svelte';
-  import { listTagsQuery } from '$lib/tags/query';
-  import { toTagRows, rankTagMatches, scopeLabel, matchFooter, tagsLoadingLine, tagsErrorCopy } from '$lib/tags/tags';
+  import { resolve } from '$app/paths';
+  import { engram } from '#lib/client.js';
+  import { classifyInput, KNOWN_CATEGORIES, type OperatorChip } from '#lib/search/classify.js';
+  import { relativeTime } from '#lib/time.js';
+  import { parseConnectError, fixRowsFor, type FixRow } from '#lib/errors/connect-error.js';
+  import { defaultSearchParams, encodeSearchParams, applyChips } from '#lib/search/params.js';
+  import { headerSearch } from '#lib/search/header-search.svelte.js';
+  import { listTagsQuery } from '#lib/tags/query.js';
+  import { toTagRows, rankTagMatches, scopeLabel, matchFooter, tagsLoadingLine, tagsErrorCopy } from '#lib/tags/tags.js';
 
   type ScopeChipT = Extract<OperatorChip, { kind: 'scope' }>;
   type TagChipT = Extract<OperatorChip, { kind: 'tag' }>;
@@ -293,10 +293,10 @@
   });
 
   const commandItems = [
-    { label: 'Rules', href: `${base}/rules`, icon: ScrollTextIcon },
-    { label: 'Scheduled', href: `${base}/scheduled`, icon: CalendarClockIcon },
-    { label: 'Search', href: `${base}/search`, icon: SearchIcon },
-    { label: 'Discovery', href: `${base}/discovery`, icon: CompassIcon }
+    { label: 'Rules', href: resolve('rules'), icon: ScrollTextIcon },
+    { label: 'Scheduled', href: resolve('scheduled'), icon: CalendarClockIcon },
+    { label: 'Search', href: resolve('search'), icon: SearchIcon },
+    { label: 'Discovery', href: resolve('discovery'), icon: CompassIcon }
   ];
   const visibleCommands = $derived(
     debouncedText.trim()
@@ -309,7 +309,7 @@
   function runTopSearch() {
     if (classified.kind !== 'text') return;
     const params = applyChips({ ...defaultSearchParams(), q: classified.text, crossSpine: !crossSpineOff }, activeChips);
-    goto(`${base}/search?${encodeSearchParams(params)}`);
+    goto(`${resolve('search')}?${encodeSearchParams(params)}`);
     headerSearch.text = '';
     debouncedText = '';
     open = false;
@@ -319,7 +319,7 @@
   // unranked listing only when `q` classifies as operators (D-09).
   function runTopList() {
     const params = { ...defaultSearchParams(), q: debouncedText.trim(), crossSpine: !crossSpineOff };
-    goto(`${base}/search?${encodeSearchParams(params)}`);
+    goto(`${resolve('search')}?${encodeSearchParams(params)}`);
     headerSearch.text = '';
     debouncedText = '';
     open = false;
@@ -330,7 +330,7 @@
   function openMemory(id: string) {
     const q = classified.kind === 'text' ? classified.text : debouncedText;
     const params = applyChips({ ...defaultSearchParams(), q, crossSpine: !crossSpineOff, sel: id }, activeChips);
-    goto(`${base}/search?${encodeSearchParams(params)}`);
+    goto(`${resolve('search')}?${encodeSearchParams(params)}`);
     headerSearch.text = '';
     open = false;
   }
@@ -584,7 +584,7 @@
             <div class="px-2 py-1.5 text-sm text-muted-foreground">
               No memories match {classified.text} in any scope you can read
             </div>
-            <Command.Item value="__search-discoveries__" onSelect={() => goCommand(`${base}/discovery`)}>
+            <Command.Item value="__search-discoveries__" onSelect={() => goCommand(resolve('discovery'))}>
               Search discoveries for {classified.text}
             </Command.Item>
           {/if}

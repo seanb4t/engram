@@ -2,14 +2,15 @@
   import { onMount } from 'svelte';
   import { createQuery } from '@tanstack/svelte-query';
   import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
-  import { engram } from '$lib/client';
-  import { PAGE_LIMIT, listMemoriesKey } from '$lib/queries';
-  import { defaultSearchParams, encodeSearchParams } from '$lib/search/params';
-  import { peekResume, consumeResume, normalizeReturnPath, isAllowedDestination } from '$lib/resume';
-  import ResultsList from '$lib/components/ResultsList.svelte';
-  import ScopeChip from '$lib/components/ScopeChip.svelte';
-  import { Button } from '$lib/components/ui/button';
+  import { resolve } from '$app/paths';
+  import type { PathnameWithSearchOrHash } from '$app/types';
+  import { engram } from '#lib/client.js';
+  import { PAGE_LIMIT, listMemoriesKey } from '#lib/queries.js';
+  import { defaultSearchParams, encodeSearchParams } from '#lib/search/params.js';
+  import { peekResume, consumeResume, normalizeReturnPath, isAllowedDestination } from '#lib/resume.js';
+  import ResultsList from '#lib/components/ResultsList.svelte';
+  import ScopeChip from '#lib/components/ScopeChip.svelte';
+  import { Button } from '#lib/components/ui/button/index.js';
   // svelte-query v6: options wrapped in a function; results are runes objects read directly (no $).
   const scopesQ = createQuery(() => ({ queryKey: ['listScopes'], queryFn: () => engram.listScopes({}) }));
   // Recent memories below the scope tiles: a cross-spine recent-activity feed
@@ -26,7 +27,7 @@
   // activation searches the record's own id, which resolves via GetMemory
   // and auto-opens the pane (ENTRY-01).
   function openRecord(id: string) {
-    goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), q: id })}`);
+    goto(`${resolve('search')}?${encodeSearchParams({ ...defaultSearchParams(), q: id })}`);
   }
 
   // D-09 re-auth landing (Codex round-3 HIGH): the OIDC callback always lands
@@ -35,9 +36,9 @@
   // deleting it -- the destination route (search/discovery/rules/scheduled)
   // still needs it to reopen the sheet/dialog and pass resumeValues in as
   // props; it is the sole owner of consumeResume() (after the form's
-  // onresumeapplied acknowledgement). base + normalizeReturnPath guarantees
-  // the redirect never double-prefixes to /ui/ui/search (base='/ui',
-  // svelte.config.js:9). A malformed/tampered returnPath that fails
+  // onresumeapplied acknowledgement). resolve() + normalizeReturnPath guarantees
+  // the redirect never double-prefixes to /ui/ui/search (paths.base='/ui',
+  // vite.config.ts). A malformed/tampered returnPath that fails
   // isAllowedDestination is rejected and the envelope discarded rather than
   // followed.
   onMount(() => {
@@ -47,7 +48,7 @@
       consumeResume();
       return;
     }
-    goto(`${base}${normalizeReturnPath(env.returnPath)}`);
+    goto(resolve(normalizeReturnPath(env.returnPath).slice(1) as PathnameWithSearchOrHash));
   });
 </script>
 
@@ -64,7 +65,7 @@
           variant="surface"
           class="relative text-left p-3 h-auto block overflow-hidden bg-[var(--surface-2)] border border-[var(--border-subtle,var(--border))]"
           onclick={() =>
-            goto(`${base}/search?${encodeSearchParams({ ...defaultSearchParams(), q: `scope:${s.scope}` })}`)}
+            goto(`${resolve('search')}?${encodeSearchParams({ ...defaultSearchParams(), q: `scope:${s.scope}` })}`)}
         >
           <span class="absolute left-0 top-0 bottom-0 w-[calc(3*var(--u))] bg-primary"></span>
           <ScopeChip scope={s.scope} mode="stacked" />

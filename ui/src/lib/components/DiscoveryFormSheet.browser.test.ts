@@ -1,7 +1,7 @@
 import { render } from 'vitest-browser-svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConnectError, Code } from '@connectrpc/connect';
-import { RESUME_KEY } from '$lib/resume';
+import { RESUME_KEY } from '#lib/resume.js';
 import DiscoveryFormSheet from './DiscoveryFormSheet.svelte';
 
 const { createMutateSpy, redirectToLoginSpy } = vi.hoisted(() => ({
@@ -12,13 +12,13 @@ const { createMutateSpy, redirectToLoginSpy } = vi.hoisted(() => ({
 // Mocks the createMutation hook directly (RESEARCH-sanctioned "mocked hook"
 // pattern, mirrors MemoryFormSheet.browser.test.ts) -- the composite/RPC
 // shape itself is already covered by mutations/discovery.test.ts (Plan 04).
-vi.mock('$lib/mutations/discovery', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/mutations/discovery')>();
+vi.mock('#lib/mutations/discovery.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/mutations/discovery.js')>();
   return { ...actual, useCreateDiscovery: () => ({ mutate: createMutateSpy }) };
 });
 
-vi.mock('$lib/resume', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('$lib/resume')>();
+vi.mock('#lib/resume.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#lib/resume.js')>();
   return { ...actual, redirectToLogin: redirectToLoginSpy };
 });
 

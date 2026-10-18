@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import * as Resizable from '$lib/components/ui/resizable';
-  import { Button } from '$lib/components/ui/button';
+  import * as Resizable from '#lib/components/ui/resizable/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
   import XIcon from '@lucide/svelte/icons/x';
 
   // D-14/Pitfall B: the sketch's pinned, toggle-close, resizable right

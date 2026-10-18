@@ -9,10 +9,10 @@
 // Task 1 lays down the full type/constant surface and a working but
 // unfiltered visibleMembership; Task 2 completes laneRows, the vector-lane
 // collapse, hidden-type filtering, chain arrows and node accessible names.
-import type { Memory, RelatedMemoriesResponse, RelatedEdge } from '$lib/gen/engram_pb';
-import { EdgeType, SupersessionDirection } from '$lib/gen/engram_pb';
-import { compareChainNodes, type ChainNode } from '$lib/curation/chain';
-import { memoryStateWords, type RecordStateWord } from '$lib/memorystate';
+import type { Memory, RelatedMemoriesResponse, RelatedEdge } from '#lib/gen/engram_pb.js';
+import { EdgeType, SupersessionDirection } from '#lib/gen/engram_pb.js';
+import { compareChainNodes, type ChainNode } from '#lib/curation/chain.js';
+import { memoryStateWords, type RecordStateWord } from '#lib/memorystate.js';
 import { timestampDate } from '@bufbuild/protobuf/wkt';
 import {
   forceSimulation,

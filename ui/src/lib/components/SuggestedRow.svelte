@@ -1,9 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import * as ScrollArea from '$lib/components/ui/scroll-area';
-  import type { FilterSuggestion } from '$lib/gen/engram_pb';
-  import type { SearchParams } from '$lib/search/params';
-  import { suggestionLabel, suggestionKey, acceptPartial } from '$lib/search/understand';
+  import * as ScrollArea from '#lib/components/ui/scroll-area/index.js';
+  import type { FilterSuggestion } from '#lib/gen/engram_pb.js';
+  import type { SearchParams } from '#lib/search/params.js';
+  import { suggestionLabel, suggestionKey, acceptPartial } from '#lib/search/understand.js';
 
   // NLQ-03/D-11/D-12/D-13: the Suggested row — unapplied, dashed chips that
   // accept through the page's own FacetStrip onchange path, dismiss
