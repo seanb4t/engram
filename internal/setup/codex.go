@@ -91,6 +91,10 @@ func (codexRuntime) Detect(env Environment) bool {
 // reported as a failed row naming this runtime, exactly like any other
 // Plan() error.
 func (codexRuntime) Plan(env Environment, opts Options) (Plan, error) {
+	if opts.CallbackPort > 0 {
+		return Plan{}, fmt.Errorf("codex: --callback-port %d: codex mcp add has no callback-port option; drop --callback-port or exclude codex via --runtime: %w",
+			opts.CallbackPort, ErrCallbackPortUnsupported)
+	}
 	if len(opts.Headers) > 0 {
 		sorted := sortedHeaders(opts.Headers)
 		names := make([]string, len(sorted))

@@ -455,6 +455,11 @@ type SetupConfig struct {
 	// "oauth-client", "bearer", or "none" — validated by
 	// ValidateSetupAuth.
 	Auth string `koanf:"auth"`
+	// CallbackPort is the fixed OAuth callback port a Claude Code
+	// registration should carry (ENGRAM_CALLBACK_PORT / --callback-port),
+	// as the raw string the registry resolved; ValidateSetupCallbackPort
+	// parses and bounds it. Empty means "not set".
+	CallbackPort string `koanf:"callback_port"`
 }
 
 // Load builds Config from registry defaults, the ENGRAM_ env layer, and — when

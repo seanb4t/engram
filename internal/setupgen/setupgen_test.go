@@ -23,8 +23,8 @@ func TestRenderRealPlans(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := Cases()
-	if len(cases) != 5 {
-		t.Fatalf("got %d cases, want five", len(cases))
+	if len(cases) != 6 {
+		t.Fatalf("got %d cases, want six", len(cases))
 	}
 	for i, label := range []string{"oauth", "oauth-client", "bearer", "none", "bearer+header"} {
 		t.Run(label, func(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -155,13 +156,18 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 
 	switch opts.Auth {
 	case "oauth", "none":
+		// --callback-port is emitted only when the caller fixed one (an
+		// SSH session forwarding that port, say); without it the argv is
+		// byte-identical to every earlier release and Claude Code picks a
+		// random loopback port on each login.
+		args := []string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL, "--scope", "user"}
+		args = append(args, claudeCodeCallbackPortArgs(opts.CallbackPort)...)
 		return Plan{
 			Runtime: "claude-code",
 			Actions: []Action{
 				claudeCodeRemoveAction,
 				{
-					Args: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL, "--scope", "user"},
-						claudeCodeHeaderArgs(opts.Headers)...),
+					Args:        append(args, claudeCodeHeaderArgs(opts.Headers)...),
 					Description: "register engram as a user-scope MCP server",
 				},
 			},
@@ -169,13 +175,18 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 			Skills: skillTarget,
 		}, nil
 	case "oauth-client":
+		// A pre-registered client needs a fixed redirect URI, so this arm
+		// always carries a port: the caller's, or the shipped default
+		// (claudeCodeDefaultCallbackPort) that existing registrations and
+		// the generated skill table already use.
 		return Plan{
 			Runtime: "claude-code",
 			Actions: []Action{
 				claudeCodeRemoveAction,
 				{
-					Args: append([]string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
-						"--scope", "user", "--client-id", opts.ClientID, "--client-secret", "--callback-port", "8765"},
+					Args: append(append([]string{"claude", "mcp", "add", "--transport", "http", "engram", opts.URL,
+						"--scope", "user", "--client-id", opts.ClientID, "--client-secret"},
+						claudeCodeCallbackPortArgs(claudeCodeOAuthClientPort(opts.CallbackPort))...),
 						claudeCodeHeaderArgs(opts.Headers)...),
 					// --client-secret deliberately takes no inline value: Claude
 					// Code can prompt interactively, but engram provides no stdin.
@@ -205,6 +216,37 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 	default:
 		return Plan{}, fmt.Errorf("claude-code: auth mode %q: %w", opts.Auth, ErrAuthModeUnsupported)
 	}
+}
+
+// claudeCodeDefaultCallbackPort is the loopback port the oauth-client arm
+// has always registered: a pre-registered client's redirect URI must be
+// fixed, and this value is what the shipped skill table and every existing
+// registration carry, so it stays the default when no --callback-port is
+// given.
+const claudeCodeDefaultCallbackPort = 8765
+
+// ClaudeCodeDefaultCallbackPort is claudeCodeDefaultCallbackPort for the
+// CLI boundary's result rows, which name the port the oauth-client arm
+// carried when the caller gave none.
+const ClaudeCodeDefaultCallbackPort = claudeCodeDefaultCallbackPort
+
+// claudeCodeOAuthClientPort resolves the oauth-client arm's port: the
+// caller's when set, otherwise the shipped default.
+func claudeCodeOAuthClientPort(port int) int {
+	if port > 0 {
+		return port
+	}
+	return claudeCodeDefaultCallbackPort
+}
+
+// claudeCodeCallbackPortArgs renders `--callback-port <port>` for a set
+// port and nil for 0, so appending its result to an Args slice with no
+// port is a no-op and that slice stays byte-identical to HEAD.
+func claudeCodeCallbackPortArgs(port int) []string {
+	if port <= 0 {
+		return nil
+	}
+	return []string{"--callback-port", strconv.Itoa(port)}
 }
 
 // claudePluginListProbe is claude-code's D-10 capability-and-state probe:

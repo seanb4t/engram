@@ -509,8 +509,16 @@ type setupRuntimeRow struct {
 	Registered string `json:"registered,omitempty"`
 	TokenFile  string `json:"token_file,omitempty"`
 	Headers    string `json:"headers,omitempty"`
-	Config     string `json:"config,omitempty"`
-	Notes      string `json:"notes,omitempty"`
+	// CallbackPort (change cli-parity) is the OAuth callback port the
+	// registration was given — the caller's --callback-port, or the
+	// oauth-client arm's shipped 8765 — as a plain decimal string, on
+	// every present row, so a re-run can read which port a registration
+	// carries. Like Headers it reports what was REQUESTED; the runtime's
+	// own read verb does not report the port back, so it is never part of
+	// the already-correct comparison.
+	CallbackPort string `json:"callback_port,omitempty"`
+	Config       string `json:"config,omitempty"`
+	Notes        string `json:"notes,omitempty"`
 
 	// Phase 4 (Drift Detection, D-12/D-03): Facets is the differing
 	// facets of a compared registration, as ONE comma-joined string in
@@ -581,11 +589,32 @@ type setupReportDoc struct {
 // contract.
 func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup.Runtime, opts setup.Options, includeContent bool) []setupRuntimeRow {
 	headers := setupHeadersSummary(opts.Headers)
+	port := setupCallbackPortSummary(opts)
 	rows := make([]setupRuntimeRow, 0, len(runtimes))
 	for _, rt := range runtimes {
-		rows = append(rows, setupRuntimeRowFromResult(ctx, env, rt, setup.Preview(ctx, env, rt, opts), headers, false, includeContent))
+		row := setupRuntimeRowFromResult(ctx, env, rt, setup.Preview(ctx, env, rt, opts), headers, false, includeContent)
+		if row.Present {
+			row.CallbackPort = port
+		}
+		rows = append(rows, row)
 	}
 	return rows
+}
+
+// setupCallbackPortSummary renders the callback-port facet every present
+// row carries: the caller's --callback-port when set, the oauth-client
+// arm's shipped default when that mode is selected without one, and empty
+// otherwise. Like setupHeadersSummary it reports what was REQUESTED,
+// independent of whether a runtime's own Plan() accepted it.
+func setupCallbackPortSummary(opts setup.Options) string {
+	switch {
+	case opts.CallbackPort > 0:
+		return strconv.Itoa(opts.CallbackPort)
+	case opts.Auth == "oauth-client":
+		return strconv.Itoa(setup.ClaudeCodeDefaultCallbackPort)
+	default:
+		return ""
+	}
 }
 
 // setupPreviewSummary renders the operator-facing one-line PREVIEW
@@ -669,6 +698,18 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 		return nil, setup.Options{}, err
 	}
 
+	// --callback-port (change cli-parity): bounded here, and valid only
+	// with the OAuth modes — a bearer or none registration has no OAuth
+	// redirect for the port to serve, so the flag is the caller's own
+	// mistake, caught before any runtime is touched.
+	callbackPort, err := config.ValidateSetupCallbackPort(cfg.Setup.CallbackPort)
+	if err != nil {
+		return nil, setup.Options{}, usageErrorf("%w", err)
+	}
+	if callbackPort > 0 && auth != "oauth" && auth != "oauth-client" {
+		return nil, setup.Options{}, usageErrorf("--callback-port applies only to --auth oauth or --auth oauth-client, not --auth %s", auth)
+	}
+
 	runtimes, err := setup.Select(setupRuntime)
 	if err != nil {
 		return nil, setup.Options{}, usageErrorf("%w", err)
@@ -685,7 +726,7 @@ func setupResolve(cmd *cobra.Command) ([]setup.Runtime, setup.Options, error) {
 		return nil, setup.Options{}, usageErrorf("--url or ENGRAM_URL is required")
 	}
 
-	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile, ClientID: setupClientID, Headers: headers}, nil
+	return runtimes, setup.Options{URL: cfg.Setup.URL, Auth: auth, TokenFile: setupTokenFile, ClientID: setupClientID, Headers: headers, CallbackPort: callbackPort}, nil
 }
 
 // setupPlanDoc resolves --url/--auth/--runtime (setupResolve) and builds
@@ -894,9 +935,13 @@ func setupApplyRun(ctx context.Context, cmd *cobra.Command) error {
 	}
 
 	headers := setupHeadersSummary(opts.Headers)
+	port := setupCallbackPortSummary(opts)
 	rows := make([]setupRuntimeRow, len(runtimes))
 	for i, rt := range runtimes {
 		rows[i] = setupRuntimeRowFromResult(ctx, setupEnv, rt, setup.Apply(ctx, setupEnv, rt, opts), headers, true, format != formatText)
+		if rows[i].Present {
+			rows[i].CallbackPort = port
+		}
 	}
 	doc := setupReportDoc{Runtimes: rows}
 
@@ -1042,6 +1087,15 @@ Accepted --auth modes:
                 when the flag is supplied
   none          a local / no-auth server
 
+Fixed OAuth callback port (--callback-port N; default: ENGRAM_CALLBACK_PORT): valid with --auth oauth
+and --auth oauth-client only. On claude-code it becomes claude mcp add --callback-port N, so the OAuth
+redirect URI the runtime registers is http://localhost:N/callback on every login — the port to
+forward with ssh -L when Claude Code runs on a host with no browser. Without it the oauth arm emits
+no port (the runtime picks one per login) and the oauth-client arm keeps its shipped 8765. codex and
+opencode have no callback-port option: their rows report failed naming the flag; drop it or exclude
+them via --runtime. The runtime's own read verb does not report the port back, so it is carried on
+each row's callback_port field but never compared for already-correct.
+
 Additional headers (--header NAME=ENVVAR, repeatable or comma-separated; default: ENGRAM_HEADERS, a
 comma-separated list that --header on the command line replaces): each header rides alongside whatever
 --auth produces and is valid with every mode. ENVVAR is the NAME of an environment variable the runtime
@@ -1065,7 +1119,8 @@ const setupExample = `  engram setup --url https://engram.example.com/mcp
   engram setup --url https://engram.example.com/mcp --runtime claude-code
   engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
   engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
-  engram setup --url https://engram.example.com/mcp --auth oauth --header x-gateway-api-key=GATEWAY_KEY`
+  engram setup --url https://engram.example.com/mcp --auth oauth --header x-gateway-api-key=GATEWAY_KEY
+  engram setup --url https://engram.example.com/mcp --auth oauth --callback-port 8765 --runtime claude-code`
 
 func init() {
 	setupCmd.Long = setupLongDescription()
@@ -1082,6 +1137,9 @@ func init() {
 		"additional HTTP header as NAME=ENVVAR, where ENVVAR names the environment variable the runtime "+
 			"resolves itself at connect time — never a value; repeatable or comma-separated; valid with every "+
 			"--auth mode; codex has no custom-header flag and reports a failed row (default: ENGRAM_HEADERS)")
+	setupCmd.Flags().String("callback-port", config.FlagDefault("callback-port"),
+		"fixed OAuth callback port (1-65535) for the redirect URI the runtime registers; valid with --auth oauth or oauth-client only; "+
+			"claude-code passes it as claude mcp add --callback-port, codex and opencode report a failed row (default: ENGRAM_CALLBACK_PORT)")
 	setupCmd.Flags().StringVar(&setupClientID, "client-id", "",
 		"non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag")
 	setupCmd.Flags().StringVar(&setupTokenFile, "token-file", "",

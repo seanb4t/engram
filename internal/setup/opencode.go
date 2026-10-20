@@ -110,6 +110,10 @@ func (openCodeRuntime) Detect(env Environment) bool {
 // HomeDir failure surfaced through opencodeConfigRoot is reported as a
 // failed row naming this runtime, exactly like any other Plan() error.
 func (openCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
+	if opts.CallbackPort > 0 {
+		return Plan{}, fmt.Errorf("opencode: --callback-port %d: opencode mcp add has no callback-port option; drop --callback-port or exclude opencode via --runtime: %w",
+			opts.CallbackPort, ErrCallbackPortUnsupported)
+	}
 	const probeVerb = "opencode"
 	probe := []string{probeVerb, "mcp", "list"}
 

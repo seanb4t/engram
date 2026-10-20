@@ -61,7 +61,7 @@ type Case struct {
 // by the gateway-header case. CLI flag names belong to engram's Cobra
 // command, not Plan; conformance tests validate them.
 func Cases() []Case {
-	cases := make([]Case, 0, 5)
+	cases := make([]Case, 0, 6)
 	for _, auth := range []string{"oauth", "oauth-client", "bearer", "none"} {
 		opts := setup.Options{URL: "https://engram.example.com/mcp", Auth: auth}
 		args := []string{"engram", "setup", "--url", opts.URL, "--auth", opts.Auth}
@@ -83,6 +83,12 @@ func Cases() []Case {
 	headerArgs := []string{"engram", "setup", "--url", headerOpts.URL, "--auth", headerOpts.Auth,
 		"--header", "x-gateway-api-key=GATEWAY_KEY"}
 	cases = append(cases, Case{Label: "bearer+header", Options: headerOpts, DelegationArgs: headerArgs})
+	// The headless-login case (change cli-parity): oauth with a fixed
+	// callback port, the registration an SSH session forwards with ssh -L
+	// so the browser on the caller's own machine can complete the redirect.
+	portOpts := setup.Options{URL: "https://engram.example.com/mcp", Auth: "oauth", CallbackPort: 8765}
+	portArgs := []string{"engram", "setup", "--url", portOpts.URL, "--auth", portOpts.Auth, "--callback-port", "8765"}
+	cases = append(cases, Case{Label: "oauth+callback-port", Options: portOpts, DelegationArgs: portArgs})
 	return cases
 }
 

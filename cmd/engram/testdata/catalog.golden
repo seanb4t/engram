@@ -1398,6 +1398,12 @@
           "usage": "auth mode: \"oauth\", \"oauth-client\", \"bearer\", or \"none\" (default: ENGRAM_AUTH)"
         },
         {
+          "name": "callback-port",
+          "type": "string",
+          "default": "",
+          "usage": "fixed OAuth callback port (1-65535) for the redirect URI the runtime registers; valid with --auth oauth or oauth-client only; claude-code passes it as claude mcp add --callback-port, codex and opencode report a failed row (default: ENGRAM_CALLBACK_PORT)"
+        },
+        {
           "name": "client-id",
           "type": "string",
           "default": "",

@@ -239,6 +239,12 @@ var registry = []field{
 	// cmd/engram/setup.go's init(), mirroring reindex.go --target.
 	{Key: "setup.url", Env: "ENGRAM_URL", Flag: "url"},
 	{Key: "setup.auth", Env: "ENGRAM_AUTH", Flag: "auth", Default: "oauth"},
+	// callback_port fixes the loopback port Claude Code's OAuth redirect
+	// URI uses (change cli-parity): a registration-time client setting
+	// like url and auth, so it is enrolled env-first with no Helm value.
+	// No default: empty means the runtime picks its own port, except on
+	// the oauth-client arm, which keeps its shipped 8765.
+	{Key: "setup.callback_port", Env: "ENGRAM_CALLBACK_PORT", Flag: "callback-port"},
 }
 
 // envToKey maps each ENGRAM_* env var to its koanf key.

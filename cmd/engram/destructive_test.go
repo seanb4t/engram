@@ -438,7 +438,7 @@ var mutatingFlagCases = []struct {
 	// 02-03-PLAN.md Task 1: setupCmd's row grows an eighth own flag,
 	// --header, plus "apply" once registerDestructive's addApplyFlag adds
 	// it (02-01-PLAN.md Task 1 originally named seven).
-	{setupCmd, []string{"apply", "auth", "client-id", "header", "output", "runtime", "token-file", "url"}},
+	{setupCmd, []string{"apply", "auth", "callback-port", "client-id", "header", "output", "runtime", "token-file", "url"}},
 	// Change cli-parity: the two destructive CLIENT verbs, carrying the
 	// shared client flags (server, token-file, insecure, output, timeout)
 	// plus --apply and, for update, the field flags that build the mask.
