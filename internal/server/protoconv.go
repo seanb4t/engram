@@ -128,16 +128,17 @@ func storeDiscoveryRequestToArgs(req *engramv1.StoreDiscoveryRequest) storeDisco
 func scheduleMemoryRequestToArgs(req *engramv1.ScheduleMemoryRequest) scheduleArgs {
 	return scheduleArgs{
 		storeArgs: storeArgs{
-			Content:   req.GetContent(),
-			Scope:     req.GetScope(),
-			Source:    req.GetSource(),
-			Category:  req.GetCategory(),
-			Tags:      req.GetTags(),
-			Repo:      req.GetRepo(),
-			Workspace: req.GetWorkspace(),
-			Worktree:  req.GetWorktree(),
-			BaseDir:   req.GetBaseDir(),
-			Summary:   req.GetSummary(),
+			Content:        req.GetContent(),
+			Scope:          req.GetScope(),
+			Source:         req.GetSource(),
+			Category:       req.GetCategory(),
+			Tags:           req.GetTags(),
+			Repo:           req.GetRepo(),
+			Workspace:      req.GetWorkspace(),
+			Worktree:       req.GetWorktree(),
+			BaseDir:        req.GetBaseDir(),
+			Summary:        req.GetSummary(),
+			IdempotencyKey: req.GetIdempotencyKey(),
 		},
 		NotBefore: windowBoundFloor(req.GetNotBefore()),
 		NotAfter:  windowBoundCeil(req.GetNotAfter()),
@@ -200,6 +201,22 @@ func idsToScheduleMemoryResponse(id, shortID string) *engramv1.ScheduleMemoryRes
 
 func idsToStoreDiscoveryResponse(id, shortID string) *engramv1.StoreDiscoveryResponse {
 	return &engramv1.StoreDiscoveryResponse{Id: id, ShortId: shortID}
+}
+
+// storeRuleRequestToArgs converts a StoreRuleRequest into storeRuleArgs,
+// the same struct the store_rule MCP tool decodes into (change cli-parity).
+func storeRuleRequestToArgs(req *engramv1.StoreRuleRequest) storeRuleArgs {
+	return storeRuleArgs{
+		Content: req.GetContent(),
+		Scope:   req.GetScope(),
+		Summary: req.GetSummary(),
+		Tags:    req.GetTags(),
+		ID:      req.GetId(),
+	}
+}
+
+func idsToStoreRuleResponse(id, shortID string) *engramv1.StoreRuleResponse {
+	return &engramv1.StoreRuleResponse{Id: id, ShortId: shortID}
 }
 
 // supersedeMemoryRequestToArgs converts a SupersedeMemoryRequest into

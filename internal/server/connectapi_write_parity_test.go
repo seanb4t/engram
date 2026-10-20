@@ -320,6 +320,95 @@ func TestWriteParity(t *testing.T) {
 		})
 	})
 
+	t.Run("StoreRule", func(t *testing.T) {
+		// Change cli-parity: StoreRule is a straight port of StoreDiscovery,
+		// so it takes the same two parity cases — identical effect on a
+		// success, identical rejection on a cross-owner replace — plus the
+		// always-shared posture the rule core enforces on both lanes.
+		t.Run("success", func(t *testing.T) {
+			ctx := context.Background()
+			const owner = "actor-parity-rule"
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			mcpCaller := parityMCPCaller(t, owner, "human-parity-rule@example.com")
+			connCtx := parityConnectCtx(owner)
+			api := &engramAPI{d: dConn}
+
+			ruleArgs := storeRuleArgs{
+				Content: "parity rule content", Scope: "rule:repo:parity",
+				Summary: "MUST keep parity", Tags: []string{"parity"},
+			}
+			mcpID, _, mcpErr := dMCP.storeRule(ctx, mcpCaller, ruleArgs)
+			connResp, connErr := api.StoreRule(connCtx, connect.NewRequest(&engramv1.StoreRuleRequest{
+				Content: ruleArgs.Content, Scope: ruleArgs.Scope, Summary: ruleArgs.Summary, Tags: ruleArgs.Tags,
+			}))
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			if mcpErr != nil || connErr != nil {
+				t.Fatalf("expected success on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertSameStoreTrace(t, spMCP, spConn)
+
+			mcpRec, ok := spMCP.records[mcpID]
+			if !ok {
+				t.Fatalf("MCP lane: record %s missing from spy", mcpID)
+			}
+			connRec, ok := spConn.records[connResp.Msg.Id]
+			if !ok {
+				t.Fatalf("Connect lane: record %s missing from spy", connResp.Msg.Id)
+			}
+			if mcpRec.Content != connRec.Content || mcpRec.Scope != connRec.Scope || mcpRec.Summary != connRec.Summary || mcpRec.Category != connRec.Category {
+				t.Errorf("stored effect mismatch: mcp=%+v connect=%+v", mcpRec, connRec)
+			}
+			if connRec.Category != "rule" || connRec.Visibility != "shared" {
+				t.Errorf("Connect lane stored category=%q visibility=%q, want rule/shared", connRec.Category, connRec.Visibility)
+			}
+			if connResp.Msg.ShortId == "" {
+				t.Error("Connect lane response carries no short_id")
+			}
+		})
+
+		t.Run("cross_owner_replace_rejected", func(t *testing.T) {
+			ctx := context.Background()
+			const ownerA = "actor-parity-rule-a"
+			const ownerB = "actor-parity-rule-b"
+			seed := store.Memory{
+				ID: "f2222222-0000-0000-0000-000000000001", ShortID: "PARITY0002",
+				Content: "rule owned by A", Scope: "rule:repo:parity-xowner",
+				Category: "rule", Summary: "MUST A", Owner: ownerA, Visibility: "shared", CreatedAt: fixedParityNow,
+			}
+			dMCP, spMCP := newSpyDeps()
+			dConn, spConn := newSpyDeps()
+			seedBothLanes(t, spMCP, spConn, seed)
+
+			mcpCaller := parityMCPCaller(t, ownerB, "human-parity-rule-b@example.com")
+			connCtx := parityConnectCtx(ownerB)
+			api := &engramAPI{d: dConn}
+
+			// The replace addresses the rule by short_id, so the only way
+			// its UUID could reach the error text is through resolution —
+			// which the not-found collapse must never reveal.
+			replaceArgs := storeRuleArgs{ID: seed.ShortID, Content: "hijacked", Scope: seed.Scope, Summary: "MUST B"}
+			_, _, mcpErr := dMCP.storeRule(ctx, mcpCaller, replaceArgs)
+			_, connErr := api.StoreRule(connCtx, connect.NewRequest(&engramv1.StoreRuleRequest{
+				Id: replaceArgs.ID, Content: replaceArgs.Content, Scope: replaceArgs.Scope, Summary: replaceArgs.Summary,
+			}))
+			if mcpErr == nil || connErr == nil {
+				t.Fatalf("expected cross-owner replace rejection on both lanes: mcp=%v connect=%v", mcpErr, connErr)
+			}
+			assertCodeParity(ctx, t, mcpErr, connErr)
+			assertSameStoreTraceExact(t, spMCP, spConn)
+			if !errors.Is(mcpErr, store.ErrNotFound) {
+				t.Errorf("mcp error = %v, want store.ErrNotFound", mcpErr)
+			}
+			if connect.CodeOf(connErr) != connect.CodeNotFound {
+				t.Errorf("connect code = %v, want not_found", connect.CodeOf(connErr))
+			}
+			if strings.Contains(connErr.Error(), seed.ID) {
+				t.Errorf("connect error %q echoes the non-owned rule's UUID", connErr.Error())
+			}
+		})
+	})
+
 	t.Run("ScheduleMemory", func(t *testing.T) {
 		fixedNow := time.Now().UTC().Truncate(time.Second)
 

@@ -482,6 +482,23 @@ func (a *engramAPI) StoreDiscovery(ctx context.Context, req *connect.Request[eng
 	return connect.NewResponse(idsToStoreDiscoveryResponse(id, shortID)), nil
 }
 
+// StoreRule (change cli-parity) is the store_rule MCP tool's Connect lane:
+// the same thin-adapter shape as StoreDiscovery, delegating to the SAME
+// deps.storeRule core, so the always-shared posture, the short_id
+// preservation on replace, the not-found collapse for a non-owned id and
+// every field=/hint= rejection are identical on both lanes.
+func (a *engramAPI) StoreRule(ctx context.Context, req *connect.Request[engramv1.StoreRuleRequest]) (*connect.Response[engramv1.StoreRuleResponse], error) {
+	c, err := callerFromConnectContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	id, shortID, err := a.d.storeRule(ctx, c, storeRuleRequestToArgs(req.Msg))
+	if err != nil {
+		return nil, connectError(ctx, err)
+	}
+	return connect.NewResponse(idsToStoreRuleResponse(id, shortID)), nil
+}
+
 // UpdateMemory maps the returned mutationResult{ID, ShortID} into the response
 // WITHOUT a re-fetch — deps.updateMemory already resolved the canonical id/
 // short_id from the fetched record (17-REVIEWS.md response-conversion finding).

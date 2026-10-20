@@ -180,10 +180,11 @@ func csrfWriteCases(futureNotBefore *timestamppb.Timestamp) []csrfWriteRPCCase {
 }
 
 // TestCSRFWriteProcedureAllowlist pins csrfWriteProcedures at the data level
-// (SC3 / T-16-08): exactly the nine generated write Procedure constants
+// (SC3 / T-16-08): exactly the ten generated write Procedure constants
 // (the original six plus milestone 2026-09-25.01 Phase 3's
-// ArchiveMemory/RestoreMemory (D-15) and plan 03-02's SupersedeMemory
-// (D-15)), and none of the five read Procedure constants — independent of,
+// ArchiveMemory/RestoreMemory (D-15), plan 03-02's SupersedeMemory
+// (D-15) and change cli-parity's StoreRule), and none of the read
+// Procedure constants — independent of,
 // and a faster backstop than, the full httptest matrices below.
 func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 	wantWrite := []string{
@@ -196,9 +197,12 @@ func TestCSRFWriteProcedureAllowlist(t *testing.T) {
 		engramv1connect.EngramServiceArchiveMemoryProcedure,
 		engramv1connect.EngramServiceRestoreMemoryProcedure,
 		engramv1connect.EngramServiceSupersedeMemoryProcedure,
+		// StoreRule (change cli-parity): the store_rule MCP tool's Connect
+		// lane, a write Procedure gated like StoreDiscovery.
+		engramv1connect.EngramServiceStoreRuleProcedure,
 	}
-	if got := len(csrfWriteProcedures); got != 9 {
-		t.Fatalf("csrfWriteProcedures has %d entries, want exactly 9", got)
+	if got := len(csrfWriteProcedures); got != 10 {
+		t.Fatalf("csrfWriteProcedures has %d entries, want exactly 10", got)
 	}
 	for _, p := range wantWrite {
 		if !csrfWriteProcedures[p] {

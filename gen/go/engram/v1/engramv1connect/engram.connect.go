@@ -59,6 +59,8 @@ const (
 	// EngramServiceStoreDiscoveryProcedure is the fully-qualified name of the EngramService's
 	// StoreDiscovery RPC.
 	EngramServiceStoreDiscoveryProcedure = "/engram.v1.EngramService/StoreDiscovery"
+	// EngramServiceStoreRuleProcedure is the fully-qualified name of the EngramService's StoreRule RPC.
+	EngramServiceStoreRuleProcedure = "/engram.v1.EngramService/StoreRule"
 	// EngramServiceUpdateMemoryProcedure is the fully-qualified name of the EngramService's
 	// UpdateMemory RPC.
 	EngramServiceUpdateMemoryProcedure = "/engram.v1.EngramService/UpdateMemory"
@@ -106,6 +108,7 @@ type EngramServiceClient interface {
 	// --- new write RPCs (additive, this phase — stubs only) ---
 	StoreMemory(context.Context, *connect.Request[v1.StoreMemoryRequest]) (*connect.Response[v1.StoreMemoryResponse], error)
 	StoreDiscovery(context.Context, *connect.Request[v1.StoreDiscoveryRequest]) (*connect.Response[v1.StoreDiscoveryResponse], error)
+	StoreRule(context.Context, *connect.Request[v1.StoreRuleRequest]) (*connect.Response[v1.StoreRuleResponse], error)
 	UpdateMemory(context.Context, *connect.Request[v1.UpdateMemoryRequest]) (*connect.Response[v1.UpdateMemoryResponse], error)
 	DeleteMemory(context.Context, *connect.Request[v1.DeleteMemoryRequest]) (*connect.Response[v1.DeleteMemoryResponse], error)
 	SetVisibility(context.Context, *connect.Request[v1.SetVisibilityRequest]) (*connect.Response[v1.SetVisibilityResponse], error)
@@ -184,6 +187,12 @@ func NewEngramServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			httpClient,
 			baseURL+EngramServiceStoreDiscoveryProcedure,
 			connect.WithSchema(engramServiceMethods.ByName("StoreDiscovery")),
+			connect.WithClientOptions(opts...),
+		),
+		storeRule: connect.NewClient[v1.StoreRuleRequest, v1.StoreRuleResponse](
+			httpClient,
+			baseURL+EngramServiceStoreRuleProcedure,
+			connect.WithSchema(engramServiceMethods.ByName("StoreRule")),
 			connect.WithClientOptions(opts...),
 		),
 		updateMemory: connect.NewClient[v1.UpdateMemoryRequest, v1.UpdateMemoryResponse](
@@ -271,6 +280,7 @@ type engramServiceClient struct {
 	migrateStatus     *connect.Client[v1.MigrateStatusRequest, v1.MigrateStatusResponse]
 	storeMemory       *connect.Client[v1.StoreMemoryRequest, v1.StoreMemoryResponse]
 	storeDiscovery    *connect.Client[v1.StoreDiscoveryRequest, v1.StoreDiscoveryResponse]
+	storeRule         *connect.Client[v1.StoreRuleRequest, v1.StoreRuleResponse]
 	updateMemory      *connect.Client[v1.UpdateMemoryRequest, v1.UpdateMemoryResponse]
 	deleteMemory      *connect.Client[v1.DeleteMemoryRequest, v1.DeleteMemoryResponse]
 	setVisibility     *connect.Client[v1.SetVisibilityRequest, v1.SetVisibilityResponse]
@@ -323,6 +333,11 @@ func (c *engramServiceClient) StoreMemory(ctx context.Context, req *connect.Requ
 // StoreDiscovery calls engram.v1.EngramService.StoreDiscovery.
 func (c *engramServiceClient) StoreDiscovery(ctx context.Context, req *connect.Request[v1.StoreDiscoveryRequest]) (*connect.Response[v1.StoreDiscoveryResponse], error) {
 	return c.storeDiscovery.CallUnary(ctx, req)
+}
+
+// StoreRule calls engram.v1.EngramService.StoreRule.
+func (c *engramServiceClient) StoreRule(ctx context.Context, req *connect.Request[v1.StoreRuleRequest]) (*connect.Response[v1.StoreRuleResponse], error) {
+	return c.storeRule.CallUnary(ctx, req)
 }
 
 // UpdateMemory calls engram.v1.EngramService.UpdateMemory.
@@ -396,6 +411,7 @@ type EngramServiceHandler interface {
 	// --- new write RPCs (additive, this phase — stubs only) ---
 	StoreMemory(context.Context, *connect.Request[v1.StoreMemoryRequest]) (*connect.Response[v1.StoreMemoryResponse], error)
 	StoreDiscovery(context.Context, *connect.Request[v1.StoreDiscoveryRequest]) (*connect.Response[v1.StoreDiscoveryResponse], error)
+	StoreRule(context.Context, *connect.Request[v1.StoreRuleRequest]) (*connect.Response[v1.StoreRuleResponse], error)
 	UpdateMemory(context.Context, *connect.Request[v1.UpdateMemoryRequest]) (*connect.Response[v1.UpdateMemoryResponse], error)
 	DeleteMemory(context.Context, *connect.Request[v1.DeleteMemoryRequest]) (*connect.Response[v1.DeleteMemoryResponse], error)
 	SetVisibility(context.Context, *connect.Request[v1.SetVisibilityRequest]) (*connect.Response[v1.SetVisibilityResponse], error)
@@ -470,6 +486,12 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 		EngramServiceStoreDiscoveryProcedure,
 		svc.StoreDiscovery,
 		connect.WithSchema(engramServiceMethods.ByName("StoreDiscovery")),
+		connect.WithHandlerOptions(opts...),
+	)
+	engramServiceStoreRuleHandler := connect.NewUnaryHandler(
+		EngramServiceStoreRuleProcedure,
+		svc.StoreRule,
+		connect.WithSchema(engramServiceMethods.ByName("StoreRule")),
 		connect.WithHandlerOptions(opts...),
 	)
 	engramServiceUpdateMemoryHandler := connect.NewUnaryHandler(
@@ -562,6 +584,8 @@ func NewEngramServiceHandler(svc EngramServiceHandler, opts ...connect.HandlerOp
 			engramServiceStoreMemoryHandler.ServeHTTP(w, r)
 		case EngramServiceStoreDiscoveryProcedure:
 			engramServiceStoreDiscoveryHandler.ServeHTTP(w, r)
+		case EngramServiceStoreRuleProcedure:
+			engramServiceStoreRuleHandler.ServeHTTP(w, r)
 		case EngramServiceUpdateMemoryProcedure:
 			engramServiceUpdateMemoryHandler.ServeHTTP(w, r)
 		case EngramServiceDeleteMemoryProcedure:
@@ -625,6 +649,10 @@ func (UnimplementedEngramServiceHandler) StoreMemory(context.Context, *connect.R
 
 func (UnimplementedEngramServiceHandler) StoreDiscovery(context.Context, *connect.Request[v1.StoreDiscoveryRequest]) (*connect.Response[v1.StoreDiscoveryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.StoreDiscovery is not implemented"))
+}
+
+func (UnimplementedEngramServiceHandler) StoreRule(context.Context, *connect.Request[v1.StoreRuleRequest]) (*connect.Response[v1.StoreRuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("engram.v1.EngramService.StoreRule is not implemented"))
 }
 
 func (UnimplementedEngramServiceHandler) UpdateMemory(context.Context, *connect.Request[v1.UpdateMemoryRequest]) (*connect.Response[v1.UpdateMemoryResponse], error) {

@@ -32,10 +32,11 @@ const (
 // from the actual write RPCs. Milestone 2026-09-25.01 Phase 3 (D-15) added
 // ArchiveMemory/RestoreMemory to the original six, and plan 03-02 (D-15)
 // added SupersedeMemory — including its validate_only path, which is still a
-// call on this write Procedure (D-08).
+// call on this write Procedure (D-08). Change cli-parity added StoreRule.
 var csrfWriteProcedures = map[string]bool{
 	engramv1connect.EngramServiceStoreMemoryProcedure:     true,
 	engramv1connect.EngramServiceStoreDiscoveryProcedure:  true,
+	engramv1connect.EngramServiceStoreRuleProcedure:       true,
 	engramv1connect.EngramServiceUpdateMemoryProcedure:    true,
 	engramv1connect.EngramServiceDeleteMemoryProcedure:    true,
 	engramv1connect.EngramServiceSetVisibilityProcedure:   true,
