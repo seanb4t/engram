@@ -26,7 +26,7 @@ func TestRenderRealPlans(t *testing.T) {
 	if len(cases) != 6 {
 		t.Fatalf("got %d cases, want six", len(cases))
 	}
-	for i, label := range []string{"oauth", "oauth-client", "bearer", "none", "bearer+header"} {
+	for i, label := range []string{"oauth", "oauth-client", "bearer", "none", "bearer+header", "oauth+callback-port"} {
 		t.Run(label, func(t *testing.T) {
 			c := cases[i]
 			if c.Label != label {
@@ -40,6 +40,15 @@ func TestRenderRealPlans(t *testing.T) {
 				if !strings.Contains(body, "| `"+label+"` | `"+command+"` |") {
 					t.Errorf("missing exact Plan/preview row for %q", command)
 				}
+			}
+			if label == "oauth+callback-port" {
+				if c.Options.Auth != "oauth" || c.Options.CallbackPort != 8765 {
+					t.Fatalf("oauth+callback-port case = auth %q port %d, want oauth/8765", c.Options.Auth, c.Options.CallbackPort)
+				}
+				if !strings.Contains(plan.Actions[1].Command(), "--callback-port 8765") {
+					t.Fatalf("oauth+callback-port plan = %q, want --callback-port 8765", plan.Actions[1].Command())
+				}
+				return
 			}
 			if label != "bearer+header" {
 				return
