@@ -38,10 +38,12 @@ type Class struct {
 // Both key columns coexist because D-11 requires one taxonomy across two
 // lanes whose names do not coincide (MCP registers search_memory, the CLI
 // registers search) and because several operations exist on only one
-// lane: schedule_memory has no CLI verb; the operator commands
+// lane: delete_all has no CLI verb, deliberately and permanently (change
+// cli-parity: no command deletes every record); the operator commands
 // (reindex, migrate-remap-owner, prune-expired, summarize-missing,
 // backfill-short-ids) and the bare self-describe invocation have no MCP
-// tool at all. An empty string in either column means "this operation has
+// tool at all. Every other MCP tool names its client-tier CLI verb in the
+// same row, so the two lanes share one classification by construction. An empty string in either column means "this operation has
 // no counterpart on that lane" — never "unclassified": every declared row
 // carries a real, deliberately-chosen Class.
 type Operation struct {
@@ -71,7 +73,7 @@ var operations = []Operation{
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: false, OpenWorld: false},
 	},
 	{
-		MCPTool: "schedule_memory", CLICommand: "",
+		MCPTool: "schedule_memory", CLICommand: "schedule",
 		// Same idempotency_key-is-optional reasoning as store_memory.
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: false, OpenWorld: false},
 	},
@@ -84,7 +86,7 @@ var operations = []Operation{
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
-		MCPTool: "list_scheduled", CLICommand: "",
+		MCPTool: "list_scheduled", CLICommand: "scheduled",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
@@ -92,14 +94,14 @@ var operations = []Operation{
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
-		MCPTool: "update_memory", CLICommand: "",
+		MCPTool: "update_memory", CLICommand: "update",
 		// Destructive: replaces content in place (CONTEXT.md's worked
 		// example). Idempotent: repeating the SAME replace call twice
 		// leaves the record in the same end state both times.
 		Class: Class{ReadOnly: false, Destructive: true, Idempotent: true, OpenWorld: false},
 	},
 	{
-		MCPTool: "delete_memory", CLICommand: "",
+		MCPTool: "delete_memory", CLICommand: "delete",
 		// Destructive: a genuine, permanent removal — unlike
 		// supersede_memory, no history is preserved. Idempotent: repeating
 		// a delete against an already-removed id has no ADDITIONAL effect
@@ -115,18 +117,18 @@ var operations = []Operation{
 		Class: Class{ReadOnly: false, Destructive: true, Idempotent: true, OpenWorld: false},
 	},
 	{
-		MCPTool: "store_discovery", CLICommand: "",
+		MCPTool: "store_discovery", CLICommand: "store-discovery",
 		// No idempotency_key exists on this tool at all: the omit-id path
 		// always creates a new record, even called twice identically, so
 		// Idempotent cannot be true under every valid invocation.
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: false, OpenWorld: false},
 	},
 	{
-		MCPTool: "search_discovery", CLICommand: "",
+		MCPTool: "search_discovery", CLICommand: "search-discovery",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
-		MCPTool: "set_visibility", CLICommand: "",
+		MCPTool: "set_visibility", CLICommand: "set-visibility",
 		// Destructive: false — unlike update_memory, this only flips a
 		// boolean visibility flag; content, tags, and the vector are
 		// untouched, and the change is always reversible by calling again.
@@ -135,7 +137,7 @@ var operations = []Operation{
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
-		MCPTool: "supersede_memory", CLICommand: "",
+		MCPTool: "supersede_memory", CLICommand: "supersede",
 		// Destructive: false (CONTEXT.md's worked example) — additive
 		// under all inputs, history preserved, target soft-hidden never
 		// deleted. Idempotent: true — structurally: the "single live
@@ -149,13 +151,13 @@ var operations = []Operation{
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
-		MCPTool: "store_rule", CLICommand: "",
+		MCPTool: "store_rule", CLICommand: "store-rule",
 		// Same no-idempotency_key reasoning as store_discovery: the
 		// omit-id path always creates a new rule record.
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: false, OpenWorld: false},
 	},
 	{
-		MCPTool: "list_rules", CLICommand: "",
+		MCPTool: "list_rules", CLICommand: "rules",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
@@ -167,28 +169,28 @@ var operations = []Operation{
 		// set_visibility precedent that row cites. Idempotent: true —
 		// archiving an already-archived id reports the already_archived
 		// outcome and issues no write.
-		MCPTool: "archive_memory", CLICommand: "",
+		MCPTool: "archive_memory", CLICommand: "archive",
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
 		// restore_memory is archive_memory's exact inverse — see the row
 		// immediately above. Idempotent: true — restoring a never-archived
 		// id reports the not_archived outcome and mutates nothing.
-		MCPTool: "restore_memory", CLICommand: "",
+		MCPTool: "restore_memory", CLICommand: "restore",
 		Class: Class{ReadOnly: false, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
 		// related_memories (milestone 2026-09-25.01 Phase 3, D-23): a plain
 		// read over the id-neighbourhood core — no write RPC, same stance
 		// as search_discovery/list_rules above.
-		MCPTool: "related_memories", CLICommand: "",
+		MCPTool: "related_memories", CLICommand: "related",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 	{
 		// list_tags (milestone 2026-09-25.01 Phase 3 plan 03-06, D-23): a
 		// plain read over the scope tag-count core — no write RPC, same
 		// stance as related_memories/list_rules above.
-		MCPTool: "list_tags", CLICommand: "",
+		MCPTool: "list_tags", CLICommand: "tags",
 		Class: Class{ReadOnly: true, Destructive: false, Idempotent: true, OpenWorld: false},
 	},
 

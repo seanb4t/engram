@@ -556,6 +556,21 @@ func renderRecallHiddenFooter(w io.Writer, hidden *engramv1.RecallGateHidden) er
 	return err
 }
 
+// renderRecallFooters writes the two recall footers every recall-shaped
+// response shares, in the order search and list established: the
+// cross-spine coverage footer (renderCoverageFooter) and then the
+// recall-gate hidden-count footer (renderRecallHiddenFooter). Each helper
+// keeps its own gate, so a scope-confined call prints no coverage line and
+// a response with nothing hidden prints no hidden line. One call site per
+// verb — rules, scheduled, search, list — rather than two, so a verb cannot
+// print one footer and forget the other.
+func renderRecallFooters(w io.Writer, crossSpine bool, searchedScopes []string, scopesTruncated, scopesUnknown bool, hidden *engramv1.RecallGateHidden) error {
+	if err := renderCoverageFooter(w, crossSpine, searchedScopes, scopesTruncated, scopesUnknown); err != nil {
+		return err
+	}
+	return renderRecallHiddenFooter(w, hidden)
+}
+
 // footerLookupBudget bounds the migration-advisory footer's lookup latency
 // (07-06, T-07-19): the ceiling min(resolvedTimeout, footerLookupBudget) is
 // applied against, never the caller's full resolved --timeout, which could
