@@ -40,7 +40,7 @@ func TestArchiveRestore(t *testing.T) {
 			t.Errorf("request ids = %v, want caller order", gotIDs)
 		}
 		i1, i2, i3 := strings.Index(stdout, "ARCHIVE_OUTCOME_ARCHIVED"), strings.Index(stdout, "ARCHIVE_OUTCOME_ALREADY_ARCHIVED"), strings.Index(stdout, "ARCHIVE_OUTCOME_NOT_FOUND")
-		if i1 < 0 || i2 < 0 || i3 < 0 || !(i1 < i2 && i2 < i3) {
+		if i1 < 0 || i2 < 0 || i3 < 0 || i1 >= i2 || i2 >= i3 {
 			t.Errorf("stdout = %q, want the three outcomes in input order", stdout)
 		}
 		if !strings.HasPrefix(stdout, "archive: 3 id(s)") {

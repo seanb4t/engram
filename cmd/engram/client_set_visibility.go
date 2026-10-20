@@ -25,7 +25,7 @@ var (
 var setVisibilityCmd = &cobra.Command{
 	Use:   "set-visibility <id>",
 	Short: "Share or unshare a memory you own",
-	Args:  exactPositionalArgs(1),
+	Args:  exactlyOneID,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !setVisibilityShared && !setVisibilityPrivate {
 			return usageErrorf("exactly one of --shared or --private is required")

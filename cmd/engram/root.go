@@ -101,17 +101,15 @@ func noPositionalArgs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// exactPositionalArgs is cobra.ExactArgs(n) with the usage exit code, for
-// the client verbs that take a fixed number of ids (get, related, update,
-// set-visibility, delete): a missing or extra id is the caller's own
-// mistake (exit 2), raised before any request is built.
-func exactPositionalArgs(n int) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) != n {
-			return usageErrorf("%s requires exactly %d id argument(s), got %d", cmd.CommandPath(), n, len(args))
-		}
-		return nil
+// exactlyOneID is cobra.ExactArgs(1) with the usage exit code, for the
+// client verbs that take one id (get, related, update, set-visibility,
+// delete): a missing or extra id is the caller's own mistake (exit 2),
+// raised before any request is built.
+func exactlyOneID(cmd *cobra.Command, args []string) error {
+	if len(args) != 1 {
+		return usageErrorf("%s requires exactly one id argument, got %d", cmd.CommandPath(), len(args))
 	}
+	return nil
 }
 
 // minPositionalArgs is cobra.MinimumNArgs(n) with the usage exit code, for

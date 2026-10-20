@@ -77,7 +77,7 @@ func updateMaskFromFlags(cmd *cobra.Command) ([]string, error) {
 var updateCmd = &cobra.Command{
 	Use:   "update <id>",
 	Short: "Replace a memory's content, summary, tags or visibility in place: preview by default, write under --apply",
-	Args:  exactPositionalArgs(1),
+	Args:  exactlyOneID,
 }
 
 func updatePreview(ctx context.Context, cmd *cobra.Command) error {

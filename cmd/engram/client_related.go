@@ -27,7 +27,7 @@ var (
 var relatedCmd = &cobra.Command{
 	Use:   "related <id>",
 	Short: "Show one memory's neighbourhood: supersession, shared tags, shared citations and vector neighbours",
-	Args:  exactPositionalArgs(1),
+	Args:  exactlyOneID,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, format, timeout, err := clientFromFlags(cmd)
 		if err != nil {

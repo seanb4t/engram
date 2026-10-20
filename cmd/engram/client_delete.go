@@ -38,7 +38,7 @@ type deleteDoc struct {
 var deleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "Delete one memory you own: preview by default, delete under --apply",
-	Args:  exactPositionalArgs(1),
+	Args:  exactlyOneID,
 }
 
 func deletePreview(ctx context.Context, cmd *cobra.Command) error {

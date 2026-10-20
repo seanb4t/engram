@@ -195,7 +195,7 @@ func (s *stubEngramService) SearchDiscoveries(ctx context.Context, req *connect.
 // stubWrite answers a write RPC: it fails a readOnly test before anything
 // else, counts the call under procedure, records the Authorization
 // header, and then runs fn like stubRead does.
-func stubWrite[Req, Resp any](s *stubEngramService, procedure string, ctx context.Context, req *connect.Request[Req], fn func(context.Context, *Req) (*Resp, error)) (*connect.Response[Resp], error) {
+func stubWrite[Req, Resp any](ctx context.Context, s *stubEngramService, procedure string, req *connect.Request[Req], fn func(context.Context, *Req) (*Resp, error)) (*connect.Response[Resp], error) {
 	if s.readOnly != nil {
 		return nil, s.rejectWrite(procedure)
 	}
@@ -210,39 +210,39 @@ func stubWrite[Req, Resp any](s *stubEngramService, procedure string, ctx contex
 }
 
 func (s *stubEngramService) StoreDiscovery(ctx context.Context, req *connect.Request[engramv1.StoreDiscoveryRequest]) (*connect.Response[engramv1.StoreDiscoveryResponse], error) {
-	return stubWrite(s, "StoreDiscovery", ctx, req, s.storeDiscoveryFn)
+	return stubWrite(ctx, s, "StoreDiscovery", req, s.storeDiscoveryFn)
 }
 
 func (s *stubEngramService) StoreRule(ctx context.Context, req *connect.Request[engramv1.StoreRuleRequest]) (*connect.Response[engramv1.StoreRuleResponse], error) {
-	return stubWrite(s, "StoreRule", ctx, req, s.storeRuleFn)
+	return stubWrite(ctx, s, "StoreRule", req, s.storeRuleFn)
 }
 
 func (s *stubEngramService) UpdateMemory(ctx context.Context, req *connect.Request[engramv1.UpdateMemoryRequest]) (*connect.Response[engramv1.UpdateMemoryResponse], error) {
-	return stubWrite(s, "UpdateMemory", ctx, req, s.updateFn)
+	return stubWrite(ctx, s, "UpdateMemory", req, s.updateFn)
 }
 
 func (s *stubEngramService) DeleteMemory(ctx context.Context, req *connect.Request[engramv1.DeleteMemoryRequest]) (*connect.Response[engramv1.DeleteMemoryResponse], error) {
-	return stubWrite(s, "DeleteMemory", ctx, req, s.deleteFn)
+	return stubWrite(ctx, s, "DeleteMemory", req, s.deleteFn)
 }
 
 func (s *stubEngramService) SetVisibility(ctx context.Context, req *connect.Request[engramv1.SetVisibilityRequest]) (*connect.Response[engramv1.SetVisibilityResponse], error) {
-	return stubWrite(s, "SetVisibility", ctx, req, s.setVisibilityFn)
+	return stubWrite(ctx, s, "SetVisibility", req, s.setVisibilityFn)
 }
 
 func (s *stubEngramService) ScheduleMemory(ctx context.Context, req *connect.Request[engramv1.ScheduleMemoryRequest]) (*connect.Response[engramv1.ScheduleMemoryResponse], error) {
-	return stubWrite(s, "ScheduleMemory", ctx, req, s.scheduleFn)
+	return stubWrite(ctx, s, "ScheduleMemory", req, s.scheduleFn)
 }
 
 func (s *stubEngramService) ArchiveMemory(ctx context.Context, req *connect.Request[engramv1.ArchiveMemoryRequest]) (*connect.Response[engramv1.ArchiveMemoryResponse], error) {
-	return stubWrite(s, "ArchiveMemory", ctx, req, s.archiveFn)
+	return stubWrite(ctx, s, "ArchiveMemory", req, s.archiveFn)
 }
 
 func (s *stubEngramService) RestoreMemory(ctx context.Context, req *connect.Request[engramv1.RestoreMemoryRequest]) (*connect.Response[engramv1.RestoreMemoryResponse], error) {
-	return stubWrite(s, "RestoreMemory", ctx, req, s.restoreFn)
+	return stubWrite(ctx, s, "RestoreMemory", req, s.restoreFn)
 }
 
 func (s *stubEngramService) SupersedeMemory(ctx context.Context, req *connect.Request[engramv1.SupersedeMemoryRequest]) (*connect.Response[engramv1.SupersedeMemoryResponse], error) {
-	return stubWrite(s, "SupersedeMemory", ctx, req, s.supersedeFn)
+	return stubWrite(ctx, s, "SupersedeMemory", req, s.supersedeFn)
 }
 
 // startStubServer mounts svc's real generated Connect handler on an
