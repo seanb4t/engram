@@ -103,6 +103,9 @@ engram setup --url https://engram.example.com/mcp --auth none
 | `opencode` | Supported | Unsupported | Supported | Supported | Supported |
 | `generic` | Manual config | Unsupported | Manual config | Manual config | Manual config |
 
+`--callback-port` is supported on `claude-code` only, and only with `oauth`
+and `oauth-client`; see [Fixed callback port](#fixed-callback-port).
+
 Unsupported combinations — including `--header` on `codex` — appear as failed
 rows with a reason. Inspect them even when other runtimes succeed. The
 installed runtime must also accept the commands shown in the preview; an
@@ -129,6 +132,27 @@ A rewritten row's `notes` field states, in both preview and apply, that this OAu
 
 Read the preview's `notes` before applying — `--apply` does not pause for
 this, and there is no flag to suppress the rewrite.
+
+#### Fixed callback port
+
+`--callback-port <port>` (or `ENGRAM_CALLBACK_PORT`) fixes the loopback port
+the OAuth redirect URI uses. On Claude Code it becomes
+`claude mcp add --callback-port <port>`, so the runtime registers
+`http://localhost:<port>/callback` as its redirect URI on every login instead
+of a random port. It is valid with `oauth` and `oauth-client` only; with
+`bearer` or `none` the command exits `2` before touching any runtime, and a
+value outside 1 to 65535 exits `2` the same way. Without it the `oauth`
+registration is unchanged from earlier releases, and the `oauth-client`
+registration keeps the `8765` it has always carried. Codex and opencode have
+no callback-port option: with the flag set their rows read `failed` naming
+`--callback-port`; drop the flag or exclude them with `--runtime`. Every
+present row's `callback_port` field names the port it was given. The
+runtime's own `mcp get` does not report the port back, so a changed port is
+not something the `already-correct` comparison can see: re-run with
+`--apply` after changing it.
+
+The main reason to fix the port is a Claude Code that runs on a remote host
+with no browser; see [Logging in over SSH](#logging-in-over-ssh).
 
 ### Bearer token
 
@@ -252,13 +276,52 @@ and is not a stable parsing interface:
 engram setup --url https://engram.example.com/mcp --auth oauth --runtime codex --output json
 ```
 
-`ENGRAM_URL`, `ENGRAM_AUTH`, `ENGRAM_RUNTIME`, and `ENGRAM_HEADERS` (a
-comma-separated `NAME=ENVVAR` list) provide environment defaults; the
+`ENGRAM_URL`, `ENGRAM_AUTH`, `ENGRAM_RUNTIME`, `ENGRAM_CALLBACK_PORT`, and
+`ENGRAM_HEADERS` (a comma-separated `NAME=ENVVAR` list) provide environment
+defaults; the
 corresponding flags override them — `--header` on the command line replaces
 the whole `ENGRAM_HEADERS` list. Setup does not prompt interactively. Review
 the JSON report before running the same selected invocation with `--apply`.
 Keep the runtime's output as report data, not shell instructions. Each
-present runtime's JSON row carries a `headers` string, and for Claude Code and Codex also carries `registered` (a normalized rendering of the registration the runtime's CLI reported — URL, auth state, header names — with every header value redacted), `facets` (the comma-joined differing facets, in a fixed order), `drift` (the per-facet detail lines, or a note that the registration was not compared), and `notes` (the OAuth re-login consequence and other tolerant-step records, when present).
+present runtime's JSON row carries a `headers` string and, when a callback port was requested or implied by `oauth-client`, a `callback_port` string, and for Claude Code and Codex also carries `registered` (a normalized rendering of the registration the runtime's CLI reported — URL, auth state, header names — with every header value redacted), `facets` (the comma-joined differing facets, in a fixed order), `drift` (the per-facet detail lines, or a note that the registration was not compared), and `notes` (the OAuth re-login consequence and other tolerant-step records, when present).
+
+## Logging in over SSH
+
+When Claude Code runs on a remote host you reach over SSH, the OAuth login
+still needs a browser, and the identity provider redirects that browser to a
+loopback URL on the host where Claude Code runs. Nothing on the server or the
+identity provider changes for this; both of the following work with a plain
+dynamic-client registration. You log in once per host: the runtime refreshes
+the token afterwards.
+
+**Paste the redirect back.** On the remote host, run the login without a
+browser:
+
+```sh
+claude mcp login engram --no-browser
+```
+
+Claude Code prints the authorization URL and waits. Open the URL in a browser
+on your own machine, sign in, and when the browser lands on a `localhost`
+address that does not load, copy the whole address from the location bar and
+paste it back at the prompt. This needs no setup flag and no forwarded port.
+
+**Forward the callback port.** Register with a fixed port, then open the SSH
+session with a local forward for that port so the browser on your machine
+reaches Claude Code's callback listener on the host:
+
+```sh
+engram setup --url https://engram.example.com/mcp --auth oauth --callback-port 8765 --runtime claude-code --apply
+ssh -t -L 8765:localhost:8765 user@host claude
+```
+
+Then run `/mcp` or `claude mcp login engram` as usual: the browser on your
+machine opens the URL, and the redirect to `http://localhost:8765/callback`
+arrives through the tunnel, with nothing to paste. Two hosts cannot share one
+forwarded local port at the same time, so give each host its own port, or
+forward on demand rather than from a permanent SSH configuration. The forward
+must be a local forward (`-L`): the redirect starts in the browser on your
+machine, not on the host.
 
 ## Cursor and other clients: manual setup
 
