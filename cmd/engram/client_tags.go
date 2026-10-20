@@ -66,7 +66,10 @@ func renderTagTable(cmd *cobra.Command, tags []*engramv1.TagCount) error {
 		return err
 	}
 	for _, tc := range tags {
-		if _, err := fmt.Fprintf(tw, "%s\t%d\n", tc.GetTag(), tc.GetCount()); err != nil {
+		// A tag is caller-authored text, possibly another caller's on a
+		// shared record, so it is sanitized like every other value the
+		// text lane renders (issue #505's rule).
+		if _, err := fmt.Fprintf(tw, "%s\t%d\n", sanitizeViewValue(tc.GetTag()), tc.GetCount()); err != nil {
 			return err
 		}
 	}

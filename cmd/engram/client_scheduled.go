@@ -61,7 +61,7 @@ var scheduledCmd = &cobra.Command{
 				return err
 			}
 			if next := resp.Msg.GetNextPageToken(); next != "" {
-				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "next_page_token: %s\n", next); err != nil {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "next_page_token: %s\n", sanitizeViewValue(next)); err != nil {
 					return err
 				}
 			}

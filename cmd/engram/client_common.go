@@ -737,8 +737,10 @@ func renderProtoView(w io.Writer, headline string, m proto.Message) error {
 
 // renderIDLine writes the text-lane line every id-returning write verb
 // prints: "<verb>: <short_id> (<id>)", the shape engram store established.
+// Both ids come from the server and pass through sanitizeViewValue, the
+// same rule every other server-derived string on the text lane follows.
 func renderIDLine(w io.Writer, verb, shortID, id string) error {
-	_, err := fmt.Fprintf(w, "%s: %s (%s)\n", verb, shortID, id)
+	_, err := fmt.Fprintf(w, "%s: %s (%s)\n", verb, sanitizeViewValue(shortID), sanitizeViewValue(id))
 	return err
 }
 

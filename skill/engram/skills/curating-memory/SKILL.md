@@ -56,6 +56,11 @@ session-start index entry). This complements — it does not replace — the
 decision / preference / convention / gotcha routing above; a rule is the
 narrower, user-blessed, normative case.
 
+**From the shell:** `engram store-rule --content <text> --scope rule:repo:<repo>
+--summary "<one line>"` and `engram rules [--scope <rule-scope>]` reach the
+same core over Connect. Both run only when a person types them; nothing
+promotes a rule on its own.
+
 ### Proposing a rule
 
 Offer a rule the moment you notice a candidate. Proposing is not promoting —
@@ -377,7 +382,10 @@ dropped from recall at then, an expiry) —
 and when both are set,
 <!-- engram:rule:start window-not-before-before-not-after -->not_before must be strictly before not_after<!-- engram:rule:end window-not-before-before-not-after -->.
 Search-before-store
-still applies. The junk-taxonomy "transient" exclusion targets *incidental* state
+still applies. **From the shell:** `engram schedule --content ... --scope ...
+--not-before <rfc3339> | --not-after <rfc3339>` writes the same record, and
+`engram scheduled --scope <scope>` lists what the gate is hiding. The
+junk-taxonomy "transient" exclusion targets *incidental* state
 the user never asked to keep — an explicit request to remember something
 by/until/after a time is itself durable (the ask is the signal), so schedule it
 rather than discarding it. Scheduling controls *when* a durable fact is active,
@@ -414,6 +422,10 @@ set (content, scope, tags, category, …) for the **new, correcting** record, pl
 `supersedes`: one or more target ids — each a full UUID or `short_id` — of the
 records it replaces. In one call it stores the new record and stamps
 `superseded_by` onto every target.
+
+**From the shell:** `engram supersede --content ... --scope ... --supersedes
+<id> [--supersedes <id>...] [--validate-only]` is the same call; `engram
+related <id>` shows what a correction should supersede.
 
 Several targets may be corrected in **one call**:
 `supersedes: ["short_id_a", "short_id_b"]` merges both into a single new record.
@@ -497,8 +509,10 @@ result carries one outcome per id, in the caller-supplied order:
 indistinguishable by design (the same rule `supersede_memory`'s target
 rejection follows) — so report it as such rather than retrying.
 
-Operators reach the identical effect via `engram spine-review archive` /
-`restore` on the CLI; the two lanes share one gate.
+**From the shell:** `engram archive <id>...` / `engram restore <id>...` run the
+same batch as your own principal, with the same per-id outcomes. Operators
+reach the identical effect via `engram spine-review archive` / `restore`
+directly against the store; every lane shares one gate.
 
 ## Citations (structured provenance)
 
@@ -568,3 +582,10 @@ call returns 401/403 the server is not authenticated —
 tell the user to authenticate via `/mcp` (engram → Authenticate), and
 restate the durable fact so they can re-store it after authenticating; never
 drop it silently.
+
+Every tool above except `delete_all` also has a CLI verb over Connect for a
+shell without an MCP session (`engram search`, `list`, `get`, `store`,
+`related`, `tags`, `rules`, `scheduled`, `schedule`, `supersede`, `archive`,
+`restore`, `set-visibility`, `update`, `delete`; `update` and `delete`
+preview by default and write under `--apply`). `delete_all` has no CLI verb
+by design.

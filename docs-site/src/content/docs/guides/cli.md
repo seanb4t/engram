@@ -1,13 +1,14 @@
 ---
 title: Headless CLI Client
-description: Use engram search, engram list, and engram store from a shell — an agent with no MCP client, a CI step, or a cron loop — including credentials, TLS, exit codes, the read-only terminal console, and the machine-readable catalog that engram catalog prints.
+description: Use the engram client verbs — search, list, get, store and the curation verbs that mirror every MCP tool — from a shell with no MCP client, including credentials, TLS, exit codes, the read-only terminal console, and the machine-readable catalog that engram catalog prints.
 ---
 
 `engram` is one binary that is both the server (`engram serve`) and a client for
-that server. The three client verbs — `engram search`, `engram list`, and
-`engram store` — let anything with a shell talk to a **remote** engram server
-over the Connect API, with no MCP client involved: a subagent with a closed
-tool list, a CI step, or a cron loop.
+that server. The client verbs — `engram search`, `engram list`, `engram get`,
+`engram store` and the curation verbs listed below — let anything with a shell
+talk to a **remote** engram server over the Connect API, with no MCP client
+involved: a subagent with a closed tool list, a CI step, or a cron loop. Every
+MCP tool but `delete_all` has a client verb that reaches the same server core.
 
 Get the binary through [Install](/guides/install/). To register an MCP connection
 for an agent, follow [Agent Setup](/guides/agent-setup/) and its release
@@ -19,20 +20,57 @@ Connect commands.
 The server must be running with the Connect lane mounted (`connect.headless:
 true`, or a UI-enabled deployment) — see [Configuration](/guides/configure/).
 
-## The three verbs
+## The client verbs
 
-| Command | Purpose |
-|---------|---------|
-| `engram search --server <url> --query <text> --scope <scope>` | Vector search over stored memories |
-| `engram list --server <url> --scope <scope>` | Paged, filtered recall |
-| `engram store --server <url> --content <text> --scope <scope>` | Write a memory (the only write verb) |
+Each verb is the CLI counterpart of one MCP tool and calls the same Connect
+RPC the tool's server core sits behind, so a rejection carries the same
+`field=<name> hint=<code>` envelope on both lanes (see the
+[error reference](/reference/errors/)). A verb that takes an id accepts a
+full UUID or a `short_id`.
+
+**Reads**
+
+| Command | MCP tool | Purpose |
+|---------|----------|---------|
+| `engram search --query <text> --scope <scope>` | `search_memory` | Vector search over stored memories |
+| `engram list --scope <scope>` | `list_memory` | Paged, filtered recall |
+| `engram get <id>` | `get_memory` | One record's full state, recall-gated or not |
+| `engram related <id>` | `related_memories` | One record's neighbourhood: supersession, shared tags, shared citations, vector neighbours; `--k`, `--full` |
+| `engram tags [--scope <scope>]` | `list_tags` | Exact tag counts, most-used first; omit `--scope` for every readable scope; `--limit` |
+| `engram rules [--scope <rule-scope>...]` | `list_rules` | The complete rule set, oldest-first; omit `--scope` for every readable rule scope; `--tag`, `--full` |
+| `engram scheduled --scope <scope>` | `list_scheduled` | Your windowed records the recall gate is hiding; `--state scheduled|expired|all`, `--cross-spine`, `--cursor` |
+| `engram search-discovery --query <text> --scope discovery:...` | `search_discovery` | Semantic search over the discovery pool |
+
+**Writes that preserve or reverse**
+
+| Command | MCP tool | Purpose |
+|---------|----------|---------|
+| `engram store --content <text> --scope <scope>` | `store_memory` | Write a memory |
+| `engram schedule --content <text> --scope <scope> --not-before <rfc3339>` | `schedule_memory` | Write a memory with a validity window (`--not-before` and/or `--not-after`); `--idempotency-key` |
+| `engram supersede --content <text> --scope <scope> --supersedes <id>...` | `supersede_memory` | Correct one or more records with a new one, history preserved; `--validate-only` previews the server's preflight without writing; `--citation kind:ref`, `--idempotency-key` |
+| `engram archive <id>...` / `engram restore <id>...` | `archive_memory` / `restore_memory` | Retire or un-retire records you own; one outcome per id, in order; a record you do not own reads `not_found` |
+| `engram set-visibility <id> --shared|--private` | `set_visibility` | Share or unshare a record you own; rejected for a rule |
+| `engram store-discovery --content <text> --kind map|fact --citation kind:ref --scope discovery:...` | `store_discovery` | Store a citation-backed discovery; `--id` replaces in place |
+| `engram store-rule --content <text> --scope rule:... --summary <line>` | `store_rule` | Store a user-blessed, always-shared rule; `--id` replaces in place. Run it only when a person asks for it: nothing promotes a rule on its own |
+
+**Destructive writes** — preview by default, write under `--apply` (see
+[Destructive commands](#destructive-commands))
+
+| Command | MCP tool | Purpose |
+|---------|----------|---------|
+| `engram update <id> --content <text> \| --summary <text> \| --tags <t> \| --shared \| --private` | `update_memory` | Replace the named fields in place; the flags given build the update mask, `--tags ""` clears the set |
+| `engram delete <id>` | `delete_memory` | Delete one record you own |
+
+The `archive`, `restore` and `set-visibility` verbs act on the caller's own
+records through the server's authorization, unlike the operator-tier
+`spine-review archive` / `spine-review restore`, which talk to Qdrant directly.
 
 Run `engram <verb> --help` for the full flag list of each command — every
 flag mirrors a field on the corresponding Connect request message.
 
 ## Shared flags
 
-All three commands accept the same five flags, each resolved flag-then-
+Every client verb accepts the same five flags, each resolved flag-then-
 environment-then-default through the same `internal/config` registry the
 server side uses:
 
@@ -228,7 +266,7 @@ leaf (currently `scan`, `verify`, `consolidate`, `archive`, `restore`, and
 | `json` | Write exactly one JSON document to stdout. |
 | `text` | Render a one-line prose headline followed by one aligned line per field of the same document `json` emits. This is a human-readable view, not a stable interface, and is not intended to be parsed. |
 | *(absent)* | Detect from the command's own configured output writer: a human terminal renders `text`; anything else (a pipe, a file redirect) renders `json`. |
-| anything else | Rejected as a usage error (exit `2`), naming `--output` and its legal values — the same validator the three client verbs use. |
+| anything else | Rejected as a usage error (exit `2`), naming `--output` and its legal values — the same validator the client verbs use. |
 
 As with the client tier, the JSON document goes to stdout and any warning or
 diagnostic goes to stderr, so `engram <operator-command> --output json | jq .`
@@ -250,7 +288,8 @@ This applies to every command routed through the `registerDestructive` choke
 point — a wider set than the [blast-radius](#blast-radius) table's
 `destructive` column alone. Today that is every command the table classifies
 `destructive` (`prune-expired`, `migrate-remap-owner`, `spine-review purge`,
-`migrate revert`), **plus `migrate`**, which is classified
+`migrate revert`, and the two client verbs `update` and `delete`, which share
+`update_memory`'s and `delete_memory`'s rows), **plus `migrate`**, which is classified
 **non-destructive** (its sweep is additive-only) yet still previews by
 default and mutates only under `--apply` — the same contract, extended to a
 mutating-but-not-destructive command. `migrate status` is read-only and
@@ -271,6 +310,15 @@ already asked for.
 (or every scope) for records with no summary yet; `--scope` and
 `--all-scopes` are mutually exclusive, matching every other operator command
 that offers this pair.
+
+**`engram delete <id>`** and **`engram update <id> ...`** are the client
+tier's two destructive verbs. A bare `delete` fetches the record and prints
+what would be deleted; `--apply` sends one `DeleteMemory` call. A bare
+`update` fetches the record and names the fields the flags would replace;
+`--apply` sends one `UpdateMemory` call. A record you cannot read exits `4`
+on both paths, so the preview reveals nothing a non-owner could not already
+see. **The `delete_all` MCP tool has no CLI counterpart**, deliberately and
+permanently: no verb deletes every record, and `engram catalog` lists none.
 
 `backfill-short-ids` has MOVED from the `--dry-run` idiom to the `--apply`
 one: it is now a thin delegating alias for `engram migrate` — see the
@@ -593,7 +641,8 @@ for the full migration note.
 
 ## Request timeout
 
-Every client verb (`search`, `list`, `store`, `get`) bounds its RPC call with
+Every client verb (`search`, `list`, `store`, `get` and the curation verbs
+listed under [The client verbs](#the-client-verbs)) bounds its RPC call with
 `--timeout` (or `ENGRAM_TIMEOUT`), default `30s`. `0`, a negative value, and
 a malformed duration are all rejected as usage errors (exit `2`) **before**
 any dial — `--timeout 0` together with an unreachable `--server` still exits
@@ -606,7 +655,7 @@ zero-semantics, and it is not uniform across commands:**
 
 | Commands | `--timeout` meaning | `0` behavior |
 |---|---|---|
-| `search`, `list`, `store`, `get`, `migration-status`, `tui` | Per-RPC-call deadline | **Rejected** (usage error) |
+| `search`, `list`, `store`, `get`, `migration-status`, `tui`, and every curation verb (`related`, `tags`, `rules`, `scheduled`, `search-discovery`, `archive`, `restore`, `update`, `set-visibility`, `schedule`, `supersede`, `store-discovery`, `store-rule`, `delete`) | Per-RPC-call deadline | **Rejected** (usage error) |
 | `prime` | One deadline for the whole command: the git probes, the credential and every RPC call together | **Rejected** (usage error) |
 | `reindex`, `prune-expired`, `summarize-missing`, `backfill-short-ids`, `spine-review scan`, `spine-review verify`, `spine-review consolidate`, `spine-review archive`, `spine-review restore`, `spine-review purge`, `migrate`, `migrate status`, `migrate revert` | Whole-sweep wall-clock budget | Disables the deadline (unbounded), unchanged |
 | `migrate-remap-owner`, `migrate-set-owner` | Whole-sweep wall-clock budget | **Rejected** (usage error) — changed this release, see the [upgrade guide](/guides/upgrade/#6-migrate-remap-owner---timeout-0--migrate-set-owner---timeout-0-no-longer-means-unbounded) |

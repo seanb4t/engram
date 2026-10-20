@@ -49,7 +49,7 @@ var rulesCmd = &cobra.Command{
 				return err
 			}
 			if a := resp.Msg.GetAdvisory(); a != "" {
-				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "advisory: %s\n", a); err != nil {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "advisory: %s\n", sanitizeViewValue(a)); err != nil {
 					return err
 				}
 			}

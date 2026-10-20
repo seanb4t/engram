@@ -152,7 +152,8 @@ migrate-remap-owner --from-missing --to <owner>` (the `migrate-set-owner` comman
 is a deprecated alias). To re-stamp records after an IdP `sub`/claim change, use
 `engram migrate-remap-owner --from <old> --to <new>`.
 
-Scheduled tools: `schedule_memory` stores a memory with a temporal validity
+Scheduled tools (CLI: `engram schedule`, `engram scheduled`): `schedule_memory`
+stores a memory with a temporal validity
 window — `not_before` (RFC3339; deferred reveal: hidden from recall until then)
 and/or `not_after` (RFC3339; expiry: dropped from recall at then). `list_scheduled`
 surfaces windowed records the recall gate is hiding (`state` = `scheduled` default
@@ -184,7 +185,11 @@ similarity or write-through path); rules cannot be superseded (delete instead);
 `idempotency_key` is accepted on this verb — the fingerprint covers content and
 the target set, and a retry after an ambiguous failure replays instead of
 duplicating. Use it for *reversals* — prefer `update_memory` for in-place
-refinement and `delete_memory` for junk. `validate_only` (bool) runs the same
+refinement and `delete_memory` for junk. On the CLI, `engram supersede`
+(with `--supersedes`, `--validate-only`, `--idempotency-key`), `engram update
+<id>` and `engram delete <id>` are the counterparts; the latter two share their
+tools' destructive classification, so each previews by default and writes
+under `--apply`. `delete_all` has no CLI verb, by design. `validate_only` (bool) runs the same
 preflight (ownership, single-live-head, rule rejection, ambiguous short_id)
 without writing anything, naming the resolved targets or the exact rejection a
 real call would produce — optional, useful before a multi-target merge, never
@@ -201,8 +206,10 @@ in caller-supplied order (`archived` / `already_archived` / `restored` /
 `not_archived` / `not_found`), owner-only — a record you do not own reads
 `not_found`, indistinguishable from a nonexistent id, and never echoes its
 UUID. Agent use is gated on the user agreeing to it in the conversation, never
-on the agent's own judgment; `engram spine-review archive` / `restore` remain
-the operator-tier path, unchanged. `archived_at` shares supersession's soft-hidden-
+on the agent's own judgment; the client-tier `engram archive <id>...` /
+`engram restore <id>...` run the same batch as the caller's own principal,
+while `engram spine-review archive` / `restore` remain the operator-tier
+path, unchanged. `archived_at` shares supersession's soft-hidden-
 but-still-fetchable-by-id contract: an archived record drops out of
 `search_memory`/`list_memory`/`search_discovery`/`list_scheduled` but stays reachable by id via `get_memory`.
 Archiving is an orthogonal key — it never writes an expiry and never writes a
@@ -213,13 +220,16 @@ descending by finality. `expired` is evaluated first and, when present,
 suppresses `scheduled`; the window-boundary rule that decides each state
 lives on `reference/memory-record.md`, not restated here.
 
-Discovery tools: `store_discovery` / `search_discovery`. A discovery is a 5th
+Discovery tools: `store_discovery` / `search_discovery` (CLI: `engram store-discovery` /
+`engram search-discovery`). A discovery is a 5th
 `category` carrying `kind` (`map`|`fact`), `citations` (with aging `pin`s), and
 `summary`; it lives in a separate `discovery:repo:*` scope, is recalled on
 demand (never at session start), and is captured via the `discovering` skill.
 Design intent unchanged: explicit, citation-backed, no auto-extraction.
 
-Rule tools: `store_rule` / `list_rules`. A rule is a 6th `category`: normative,
+Rule tools: `store_rule` / `list_rules`, on Connect as `StoreRule` /
+`ListRules` (both delegate to the same core; `StoreRule` is a CSRF-gated
+write) and on the CLI as `engram store-rule` / `engram rules`. A rule is a 6th `category`: normative,
 user-blessed, always-shared ground truth in a dedicated `rule:repo:*` /
 `rule:project:*` scope. An agent proposes a rule candidate when it notices
 one; `store_rule` is invoked only after the user blesses it (never promoted
@@ -231,10 +241,12 @@ cross-scope read (up to 1000 rules in total rather than per scope), reporting
 the covered rule scopes the same way a cross-spine recall reports
 `searched_scopes`. Rules surface at session start as a progressive-disclosure index (one
 line per rule; full text fetched on demand via `get_memory`). `set_visibility`
-is rejected for rules — delete the rule instead. Design intent unchanged:
-explicit, user-blessed, no auto-extraction.
+(CLI: `engram set-visibility <id> --shared|--private`) is rejected for rules —
+delete the rule instead. Design intent unchanged: explicit, user-blessed, no
+auto-extraction.
 
-Related-memories and tags: `related_memories` returns one record's
+Related-memories and tags (CLI: `engram related <id>`, `engram tags`):
+`related_memories` returns one record's
 neighbourhood — supersession chain, shared tags, shared citations, and vector
 neighbours, each edge typed with its evidence — on demand only: curating
 (dedup before a store, finding what a correction should supersede) or an
@@ -251,7 +263,10 @@ All seven curation capabilities above (`archive_memory`/`restore_memory`,
 widenings, `related_memories`, `list_tags`) also exist on Connect
 (`ArchiveMemory`/`RestoreMemory`/`SupersedeMemory` are CSRF-gated writes;
 `ListRules`/`ListScheduled`/`RelatedMemories`/`ListTags` are reads), delegating
-to the same core as their MCP tool.
+to the same core as their MCP tool, and on the CLI as client-tier verbs over
+those RPCs (`engram archive`/`restore`/`supersede --validate-only`/`rules`/
+`scheduled`/`related`/`tags`). Every MCP tool except `delete_all` has a CLI
+verb (docs-site `guides/cli.md`, "The client verbs").
 
 ## Auth
 

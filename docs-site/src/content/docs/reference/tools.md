@@ -10,27 +10,32 @@ records created.
 
 ## Tool summary
 
-| Tool | Purpose |
-|------|---------|
-| `store_memory` | Persist a deliberate, well-formed memory |
-| `schedule_memory` | Persist a memory with a validity window (deferred reveal / expiry) |
-| `search_memory` | Semantic search within a scope |
-| `list_memory` | Most-recent memories in a scope (no query — session bootstrap) |
-| `list_scheduled` | List windowed memories the recall gate is hiding |
-| `get_memory` | Fetch one memory by id |
-| `supersede_memory` | Correct a memory with a new record, preserving history |
-| `update_memory` | Replace a memory's content in place (re-embeds) |
-| `delete_memory` | Delete one memory by id |
-| `delete_all` | Delete your own memories in a scope (teardown) |
-| `store_discovery` | Cache citation-backed codebase understanding |
-| `search_discovery` | Semantic search over the discovery pool |
-| `set_visibility` | Share or unshare a memory you own |
-| `store_rule` | Persist a normative, user-blessed rule (ground truth) |
-| `list_rules` | List the complete rule set for one or more scopes |
-| `archive_memory` | Retire a memory you own without deleting it (reversible) |
-| `restore_memory` | Reverse an `archive_memory` call |
-| `related_memories` | On-demand neighbourhood: supersession, shared tags, shared citations, vector similarity |
-| `list_tags` | Exact tag counts for a scope, for tag reuse before `store_memory` |
+Every tool but `delete_all` has a client-tier CLI verb that reaches the same
+server core over Connect, documented in the
+[CLI guide](/guides/cli/#the-client-verbs); the verb is named in the last
+column. `delete_all` has none, deliberately.
+
+| Tool | Purpose | CLI verb |
+|------|---------|----------|
+| `store_memory` | Persist a deliberate, well-formed memory | `engram store` |
+| `schedule_memory` | Persist a memory with a validity window (deferred reveal / expiry) | `engram schedule` |
+| `search_memory` | Semantic search within a scope | `engram search` |
+| `list_memory` | Most-recent memories in a scope (no query — session bootstrap) | `engram list` |
+| `list_scheduled` | List windowed memories the recall gate is hiding | `engram scheduled` |
+| `get_memory` | Fetch one memory by id | `engram get` |
+| `supersede_memory` | Correct a memory with a new record, preserving history | `engram supersede` |
+| `update_memory` | Replace a memory's content in place (re-embeds) | `engram update` (previews by default) |
+| `delete_memory` | Delete one memory by id | `engram delete` (previews by default) |
+| `delete_all` | Delete your own memories in a scope (teardown) | none, by design |
+| `store_discovery` | Cache citation-backed codebase understanding | `engram store-discovery` |
+| `search_discovery` | Semantic search over the discovery pool | `engram search-discovery` |
+| `set_visibility` | Share or unshare a memory you own | `engram set-visibility` |
+| `store_rule` | Persist a normative, user-blessed rule (ground truth) | `engram store-rule` |
+| `list_rules` | List the complete rule set for one or more scopes | `engram rules` |
+| `archive_memory` | Retire a memory you own without deleting it (reversible) | `engram archive` |
+| `restore_memory` | Reverse an `archive_memory` call | `engram restore` |
+| `related_memories` | On-demand neighbourhood: supersession, shared tags, shared citations, vector similarity | `engram related` |
+| `list_tags` | Exact tag counts for a scope, for tag reuse before `store_memory` | `engram tags` |
 
 **`actor` and `owner` are always server-set.** They come from the validated OIDC
 token and are never accepted as client input.
@@ -576,6 +581,14 @@ record's existing `short_id`, so handles cited elsewhere keep resolving.
 means deleting it.
 
 Returns the stored rule's `id` and `short_id`.
+
+The same write exists on the Connect `EngramService` as the `StoreRule` RPC
+(`StoreRuleRequest{content, scope, summary, tags, id}` →
+`StoreRuleResponse{id, short_id}`), delegating to the identical core: the
+same always-shared posture, the same `short_id` preservation on replace, the
+same `not_found` for a rule you do not own, and the same `field=`/`hint=`
+rejections. It is CSRF-gated like every other Connect write. The CLI reaches
+it as `engram store-rule`.
 
 ---
 
