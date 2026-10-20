@@ -125,6 +125,8 @@ func TestUpdate(t *testing.T) {
 		{"tags cleared", []string{"--tags", ""}, "tags", []string{}, false},
 		{"shared", []string{"--shared"}, "shared", nil, true},
 		{"private", []string{"--private"}, "shared", nil, false},
+		{"shared negated unshares", []string{"--shared=false"}, "shared", nil, false},
+		{"private negated shares", []string{"--private=false"}, "shared", nil, true},
 		{"content and tags", []string{"--content", "new text", "--tags", "a", "--tags", "b"}, "content,tags", []string{"a", "b"}, false},
 	}
 	for _, tc := range cases {
@@ -260,6 +262,9 @@ func TestSetVisibility(t *testing.T) {
 	}{
 		{"--shared", engramv1.Visibility_VISIBILITY_SHARED},
 		{"--private", engramv1.Visibility_VISIBILITY_PRIVATE},
+		// A negated form reads the way it is written, on both verbs.
+		{"--shared=false", engramv1.Visibility_VISIBILITY_PRIVATE},
+		{"--private=false", engramv1.Visibility_VISIBILITY_SHARED},
 	} {
 		t.Run(tc.flag, func(t *testing.T) {
 			resetClientFlags(t)

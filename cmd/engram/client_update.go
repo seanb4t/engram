@@ -115,6 +115,9 @@ func updateApplyRun(ctx context.Context, cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	// Direction comes from the supplied flag and its value, never from
+	// updateShared alone: --private=false shares, --shared=false unshares.
+	shared, _ := visibilityFromFlags(cmd, updateShared, updatePrivate)
 	client, format, timeout, err := clientFromFlags(cmd)
 	if err != nil {
 		return err
@@ -126,7 +129,7 @@ func updateApplyRun(ctx context.Context, cmd *cobra.Command) error {
 		Content:    updateContent,
 		Summary:    updateSummary,
 		Tags:       updateTags,
-		Shared:     updateShared,
+		Shared:     shared,
 		UpdateMask: &fieldmaskpb.FieldMask{Paths: paths},
 	}))
 	if err != nil {

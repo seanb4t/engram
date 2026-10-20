@@ -107,7 +107,8 @@ caller's private records.
 `engram scheduled` SHALL call `ListScheduled` with `--scope` (required unless `--cross-spine`),
 optional `--state` (`scheduled` default, `expired`, `all`), `--limit`, `--created-after`,
 `--created-before` and `--cursor`, and SHALL return only the caller's own windowed records with
-`next_cursor` for paging.
+`next_page_token` for paging (the Connect response's field name, which the JSON lane mirrors;
+`--cursor` sends it back as `page_token`).
 
 #### Scenario: Scope missing without cross-spine
 

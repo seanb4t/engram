@@ -21,17 +21,19 @@ var (
 // over the SetVisibility RPC: the same toggle the set_visibility MCP tool
 // makes. Exactly one of --shared / --private is required; the pair is a
 // mutually-exclusive cobra group and the at-least-one half is checked
-// here, before any request, so neither direction is ever implied.
+// here, before any request, so neither direction is ever implied. A
+// negated form reads the way it is written: --private=false shares.
 var setVisibilityCmd = &cobra.Command{
 	Use:   "set-visibility <id>",
 	Short: "Share or unshare a memory you own",
 	Args:  exactlyOneID,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !setVisibilityShared && !setVisibilityPrivate {
+		shared, set := visibilityFromFlags(cmd, setVisibilityShared, setVisibilityPrivate)
+		if !set {
 			return usageErrorf("exactly one of --shared or --private is required")
 		}
 		visibility := engramv1.Visibility_VISIBILITY_PRIVATE
-		if setVisibilityShared {
+		if shared {
 			visibility = engramv1.Visibility_VISIBILITY_SHARED
 		}
 		client, format, timeout, err := clientFromFlags(cmd)

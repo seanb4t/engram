@@ -735,6 +735,23 @@ func renderProtoView(w io.Writer, headline string, m proto.Message) error {
 	return renderOperatorView(w, headline, json.RawMessage(b))
 }
 
+// visibilityFromFlags reads the --shared/--private pair the way a caller
+// reads it: the flag that was SUPPLIED decides which direction is meant,
+// and its VALUE decides the sign, so --private=false means "share it" and
+// --shared=false means "make it private", not the reverse. The pair is a
+// mutually-exclusive cobra group on every verb that declares it, so at
+// most one is supplied. set reports whether either was supplied at all.
+func visibilityFromFlags(cmd *cobra.Command, sharedValue, privateValue bool) (shared, set bool) {
+	switch {
+	case cmd.Flags().Changed("shared"):
+		return sharedValue, true
+	case cmd.Flags().Changed("private"):
+		return !privateValue, true
+	default:
+		return false, false
+	}
+}
+
 // renderIDLine writes the text-lane line every id-returning write verb
 // prints: "<verb>: <short_id> (<id>)", the shape engram store established.
 // Both ids come from the server and pass through sanitizeViewValue, the
