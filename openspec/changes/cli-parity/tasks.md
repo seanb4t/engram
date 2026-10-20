@@ -43,7 +43,7 @@
 - [x] 6.2 Emit `--callback-port <n>` from `internal/setup/claudecode.go` in the `oauth` arm when set and in the `oauth-client` arm always (default 8765), and make `codex.go` and `opencode.go` return a wrapped `ErrCallbackPortUnsupported` naming the flag; verify tests pin the `oauth` arm byte-identical without the flag, the `oauth-client` arm byte-identical at 8765, the override, and the Codex `failed` row with exit 8 beside a Claude Code success
 - [x] 6.3 Carry the callback port in the setup result rows (JSON and text) as a requested facet; the probe cannot observe it (design D-14), so the guide states a changed port needs an `--apply` re-run; verify a test shows every present row names the port and an absent row none
 - [x] 6.4 Document `--callback-port` in `docs-site/src/content/docs/guides/agent-setup.md` and in `skill/engram/commands/engram-setup.md`'s table, and add a "Logging in over SSH" section to the agent-setup guide covering `claude mcp login engram --no-browser` paste-back, the `ssh -t -L <port>:localhost:<port>` local-forward variant with a fixed port, the once-per-host login, and the port-per-host note for concurrent sessions; verify `task lint:markdown` passes
-- [ ] 6.5 Run one live login over `ssh -t -L` against the production server with a fixed-port registration and record whether the redirect completed without a paste; verify the guide's wording matches the observed result
+- [x] 6.5 Skipped by decision (Sean, 2026-10-20): the live `ssh -t -L` login needs a released binary on the remote host, so it is deferred to after the release; the guide presents the tunnel as a flow to try once with paste-back as the fallback, and a bug is opened if it does not complete
 
 ## 7. Catalog, goldens and integration
 
