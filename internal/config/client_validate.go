@@ -86,6 +86,21 @@ func ValidateSetupAuth(v string) error {
 	}
 }
 
+// ValidateSetupCallbackPort parses v, the raw `engram setup --callback-port`
+// value, into a TCP port: "" is "not set" and returns 0; anything else must
+// be an integer from 1 to 65535. Shaped like ValidateSetupAuth: a bad value
+// routes to usageErrorf -> exitUsage (2) and names the valid range.
+func ValidateSetupCallbackPort(v string) (int, error) {
+	if v == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 || n > 65535 {
+		return 0, fmt.Errorf("--callback-port %q: must be a TCP port from 1 to 65535", v)
+	}
+	return n, nil
+}
+
 // TUIThemes are the terminal console's theme names, in the order its
 // picker lists them. The console defines each theme; this list is the
 // contract its settings are validated against.

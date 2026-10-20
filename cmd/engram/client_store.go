@@ -76,8 +76,7 @@ var storeCmd = &cobra.Command{
 			return wrapRPCError(err)
 		}
 		if format == formatText {
-			_, err := cmd.OutOrStdout().Write([]byte("stored: " + resp.Msg.GetShortId() + " (" + resp.Msg.GetId() + ")\n"))
-			return err
+			return renderIDLine(cmd.OutOrStdout(), "stored", resp.Msg.GetShortId(), resp.Msg.GetId())
 		}
 		return renderJSON(cmd.OutOrStdout(), resp.Msg)
 	},

@@ -623,7 +623,7 @@ type timeoutGroup struct {
 var timeoutGroups = []timeoutGroup{
 	{
 		name:         "reject-zero-client",
-		commands:     map[string]bool{"search": true, "list": true, "store": true, "get": true, "migration-status": true, "tui": true, "prime": true},
+		commands:     rejectZeroClientCommands(),
 		zeroRejected: true,
 	},
 	{
@@ -652,10 +652,49 @@ var timeoutGroups = []timeoutGroup{
 // proceeds PAST the --timeout check fails with a transport error
 // (exitUnavailable), never a coincidental usage error from an unrelated
 // missing flag or env var.
+// rejectZeroClientCommands is the reject-zero client group: the original
+// client verbs plus every change cli-parity verb (parityClientVerbs), all
+// of which validate --timeout through clientFromFlags.
+func rejectZeroClientCommands() map[string]bool {
+	out := map[string]bool{"search": true, "list": true, "store": true, "get": true, "migration-status": true, "tui": true, "prime": true}
+	for _, verb := range parityClientVerbs {
+		out[verb] = true
+	}
+	return out
+}
+
 func timeoutGroupCaseArgs(t *testing.T, name string) (args []string, env map[string]string) {
 	t.Helper()
 	env = map[string]string{"ENGRAM_QDRANT_ADDR": deadQdrant}
 	switch name {
+	case "related":
+		return []string{"related", "some-id", "--server", deadServer, "--timeout", "0"}, nil
+	case "tags":
+		return []string{"tags", "--server", deadServer, "--timeout", "0"}, nil
+	case "rules":
+		return []string{"rules", "--server", deadServer, "--timeout", "0"}, nil
+	case "scheduled":
+		return []string{"scheduled", "--server", deadServer, "--scope", "s", "--timeout", "0"}, nil
+	case "search-discovery":
+		return []string{"search-discovery", "--server", deadServer, "--query", "q", "--timeout", "0"}, nil
+	case "archive":
+		return []string{"archive", "some-id", "--server", deadServer, "--timeout", "0"}, nil
+	case "restore":
+		return []string{"restore", "some-id", "--server", deadServer, "--timeout", "0"}, nil
+	case "update":
+		return []string{"update", "some-id", "--server", deadServer, "--content", "c", "--apply", "--timeout", "0"}, nil
+	case "set-visibility":
+		return []string{"set-visibility", "some-id", "--server", deadServer, "--shared", "--timeout", "0"}, nil
+	case "schedule":
+		return []string{"schedule", "--server", deadServer, "--scope", "s", "--content", "c", "--not-after", "2030-01-01T00:00:00Z", "--timeout", "0"}, nil
+	case "supersede":
+		return []string{"supersede", "--server", deadServer, "--scope", "s", "--content", "c", "--supersedes", "x", "--timeout", "0"}, nil
+	case "store-discovery":
+		return []string{"store-discovery", "--server", deadServer, "--content", "c", "--timeout", "0"}, nil
+	case "store-rule":
+		return []string{"store-rule", "--server", deadServer, "--content", "c", "--timeout", "0"}, nil
+	case "delete":
+		return []string{"delete", "some-id", "--server", deadServer, "--timeout", "0"}, nil
 	case "search":
 		return []string{"search", "--server", deadServer, "--scope", "s", "--query", "q", "--timeout", "0"}, nil
 	case "list":

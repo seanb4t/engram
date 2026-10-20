@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -556,6 +557,21 @@ func renderRecallHiddenFooter(w io.Writer, hidden *engramv1.RecallGateHidden) er
 	return err
 }
 
+// renderRecallFooters writes the two recall footers every recall-shaped
+// response shares, in the order search and list established: the
+// cross-spine coverage footer (renderCoverageFooter) and then the
+// recall-gate hidden-count footer (renderRecallHiddenFooter). Each helper
+// keeps its own gate, so a scope-confined call prints no coverage line and
+// a response with nothing hidden prints no hidden line. One call site per
+// verb — rules, scheduled, search, list — rather than two, so a verb cannot
+// print one footer and forget the other.
+func renderRecallFooters(w io.Writer, crossSpine bool, searchedScopes []string, scopesTruncated, scopesUnknown bool, hidden *engramv1.RecallGateHidden) error {
+	if err := renderCoverageFooter(w, crossSpine, searchedScopes, scopesTruncated, scopesUnknown); err != nil {
+		return err
+	}
+	return renderRecallHiddenFooter(w, hidden)
+}
+
 // footerLookupBudget bounds the migration-advisory footer's lookup latency
 // (07-06, T-07-19): the ceiling min(resolvedTimeout, footerLookupBudget) is
 // applied against, never the caller's full resolved --timeout, which could
@@ -697,6 +713,51 @@ func renderJSON(w io.Writer, m proto.Message) error {
 		return err
 	}
 	_, err = fmt.Fprintln(w, string(b))
+	return err
+}
+
+// renderProtoView renders m through the operator view under headline, for
+// the text lane of a client verb whose response is one structured document
+// rather than a table of memories. It marshals with the SAME protojson
+// options renderJSON uses, so protojson's Timestamp rendering, enum names
+// and optional-field presence survive into the text lane and the text
+// field set cannot widen past the json document: both lanes read one
+// serialization of one value (the text/json identity engram get
+// established).
+func renderProtoView(w io.Writer, headline string, m proto.Message) error {
+	b, err := protojson.MarshalOptions{
+		UseProtoNames:     true,
+		EmitDefaultValues: true,
+	}.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return renderOperatorView(w, headline, json.RawMessage(b))
+}
+
+// visibilityFromFlags reads the --shared/--private pair the way a caller
+// reads it: the flag that was SUPPLIED decides which direction is meant,
+// and its VALUE decides the sign, so --private=false means "share it" and
+// --shared=false means "make it private", not the reverse. The pair is a
+// mutually-exclusive cobra group on every verb that declares it, so at
+// most one is supplied. set reports whether either was supplied at all.
+func visibilityFromFlags(cmd *cobra.Command, sharedValue, privateValue bool) (shared, set bool) {
+	switch {
+	case cmd.Flags().Changed("shared"):
+		return sharedValue, true
+	case cmd.Flags().Changed("private"):
+		return !privateValue, true
+	default:
+		return false, false
+	}
+}
+
+// renderIDLine writes the text-lane line every id-returning write verb
+// prints: "<verb>: <short_id> (<id>)", the shape engram store established.
+// Both ids come from the server and pass through sanitizeViewValue, the
+// same rule every other server-derived string on the text lane follows.
+func renderIDLine(w io.Writer, verb, shortID, id string) error {
+	_, err := fmt.Fprintf(w, "%s: %s (%s)\n", verb, sanitizeViewValue(shortID), sanitizeViewValue(id))
 	return err
 }
 

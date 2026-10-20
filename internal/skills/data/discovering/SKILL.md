@@ -57,6 +57,11 @@ and ageable. For each citation capture:
    — omit `id` to create; pass the near-duplicate's `id` or `short_id` (from
    step 1) to replace it in place rather than adding a new record.
 
+**From the shell:** `engram store-discovery --content ... --kind map|fact
+--citation <kind>:<ref> --scope discovery:repo:<repo> [--id <id>]` and
+`engram search-discovery --query ... --scope discovery:repo:<repo>` are the
+same two calls over Connect, for a session with no MCP client.
+
 ## Recall (the other half)
 
 When entering mapped territory later, issue a targeted `search_discovery` scoped

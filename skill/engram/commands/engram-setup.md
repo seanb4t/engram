@@ -91,6 +91,7 @@ these synthetic tables.
 | `bearer` | `engram setup --url https://engram.example.com/mcp --auth bearer` |
 | `none` | `engram setup --url https://engram.example.com/mcp --auth none` |
 | `bearer+header` | `engram setup --url https://engram.example.com/mcp --auth bearer --header x-gateway-api-key=GATEWAY_KEY` |
+| `oauth+callback-port` | `engram setup --url https://engram.example.com/mcp --auth oauth --callback-port 8765` |
 
 ### Claude Code fallback registration
 
@@ -101,6 +102,7 @@ these synthetic tables.
 | `bearer` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'Authorization: Bearer ${ENGRAM_TOKEN}'` |
 | `none` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user` |
 | `bearer+header` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --header 'Authorization: Bearer ${ENGRAM_TOKEN}' --header 'x-gateway-api-key: ${GATEWAY_KEY}'` |
+| `oauth+callback-port` | `claude mcp add --transport http engram https://engram.example.com/mcp --scope user --callback-port 8765` |
 
 ### Claude Code plugin delivery (--apply)
 

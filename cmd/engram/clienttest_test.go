@@ -42,6 +42,19 @@ type stubEngramService struct {
 	listTagsFn      func(context.Context, *engramv1.ListTagsRequest) (*engramv1.ListTagsResponse, error)
 	listRulesFn     func(context.Context, *engramv1.ListRulesRequest) (*engramv1.ListRulesResponse, error)
 	listScheduledFn func(context.Context, *engramv1.ListScheduledRequest) (*engramv1.ListScheduledResponse, error)
+	searchDiscFn    func(context.Context, *engramv1.SearchDiscoveriesRequest) (*engramv1.SearchDiscoveriesResponse, error)
+
+	// Write RPCs the parity verbs drive. Each is unimplemented when unset
+	// and, under readOnly, fails the test before fn is consulted.
+	storeDiscoveryFn func(context.Context, *engramv1.StoreDiscoveryRequest) (*engramv1.StoreDiscoveryResponse, error)
+	storeRuleFn      func(context.Context, *engramv1.StoreRuleRequest) (*engramv1.StoreRuleResponse, error)
+	updateFn         func(context.Context, *engramv1.UpdateMemoryRequest) (*engramv1.UpdateMemoryResponse, error)
+	deleteFn         func(context.Context, *engramv1.DeleteMemoryRequest) (*engramv1.DeleteMemoryResponse, error)
+	setVisibilityFn  func(context.Context, *engramv1.SetVisibilityRequest) (*engramv1.SetVisibilityResponse, error)
+	scheduleFn       func(context.Context, *engramv1.ScheduleMemoryRequest) (*engramv1.ScheduleMemoryResponse, error)
+	archiveFn        func(context.Context, *engramv1.ArchiveMemoryRequest) (*engramv1.ArchiveMemoryResponse, error)
+	restoreFn        func(context.Context, *engramv1.RestoreMemoryRequest) (*engramv1.RestoreMemoryResponse, error)
+	supersedeFn      func(context.Context, *engramv1.SupersedeMemoryRequest) (*engramv1.SupersedeMemoryResponse, error)
 
 	// readOnly, when set, fails that test on any write RPC: the evidence
 	// that the terminal console only reads.
@@ -54,6 +67,9 @@ type stubEngramService struct {
 	storeCalls         int
 	getCalls           int
 	migrateStatusCalls int
+	// writeCalls counts every write RPC the stub answered, by procedure
+	// name, so a test can assert "exactly one call" or "no call at all".
+	writeCalls map[string]int
 
 	// lastAuthHeader is the Authorization header value observed on the most
 	// recent request to any of the three overridden RPCs.
@@ -172,36 +188,61 @@ func (s *stubEngramService) rejectWrite(procedure string) error {
 	return connect.NewError(connect.CodeUnimplemented, errUnimplementedStub)
 }
 
-func (s *stubEngramService) StoreDiscovery(context.Context, *connect.Request[engramv1.StoreDiscoveryRequest]) (*connect.Response[engramv1.StoreDiscoveryResponse], error) {
-	return nil, s.rejectWrite("StoreDiscovery")
+func (s *stubEngramService) SearchDiscoveries(ctx context.Context, req *connect.Request[engramv1.SearchDiscoveriesRequest]) (*connect.Response[engramv1.SearchDiscoveriesResponse], error) {
+	return stubRead(ctx, req, s.searchDiscFn)
 }
 
-func (s *stubEngramService) UpdateMemory(context.Context, *connect.Request[engramv1.UpdateMemoryRequest]) (*connect.Response[engramv1.UpdateMemoryResponse], error) {
-	return nil, s.rejectWrite("UpdateMemory")
+// stubWrite answers a write RPC: it fails a readOnly test before anything
+// else, counts the call under procedure, records the Authorization
+// header, and then runs fn like stubRead does.
+func stubWrite[Req, Resp any](ctx context.Context, s *stubEngramService, procedure string, req *connect.Request[Req], fn func(context.Context, *Req) (*Resp, error)) (*connect.Response[Resp], error) {
+	if s.readOnly != nil {
+		return nil, s.rejectWrite(procedure)
+	}
+	s.mu.Lock()
+	if s.writeCalls == nil {
+		s.writeCalls = map[string]int{}
+	}
+	s.writeCalls[procedure]++
+	s.lastAuthHeader = req.Header().Get("Authorization")
+	s.mu.Unlock()
+	return stubRead(ctx, req, fn)
 }
 
-func (s *stubEngramService) DeleteMemory(context.Context, *connect.Request[engramv1.DeleteMemoryRequest]) (*connect.Response[engramv1.DeleteMemoryResponse], error) {
-	return nil, s.rejectWrite("DeleteMemory")
+func (s *stubEngramService) StoreDiscovery(ctx context.Context, req *connect.Request[engramv1.StoreDiscoveryRequest]) (*connect.Response[engramv1.StoreDiscoveryResponse], error) {
+	return stubWrite(ctx, s, "StoreDiscovery", req, s.storeDiscoveryFn)
 }
 
-func (s *stubEngramService) SetVisibility(context.Context, *connect.Request[engramv1.SetVisibilityRequest]) (*connect.Response[engramv1.SetVisibilityResponse], error) {
-	return nil, s.rejectWrite("SetVisibility")
+func (s *stubEngramService) StoreRule(ctx context.Context, req *connect.Request[engramv1.StoreRuleRequest]) (*connect.Response[engramv1.StoreRuleResponse], error) {
+	return stubWrite(ctx, s, "StoreRule", req, s.storeRuleFn)
 }
 
-func (s *stubEngramService) ScheduleMemory(context.Context, *connect.Request[engramv1.ScheduleMemoryRequest]) (*connect.Response[engramv1.ScheduleMemoryResponse], error) {
-	return nil, s.rejectWrite("ScheduleMemory")
+func (s *stubEngramService) UpdateMemory(ctx context.Context, req *connect.Request[engramv1.UpdateMemoryRequest]) (*connect.Response[engramv1.UpdateMemoryResponse], error) {
+	return stubWrite(ctx, s, "UpdateMemory", req, s.updateFn)
 }
 
-func (s *stubEngramService) ArchiveMemory(context.Context, *connect.Request[engramv1.ArchiveMemoryRequest]) (*connect.Response[engramv1.ArchiveMemoryResponse], error) {
-	return nil, s.rejectWrite("ArchiveMemory")
+func (s *stubEngramService) DeleteMemory(ctx context.Context, req *connect.Request[engramv1.DeleteMemoryRequest]) (*connect.Response[engramv1.DeleteMemoryResponse], error) {
+	return stubWrite(ctx, s, "DeleteMemory", req, s.deleteFn)
 }
 
-func (s *stubEngramService) RestoreMemory(context.Context, *connect.Request[engramv1.RestoreMemoryRequest]) (*connect.Response[engramv1.RestoreMemoryResponse], error) {
-	return nil, s.rejectWrite("RestoreMemory")
+func (s *stubEngramService) SetVisibility(ctx context.Context, req *connect.Request[engramv1.SetVisibilityRequest]) (*connect.Response[engramv1.SetVisibilityResponse], error) {
+	return stubWrite(ctx, s, "SetVisibility", req, s.setVisibilityFn)
 }
 
-func (s *stubEngramService) SupersedeMemory(context.Context, *connect.Request[engramv1.SupersedeMemoryRequest]) (*connect.Response[engramv1.SupersedeMemoryResponse], error) {
-	return nil, s.rejectWrite("SupersedeMemory")
+func (s *stubEngramService) ScheduleMemory(ctx context.Context, req *connect.Request[engramv1.ScheduleMemoryRequest]) (*connect.Response[engramv1.ScheduleMemoryResponse], error) {
+	return stubWrite(ctx, s, "ScheduleMemory", req, s.scheduleFn)
+}
+
+func (s *stubEngramService) ArchiveMemory(ctx context.Context, req *connect.Request[engramv1.ArchiveMemoryRequest]) (*connect.Response[engramv1.ArchiveMemoryResponse], error) {
+	return stubWrite(ctx, s, "ArchiveMemory", req, s.archiveFn)
+}
+
+func (s *stubEngramService) RestoreMemory(ctx context.Context, req *connect.Request[engramv1.RestoreMemoryRequest]) (*connect.Response[engramv1.RestoreMemoryResponse], error) {
+	return stubWrite(ctx, s, "RestoreMemory", req, s.restoreFn)
+}
+
+func (s *stubEngramService) SupersedeMemory(ctx context.Context, req *connect.Request[engramv1.SupersedeMemoryRequest]) (*connect.Response[engramv1.SupersedeMemoryResponse], error) {
+	return stubWrite(ctx, s, "SupersedeMemory", req, s.supersedeFn)
 }
 
 // startStubServer mounts svc's real generated Connect handler on an
@@ -279,6 +320,17 @@ func resetClientFlags(t *testing.T) {
 		// 02-03-PLAN.md Task 1: setupHeaders is StringSliceVar-backed too —
 		// same append-latch reason as setupRuntime above.
 		setupHeaders = nil
+		// cli-parity: the StringSliceVar-backed flags of the parity verbs.
+		rulesScopes = nil
+		rulesTags = nil
+		updateTags = nil
+		supersedeTargets = nil
+		supersedeCitations = nil
+		supersedeFields.tags = nil
+		scheduleFields.tags = nil
+		storeDiscoveryCitations = nil
+		storeDiscoveryTags = nil
+		storeRuleTags = nil
 	})
 }
 

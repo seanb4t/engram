@@ -26,6 +26,14 @@ var ErrAuthModeUnsupported = errors.New("setup: auth mode is not supported by th
 // gap from an auth-mode gap (D-10).
 var ErrHeaderUnsupported = errors.New("setup: custom header is not supported by this runtime")
 
+// ErrCallbackPortUnsupported is returned by a Runtime's Plan when
+// opts.CallbackPort is set and that runtime's own `mcp add` CLI has no
+// callback-port option (codex and opencode; change cli-parity). It is
+// distinct from ErrHeaderUnsupported and ErrAuthModeUnsupported for the
+// same reason those two are distinct from each other: a caller must be
+// able to tell which option the runtime cannot express.
+var ErrCallbackPortUnsupported = errors.New("setup: a fixed OAuth callback port is not supported by this runtime")
+
 // HeaderSpec names one additional HTTP header a registration should
 // carry alongside whatever Auth produces. Name is an RFC 7230 token
 // (validated at the CLI boundary, cmd/engram/setup.go's setupResolve,
@@ -70,6 +78,13 @@ type Options struct {
 	ClientID  string
 	TokenFile string
 	Headers   []HeaderSpec
+	// CallbackPort is the fixed loopback port the OAuth redirect URI should
+	// use, for a runtime whose `mcp add` can take one (Claude Code's
+	// --callback-port). 0 means "not set": the oauth arm then emits no port
+	// and the runtime picks its own, while the oauth-client arm keeps its
+	// shipped default of 8765. Valid only with the OAuth modes; the CLI
+	// boundary rejects it with bearer or none before Plan ever runs.
+	CallbackPort int
 }
 
 // Runtime is one agent runtime engram knows how to detect and plan a

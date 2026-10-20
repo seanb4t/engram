@@ -254,6 +254,13 @@ func TestMutatingCommandNamesMembership(t *testing.T) {
 		// 02-01-PLAN.md Task 1: setup joins the table Destructive:true
 		// (internal/surfaces/toolclass.go D-13), landing it here too.
 		"setup": true,
+		// Change cli-parity: delete is the first destructive CLIENT verb,
+		// sharing delete_memory's Destructive:true row and routed through
+		// registerDestructive (preview by default, --apply to delete).
+		"delete": true,
+		// update shares update_memory's Destructive:true row (it overwrites
+		// content in place), so it previews by default like delete.
+		"update": true,
 	}
 	if got := mutatingCommandNames(); !reflect.DeepEqual(got, want) {
 		t.Errorf("mutatingCommandNames() = %v, want %v", got, want)
@@ -431,7 +438,12 @@ var mutatingFlagCases = []struct {
 	// 02-03-PLAN.md Task 1: setupCmd's row grows an eighth own flag,
 	// --header, plus "apply" once registerDestructive's addApplyFlag adds
 	// it (02-01-PLAN.md Task 1 originally named seven).
-	{setupCmd, []string{"apply", "auth", "client-id", "header", "output", "runtime", "token-file", "url"}},
+	{setupCmd, []string{"apply", "auth", "callback-port", "client-id", "header", "output", "runtime", "token-file", "url"}},
+	// Change cli-parity: the two destructive CLIENT verbs, carrying the
+	// shared client flags (server, token-file, insecure, output, timeout)
+	// plus --apply and, for update, the field flags that build the mask.
+	{deleteCmd, []string{"apply", "insecure", "output", "server", "timeout", "token-file"}},
+	{updateCmd, []string{"apply", "content", "insecure", "output", "private", "server", "shared", "summary", "tags", "timeout", "token-file"}},
 }
 
 // TestDestructiveCommandsExactFlagSet is the "no escape hatch exists"

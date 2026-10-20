@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -54,8 +55,8 @@ func TestSetupGeneratedInvocations(t *testing.T) {
 					}
 					stdout, stderr, err := runClient(t, args...)
 					wantExit := 0
-					if lane == "apply" && (c.Options.Auth == "oauth-client" || len(c.Options.Headers) > 0) {
-						wantExit = exitPartial // opencode declines oauth-client; codex declines every custom header (D-09).
+					if lane == "apply" && (c.Options.Auth == "oauth-client" || len(c.Options.Headers) > 0 || c.Options.CallbackPort > 0) {
+						wantExit = exitPartial // opencode declines oauth-client; codex declines every custom header (D-09); both decline a callback port.
 					}
 					if got := exitCodeFromError(err); got != wantExit {
 						t.Fatalf("exit=%d, want %d: %v (stderr=%q)", got, wantExit, err, stderr)
@@ -82,6 +83,13 @@ func TestSetupGeneratedInvocations(t *testing.T) {
 							if row.Name != "codex" || len(c.Options.Headers) == 0 || row.Outcome != "failed" || row.Command != "" ||
 								!strings.Contains(row.Reason, "x-gateway-api-key") || !strings.Contains(row.Reason, "--bearer-token-env-var") {
 								t.Fatalf("header decline row lost: %+v", row)
+							}
+							continue
+						}
+						if errors.Is(planErr, setup.ErrCallbackPortUnsupported) {
+							if (row.Name != "codex" && row.Name != "opencode") || c.Options.CallbackPort == 0 || row.Outcome != "failed" || row.Command != "" ||
+								!strings.Contains(row.Reason, "--callback-port") {
+								t.Fatalf("callback-port decline row lost: %+v", row)
 							}
 							continue
 						}
@@ -182,7 +190,8 @@ func assertGeneratedPreviewArgs(t *testing.T, c setupgen.Case) {
 			seenHeaders[value] = true
 			continue
 		}
-		want, ok := map[string]string{"--url": c.Options.URL, "--auth": c.Options.Auth, "--client-id": c.Options.ClientID}[args[i]]
+		want, ok := map[string]string{"--url": c.Options.URL, "--auth": c.Options.Auth, "--client-id": c.Options.ClientID,
+			"--callback-port": strconv.Itoa(c.Options.CallbackPort)}[args[i]]
 		if !ok || args[i+1] != want {
 			t.Fatalf("generated option %q=%q differs from shared auth inputs", args[i], args[i+1])
 		}
@@ -199,6 +208,9 @@ func assertGeneratedPreviewArgs(t *testing.T, c setupgen.Case) {
 		}
 	} else if c.Options.ClientID != "" || slices.Contains(args, "--client-id") {
 		t.Fatal("only OAuth-client may carry client ID")
+	}
+	if (c.Options.CallbackPort > 0) != slices.Contains(args, "--callback-port") {
+		t.Fatalf("callback-port presence on argv must match the shared option: %q", args)
 	}
 }
 

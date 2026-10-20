@@ -423,3 +423,29 @@ func TestLoadPrimeSettings(t *testing.T) {
 		}
 	})
 }
+
+// TestValidateSetupCallbackPort pins --callback-port's bounds: empty is
+// "not set" (0), 1..65535 parse, and 0, 70000, a negative or a non-numeric
+// value are rejected with an error naming the range.
+func TestValidateSetupCallbackPort(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want int
+		ok   bool
+	}{
+		{"", 0, true}, {"1", 1, true}, {"8765", 8765, true}, {"65535", 65535, true},
+		{"0", 0, false}, {"65536", 0, false}, {"70000", 0, false}, {"-1", 0, false}, {"abc", 0, false},
+	} {
+		got, err := ValidateSetupCallbackPort(tc.in)
+		if (err == nil) != tc.ok {
+			t.Errorf("ValidateSetupCallbackPort(%q) err = %v, want ok=%v", tc.in, err, tc.ok)
+			continue
+		}
+		if err != nil && !strings.Contains(err.Error(), "1 to 65535") {
+			t.Errorf("ValidateSetupCallbackPort(%q) err = %q, want it to name the range", tc.in, err)
+		}
+		if got != tc.want {
+			t.Errorf("ValidateSetupCallbackPort(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}

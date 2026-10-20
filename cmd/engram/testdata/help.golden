@@ -8,8 +8,10 @@ Usage:
   engram [command]
 
 Available Commands:
+  archive             Archive one or more memories you own (reversible with restore)
   catalog             Print the machine-readable catalog of every command, flag and exit code as JSON
   completion          Generate the autocompletion script for the specified shell
+  delete              Delete one memory you own: preview by default, delete under --apply
   get                 Fetch one memory by id or short id and render its full state
   help                Help about any command
   list                List memories on a remote engram server
@@ -21,13 +23,25 @@ Available Commands:
   prime               Print a session primer for an agent: memory scope, rules index and recent memories
   prune-expired       Delete memories whose validity window (not_after) has lapsed
   reindex             Re-embed memories into a new (new-dimension) collection for embedder migration
+  related             Show one memory's neighbourhood: supersession, shared tags, shared citations and vector neighbours
+  restore             Restore one or more archived memories you own
+  rules               List the rules in one or more rule scopes, or every readable rule scope
+  schedule            Store a memory with a validity window (deferred reveal and/or expiry)
+  scheduled           List your windowed memories the recall gate is hiding
   search              Search memories on a remote engram server
+  search-discovery    Search citation-backed discoveries in a discovery scope
   serve               Run the engram MCP server
+  set-visibility      Share or unshare a memory you own
   setup               Detect installed agent runtimes and preview registering engram as an MCP server
   spine-review        Inventory, verify, and curate the memory spine
   store               Store a memory on a remote engram server
+  store-discovery     Store a citation-backed discovery in a discovery scope
+  store-rule          Store a user-blessed rule (always shared) in a rule scope
   summarize-missing   Fill empty recall summaries with the configured cheap model
+  supersede           Store a correcting memory that supersedes one or more predecessors
+  tags                List tag counts for a scope, or every readable scope, most-used first
   tui                 Open the read-only terminal console for browsing memories
+  update              Replace a memory's content, summary, tags or visibility in place: preview by default, write under --apply
   version             Print the engram version
 
 Flags:
@@ -35,6 +49,23 @@ Flags:
   -v, --version   version for engram
 
 Use "engram [command] --help" for more information about a command.
+```
+
+## engram archive
+
+```
+Archive one or more memories you own (reversible with restore)
+
+Usage:
+  engram archive <id>... [flags]
+
+Flags:
+  -h, --help                help for archive
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```
 
 ## engram backfill-short-ids
@@ -62,6 +93,24 @@ Usage:
 
 Flags:
   -h, --help   help for catalog
+```
+
+## engram delete
+
+```
+Delete one memory you own: preview by default, delete under --apply
+
+Usage:
+  engram delete <id> [flags]
+
+Flags:
+      --apply               a mutating operator command previews by default and mutates only when apply is set
+  -h, --help                help for delete
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```
 
 ## engram get
@@ -312,6 +361,116 @@ Flags:
       --timeout duration   max wall-clock for the reindex; 0 means no deadline (Ctrl-C or SIGTERM aborts either way) (default 30m0s)
 ```
 
+## engram related
+
+```
+Show one memory's neighbourhood: supersession, shared tags, shared citations and vector neighbours
+
+Usage:
+  engram related <id> [flags]
+
+Flags:
+      --full                return full content for the anchor and every related record instead of summaries
+  -h, --help                help for related
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --k uint              max vector neighbours; 0 resolves to the default, 8; a value above the maximum, 1000, is rejected
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
+## engram restore
+
+```
+Restore one or more archived memories you own
+
+Usage:
+  engram restore <id>... [flags]
+
+Flags:
+  -h, --help                help for restore
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
+## engram rules
+
+```
+List the rules in one or more rule scopes, or every readable rule scope
+
+Usage:
+  engram rules [flags]
+
+Flags:
+      --full                return full rule content instead of the compact index shape
+  -h, --help                help for rules
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --scope strings       rule scope (rule:repo:<repo> or rule:project:<project>); repeatable; omit to read every rule scope you can read in one call
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --tag strings         tag filter (rules must carry ALL listed tags); repeatable
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
+## engram schedule
+
+```
+Store a memory with a validity window (deferred reveal and/or expiry)
+
+Usage:
+  engram schedule [flags]
+
+Flags:
+      --base-dir string          base directory
+      --category string          category: one of decision, preference, convention, gotcha; discovery is not schedulable; use store_discovery
+      --content string           memory content (required)
+  -h, --help                     help for schedule
+      --idempotency-key string   owner-scoped replay-safety key: a repeat with the same key and identical content returns the original record; omit for a fresh record every time
+      --insecure                 skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --not-after string         RFC3339 instant at which the record drops out of recall (expiry); not_before must be strictly before not_after
+      --not-before string        RFC3339 instant before which the record is hidden from recall (deferred reveal); schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)
+      --output string            output format: "json" or "text" (default: detect from stdout)
+      --repo string              repo identifier
+      --scope string             memory scope (required)
+      --server string            engram server base URL (default: ENGRAM_SERVER_URL)
+      --source string            source of the memory
+      --summary string           client-authored summary
+      --tags strings             tags to attach to the memory
+      --timeout string           per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string        path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+      --workspace string         workspace identifier
+      --worktree string          worktree identifier
+```
+
+## engram scheduled
+
+```
+List your windowed memories the recall gate is hiding
+
+Usage:
+  engram scheduled [flags]
+
+Flags:
+      --created-after string    RFC3339 inclusive lower bound on created_at
+      --created-before string   RFC3339 exclusive upper bound on created_at
+      --cross-spine             span every scope you can read (still only your own records); mutually exclusive with --scope
+      --cursor string           opaque cursor from a previous response's next_page_token
+  -h, --help                    help for scheduled
+      --insecure                skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --limit uint              max results per page; 0 resolves to the default, 20; a value above the maximum, 1000, is rejected
+      --output string           output format: "json" or "text" (default: detect from stdout)
+      --scope string            scope is required unless cross_spine is true; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine
+      --server string           engram server base URL (default: ENGRAM_SERVER_URL)
+      --state string            which windowed records: "scheduled" (default: not yet active), "expired", or "all"
+      --timeout string          per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string       path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
 ## engram search
 
 ```
@@ -341,6 +500,26 @@ Flags:
       --token-file string       path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```
 
+## engram search-discovery
+
+```
+Search citation-backed discoveries in a discovery scope
+
+Usage:
+  engram search-discovery [flags]
+
+Flags:
+  -h, --help                help for search-discovery
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --k uint              max results; 0 resolves to the default, 20; a value above the maximum, 1000, is rejected
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --query string        search query (required)
+      --scope string        discovery scope (discovery:repo:<repo>); omit to span every discovery scope you can read
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
 ## engram serve
 
 ```
@@ -364,6 +543,25 @@ Flags:
       --ui-enabled string               enable the web UI + login lane (empty=imply from creds; 'false'=hard off)
       --ui-issuer string                OIDC issuer for the web-UI login lane (empty=default to --oidc-issuer)
       --ui-redirect-url string          OIDC auth-code callback URL
+```
+
+## engram set-visibility
+
+```
+Share or unshare a memory you own
+
+Usage:
+  engram set-visibility <id> [flags]
+
+Flags:
+  -h, --help                help for set-visibility
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --private             make the record private again; rejected for a rule (delete the rule instead); mutually exclusive with --shared
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --shared              make the record readable by every authenticated caller; mutually exclusive with --private
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```
 
 ## engram setup
@@ -440,6 +638,15 @@ Accepted --auth modes:
                 when the flag is supplied
   none          a local / no-auth server
 
+Fixed OAuth callback port (--callback-port N; default: ENGRAM_CALLBACK_PORT): valid with --auth oauth
+and --auth oauth-client only. On claude-code it becomes claude mcp add --callback-port N, so the OAuth
+redirect URI the runtime registers is http://localhost:N/callback on every login — the port to
+forward with ssh -L when Claude Code runs on a host with no browser. Without it the oauth arm emits
+no port (the runtime picks one per login) and the oauth-client arm keeps its shipped 8765. codex and
+opencode have no callback-port option: their rows report failed naming the flag; drop it or exclude
+them via --runtime. The runtime's own read verb does not report the port back, so it is carried on
+each row's callback_port field but never compared for already-correct.
+
 Additional headers (--header NAME=ENVVAR, repeatable or comma-separated; default: ENGRAM_HEADERS, a
 comma-separated list that --header on the command line replaces): each header rides alongside whatever
 --auth produces and is valid with every mode. ENVVAR is the NAME of an environment variable the runtime
@@ -461,17 +668,19 @@ Examples:
   engram setup --url https://engram.example.com/mcp --auth oauth-client --client-id example-client
   engram setup --url https://engram.example.com/mcp --auth bearer --token-file ~/.engram/token
   engram setup --url https://engram.example.com/mcp --auth oauth --header x-gateway-api-key=GATEWAY_KEY
+  engram setup --url https://engram.example.com/mcp --auth oauth --callback-port 8765 --runtime claude-code
 
 Flags:
-      --apply               a mutating operator command previews by default and mutates only when apply is set
-      --auth string         auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH) (default "oauth")
-      --client-id string    non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag
-      --header strings      additional HTTP header as NAME=ENVVAR, where ENVVAR names the environment variable the runtime resolves itself at connect time — never a value; repeatable or comma-separated; valid with every --auth mode; codex has no custom-header flag and reports a failed row (default: ENGRAM_HEADERS) (default )
-  -h, --help                help for setup
-      --output string       output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
-      --runtime strings     runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode, generic (default: ENGRAM_RUNTIME) (default )
-      --token-file string   path naming the bearer credential's provenance for the portable configuration (--runtime generic) — carries only the PATH, never the secret itself; has no effect for a natively-registered runtime (claude-code, codex, opencode), which resolves the credential itself from its own environment at connect time
-      --url string          MCP endpoint URL to register, used verbatim — never appended to or stripped (required) (default: ENGRAM_URL)
+      --apply                  a mutating operator command previews by default and mutates only when apply is set
+      --auth string            auth mode: "oauth", "oauth-client", "bearer", or "none" (default: ENGRAM_AUTH) (default "oauth")
+      --callback-port string   fixed OAuth callback port (1-65535) for the redirect URI the runtime registers; valid with --auth oauth or oauth-client only; claude-code passes it as claude mcp add --callback-port, codex and opencode report a failed row (default: ENGRAM_CALLBACK_PORT)
+      --client-id string       non-secret OAuth client ID; required for --auth oauth-client; other auth modes reject this flag
+      --header strings         additional HTTP header as NAME=ENVVAR, where ENVVAR names the environment variable the runtime resolves itself at connect time — never a value; repeatable or comma-separated; valid with every --auth mode; codex has no custom-header flag and reports a failed row (default: ENGRAM_HEADERS) (default )
+  -h, --help                   help for setup
+      --output string          output format: "json" or "text" (default: detect from stdout); text is a human-readable view, not a stable interface — script against json
+      --runtime strings        runtimes to target, comma-separated or repeated (default: every detected runtime); valid values: claude-code, codex, opencode, generic (default: ENGRAM_RUNTIME) (default )
+      --token-file string      path naming the bearer credential's provenance for the portable configuration (--runtime generic) — carries only the PATH, never the secret itself; has no effect for a natively-registered runtime (claude-code, codex, opencode), which resolves the credential itself from its own environment at connect time
+      --url string             MCP endpoint URL to register, used verbatim — never appended to or stripped (required) (default: ENGRAM_URL)
 ```
 
 ## engram spine-review
@@ -640,6 +849,52 @@ Flags:
       --worktree string     worktree identifier
 ```
 
+## engram store-discovery
+
+```
+Store a citation-backed discovery in a discovery scope
+
+Usage:
+  engram store-discovery [flags]
+
+Flags:
+      --citation strings    citation as <kind>:<ref> (kind: file, commit, url or repo); repeatable; at least one is required
+      --content string      discovery content (required)
+  -h, --help                help for store-discovery
+      --id string           id (full UUID or short id) of an existing discovery to replace in place; omit to create
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --kind string         discovery kind: "map" or "fact" (required)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --scope string        discovery scope (discovery:repo:<repo>) (required)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --summary string      client-authored summary
+      --tags strings        tags to attach to the discovery
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
+## engram store-rule
+
+```
+Store a user-blessed rule (always shared) in a rule scope
+
+Usage:
+  engram store-rule [flags]
+
+Flags:
+      --content string      the full rule text, max 8 KiB (required)
+  -h, --help                help for store-rule
+      --id string           id (full UUID or short id) of an existing rule to replace in place, preserving its short id; omit to create
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --scope string        rule scope: rule:repo:<repo> or rule:project:<project> (required)
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --summary string      one-line index entry: a single physical line, max 256 bytes (required)
+      --tags strings        concern-area labels, e.g. vcs, deploy, authz
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
 ## engram summarize-missing
 
 ```
@@ -659,6 +914,56 @@ Flags:
       --timeout duration      max wall-clock for the sweep (0 disables); also cancellable via Ctrl-C (default 30m0s)
 ```
 
+## engram supersede
+
+```
+Store a correcting memory that supersedes one or more predecessors
+
+Usage:
+  engram supersede [flags]
+
+Flags:
+      --base-dir string          base directory
+      --category string          category: one of decision, preference, convention, gotcha
+      --citation strings         citation as <kind>:<ref> (kind: file, commit, url or repo); repeatable
+      --content string           memory content (required)
+  -h, --help                     help for supersede
+      --idempotency-key string   owner-scoped replay-safety key over content and the target set: a repeat with the same key replays instead of duplicating; never generated for you
+      --insecure                 skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string            output format: "json" or "text" (default: detect from stdout)
+      --repo string              repo identifier
+      --scope string             memory scope (required)
+      --server string            engram server base URL (default: ENGRAM_SERVER_URL)
+      --source string            source of the memory
+      --summary string           client-authored summary
+      --supersedes strings       id (full UUID or short id) of a record the new one corrects; repeatable; an invalid set rejects the whole call (required)
+      --tags strings             tags to attach to the memory
+      --timeout string           per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string        path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+      --validate-only            run the full preflight (ownership, single live head, rule and ambiguity checks) and name the resolved targets without writing anything
+      --workspace string         workspace identifier
+      --worktree string          worktree identifier
+```
+
+## engram tags
+
+```
+List tag counts for a scope, or every readable scope, most-used first
+
+Usage:
+  engram tags [flags]
+
+Flags:
+  -h, --help                help for tags
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --limit uint          max tags; 0 resolves to the default, 100; a value above the maximum, 1000, is rejected
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --scope string        scope to count tags in; omit to span every scope you can read
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
 ## engram tui
 
 ```
@@ -673,6 +978,29 @@ Flags:
       --mouse               turn on mouse support: click to select, wheel to scroll (default: ENGRAM_TUI_MOUSE, then the choice saved in the console, then off)
       --server string       engram server base URL (default: ENGRAM_SERVER_URL)
       --theme string        console theme: engram, terminal, catppuccin, tokyo-night (default: ENGRAM_TUI_THEME, then the theme chosen in the console, then engram)
+      --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
+      --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
+```
+
+## engram update
+
+```
+Replace a memory's content, summary, tags or visibility in place: preview by default, write under --apply
+
+Usage:
+  engram update <id> [flags]
+
+Flags:
+      --apply               a mutating operator command previews by default and mutates only when apply is set
+      --content string      replace the content (re-embeds)
+  -h, --help                help for update
+      --insecure            skip TLS certificate verification (always warns on stderr; no environment fallback)
+      --output string       output format: "json" or "text" (default: detect from stdout)
+      --private             make the record private again; rejected for a rule (delete the rule instead); mutually exclusive with --shared
+      --server string       engram server base URL (default: ENGRAM_SERVER_URL)
+      --shared              make the record readable by every authenticated caller; mutually exclusive with --private
+      --summary string      replace the client-authored summary
+      --tags strings        replace the tag set (re-embeds); --tags "" clears it; omit to preserve it
       --timeout string      per-request client deadline (must be > 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables) (default "30s")
       --token-file string   path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)
 ```

@@ -580,6 +580,10 @@ var allowedClientImports = map[string]bool{
 	"golang.org/x/oauth2":                                        true,
 	"github.com/seanb4t/engram/gen/go/engram/v1":                 true,
 	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect": true,
+	// The two well-known types the parity verbs build on the wire: a
+	// schedule window's Timestamp bounds and update's FieldMask.
+	"google.golang.org/protobuf/types/known/timestamppb": true,
+	"google.golang.org/protobuf/types/known/fieldmaskpb": true,
 	surfacesImport: true,
 }
 

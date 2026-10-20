@@ -129,6 +129,20 @@ func TestWriteRPCNegativeMatrix(t *testing.T) {
 			},
 		},
 		{
+			name:      "StoreRule",
+			procedure: engramv1connect.EngramServiceStoreRuleProcedure,
+			validCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
+				return callWrite(ctx, c.StoreRule, &engramv1.StoreRuleRequest{
+					Content: "valid rule content",
+					Scope:   "rule:repo:test",
+					Summary: "MUST do the valid thing",
+				}, actor)
+			},
+			invalidCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
+				return callWrite(ctx, c.StoreRule, &engramv1.StoreRuleRequest{}, actor) // empty content/scope/summary
+			},
+		},
+		{
 			name:      "UpdateMemory",
 			procedure: engramv1connect.EngramServiceUpdateMemoryProcedure,
 			validCall: func(ctx context.Context, c engramv1connect.EngramServiceClient, actor string) error {
