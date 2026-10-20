@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.28.0](https://github.com/seanb4t/engram/compare/v0.27.1...v0.28.0) (2026-10-20)
+
+
+### Features
+
+* **cli:** read/write parity with the MCP tools and setup --callback-port ([#862](https://github.com/seanb4t/engram/issues/862)) ([8173949](https://github.com/seanb4t/engram/commit/81739496b936ea84b5457b3b9f404114ff74d5d1))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/chromedp/cdproto to v0.158.1 ([#855](https://github.com/seanb4t/engram/issues/855)) ([f27a47d](https://github.com/seanb4t/engram/commit/f27a47d6b56452412ce368aa2cda00d10993967e))
+* **deps:** update module github.com/chromedp/cdproto to v0.158.2 ([#861](https://github.com/seanb4t/engram/issues/861)) ([5b2b3d0](https://github.com/seanb4t/engram/commit/5b2b3d0525aaf33d9f0d705ebbda51a486c630ee))
+
 ## [0.27.1](https://github.com/seanb4t/engram/compare/v0.27.0...v0.27.1) (2026-10-18)
 
 
