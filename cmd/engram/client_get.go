@@ -43,7 +43,7 @@ func getHeadline(m *engramv1.Memory, now time.Time) string {
 var getCmd = &cobra.Command{
 	Use:   "get <id>",
 	Short: "Fetch one memory by id or short id and render its full state",
-	Args:  cobra.ExactArgs(1),
+	Args:  exactPositionalArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, format, timeout, err := clientFromFlags(cmd)
 		if err != nil {

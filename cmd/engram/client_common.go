@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -712,6 +713,32 @@ func renderJSON(w io.Writer, m proto.Message) error {
 		return err
 	}
 	_, err = fmt.Fprintln(w, string(b))
+	return err
+}
+
+// renderProtoView renders m through the operator view under headline, for
+// the text lane of a client verb whose response is one structured document
+// rather than a table of memories. It marshals with the SAME protojson
+// options renderJSON uses, so protojson's Timestamp rendering, enum names
+// and optional-field presence survive into the text lane and the text
+// field set cannot widen past the json document: both lanes read one
+// serialization of one value (the text/json identity engram get
+// established).
+func renderProtoView(w io.Writer, headline string, m proto.Message) error {
+	b, err := protojson.MarshalOptions{
+		UseProtoNames:     true,
+		EmitDefaultValues: true,
+	}.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return renderOperatorView(w, headline, json.RawMessage(b))
+}
+
+// renderIDLine writes the text-lane line every id-returning write verb
+// prints: "<verb>: <short_id> (<id>)", the shape engram store established.
+func renderIDLine(w io.Writer, verb, shortID, id string) error {
+	_, err := fmt.Fprintf(w, "%s: %s (%s)\n", verb, shortID, id)
 	return err
 }
 
