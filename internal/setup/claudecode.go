@@ -171,8 +171,9 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 					Description: "register engram as a user-scope MCP server",
 				},
 			},
-			Probe:  []string{"claude", "mcp", "get", "engram"},
-			Skills: skillTarget,
+			Probe:        []string{"claude", "mcp", "get", "engram"},
+			Skills:       skillTarget,
+			CallbackPort: opts.CallbackPort,
 		}, nil
 	case "oauth-client":
 		// A pre-registered client needs a fixed redirect URI, so this arm
@@ -195,8 +196,9 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 					Description: "register engram as a user-scope MCP server (pre-registered OAuth client)",
 				},
 			},
-			Probe:  []string{"claude", "mcp", "get", "engram"},
-			Skills: skillTarget,
+			Probe:        []string{"claude", "mcp", "get", "engram"},
+			Skills:       skillTarget,
+			CallbackPort: claudeCodeOAuthClientPort(opts.CallbackPort),
 		}, nil
 	case "bearer":
 		return Plan{
@@ -224,11 +226,6 @@ func (claudeCodeRuntime) Plan(env Environment, opts Options) (Plan, error) {
 // registration carry, so it stays the default when no --callback-port is
 // given.
 const claudeCodeDefaultCallbackPort = 8765
-
-// ClaudeCodeDefaultCallbackPort is claudeCodeDefaultCallbackPort for the
-// CLI boundary's result rows, which name the port the oauth-client arm
-// carried when the caller gave none.
-const ClaudeCodeDefaultCallbackPort = claudeCodeDefaultCallbackPort
 
 // claudeCodeOAuthClientPort resolves the oauth-client arm's port: the
 // caller's when set, otherwise the shipped default.

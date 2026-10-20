@@ -38,7 +38,7 @@ full UUID or a `short_id`.
 | `engram related <id>` | `related_memories` | One record's neighbourhood: supersession, shared tags, shared citations, vector neighbours; `--k`, `--full` |
 | `engram tags [--scope <scope>]` | `list_tags` | Exact tag counts, most-used first; omit `--scope` for every readable scope; `--limit` |
 | `engram rules [--scope <rule-scope>...]` | `list_rules` | The complete rule set, oldest-first; omit `--scope` for every readable rule scope; `--tag`, `--full` |
-| `engram scheduled --scope <scope>` | `list_scheduled` | Your windowed records the recall gate is hiding; `--state scheduled|expired|all`, `--cross-spine`, `--cursor` |
+| `engram scheduled --scope <scope>` | `list_scheduled` | Your windowed records the recall gate is hiding; `--state scheduled \| expired \| all`, `--cross-spine`, `--cursor` |
 | `engram search-discovery --query <text> --scope discovery:...` | `search_discovery` | Semantic search over the discovery pool |
 
 **Writes that preserve or reverse**
@@ -49,8 +49,8 @@ full UUID or a `short_id`.
 | `engram schedule --content <text> --scope <scope> --not-before <rfc3339>` | `schedule_memory` | Write a memory with a validity window (`--not-before` and/or `--not-after`); `--idempotency-key` |
 | `engram supersede --content <text> --scope <scope> --supersedes <id>...` | `supersede_memory` | Correct one or more records with a new one, history preserved; `--validate-only` previews the server's preflight without writing; `--citation kind:ref`, `--idempotency-key` |
 | `engram archive <id>...` / `engram restore <id>...` | `archive_memory` / `restore_memory` | Retire or un-retire records you own; one outcome per id, in order; a record you do not own reads `not_found` |
-| `engram set-visibility <id> --shared|--private` | `set_visibility` | Share or unshare a record you own; rejected for a rule |
-| `engram store-discovery --content <text> --kind map|fact --citation kind:ref --scope discovery:...` | `store_discovery` | Store a citation-backed discovery; `--id` replaces in place |
+| `engram set-visibility <id> --shared \| --private` | `set_visibility` | Share or unshare a record you own; rejected for a rule |
+| `engram store-discovery --content <text> --kind map \| fact --citation kind:ref --scope discovery:...` | `store_discovery` | Store a citation-backed discovery; `--id` replaces in place |
 | `engram store-rule --content <text> --scope rule:... --summary <line>` | `store_rule` | Store a user-blessed, always-shared rule; `--id` replaces in place. Run it only when a person asks for it: nothing promotes a rule on its own |
 
 **Destructive writes** — preview by default, write under `--apply` (see

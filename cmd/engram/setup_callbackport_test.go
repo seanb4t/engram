@@ -71,6 +71,17 @@ func TestSetupCallbackPort(t *testing.T) {
 		}
 	})
 
+	t.Run("codex oauth-client carries no implied port", func(t *testing.T) {
+		doc := setupPreviewDoc(t, fakeSetupEnv("codex"), "--url", url, "--auth", "oauth-client", "--client-id", "c", "--runtime", "codex", "--output", "json")
+		row := doc.Runtimes[0]
+		if row.Outcome == "failed" {
+			t.Fatalf("codex oauth-client unexpectedly failed: %+v", row)
+		}
+		if strings.Contains(row.Command, "--callback-port") || row.CallbackPort != "" {
+			t.Errorf("row = %+v, want no callback port on a runtime whose argv carries none", row)
+		}
+	})
+
 	t.Run("not-present rows carry no port", func(t *testing.T) {
 		doc := setupPreviewDoc(t, fakeSetupEnv(), "--url", url, "--auth", "oauth", "--callback-port", "8765", "--runtime", "claude-code", "--output", "json")
 		if row := doc.Runtimes[0]; row.Present || row.CallbackPort != "" {

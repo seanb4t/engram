@@ -385,7 +385,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		// and never consult mutate: this outcome is the same in preview
 		// and --apply alike. See this function's own doc comment, step
 		// 2a, for the full reasoning.
-		return Result{Runtime: name, Present: true, Outcome: OutcomeWouldWrite, Command: plan.Display(), Config: plan.Config, Skills: plan.Skills}
+		return Result{Runtime: name, Present: true, Outcome: OutcomeWouldWrite, Command: plan.Display(), Config: plan.Config, Skills: plan.Skills, CallbackPort: plan.CallbackPort}
 	}
 	// Validate EVERY action, not only Actions[0]: the run loop below slices
 	// action.Args[1:] for each action, which panics on a zero-length slice
@@ -421,7 +421,7 @@ func execute(ctx context.Context, env Environment, rt Runtime, opts Options, mut
 		}
 	}
 
-	res := Result{Runtime: name, Present: true, Command: plan.Display(), Binary: binary, Config: plan.Config, Skills: plan.Skills}
+	res := Result{Runtime: name, Present: true, Command: plan.Display(), Binary: binary, Config: plan.Config, Skills: plan.Skills, CallbackPort: plan.CallbackPort}
 	if opts.TokenFile != "" {
 		// D-06/D-07: a --token-file path has no execution meaning for a
 		// runtime that registers by EXECUTING something (plan.Actions is

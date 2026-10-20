@@ -510,12 +510,13 @@ type setupRuntimeRow struct {
 	TokenFile  string `json:"token_file,omitempty"`
 	Headers    string `json:"headers,omitempty"`
 	// CallbackPort (change cli-parity) is the OAuth callback port the
-	// registration was given — the caller's --callback-port, or the
-	// oauth-client arm's shipped 8765 — as a plain decimal string, on
-	// every present row, so a re-run can read which port a registration
-	// carries. Like Headers it reports what was REQUESTED; the runtime's
-	// own read verb does not report the port back, so it is never part of
-	// the already-correct comparison.
+	// registration was given, as a plain decimal string: the caller's
+	// --callback-port on every present row (requested, like Headers), or
+	// the port the runtime's own Plan authored into its argv (the
+	// oauth-client default, on the one runtime that emits it). A runtime
+	// whose argv carries no port carries no facet. The runtime's own read
+	// verb does not report the port back, so it is never part of the
+	// already-correct comparison.
 	CallbackPort string `json:"callback_port,omitempty"`
 	Config       string `json:"config,omitempty"`
 	Notes        string `json:"notes,omitempty"`
@@ -589,29 +590,30 @@ type setupReportDoc struct {
 // contract.
 func setupBuildRows(ctx context.Context, env setup.Environment, runtimes []setup.Runtime, opts setup.Options, includeContent bool) []setupRuntimeRow {
 	headers := setupHeadersSummary(opts.Headers)
-	port := setupCallbackPortSummary(opts)
 	rows := make([]setupRuntimeRow, 0, len(runtimes))
 	for _, rt := range runtimes {
-		row := setupRuntimeRowFromResult(ctx, env, rt, setup.Preview(ctx, env, rt, opts), headers, false, includeContent)
-		if row.Present {
-			row.CallbackPort = port
-		}
+		r := setup.Preview(ctx, env, rt, opts)
+		row := setupRuntimeRowFromResult(ctx, env, rt, r, headers, false, includeContent)
+		row.CallbackPort = setupCallbackPortFacet(opts, r)
 		rows = append(rows, row)
 	}
 	return rows
 }
 
-// setupCallbackPortSummary renders the callback-port facet every present
-// row carries: the caller's --callback-port when set, the oauth-client
-// arm's shipped default when that mode is selected without one, and empty
-// otherwise. Like setupHeadersSummary it reports what was REQUESTED,
-// independent of whether a runtime's own Plan() accepted it.
-func setupCallbackPortSummary(opts setup.Options) string {
+// setupCallbackPortFacet renders a present row's callback-port facet: the
+// caller's --callback-port on every present row (what was REQUESTED, like
+// the header facet, whether or not the runtime accepted it), otherwise the
+// port the runtime's own Plan authored into its registration argv
+// (Result.CallbackPort: the oauth-client default on the one runtime that
+// emits it), otherwise empty. An absent runtime carries no facet.
+func setupCallbackPortFacet(opts setup.Options, r setup.Result) string {
 	switch {
+	case !r.Present:
+		return ""
 	case opts.CallbackPort > 0:
 		return strconv.Itoa(opts.CallbackPort)
-	case opts.Auth == "oauth-client":
-		return strconv.Itoa(setup.ClaudeCodeDefaultCallbackPort)
+	case r.CallbackPort > 0:
+		return strconv.Itoa(r.CallbackPort)
 	default:
 		return ""
 	}
@@ -935,13 +937,11 @@ func setupApplyRun(ctx context.Context, cmd *cobra.Command) error {
 	}
 
 	headers := setupHeadersSummary(opts.Headers)
-	port := setupCallbackPortSummary(opts)
 	rows := make([]setupRuntimeRow, len(runtimes))
 	for i, rt := range runtimes {
-		rows[i] = setupRuntimeRowFromResult(ctx, setupEnv, rt, setup.Apply(ctx, setupEnv, rt, opts), headers, true, format != formatText)
-		if rows[i].Present {
-			rows[i].CallbackPort = port
-		}
+		r := setup.Apply(ctx, setupEnv, rt, opts)
+		rows[i] = setupRuntimeRowFromResult(ctx, setupEnv, rt, r, headers, true, format != formatText)
+		rows[i].CallbackPort = setupCallbackPortFacet(opts, r)
 	}
 	doc := setupReportDoc{Runtimes: rows}
 

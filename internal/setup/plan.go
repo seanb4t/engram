@@ -200,6 +200,14 @@ type Plan struct {
 	// cmd/engram's setupSkillsTarget treats that as "no skills facet for
 	// this runtime" rather than a fourth SkillFormat value.
 	Skills SkillTarget
+	// CallbackPort is the OAuth callback port this plan's registration
+	// argv carries, authored alongside every other field in Plan(), in the
+	// runtime's own file (claude-code is the only runtime whose `mcp add`
+	// takes one). 0 means the argv carries none. The shared executor copies
+	// it onto Result.CallbackPort unchanged, so a report row names the port
+	// a registration was actually given rather than one implied by the auth
+	// mode.
+	CallbackPort int
 }
 
 // Display renders every Action's Command() joined by "; " — a
@@ -311,19 +319,22 @@ func (p Plan) Display() string {
 // the row renderer — cmd/engram maps it onto its own scalar row fields
 // instead (setupSkillsTarget).
 type Result struct {
-	Runtime    string
-	Present    bool
-	Outcome    Outcome
-	Command    string
-	Reason     string
-	Binary     string      `json:"binary,omitempty"`
-	Registered string      `json:"registered,omitempty"`
-	TokenFile  string      `json:"token_file,omitempty"`
-	Config     string      `json:"config,omitempty"`
-	Notes      string      `json:"notes,omitempty"`
-	Facets     string      `json:"facets,omitempty"`
-	Drift      string      `json:"drift,omitempty"`
-	Skills     SkillTarget `json:"-"`
+	Runtime string
+	Present bool
+	Outcome Outcome
+	Command string
+	Reason  string
+	Binary  string `json:"binary,omitempty"`
+	// CallbackPort is Plan.CallbackPort, copied unchanged; 0 when the
+	// registration argv carries no callback port.
+	CallbackPort int         `json:"callback_port,omitempty"`
+	Registered   string      `json:"registered,omitempty"`
+	TokenFile    string      `json:"token_file,omitempty"`
+	Config       string      `json:"config,omitempty"`
+	Notes        string      `json:"notes,omitempty"`
+	Facets       string      `json:"facets,omitempty"`
+	Drift        string      `json:"drift,omitempty"`
+	Skills       SkillTarget `json:"-"`
 }
 
 // bearerProvenance renders the literal, non-secret provenance form of a
