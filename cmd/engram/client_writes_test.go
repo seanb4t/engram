@@ -158,8 +158,8 @@ func TestUpdate(t *testing.T) {
 			if gotReq.GetId() != "UPDATED001" {
 				t.Errorf("id = %q, want the positional id", gotReq.GetId())
 			}
-			if !strings.HasPrefix(stdout, "updated: UPDATED001 (11111111-1111-1111-1111-111111111111)") {
-				t.Errorf("stdout = %q, want the updated headline", stdout)
+			if !strings.HasPrefix(stdout, "updated: UPDATED001\n") || !strings.Contains(stdout, "UPDATED001") {
+				t.Errorf("stdout = %q, want the updated headline and the caller's id", stdout)
 			}
 		})
 	}

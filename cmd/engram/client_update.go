@@ -135,9 +135,11 @@ func updateApplyRun(ctx context.Context, cmd *cobra.Command) error {
 	if err != nil {
 		return wrapRPCError(err)
 	}
-	doc := updateDoc{Applied: true, ID: resp.Msg.GetId(), UpdateMask: paths, ShortID: resp.Msg.GetShortId()}
+	// ID stays the caller's id on both lanes, as the type comment states
+	// and as delete does; the server's handle rides on ShortID.
+	doc := updateDoc{Applied: true, ID: id, UpdateMask: paths, ShortID: resp.Msg.GetShortId()}
 	if format == formatText {
-		return renderOperatorView(cmd.OutOrStdout(), fmt.Sprintf("updated: %s (%s)", resp.Msg.GetShortId(), resp.Msg.GetId()), doc)
+		return renderOperatorView(cmd.OutOrStdout(), "updated: "+resp.Msg.GetShortId(), doc)
 	}
 	return renderJSONDoc(cmd, doc)
 }
