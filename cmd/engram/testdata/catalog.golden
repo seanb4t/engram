@@ -3,6 +3,48 @@
   "version": "test-version",
   "commands": [
     {
+      "name": "archive",
+      "summary": "Archive one or more memories you own (reversible with restore)",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "backfill-short-ids",
       "summary": "Assign a short_id to every memory that lacks one (payload-only; no re-embed)",
       "flags": [
@@ -39,6 +81,54 @@
       "blast_radius": {
         "read_only": true,
         "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "delete",
+      "summary": "Delete one memory you own: preview by default, delete under --apply",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": true,
         "idempotent": true,
         "open_world": false
       }
@@ -614,6 +704,366 @@
       }
     },
     {
+      "name": "related",
+      "summary": "Show one memory's neighbourhood: supersession, shared tags, shared citations and vector neighbours",
+      "flags": [
+        {
+          "name": "full",
+          "type": "bool",
+          "default": "false",
+          "usage": "return full content for the anchor and every related record instead of summaries"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "k",
+          "type": "uint64",
+          "default": "0",
+          "usage": "max vector neighbours; 0 resolves to the default, 8; a value above the maximum, 1000, is rejected"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "restore",
+      "summary": "Restore one or more archived memories you own",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "rules",
+      "summary": "List the rules in one or more rule scopes, or every readable rule scope",
+      "flags": [
+        {
+          "name": "full",
+          "type": "bool",
+          "default": "false",
+          "usage": "return full rule content instead of the compact index shape"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "rule scope (rule:repo:\u003crepo\u003e or rule:project:\u003cproject\u003e); repeatable; omit to read every rule scope you can read in one call"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "tag",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "tag filter (rules must carry ALL listed tags); repeatable"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "schedule",
+      "summary": "Store a memory with a validity window (deferred reveal and/or expiry)",
+      "flags": [
+        {
+          "name": "base-dir",
+          "type": "string",
+          "default": "",
+          "usage": "base directory"
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "default": "",
+          "usage": "category: one of decision, preference, convention, gotcha; discovery is not schedulable; use store_discovery"
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "default": "",
+          "usage": "memory content (required)"
+        },
+        {
+          "name": "idempotency-key",
+          "type": "string",
+          "default": "",
+          "usage": "owner-scoped replay-safety key: a repeat with the same key and identical content returns the original record; omit for a fresh record every time"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "not-after",
+          "type": "string",
+          "default": "",
+          "usage": "RFC3339 instant at which the record drops out of recall (expiry); not_before must be strictly before not_after"
+        },
+        {
+          "name": "not-before",
+          "type": "string",
+          "default": "",
+          "usage": "RFC3339 instant before which the record is hidden from recall (deferred reveal); schedule_memory requires not_before and/or not_after (use store_memory for unscheduled records)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "repo",
+          "type": "string",
+          "default": "",
+          "usage": "repo identifier"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "memory scope (required)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "default": "",
+          "usage": "source of the memory"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "default": "",
+          "usage": "client-authored summary"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "tags to attach to the memory"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "default": "",
+          "usage": "workspace identifier"
+        },
+        {
+          "name": "worktree",
+          "type": "string",
+          "default": "",
+          "usage": "worktree identifier"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": false,
+        "open_world": false
+      }
+    },
+    {
+      "name": "scheduled",
+      "summary": "List your windowed memories the recall gate is hiding",
+      "flags": [
+        {
+          "name": "created-after",
+          "type": "string",
+          "default": "",
+          "usage": "RFC3339 inclusive lower bound on created_at"
+        },
+        {
+          "name": "created-before",
+          "type": "string",
+          "default": "",
+          "usage": "RFC3339 exclusive upper bound on created_at"
+        },
+        {
+          "name": "cross-spine",
+          "type": "bool",
+          "default": "false",
+          "usage": "span every scope you can read (still only your own records); mutually exclusive with --scope"
+        },
+        {
+          "name": "cursor",
+          "type": "string",
+          "default": "",
+          "usage": "opaque cursor from a previous response's next_page_token"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "limit",
+          "type": "uint64",
+          "default": "0",
+          "usage": "max results per page; 0 resolves to the default, 20; a value above the maximum, 1000, is rejected"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "scope is required unless cross_spine is true; omit and pass --cross-spine to span every scope you can read; mutually exclusive with --cross-spine"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "state",
+          "type": "string",
+          "default": "",
+          "usage": "which windowed records: \"scheduled\" (default: not yet active), \"expired\", or \"all\""
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "search",
       "summary": "Search memories on a remote engram server",
       "flags": [
@@ -728,6 +1178,66 @@
       }
     },
     {
+      "name": "search-discovery",
+      "summary": "Search citation-backed discoveries in a discovery scope",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "k",
+          "type": "uint64",
+          "default": "0",
+          "usage": "max results; 0 resolves to the default, 20; a value above the maximum, 1000, is rejected"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "query",
+          "type": "string",
+          "default": "",
+          "usage": "search query (required)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "discovery scope (discovery:repo:\u003crepo\u003e); omit to span every discovery scope you can read"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "serve",
       "summary": "Run the engram MCP server",
       "flags": [
@@ -814,6 +1324,60 @@
         "read_only": false,
         "destructive": false,
         "idempotent": false,
+        "open_world": false
+      }
+    },
+    {
+      "name": "set-visibility",
+      "summary": "Share or unshare a memory you own",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "private",
+          "type": "bool",
+          "default": "false",
+          "usage": "make the record private again; rejected for a rule (delete the rule instead); mutually exclusive with --shared"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "shared",
+          "type": "bool",
+          "default": "false",
+          "usage": "make the record readable by every authenticated caller; mutually exclusive with --private"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
         "open_world": false
       }
     },
@@ -1255,6 +1819,162 @@
       }
     },
     {
+      "name": "store-discovery",
+      "summary": "Store a citation-backed discovery in a discovery scope",
+      "flags": [
+        {
+          "name": "citation",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "citation as \u003ckind\u003e:\u003cref\u003e (kind: file, commit, url or repo); repeatable; at least one is required"
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "default": "",
+          "usage": "discovery content (required)"
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "default": "",
+          "usage": "id (full UUID or short id) of an existing discovery to replace in place; omit to create"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "default": "",
+          "usage": "discovery kind: \"map\" or \"fact\" (required)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "discovery scope (discovery:repo:\u003crepo\u003e) (required)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "default": "",
+          "usage": "client-authored summary"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "tags to attach to the discovery"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": false,
+        "open_world": false
+      }
+    },
+    {
+      "name": "store-rule",
+      "summary": "Store a user-blessed rule (always shared) in a rule scope",
+      "flags": [
+        {
+          "name": "content",
+          "type": "string",
+          "default": "",
+          "usage": "the full rule text, max 8 KiB (required)"
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "default": "",
+          "usage": "id (full UUID or short id) of an existing rule to replace in place, preserving its short id; omit to create"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "rule scope: rule:repo:\u003crepo\u003e or rule:project:\u003cproject\u003e (required)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "default": "",
+          "usage": "one-line index entry: a single physical line, max 256 bytes (required)"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "concern-area labels, e.g. vcs, deploy, authz"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": false,
+        "open_world": false
+      }
+    },
+    {
       "name": "summarize-missing",
       "summary": "Fill empty recall summaries with the configured cheap model",
       "flags": [
@@ -1309,6 +2029,186 @@
       }
     },
     {
+      "name": "supersede",
+      "summary": "Store a correcting memory that supersedes one or more predecessors",
+      "flags": [
+        {
+          "name": "base-dir",
+          "type": "string",
+          "default": "",
+          "usage": "base directory"
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "default": "",
+          "usage": "category: one of decision, preference, convention, gotcha"
+        },
+        {
+          "name": "citation",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "citation as \u003ckind\u003e:\u003cref\u003e (kind: file, commit, url or repo); repeatable"
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "default": "",
+          "usage": "memory content (required)"
+        },
+        {
+          "name": "idempotency-key",
+          "type": "string",
+          "default": "",
+          "usage": "owner-scoped replay-safety key over content and the target set: a repeat with the same key replays instead of duplicating; never generated for you"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "repo",
+          "type": "string",
+          "default": "",
+          "usage": "repo identifier"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "memory scope (required)"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "default": "",
+          "usage": "source of the memory"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "default": "",
+          "usage": "client-authored summary"
+        },
+        {
+          "name": "supersedes",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "id (full UUID or short id) of a record the new one corrects; repeatable; an invalid set rejects the whole call (required)"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "tags to attach to the memory"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        },
+        {
+          "name": "validate-only",
+          "type": "bool",
+          "default": "false",
+          "usage": "run the full preflight (ownership, single live head, rule and ambiguity checks) and name the resolved targets without writing anything"
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "default": "",
+          "usage": "workspace identifier"
+        },
+        {
+          "name": "worktree",
+          "type": "string",
+          "default": "",
+          "usage": "worktree identifier"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "tags",
+      "summary": "List tag counts for a scope, or every readable scope, most-used first",
+      "flags": [
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "limit",
+          "type": "uint64",
+          "default": "0",
+          "usage": "max tags; 0 resolves to the default, 100; a value above the maximum, 1000, is rejected"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "",
+          "usage": "scope to count tags in; omit to span every scope you can read"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
       "name": "tui",
       "summary": "Open the read-only terminal console for browsing memories",
       "flags": [
@@ -1352,6 +2252,84 @@
       "blast_radius": {
         "read_only": true,
         "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      }
+    },
+    {
+      "name": "update",
+      "summary": "Replace a memory's content, summary, tags or visibility in place: preview by default, write under --apply",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "usage": "a mutating operator command previews by default and mutates only when apply is set"
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "default": "",
+          "usage": "replace the content (re-embeds)"
+        },
+        {
+          "name": "insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "skip TLS certificate verification (always warns on stderr; no environment fallback)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "usage": "output format: \"json\" or \"text\" (default: detect from stdout)"
+        },
+        {
+          "name": "private",
+          "type": "bool",
+          "default": "false",
+          "usage": "make the record private again; rejected for a rule (delete the rule instead); mutually exclusive with --shared"
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "default": "",
+          "usage": "engram server base URL (default: ENGRAM_SERVER_URL)"
+        },
+        {
+          "name": "shared",
+          "type": "bool",
+          "default": "false",
+          "usage": "make the record readable by every authenticated caller; mutually exclusive with --private"
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "default": "",
+          "usage": "replace the client-authored summary"
+        },
+        {
+          "name": "tags",
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "replace the tag set (re-embeds); --tags \"\" clears it; omit to preserve it"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s",
+          "usage": "per-request client deadline (must be \u003e 0, e.g. 30s, 2m; a value of 0 is rejected, never treated as unbounded — unlike this binary's operator-command --timeout, where 0 disables)"
+        },
+        {
+          "name": "token-file",
+          "type": "string",
+          "default": "",
+          "usage": "path to a file containing the bearer credential (default: ENGRAM_TOKEN env var)"
+        }
+      ],
+      "blast_radius": {
+        "read_only": false,
+        "destructive": true,
         "idempotent": true,
         "open_world": false
       }

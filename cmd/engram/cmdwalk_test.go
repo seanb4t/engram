@@ -209,6 +209,14 @@ func TestOperatorCommands(t *testing.T) {
 // This is the behavioural gate the plan's acceptance criteria call for —
 // an rg-based literal count over the golden text would pass on two
 // offsetting errors; decoding the JSON and comparing sets cannot.
+// parityClientVerbs names the client-tier verbs change cli-parity added,
+// the set the --output and --timeout gates below widen by.
+var parityClientVerbs = []string{
+	"related", "tags", "rules", "scheduled", "search-discovery",
+	"archive", "restore", "update", "set-visibility", "schedule", "supersede",
+	"store-discovery", "store-rule", "delete",
+}
+
 func TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs(t *testing.T) {
 	b, err := os.ReadFile("testdata/catalog.golden")
 	if err != nil {
@@ -237,6 +245,11 @@ func TestCatalogOutputFlagMatchesOperatorCommandsUnionClientVerbs(t *testing.T) 
 	want["migration-status"] = true
 	want["version"] = true
 	want["prime"] = true
+	// Change cli-parity: the fourteen client verbs that reach MCP parity,
+	// each registered through addClientFlags like the five above.
+	for _, verb := range parityClientVerbs {
+		want[verb] = true
+	}
 
 	for key := range want {
 		if !golden[key] {
