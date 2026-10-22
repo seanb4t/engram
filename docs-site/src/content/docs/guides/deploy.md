@@ -95,13 +95,25 @@ ports serve different routes:
 - The `mcp` port serves only the MCP transport at the MCP path and the two
   protected-resource paths. Every other path gets a 404.
 
+The server does not start with `memory.mcpListenAddr` set unless you
+configure an auth lane (`memory.oidc.issuer` or `memory.serviceAuth.*`). The
+chart refuses an address with no port, and an address on a loopback host
+such as `127.0.0.1:8081`, which the Service port cannot reach.
+
 Point a public ingress, for example a Cloudflare tunnel, at the `mcp`
-Service port. The console and the Connect API are then not reachable
-through the public name, and the proxy needs no path filter. The client
-verbs of the `engram` CLI use the Connect API, so run them against a name
-that reaches the `http` port. If two names reach the same server, set
-`memory.mcpResourceOrigins` to both origins so that each name gets its own
-protected-resource document.
+Service port. Do not use an `expose.*` route for the public name, because
+those routes target the `http` port. The console and the Connect API are
+then not reachable through the public name, and the proxy needs no path
+filter. The client verbs of the `engram` CLI use the Connect API, so run
+them against a name that reaches the `http` port.
+
+Set `memory.mcpResourceOrigins` to the public origins, so that engram names
+no other origin in its protected-resource document and its `401` challenge.
+If two names reach the same server, list both: each name then gets its own
+document.
+
+On shutdown, engram ends the open MCP event streams on both ports, so the
+shutdown does not wait for them. Clients open a new stream to the next pod.
 
 ### Summary sweep
 

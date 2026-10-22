@@ -79,17 +79,23 @@ comma-separated list of origins, for example
 in the list gets a `404` on both protected-resource paths. Its `401`
 challenge is a bare `WWW-Authenticate: Bearer` header with no
 `resource_metadata` parameter. The list limits only what engram says about
-itself, so a valid token still works through any origin. engram logs a
-warning the first time that it rejects each origin. You cannot set this
-variable together with `ENGRAM_MCP_RESOURCE_URL`, and the server does not
-start when both are set. See [Configure](/guides/configure/) for the entry
-format.
+itself, so a valid token still works through any origin. The match drops
+the default port of the scheme, so `https://a.example` also matches
+`https://a.example:443`. Set the list on every deployment whose MCP port is
+reachable from the internet, even with one public name. engram logs a
+warning the first time that it refuses the document for each origin, and
+counts every refusal in the `engram.resource_metadata.refused` metric. You
+cannot set this variable together with `ENGRAM_MCP_RESOURCE_URL`, and the
+server does not start when both are set. See [Configure](/guides/configure/)
+for the entry format.
 
 `ENGRAM_MCP_LISTEN_ADDR` opens a second listener that serves only the MCP
 transport and the two protected-resource paths. Its MCP path has the same
 bearer check, the same `401` challenge and the same cross-origin rules as
 the main listener. Every other path on it gets a `404`, so the console, the
-login routes and the Connect API are not reachable through it.
+login routes and the Connect API are not reachable through it. The server
+does not start with `ENGRAM_MCP_LISTEN_ADDR` set when you configure no auth
+lane, because the listener exists to face the internet.
 
 `ENGRAM_MCP_PATH` can no longer be set to `/.well-known` or any path under
 it — that root is reserved for these routes.

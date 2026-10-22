@@ -55,8 +55,8 @@ SHALL replace the derived challenge value.
 
 In the derived mode the scheme SHALL come from `X-Forwarded-Proto` only when it is exactly `http`
 or `https`, else from the connection. The host SHALL come from `X-Forwarded-Host` only when it is a
-bare authority, else from the request `Host`. A derived document SHALL carry `Cache-Control:
-no-store`.
+bare authority (a DNS name or a bracketed IPv6 address, with an optional port from 1 to 65535),
+else from the request `Host`. A derived document SHALL carry `Cache-Control: no-store`.
 
 #### Scenario: Forwarded headers set the origin
 
@@ -68,11 +68,28 @@ no-store`.
 - **WHEN** a request arrives with `Host: a.example` and `X-Forwarded-Host: evil.example/path`
 - **THEN** the document's `resource` is built from `a.example`
 
+### Requirement: The derived origin is normalized
+
+The derived origin SHALL have its scheme and host lowercased and the default port of its scheme
+(443 for `https`, 80 for `http`) removed, in the document, in the challenge and in the allowlist
+comparison.
+
+#### Scenario: A default port is removed
+
+- **WHEN** a request arrives with `X-Forwarded-Proto: https` and `X-Forwarded-Host: a.example:443`
+- **THEN** the document's `resource` is `https://a.example/mcp`
+
+#### Scenario: Host case is folded
+
+- **WHEN** a request arrives with `Host: A.Example`
+- **THEN** the document's `resource` is `http://a.example/mcp`
+
 ### Requirement: An origin allowlist bounds the derived mode
 
 When `ENGRAM_MCP_RESOURCE_ORIGINS` is set, the derived document and the derived challenge SHALL
 name an origin only when it is in the list. The comparison SHALL be exact on scheme, host and port
-after lowercasing scheme and host. An empty list SHALL keep the unbounded derived mode.
+after lowercasing scheme and host and removing the default port of the scheme, on both sides. An
+empty list SHALL keep the unbounded derived mode.
 
 #### Scenario: Listed origin is served
 
@@ -89,6 +106,16 @@ after lowercasing scheme and host. An empty list SHALL keep the unbounded derive
 - **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and a client requests the document with `X-Forwarded-Host: A.EXAMPLE` and `X-Forwarded-Proto: https`
 - **THEN** the document's `resource` is `https://a.example/mcp`
 
+#### Scenario: Default port in the entry or the request does not matter
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and a client requests the document with `X-Forwarded-Host: a.example:443` and `X-Forwarded-Proto: https`
+- **THEN** the document's `resource` is `https://a.example/mcp`
+
+#### Scenario: Scheme or port that differs is refused
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and a client requests the document over plain HTTP with `Host: a.example`, or with `X-Forwarded-Host: a.example:8443`
+- **THEN** the response is 404
+
 #### Scenario: Empty list keeps the unbounded mode
 
 - **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is unset and a client requests the document through any origin
@@ -97,9 +124,8 @@ after lowercasing scheme and host. An empty list SHALL keep the unbounded derive
 ### Requirement: An unlisted origin gets no document and no hint
 
 When `ENGRAM_MCP_RESOURCE_ORIGINS` is set and the derived origin is not in it, the well-known paths
-SHALL answer 404 and the 401 challenge SHALL carry no `resource_metadata` parameter. The bearer
-check itself SHALL be unchanged. The server SHALL log the rejected origin at warning level once per
-distinct origin per process.
+SHALL answer 404 and the 401 challenge SHALL carry no `resource_metadata` parameter, unless
+`ENGRAM_OIDC_RESOURCE_METADATA` is set. The bearer check itself SHALL be unchanged.
 
 #### Scenario: Unlisted origin on the well-known path
 
@@ -114,24 +140,31 @@ distinct origin per process.
 #### Scenario: Unlisted origin on the MCP path with a valid token
 
 - **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and an authenticated client POSTs to the MCP path through `https://c.example`
-- **THEN** the request is served, because the allowlist bounds discovery only
+- **THEN** the request is served with no refused-origin warning, because the allowlist bounds discovery only
 
 #### Scenario: Unlisted origin on the MCP path without a token
 
 - **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and an unauthenticated client POSTs to the MCP path through `https://c.example`
 - **THEN** the response is 401 with `WWW-Authenticate: Bearer` and no `resource_metadata` parameter
 
+### Requirement: A refused document is logged once per origin and counted every time
+
+When it refuses the document for an unlisted origin, the server SHALL log the origin at warning
+level once per distinct origin per process, up to a fixed number of origins, and SHALL count every
+refusal in the `engram.resource_metadata.refused` metric. A request on the MCP path SHALL log no
+such warning.
+
 #### Scenario: Repeated unlisted origin logs once
 
-- **WHEN** ten requests arrive through `https://c.example` while it is unlisted
-- **THEN** the warning for `https://c.example` appears once
+- **WHEN** ten document requests arrive through `https://c.example` while it is unlisted
+- **THEN** the warning for `https://c.example` appears once and the metric counts ten refusals
 
 ### Requirement: The allowlist and the pinned URL are exclusive at startup
 
 `engram serve` SHALL refuse to start when `ENGRAM_MCP_RESOURCE_ORIGINS` and
 `ENGRAM_MCP_RESOURCE_URL` are both set, and when an allowlist entry is not an `http` or `https`
-origin without path, query or fragment. The error SHALL name the variable and quote the offending
-value. There is no tool-call `hint` code, because the rejection happens before any request.
+origin without path, query or fragment whose host is a DNS name or an IP address with an optional
+port from 1 to 65535. The error SHALL name the variable and quote the offending value. There is no tool-call `hint` code, because the rejection happens before any request.
 
 #### Scenario: Both settings set
 
@@ -147,6 +180,11 @@ value. There is no tool-call `hint` code, because the rejection happens before a
 
 - **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `ftp://a.example`
 - **THEN** `engram serve` exits as a usage error that names the variable and states the scheme must be `http` or `https`
+
+#### Scenario: Entry has a wildcard host
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://*.a.example`
+- **THEN** `engram serve` exits as a usage error that names the variable, quotes the entry and states the host must be a DNS name or an IP address
 
 #### Scenario: Empty entry in the list
 

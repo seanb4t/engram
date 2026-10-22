@@ -61,15 +61,20 @@ Alternatives rejected:
   and its `error`/`error_description` parameters, and drifts when the SDK changes them.
 - Fork or vendor the middleware. Against the house rule to prefer the maintained upstream.
 
-The derivation function returns an origin and a boolean, so the challenge and the document share
-one decision about whether the origin is allowed.
+One `protectedResource` value, built once in `runServe` by `newProtectedResource`, holds the
+pinned URL, the fixed challenge value, the MCP path and the allowlist, and owns the both-set
+check. The document handler and the challenge both ask it, so they share one decision about
+whether an origin is allowed. Its origin check has no side effects: only the document handler logs
+a refusal (D-02), so an authenticated MCP request through an unlisted origin logs nothing.
 
 The SDK writes `WWW-Authenticate` only when it has a parameter to put in it, so a 401 with no
 `resource_metadata` and no scopes carries no challenge header at all. Measured on 2026-10-20 against
 the live derived-mode deployment on `engram.fzymgc.net`: `POST /mcp` without a token answered 401
 with the body `no bearer token` and no `WWW-Authenticate` header. RFC 6750 requires the header on a
-401, so the closure wraps the response writer and adds a bare `WWW-Authenticate: Bearer` on a 401 or
-403 when the SDK wrote none. This covers the unlisted-origin case under D-02 as well.
+401, so the closure wraps the response writer and adds a bare `WWW-Authenticate: Bearer` on a 401
+when the SDK wrote none. The SDK writes a 403 only when the middleware has scopes, which engram
+never sets, so the wrapper leaves a 403 alone. This covers the unlisted-origin case under D-02 as
+well.
 
 ### D-02: `ENGRAM_MCP_RESOURCE_ORIGINS` is a list of origins, matched exactly, with 404 for a miss
 
@@ -77,17 +82,23 @@ with the body `no bearer token` and no `WWW-Authenticate` header. RFC 6750 requi
   default empty. A deployment-topology value, never typed at a prompt, like
   `ENGRAM_MCP_RESOURCE_URL`.
 - Parsed at its use site in `runServe` into a set of normalized origins. An entry must parse as a
-  URL with scheme `http` or `https`, a non-empty host, and no path, query, fragment or userinfo.
-  Scheme and host lowercase on both sides. An empty entry, a duplicate, or a malformed entry is a
-  usage error that names the variable and quotes the entry.
+  URL with scheme `http` or `https`, no path, query, fragment or userinfo, and a host that is a DNS
+  name or a bracketed IPv6 address with an optional port from 1 to 65535 (`validAuthority`). The
+  same grammar guards `X-Forwarded-Host`. A wildcard, an empty port, a leading-zero port and a
+  trailing dot never match a request, so they fail at startup. Scheme and host lowercase, and the
+  default port of the scheme is removed, on both sides (`normalizeOrigin`), so `https://a.example`
+  and `https://a.example:443` are one origin. An empty entry, a duplicate after normalizing, or a
+  malformed entry is a usage error that names the variable and quotes the entry.
 - Exclusive with `ENGRAM_MCP_RESOURCE_URL`. Both set is a usage error naming both.
 - Helm value `memory.mcpResourceOrigins`, a string, rendered as a `with`-guarded row so the default
   render omits it.
 - A miss answers 404 on the well-known paths and drops `resource_metadata` from the challenge. The
   bearer gate still runs, so a valid token works through an unlisted origin. The allowlist bounds
   what engram says about itself, not who may call it.
-- One warning per distinct rejected origin per process, through a bounded `sync.Map` keyed by the
-  origin string, capped at a fixed size so a flood of spoofed hosts cannot grow memory.
+- The document handler logs one warning per distinct refused origin per process, through a
+  mutex-guarded map capped at a fixed size and a fixed origin length, so a flood of spoofed hosts
+  cannot grow memory. A `sync.Map` cannot enforce the cap atomically. After the cap, the
+  unlabelled `engram.resource_metadata.refused` counter still records every refusal.
 
 Alternatives rejected:
 
@@ -101,17 +112,32 @@ Alternatives rejected:
 ### D-03: `ENGRAM_MCP_LISTEN_ADDR` opens a second `http.Server` over a second mux
 
 - Key `server.mcp_listen_addr`, env `ENGRAM_MCP_LISTEN_ADDR`, flag `--mcp-listen-addr`, default
-  empty. Equal to `ENGRAM_LISTEN_ADDR` is a usage error naming both.
+  empty. A value that is not `host:port` is a usage error. So is a value on the same non-zero port as
+  `ENGRAM_LISTEN_ADDR` on the same host or with all interfaces on either side: on darwin `:8080` and
+  `127.0.0.1:8080` both bind, and the MCP-only mux would then take loopback traffic from the
+  console. Port 0 never collides.
+- The setting needs an auth lane, like `ENGRAM_CONNECT_HEADLESS`. With a nil chain the listener
+  would publish every memory tool unauthenticated, and it exists to face the internet.
 - The second mux mounts the same `handler` value that the primary mux mounts at the MCP path (the
-  fully wrapped chain: bearer gate, access log, OpenTelemetry) and the same `protectedResourceHandler`
-  on the two well-known paths. Its root handler is a plain 404 for everything else, with no console
-  redirect. No `/auth/*`, `/ui/`, or Connect mount exists on it.
+  fully wrapped chain that `mcpTransport` builds: bearer gate, access log, OpenTelemetry) and the
+  same `protectedResourceHandler` on the two well-known paths. Its root handler is a plain 404 for
+  everything else, with no console redirect. No `/auth/*`, `/ui/`, or Connect mount exists on it.
+  With `ENGRAM_MCP_PATH=/` the transport answers the bare root only (`/{$}`), never the legacy
+  catch-all of the primary mux. The access log carries the local address, so the two listeners
+  can be told apart.
 - The second server wraps its mux in `newCrossOriginProtection()` the same way, with the same
   `ReadHeaderTimeout` and `IdleTimeout` and the same unset read and write timeouts, for the same SSE
   reason.
-- Both servers write to one `serveErr` channel. A bind error from either returns from `runServe`
-  through the existing exit-1 path after the other server is shut down. The signal path shuts both
-  down, in parallel, before the queue drain, so the drain ordering rule holds for both.
+- `listenAll` binds every address before any server starts. A bind error closes the sockets already
+  bound and returns from `runServe` through the existing exit-1 path, named with the listener's
+  setting. Binding first makes the bind failure testable without waits.
+- `serveAll` runs each server on its socket. A serve failure or the signal shuts both down in
+  parallel, then drains the queues, so the drain ordering rule holds for both and also on the
+  serve-failure path. Every serve failure and every shutdown error is returned, joined and named.
+  A server whose `Shutdown` hits the deadline has its open connections closed.
+- The MCP GET event stream stays open until its request context ends, which held `Shutdown` until
+  its deadline. Each server's `RegisterOnShutdown` cancels a context that ends every GET to the
+  MCP transport (`endGETWith`). Other requests keep their own context and finish normally.
 - Helm: `memory.mcpListenAddr`, a string, default empty. When set, `memory-mcp.yaml` adds a
   container port named `mcp` and a Service port named `mcp`, both on the port parsed from the
   address, and `_helpers.tpl` renders a `with`-guarded `ENGRAM_MCP_LISTEN_ADDR` row. The port number
@@ -136,17 +162,18 @@ that the new modes are active, and they cost nothing.
 
 - [A per-request middleware construction on every MCP request] → One closure and one small struct
   per request. The streamable-HTTP handler allocates far more per request. No measurement needed.
-- [An operator lists `https://a.example` but the proxy forwards `https://a.example:443`] → The
-  comparison is exact, so this misses. The 404 plus the warning name the derived origin, which makes
-  the fix obvious. The configuration reference shows both forms.
+- [An operator lists `https://a.example` but the proxy forwards `https://a.example:443`] → Both
+  sides drop the default port, so this matches. Any other mismatch gets the 404 plus a warning that
+  names the derived origin, which makes the fix obvious.
 - [A client that caches the document from one origin and uses it on another] → Both origins carry
   the same `authorization_servers` and the same scopes, and tokens are not resource-bound, so the
   client still authenticates. Only the `resource` value differs.
 - [The second listener's 404 for Connect routes confuses a CLI pointed at the public port] → The CLI
   talks to Connect only for client-tier verbs, which an operator runs on the internal name. The deploy
   guide states which port serves what.
-- [The containerEnv checksum] → Re-pinned once for both rows in one task, with the dated note the
-  existing comment pattern uses.
+- [The containerEnv checksum] → Re-pinned for the two rows. The re-pin history goes in the commit,
+  not the Taskfile comment, and `task chart:validate` asserts the two rows and ports in both
+  directions.
 
 ## Migration Plan
 
