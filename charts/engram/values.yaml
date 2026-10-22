@@ -15,8 +15,10 @@ memory:
   listenAddr: ":8080"
   # ENGRAM_MCP_LISTEN_ADDR: an optional second listen address, e.g. ":8081",
   # that serves only the MCP transport and the protected-resource metadata
-  # paths. Point a public ingress at the "mcp" Service port it adds. Empty
-  # (default) keeps one port. The value must end in :<port>.
+  # paths. Point a public ingress at the "mcp" Service port it adds, never at
+  # an expose.* route (those target port 8080). Empty (default) keeps one
+  # port. The value must end in :<port> on a non-loopback host, and the
+  # server refuses it without an auth lane (oidc.issuer or serviceAuth.*).
   mcpListenAddr: ""
   # ENGRAM_MCP_PATH: where the MCP transport is mounted. "" → /mcp (default, both
   # headless and UI modes). "/" restores the pre-0.7 root catch-all (MCP answers
@@ -29,9 +31,11 @@ memory:
   mcpResourceUrl: ""
   # ENGRAM_MCP_RESOURCE_ORIGINS: comma-separated scheme://host[:port] origins
   # the derived mode may name, e.g. "https://a.example,https://b.example".
-  # An unlisted origin gets a 404 on the well-known paths and no
-  # resource_metadata hint. Empty (default) allows every origin. Leave
-  # mcpResourceUrl empty when this is set: the server refuses both.
+  # The default port of the scheme (443, 80) is ignored on both sides. An
+  # unlisted origin gets a 404 on the well-known paths and, unless
+  # oidc.resourceMetadata is set, no resource_metadata hint. Empty (default)
+  # allows every origin. Leave mcpResourceUrl empty when this is set: the
+  # server refuses both.
   mcpResourceOrigins: ""
   embed:
     model: "ollama/bge-m3"

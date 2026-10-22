@@ -247,13 +247,19 @@
 {{- end }}
 {{- end -}}
 
-{{- /* The port number of memory.mcpListenAddr: the text after its last colon. */}}
+{{- /* The port number of memory.mcpListenAddr: the text after its last colon.
+It fails on a value with no port, and on a loopback host, which the Service
+port cannot reach. */}}
 {{- define "engram.mcpListenPort" -}}
 {{- $addr := .Values.memory.mcpListenAddr | toString -}}
 {{- $parts := splitList ":" $addr -}}
 {{- $port := last $parts -}}
 {{- if or (lt (len $parts) 2) (not (regexMatch "^[0-9]+$" $port)) -}}
 {{- fail (printf "memory.mcpListenAddr %q must end in :<port>, e.g. \":8081\"" $addr) -}}
+{{- end -}}
+{{- $host := trimSuffix (printf ":%s" $port) $addr -}}
+{{- if regexMatch "^(localhost|127\\.[0-9.]+|\\[::1\\])$" $host -}}
+{{- fail (printf "memory.mcpListenAddr %q listens on loopback only, which the mcp Service port cannot reach; use \":%s\"" $addr $port) -}}
 {{- end -}}
 {{- $port -}}
 {{- end -}}

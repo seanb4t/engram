@@ -447,6 +447,40 @@ tasks:
           echo "chart:validate: startupProbe window ${STARTUP_PERIOD}s x ${STARTUP_THRESHOLD} is under 615s for schemaTimeoutSeconds=600"
           exit 1
         fi
+        # MCP-only listener and origin allowlist: both with-guarded, asserted
+        # in both directions for the same reason as the blocks above.
+        MCP_DEFAULT_RENDER=$(helm template charts/engram)
+        if echo "$MCP_DEFAULT_RENDER" | grep -q 'name: mcp\|ENGRAM_MCP_LISTEN_ADDR\|ENGRAM_MCP_RESOURCE_ORIGINS'; then
+          echo "chart:validate: default render must NOT emit an mcp port, ENGRAM_MCP_LISTEN_ADDR or ENGRAM_MCP_RESOURCE_ORIGINS"
+          exit 1
+        fi
+        MCP_LISTEN_RENDER=$(helm template charts/engram --set memory.mcpListenAddr=:8081)
+        if [ "$(echo "$MCP_LISTEN_RENDER" | grep -c 'mcp }')" -ne 2 ]; then
+          echo "chart:validate: --set memory.mcpListenAddr=:8081 must emit exactly two mcp ports (container and Service)"
+          exit 1
+        fi
+        if ! echo "$MCP_LISTEN_RENDER" | grep -q '{ containerPort: 8081, name: mcp }'; then
+          echo "chart:validate: --set memory.mcpListenAddr=:8081 must emit containerPort 8081 named mcp"
+          exit 1
+        fi
+        if ! echo "$MCP_LISTEN_RENDER" | grep -q '{ name: mcp, port: 8081, targetPort: mcp }'; then
+          echo "chart:validate: --set memory.mcpListenAddr=:8081 must emit Service port 8081 named mcp"
+          exit 1
+        fi
+        if ! echo "$MCP_LISTEN_RENDER" | grep -q 'name: ENGRAM_MCP_LISTEN_ADDR, value: ":8081"'; then
+          echo "chart:validate: --set memory.mcpListenAddr=:8081 must emit ENGRAM_MCP_LISTEN_ADDR=:8081"
+          exit 1
+        fi
+        for BAD_MCP_ADDR in 8081 127.0.0.1:8081; do
+          if helm template charts/engram --set memory.mcpListenAddr=$BAD_MCP_ADDR >/dev/null 2>&1; then
+            echo "chart:validate: --set memory.mcpListenAddr=$BAD_MCP_ADDR must fail the render"
+            exit 1
+          fi
+        done
+        if ! helm template charts/engram --set memory.mcpResourceOrigins=https://a.example | grep -q 'name: ENGRAM_MCP_RESOURCE_ORIGINS, value: "https://a.example"'; then
+          echo "chart:validate: --set memory.mcpResourceOrigins must emit ENGRAM_MCP_RESOURCE_ORIGINS with that value"
+          exit 1
+        fi
         helm lint charts/engram
         # Drift pin: engram.containerEnv is the single source of the
         # Deployment+CronJob container env (D-09). Any edit to this block
@@ -488,11 +522,7 @@ tasks:
         # Re-pinned 2026-10-10 for the with-guarded ENGRAM_DECISIONS_PATH row
         # (#793), inside the provider gate: the default render and a
         # provider=jev render without memory.decisions.path are both
-        # byte-identical to the pre-change render. Re-pinned 2026-10-22 for
-        # the with-guarded ENGRAM_MCP_RESOURCE_ORIGINS row (#866): the default
-        # render is byte-identical to the pre-change render. Re-pinned
-        # 2026-10-22 for the with-guarded ENGRAM_MCP_LISTEN_ADDR row (#867):
-        # the default render is byte-identical to the pre-change render.
+        # byte-identical to the pre-change render.
         EXPECTED_CHECKSUM="f983042d919a9f01db2c431724e5feb4a159b630098958289c3b9c262bc6a734"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
