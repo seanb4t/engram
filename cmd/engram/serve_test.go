@@ -115,7 +115,7 @@ func TestWithAuth_NoLaneConfigured_ReturnsHandlerUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, "")
+	handler := withAuth(inner, chain, "", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusTeapot {
@@ -161,7 +161,7 @@ func TestWithAuth_StaticTokenLane_AuthenticatesConfiguredToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, "")
+	handler := withAuth(inner, chain, "", nil)
 
 	t.Run("configured token authenticates", func(t *testing.T) {
 		gotOwner = ""
@@ -201,12 +201,119 @@ func TestWithAuth_HumanOnlyConfig_RejectsUnauthenticated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, "")
+	handler := withAuth(inner, chain, "", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 for an unauthenticated request against the human-only chain, got %d", rec.Code)
 	}
+}
+
+// newStaticTokenChain returns a chain whose only lane accepts the bearer
+// "secret-token-value".
+func newStaticTokenChain(t *testing.T) mcpauth.TokenVerifier {
+	t.Helper()
+	chain, err := buildAuthChain(config.OIDCConfig{}, config.ServiceAuthConfig{StaticTokens: "owner-x=secret-token-value"}, nil)
+	if err != nil {
+		t.Fatalf("buildAuthChain: %v", err)
+	}
+	return chain
+}
+
+// challengeThrough POSTs to h without a token through origin (scheme and
+// host) and returns the response.
+func challengeThrough(h http.Handler, scheme, host string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Host = host
+	req.Header.Set("X-Forwarded-Proto", scheme)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	chain := newStaticTokenChain(t)
+
+	t.Run("each origin gets its own document", func(t *testing.T) {
+		h := withAuth(inner, chain, "", derivedChallengeURL("/mcp"))
+		for _, host := range []string{"a.example", "b.example"} {
+			rec := challengeThrough(h, "https", host)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("%s: status=%d want 401", host, rec.Code)
+			}
+			want := `Bearer resource_metadata="https://` + host + `/.well-known/oauth-protected-resource/mcp"`
+			if got := rec.Header().Get("WWW-Authenticate"); got != want {
+				t.Fatalf("%s: WWW-Authenticate=%q want %q", host, got, want)
+			}
+		}
+	})
+
+	t.Run("root MCP path uses the host-only document", func(t *testing.T) {
+		h := withAuth(inner, chain, "", derivedChallengeURL("/"))
+		rec := challengeThrough(h, "https", "a.example")
+		want := `Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource"`
+		if got := rec.Header().Get("WWW-Authenticate"); got != want {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, want)
+		}
+	})
+
+	t.Run("configured metadata URL wins", func(t *testing.T) {
+		fixed := resolveResourceMetadataURL("https://meta.example/prm", "", "/mcp")
+		h := withAuth(inner, chain, fixed, derivedChallengeURL("/mcp"))
+		for _, host := range []string{"a.example", "b.example"} {
+			rec := challengeThrough(h, "https", host)
+			if got, want := rec.Header().Get("WWW-Authenticate"), `Bearer resource_metadata="https://meta.example/prm"`; got != want {
+				t.Fatalf("%s: WWW-Authenticate=%q want %q", host, got, want)
+			}
+		}
+	})
+
+	t.Run("a valid token is served", func(t *testing.T) {
+		h := withAuth(inner, chain, "", derivedChallengeURL("/mcp"))
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Header.Set("Authorization", "Bearer secret-token-value")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusTeapot {
+			t.Fatalf("status=%d want %d", rec.Code, http.StatusTeapot)
+		}
+	})
+}
+
+func TestWithAuth_BareChallengeWhenNoParams(t *testing.T) {
+	chain := newStaticTokenChain(t)
+
+	t.Run("empty challenge URL still sends a bare Bearer challenge", func(t *testing.T) {
+		inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+		for name, h := range map[string]http.Handler{
+			"fixed":       withAuth(inner, chain, "", nil),
+			"per request": withAuth(inner, chain, "", func(*http.Request) string { return "" }),
+		} {
+			rec := challengeThrough(h, "https", "a.example")
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("%s: status=%d want 401", name, rec.Code)
+			}
+			if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+				t.Fatalf("%s: WWW-Authenticate=%q want %q", name, got, "Bearer")
+			}
+		}
+	})
+
+	t.Run("the wrapped handler's own 403 is untouched", func(t *testing.T) {
+		inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) })
+		h := withAuth(inner, chain, "", nil)
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Header.Set("Authorization", "Bearer secret-token-value")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("status=%d want 403", rec.Code)
+		}
+		if got := rec.Header().Get("WWW-Authenticate"); got != "" {
+			t.Fatalf("WWW-Authenticate=%q want absent", got)
+		}
+	})
 }
 
 // TestBuildAuthChainNoLaneConfiguredReturnsNil pins the D-06/D-03 baseline:
@@ -341,7 +448,7 @@ func TestAuthChainSharedBetweenLanes(t *testing.T) {
 
 	// MCP half: the same chain value wrapped by withAuth.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
-	mcpHandler := withAuth(inner, chain, "")
+	mcpHandler := withAuth(inner, chain, "", nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer shared-secret-token")

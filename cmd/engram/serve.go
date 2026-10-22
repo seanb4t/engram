@@ -275,11 +275,12 @@ func runServe(cmd *cobra.Command) error {
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv }, nil)
-	// GH-526 / D-02: an explicitly configured ENGRAM_OIDC_RESOURCE_METADATA
-	// still wins; otherwise, when ENGRAM_MCP_RESOURCE_URL is set, the 401
-	// challenge now defaults to the path this server itself serves rather
-	// than pointing at nothing.
-	handler = withAuth(handler, chain, resolveResourceMetadataURL(cfg.OIDC.ResourceMetadata, resolvedMCPResourceURL, resolvedMCPPath))
+	// The 401 challenge names ENGRAM_OIDC_RESOURCE_METADATA when set, else the
+	// document on ENGRAM_MCP_RESOURCE_URL's origin when that is set, else the
+	// document on each request's own derived origin.
+	handler = withAuth(handler, chain,
+		resolveResourceMetadataURL(cfg.OIDC.ResourceMetadata, resolvedMCPResourceURL, resolvedMCPPath),
+		derivedChallengeURL(resolvedMCPPath))
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	handler = otelhttp.NewHandler(handler, "mcp")
 	// GH-526: mount the RFC 9728 protected-resource metadata document bare on
@@ -535,12 +536,56 @@ func composeAuthChain(human, service, static mcpauth.TokenVerifier) mcpauth.Toke
 // takes no config, so there is no code path by which the MCP lane can
 // construct a second chain — the compiler is the D-06 assertion that the
 // two mount sites cannot drift.
-func withAuth(handler http.Handler, chain mcpauth.TokenVerifier, resourceMetadataURL string) http.Handler {
+//
+// A non-empty resourceMetadataURL is the challenge's resource_metadata value
+// for every request, through one middleware. When it is empty and
+// challengeURL is set, the middleware is built per request with the value
+// challengeURL returns for that request ("" for none).
+func withAuth(handler http.Handler, chain mcpauth.TokenVerifier, resourceMetadataURL string, challengeURL func(*http.Request) string) http.Handler {
 	if chain == nil {
 		slog.Warn("bearer-token validation DISABLED (no --oidc-issuer / ENGRAM_OIDC_ISSUER, no ENGRAM_SERVICE_AUTH_* config); all requests accepted")
 		return handler
 	}
-	return mcpauth.RequireBearerToken(chain, &mcpauth.RequireBearerTokenOptions{
-		ResourceMetadataURL: resourceMetadataURL,
-	})(handler)
+	if resourceMetadataURL != "" || challengeURL == nil {
+		return bearerGate(chain, resourceMetadataURL, handler)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bearerGate(chain, challengeURL(r), handler).ServeHTTP(w, r)
+	})
 }
+
+// bearerGate is the go-sdk bearer middleware over handler with
+// resourceMetadataURL in its challenge. A 401 or 403 the middleware writes
+// without a WWW-Authenticate header gains a bare "Bearer" challenge, which
+// RFC 6750 requires on a 401: the SDK writes the header only when it has a
+// parameter to put in it. handler itself writes to the unwrapped
+// ResponseWriter, so its own responses are never touched.
+func bearerGate(chain mcpauth.TokenVerifier, resourceMetadataURL string, handler http.Handler) http.Handler {
+	gated := mcpauth.RequireBearerToken(chain, &mcpauth.RequireBearerTokenOptions{
+		ResourceMetadataURL: resourceMetadataURL,
+	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if cw, ok := w.(*challengeWriter); ok {
+			w = cw.ResponseWriter
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gated.ServeHTTP(&challengeWriter{ResponseWriter: w}, r)
+	})
+}
+
+// challengeWriter adds "WWW-Authenticate: Bearer" to a 401 or 403 written
+// without a WWW-Authenticate header.
+type challengeWriter struct {
+	http.ResponseWriter
+}
+
+func (w *challengeWriter) WriteHeader(code int) {
+	if (code == http.StatusUnauthorized || code == http.StatusForbidden) && w.Header().Get("WWW-Authenticate") == "" {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap lets http.NewResponseController reach the underlying writer.
+func (w *challengeWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }

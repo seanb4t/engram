@@ -80,20 +80,12 @@ func validForwardedHost(v string) bool {
 	return u.Host == v
 }
 
-// resourceURLFor computes the RFC 9728 `resource` field for one request.
-// When configured is non-empty it is returned verbatim and NO request
-// header is consulted -- this is the T-526-01 mitigation: a configured
-// ENGRAM_MCP_RESOURCE_URL can never be overridden by a spoofed
-// X-Forwarded-Host or X-Forwarded-Proto. Otherwise the value is derived:
-// scheme is the X-Forwarded-Proto value only when it equals exactly "http"
-// or "https" (any other value falls back to the TLS-derived scheme and is
-// never echoed into the document); host is the X-Forwarded-Host value only
-// when validForwardedHost accepts it (otherwise r.Host); the path component
-// is mcpPath unless mcpPath is the bare root, in which case none.
-func resourceURLFor(configured, mcpPath string, r *http.Request) string {
-	if configured != "" {
-		return configured
-	}
+// derivedOrigin returns the scheme://host origin a request was made to. The
+// scheme is the X-Forwarded-Proto value only when it equals exactly "http" or
+// "https" (any other value falls back to the TLS-derived scheme and is never
+// echoed); the host is the X-Forwarded-Host value only when validForwardedHost
+// accepts it, else the trusted r.Host.
+func derivedOrigin(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
@@ -105,11 +97,38 @@ func resourceURLFor(configured, mcpPath string, r *http.Request) string {
 	if xfh := r.Header.Get("X-Forwarded-Host"); validForwardedHost(xfh) {
 		host = xfh
 	}
-	origin := scheme + "://" + host
+	return scheme + "://" + host
+}
+
+// resourceForOrigin returns the RFC 9728 `resource` value on origin: origin
+// plus mcpPath, or origin alone when mcpPath is the bare root.
+func resourceForOrigin(origin, mcpPath string) string {
 	if mcpPath == "" || mcpPath == "/" {
 		return origin
 	}
 	return origin + mcpPath
+}
+
+// resourceMetadataURLForOrigin returns the URL of the protected-resource
+// metadata document on origin: the path-suffix form for a non-root mcpPath,
+// else the host-only form.
+func resourceMetadataURLForOrigin(origin, mcpPath string) string {
+	if suffix := protectedResourcePaths(mcpPath); suffix != "" {
+		return origin + suffix
+	}
+	return origin + wellKnownPRMBase
+}
+
+// resourceURLFor computes the RFC 9728 `resource` field for one request.
+// When configured is non-empty it is returned verbatim and NO request header
+// is consulted, so a spoofed X-Forwarded-Host or X-Forwarded-Proto can never
+// override a configured ENGRAM_MCP_RESOURCE_URL. Otherwise it is the
+// resource on the request's derivedOrigin.
+func resourceURLFor(configured, mcpPath string, r *http.Request) string {
+	if configured != "" {
+		return configured
+	}
+	return resourceForOrigin(derivedOrigin(r), mcpPath)
 }
 
 // resolveMCPResourceURL shape-checks the configured ENGRAM_MCP_RESOURCE_URL
@@ -167,27 +186,18 @@ func protectedResourceHandler(configuredResourceURL, issuer, mcpPath string) htt
 	})
 }
 
-// resolveResourceMetadataURL implements D-02 (260909-ofg-PLAN.md): it decides
-// what withAuth's 401 WWW-Authenticate resource_metadata challenge points at.
-// An explicitly configured value (ENGRAM_OIDC_RESOURCE_METADATA) always
-// wins and is returned untouched -- including when mcpResourceURL is also
-// set. An empty mcpResourceURL yields empty, preserving exactly what ships
-// today (no resource_metadata in the challenge). Otherwise the challenge URL
-// is derived from mcpResourceURL's origin (scheme + host only -- any path,
-// query, or trailing slash it carries is discarded, so the result never
-// doubles a path segment) plus whichever protectedResourcePaths form applies
-// for mcpPath.
-//
-// The per-request derivation resourceURLFor does is NOT available here:
-// withAuth is built once, at server-construction time, from a single static
-// string (see the withAuth call site in serve.go) -- there is no *http.Request
-// in scope to inspect forwarded headers against. mcpResourceURL is the only
-// honest source of a public origin at that point in startup.
+// resolveResourceMetadataURL returns the fixed resource_metadata value of the
+// MCP 401 challenge, or empty when the challenge is derived per request. An
+// explicitly configured value (ENGRAM_OIDC_RESOURCE_METADATA) always wins and
+// is returned untouched, including when mcpResourceURL is also set. Otherwise
+// a set mcpResourceURL yields the document on its origin (scheme and host
+// only: any path, query or trailing slash it carries is discarded, so the
+// result never doubles a path segment). Both empty yields empty: withAuth
+// then names the document on each request's own origin (derivedChallengeURL).
 //
 // A parse failure of mcpResourceURL yields empty rather than a malformed
-// challenge URL. This is a belt-and-braces fallback, not a live path:
-// resolveMCPResourceURL has already rejected malformed input at startup
-// before this function is ever called with it.
+// challenge URL; resolveMCPResourceURL has already rejected malformed input
+// at startup, so this is not a live path.
 func resolveResourceMetadataURL(configured, mcpResourceURL, mcpPath string) string {
 	if configured != "" {
 		return configured
@@ -199,11 +209,16 @@ func resolveResourceMetadataURL(configured, mcpResourceURL, mcpPath string) stri
 	if err != nil {
 		return ""
 	}
-	origin := u.Scheme + "://" + u.Host
-	if suffix := protectedResourcePaths(mcpPath); suffix != "" {
-		return origin + suffix
+	return resourceMetadataURLForOrigin(u.Scheme+"://"+u.Host, mcpPath)
+}
+
+// derivedChallengeURL returns the per-request resource_metadata value of the
+// MCP 401 challenge in the derived mode: the document on the same origin the
+// document handler derives for that request.
+func derivedChallengeURL(mcpPath string) func(*http.Request) string {
+	return func(r *http.Request) string {
+		return resourceMetadataURLForOrigin(derivedOrigin(r), mcpPath)
 	}
-	return origin + wellKnownPRMBase
 }
 
 // mountWellKnownRoutes registers h under the RFC 9728 host-only path and,

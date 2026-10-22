@@ -55,6 +55,21 @@ The document has four fields:
 - `bearer_methods_supported` — the constant `["header"]`.
 - `scopes_supported` — the constant `["offline_access"]`.
 
+An MCP request without a valid token gets a `401` response with a
+`WWW-Authenticate: Bearer` header. Its `resource_metadata` parameter names
+the URL of the document above:
+
+- When `ENGRAM_OIDC_RESOURCE_METADATA` is set, the parameter is that value
+  verbatim.
+- When only `ENGRAM_MCP_RESOURCE_URL` is set, the parameter names the
+  path-suffix document on the origin of that URL.
+- When both are unset, the parameter names the path-suffix document on the
+  requesting origin. This is the same origin that the derived `resource`
+  field uses, so a deployment with two public names gives each name its own
+  challenge.
+
+If the MCP path is `/`, the parameter names the host-only path instead.
+
 `ENGRAM_MCP_PATH` can no longer be set to `/.well-known` or any path under
 it — that root is reserved for these routes.
 

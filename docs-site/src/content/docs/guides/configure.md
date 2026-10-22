@@ -345,7 +345,7 @@ Setting `ENGRAM_OIDC_ISSUER` enables bearer-token enforcement (JWKS signature + 
 |---------------------|------|---------|-------------|
 | `ENGRAM_OIDC_ISSUER` | `--oidc-issuer` | _(empty)_ | OIDC issuer URL; setting it enables bearer-token enforcement |
 | `ENGRAM_OIDC_AUDIENCE` | `--oidc-audience` | _(empty)_ | Expected `aud` claim (optional; omit to skip audience check) |
-| `ENGRAM_OIDC_RESOURCE_METADATA` | `--oidc-resource-metadata` | _(empty)_ | `WWW-Authenticate` resource metadata URL returned in 401 responses (optional). Left empty with `ENGRAM_MCP_RESOURCE_URL` set, this now defaults to the protected-resource document path engram itself serves; explicit config still wins. |
+| `ENGRAM_OIDC_RESOURCE_METADATA` | `--oidc-resource-metadata` | _(empty)_ | `WWW-Authenticate` resource metadata URL returned in 401 responses (optional). When set, every 401 names this value. When empty, a 401 names the protected-resource document that engram serves: on the origin of `ENGRAM_MCP_RESOURCE_URL` when that is set, else on the requesting origin. |
 | `ENGRAM_OWNER_CLAIM` | `--owner-claim` | `email` | OIDC claim whose value becomes the record `owner` (authz key); fail-closed if absent; requires `email_verified` when `email` |
 
 Source: `cmd/engram/serve.go` (`init()` flag registration and `buildAuthChain`, which composes the chain and wraps it in `auth.EnforceExpiry` so token expiry is enforced on the composed chain rather than only inside the MCP bearer wrapper).
