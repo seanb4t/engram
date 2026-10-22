@@ -2845,7 +2845,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 	}
 
 	// Compose both queues' shutdown into a single closure: the caller
-	// (serve.go) invokes this once, strictly after httpSrv.Shutdown returns,
+	// (serve.go) invokes this once, strictly after every server's Shutdown returns,
 	// draining the summary queue then the usage queue (both nil-safe no-ops
 	// when disabled).
 	return func(ctx context.Context) {

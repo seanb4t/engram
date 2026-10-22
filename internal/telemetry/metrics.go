@@ -14,9 +14,10 @@ import (
 // ToolMetrics holds the engram-specific instruments. Built from the global
 // meter; records are no-ops when telemetry is disabled.
 type ToolMetrics struct {
-	calls        metric.Int64Counter
-	duration     metric.Float64Histogram
-	authFailures metric.Int64Counter
+	calls                    metric.Int64Counter
+	duration                 metric.Float64Histogram
+	authFailures             metric.Int64Counter
+	resourceMetadataRefusals metric.Int64Counter
 }
 
 // NewToolMetrics constructs the instruments. Instrument creation errors (only
@@ -27,7 +28,10 @@ func NewToolMetrics(m metric.Meter) *ToolMetrics {
 	dur, _ := m.Float64Histogram("engram.tool.duration",
 		metric.WithUnit("ms"), metric.WithDescription("tool handler latency"))
 	auth, _ := m.Int64Counter("engram.auth.failures")
-	return &ToolMetrics{calls: calls, duration: dur, authFailures: auth}
+	refused, _ := m.Int64Counter("engram.resource_metadata.refused",
+		metric.WithUnit("{request}"),
+		metric.WithDescription("protected-resource metadata requests refused because the origin is not allowed"))
+	return &ToolMetrics{calls: calls, duration: dur, authFailures: auth, resourceMetadataRefusals: refused}
 }
 
 // Record logs one tool call's count and latency.
@@ -40,6 +44,12 @@ func (t *ToolMetrics) Record(ctx context.Context, tool, outcome string, ms float
 // RecordAuthFailure counts a rejected request by reason.
 func (t *ToolMetrics) RecordAuthFailure(ctx context.Context, reason string) {
 	t.authFailures.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", reason)))
+}
+
+// RecordResourceMetadataRefused counts one protected-resource metadata
+// request refused for its origin.
+func (t *ToolMetrics) RecordResourceMetadataRefused(ctx context.Context) {
+	t.resourceMetadataRefusals.Add(ctx, 1)
 }
 
 // layerMetrics holds the per-operation latency instruments for the store,

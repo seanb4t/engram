@@ -211,14 +211,12 @@ var operatorCommandFiles = []string{
 // operatorCommandFiles must carry, on the SAME line, to be exempted from
 // TestNoBareOperatorErrorReturns below.
 //
-// Zero sites carry it at this commit. Even the one deliberate D-03
-// backstop -- serve.go's ListenAndServe failure -- returns the SDK's own
-// error bare (`return err` / `serveErr <- err`), never a locally
-// constructed fmt.Errorf/errors.New, so there is nothing for this marker
-// to exempt yet; see the comment at that call site in serve.go for the
-// full rationale. The marker exists so a future genuinely exceptional
-// site is recorded explicitly in the source, rather than silently
-// widening this gate by editing the test itself.
+// serve.go's listenAll and serveAll return their bind, serve and shutdown
+// failures untyped so they exit 1 (see the comment at the listenAll call
+// site in runServe), but never as a bare `return fmt.Errorf(`, so they need
+// no marker. The marker records a genuinely exceptional site explicitly in
+// the source, rather than silently widening this gate by editing the test
+// itself.
 const bareOperatorErrorExceptionMarker = "gsd:bare-operator-error-exception"
 
 // TestNoBareOperatorErrorReturns is the source-level D-03 closing gate: no

@@ -1254,6 +1254,12 @@
           "usage": "listen address"
         },
         {
+          "name": "mcp-listen-addr",
+          "type": "string",
+          "default": "",
+          "usage": "second listen address serving only the MCP transport and discovery (optional)"
+        },
+        {
           "name": "mcp-path",
           "type": "string",
           "default": "",

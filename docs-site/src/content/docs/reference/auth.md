@@ -24,10 +24,12 @@ The MCP bearer-token lane's serve flags that have both a `--flag` and an `ENGRAM
 | Flag | Env | Default |
 |------|-----|---------|
 | `--listen-addr` | `ENGRAM_LISTEN_ADDR` | `:8080` |
+| `--mcp-listen-addr` | `ENGRAM_MCP_LISTEN_ADDR` | _(unset — one listener)_ |
 | `--oidc-issuer` | `ENGRAM_OIDC_ISSUER` | _(unset — auth disabled)_ |
 | `--oidc-audience` | `ENGRAM_OIDC_AUDIENCE` | _(unset — audience not checked)_ |
 | `--oidc-resource-metadata` | `ENGRAM_OIDC_RESOURCE_METADATA` | _(unset)_ |
 | _(env-only)_ | `ENGRAM_MCP_RESOURCE_URL` | _(unset)_ |
+| _(env-only)_ | `ENGRAM_MCP_RESOURCE_ORIGINS` | _(unset)_ |
 
 Storage and embedding are configured via env-only variables (`ENGRAM_QDRANT_ADDR`,
 `ENGRAM_QDRANT_COLLECTION`, `ENGRAM_OPENAI_BASE_URL`, `ENGRAM_OPENAI_API_KEY`,
@@ -54,6 +56,51 @@ The document has four fields:
   Omitted entirely (not an empty array) when no issuer is configured.
 - `bearer_methods_supported` — the constant `["header"]`.
 - `scopes_supported` — the constant `["offline_access"]`.
+
+An MCP request without a valid token gets a `401` response with a
+`WWW-Authenticate: Bearer` header. Its `resource_metadata` parameter names
+the URL of the document above:
+
+- When `ENGRAM_OIDC_RESOURCE_METADATA` is set, the parameter is that value
+  verbatim.
+- When only `ENGRAM_MCP_RESOURCE_URL` is set, the parameter names the
+  path-suffix document on the origin of that URL.
+- When both are unset, the parameter names the path-suffix document on the
+  requesting origin. This is the same origin that the derived `resource`
+  field uses, so a deployment with two public names gives each name its own
+  challenge.
+
+If the MCP path is `/`, the parameter names the host-only path instead.
+
+The derived mode trusts the forwarded headers of any caller. To limit the
+origins that it names, set `ENGRAM_MCP_RESOURCE_ORIGINS` to a
+comma-separated list of origins, for example
+`https://a.example,https://b.example`. A request from an origin that is not
+in the list gets a `404` on the path-suffix protected-resource path. Its
+`401` challenge is a bare `WWW-Authenticate: Bearer` header with no
+`resource_metadata` parameter. The host-only path still answers every
+origin, because `engram login` reads `authorization_servers` from it through
+whatever name the CLI uses. So an MCP client that falls back to the
+host-only path can still discover the server through an unlisted origin.
+The list limits only what engram points clients to, so a valid token still
+works through any origin. The match drops the default port of the scheme,
+so `https://a.example` also matches `https://a.example:443`. Set the list
+on every deployment whose MCP port is reachable from the internet, even with
+one public name. engram logs a warning the first time in each hour that it
+refuses the document for an origin. It counts every refusal in the
+`engram.resource_metadata.refused` metric. Every `401` carries
+`Cache-Control: no-store`. You
+cannot set this variable together with `ENGRAM_MCP_RESOURCE_URL`, and the
+server does not start when both are set. See [Configure](/guides/configure/)
+for the entry format.
+
+`ENGRAM_MCP_LISTEN_ADDR` opens a second listener that serves only the MCP
+transport and the two protected-resource paths. Its MCP path has the same
+bearer check, the same `401` challenge and the same cross-origin rules as
+the main listener. Every other path on it gets a `404`, so the console, the
+login routes and the Connect API are not reachable through it. The server
+does not start with `ENGRAM_MCP_LISTEN_ADDR` set when you configure no auth
+lane, because the listener exists to face the internet.
 
 `ENGRAM_MCP_PATH` can no longer be set to `/.well-known` or any path under
 it — that root is reserved for these routes.

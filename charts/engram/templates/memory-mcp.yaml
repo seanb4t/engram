@@ -27,6 +27,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - { containerPort: 8080, name: http }
+            {{- if .Values.memory.mcpListenAddr }}
+            - { containerPort: {{ include "engram.mcpListenPort" . }}, name: mcp }
+            {{- end }}
           env: {{- include "engram.containerEnv" . | nindent 12 }}
           {{- if .Values.memory.openai.caBundle.configMapName }}
           volumeMounts:
@@ -73,3 +76,6 @@ spec:
     app.kubernetes.io/name: memory-mcp
   ports:
     - { name: http, port: 8080, targetPort: http }
+    {{- if .Values.memory.mcpListenAddr }}
+    - { name: mcp, port: {{ include "engram.mcpListenPort" . }}, targetPort: mcp }
+    {{- end }}

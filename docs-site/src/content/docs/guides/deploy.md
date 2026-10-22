@@ -24,8 +24,10 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 | Helm value | `ENGRAM_*` variable set | Description |
 |-----------|---------------------|-------------|
 | `memory.listenAddr` | `ENGRAM_LISTEN_ADDR` | Listen address (default `:8080`) |
+| `memory.mcpListenAddr` | `ENGRAM_MCP_LISTEN_ADDR` | Second listen address that serves only MCP and discovery, for example `:8081` (empty → one port). See [Public MCP port](#public-mcp-port) |
 | `memory.mcpPath` | `ENGRAM_MCP_PATH` | MCP transport path (empty → `/mcp`; `/` restores the legacy root catch-all) |
 | `memory.mcpResourceUrl` | `ENGRAM_MCP_RESOURCE_URL` | Public URL clients reach the MCP endpoint on (empty → derived per request) |
+| `memory.mcpResourceOrigins` | `ENGRAM_MCP_RESOURCE_ORIGINS` | Comma-separated origins that the derived mode can name (empty → every origin). Leave `memory.mcpResourceUrl` empty when you set this |
 | `memory.openai.baseURL` | `ENGRAM_OPENAI_BASE_URL` | Embeddings endpoint URL (cluster must supply) |
 | `memory.embed.model` | `ENGRAM_EMBED_MODEL` | Embed model name (default `ollama/bge-m3`) |
 | `memory.embed.dim` | `ENGRAM_EMBED_DIM` | Vector dimension (default `1024`) |
@@ -79,6 +81,40 @@ disable it while keeping the provider for other features — read
 before deploying with a decisions provider configured.
 
 For the full environment variable reference, see [Configure](/guides/configure/).
+
+### Public MCP port
+
+Set `memory.mcpListenAddr` to an address such as `:8081` to open a second
+port that serves only MCP. The chart then adds a container port and a
+Service port, both named `mcp`, on the port number of that address. The two
+ports serve different routes:
+
+- The `http` port (8080) serves every route: the MCP transport, the
+  protected-resource paths, the console, the login routes and the Connect
+  API.
+- The `mcp` port serves only the MCP transport at the MCP path and the two
+  protected-resource paths. Every other path gets a 404.
+
+The server does not start with `memory.mcpListenAddr` set unless you
+configure an auth lane (`memory.oidc.issuer` or `memory.serviceAuth.*`). The
+chart refuses an address with no port, and an address on a loopback host
+such as `127.0.0.1:8081`, which the Service port cannot reach.
+
+Point a public ingress, for example a Cloudflare tunnel, at the `mcp`
+Service port. Do not use an `expose.*` route for the public name, because
+those routes target the `http` port. The console and the Connect API are
+then not reachable through the public name, and the proxy needs no path
+filter. The client verbs of the `engram` CLI use the Connect API, so run
+them against a name that reaches the `http` port.
+
+Set `memory.mcpResourceOrigins` to the public origins, so that engram
+points clients at no other origin in its `401` challenge and its path-suffix
+protected-resource document. If two names reach the same server, list both:
+each name then gets its own document. `engram login` works through any name,
+listed or not, because the host-only document answers every origin.
+
+On shutdown, engram ends the open MCP event streams on both ports, so the
+shutdown does not wait for them. Clients open a new stream to the next pod.
 
 ### Summary sweep
 

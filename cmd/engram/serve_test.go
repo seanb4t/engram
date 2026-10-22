@@ -8,13 +8,18 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,10 +27,13 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/server"
+	"github.com/seanb4t/engram/internal/telemetry"
 )
 
 // wantNamespacedOwner mirrors auth.go's DOCUMENTED namespacedOwner encoding
@@ -115,7 +123,7 @@ func TestWithAuth_NoLaneConfigured_ReturnsHandlerUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, "")
+	handler := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusTeapot {
@@ -161,7 +169,7 @@ func TestWithAuth_StaticTokenLane_AuthenticatesConfiguredToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, "")
+	handler := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 
 	t.Run("configured token authenticates", func(t *testing.T) {
 		gotOwner = ""
@@ -201,12 +209,134 @@ func TestWithAuth_HumanOnlyConfig_RejectsUnauthenticated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, "")
+	handler := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 for an unauthenticated request against the human-only chain, got %d", rec.Code)
 	}
+}
+
+// newStaticTokenChain returns a chain whose only lane accepts the bearer
+// "secret-token-value".
+func newStaticTokenChain(t *testing.T) mcpauth.TokenVerifier {
+	t.Helper()
+	chain, err := buildAuthChain(config.OIDCConfig{}, config.ServiceAuthConfig{StaticTokens: "owner-x=secret-token-value"}, nil)
+	if err != nil {
+		t.Fatalf("buildAuthChain: %v", err)
+	}
+	return chain
+}
+
+// challengeThrough POSTs to h without a token through origin (scheme and
+// host) and returns the response.
+func challengeThrough(h http.Handler, scheme, host string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Host = host
+	req.Header.Set("X-Forwarded-Proto", scheme)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	chain := newStaticTokenChain(t)
+
+	t.Run("each origin gets its own document", func(t *testing.T) {
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
+		for _, host := range []string{"a.example", "b.example"} {
+			rec := challengeThrough(h, "https", host)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("%s: status=%d want 401", host, rec.Code)
+			}
+			want := `Bearer resource_metadata="https://` + host + `/.well-known/oauth-protected-resource/mcp"`
+			if got := rec.Header().Get("WWW-Authenticate"); got != want {
+				t.Fatalf("%s: WWW-Authenticate=%q want %q", host, got, want)
+			}
+			if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+				t.Fatalf("%s: Cache-Control=%q want no-store", host, cc)
+			}
+			if v := rec.Header().Get("Vary"); !strings.Contains(v, "X-Forwarded-Host") {
+				t.Fatalf("%s: Vary=%q want X-Forwarded-Host in it", host, v)
+			}
+		}
+	})
+
+	t.Run("root MCP path uses the host-only document", func(t *testing.T) {
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/"}))
+		rec := challengeThrough(h, "https", "a.example")
+		want := `Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource"`
+		if got := rec.Header().Get("WWW-Authenticate"); got != want {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, want)
+		}
+	})
+
+	t.Run("configured metadata URL wins", func(t *testing.T) {
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MetadataURL: "https://meta.example/prm", MCPPath: "/mcp"}))
+		for _, host := range []string{"a.example", "b.example"} {
+			rec := challengeThrough(h, "https", host)
+			if got, want := rec.Header().Get("WWW-Authenticate"), `Bearer resource_metadata="https://meta.example/prm"`; got != want {
+				t.Fatalf("%s: WWW-Authenticate=%q want %q", host, got, want)
+			}
+		}
+	})
+
+	t.Run("pinned resource URL names its own origin", func(t *testing.T) {
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{ResourceURL: "https://a.example/mcp", MCPPath: "/mcp"}))
+		rec := challengeThrough(h, "https", "b.example")
+		want := `Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource/mcp"`
+		if got := rec.Header().Get("WWW-Authenticate"); got != want {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, want)
+		}
+		if v := rec.Header().Get("Vary"); v != "" {
+			t.Fatalf("Vary=%q want none: the pinned challenge does not depend on the request", v)
+		}
+	})
+
+	t.Run("a valid token is served", func(t *testing.T) {
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Header.Set("Authorization", "Bearer secret-token-value")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusTeapot {
+			t.Fatalf("status=%d want %d", rec.Code, http.StatusTeapot)
+		}
+	})
+}
+
+func TestWithAuth_BareChallengeWhenNoParams(t *testing.T) {
+	chain := newStaticTokenChain(t)
+
+	t.Run("no challenge value still sends a bare Bearer challenge", func(t *testing.T) {
+		inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{Origins: "https://b.example", MCPPath: "/mcp"}))
+		rec := challengeThrough(h, "https", "a.example")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status=%d want 401", rec.Code)
+		}
+		if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, "Bearer")
+		}
+	})
+
+	t.Run("the wrapped handler's own 401 and 403 are untouched", func(t *testing.T) {
+		for _, code := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+			inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
+			h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("Authorization", "Bearer secret-token-value")
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != code {
+				t.Fatalf("status=%d want %d", rec.Code, code)
+			}
+			if got := rec.Header().Get("WWW-Authenticate"); got != "" {
+				t.Fatalf("%d: WWW-Authenticate=%q want absent", code, got)
+			}
+		}
+	})
 }
 
 // TestBuildAuthChainNoLaneConfiguredReturnsNil pins the D-06/D-03 baseline:
@@ -341,7 +471,7 @@ func TestAuthChainSharedBetweenLanes(t *testing.T) {
 
 	// MCP half: the same chain value wrapped by withAuth.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
-	mcpHandler := withAuth(inner, chain, "")
+	mcpHandler := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer shared-secret-token")
@@ -543,36 +673,91 @@ func TestConnectResolverForHeadlessWithoutChainIsNil(t *testing.T) {
 // TestServePreflightGuardsExitUsage proves the D-03 bucket-1 classification
 // end-to-end: `engram serve` driven through the real rootCmd.Execute() path
 // (mirroring exitcode_baseline_test.go's TestExitCodeBaseline, not a direct
-// runServe(cmd) call) for three guards reachable WITHOUT a live Qdrant --
-// each trips before runServe ever reaches server.Register (the bucket-2
-// store-construction call). Bucket 3 (ListenAndServe's own failure) is
-// deliberately NOT exercised here by binding a port; the deliberate
-// exception is proven by reading the code path instead (see the comment at
-// its call site in serve.go), per this plan's own instruction.
+// runServe(cmd) call) for guards reachable WITHOUT a live Qdrant -- each
+// trips before runServe ever reaches server.Register (the bucket-2
+// store-construction call) -- and checks that each message names the
+// settings at fault. Bucket 3 (a listener's bind or serve failure) is not
+// exercised here; TestListenAllClosesBoundListenersOnFailure and
+// TestServeAllServeFailure cover it.
 func TestServePreflightGuardsExitUsage(t *testing.T) {
 	cases := []struct {
-		name string
-		args []string
-		env  map[string]string
+		name     string
+		args     []string
+		env      map[string]string
+		wantText []string
 	}{
 		{
 			// The D-09 baseline row this test complements: serve's own
 			// listen-addr guard, the first bucket-1 site in runServe.
-			name: "empty listen addr",
-			args: []string{"serve", "--listen-addr", ""},
+			name:     "empty listen addr",
+			args:     []string{"serve", "--listen-addr", ""},
+			wantText: []string{"ENGRAM_LISTEN_ADDR"},
 		},
 		{
 			// resolveUIConfig (uiconfig.go): ENGRAM_UI_ENABLED=true with
 			// none of the four required web-UI creds set.
-			name: "ui enabled without required creds",
-			args: []string{"serve", "--listen-addr", "127.0.0.1:0"},
-			env:  map[string]string{"ENGRAM_UI_ENABLED": "true"},
+			name:     "ui enabled without required creds",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env:      map[string]string{"ENGRAM_UI_ENABLED": "true"},
+			wantText: []string{"ENGRAM_UI_ENABLED"},
 		},
 		{
 			// connectHeadlessGuard: --connect-headless with no OIDC issuer
 			// and no service_auth.* config, so chain is nil.
-			name: "connect-headless without a configured auth lane",
-			args: []string{"serve", "--listen-addr", "127.0.0.1:0", "--connect-headless", "true"},
+			name:     "connect-headless without a configured auth lane",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0", "--connect-headless", "true"},
+			wantText: []string{"ENGRAM_CONNECT_HEADLESS"},
+		},
+		{
+			name: "resource origins and a pinned resource URL",
+			args: []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env: map[string]string{
+				"ENGRAM_MCP_RESOURCE_URL":     "https://a.example/mcp",
+				"ENGRAM_MCP_RESOURCE_ORIGINS": "https://a.example",
+			},
+			wantText: []string{"ENGRAM_MCP_RESOURCE_ORIGINS", "ENGRAM_MCP_RESOURCE_URL"},
+		},
+		{
+			name:     "same address on both listeners",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:18080", "--mcp-listen-addr", "127.0.0.1:18080"},
+			wantText: []string{"ENGRAM_MCP_LISTEN_ADDR", "ENGRAM_LISTEN_ADDR"},
+		},
+		{
+			name:     "all interfaces and one host on the same port",
+			args:     []string{"serve", "--listen-addr", ":18080", "--mcp-listen-addr", "127.0.0.1:18080"},
+			wantText: []string{"ENGRAM_MCP_LISTEN_ADDR", "ENGRAM_LISTEN_ADDR"},
+		},
+		{
+			name:     "MCP listen address without a port",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0", "--mcp-listen-addr", "18081"},
+			wantText: []string{"ENGRAM_MCP_LISTEN_ADDR", `"18081"`},
+		},
+		{
+			name:     "MCP listen address with an empty port",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0", "--mcp-listen-addr", ":"},
+			wantText: []string{"ENGRAM_MCP_LISTEN_ADDR", "must name a port"},
+		},
+		{
+			name:     "resource URL with userinfo",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env:      map[string]string{"ENGRAM_MCP_RESOURCE_URL": "https://user:secret@a.example/mcp"},
+			wantText: []string{"ENGRAM_MCP_RESOURCE_URL", "userinfo"},
+		},
+		{
+			name:     "MCP-only listener without a configured auth lane",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0", "--mcp-listen-addr", "127.0.0.1:0"},
+			wantText: []string{"ENGRAM_MCP_LISTEN_ADDR", "no auth lane"},
+		},
+		{
+			name:     "resource origins entry with a path",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env:      map[string]string{"ENGRAM_MCP_RESOURCE_ORIGINS": "https://a.example/mcp"},
+			wantText: []string{"ENGRAM_MCP_RESOURCE_ORIGINS", `"https://a.example/mcp"`},
+		},
+		{
+			name:     "malformed MCP path",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0", "--mcp-path", "mcp"},
+			wantText: []string{"ENGRAM_MCP_PATH"},
 		},
 	}
 	for _, c := range cases {
@@ -587,6 +772,421 @@ func TestServePreflightGuardsExitUsage(t *testing.T) {
 			if got := exitCodeFromError(err); got != exitUsage {
 				t.Fatalf("%v: exitCodeFromError(err) = %d, want exitUsage (%d); err=%v", c.args, got, exitUsage, err)
 			}
+			for _, want := range c.wantText {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("%v: error %q does not contain %q", c.args, err, want)
+				}
+			}
 		})
+	}
+}
+
+func TestCheckMCPListenAddr(t *testing.T) {
+	cases := []struct {
+		listen, mcp string
+		wantErr     bool
+	}{
+		{":8080", "", false},
+		{":8080", ":8081", false},
+		{":8080", ":8080", true},
+		{":8080", "127.0.0.1:8080", true},
+		{"0.0.0.0:8080", "127.0.0.1:8080", true},
+		{"[::]:8080", "127.0.0.1:8080", true},
+		{"127.0.0.1:8080", "127.0.0.2:8080", false},
+		{"127.0.0.1:8080", "127.0.0.1:8080", true},
+		{":0", ":0", false},
+		{":http", ":80", true},
+		{"bad", ":8080", false},
+		{":8080", "8081", true},
+		{":8080", ":notaport", true},
+		{":8080", ":", true},
+		{":8080", "0.0.0.0:", true},
+		{"0.0.0.0:8080", "[::1]:8080", false},
+		{"[::1]:8080", "0.0.0.0:8080", false},
+		{"0.0.0.0:8080", "localhost:8080", true},
+		{"0.0.0.0:8080", "[::ffff:127.0.0.1]:8080", true},
+	}
+	for _, tc := range cases {
+		err := checkMCPListenAddr(tc.listen, tc.mcp)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("checkMCPListenAddr(%q, %q) err=%v, wantErr=%v", tc.listen, tc.mcp, err, tc.wantErr)
+		}
+		if err != nil && exitCodeFromError(err) != exitUsage {
+			t.Errorf("checkMCPListenAddr(%q, %q): exit code %d, want exitUsage", tc.listen, tc.mcp, exitCodeFromError(err))
+		}
+	}
+}
+
+func TestMCPListenerGuard(t *testing.T) {
+	if err := mcpListenerGuard(":8081", nil); err == nil || !strings.Contains(err.Error(), "ENGRAM_MCP_LISTEN_ADDR") {
+		t.Fatalf(`mcpListenerGuard(":8081", nil)=%v, want an error naming ENGRAM_MCP_LISTEN_ADDR`, err)
+	}
+	if err := mcpListenerGuard(":8081", stubConnectVerifier()); err != nil {
+		t.Fatalf(`mcpListenerGuard(":8081", chain)=%v, want nil`, err)
+	}
+	if err := mcpListenerGuard("", nil); err != nil {
+		t.Fatalf(`mcpListenerGuard("", nil)=%v, want nil`, err)
+	}
+}
+
+func TestWithAuth_UnlistedOriginNoHint(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	h := withAuth(inner, newStaticTokenChain(t), mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"}))
+
+	t.Run("listed origin gets the hint", func(t *testing.T) {
+		rec := challengeThrough(h, "https", "a.example")
+		want := `Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource/mcp"`
+		if got := rec.Header().Get("WWW-Authenticate"); got != want {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, want)
+		}
+	})
+
+	t.Run("unlisted origin without a token gets a bare challenge", func(t *testing.T) {
+		rec := challengeThrough(h, "https", "c.example")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status=%d want 401", rec.Code)
+		}
+		if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, "Bearer")
+		}
+	})
+
+	t.Run("unlisted origin with a valid token is served without a warning", func(t *testing.T) {
+		logs := captureLogs(t)
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Host = "c.example"
+		req.Header.Set("X-Forwarded-Proto", "https")
+		req.Header.Set("Authorization", "Bearer secret-token-value")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusTeapot {
+			t.Fatalf("status=%d want %d", rec.Code, http.StatusTeapot)
+		}
+		if strings.Contains(logs.String(), "ENGRAM_MCP_RESOURCE_ORIGINS") {
+			t.Fatalf("an authenticated request logged a refused-origin warning: %s", logs.String())
+		}
+	})
+}
+
+// initializeRequest is an MCP initialize call for a streamable-HTTP POST.
+const initializeRequest = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"serve-test","version":"1"}}}`
+
+func postMCP(t *testing.T, base, token string, header map[string]string) (*http.Response, string) {
+	t.Helper()
+	return postMCPBody(t, base, token, initializeRequest, header)
+}
+
+func postMCPBody(t *testing.T, base, token, body string, header map[string]string) (*http.Response, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, base+"/mcp", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s/mcp: %v", base, err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return resp, string(b)
+}
+
+// openEventStream starts an MCP session on base and opens its GET event
+// stream, returning the open response.
+func openEventStream(t *testing.T, base, token string) *http.Response {
+	t.Helper()
+	resp, _ := postMCP(t, base, token, nil)
+	session := resp.Header.Get("Mcp-Session-Id")
+	if session == "" {
+		t.Fatalf("initialize on %s returned no Mcp-Session-Id", base)
+	}
+	headers := map[string]string{"Mcp-Session-Id": session, "Mcp-Protocol-Version": "2025-06-18"}
+	postMCPBody(t, base, token, `{"jsonrpc":"2.0","method":"notifications/initialized"}`, headers)
+	req, err := http.NewRequest(http.MethodGet, base+"/mcp", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+token)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	stream, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s/mcp: %v", base, err)
+	}
+	if stream.StatusCode != http.StatusOK || !strings.HasPrefix(stream.Header.Get("Content-Type"), "text/event-stream") {
+		_ = stream.Body.Close()
+		t.Fatalf("GET %s/mcp: status=%d Content-Type=%q, want an open event stream", base, stream.StatusCode, stream.Header.Get("Content-Type"))
+	}
+	return stream
+}
+
+func TestServeBothListeners(t *testing.T) {
+	mcpSrv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: "test"}, nil)
+	streams, endStreams := context.WithCancel(context.Background())
+	defer endStreams()
+	resource := mustResource(t, protectedResourceConfig{MCPPath: "/mcp"})
+	h := mcpTransport(streams, mcpSrv, newStaticTokenChain(t), resource, telemetry.NewToolMetrics(otel.Meter("test")))
+	prm := protectedResourceHandler(resource, "")
+
+	// A request that is still running when shutdown starts and finishes on
+	// its own once shutdown has started: drain must see it finished.
+	started, release := make(chan struct{}), make(chan struct{})
+	var finished atomic.Bool
+	primary := http.NewServeMux()
+	primary.HandleFunc("/slow", func(http.ResponseWriter, *http.Request) {
+		close(started)
+		<-release
+		finished.Store(true)
+	})
+	mountWellKnownRoutes(primary, prm, "/mcp")
+	mountMCPRoutes(primary, h, true, "/mcp")
+	var releaseOnce sync.Once
+	listeners := newListeners(config.ServerConfig{ListenAddr: "127.0.0.1:0", MCPListenAddr: "127.0.0.1:0"}, primary, h, prm, "/mcp", func() {
+		endStreams()
+		releaseOnce.Do(func() { close(release) })
+	})
+	if len(listeners) != 2 {
+		t.Fatalf("newListeners returned %d listeners, want 2", len(listeners))
+	}
+	bound, err := listenAll(listeners)
+	if err != nil {
+		t.Fatalf("listenAll: %v", err)
+	}
+	bases := make([]string, len(bound))
+	for i, b := range bound {
+		bases[i] = "http://" + b.ln.Addr().String()
+	}
+
+	sigCtx, stop := context.WithCancel(context.Background())
+	defer stop()
+	var drainSawFinished bool
+	done := make(chan error, 1)
+	go func() {
+		done <- serveAll(sigCtx, bound, shutdownGrace, func(context.Context) { drainSawFinished = finished.Load() })
+	}()
+
+	for _, base := range bases {
+		resp, body := postMCP(t, base, "secret-token-value", nil)
+		if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"serverInfo"`) {
+			t.Fatalf("%s: initialize status=%d body=%q, want a 200 handshake", base, resp.StatusCode, body)
+		}
+	}
+
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for base, want := range map[string]int{bases[0]: http.StatusFound, bases[1]: http.StatusNotFound} {
+		root, err := noRedirect.Get(base + "/")
+		if err != nil {
+			t.Fatalf("GET %s/: %v", base, err)
+		}
+		_ = root.Body.Close()
+		if root.StatusCode != want {
+			t.Fatalf("GET %s/: status=%d Location=%q, want %d (the primary mux redirects to the console, the MCP-only mux does not)", base, root.StatusCode, root.Header.Get("Location"), want)
+		}
+	}
+
+	resp, _ := postMCP(t, bases[1], "", nil)
+	challenge := `Bearer resource_metadata="` + bases[1] + `/.well-known/oauth-protected-resource/mcp"`
+	if resp.StatusCode != http.StatusUnauthorized || resp.Header.Get("WWW-Authenticate") != challenge {
+		t.Fatalf("MCP-only listener without a token: status=%d WWW-Authenticate=%q, want 401 %q", resp.StatusCode, resp.Header.Get("WWW-Authenticate"), challenge)
+	}
+	doc, err := http.Get(bases[1] + "/.well-known/oauth-protected-resource/mcp")
+	if err != nil {
+		t.Fatalf("GET the challenge's document: %v", err)
+	}
+	var meta protectedResourceMetadata
+	if err := json.NewDecoder(doc.Body).Decode(&meta); err != nil {
+		t.Fatalf("decode the challenge's document: %v", err)
+	}
+	_ = doc.Body.Close()
+	if doc.StatusCode != http.StatusOK || meta.Resource != bases[1]+"/mcp" {
+		t.Fatalf("challenge's document: status=%d resource=%q, want 200 %q", doc.StatusCode, meta.Resource, bases[1]+"/mcp")
+	}
+
+	resp, _ = postMCP(t, bases[1], "secret-token-value", map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example"})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("MCP-only listener cross-site POST: status=%d want 403", resp.StatusCode)
+	}
+
+	openStreams := []*http.Response{openEventStream(t, bases[0], "secret-token-value"), openEventStream(t, bases[1], "secret-token-value")}
+	defer func() {
+		for _, s := range openStreams {
+			_ = s.Body.Close()
+		}
+	}()
+	slow := make(chan error, 1)
+	go func() {
+		r, err := http.Get(bases[0] + "/slow")
+		if err == nil {
+			_ = r.Body.Close()
+		}
+		slow <- err
+	}()
+	<-started
+
+	stop()
+	if err := <-done; err != nil {
+		t.Fatalf("serveAll with open event streams: %v", err)
+	}
+	if err := <-slow; err != nil {
+		t.Fatalf("the running request failed during shutdown: %v", err)
+	}
+	if !drainSawFinished {
+		t.Fatal("drain ran before the running request finished")
+	}
+	for _, b := range bound {
+		if conn, err := net.Dial("tcp", b.ln.Addr().String()); err == nil {
+			_ = conn.Close()
+			t.Fatalf("%s still accepts connections after shutdown", b.ln.Addr())
+		}
+	}
+}
+
+func TestEndGETWith(t *testing.T) {
+	streams, end := context.WithCancel(context.Background())
+	defer end()
+	started, release := make(chan struct{}, 2), make(chan struct{})
+	results := make(chan string, 2)
+	h := endGETWith(streams, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		started <- struct{}{}
+		select {
+		case <-r.Context().Done():
+			results <- r.Method + " ended"
+		case <-release:
+			results <- r.Method + " finished"
+		}
+	}))
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		go h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(method, "/mcp", nil))
+	}
+	<-started
+	<-started
+
+	end()
+	if got := <-results; got != "GET ended" {
+		t.Fatalf("first result %q, want the GET to end with the streams context", got)
+	}
+	close(release)
+	if got := <-results; got != "POST finished" {
+		t.Fatalf("second result %q, want the POST to keep its context and finish", got)
+	}
+}
+
+func TestNewListenersDefaultIsOnePort(t *testing.T) {
+	listeners := newListeners(config.ServerConfig{ListenAddr: ":8080"}, http.NewServeMux(), http.NotFoundHandler(), http.NotFoundHandler(), "/mcp", func() {})
+	if len(listeners) != 1 || listeners[0].setting != "ENGRAM_LISTEN_ADDR" {
+		t.Fatalf("newListeners without ENGRAM_MCP_LISTEN_ADDR = %d listeners, want only ENGRAM_LISTEN_ADDR", len(listeners))
+	}
+}
+
+func TestListenAllClosesBoundListenersOnFailure(t *testing.T) {
+	free, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	firstAddr := free.Addr().String()
+	_ = free.Close()
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer busy.Close()
+
+	listeners := []listener{
+		{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer(firstAddr, http.NewServeMux())},
+		{setting: "ENGRAM_MCP_LISTEN_ADDR", srv: newHTTPServer(busy.Addr().String(), http.NewServeMux())},
+	}
+	_, err = listenAll(listeners)
+	if err == nil {
+		t.Fatal("listenAll on a busy address: want an error")
+	}
+	if !strings.Contains(err.Error(), "bind ENGRAM_MCP_LISTEN_ADDR") {
+		t.Fatalf("error %q does not name the listener whose bind failed (ENGRAM_MCP_LISTEN_ADDR)", err)
+	}
+	if got := exitCodeFromError(err); got != exitGeneric {
+		t.Fatalf("exit code %d, want exitGeneric", got)
+	}
+	ln, err := net.Listen("tcp", firstAddr)
+	if err != nil {
+		t.Fatalf("first address still bound after the second bind failed: %v", err)
+	}
+	_ = ln.Close()
+}
+
+func TestServeAllServeFailure(t *testing.T) {
+	bound, err := listenAll([]listener{
+		{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer("127.0.0.1:0", http.NewServeMux())},
+		{setting: "ENGRAM_MCP_LISTEN_ADDR", srv: newHTTPServer("127.0.0.1:0", http.NewServeMux())},
+	})
+	if err != nil {
+		t.Fatalf("listenAll: %v", err)
+	}
+	_ = bound[1].ln.Close()
+
+	var drained bool
+	err = serveAll(context.Background(), bound, shutdownGrace, func(context.Context) { drained = true })
+	if err == nil || !strings.Contains(err.Error(), "serve ENGRAM_MCP_LISTEN_ADDR") {
+		t.Fatalf("serveAll=%v, want the serve failure named with ENGRAM_MCP_LISTEN_ADDR", err)
+	}
+	if got := exitCodeFromError(err); got != exitGeneric {
+		t.Fatalf("exit code %d, want exitGeneric", got)
+	}
+	if !drained {
+		t.Fatal("serveAll returned without running drain")
+	}
+	if conn, dialErr := net.Dial("tcp", bound[0].ln.Addr().String()); dialErr == nil {
+		_ = conn.Close()
+		t.Fatalf("%s still accepts connections after the other listener failed", bound[0].ln.Addr())
+	}
+}
+
+func TestServeAllShutdownDeadline(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hold", func(http.ResponseWriter, *http.Request) {
+		close(started)
+		<-release
+	})
+	bound, err := listenAll([]listener{{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer("127.0.0.1:0", mux)}})
+	if err != nil {
+		t.Fatalf("listenAll: %v", err)
+	}
+	sigCtx, stop := context.WithCancel(context.Background())
+	defer stop()
+	done := make(chan error, 1)
+	go func() { done <- serveAll(sigCtx, bound, time.Nanosecond, func(context.Context) {}) }()
+	held := make(chan error, 1)
+	go func() {
+		r, err := http.Get("http://" + bound[0].ln.Addr().String() + "/hold")
+		if err == nil {
+			_ = r.Body.Close()
+		}
+		held <- err
+	}()
+	<-started
+
+	stop()
+	err = <-done
+	if err == nil || !strings.Contains(err.Error(), "shut down ENGRAM_LISTEN_ADDR") || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("serveAll=%v, want the deadline named with ENGRAM_LISTEN_ADDR", err)
+	}
+	if got := exitCodeFromError(err); got != exitGeneric {
+		t.Fatalf("exit code %d, want exitGeneric", got)
+	}
+	if err := <-held; err == nil {
+		t.Fatal("the held request completed, want its connection closed at the deadline")
 	}
 }

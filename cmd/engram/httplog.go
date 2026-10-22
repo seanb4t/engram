@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 )
@@ -29,7 +30,9 @@ func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 type authFailureFunc func(ctx context.Context, reason string)
 
 // accessLog emits one structured log line per request and counts 401/403
-// responses as auth failures. observe is a test seam (nil in production).
+// responses as auth failures. The line's "local" field is the local address
+// of the connection; its port tells the primary listener from the MCP-only
+// one. observe is a test seam (nil in production).
 func accessLog(authFail authFailureFunc, observe func(int)) func(http.Handler) http.Handler {
 	if authFail == nil {
 		authFail = func(context.Context, string) {}
@@ -52,9 +55,13 @@ func accessLog(authFail authFailureFunc, observe func(int)) func(http.Handler) h
 			}
 			observe(sw.status)
 
+			var local string
+			if addr, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+				local = addr.String()
+			}
 			slog.InfoContext(r.Context(), "http request",
 				"method", r.Method, "path", r.URL.Path, "status", sw.status,
-				"dur_ms", ms, "remote", r.RemoteAddr, "ua", r.UserAgent())
+				"dur_ms", ms, "remote", r.RemoteAddr, "local", local, "ua", r.UserAgent())
 		})
 	}
 }
