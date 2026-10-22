@@ -30,9 +30,9 @@ func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 type authFailureFunc func(ctx context.Context, reason string)
 
 // accessLog emits one structured log line per request and counts 401/403
-// responses as auth failures. The line's "local" field is the listener
-// address the request arrived on, which tells the primary listener from the
-// MCP-only one. observe is a test seam (nil in production).
+// responses as auth failures. The line's "local" field is the local address
+// of the connection; its port tells the primary listener from the MCP-only
+// one. observe is a test seam (nil in production).
 func accessLog(authFail authFailureFunc, observe func(int)) func(http.Handler) http.Handler {
 	if authFail == nil {
 		authFail = func(context.Context, string) {}

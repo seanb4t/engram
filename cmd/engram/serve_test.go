@@ -123,7 +123,7 @@ func TestWithAuth_NoLaneConfigured_ReturnsHandlerUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, nil)
+	handler := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusTeapot {
@@ -169,7 +169,7 @@ func TestWithAuth_StaticTokenLane_AuthenticatesConfiguredToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, nil)
+	handler := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 
 	t.Run("configured token authenticates", func(t *testing.T) {
 		gotOwner = ""
@@ -209,7 +209,7 @@ func TestWithAuth_HumanOnlyConfig_RejectsUnauthenticated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAuthChain: %v", err)
 	}
-	handler := withAuth(inner, chain, nil)
+	handler := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusUnauthorized {
@@ -244,7 +244,7 @@ func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
 	chain := newStaticTokenChain(t)
 
 	t.Run("each origin gets its own document", func(t *testing.T) {
-		h := withAuth(inner, chain, mustResource(t, "", "", "", "/mcp"))
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 		for _, host := range []string{"a.example", "b.example"} {
 			rec := challengeThrough(h, "https", host)
 			if rec.Code != http.StatusUnauthorized {
@@ -254,11 +254,17 @@ func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
 			if got := rec.Header().Get("WWW-Authenticate"); got != want {
 				t.Fatalf("%s: WWW-Authenticate=%q want %q", host, got, want)
 			}
+			if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+				t.Fatalf("%s: Cache-Control=%q want no-store", host, cc)
+			}
+			if v := rec.Header().Get("Vary"); !strings.Contains(v, "X-Forwarded-Host") {
+				t.Fatalf("%s: Vary=%q want X-Forwarded-Host in it", host, v)
+			}
 		}
 	})
 
 	t.Run("root MCP path uses the host-only document", func(t *testing.T) {
-		h := withAuth(inner, chain, mustResource(t, "", "", "", "/"))
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/"}))
 		rec := challengeThrough(h, "https", "a.example")
 		want := `Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource"`
 		if got := rec.Header().Get("WWW-Authenticate"); got != want {
@@ -267,7 +273,7 @@ func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
 	})
 
 	t.Run("configured metadata URL wins", func(t *testing.T) {
-		h := withAuth(inner, chain, mustResource(t, "", "", "https://meta.example/prm", "/mcp"))
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MetadataURL: "https://meta.example/prm", MCPPath: "/mcp"}))
 		for _, host := range []string{"a.example", "b.example"} {
 			rec := challengeThrough(h, "https", host)
 			if got, want := rec.Header().Get("WWW-Authenticate"), `Bearer resource_metadata="https://meta.example/prm"`; got != want {
@@ -277,16 +283,19 @@ func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
 	})
 
 	t.Run("pinned resource URL names its own origin", func(t *testing.T) {
-		h := withAuth(inner, chain, mustResource(t, "https://a.example/mcp", "", "", "/mcp"))
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{ResourceURL: "https://a.example/mcp", MCPPath: "/mcp"}))
 		rec := challengeThrough(h, "https", "b.example")
 		want := `Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource/mcp"`
 		if got := rec.Header().Get("WWW-Authenticate"); got != want {
 			t.Fatalf("WWW-Authenticate=%q want %q", got, want)
 		}
+		if v := rec.Header().Get("Vary"); v != "" {
+			t.Fatalf("Vary=%q want none: the pinned challenge does not depend on the request", v)
+		}
 	})
 
 	t.Run("a valid token is served", func(t *testing.T) {
-		h := withAuth(inner, chain, mustResource(t, "", "", "", "/mcp"))
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 		req.Header.Set("Authorization", "Bearer secret-token-value")
 		rec := httptest.NewRecorder()
@@ -302,24 +311,20 @@ func TestWithAuth_BareChallengeWhenNoParams(t *testing.T) {
 
 	t.Run("no challenge value still sends a bare Bearer challenge", func(t *testing.T) {
 		inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
-		for name, h := range map[string]http.Handler{
-			"no resource":    withAuth(inner, chain, nil),
-			"refused origin": withAuth(inner, chain, mustResource(t, "", "https://b.example", "", "/mcp")),
-		} {
-			rec := challengeThrough(h, "https", "a.example")
-			if rec.Code != http.StatusUnauthorized {
-				t.Fatalf("%s: status=%d want 401", name, rec.Code)
-			}
-			if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
-				t.Fatalf("%s: WWW-Authenticate=%q want %q", name, got, "Bearer")
-			}
+		h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{Origins: "https://b.example", MCPPath: "/mcp"}))
+		rec := challengeThrough(h, "https", "a.example")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status=%d want 401", rec.Code)
+		}
+		if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, "Bearer")
 		}
 	})
 
 	t.Run("the wrapped handler's own 401 and 403 are untouched", func(t *testing.T) {
 		for _, code := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 			inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
-			h := withAuth(inner, chain, nil)
+			h := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 			req.Header.Set("Authorization", "Bearer secret-token-value")
 			rec := httptest.NewRecorder()
@@ -466,7 +471,7 @@ func TestAuthChainSharedBetweenLanes(t *testing.T) {
 
 	// MCP half: the same chain value wrapped by withAuth.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
-	mcpHandler := withAuth(inner, chain, nil)
+	mcpHandler := withAuth(inner, chain, mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer shared-secret-token")
@@ -691,9 +696,10 @@ func TestServePreflightGuardsExitUsage(t *testing.T) {
 		{
 			// resolveUIConfig (uiconfig.go): ENGRAM_UI_ENABLED=true with
 			// none of the four required web-UI creds set.
-			name: "ui enabled without required creds",
-			args: []string{"serve", "--listen-addr", "127.0.0.1:0"},
-			env:  map[string]string{"ENGRAM_UI_ENABLED": "true"},
+			name:     "ui enabled without required creds",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env:      map[string]string{"ENGRAM_UI_ENABLED": "true"},
+			wantText: []string{"ENGRAM_UI_ENABLED"},
 		},
 		{
 			// connectHeadlessGuard: --connect-headless with no OIDC issuer
@@ -725,6 +731,17 @@ func TestServePreflightGuardsExitUsage(t *testing.T) {
 			name:     "MCP listen address without a port",
 			args:     []string{"serve", "--listen-addr", "127.0.0.1:0", "--mcp-listen-addr", "18081"},
 			wantText: []string{"ENGRAM_MCP_LISTEN_ADDR", `"18081"`},
+		},
+		{
+			name:     "MCP listen address with an empty port",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0", "--mcp-listen-addr", ":"},
+			wantText: []string{"ENGRAM_MCP_LISTEN_ADDR", "must name a port"},
+		},
+		{
+			name:     "resource URL with userinfo",
+			args:     []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env:      map[string]string{"ENGRAM_MCP_RESOURCE_URL": "https://user:secret@a.example/mcp"},
+			wantText: []string{"ENGRAM_MCP_RESOURCE_URL", "userinfo"},
 		},
 		{
 			name:     "MCP-only listener without a configured auth lane",
@@ -782,6 +799,12 @@ func TestCheckMCPListenAddr(t *testing.T) {
 		{"bad", ":8080", false},
 		{":8080", "8081", true},
 		{":8080", ":notaport", true},
+		{":8080", ":", true},
+		{":8080", "0.0.0.0:", true},
+		{"0.0.0.0:8080", "[::1]:8080", false},
+		{"[::1]:8080", "0.0.0.0:8080", false},
+		{"0.0.0.0:8080", "localhost:8080", true},
+		{"0.0.0.0:8080", "[::ffff:127.0.0.1]:8080", true},
 	}
 	for _, tc := range cases {
 		err := checkMCPListenAddr(tc.listen, tc.mcp)
@@ -808,7 +831,7 @@ func TestMCPListenerGuard(t *testing.T) {
 
 func TestWithAuth_UnlistedOriginNoHint(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
-	h := withAuth(inner, newStaticTokenChain(t), mustResource(t, "", "https://a.example", "", "/mcp"))
+	h := withAuth(inner, newStaticTokenChain(t), mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"}))
 
 	t.Run("listed origin gets the hint", func(t *testing.T) {
 		rec := challengeThrough(h, "https", "a.example")
@@ -914,7 +937,7 @@ func TestServeBothListeners(t *testing.T) {
 	mcpSrv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: "test"}, nil)
 	streams, endStreams := context.WithCancel(context.Background())
 	defer endStreams()
-	resource := mustResource(t, "", "", "", "/mcp")
+	resource := mustResource(t, protectedResourceConfig{MCPPath: "/mcp"})
 	h := mcpTransport(streams, mcpSrv, newStaticTokenChain(t), resource, telemetry.NewToolMetrics(otel.Meter("test")))
 	prm := protectedResourceHandler(resource, "")
 
@@ -938,12 +961,13 @@ func TestServeBothListeners(t *testing.T) {
 	if len(listeners) != 2 {
 		t.Fatalf("newListeners returned %d listeners, want 2", len(listeners))
 	}
-	if err := listenAll(listeners); err != nil {
+	bound, err := listenAll(listeners)
+	if err != nil {
 		t.Fatalf("listenAll: %v", err)
 	}
-	bases := make([]string, len(listeners))
-	for i, l := range listeners {
-		bases[i] = "http://" + l.ln.Addr().String()
+	bases := make([]string, len(bound))
+	for i, b := range bound {
+		bases[i] = "http://" + b.ln.Addr().String()
 	}
 
 	sigCtx, stop := context.WithCancel(context.Background())
@@ -951,13 +975,25 @@ func TestServeBothListeners(t *testing.T) {
 	var drainSawFinished bool
 	done := make(chan error, 1)
 	go func() {
-		done <- serveAll(sigCtx, listeners, func(context.Context) { drainSawFinished = finished.Load() })
+		done <- serveAll(sigCtx, bound, shutdownGrace, func(context.Context) { drainSawFinished = finished.Load() })
 	}()
 
 	for _, base := range bases {
 		resp, body := postMCP(t, base, "secret-token-value", nil)
 		if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"serverInfo"`) {
 			t.Fatalf("%s: initialize status=%d body=%q, want a 200 handshake", base, resp.StatusCode, body)
+		}
+	}
+
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for base, want := range map[string]int{bases[0]: http.StatusFound, bases[1]: http.StatusNotFound} {
+		root, err := noRedirect.Get(base + "/")
+		if err != nil {
+			t.Fatalf("GET %s/: %v", base, err)
+		}
+		_ = root.Body.Close()
+		if root.StatusCode != want {
+			t.Fatalf("GET %s/: status=%d Location=%q, want %d (the primary mux redirects to the console, the MCP-only mux does not)", base, root.StatusCode, root.Header.Get("Location"), want)
 		}
 	}
 
@@ -1010,11 +1046,41 @@ func TestServeBothListeners(t *testing.T) {
 	if !drainSawFinished {
 		t.Fatal("drain ran before the running request finished")
 	}
-	for _, l := range listeners {
-		if conn, err := net.Dial("tcp", l.ln.Addr().String()); err == nil {
+	for _, b := range bound {
+		if conn, err := net.Dial("tcp", b.ln.Addr().String()); err == nil {
 			_ = conn.Close()
-			t.Fatalf("%s still accepts connections after shutdown", l.ln.Addr())
+			t.Fatalf("%s still accepts connections after shutdown", b.ln.Addr())
 		}
+	}
+}
+
+func TestEndGETWith(t *testing.T) {
+	streams, end := context.WithCancel(context.Background())
+	defer end()
+	started, release := make(chan struct{}, 2), make(chan struct{})
+	results := make(chan string, 2)
+	h := endGETWith(streams, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		started <- struct{}{}
+		select {
+		case <-r.Context().Done():
+			results <- r.Method + " ended"
+		case <-release:
+			results <- r.Method + " finished"
+		}
+	}))
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		go h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(method, "/mcp", nil))
+	}
+	<-started
+	<-started
+
+	end()
+	if got := <-results; got != "GET ended" {
+		t.Fatalf("first result %q, want the GET to end with the streams context", got)
+	}
+	close(release)
+	if got := <-results; got != "POST finished" {
+		t.Fatalf("second result %q, want the POST to keep its context and finish", got)
 	}
 }
 
@@ -1026,45 +1092,51 @@ func TestNewListenersDefaultIsOnePort(t *testing.T) {
 }
 
 func TestListenAllClosesBoundListenersOnFailure(t *testing.T) {
+	free, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	firstAddr := free.Addr().String()
+	_ = free.Close()
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	defer busy.Close()
 
-	listeners := []*listener{
-		{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer("127.0.0.1:0", http.NewServeMux())},
+	listeners := []listener{
+		{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer(firstAddr, http.NewServeMux())},
 		{setting: "ENGRAM_MCP_LISTEN_ADDR", srv: newHTTPServer(busy.Addr().String(), http.NewServeMux())},
 	}
-	err = listenAll(listeners)
+	_, err = listenAll(listeners)
 	if err == nil {
 		t.Fatal("listenAll on a busy address: want an error")
 	}
-	if !strings.Contains(err.Error(), "ENGRAM_MCP_LISTEN_ADDR") || !strings.Contains(err.Error(), busy.Addr().String()) {
-		t.Fatalf("error %q does not name ENGRAM_MCP_LISTEN_ADDR and %s", err, busy.Addr())
+	if !strings.Contains(err.Error(), "bind ENGRAM_MCP_LISTEN_ADDR") {
+		t.Fatalf("error %q does not name the listener whose bind failed (ENGRAM_MCP_LISTEN_ADDR)", err)
 	}
 	if got := exitCodeFromError(err); got != exitGeneric {
 		t.Fatalf("exit code %d, want exitGeneric", got)
 	}
-	first := listeners[0].ln.Addr().String()
-	if conn, err := net.Dial("tcp", first); err == nil {
-		_ = conn.Close()
-		t.Fatalf("first listener %s still accepts connections after the second bind failed", first)
+	ln, err := net.Listen("tcp", firstAddr)
+	if err != nil {
+		t.Fatalf("first address still bound after the second bind failed: %v", err)
 	}
+	_ = ln.Close()
 }
 
 func TestServeAllServeFailure(t *testing.T) {
-	listeners := []*listener{
+	bound, err := listenAll([]listener{
 		{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer("127.0.0.1:0", http.NewServeMux())},
 		{setting: "ENGRAM_MCP_LISTEN_ADDR", srv: newHTTPServer("127.0.0.1:0", http.NewServeMux())},
-	}
-	if err := listenAll(listeners); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("listenAll: %v", err)
 	}
-	_ = listeners[1].ln.Close()
+	_ = bound[1].ln.Close()
 
 	var drained bool
-	err := serveAll(context.Background(), listeners, func(context.Context) { drained = true })
+	err = serveAll(context.Background(), bound, shutdownGrace, func(context.Context) { drained = true })
 	if err == nil || !strings.Contains(err.Error(), "serve ENGRAM_MCP_LISTEN_ADDR") {
 		t.Fatalf("serveAll=%v, want the serve failure named with ENGRAM_MCP_LISTEN_ADDR", err)
 	}
@@ -1074,8 +1146,47 @@ func TestServeAllServeFailure(t *testing.T) {
 	if !drained {
 		t.Fatal("serveAll returned without running drain")
 	}
-	if conn, dialErr := net.Dial("tcp", listeners[0].ln.Addr().String()); dialErr == nil {
+	if conn, dialErr := net.Dial("tcp", bound[0].ln.Addr().String()); dialErr == nil {
 		_ = conn.Close()
-		t.Fatalf("%s still accepts connections after the other listener failed", listeners[0].ln.Addr())
+		t.Fatalf("%s still accepts connections after the other listener failed", bound[0].ln.Addr())
+	}
+}
+
+func TestServeAllShutdownDeadline(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hold", func(http.ResponseWriter, *http.Request) {
+		close(started)
+		<-release
+	})
+	bound, err := listenAll([]listener{{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer("127.0.0.1:0", mux)}})
+	if err != nil {
+		t.Fatalf("listenAll: %v", err)
+	}
+	sigCtx, stop := context.WithCancel(context.Background())
+	defer stop()
+	done := make(chan error, 1)
+	go func() { done <- serveAll(sigCtx, bound, time.Nanosecond, func(context.Context) {}) }()
+	held := make(chan error, 1)
+	go func() {
+		r, err := http.Get("http://" + bound[0].ln.Addr().String() + "/hold")
+		if err == nil {
+			_ = r.Body.Close()
+		}
+		held <- err
+	}()
+	<-started
+
+	stop()
+	err = <-done
+	if err == nil || !strings.Contains(err.Error(), "shut down ENGRAM_LISTEN_ADDR") || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("serveAll=%v, want the deadline named with ENGRAM_LISTEN_ADDR", err)
+	}
+	if got := exitCodeFromError(err); got != exitGeneric {
+		t.Fatalf("exit code %d, want exitGeneric", got)
+	}
+	if err := <-held; err == nil {
+		t.Fatal("the held request completed, want its connection closed at the deadline")
 	}
 }

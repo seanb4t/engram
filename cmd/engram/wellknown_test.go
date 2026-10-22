@@ -14,11 +14,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestProtectedResourceDocument(t *testing.T) {
 	t.Run("issuer and resource URL configured", func(t *testing.T) {
-		h := protectedResourceHandler(mustResource(t, "https://engram.example.test/mcp", "", "", "/mcp"), "https://issuer.example.test")
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{ResourceURL: "https://engram.example.test/mcp", MCPPath: "/mcp"}), "https://issuer.example.test")
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, wellKnownPRMBase, nil))
 
@@ -47,7 +48,7 @@ func TestProtectedResourceDocument(t *testing.T) {
 	})
 
 	t.Run("issuer empty: authorization_servers key absent", func(t *testing.T) {
-		h := protectedResourceHandler(mustResource(t, "https://engram.example.test/mcp", "", "", "/mcp"), "")
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{ResourceURL: "https://engram.example.test/mcp", MCPPath: "/mcp"}), "")
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, wellKnownPRMBase, nil))
 
@@ -61,7 +62,7 @@ func TestProtectedResourceDocument(t *testing.T) {
 	})
 
 	t.Run("both well-known paths produce byte-identical bodies", func(t *testing.T) {
-		h := protectedResourceHandler(mustResource(t, "https://engram.example.test/mcp", "", "", "/mcp"), "https://issuer.example.test")
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{ResourceURL: "https://engram.example.test/mcp", MCPPath: "/mcp"}), "https://issuer.example.test")
 		suffix := protectedResourcePaths("/mcp")
 
 		recBase := httptest.NewRecorder()
@@ -251,9 +252,35 @@ func TestProtectedResourceResourceURLDerivation(t *testing.T) {
 	}
 }
 
+func TestDerivedOriginEdges(t *testing.T) {
+	cases := []struct {
+		name, host string
+		xfh        []string
+		want       string
+	}{
+		{"two X-Forwarded-Host lines", "engram.example.test", []string{"a.example", "b.example"}, "http://engram.example.test"},
+		{"X-Forwarded-Host over 255 bytes", "engram.example.test", []string{strings.Repeat("a", 250) + ".example"}, "http://engram.example.test"},
+		{"X-Forwarded-Host with an IPv6 zone", "engram.example.test", []string{"[fe80::1%eth0]"}, "http://engram.example.test"},
+		{"trailing dot removed", "Engram.Example.Test.", nil, "http://engram.example.test"},
+		{"IPv6 Host in its canonical form", "[0:0:0:0:0:0:0:1]:8080", nil, "http://[::1]:8080"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, wellKnownPRMBase, nil)
+			r.Host = tc.host
+			for _, v := range tc.xfh {
+				r.Header.Add("X-Forwarded-Host", v)
+			}
+			if got := derivedOrigin(r); got != tc.want {
+				t.Fatalf("derivedOrigin=%q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestProtectedResourceCacheControl(t *testing.T) {
 	t.Run("derived response carries no-store", func(t *testing.T) {
-		h := protectedResourceHandler(mustResource(t, "", "", "", "/mcp"), "")
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}), "")
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, wellKnownPRMBase, nil))
 		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
@@ -262,7 +289,7 @@ func TestProtectedResourceCacheControl(t *testing.T) {
 	})
 
 	t.Run("configured response carries no Cache-Control header", func(t *testing.T) {
-		h := protectedResourceHandler(mustResource(t, "https://engram.example.test/mcp", "", "", "/mcp"), "")
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{ResourceURL: "https://engram.example.test/mcp", MCPPath: "/mcp"}), "")
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, wellKnownPRMBase, nil))
 		if cc := rec.Header().Get("Cache-Control"); cc != "" {
@@ -358,13 +385,17 @@ func TestValidAuthority(t *testing.T) {
 		{"192.0.2.1:65535", true},
 		{"[2001:db8::1]", true},
 		{"[2001:db8::1]:443", true},
+		{"a.example.", true},
+		{"a.example..", false},
+		{"[fe80::1%eth0]", false},
+		{"[fe80::1%/evil.example/x]", false},
+		{"[::1%a], [::2]", false},
 		{"", false},
 		{"a.example:", false},
 		{"a.example:0443", false},
 		{"a.example:0", false},
 		{"a.example:65536", false},
 		{"a.example:+80", false},
-		{"a.example.", false},
 		{".a.example", false},
 		{"*.a.example", false},
 		{"a.example, b.example", false},
@@ -398,28 +429,24 @@ func TestProtectedResourceChallenge(t *testing.T) {
 			metadata:      "https://configured.example.test/metadata",
 			path:          "/mcp",
 			wantChallenge: "https://configured.example.test/metadata",
-			wantFixed:     true,
 		},
 		{
 			name:          "pinned, non-root path: suffix form on the pinned origin",
 			resourceURL:   "https://gateway.example.test/mcp",
 			path:          "/mcp",
 			wantChallenge: "https://gateway.example.test/.well-known/oauth-protected-resource/mcp",
-			wantFixed:     true,
 		},
 		{
 			name:          "pinned, root path: host-only form, no trailing slash",
 			resourceURL:   "https://gateway.example.test/mcp",
 			path:          "/",
 			wantChallenge: "https://gateway.example.test/.well-known/oauth-protected-resource",
-			wantFixed:     true,
 		},
 		{
 			name:          "pinned URL's own path and trailing slash discarded",
 			resourceURL:   "https://gateway.example.test/ignored/path/",
 			path:          "/mcp",
 			wantChallenge: "https://gateway.example.test/.well-known/oauth-protected-resource/mcp",
-			wantFixed:     true,
 		},
 		{
 			name:          "derived: the requesting origin",
@@ -429,9 +456,9 @@ func TestProtectedResourceChallenge(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := mustResource(t, tc.resourceURL, "", tc.metadata, tc.path)
-			if _, fixed := p.fixedChallenge(); fixed != tc.wantFixed {
-				t.Fatalf("fixedChallenge fixed=%v want %v", fixed, tc.wantFixed)
+			p := mustResource(t, protectedResourceConfig{ResourceURL: tc.resourceURL, MetadataURL: tc.metadata, MCPPath: tc.path})
+			if varies := p.challengeVaries(); varies != (tc.resourceURL == "" && tc.metadata == "") {
+				t.Fatalf("challengeVaries()=%v", varies)
 			}
 			if got := p.challengeURL(req); got != tc.wantChallenge {
 				t.Fatalf("challengeURL=%q want %q", got, tc.wantChallenge)
@@ -439,10 +466,10 @@ func TestProtectedResourceChallenge(t *testing.T) {
 		})
 	}
 
-	t.Run("nil resource has no challenge value", func(t *testing.T) {
-		var p *protectedResource
-		if v, fixed := p.fixedChallenge(); v != "" || !fixed {
-			t.Fatalf("fixedChallenge()=(%q, %v) want (\"\", true)", v, fixed)
+	t.Run("ENGRAM_OIDC_RESOURCE_METADATA is trimmed", func(t *testing.T) {
+		p := mustResource(t, protectedResourceConfig{MetadataURL: " https://meta.example/prm ", MCPPath: "/mcp"})
+		if got := p.challengeURL(req); got != "https://meta.example/prm" {
+			t.Fatalf("challengeURL=%q want the trimmed value", got)
 		}
 	})
 }
@@ -455,10 +482,15 @@ func TestNewProtectedResourceRejects(t *testing.T) {
 		{"both set", "https://a.example/mcp", "https://a.example", []string{"ENGRAM_MCP_RESOURCE_ORIGINS", "ENGRAM_MCP_RESOURCE_URL", "set one of them"}},
 		{"malformed resource URL", "ftp://a.example/mcp", "", []string{"ENGRAM_MCP_RESOURCE_URL", `"ftp://a.example/mcp"`}},
 		{"malformed origin", "", "https://a.example/mcp", []string{"ENGRAM_MCP_RESOURCE_ORIGINS", `"https://a.example/mcp"`}},
+		{"resource URL with userinfo", "https://user:secret@a.example/mcp", "", []string{"ENGRAM_MCP_RESOURCE_URL", "userinfo"}},
+		{"resource URL with a wildcard host", "https://*.a.example/mcp", "", []string{"ENGRAM_MCP_RESOURCE_URL", "DNS name or an IP address"}},
+		{"resource URL with an empty port", "https://a.example:/mcp", "", []string{"ENGRAM_MCP_RESOURCE_URL", "DNS name or an IP address"}},
+		{"resource URL with an empty query", "https://a.example/mcp?", "", []string{"ENGRAM_MCP_RESOURCE_URL", "query or fragment"}},
+		{"resource URL with an empty fragment", "https://a.example/mcp#", "", []string{"ENGRAM_MCP_RESOURCE_URL", "query or fragment"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := newProtectedResource(tc.resourceURL, tc.origins, "", "/mcp")
+			_, err := newProtectedResource(protectedResourceConfig{ResourceURL: tc.resourceURL, Origins: tc.origins, MCPPath: "/mcp"})
 			if err == nil {
 				t.Fatal("want an error")
 			}
@@ -487,6 +519,8 @@ func TestResolveMCPResourceOrigins(t *testing.T) {
 			{"default http port dropped", "http://a.example:80", []string{"http://a.example"}},
 			{"other port kept", "https://a.example:80", []string{"https://a.example:80"}},
 			{"bracketed IPv6", "http://[::1]:8080", []string{"http://[::1]:8080"}},
+			{"IPv6 in its canonical form", "http://[0:0:0:0:0:0:0:1]:8080", []string{"http://[::1]:8080"}},
+			{"trailing dot removed", "https://a.example.", []string{"https://a.example"}},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -527,7 +561,8 @@ func TestResolveMCPResourceOrigins(t *testing.T) {
 			{"wildcard host", "https://*.a.example", "https://*.a.example", "DNS name or an IP address"},
 			{"empty port", "https://a.example:", "https://a.example:", "DNS name or an IP address"},
 			{"leading-zero port", "https://a.example:0443", "https://a.example:0443", "DNS name or an IP address"},
-			{"trailing dot", "https://a.example.", "https://a.example.", "DNS name or an IP address"},
+			{"duplicate through a trailing dot", "https://a.example,https://a.example.", "https://a.example.", "more than once"},
+			{"IPv6 zone", "http://[fe80::1%25eth0]:8080", "http://[fe80::1%25eth0]:8080", "DNS name or an IP address"},
 			{"port that is not a number", "https://a.example:abc", "https://a.example:abc", "must be a valid URL"},
 		}
 		for _, tc := range cases {
@@ -573,13 +608,13 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// mustResource returns newProtectedResource for the given settings and
-// mcpPath, failing the test on an error.
-func mustResource(t *testing.T, resourceURL, origins, metadataURL, mcpPath string) *protectedResource {
+// mustResource returns newProtectedResource(cfg), failing the test on an
+// error.
+func mustResource(t *testing.T, cfg protectedResourceConfig) *protectedResource {
 	t.Helper()
-	p, err := newProtectedResource(resourceURL, origins, metadataURL, mcpPath)
+	p, err := newProtectedResource(cfg)
 	if err != nil {
-		t.Fatalf("newProtectedResource(%q, %q, %q, %q): %v", resourceURL, origins, metadataURL, mcpPath, err)
+		t.Fatalf("newProtectedResource(%+v): %v", cfg, err)
 	}
 	return p
 }
@@ -596,7 +631,7 @@ func TestProtectedResourceOriginAllowlist(t *testing.T) {
 	}
 	for _, tc := range served {
 		t.Run(tc.name, func(t *testing.T) {
-			h := protectedResourceHandler(mustResource(t, "", tc.origins, "", "/mcp"), "")
+			h := protectedResourceHandler(mustResource(t, protectedResourceConfig{Origins: tc.origins, MCPPath: "/mcp"}), "")
 			rec := prmThrough(h, tc.host, tc.xfProto, tc.xfHost)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status=%d want 200", rec.Code)
@@ -619,7 +654,7 @@ func TestProtectedResourceOriginAllowlist(t *testing.T) {
 	}
 	for _, tc := range refused {
 		t.Run(tc.name, func(t *testing.T) {
-			h := protectedResourceHandler(mustResource(t, "", "https://a.example", "", "/mcp"), "")
+			h := protectedResourceHandler(mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"}), "")
 			if rec := prmThrough(h, tc.host, tc.xfProto, tc.xfHost); rec.Code != http.StatusNotFound {
 				t.Fatalf("status=%d want 404", rec.Code)
 			}
@@ -628,7 +663,7 @@ func TestProtectedResourceOriginAllowlist(t *testing.T) {
 
 	t.Run("spoofed forwarded host outside the list", func(t *testing.T) {
 		logs := captureLogs(t)
-		h := protectedResourceHandler(mustResource(t, "", "https://a.example", "", "/mcp"), "")
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"}), "")
 		rec := prmThrough(h, "a.example", "https", "c.example")
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status=%d want 404", rec.Code)
@@ -639,6 +674,9 @@ func TestProtectedResourceOriginAllowlist(t *testing.T) {
 		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
 			t.Fatalf("Cache-Control=%q want no-store", cc)
 		}
+		if v := rec.Header().Get("Vary"); !strings.Contains(v, "X-Forwarded-Host") {
+			t.Fatalf("Vary=%q want X-Forwarded-Host in it", v)
+		}
 		if !strings.Contains(logs.String(), `"origin":"https://c.example"`) {
 			t.Fatalf("no warning names https://c.example: %s", logs.String())
 		}
@@ -646,9 +684,8 @@ func TestProtectedResourceOriginAllowlist(t *testing.T) {
 
 	t.Run("repeated unlisted origin warns once and counts every refusal", func(t *testing.T) {
 		logs := captureLogs(t)
-		p := mustResource(t, "", "https://a.example", "", "/mcp")
 		var counted int
-		p.onRefused = func(context.Context) { counted++ }
+		p := mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp", OnRefused: func(context.Context) { counted++ }})
 		h := protectedResourceHandler(p, "")
 		for range 10 {
 			prmThrough(h, "c.example", "https", "")
@@ -663,7 +700,7 @@ func TestProtectedResourceOriginAllowlist(t *testing.T) {
 
 	t.Run("warnings stop at the limit", func(t *testing.T) {
 		logs := captureLogs(t)
-		h := protectedResourceHandler(mustResource(t, "", "https://a.example", "", "/mcp"), "")
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"}), "")
 		for i := range maxWarnedOrigins + 10 {
 			prmThrough(h, "c"+strconv.Itoa(i)+".example", "https", "")
 		}
@@ -675,8 +712,76 @@ func TestProtectedResourceOriginAllowlist(t *testing.T) {
 		}
 	})
 
+	t.Run("the host-only path answers an unlisted origin", func(t *testing.T) {
+		logs := captureLogs(t)
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"}), "https://issuer.example.test")
+		r := httptest.NewRequest(http.MethodGet, wellKnownPRMBase, nil)
+		r.Host = "c.example"
+		r.Header.Set("X-Forwarded-Proto", "https")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d want 200", rec.Code)
+		}
+		var doc protectedResourceMetadata
+		if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if want := []string{"https://issuer.example.test"}; !prmEqualStrSlices(doc.AuthorizationServers, want) {
+			t.Fatalf("authorization_servers=%v want %v", doc.AuthorizationServers, want)
+		}
+		if doc.Resource != "https://c.example/mcp" {
+			t.Fatalf("resource=%q want %q", doc.Resource, "https://c.example/mcp")
+		}
+		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Fatalf("Cache-Control=%q want no-store", cc)
+		}
+		if strings.Contains(logs.String(), "ENGRAM_MCP_RESOURCE_ORIGINS") {
+			t.Fatalf("the host-only document logged a refusal: %s", logs.String())
+		}
+	})
+
+	t.Run("a long origin is cut in the warning", func(t *testing.T) {
+		logs := captureLogs(t)
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"}), "")
+		host := "c" + strings.Repeat("a", 2*maxWarnedOriginLen) + ".example"
+		prmThrough(h, host, "https", "")
+		want := ("https://" + host)[:maxWarnedOriginLen]
+		if !strings.Contains(logs.String(), `"origin":"`+want+`"`) {
+			t.Fatalf("no warning names the origin cut to %d bytes: %s", maxWarnedOriginLen, logs.String())
+		}
+	})
+
+	t.Run("warnings start again after the window", func(t *testing.T) {
+		logs := captureLogs(t)
+		p := mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"})
+		now := time.Unix(0, 0)
+		p.now = func() time.Time { return now }
+		h := protectedResourceHandler(p, "")
+		for i := range maxWarnedOrigins + 1 {
+			prmThrough(h, "c"+strconv.Itoa(i)+".example", "https", "")
+		}
+		now = now.Add(warnWindow)
+		prmThrough(h, "late.example", "https", "")
+		if n := strings.Count(logs.String(), `"origin":`); n != maxWarnedOrigins+1 {
+			t.Fatalf("origin warnings=%d want %d", n, maxWarnedOrigins+1)
+		}
+		if !strings.Contains(logs.String(), `"origin":"https://late.example"`) {
+			t.Fatalf("no warning for an origin refused after the window: %s", logs.String())
+		}
+	})
+
+	t.Run("the warning names an ignored forwarded host", func(t *testing.T) {
+		logs := captureLogs(t)
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"}), "")
+		prmThrough(h, "c.example", "https", "a.example, evil.example")
+		if !strings.Contains(logs.String(), `"origin":"https://c.example"`) || !strings.Contains(logs.String(), `"ignored_x_forwarded_host":"a.example, evil.example"`) {
+			t.Fatalf("warning does not name the origin and the ignored forwarded host: %s", logs.String())
+		}
+	})
+
 	t.Run("pinned resource ignores forwarded headers", func(t *testing.T) {
-		h := protectedResourceHandler(mustResource(t, "https://a.example/mcp", "", "", "/mcp"), "")
+		h := protectedResourceHandler(mustResource(t, protectedResourceConfig{ResourceURL: "https://a.example/mcp", MCPPath: "/mcp"}), "")
 		rec := prmThrough(h, "a.example", "https", "b.example")
 		var doc protectedResourceMetadata
 		if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {

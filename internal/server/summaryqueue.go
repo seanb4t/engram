@@ -41,8 +41,8 @@ type summaryQueue struct {
 	ch chan string
 
 	// mu guards ch's closed state so a late tryEnqueue can never send on a
-	// closed channel and panic (CR-01). The D-08 ordering invariant
-	// (serve.go drains only AFTER every server's Shutdown returns) is necessary but
+	// closed channel and panic. The ordering invariant (serve.go drains
+	// only AFTER every server's Shutdown returns) is necessary but
 	// NOT sufficient: net/http.Server.Shutdown does NOT force-terminate active
 	// handlers when its context deadline expires — it just stops waiting — so
 	// a slow store_memory/schedule_memory handler (exactly the gateway-brownout

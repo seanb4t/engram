@@ -139,12 +139,17 @@ func runServe(cmd *cobra.Command) error {
 		slog.Error("invalid MCP path", "err", err)
 		return usageErrorf("%w", err)
 	}
-	resource, err := newProtectedResource(cfg.Server.MCPResourceURL, cfg.Server.MCPResourceOrigins, cfg.OIDC.ResourceMetadata, resolvedMCPPath)
+	resource, err := newProtectedResource(protectedResourceConfig{
+		ResourceURL: cfg.Server.MCPResourceURL,
+		Origins:     cfg.Server.MCPResourceOrigins,
+		MetadataURL: cfg.OIDC.ResourceMetadata,
+		MCPPath:     resolvedMCPPath,
+		OnRefused:   tm.RecordResourceMetadataRefused,
+	})
 	if err != nil {
 		slog.Error("invalid MCP resource config", "err", err)
 		return usageErrorf("%w", err)
 	}
-	resource.onRefused = tm.RecordResourceMetadataRefused
 
 	mux := http.NewServeMux()
 
@@ -295,7 +300,7 @@ func runServe(cmd *cobra.Command) error {
 	defer endStreams()
 	// The 401 challenge names ENGRAM_OIDC_RESOURCE_METADATA when set, else the
 	// document on ENGRAM_MCP_RESOURCE_URL's origin when that is set, else the
-	// document on each request's own derived origin, or none when
+	// path-suffix document on each request's own derived origin, or none when
 	// ENGRAM_MCP_RESOURCE_ORIGINS refuses that origin.
 	handler := mcpTransport(streams, srv, chain, resource, tm)
 	// The RFC 9728 protected-resource metadata document is mounted bare on the
@@ -305,13 +310,9 @@ func runServe(cmd *cobra.Command) error {
 	// safe-method GET untouched.
 	prmHandler := protectedResourceHandler(resource, cfg.OIDC.Issuer)
 	mountWellKnownRoutes(mux, prmHandler, resolvedMCPPath)
-	switch {
-	case resource.pinned != "":
-		slog.Info("protected-resource metadata mounted", "resource", "configured")
-	case len(resource.allowed) > 0:
-		slog.Info("protected-resource metadata mounted", "resource", "derived-per-request", "origins", len(resource.allowed))
-	default:
-		slog.Info("protected-resource metadata mounted", "resource", "derived-per-request")
+	slog.Info("protected-resource metadata mounted", resource.mode()...)
+	if cfg.Server.MCPListenAddr != "" && resource.unbounded() {
+		slog.Warn("ENGRAM_MCP_LISTEN_ADDR is set with neither ENGRAM_MCP_RESOURCE_ORIGINS nor ENGRAM_MCP_RESOURCE_URL: the protected-resource documents and the 401 challenge name whatever origin a caller's Host or X-Forwarded-Host gives")
 	}
 	// Mount the MCP transport at its configured path and give "/" to the console
 	// landing / 404 handler (mcpPath="/" restores the legacy root catch-all).
@@ -323,27 +324,28 @@ func runServe(cmd *cobra.Command) error {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// A bind failure (e.g. "address already in use") here, or a serve or
-	// shutdown failure from serveAll below, is a local OS resource failure,
-	// not a config error and not "the remote server or Qdrant is
-	// unreachable": exit 5 means the latter at every other site in this
-	// taxonomy, and mapping a local bind failure onto it would make 5
-	// ambiguous for a caller scripting both `serve` and a client verb. It
-	// exits 1, the documented exception in guides/cli.md and
-	// guides/upgrade.md, alongside root.go's mistyped-verb path. Return it
-	// as an untyped error: never wrap it in usageErrorf, classifyOperatorErr
-	// or any other error that carries an exit code.
-	if err := listenAll(listeners); err != nil {
+	// A bind failure (e.g. "address already in use") here exits 1, the
+	// documented exception in guides/cli.md and guides/upgrade.md, alongside
+	// root.go's mistyped-verb path. A serve or shutdown failure from serveAll
+	// below is returned the same way and also exits 1. Return each as an
+	// untyped error: never wrap it in usageErrorf, classifyOperatorErr or any
+	// other error that carries an exit code.
+	bound, err := listenAll(listeners)
+	if err != nil {
 		slog.Error("listen failed", "err", err)
 		return err
 	}
-	listening := []any{"version", resolvedVersion(), "addr", cfg.Server.ListenAddr}
-	if cfg.Server.MCPListenAddr != "" {
-		listening = append(listening, "mcp_addr", cfg.Server.MCPListenAddr)
+	listening := []any{"version", resolvedVersion(), "addr", bound[0].ln.Addr().String()}
+	if len(bound) > 1 {
+		listening = append(listening, "mcp_addr", bound[1].ln.Addr().String())
 	}
 	slog.Info("engram listening", listening...)
-	return serveAll(sigCtx, listeners, drain)
+	return serveAll(sigCtx, bound, shutdownGrace, drain)
 }
+
+// shutdownGrace bounds how long serveAll waits for the servers to shut down
+// and the queues to drain.
+const shutdownGrace = 15 * time.Second
 
 // mcpTransport is the MCP streamable-HTTP handler for srv behind the bearer
 // gate (withAuth, its challenge from resource), the access log and tracing.
@@ -380,10 +382,10 @@ func endGETWith(ctx context.Context, next http.Handler) http.Handler {
 // cfg.MCPListenAddr is set, the MCP-only listener with mcpHandler and
 // prmHandler (newMCPOnlyMux). Each server calls onShutdown when it begins to
 // shut down.
-func newListeners(cfg config.ServerConfig, mux *http.ServeMux, mcpHandler, prmHandler http.Handler, mcpPath string, onShutdown func()) []*listener {
-	listeners := []*listener{{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer(cfg.ListenAddr, mux)}}
+func newListeners(cfg config.ServerConfig, mux *http.ServeMux, mcpHandler, prmHandler http.Handler, mcpPath string, onShutdown func()) []listener {
+	listeners := []listener{{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer(cfg.ListenAddr, mux)}}
 	if cfg.MCPListenAddr != "" {
-		listeners = append(listeners, &listener{
+		listeners = append(listeners, listener{
 			setting: "ENGRAM_MCP_LISTEN_ADDR",
 			srv:     newHTTPServer(cfg.MCPListenAddr, newMCPOnlyMux(mcpHandler, prmHandler, mcpPath)),
 		})
@@ -415,43 +417,50 @@ func newHTTPServer(addr string, mux *http.ServeMux) *http.Server {
 }
 
 // listener is one engram serve listener: the setting that names its
-// address, its server, and the socket listenAll binds for it.
+// address, and its server.
 type listener struct {
 	setting string
 	srv     *http.Server
-	ln      net.Listener
+}
+
+// boundListener is a listener with the socket listenAll bound for it.
+type boundListener struct {
+	listener
+	ln net.Listener
 }
 
 // listenAll binds the address of each listener, in order. When one bind
 // fails it closes the sockets already bound and returns that error, named
 // with the listener's setting.
-func listenAll(listeners []*listener) error {
-	for i, l := range listeners {
+func listenAll(listeners []listener) ([]boundListener, error) {
+	bound := make([]boundListener, 0, len(listeners))
+	for _, l := range listeners {
 		ln, err := net.Listen("tcp", l.srv.Addr)
 		if err != nil {
-			for _, bound := range listeners[:i] {
-				_ = bound.ln.Close()
+			for _, b := range bound {
+				_ = b.ln.Close()
 			}
-			return fmt.Errorf("bind %s: %w", l.setting, err) // gsd:bare-operator-error-exception: the bind failure exits 1, see runServe
+			return nil, fmt.Errorf("bind %s: %w", l.setting, err)
 		}
-		l.ln = ln
+		bound = append(bound, boundListener{listener: l, ln: ln})
 	}
-	return nil
+	return bound, nil
 }
 
 // serveAll serves each bound listener until sigCtx is done or one of them
-// fails to serve. Either way it then shuts every server down in parallel,
-// closes the open connections of any server whose Shutdown hits the
-// deadline, runs drain within the same deadline, and waits for every serve
-// call to return. It returns every serve failure and every shutdown error,
-// joined and named with the listener's setting, or nil after a clean stop.
-func serveAll(sigCtx context.Context, listeners []*listener, drain func(context.Context)) error {
-	serveErr := make(chan error, len(listeners))
+// fails to serve. Either way it then shuts every server down in parallel
+// within grace, closes the open connections of any server whose Shutdown
+// runs out of grace, runs drain within the same deadline, and waits for
+// every serve call to return. It returns every serve failure and every
+// shutdown error, joined and named with the listener's setting, or nil
+// after a clean stop.
+func serveAll(sigCtx context.Context, bound []boundListener, grace time.Duration, drain func(context.Context)) error {
+	serveErr := make(chan error, len(bound))
 	var serving sync.WaitGroup
-	for _, l := range listeners {
+	for _, b := range bound {
 		serving.Go(func() {
-			if err := l.srv.Serve(l.ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				serveErr <- fmt.Errorf("serve %s: %w", l.setting, err)
+			if err := b.srv.Serve(b.ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serveErr <- fmt.Errorf("serve %s: %w", b.setting, err)
 			}
 		})
 	}
@@ -464,17 +473,23 @@ func serveAll(sigCtx context.Context, listeners []*listener, drain func(context.
 	case <-sigCtx.Done():
 		slog.Info("shutdown signal received; draining")
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), grace)
 	defer cancel()
-	shutdownErrs := make([]error, len(listeners))
+	shutdownErrs := make([]error, len(bound))
 	var shuttingDown sync.WaitGroup
-	for i, l := range listeners {
+	for i, b := range bound {
 		shuttingDown.Go(func() {
-			if err := l.srv.Shutdown(shutdownCtx); err != nil {
-				slog.Warn("listener did not shut down in time; closing its open connections", "listener", l.setting, "addr", l.srv.Addr, "err", err)
-				_ = l.srv.Close()
-				shutdownErrs[i] = fmt.Errorf("shut down %s: %w", l.setting, err)
+			err := b.srv.Shutdown(shutdownCtx)
+			switch {
+			case err == nil:
+				return
+			case errors.Is(err, context.DeadlineExceeded):
+				slog.Warn("listener did not shut down in time; closing its open connections", "listener", b.setting, "addr", b.srv.Addr, "err", err)
+				_ = b.srv.Close()
+			default:
+				slog.Warn("listener socket did not close cleanly", "listener", b.setting, "addr", b.srv.Addr, "err", err)
 			}
+			shutdownErrs[i] = fmt.Errorf("shut down %s: %w", b.setting, err)
 		})
 	}
 	shuttingDown.Wait()
@@ -493,11 +508,10 @@ func serveAll(sigCtx context.Context, listeners []*listener, drain func(context.
 	return errors.Join(append(errs, shutdownErrs...)...)
 }
 
-// checkMCPListenAddr refuses an ENGRAM_MCP_LISTEN_ADDR that is not host:port,
-// and one on the same TCP port as ENGRAM_LISTEN_ADDR where the two could
-// overlap: the same host, or an unspecified host (all interfaces) on either
-// side. Port 0 never collides. An unparsable ENGRAM_LISTEN_ADDR is left to
-// its own bind.
+// checkMCPListenAddr refuses an ENGRAM_MCP_LISTEN_ADDR that is not
+// host:port with a port, and one on the same non-zero TCP port as
+// ENGRAM_LISTEN_ADDR where the two hosts overlap (listenHostsOverlap). An
+// unparsable ENGRAM_LISTEN_ADDR is left to its own bind.
 func checkMCPListenAddr(listenAddr, mcpListenAddr string) error {
 	if mcpListenAddr == "" {
 		return nil
@@ -505,6 +519,9 @@ func checkMCPListenAddr(listenAddr, mcpListenAddr string) error {
 	mcpHost, mcpPortName, err := net.SplitHostPort(mcpListenAddr)
 	if err != nil {
 		return usageErrorf("ENGRAM_MCP_LISTEN_ADDR (or --mcp-listen-addr) %q: must be host:port, e.g. \":8081\": %w", mcpListenAddr, err)
+	}
+	if mcpPortName == "" {
+		return usageErrorf("ENGRAM_MCP_LISTEN_ADDR (or --mcp-listen-addr) %q: must name a port, e.g. \":8081\"", mcpListenAddr)
 	}
 	mcpPort, err := net.LookupPort("tcp", mcpPortName)
 	if err != nil {
@@ -518,20 +535,36 @@ func checkMCPListenAddr(listenAddr, mcpListenAddr string) error {
 	if err != nil || port == 0 || port != mcpPort {
 		return nil
 	}
-	if host == mcpHost || allInterfaces(host) || allInterfaces(mcpHost) {
+	if listenHostsOverlap(host, mcpHost) {
 		return usageErrorf("ENGRAM_MCP_LISTEN_ADDR (or --mcp-listen-addr) %q and ENGRAM_LISTEN_ADDR (or --listen-addr) %q both listen on port %d: the MCP-only listener needs its own port", mcpListenAddr, listenAddr, port)
 	}
 	return nil
 }
 
-// allInterfaces reports whether host, from a listen address, binds every
-// interface: empty, 0.0.0.0 or ::.
-func allInterfaces(host string) bool {
-	if host == "" {
+// listenHostsOverlap reports whether two listen hosts on the same port can
+// collide: the same host, an empty host or :: (every interface of both IP
+// families), or 0.0.0.0 against an IPv4 address or a name, which can
+// resolve to one.
+func listenHostsOverlap(a, b string) bool {
+	if a == b || a == "" || b == "" {
 		return true
 	}
-	addr, err := netip.ParseAddr(host)
-	return err == nil && addr.IsUnspecified()
+	return unspecifiedCovers(a, b) || unspecifiedCovers(b, a)
+}
+
+// unspecifiedCovers reports whether listening on the unspecified address u
+// covers host h: :: covers every host, and 0.0.0.0 covers an IPv4 address
+// or a name.
+func unspecifiedCovers(u, h string) bool {
+	ua, err := netip.ParseAddr(u)
+	if err != nil || !ua.IsUnspecified() {
+		return false
+	}
+	if ua.Is6() {
+		return true
+	}
+	ha, err := netip.ParseAddr(h)
+	return err != nil || ha.Unmap().Is4()
 }
 
 // ownerClaimGuard fails fast if any auth lane would run with an empty
@@ -718,55 +751,46 @@ func composeAuthChain(human, service, static mcpauth.TokenVerifier) mcpauth.Toke
 // construct a second chain — the compiler is the D-06 assertion that the
 // two mount sites cannot drift.
 //
-// resource gives the challenge's resource_metadata value. When the value is
-// the same for every request, one middleware serves them all; in the
-// derived mode the middleware is built for each request with that request's
-// value. A nil resource sends a bare "Bearer" challenge.
+// The middleware is built for each request, with the resource_metadata
+// value resource gives that request. A 401 it writes without a
+// WWW-Authenticate header gains a bare "Bearer" challenge, which RFC 6750
+// requires: the SDK writes the header only when it has a parameter to put
+// in it. Every such 401 carries Cache-Control: no-store, and a Vary on the
+// forwarded headers when its value depends on them. handler writes to the
+// original ResponseWriter, so its own responses are never touched.
 func withAuth(handler http.Handler, chain mcpauth.TokenVerifier, resource *protectedResource) http.Handler {
 	if chain == nil {
 		slog.Warn("bearer-token validation DISABLED (no --oidc-issuer / ENGRAM_OIDC_ISSUER, no ENGRAM_SERVICE_AUTH_* config); all requests accepted")
 		return handler
 	}
-	if v, fixed := resource.fixedChallenge(); fixed {
-		return bearerGate(chain, v, handler)
-	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bearerGate(chain, resource.challengeURL(r), handler).ServeHTTP(w, r)
+		gate := mcpauth.RequireBearerToken(chain, &mcpauth.RequireBearerTokenOptions{
+			ResourceMetadataURL: resource.challengeURL(r),
+		})
+		inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) })
+		gate(inner).ServeHTTP(&challengeWriter{ResponseWriter: w, varies: resource.challengeVaries()}, r)
 	})
 }
 
-// bearerGate is the go-sdk bearer middleware over handler with
-// resourceMetadataURL in its challenge. A 401 the middleware writes without
-// a WWW-Authenticate header gains a bare "Bearer" challenge, which RFC 6750
-// requires: the SDK writes the header only when it has a parameter to put in
-// it. handler itself writes to the unwrapped ResponseWriter, so its own
-// responses are never touched.
-func bearerGate(chain mcpauth.TokenVerifier, resourceMetadataURL string, handler http.Handler) http.Handler {
-	gated := mcpauth.RequireBearerToken(chain, &mcpauth.RequireBearerTokenOptions{
-		ResourceMetadataURL: resourceMetadataURL,
-	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if cw, ok := w.(*challengeWriter); ok {
-			w = cw.ResponseWriter
-		}
-		handler.ServeHTTP(w, r)
-	}))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gated.ServeHTTP(&challengeWriter{ResponseWriter: w}, r)
-	})
-}
-
-// challengeWriter adds "WWW-Authenticate: Bearer" to a 401 written without a
-// WWW-Authenticate header.
+// challengeWriter is the ResponseWriter of the bearer middleware. On a 401
+// it adds "WWW-Authenticate: Bearer" when the header is missing, sets
+// Cache-Control: no-store, and adds a Vary on the forwarded headers when
+// varies is set.
 type challengeWriter struct {
 	http.ResponseWriter
+	varies bool
 }
 
 func (w *challengeWriter) WriteHeader(code int) {
-	if code == http.StatusUnauthorized && w.Header().Get("WWW-Authenticate") == "" {
-		w.Header().Set("WWW-Authenticate", "Bearer")
+	if code == http.StatusUnauthorized {
+		h := w.Header()
+		if h.Get("WWW-Authenticate") == "" {
+			h.Set("WWW-Authenticate", "Bearer")
+		}
+		h.Set("Cache-Control", "no-store")
+		if w.varies {
+			h.Add("Vary", "X-Forwarded-Host, X-Forwarded-Proto")
+		}
 	}
 	w.ResponseWriter.WriteHeader(code)
 }
-
-// Unwrap lets http.NewResponseController reach the underlying writer.
-func (w *challengeWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }

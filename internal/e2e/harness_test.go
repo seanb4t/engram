@@ -288,10 +288,23 @@ func startServer(t *testing.T, extraEnv map[string]string) *serverProc {
 		}
 	})
 
+	// The server is ready when every address it listens on accepts.
+	listening := []string{addr}
+	if mcpAddr := env["ENGRAM_MCP_LISTEN_ADDR"]; mcpAddr != "" {
+		listening = append(listening, mcpAddr)
+	}
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
-		if c, derr := net.DialTimeout("tcp", addr, 500*time.Millisecond); derr == nil {
+		up := true
+		for _, a := range listening {
+			c, derr := net.DialTimeout("tcp", a, 500*time.Millisecond)
+			if derr != nil {
+				up = false
+				break
+			}
 			_ = c.Close()
+		}
+		if up {
 			return &serverProc{addr: addr, cmd: cmd}
 		}
 		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {

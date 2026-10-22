@@ -29,7 +29,8 @@ func NewToolMetrics(m metric.Meter) *ToolMetrics {
 		metric.WithUnit("ms"), metric.WithDescription("tool handler latency"))
 	auth, _ := m.Int64Counter("engram.auth.failures")
 	refused, _ := m.Int64Counter("engram.resource_metadata.refused",
-		metric.WithDescription("protected-resource metadata requests refused for an origin not in ENGRAM_MCP_RESOURCE_ORIGINS"))
+		metric.WithUnit("{request}"),
+		metric.WithDescription("protected-resource metadata requests refused because the origin is not allowed"))
 	return &ToolMetrics{calls: calls, duration: dur, authFailures: auth, resourceMetadataRefusals: refused}
 }
 

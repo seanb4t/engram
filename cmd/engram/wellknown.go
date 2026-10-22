@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // wellKnownPRMBase is the RFC 9728 host-only path for the OAuth protected-
@@ -60,27 +61,58 @@ func protectedResourcePaths(mcpPath string) (suffix string) {
 	return wellKnownPRMBase + mcpPath
 }
 
+// splitAuthority splits a host[:port] authority into its host and port. A
+// bracketed IPv6 host keeps its brackets. ok is false when a colon has no
+// port after it, or when an unbracketed host holds a colon.
+func splitAuthority(v string) (host, port string, ok bool) {
+	if strings.HasPrefix(v, "[") {
+		end := strings.Index(v, "]")
+		if end < 0 {
+			return "", "", false
+		}
+		host, rest := v[:end+1], v[end+1:]
+		if rest == "" {
+			return host, "", true
+		}
+		if len(rest) == 1 || rest[0] != ':' {
+			return "", "", false
+		}
+		return host, rest[1:], true
+	}
+	host, port, found := strings.Cut(v, ":")
+	if !found {
+		return v, "", true
+	}
+	if port == "" || strings.Contains(port, ":") {
+		return "", "", false
+	}
+	return host, port, true
+}
+
 // validAuthority reports whether v is a bare host[:port] authority and
-// nothing more. The host is a dot-separated DNS name whose labels hold only
-// letters, digits, hyphens and underscores, or a bracketed IPv6 address. The
-// port, when present, is 1 to 65535 in digits with no leading zero.
+// nothing more. The host is a DNS name whose dot-separated labels hold only
+// letters, digits, hyphens and underscores, with at most one trailing dot
+// (an IPv4 literal passes as a name of digit labels), or a bracketed IPv6
+// address with no zone. The port, when present, is 1 to 65535 in digits
+// with no leading zero.
 func validAuthority(v string) bool {
-	host := v
-	if i := strings.LastIndex(v, ":"); i >= 0 && !strings.HasSuffix(v, "]") {
-		host = v[:i]
-		port := v[i+1:]
-		if port == "" || port[0] == '0' || strings.ContainsFunc(port, func(c rune) bool { return c < '0' || c > '9' }) {
+	host, port, ok := splitAuthority(v)
+	if !ok {
+		return false
+	}
+	if port != "" {
+		if port[0] == '0' || strings.ContainsFunc(port, func(c rune) bool { return c < '0' || c > '9' }) {
 			return false
 		}
 		if n, err := strconv.Atoi(port); err != nil || n > 65535 {
 			return false
 		}
 	}
-	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+	if strings.HasPrefix(host, "[") {
 		addr, err := netip.ParseAddr(host[1 : len(host)-1])
-		return err == nil && addr.Is6()
+		return err == nil && addr.Is6() && addr.Zone() == ""
 	}
-	for label := range strings.SplitSeq(host, ".") {
+	for label := range strings.SplitSeq(strings.TrimSuffix(host, "."), ".") {
 		if label == "" || strings.ContainsFunc(label, notHostNameByte) {
 			return false
 		}
@@ -106,24 +138,39 @@ func validForwardedHost(v string) bool {
 }
 
 // normalizeOrigin returns scheme://authority with the scheme and host
-// lowercased and the default port of the scheme (443 for https, 80 for
-// http) removed, so the same origin written two ways compares equal.
+// lowercased, a trailing dot removed from a host name, a bracketed IPv6
+// address in its canonical form with no zone, and the default port of the
+// scheme (443 for https, 80 for http) removed, so the same origin written
+// two ways compares equal. An authority splitAuthority cannot split is
+// only lowercased.
 func normalizeOrigin(scheme, authority string) string {
 	scheme, authority = strings.ToLower(scheme), strings.ToLower(authority)
-	switch {
-	case scheme == "https" && strings.HasSuffix(authority, ":443"):
-		authority = strings.TrimSuffix(authority, ":443")
-	case scheme == "http" && strings.HasSuffix(authority, ":80"):
-		authority = strings.TrimSuffix(authority, ":80")
+	host, port, ok := splitAuthority(authority)
+	if !ok {
+		return scheme + "://" + authority
 	}
-	return scheme + "://" + authority
+	if strings.HasPrefix(host, "[") {
+		if addr, err := netip.ParseAddr(host[1 : len(host)-1]); err == nil {
+			host = "[" + addr.WithZone("").String() + "]"
+		}
+	} else {
+		host = strings.TrimSuffix(host, ".")
+	}
+	if scheme == "https" && port == "443" || scheme == "http" && port == "80" {
+		port = ""
+	}
+	if port != "" {
+		host += ":" + port
+	}
+	return scheme + "://" + host
 }
 
 // derivedOrigin returns the normalized origin (normalizeOrigin) a request was
 // made to. The scheme is the X-Forwarded-Proto value only when it equals
 // exactly "http" or "https" (any other value falls back to the TLS-derived
 // scheme and is never echoed); the host is the X-Forwarded-Host value only
-// when validForwardedHost accepts it, else r.Host.
+// when the request carries exactly one such header and validForwardedHost
+// accepts it, else r.Host.
 func derivedOrigin(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
@@ -133,10 +180,28 @@ func derivedOrigin(r *http.Request) string {
 		scheme = xfp
 	}
 	host := r.Host
-	if xfh := r.Header.Get("X-Forwarded-Host"); validForwardedHost(xfh) {
-		host = xfh
+	if xfh := r.Header.Values("X-Forwarded-Host"); len(xfh) == 1 && validForwardedHost(xfh[0]) {
+		host = xfh[0]
 	}
 	return normalizeOrigin(scheme, host)
+}
+
+// ignoredForwardedHost returns the X-Forwarded-Host values of r that
+// derivedOrigin did not use, joined and cut to maxWarnedOriginLen bytes, or
+// "" when there are none.
+func ignoredForwardedHost(r *http.Request) string {
+	xfh := r.Header.Values("X-Forwarded-Host")
+	if len(xfh) == 0 || len(xfh) == 1 && validForwardedHost(xfh[0]) {
+		return ""
+	}
+	return truncate(strings.Join(xfh, ", "), maxWarnedOriginLen)
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 // resourceForOrigin returns the RFC 9728 `resource` value on origin: origin
@@ -159,10 +224,11 @@ func resourceMetadataURLForOrigin(origin, mcpPath string) string {
 }
 
 // resolveMCPResourceURL shape-checks the configured ENGRAM_MCP_RESOURCE_URL
-// and returns it verbatim with its scheme://host origin. Empty is a valid
-// no-op. The message names the env var, quotes the offending value and
-// states the constraint, like ENGRAM_OPENAI_EMBEDDINGS_URL in
-// internal/config/validate.go.
+// and returns it, trimmed of surrounding space, with its scheme://host
+// origin. The host follows validAuthority, as an ENGRAM_MCP_RESOURCE_ORIGINS
+// entry does. Empty is a valid no-op. The message names the env var, quotes
+// the offending value and states the constraint, like
+// ENGRAM_OPENAI_EMBEDDINGS_URL in internal/config/validate.go.
 func resolveMCPResourceURL(raw string) (resource, origin string, err error) {
 	v := strings.TrimSpace(raw)
 	if v == "" {
@@ -175,10 +241,16 @@ func resolveMCPResourceURL(raw string) (resource, origin string, err error) {
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return "", "", fmt.Errorf("ENGRAM_MCP_RESOURCE_URL %q: scheme must be http or https", v)
 	}
+	if u.User != nil {
+		return "", "", fmt.Errorf("ENGRAM_MCP_RESOURCE_URL %q: must not contain userinfo", v)
+	}
 	if u.Host == "" {
 		return "", "", fmt.Errorf("ENGRAM_MCP_RESOURCE_URL %q: missing host", v)
 	}
-	if u.RawQuery != "" || u.Fragment != "" {
+	if !validAuthority(u.Host) {
+		return "", "", fmt.Errorf("ENGRAM_MCP_RESOURCE_URL %q: the host must be a DNS name or an IP address, with no wildcard, and any port must be 1 to 65535", v)
+	}
+	if u.RawQuery != "" || u.ForceQuery || strings.Contains(v, "#") {
 		return "", "", fmt.Errorf("ENGRAM_MCP_RESOURCE_URL %q: must not contain a query or fragment", v)
 	}
 	return v, u.Scheme + "://" + u.Host, nil
@@ -232,56 +304,101 @@ func resolveMCPResourceOrigins(raw string) (originSet, error) {
 }
 
 // maxWarnedOrigins caps how many distinct refused origins a protectedResource
-// remembers, and maxWarnedOriginLen caps the length of each, so a flood of
-// spoofed hosts cannot grow memory without bound.
+// remembers in one warnWindow, and maxWarnedOriginLen caps the length of
+// each, so a flood of spoofed hosts cannot grow memory without bound. The
+// remembered set starts again empty after each warnWindow, so a flood cannot
+// silence a later refusal for longer than that.
 const (
 	maxWarnedOrigins   = 256
 	maxWarnedOriginLen = 512
+	warnWindow         = time.Hour
 )
 
-// protectedResource decides what the RFC 9728 document and the MCP 401
+// protectedResourceConfig is the configuration newProtectedResource builds a
+// protectedResource from.
+type protectedResourceConfig struct {
+	ResourceURL string // ENGRAM_MCP_RESOURCE_URL
+	Origins     string // ENGRAM_MCP_RESOURCE_ORIGINS
+	MetadataURL string // ENGRAM_OIDC_RESOURCE_METADATA
+	MCPPath     string // the resolved MCP path
+	// OnRefused is called for every refused document request; nil calls
+	// nothing.
+	OnRefused func(context.Context)
+}
+
+// protectedResource decides what the RFC 9728 documents and the MCP 401
 // challenge name for a request. A pinned resource URL names one origin for
 // every request. Otherwise each request's derived origin is named, and a
-// non-empty allowed set limits which origins may be named.
+// non-empty allowed set limits which origins the challenge and the
+// path-suffix document may name. The host-only document, which `engram
+// login` reads, answers every origin.
 type protectedResource struct {
 	mcpPath string
-	// pinned is ENGRAM_MCP_RESOURCE_URL verbatim. Empty selects the derived
-	// mode.
+	// pinned is ENGRAM_MCP_RESOURCE_URL, trimmed of surrounding space. Empty
+	// selects the derived mode.
 	pinned string
 	// challenge is the resource_metadata value of every 401 when it does not
 	// depend on the request: ENGRAM_OIDC_RESOURCE_METADATA, else the document
-	// on the pinned origin. Empty in the derived mode.
+	// on the pinned origin. Empty only when the value depends on the request:
+	// the derived mode without ENGRAM_OIDC_RESOURCE_METADATA.
 	challenge string
 	// allowed bounds the derived mode. Empty allows every origin.
-	allowed originSet
-	// onRefused, when set, is called for every refused document request.
+	allowed   originSet
 	onRefused func(context.Context)
+	// now is the clock for warnWindow; nil means time.Now.
+	now func() time.Time
 
-	mu     sync.Mutex
-	warned map[string]struct{}
+	mu          sync.Mutex
+	warned      map[string]struct{}
+	warnedSince time.Time
 }
 
-// newProtectedResource validates ENGRAM_MCP_RESOURCE_URL (resourceURL) and
-// ENGRAM_MCP_RESOURCE_ORIGINS (origins), refuses both set, and returns the
-// protected resource for mcpPath. metadataURL is ENGRAM_OIDC_RESOURCE_METADATA,
-// which replaces the challenge value in every mode.
-func newProtectedResource(resourceURL, origins, metadataURL, mcpPath string) (*protectedResource, error) {
-	pinned, pinnedOrigin, err := resolveMCPResourceURL(resourceURL)
+// newProtectedResource validates ENGRAM_MCP_RESOURCE_URL and
+// ENGRAM_MCP_RESOURCE_ORIGINS, refuses both set, and returns the protected
+// resource for cfg.MCPPath. ENGRAM_OIDC_RESOURCE_METADATA, trimmed of
+// surrounding space, replaces the challenge value in every mode.
+func newProtectedResource(cfg protectedResourceConfig) (*protectedResource, error) {
+	pinned, pinnedOrigin, err := resolveMCPResourceURL(cfg.ResourceURL)
 	if err != nil {
 		return nil, err
 	}
-	allowed, err := resolveMCPResourceOrigins(origins)
+	allowed, err := resolveMCPResourceOrigins(cfg.Origins)
 	if err != nil {
 		return nil, err
 	}
 	if len(allowed) > 0 && pinned != "" {
 		return nil, errors.New("ENGRAM_MCP_RESOURCE_ORIGINS and ENGRAM_MCP_RESOURCE_URL are both set: the origin list bounds the resource derived for each request, which a set ENGRAM_MCP_RESOURCE_URL replaces; set one of them")
 	}
-	p := &protectedResource{mcpPath: mcpPath, pinned: pinned, challenge: metadataURL, allowed: allowed}
+	p := &protectedResource{
+		mcpPath:   cfg.MCPPath,
+		pinned:    pinned,
+		challenge: strings.TrimSpace(cfg.MetadataURL),
+		allowed:   allowed,
+		onRefused: cfg.OnRefused,
+	}
 	if p.challenge == "" && pinned != "" {
-		p.challenge = resourceMetadataURLForOrigin(pinnedOrigin, mcpPath)
+		p.challenge = resourceMetadataURLForOrigin(pinnedOrigin, cfg.MCPPath)
 	}
 	return p, nil
+}
+
+// mode returns the mode of p and, in the bounded derived mode, the number
+// of allowed origins, as slog attributes.
+func (p *protectedResource) mode() []any {
+	switch {
+	case p.pinned != "":
+		return []any{"resource", "configured"}
+	case len(p.allowed) > 0:
+		return []any{"resource", "derived-per-request", "origins", len(p.allowed)}
+	default:
+		return []any{"resource", "derived-per-request"}
+	}
+}
+
+// unbounded reports whether p names any origin a request gives: the
+// derived mode with no allowed set.
+func (p *protectedResource) unbounded() bool {
+	return p.pinned == "" && len(p.allowed) == 0
 }
 
 // origin returns the derived origin of r, and false when the allowed set
@@ -295,21 +412,12 @@ func (p *protectedResource) origin(r *http.Request) (string, bool) {
 	return origin, ok
 }
 
-// fixedChallenge returns the challenge's resource_metadata value and true
-// when it is the same for every request. A nil p has none ("", true).
-func (p *protectedResource) fixedChallenge() (string, bool) {
-	if p == nil {
-		return "", true
-	}
-	return p.challenge, p.challenge != ""
-}
-
 // challengeURL returns the challenge's resource_metadata value for r, or ""
-// for none: the fixed value when there is one, else the document on r's
-// origin when the allowed set accepts it.
+// for none: the fixed value when there is one, else the path-suffix
+// document on r's origin when the allowed set accepts it.
 func (p *protectedResource) challengeURL(r *http.Request) string {
-	if v, fixed := p.fixedChallenge(); fixed {
-		return v
+	if p.challenge != "" {
+		return p.challenge
 	}
 	origin, ok := p.origin(r)
 	if !ok {
@@ -318,28 +426,43 @@ func (p *protectedResource) challengeURL(r *http.Request) string {
 	return resourceMetadataURLForOrigin(origin, p.mcpPath)
 }
 
-// refused records a refused document request: onRefused for every one, and
-// one warning per distinct origin, for at most maxWarnedOrigins origins and
-// then one limit warning.
-func (p *protectedResource) refused(ctx context.Context, origin string) {
+// challengeVaries reports whether the challenge value depends on the
+// request's forwarded headers.
+func (p *protectedResource) challengeVaries() bool {
+	return p.challenge == ""
+}
+
+// refused records a refused document request for r's origin: onRefused for
+// every one, and one warning per distinct origin in each warnWindow, for at
+// most maxWarnedOrigins origins and then one limit warning. A warning also
+// names the X-Forwarded-Host values derivedOrigin ignored.
+func (p *protectedResource) refused(r *http.Request, origin string) {
+	ctx := r.Context()
 	if p.onRefused != nil {
 		p.onRefused(ctx)
 	}
-	if len(origin) > maxWarnedOriginLen {
-		origin = origin[:maxWarnedOriginLen]
+	origin = truncate(origin, maxWarnedOriginLen)
+	now := time.Now
+	if p.now != nil {
+		now = p.now
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.warned == nil {
+	if t := now(); p.warned == nil || t.Sub(p.warnedSince) >= warnWindow {
 		p.warned = map[string]struct{}{}
+		p.warnedSince = t
 	}
 	if _, seen := p.warned[origin]; seen || len(p.warned) >= maxWarnedOrigins {
 		return
 	}
 	p.warned[origin] = struct{}{}
-	slog.WarnContext(ctx, "request origin is not in ENGRAM_MCP_RESOURCE_ORIGINS; serving no protected-resource metadata for it", "origin", origin)
+	attrs := []any{"origin", origin}
+	if ignored := ignoredForwardedHost(r); ignored != "" {
+		attrs = append(attrs, "ignored_x_forwarded_host", ignored)
+	}
+	slog.WarnContext(ctx, "request origin is not in ENGRAM_MCP_RESOURCE_ORIGINS; serving no path-suffix protected-resource metadata for it", attrs...)
 	if len(p.warned) == maxWarnedOrigins {
-		slog.WarnContext(ctx, "refused-origin warning limit reached; further refused origins are not logged", "limit", maxWarnedOrigins)
+		slog.WarnContext(ctx, "refused-origin warning limit reached; further refused origins are not logged until the window ends", "limit", maxWarnedOrigins, "window", warnWindow)
 	}
 }
 
@@ -347,21 +470,24 @@ func (p *protectedResource) refused(ctx context.Context, origin string) {
 // document for p. It is deliberately unauthenticated (RFC 9728 requires
 // public reachability): no bearer gate, no session lookup, and no store or
 // embedder call anywhere in this handler. A pinned resource URL is served
-// verbatim and no request header is consulted, so a spoofed X-Forwarded-Host
-// or X-Forwarded-Proto cannot override it; the document is then static and
-// carries no Cache-Control header. Otherwise the resource is derived from
-// each request's origin, and an origin the allowed set refuses gets a 404.
-// Every derived response, the 404 included, carries Cache-Control: no-store,
-// so a shared cache can never keep a response derived from a spoofable
-// header.
+// as configured and no request header is consulted, so a spoofed
+// X-Forwarded-Host or X-Forwarded-Proto cannot override it; the document is
+// then static and carries no Cache-Control header. Otherwise the resource
+// is derived from each request's origin. On the path-suffix path an origin
+// the allowed set refuses gets a 404; the host-only path answers every
+// origin, because `engram login` reads its authorization_servers through
+// whatever name the CLI uses. Every derived response, the 404 included,
+// carries Cache-Control: no-store and a Vary on the forwarded headers, so a
+// shared cache can never keep a response derived from a spoofable header.
 func protectedResourceHandler(p *protectedResource, issuer string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resource := p.pinned
 		if resource == "" {
 			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Vary", "X-Forwarded-Host, X-Forwarded-Proto")
 			origin, ok := p.origin(r)
-			if !ok {
-				p.refused(r.Context(), origin)
+			if !ok && r.URL.Path != wellKnownPRMBase {
+				p.refused(r, origin)
 				http.NotFound(w, r)
 				return
 			}
