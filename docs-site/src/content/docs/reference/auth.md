@@ -76,15 +76,20 @@ The derived mode trusts the forwarded headers of any caller. To limit the
 origins that it names, set `ENGRAM_MCP_RESOURCE_ORIGINS` to a
 comma-separated list of origins, for example
 `https://a.example,https://b.example`. A request from an origin that is not
-in the list gets a `404` on both protected-resource paths. Its `401`
-challenge is a bare `WWW-Authenticate: Bearer` header with no
-`resource_metadata` parameter. The list limits only what engram says about
-itself, so a valid token still works through any origin. The match drops
-the default port of the scheme, so `https://a.example` also matches
-`https://a.example:443`. Set the list on every deployment whose MCP port is
-reachable from the internet, even with one public name. engram logs a
-warning the first time that it refuses the document for each origin, and
-counts every refusal in the `engram.resource_metadata.refused` metric. You
+in the list gets a `404` on the path-suffix protected-resource path. Its
+`401` challenge is a bare `WWW-Authenticate: Bearer` header with no
+`resource_metadata` parameter. The host-only path still answers every
+origin, because `engram login` reads `authorization_servers` from it through
+whatever name the CLI uses. So an MCP client that falls back to the
+host-only path can still discover the server through an unlisted origin.
+The list limits only what engram points clients to, so a valid token still
+works through any origin. The match drops the default port of the scheme,
+so `https://a.example` also matches `https://a.example:443`. Set the list
+on every deployment whose MCP port is reachable from the internet, even with
+one public name. engram logs a warning the first time in each hour that it
+refuses the document for an origin. It counts every refusal in the
+`engram.resource_metadata.refused` metric. Every `401` carries
+`Cache-Control: no-store`. You
 cannot set this variable together with `ENGRAM_MCP_RESOURCE_URL`, and the
 server does not start when both are set. See [Configure](/guides/configure/)
 for the entry format.

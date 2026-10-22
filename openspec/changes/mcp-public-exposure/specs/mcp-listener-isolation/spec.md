@@ -87,11 +87,11 @@ When `ENGRAM_MCP_LISTEN_ADDR` is unset or empty, `engram serve` SHALL bind only
 
 ### Requirement: The two listen addresses must not overlap
 
-`engram serve` SHALL refuse to start when `ENGRAM_MCP_LISTEN_ADDR` is not `host:port`, and when it
-uses the same non-zero port as `ENGRAM_LISTEN_ADDR` on the same host or with all interfaces on
-either side. The error SHALL name both variables when they collide, and SHALL name the variable and
-quote the value when the address is malformed. There is no tool-call `hint` code, because the
-rejection happens before any request.
+`engram serve` SHALL refuse to start when `ENGRAM_MCP_LISTEN_ADDR` is not `host:port` with a port,
+and when it uses the same non-zero port as `ENGRAM_LISTEN_ADDR` on hosts that overlap: the same
+host, an empty host or `::` on either side, or `0.0.0.0` against an IPv4 address or a name. The
+error SHALL name both variables, or the variable and its quoted value. No tool-call `hint` code
+applies, because the rejection happens before any request.
 
 #### Scenario: Same address on both
 
@@ -105,8 +105,13 @@ rejection happens before any request.
 
 #### Scenario: Address without a port
 
-- **WHEN** `ENGRAM_MCP_LISTEN_ADDR` is `8081`
-- **THEN** `engram serve` exits as a usage error that names `ENGRAM_MCP_LISTEN_ADDR` and quotes `8081`
+- **WHEN** `ENGRAM_MCP_LISTEN_ADDR` is `8081` or `:`
+- **THEN** `engram serve` exits as a usage error that names `ENGRAM_MCP_LISTEN_ADDR` and quotes the value
+
+#### Scenario: Different IP families do not collide
+
+- **WHEN** `ENGRAM_LISTEN_ADDR` is `0.0.0.0:8080` and `ENGRAM_MCP_LISTEN_ADDR` is `[::1]:8080`
+- **THEN** the address check passes
 
 ### Requirement: The second listener needs an auth lane
 
@@ -119,12 +124,17 @@ faces a public ingress. The primary listener SHALL keep its behavior with no aut
 - **WHEN** `ENGRAM_MCP_LISTEN_ADDR` is `:8081` and no auth lane is configured
 - **THEN** `engram serve` exits as a usage error that names `ENGRAM_MCP_LISTEN_ADDR`
 
+#### Scenario: Unbounded discovery is warned about
+
+- **WHEN** `ENGRAM_MCP_LISTEN_ADDR` is set and neither `ENGRAM_MCP_RESOURCE_ORIGINS` nor `ENGRAM_MCP_RESOURCE_URL` is set
+- **THEN** `engram serve` starts and logs a warning that names both resource variables
+
 ### Requirement: Both listeners stop together
 
 On SIGINT or SIGTERM, or when either listener fails to bind or to serve, `engram serve` SHALL shut
-down both listeners and exit. Shutdown SHALL end the open MCP event streams, so it waits only for
-requests that finish on their own. A bind, serve or shutdown failure SHALL name the setting of its
-listener and exit 1.
+down both listeners and exit. Shutdown SHALL end the open MCP event streams, wait up to 15 seconds
+for other requests, then close the connections still open. A bind, serve or shutdown failure SHALL
+name the setting of its listener and exit 1. The startup log SHALL report each bound address.
 
 #### Scenario: Signal stops both
 
@@ -146,7 +156,7 @@ listener and exit 1.
 With `memory.mcpListenAddr` empty, the chart SHALL render the manifests it renders today. With it
 set, the chart SHALL add a container port and a Service port named `mcp` that carry the address's
 port number, and SHALL set `ENGRAM_MCP_LISTEN_ADDR`. The render SHALL fail when the value has no
-port or names a loopback host.
+port, names a loopback host, or uses the port of the `http` listener.
 
 #### Scenario: Default render is unchanged
 
@@ -161,4 +171,9 @@ port or names a loopback host.
 #### Scenario: Loopback address fails the render
 
 - **WHEN** `helm template charts/engram --set memory.mcpListenAddr=127.0.0.1:8081` runs
+- **THEN** the render fails with a message that names `memory.mcpListenAddr`
+
+#### Scenario: The http port fails the render
+
+- **WHEN** `helm template charts/engram --set memory.mcpListenAddr=:8080` runs
 - **THEN** the render fails with a message that names `memory.mcpListenAddr`

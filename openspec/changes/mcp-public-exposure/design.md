@@ -47,11 +47,13 @@ See proposal.md for motivation. The code this change touches:
 
 ### D-01: Per-request challenge through a per-request middleware closure
 
-When `ENGRAM_MCP_RESOURCE_URL` and `ENGRAM_OIDC_RESOURCE_METADATA` are both empty, `withAuth`
-wraps the handler in a closure that, per request, derives the origin with the same function the
-document uses, builds the challenge URL from it, constructs
+`withAuth` wraps the handler in a closure that, for each request, asks the protected resource for
+the challenge URL, constructs
 `RequireBearerToken(chain, &RequireBearerTokenOptions{ResourceMetadataURL: url})` and serves the
-request through it. The two configured modes keep today's single static middleware.
+request through it. In the configured modes the URL is the same for every request. Building the
+middleware for each request in every mode keeps one code path. The inner handler closes over the
+original `ResponseWriter`, so the bearer middleware's writer wrapper never reaches it, without a
+type assertion that would depend on how the SDK passes the writer on.
 
 Alternatives rejected:
 
@@ -74,7 +76,8 @@ with the body `no bearer token` and no `WWW-Authenticate` header. RFC 6750 requi
 401, so the closure wraps the response writer and adds a bare `WWW-Authenticate: Bearer` on a 401
 when the SDK wrote none. The SDK writes a 403 only when the middleware has scopes, which engram
 never sets, so the wrapper leaves a 403 alone. This covers the unlisted-origin case under D-02 as
-well.
+well. The same wrapper sets `Cache-Control: no-store` on every 401, and a `Vary` on the forwarded
+headers when the value depends on them.
 
 ### D-02: `ENGRAM_MCP_RESOURCE_ORIGINS` is a list of origins, matched exactly, with 404 for a miss
 
@@ -83,22 +86,33 @@ well.
   `ENGRAM_MCP_RESOURCE_URL`.
 - Parsed at its use site in `runServe` into a set of normalized origins. An entry must parse as a
   URL with scheme `http` or `https`, no path, query, fragment or userinfo, and a host that is a DNS
-  name or a bracketed IPv6 address with an optional port from 1 to 65535 (`validAuthority`). The
-  same grammar guards `X-Forwarded-Host`. A wildcard, an empty port, a leading-zero port and a
-  trailing dot never match a request, so they fail at startup. Scheme and host lowercase, and the
-  default port of the scheme is removed, on both sides (`normalizeOrigin`), so `https://a.example`
-  and `https://a.example:443` are one origin. An empty entry, a duplicate after normalizing, or a
-  malformed entry is a usage error that names the variable and quotes the entry.
+  name or a bracketed IPv6 address with no zone, with an optional port from 1 to 65535
+  (`validAuthority`). The same grammar guards `X-Forwarded-Host` and the host of
+  `ENGRAM_MCP_RESOURCE_URL`. A wildcard, an empty port and a leading-zero port never match a
+  request, so they fail at startup. Both sides are normalized (`normalizeOrigin`): scheme and host
+  lowercase, a trailing dot removed, an IPv6 address in its canonical form, and the default port of
+  the scheme removed. So `https://a.example`, `https://a.example.` and `https://a.example:443` are one
+  origin. An empty entry, a duplicate after normalizing, or a malformed entry is a usage error that
+  names the variable and quotes the entry.
 - Exclusive with `ENGRAM_MCP_RESOURCE_URL`. Both set is a usage error naming both.
 - Helm value `memory.mcpResourceOrigins`, a string, rendered as a `with`-guarded row so the default
   render omits it.
-- A miss answers 404 on the well-known paths and drops `resource_metadata` from the challenge. The
-  bearer gate still runs, so a valid token works through an unlisted origin. The allowlist bounds
-  what engram says about itself, not who may call it.
-- The document handler logs one warning per distinct refused origin per process, through a
+- A miss answers 404 on the path-suffix well-known path and drops `resource_metadata` from the
+  challenge. The bearer gate still runs, so a valid token works through an unlisted origin. The
+  allowlist bounds what engram points clients to, not who may call it.
+- The host-only well-known path answers every origin. `engram login` reads `authorization_servers`
+  from it through the `--server` name, and the CLI is pointed at the internal name, which an
+  operator does not list. The cost: an MCP client that falls back to the host-only path can still
+  discover the server through an unlisted origin. The alternatives were to require the CLI's name
+  in the list, which every operator would trip over, or a second, non-standard discovery endpoint
+  for the CLI.
+- The document handler logs one warning per distinct refused origin in each hour, through a
   mutex-guarded map capped at a fixed size and a fixed origin length, so a flood of spoofed hosts
-  cannot grow memory. A `sync.Map` cannot enforce the cap atomically. After the cap, the
-  unlabelled `engram.resource_metadata.refused` counter still records every refusal.
+  cannot grow memory or silence a later refusal for longer than an hour. A `sync.Map` cannot
+  enforce the cap atomically. The warning also names any `X-Forwarded-Host` value the derivation
+  ignored. The unlabelled `engram.resource_metadata.refused` counter records every refusal.
+- `X-Forwarded-Host` is used only when the request carries exactly one such header, because a
+  proxy that appends a line leaves the client's line first.
 
 Alternatives rejected:
 
@@ -112,12 +126,16 @@ Alternatives rejected:
 ### D-03: `ENGRAM_MCP_LISTEN_ADDR` opens a second `http.Server` over a second mux
 
 - Key `server.mcp_listen_addr`, env `ENGRAM_MCP_LISTEN_ADDR`, flag `--mcp-listen-addr`, default
-  empty. A value that is not `host:port` is a usage error. So is a value on the same non-zero port as
-  `ENGRAM_LISTEN_ADDR` on the same host or with all interfaces on either side: on darwin `:8080` and
-  `127.0.0.1:8080` both bind, and the MCP-only mux would then take loopback traffic from the
-  console. Port 0 never collides.
+  empty. A value that is not `host:port` with a port is a usage error. So is a value on the same
+  non-zero port as `ENGRAM_LISTEN_ADDR` on hosts that overlap: the same host, an empty host or `::`
+  on either side (Go binds both families there), or `0.0.0.0` against an IPv4 address or a name. On
+  darwin `:8080` and `127.0.0.1:8080` both bind, and the MCP-only mux would then take loopback
+  traffic from the console. Port 0 never collides, and `0.0.0.0` does not collide with an IPv6
+  address.
 - The setting needs an auth lane, like `ENGRAM_CONNECT_HEADLESS`. With a nil chain the listener
-  would publish every memory tool unauthenticated, and it exists to face the internet.
+  would publish every memory tool unauthenticated, and it exists to face the internet. Without
+  either resource setting the server starts but logs a warning, because the public listener then
+  names whatever origin a caller gives.
 - The second mux mounts the same `handler` value that the primary mux mounts at the MCP path (the
   fully wrapped chain that `mcpTransport` builds: bearer gate, access log, OpenTelemetry) and the
   same `protectedResourceHandler` on the two well-known paths. Its root handler is a plain 404 for
@@ -134,7 +152,9 @@ Alternatives rejected:
 - `serveAll` runs each server on its socket. A serve failure or the signal shuts both down in
   parallel, then drains the queues, so the drain ordering rule holds for both and also on the
   serve-failure path. Every serve failure and every shutdown error is returned, joined and named.
-  A server whose `Shutdown` hits the deadline has its open connections closed.
+  A server whose `Shutdown` runs out of its grace (15 seconds, a parameter so a test can pass a
+  spent one) has its open connections closed; any other `Shutdown` error is the listener socket's
+  own close error and is reported as that.
 - The MCP GET event stream stays open until its request context ends, which held `Shutdown` until
   its deadline. Each server's `RegisterOnShutdown` cancels a context that ends every GET to the
   MCP transport (`endGETWith`). Other requests keep their own context and finish normally.
@@ -142,7 +162,7 @@ Alternatives rejected:
   container port named `mcp` and a Service port named `mcp`, both on the port parsed from the
   address, and `_helpers.tpl` renders a `with`-guarded `ENGRAM_MCP_LISTEN_ADDR` row. The port number
   comes from a template helper that takes the text after the last colon, and `fail`s when the value
-  has no port.
+  has no port, names a loopback host, or uses the port of the `http` listener.
 
 Alternatives rejected:
 
@@ -154,14 +174,14 @@ Alternatives rejected:
 
 ### D-04: Startup log reports every listening address and the discovery mode
 
-The "engram listening" line gains the second address when set. The "protected-resource metadata
-mounted" line gains `origins=<count>` in the allowlist mode. These are the operator's only signal
-that the new modes are active, and they cost nothing.
+The "engram listening" line reports each bound address, so a port 0 shows the port it got. The
+"protected-resource metadata mounted" line gains `origins=<count>` in the allowlist mode. These are
+the operator's only signal that the new modes are active, and they cost nothing. The access log
+carries the local address of each connection, so the two listeners can be told apart.
 
 ## Risks / Trade-offs
 
-- [A per-request middleware construction on every MCP request] → One closure and one small struct
-  per request. The streamable-HTTP handler allocates far more per request. No measurement needed.
+- [A middleware construction on every MCP request] → One closure and one small struct per request. The streamable-HTTP handler allocates far more per request. No measurement needed.
 - [An operator lists `https://a.example` but the proxy forwards `https://a.example:443`] → Both
   sides drop the default port, so this matches. Any other mismatch gets the 404 plus a warning that
   names the derived origin, which makes the fix obvious.

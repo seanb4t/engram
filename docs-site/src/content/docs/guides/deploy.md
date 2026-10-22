@@ -107,10 +107,11 @@ then not reachable through the public name, and the proxy needs no path
 filter. The client verbs of the `engram` CLI use the Connect API, so run
 them against a name that reaches the `http` port.
 
-Set `memory.mcpResourceOrigins` to the public origins, so that engram names
-no other origin in its protected-resource document and its `401` challenge.
-If two names reach the same server, list both: each name then gets its own
-document.
+Set `memory.mcpResourceOrigins` to the public origins, so that engram
+points clients at no other origin in its `401` challenge and its path-suffix
+protected-resource document. If two names reach the same server, list both:
+each name then gets its own document. `engram login` works through any name,
+listed or not, because the host-only document answers every origin.
 
 On shutdown, engram ends the open MCP event streams on both ports, so the
 shutdown does not wait for them. Clients open a new stream to the next pod.

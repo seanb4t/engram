@@ -60,13 +60,14 @@ the `resource` value or the challenge, so its requirements stand.
 
 - **MCP tool schemas:** deliberately unchanged.
 - **Connect proto:** deliberately unchanged. The Connect routes stay on the primary listener only.
-- **CLI:** deliberately unchanged. `engram login` and `engram setup` keep working against either
-  origin.
+- **CLI:** deliberately unchanged. `engram login` and `engram setup` keep working against any
+  origin, listed or not, because the host-only document they read answers every origin.
 - **Console (`ui/`):** deliberately unchanged. It never appears on the MCP-only listener.
 - **Helm chart:** affected. Two new values, one optional container port and Service port in
-  `memory-mcp.yaml`, and the resource-URL helper in `_helpers.tpl` learns the origins value.
-  Existing values render the same manifests.
-- **Docs-site:** affected. `reference/auth.md`, `guides/configure.md` and `guides/deploy.md`.
+  `memory-mcp.yaml`, two `with`-guarded env rows in `engram.containerEnv`, and an
+  `engram.mcpListenPort` helper in `_helpers.tpl`. Existing values render the same manifests.
+- **Docs-site:** affected. `reference/auth.md`, `guides/configure.md`, `guides/deploy.md` and
+  `guides/upgrade.md`, plus the bind-failure wording in `guides/cli.md`.
 - **Engram skill:** deliberately unchanged. The skill guides agents, and nothing agent-facing
   changes.
 
@@ -75,9 +76,11 @@ Wire-contract compatibility: two new `ENGRAM_` config keys, `ENGRAM_MCP_RESOURCE
 payload key changes. The 401 challenge gains a header in a mode that sent none, which is additive
 for every client that already handles the RFC 9728 fallback.
 
-Code touched: `cmd/engram/serve.go` (`withAuth` and the second `http.Server`),
-`cmd/engram/wellknown.go` (`resourceURLFor`, `resolveResourceMetadataURL` and a per-request
-sibling), `internal/config` (two registry rows and the exclusivity check), their tests.
+Code touched: `cmd/engram/serve.go` (`withAuth`, the listeners and the shutdown),
+`cmd/engram/wellknown.go` (`resourceURLFor` and `resolveResourceMetadataURL` give way to
+`protectedResource`, which also owns the exclusivity check), `cmd/engram/mcproute.go` (the
+MCP-only mux), `internal/config` (two registry rows), `internal/telemetry` (one counter), their
+tests and an `internal/e2e` test.
 
 Order of delivery: #865 and #866 first, because the cluster change ships with a proxy path filter
 and needs the per-request hint. #867 second. The cluster change moves the tunnel to the dedicated

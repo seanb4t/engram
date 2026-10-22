@@ -43,6 +43,7 @@ one predictable, migration-safe contract.
 | set `ENGRAM_DECISIONS_PROVIDER=jev` (or Helm `memory.decisions.provider: jev`) and do not want console `/search` query text sent to the provider | §22 |
 | hand-tune the Qdrant collection's quantization, run Qdrant with little memory headroom, or have a collection whose index builds take minutes | §23 |
 | run a bare `engram` from a script or an agent to read the self-describe catalog | §24 |
+| rely on a `401` from the MCP path carrying no `WWW-Authenticate` header, set `ENGRAM_MCP_RESOURCE_URL` to a value with userinfo or an unusual host, or compare the derived `resource` value byte for byte | §25 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -646,6 +647,34 @@ A bare `engram` now depends on the terminal:
 the catalog. Run `engram catalog` instead. A caller that is not changed fails
 with exit `2` and empty stdout, and the stderr line names the new command.
 Nothing in this repository runs a bare `engram`.
+
+### 25. The MCP 401 challenge names a protected-resource document by default
+
+When neither `ENGRAM_MCP_RESOURCE_URL` nor `ENGRAM_OIDC_RESOURCE_METADATA` is
+set, a `401` from the MCP path now carries
+`WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`.
+The origin is the origin of the request (#865). Before, this `401` carried no
+`WWW-Authenticate` header at all. A `401` with no parameter to give now
+carries a bare `WWW-Authenticate: Bearer`, which RFC 6750 requires. Every
+`401` from the bearer check carries `Cache-Control: no-store`.
+
+Three smaller changes come with it:
+
+- engram normalizes the derived `resource` value. It lowercases the scheme
+  and the host and removes a trailing dot from the host. It writes an IPv6
+  address in its short form and drops the default port of the scheme.
+- The server checks `ENGRAM_MCP_RESOURCE_URL` more strictly. It does not
+  start when the value has userinfo, a query or a fragment. It also does not
+  start when the host is not a DNS name or an IP address.
+- Two new settings are empty by default. `ENGRAM_MCP_RESOURCE_ORIGINS` limits
+  the origins that the derived mode names (#866). `ENGRAM_MCP_LISTEN_ADDR`
+  opens a second listener that serves only MCP and discovery (#867).
+  [Configure](/guides/configure/) describes both.
+
+**Who needs to act:** a client that expects a `401` without a challenge, and
+an operator whose `ENGRAM_MCP_RESOURCE_URL` holds userinfo or an unusual host.
+MCP clients that follow the MCP authorization spec use the new challenge to
+find the document.
 
 ---
 
