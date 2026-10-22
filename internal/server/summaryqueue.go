@@ -42,7 +42,7 @@ type summaryQueue struct {
 
 	// mu guards ch's closed state so a late tryEnqueue can never send on a
 	// closed channel and panic (CR-01). The D-08 ordering invariant
-	// (serve.go drains only AFTER httpSrv.Shutdown returns) is necessary but
+	// (serve.go drains only AFTER every server's Shutdown returns) is necessary but
 	// NOT sufficient: net/http.Server.Shutdown does NOT force-terminate active
 	// handlers when its context deadline expires — it just stops waiting — so
 	// a slow store_memory/schedule_memory handler (exactly the gateway-brownout
@@ -271,7 +271,7 @@ func newRetryBackOff() *backoff.ExponentialBackOff {
 
 // Shutdown stops accepting new work and waits for in-flight fills to finish,
 // bounded by ctx. Two layers protect the channel close from a concurrent send:
-// (1) the caller (serve.go) drains only AFTER httpSrv.Shutdown(ctx) returns, so
+// (1) the caller (serve.go) drains only AFTER every server's Shutdown(ctx) returns, so
 // most handlers have already finished, and (2) this method takes mu.Lock
 // (mutually exclusive with tryEnqueue's RLock) and flips closed before
 // close(ch), so even a handler that outlived Shutdown's grace window — Go's

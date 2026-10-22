@@ -5,8 +5,10 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +68,17 @@ func TestStatusWriterUnwrap(t *testing.T) {
 	rc := http.NewResponseController(sw)
 	if err := rc.Flush(); err != nil {
 		t.Errorf("Flush via ResponseController: %v", err)
+	}
+}
+
+func TestAccessLogNamesLocalAddress(t *testing.T) {
+	logs := captureLogs(t)
+	h := accessLog(nil, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	local := net.Addr(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8081})
+	req = req.WithContext(context.WithValue(req.Context(), http.LocalAddrContextKey, local))
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if !strings.Contains(logs.String(), `"local":"127.0.0.1:8081"`) {
+		t.Fatalf("access log does not name the local address: %s", logs.String())
 	}
 }

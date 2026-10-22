@@ -84,12 +84,19 @@ func rootHandler(uiEnabled bool) http.Handler {
 }
 
 // newMCPOnlyMux is the mux of the MCP-only listener: the MCP transport at
-// mcpPath, the protected-resource metadata document on its well-known paths,
-// and a 404 for every other path, the bare root included. It mounts no
-// console, login or Connect route.
+// exactly mcpPath, the protected-resource metadata document on its
+// well-known paths, and a 404 for every other path. The bare root is a 404
+// too, unless mcpPath is "/": the transport then answers the bare root only,
+// never the legacy catch-all of the primary listener. It mounts no console,
+// login or Connect route.
 func newMCPOnlyMux(mcpHandler, prmHandler http.Handler, mcpPath string) *http.ServeMux {
 	mux := http.NewServeMux()
-	mountMCPRoutes(mux, mcpHandler, false, mcpPath)
+	if mcpPath == "/" {
+		mux.Handle("/{$}", mcpHandler)
+	} else {
+		mux.Handle(mcpPath, mcpHandler)
+	}
+	mux.Handle("/", rootHandler(false))
 	mountWellKnownRoutes(mux, prmHandler, mcpPath)
 	return mux
 }

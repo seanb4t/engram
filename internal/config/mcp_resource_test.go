@@ -98,3 +98,47 @@ func TestMCPResourceOrigins(t *testing.T) {
 		}
 	})
 }
+
+// TestMCPListenAddr checks that ENGRAM_MCP_LISTEN_ADDR has one registry row
+// with the --mcp-listen-addr flag and no default, reaches
+// cfg.Server.MCPListenAddr verbatim, and is empty when unset.
+func TestMCPListenAddr(t *testing.T) {
+	t.Run("registry entry", func(t *testing.T) {
+		var matches int
+		for _, f := range registry {
+			if f.Key != "server.mcp_listen_addr" {
+				continue
+			}
+			matches++
+			if f.Env != "ENGRAM_MCP_LISTEN_ADDR" || f.Flag != "mcp-listen-addr" || f.Legacy != "" || f.Default != "" {
+				t.Fatalf("server.mcp_listen_addr row = %+v, want env ENGRAM_MCP_LISTEN_ADDR, flag mcp-listen-addr, no legacy or default", f)
+			}
+		}
+		if matches != 1 {
+			t.Fatalf("registry has %d entries for server.mcp_listen_addr, want exactly 1", matches)
+		}
+	})
+
+	t.Run("from env", func(t *testing.T) {
+		t.Setenv("ENGRAM_QDRANT_ADDR", "localhost:6334")
+		t.Setenv("ENGRAM_MCP_LISTEN_ADDR", ":8081")
+		cfg, err := Load(nil)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Server.MCPListenAddr != ":8081" {
+			t.Fatalf("Server.MCPListenAddr = %q, want %q", cfg.Server.MCPListenAddr, ":8081")
+		}
+	})
+
+	t.Run("unset is empty", func(t *testing.T) {
+		t.Setenv("ENGRAM_QDRANT_ADDR", "localhost:6334")
+		cfg, err := Load(nil)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Server.MCPListenAddr != "" {
+			t.Fatalf("Server.MCPListenAddr = %q, want empty", cfg.Server.MCPListenAddr)
+		}
+	})
+}

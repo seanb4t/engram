@@ -118,34 +118,49 @@ func TestMCPOnlyMux(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 	}
-	mux := newMCPOnlyMux(stub("mcp"), stub("prm"), "/mcp")
-
-	cases := []struct {
+	type route struct {
 		name, method, path string
 		wantCode           int
 		wantReached        string
-	}{
-		{"MCP path", http.MethodPost, "/mcp", http.StatusOK, "mcp"},
-		{"host-only well-known path", http.MethodGet, wellKnownPRMBase, http.StatusOK, "prm"},
-		{"path-suffix well-known path", http.MethodGet, protectedResourcePaths("/mcp"), http.StatusOK, "prm"},
+	}
+	refused := []route{
 		{"console", http.MethodGet, "/ui/", http.StatusNotFound, ""},
 		{"login", http.MethodGet, "/auth/login", http.StatusNotFound, ""},
 		{"Connect procedure", http.MethodPost, "/engram.v1.EngramService/SearchMemories", http.StatusNotFound, ""},
-		{"bare root is not a console redirect", http.MethodGet, "/", http.StatusNotFound, ""},
+		{"POST to a well-known path", http.MethodPost, wellKnownPRMBase, http.StatusNotFound, ""},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
-			if rec.Code != tc.wantCode {
-				t.Fatalf("%s %s: status=%d want %d", tc.method, tc.path, rec.Code, tc.wantCode)
-			}
-			if got := rec.Header().Get("X-Reached"); got != tc.wantReached {
-				t.Fatalf("%s %s: reached %q want %q", tc.method, tc.path, got, tc.wantReached)
-			}
-			if loc := rec.Header().Get("Location"); loc != "" {
-				t.Fatalf("%s %s: redirected to %q", tc.method, tc.path, loc)
-			}
-		})
+	modes := []struct {
+		mcpPath string
+		routes  []route
+	}{
+		{"/mcp", append([]route{
+			{"MCP path", http.MethodPost, "/mcp", http.StatusOK, "mcp"},
+			{"host-only well-known path", http.MethodGet, wellKnownPRMBase, http.StatusOK, "prm"},
+			{"path-suffix well-known path", http.MethodGet, protectedResourcePaths("/mcp"), http.StatusOK, "prm"},
+			{"bare root is not a console redirect", http.MethodGet, "/", http.StatusNotFound, ""},
+		}, refused...)},
+		{"/", append([]route{
+			{"MCP at the bare root", http.MethodPost, "/", http.StatusOK, "mcp"},
+			{"host-only well-known path", http.MethodGet, wellKnownPRMBase, http.StatusOK, "prm"},
+			{"no root catch-all", http.MethodPost, "/anything", http.StatusNotFound, ""},
+		}, refused...)},
+	}
+	for _, mode := range modes {
+		mux := newMCPOnlyMux(stub("mcp"), stub("prm"), mode.mcpPath)
+		for _, tc := range mode.routes {
+			t.Run(mode.mcpPath+" "+tc.name, func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				mux.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+				if rec.Code != tc.wantCode {
+					t.Fatalf("%s %s: status=%d want %d", tc.method, tc.path, rec.Code, tc.wantCode)
+				}
+				if got := rec.Header().Get("X-Reached"); got != tc.wantReached {
+					t.Fatalf("%s %s: reached %q want %q", tc.method, tc.path, got, tc.wantReached)
+				}
+				if loc := rec.Header().Get("Location"); loc != "" {
+					t.Fatalf("%s %s: redirected to %q", tc.method, tc.path, loc)
+				}
+			})
+		}
 	}
 }

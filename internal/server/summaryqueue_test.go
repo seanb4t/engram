@@ -312,7 +312,7 @@ func TestSummaryQueueDepthReflectsChannelOccupancy(t *testing.T) {
 }
 
 // TestSummaryQueueEnqueueAfterShutdownIsDroppedNotPanic proves a late
-// tryEnqueue — from an HTTP handler that outlived httpSrv.Shutdown's grace
+// tryEnqueue — from an HTTP handler that outlived http.Server.Shutdown's grace
 // window (net/http does not force-terminate handlers on Shutdown-ctx expiry) —
 // is dropped-and-counted rather than panicking with "send on closed channel"
 // (CR-01). Run with -race.

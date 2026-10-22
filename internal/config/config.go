@@ -40,9 +40,10 @@ type Config struct {
 	Setup       SetupConfig       `koanf:"setup"`
 }
 
-// ServerConfig is engram's HTTP-listener surface: where the process binds,
-// the route the MCP transport mounts under, and the public URL a client
-// reaches that endpoint on.
+// ServerConfig is engram's HTTP-listener surface: where the process binds
+// (one listener, or two with MCPListenAddr), the route the MCP transport
+// mounts under, and how the public resource URL a client reaches that
+// endpoint on is pinned or bounded.
 type ServerConfig struct {
 	ListenAddr string `koanf:"listen_addr"`
 	// MCPListenAddr is an optional second listen address that serves only

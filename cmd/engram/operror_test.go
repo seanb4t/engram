@@ -211,14 +211,13 @@ var operatorCommandFiles = []string{
 // operatorCommandFiles must carry, on the SAME line, to be exempted from
 // TestNoBareOperatorErrorReturns below.
 //
-// Zero sites carry it at this commit. Even the one deliberate D-03
-// backstop -- serve.go's listener bind or serve failure -- returns the stdlib's
-// error bare (`return err` / `serveErr <- err`), never a locally
-// constructed fmt.Errorf/errors.New, so there is nothing for this marker
-// to exempt yet; see the comment at that call site in serve.go for the
-// full rationale. The marker exists so a future genuinely exceptional
-// site is recorded explicitly in the source, rather than silently
-// widening this gate by editing the test itself.
+// One site carries it: serve.go's listenAll, which names the listener's
+// setting on a bind failure, the one deliberate D-03 backstop that exits 1
+// (see the comment at the listenAll call site in runServe for the full
+// rationale). serveAll wraps its serve and shutdown failures the same way
+// but sends or joins them rather than returning a fmt.Errorf directly. The
+// marker records a genuinely exceptional site explicitly in the source,
+// rather than silently widening this gate by editing the test itself.
 const bareOperatorErrorExceptionMarker = "gsd:bare-operator-error-exception"
 
 // TestNoBareOperatorErrorReturns is the source-level D-03 closing gate: no

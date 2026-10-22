@@ -231,7 +231,8 @@ func unitVector(s string, dim int) []float32 {
 
 // serverProc is a running engram subprocess.
 type serverProc struct {
-	addr string // host:port
+	addr string    // host:port
+	cmd  *exec.Cmd // the running `engram serve`
 }
 
 // endpoint is the MCP transport URL.
@@ -291,7 +292,7 @@ func startServer(t *testing.T, extraEnv map[string]string) *serverProc {
 	for time.Now().Before(deadline) {
 		if c, derr := net.DialTimeout("tcp", addr, 500*time.Millisecond); derr == nil {
 			_ = c.Close()
-			return &serverProc{addr: addr}
+			return &serverProc{addr: addr, cmd: cmd}
 		}
 		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
 			b, _ := os.ReadFile(logFile.Name())

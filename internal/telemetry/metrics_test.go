@@ -32,6 +32,8 @@ func TestNewToolMetricsRecordsWithoutPanic(t *testing.T) {
 		ctx := context.Background()
 		m.Record(ctx, "store_memory", "ok", 12.3)
 		m.RecordAuthFailure(ctx, "unauthorized")
+		m.RecordResourceMetadataRefused(ctx)
+		m.RecordResourceMetadataRefused(ctx)
 
 		var rm metricdata.ResourceMetrics
 		if err := reader.Collect(ctx, &rm); err != nil {
@@ -102,6 +104,25 @@ func TestNewToolMetricsRecordsWithoutPanic(t *testing.T) {
 		authAttrs := authSum.DataPoints[0].Attributes
 		if v, _ := authAttrs.Value("reason"); v.AsString() != "unauthorized" {
 			t.Errorf("reason attr: got %q want unauthorized", v.AsString())
+		}
+
+		// engram.resource_metadata.refused == 2, unlabelled
+		refused, ok := byName["engram.resource_metadata.refused"]
+		if !ok {
+			t.Fatal("engram.resource_metadata.refused not found")
+		}
+		refusedSum, ok := refused.Data.(metricdata.Sum[int64])
+		if !ok {
+			t.Fatalf("engram.resource_metadata.refused data type: %T", refused.Data)
+		}
+		if len(refusedSum.DataPoints) != 1 {
+			t.Fatalf("engram.resource_metadata.refused data points: got %d want 1", len(refusedSum.DataPoints))
+		}
+		if got := refusedSum.DataPoints[0].Value; got != 2 {
+			t.Errorf("engram.resource_metadata.refused value: got %d want 2", got)
+		}
+		if n := refusedSum.DataPoints[0].Attributes.Len(); n != 0 {
+			t.Errorf("engram.resource_metadata.refused attributes: got %d want 0", n)
 		}
 	})
 }
