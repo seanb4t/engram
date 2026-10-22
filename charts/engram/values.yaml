@@ -17,8 +17,9 @@ memory:
   # that serves only the MCP transport and the protected-resource metadata
   # paths. Point a public ingress at the "mcp" Service port it adds, never at
   # an expose.* route (those target port 8080). Empty (default) keeps one
-  # port. The value must end in :<port> on a non-loopback host, and the
-  # server refuses it without an auth lane (oidc.issuer or serviceAuth.*).
+  # port. The value must end in :<port>, on a non-loopback host, with a port
+  # other than listenAddr's, and the server refuses it without an auth lane
+  # (oidc.issuer or serviceAuth.*).
   mcpListenAddr: ""
   # ENGRAM_MCP_PATH: where the MCP transport is mounted. "" → /mcp (default, both
   # headless and UI modes). "/" restores the pre-0.7 root catch-all (MCP answers

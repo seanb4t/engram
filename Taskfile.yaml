@@ -447,8 +447,10 @@ tasks:
           echo "chart:validate: startupProbe window ${STARTUP_PERIOD}s x ${STARTUP_THRESHOLD} is under 615s for schemaTimeoutSeconds=600"
           exit 1
         fi
-        # MCP-only listener and origin allowlist: both with-guarded, asserted
-        # in both directions for the same reason as the blocks above.
+        # MCP-only listener and origin allowlist: both guarded, asserted in
+        # both directions for the same reason as the blocks above, and the
+        # render must fail for an address with no port, on a loopback host,
+        # or on the http port.
         MCP_DEFAULT_RENDER=$(helm template charts/engram)
         if echo "$MCP_DEFAULT_RENDER" | grep -q 'name: mcp\|ENGRAM_MCP_LISTEN_ADDR\|ENGRAM_MCP_RESOURCE_ORIGINS'; then
           echo "chart:validate: default render must NOT emit an mcp port, ENGRAM_MCP_LISTEN_ADDR or ENGRAM_MCP_RESOURCE_ORIGINS"
@@ -471,7 +473,7 @@ tasks:
           echo "chart:validate: --set memory.mcpListenAddr=:8081 must emit ENGRAM_MCP_LISTEN_ADDR=:8081"
           exit 1
         fi
-        for BAD_MCP_ADDR in 8081 127.0.0.1:8081; do
+        for BAD_MCP_ADDR in 8081 127.0.0.1:8081 LOCALHOST:8081 :8080; do
           if helm template charts/engram --set memory.mcpListenAddr=$BAD_MCP_ADDR >/dev/null 2>&1; then
             echo "chart:validate: --set memory.mcpListenAddr=$BAD_MCP_ADDR must fail the render"
             exit 1
@@ -486,43 +488,7 @@ tasks:
         # Deployment+CronJob container env (D-09). Any edit to this block
         # must be a deliberate, verified change (re-run the byte-identical
         # Deployment render diff manually) — this checksum guards against
-        # silent drift. Recorded 2026-07-16 at plan 20-04; re-pinned
-        # 2026-07-26 at plan 26-04 for the with-guarded
-        # ENGRAM_OPENAI_CHAT_BASE_URL row (D-12); re-pinned 2026-07-31 at
-        # plan 01-04 for the with-guarded ENGRAM_CONNECT_HEADLESS row
-        # (REVIEWS.md MED-10); re-pinned 2026-08-01 at plan 05-01 for the
-        # guarded ENGRAM_OPENAI_CHAT_API_KEY row (D-04a/D-04b); re-pinned
-        # 2026-09-09 at quick task 260909-ofg for the with-guarded
-        # ENGRAM_MCP_RESOURCE_URL row (GH-526). Re-verified: the default
-        # render omits the var entirely and its ENGRAM_ env
-        # block is byte-identical to the pre-phase render. Re-pinned
-        # 2026-09-21 for the four service-principal rows
-        # (ENGRAM_SERVICE_AUTH_STATIC_TOKENS secretKeyRef plus the three
-        # with-guarded OIDC/owner-claim rows); the default render still omits
-        # all four and the rest of the block is byte-identical. Re-pinned
-        # 2026-09-23 for the provider-gated ENGRAM_DECISIONS_* rows (DEC-01,
-        # D-04): the default render omits all six, and the rest of the block
-        # stays byte-identical to the pre-phase render. Re-pinned 2026-09-24
-        # for the ranker-gated ENGRAM_SEARCH_RANKER / ENGRAM_SEARCH_RERANK_TIMEOUT
-        # rows (D-10): the default render omits both, and the rest of the
-        # block stays byte-identical to the pre-phase render. Re-pinned
-        # 2026-09-25 for the with-guarded ENGRAM_SEARCH_RERANK_AUDIT row
-        # (GH-618): the default render still omits every ENGRAM_SEARCH_* var
-        # and the rest of the block is byte-identical. Re-pinned 2026-09-28
-        # for the three with-guarded ENGRAM_SEARCH_UNDERSTANDING /
-        # _TIMEOUT / _AUDIT rows (milestone 2026-09-25.01 Phase 6, D-01):
-        # the default render still omits them, and the rest of the
-        # engram.containerEnv block is byte-identical to the pre-change
-        # render (verified via a helm template charts/engram diff before and
-        # after this edit). Re-pinned 2026-10-02 for the two unguarded
-        # ENGRAM_QDRANT_QUANTIZATION / ENGRAM_QDRANT_SCHEMA_TIMEOUT rows
-        # (#698/#683): unlike the rows above, the default render emits both
-        # (int8, 120s), and a helm template diff before and after this edit
-        # shows only those two env lines plus the new startupProbe.
-        # Re-pinned 2026-10-10 for the with-guarded ENGRAM_DECISIONS_PATH row
-        # (#793), inside the provider gate: the default render and a
-        # provider=jev render without memory.decisions.path are both
-        # byte-identical to the pre-change render.
+        # silent drift.
         EXPECTED_CHECKSUM="f983042d919a9f01db2c431724e5feb4a159b630098958289c3b9c262bc6a734"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then

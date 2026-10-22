@@ -248,8 +248,9 @@
 {{- end -}}
 
 {{- /* The port number of memory.mcpListenAddr: the text after its last colon.
-It fails on a value with no port, and on a loopback host, which the Service
-port cannot reach. */}}
+It fails on a value with no port, on a loopback host, which the Service port
+cannot reach, and on the port of the http container port or of
+memory.listenAddr. */}}
 {{- define "engram.mcpListenPort" -}}
 {{- $addr := .Values.memory.mcpListenAddr | toString -}}
 {{- $parts := splitList ":" $addr -}}
@@ -258,8 +259,12 @@ port cannot reach. */}}
 {{- fail (printf "memory.mcpListenAddr %q must end in :<port>, e.g. \":8081\"" $addr) -}}
 {{- end -}}
 {{- $host := trimSuffix (printf ":%s" $port) $addr -}}
-{{- if regexMatch "^(localhost|127\\.[0-9.]+|\\[::1\\])$" $host -}}
+{{- if regexMatch "(?i)^(localhost|127\\.[0-9.]+|\\[::1\\]|\\[::ffff:127\\.[0-9.]+\\])$" $host -}}
 {{- fail (printf "memory.mcpListenAddr %q listens on loopback only, which the mcp Service port cannot reach; use \":%s\"" $addr $port) -}}
+{{- end -}}
+{{- $httpPort := last (splitList ":" (.Values.memory.listenAddr | toString)) -}}
+{{- if or (eq $port "8080") (eq $port $httpPort) -}}
+{{- fail (printf "memory.mcpListenAddr %q uses the port of the http listener; choose another port, e.g. \":8081\"" $addr) -}}
 {{- end -}}
 {{- $port -}}
 {{- end -}}
