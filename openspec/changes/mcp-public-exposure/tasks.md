@@ -27,9 +27,9 @@
 
 ## 4. Integration and gates
 
-- [ ] 4.1 Run the three issue scenarios end to end against a local `engram serve` with `ENGRAM_MCP_RESOURCE_ORIGINS=http://a.localhost:8080,http://b.localhost:8080` and `ENGRAM_MCP_LISTEN_ADDR=:8081`, using `curl` with `Host:` overrides. Verify: the document on each listed host names that host, an unlisted host gets 404, the 401 on port 8081 names the requesting origin, and `/ui/` on port 8081 is 404.
-- [ ] 4.2 Confirm the engram skill under `skill/engram/` and the CLAUDE.md memory contract need no edit, because nothing agent-facing changed. Verify: `rg -n 'RESOURCE_URL|LISTEN_ADDR' skill/engram CLAUDE.md` returns nothing.
-- [ ] 4.3 Run the quality gate. Verify: `task` (lint and test) and `task chart:validate` pass.
+- [x] 4.1 Run the three issue scenarios end to end against a local `engram serve` with `ENGRAM_MCP_RESOURCE_ORIGINS=http://a.localhost:8080,http://b.localhost:8080` and `ENGRAM_MCP_LISTEN_ADDR=:8081`, using `curl` with `Host:` overrides. Verify: the document on each listed host names that host, an unlisted host gets 404, the 401 on port 8081 names the requesting origin, and `/ui/` on port 8081 is 404.
+- [x] 4.2 Confirm the engram skill under `skill/engram/` and the CLAUDE.md memory contract need no edit, because nothing agent-facing changed. Verify: `rg -n 'RESOURCE_URL|LISTEN_ADDR' skill/engram CLAUDE.md` returns nothing.
+- [x] 4.3 Run the quality gate. Verify: `task` (lint and test) and `task chart:validate` pass.
 
 ## Workflow follow-up
 
