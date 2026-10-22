@@ -532,6 +532,7 @@ Flags:
       --connect-headless string         mount the ConnectRPC lane on a headless deployment (default off; requires at least one configured auth lane) (default "false")
   -h, --help                            help for serve
       --listen-addr string              listen address (default ":8080")
+      --mcp-listen-addr string          second listen address serving only the MCP transport and discovery (optional)
       --mcp-path string                 path for the MCP transport (empty=/mcp; '/'=legacy root catch-all)
       --oidc-audience string            expected OIDC audience (optional)
       --oidc-client-id string           OIDC confidential-client ID for the web login

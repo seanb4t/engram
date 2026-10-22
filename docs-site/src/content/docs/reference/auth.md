@@ -24,6 +24,7 @@ The MCP bearer-token lane's serve flags that have both a `--flag` and an `ENGRAM
 | Flag | Env | Default |
 |------|-----|---------|
 | `--listen-addr` | `ENGRAM_LISTEN_ADDR` | `:8080` |
+| `--mcp-listen-addr` | `ENGRAM_MCP_LISTEN_ADDR` | _(unset — one listener)_ |
 | `--oidc-issuer` | `ENGRAM_OIDC_ISSUER` | _(unset — auth disabled)_ |
 | `--oidc-audience` | `ENGRAM_OIDC_AUDIENCE` | _(unset — audience not checked)_ |
 | `--oidc-resource-metadata` | `ENGRAM_OIDC_RESOURCE_METADATA` | _(unset)_ |
@@ -83,6 +84,12 @@ warning the first time that it rejects each origin. You cannot set this
 variable together with `ENGRAM_MCP_RESOURCE_URL`, and the server does not
 start when both are set. See [Configure](/guides/configure/) for the entry
 format.
+
+`ENGRAM_MCP_LISTEN_ADDR` opens a second listener that serves only the MCP
+transport and the two protected-resource paths. Its MCP path has the same
+bearer check, the same `401` challenge and the same cross-origin rules as
+the main listener. Every other path on it gets a `404`, so the console, the
+login routes and the Connect API are not reachable through it.
 
 `ENGRAM_MCP_PATH` can no longer be set to `/.well-known` or any path under
 it — that root is reserved for these routes.

@@ -45,7 +45,11 @@ type Config struct {
 // reaches that endpoint on.
 type ServerConfig struct {
 	ListenAddr string `koanf:"listen_addr"`
-	MCPPath    string `koanf:"mcp_path"`
+	// MCPListenAddr is an optional second listen address that serves only
+	// the MCP transport and the protected-resource metadata paths. Empty
+	// (default) opens no second listener.
+	MCPListenAddr string `koanf:"mcp_listen_addr"`
+	MCPPath       string `koanf:"mcp_path"`
 	// MCPResourceURL (GH-526, D-03/D-04) is the public URL a client reaches
 	// the MCP endpoint on -- a deployment-topology value set once behind a
 	// gateway, env-only, with no --flag. When set, it becomes the RFC 9728

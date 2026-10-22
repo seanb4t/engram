@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"slices"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -44,6 +46,8 @@ var serveCmd = &cobra.Command{
 func init() {
 	f := serveCmd.Flags()
 	f.String("listen-addr", config.FlagDefault("listen-addr"), "listen address")
+	f.String("mcp-listen-addr", config.FlagDefault("mcp-listen-addr"),
+		"second listen address serving only the MCP transport and discovery (optional)")
 	f.String("oidc-issuer", config.FlagDefault("oidc-issuer"),
 		"OIDC issuer URL; setting it enables bearer-token enforcement")
 	f.String("oidc-audience", config.FlagDefault("oidc-audience"), "expected OIDC audience (optional)")
@@ -78,6 +82,9 @@ func runServe(cmd *cobra.Command) error {
 	// path (buildDepsFromEnv -> loadAndValidate -> Config.Validate). Bucket 1.
 	if cfg.Server.ListenAddr == "" {
 		return usageErrorf("ENGRAM_LISTEN_ADDR (or --listen-addr) is empty: a listen address is required")
+	}
+	if cfg.Server.MCPListenAddr != "" && cfg.Server.MCPListenAddr == cfg.Server.ListenAddr {
+		return usageErrorf("ENGRAM_MCP_LISTEN_ADDR (or --mcp-listen-addr) and ENGRAM_LISTEN_ADDR (or --listen-addr) are both %q: the MCP-only listener needs its own address", cfg.Server.ListenAddr)
 	}
 
 	// resolvedVersion (buildversion.go) is the single source for every
@@ -302,7 +309,8 @@ func runServe(cmd *cobra.Command) error {
 	// unauthenticated public reachability). The whole-mux
 	// CrossOriginProtection wrapper below still covers it and passes
 	// safe-method GET untouched.
-	mountWellKnownRoutes(mux, protectedResourceHandler(resolvedMCPResourceURL, cfg.OIDC.Issuer, resolvedMCPPath, resourceGate), resolvedMCPPath)
+	prmHandler := protectedResourceHandler(resolvedMCPResourceURL, cfg.OIDC.Issuer, resolvedMCPPath, resourceGate)
+	mountWellKnownRoutes(mux, prmHandler, resolvedMCPPath)
 	switch {
 	case resolvedMCPResourceURL != "":
 		slog.Info("protected-resource metadata mounted", "resource", "configured")
@@ -316,13 +324,52 @@ func runServe(cmd *cobra.Command) error {
 	mountMCPRoutes(mux, handler, uiCfg.Enabled, resolvedMCPPath)
 	slog.Info("MCP transport mounted", "path", resolvedMCPPath, "ui_enabled", uiCfg.Enabled)
 
-	// ReadHeaderTimeout guards against slowloris; IdleTimeout reclaims idle
-	// keep-alive connections. ReadTimeout and WriteTimeout are intentionally
-	// unset (0): the streamable-HTTP / SSE transport holds connections open
-	// indefinitely and the go-sdk never clears write deadlines, so either
-	// timeout would sever long-lived SSE streams.
-	httpSrv := &http.Server{
-		Addr: cfg.Server.ListenAddr,
+	servers := []*http.Server{newHTTPServer(cfg.Server.ListenAddr, mux)}
+	if cfg.Server.MCPListenAddr != "" {
+		// The MCP-only listener mounts the same fully wrapped MCP handler and
+		// the same document handler, and nothing else.
+		servers = append(servers, newHTTPServer(cfg.Server.MCPListenAddr, newMCPOnlyMux(handler, prmHandler, resolvedMCPPath)))
+	}
+
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// DELIBERATE D-03 EXCEPTION (second, and only other, documented
+	// exit-1 case alongside root.go's mistyped-verb path, plan 01-02):
+	// a bind failure (e.g. "address already in use") here, or a serve
+	// failure from serveAll below, is a local OS resource failure, not a
+	// config error and not "the remote server or Qdrant is unreachable" --
+	// exit 5 has meant the latter at every other site in this taxonomy, and
+	// force-mapping a local bind failure onto it would make 5 ambiguous for
+	// any caller scripting both `serve` and a client verb. D-02 keeps exit 1
+	// for exactly this: a genuinely unclassified failure that degrades
+	// loudly rather than being misfiled as a usage error. Recorded as
+	// accepted checkpoint decision "backstop-1" in 01-06-SUMMARY.md; named
+	// in guides/cli.md and guides/upgrade.md (plan 01-09). Left as a bare,
+	// untyped error on purpose -- do not wrap it in usageErrorf,
+	// classifyOperatorErr, or any other carrier.
+	listeners, err := listenAll(servers)
+	if err != nil {
+		slog.Error("listen failed", "err", err)
+		return err
+	}
+	listening := []any{"version", resolvedVersion(), "addr", cfg.Server.ListenAddr}
+	if cfg.Server.MCPListenAddr != "" {
+		listening = append(listening, "mcp_addr", cfg.Server.MCPListenAddr)
+	}
+	slog.Info("engram listening", listening...)
+	return serveAll(sigCtx, servers, listeners, drain)
+}
+
+// newHTTPServer is the http.Server for one engram listener.
+// ReadHeaderTimeout guards against slowloris; IdleTimeout reclaims idle
+// keep-alive connections. ReadTimeout and WriteTimeout are intentionally
+// unset (0): the streamable-HTTP / SSE transport holds connections open
+// indefinitely and the go-sdk never clears write deadlines, so either
+// timeout would sever long-lived SSE streams.
+func newHTTPServer(addr string, mux *http.ServeMux) *http.Server {
+	return &http.Server{
+		Addr: addr,
 		// CrossOriginProtection wraps the fully-assembled mux (D-07 whole-
 		// server wrap, verified safe): it covers the Connect handler,
 		// /auth/*, /ui/, and the MCP transport in one place. Safe-method GET
@@ -333,52 +380,69 @@ func runServe(cmd *cobra.Command) error {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+}
 
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	serveErr := make(chan error, 1)
-	go func() {
-		slog.Info("engram listening", "version", resolvedVersion(), "addr", cfg.Server.ListenAddr)
-		// DELIBERATE D-03 EXCEPTION (second, and only other, documented
-		// exit-1 case alongside root.go's mistyped-verb path, plan 01-02):
-		// ListenAndServe's own failure (e.g. "address already in use") is a
-		// local OS resource failure, not a config error and not "the remote
-		// server or Qdrant is unreachable" -- exit 5 has meant the latter at
-		// every other site in this taxonomy, and force-mapping a local bind
-		// failure onto it would make 5 ambiguous for any caller scripting
-		// both `serve` and a client verb. D-02 keeps exit 1 for exactly
-		// this: a genuinely unclassified failure that degrades loudly
-		// rather than being misfiled as a usage error. Recorded as accepted
-		// checkpoint decision "backstop-1" in 01-06-SUMMARY.md; named in
-		// guides/cli.md and guides/upgrade.md (plan 01-09). Left as a bare,
-		// untyped error on purpose -- do not wrap it in usageErrorf,
-		// classifyOperatorErr, or any other carrier.
-		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serveErr <- err
+// listenAll binds the address of each server, in order. When one bind
+// fails it closes the listeners already bound and returns that error.
+func listenAll(servers []*http.Server) ([]net.Listener, error) {
+	listeners := make([]net.Listener, 0, len(servers))
+	for _, srv := range servers {
+		ln, err := net.Listen("tcp", srv.Addr)
+		if err != nil {
+			for _, bound := range listeners {
+				_ = bound.Close()
+			}
+			return nil, err
 		}
-	}()
+		listeners = append(listeners, ln)
+	}
+	return listeners, nil
+}
 
+// serveAll serves servers[i] on listeners[i] until sigCtx is done or one of
+// them fails to serve. Either way it then shuts every server down in
+// parallel, runs drain within the same deadline, and waits for every serve
+// call to return. It returns the serve failure when there was one, else the
+// shutdown error.
+func serveAll(sigCtx context.Context, servers []*http.Server, listeners []net.Listener, drain func(context.Context)) error {
+	serveErr := make(chan error, len(servers))
+	var serving sync.WaitGroup
+	for i, srv := range servers {
+		serving.Go(func() {
+			if err := srv.Serve(listeners[i]); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serveErr <- err
+			}
+		})
+	}
+	defer serving.Wait()
+
+	var failure error
 	select {
-	case err := <-serveErr:
-		// See the deliberate-exception comment at the ListenAndServe call
-		// site above: this err is returned bare, reaching exitGeneric (1).
-		return err
+	case failure = <-serveErr:
+		slog.Error("listener failed; shutting down", "err", failure)
 	case <-sigCtx.Done():
 		slog.Info("shutdown signal received; draining")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		shutdownErr := httpSrv.Shutdown(shutdownCtx)
-		// Drain the summary and usage queues STRICTLY after httpSrv.Shutdown
-		// returns — never in parallel — so nearly all handlers have finished
-		// before either enqueue channel is closed (D-08, RESEARCH Pitfall 1).
-		// Necessary but not sufficient: Shutdown can return via deadline with a
-		// handler still in flight, so both queues self-guard the close vs a
-		// late enqueue (CR-01).
-		slog.Info("draining summary and usage queues")
-		drain(shutdownCtx)
-		return shutdownErr
 	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	shutdownErrs := make([]error, len(servers))
+	var shuttingDown sync.WaitGroup
+	for i, srv := range servers {
+		shuttingDown.Go(func() { shutdownErrs[i] = srv.Shutdown(shutdownCtx) })
+	}
+	shuttingDown.Wait()
+	// Drain the summary and usage queues STRICTLY after every Shutdown
+	// returns — never in parallel — so nearly all handlers have finished
+	// before either enqueue channel is closed (D-08, RESEARCH Pitfall 1).
+	// Necessary but not sufficient: Shutdown can return via deadline with a
+	// handler still in flight, so both queues self-guard the close vs a
+	// late enqueue (CR-01).
+	slog.Info("draining summary and usage queues")
+	drain(shutdownCtx)
+	if failure != nil {
+		return failure
+	}
+	return errors.Join(shutdownErrs...)
 }
 
 // ownerClaimGuard fails fast if any auth lane would run with an empty

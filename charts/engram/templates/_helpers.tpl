@@ -1,5 +1,8 @@
 {{- define "engram.containerEnv" -}}
 - { name: ENGRAM_LISTEN_ADDR, value: "{{ .Values.memory.listenAddr }}" }
+{{- with .Values.memory.mcpListenAddr }}
+- { name: ENGRAM_MCP_LISTEN_ADDR, value: "{{ . }}" }
+{{- end }}
 - { name: ENGRAM_QDRANT_ADDR, value: "qdrant.{{ .Release.Namespace }}.svc.cluster.local:6334" }
 - { name: ENGRAM_QDRANT_COLLECTION, value: "{{ .Values.memory.qdrant.collection }}" }
 - { name: ENGRAM_QDRANT_QUANTIZATION, value: "{{ .Values.memory.qdrant.quantization }}" }
@@ -242,4 +245,15 @@
 # the mounted bundle must cover every TLS peer of this process.
 - { name: SSL_CERT_FILE, value: "/etc/ssl/ca-bundle/{{ .Values.memory.openai.caBundle.key }}" }
 {{- end }}
+{{- end -}}
+
+{{- /* The port number of memory.mcpListenAddr: the text after its last colon. */}}
+{{- define "engram.mcpListenPort" -}}
+{{- $addr := .Values.memory.mcpListenAddr | toString -}}
+{{- $parts := splitList ":" $addr -}}
+{{- $port := last $parts -}}
+{{- if or (lt (len $parts) 2) (not (regexMatch "^[0-9]+$" $port)) -}}
+{{- fail (printf "memory.mcpListenAddr %q must end in :<port>, e.g. \":8081\"" $addr) -}}
+{{- end -}}
+{{- $port -}}
 {{- end -}}

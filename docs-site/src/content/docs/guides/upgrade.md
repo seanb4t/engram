@@ -87,9 +87,8 @@ seven now use the same vocabulary the client verbs already used:
 | `4` | Missing target |
 | `5` | Backend (Qdrant) unreachable |
 
-**The one documented exception:** `serve`'s own `ListenAndServe()` call —
-the underlying HTTP listener failing to bind (for example, "address already
-in use") — still exits `1`. Every other `serve` startup failure (bad
+**The one documented exception:** an HTTP listener of `serve` failing to
+bind (for example, "address already in use") still exits `1`. Every other `serve` startup failure (bad
 config, missing auth credentials, OIDC discovery failure) exits `2` or `5`
 like everything else in this list. This is deliberate, not an oversight:
 exit `5` has meant "the remote server or Qdrant is unreachable" at every

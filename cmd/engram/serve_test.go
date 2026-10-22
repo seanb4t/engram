@@ -10,7 +10,9 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +24,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/config"
@@ -652,7 +655,7 @@ func TestConnectResolverForHeadlessWithoutChainIsNil(t *testing.T) {
 // (mirroring exitcode_baseline_test.go's TestExitCodeBaseline, not a direct
 // runServe(cmd) call) for three guards reachable WITHOUT a live Qdrant --
 // each trips before runServe ever reaches server.Register (the bucket-2
-// store-construction call). Bucket 3 (ListenAndServe's own failure) is
+// store-construction call). Bucket 3 (a listener's bind or serve failure) is
 // deliberately NOT exercised here by binding a port; the deliberate
 // exception is proven by reading the code path instead (see the comment at
 // its call site in serve.go), per this plan's own instruction.
@@ -688,6 +691,10 @@ func TestServePreflightGuardsExitUsage(t *testing.T) {
 				"ENGRAM_MCP_RESOURCE_URL":     "https://a.example/mcp",
 				"ENGRAM_MCP_RESOURCE_ORIGINS": "https://a.example",
 			},
+		},
+		{
+			name: "same address on both listeners",
+			args: []string{"serve", "--listen-addr", "127.0.0.1:18080", "--mcp-listen-addr", "127.0.0.1:18080"},
 		},
 		{
 			name: "resource origins entry with a path",
@@ -748,4 +755,120 @@ func TestWithAuth_UnlistedOriginNoHint(t *testing.T) {
 			t.Fatalf("status=%d want %d", rec.Code, http.StatusTeapot)
 		}
 	})
+}
+
+// initializeRequest is an MCP initialize call for a streamable-HTTP POST.
+const initializeRequest = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"serve-test","version":"1"}}}`
+
+func postMCP(t *testing.T, base, token string, header map[string]string) (*http.Response, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, base+"/mcp", strings.NewReader(initializeRequest))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s/mcp: %v", base, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return resp, string(body)
+}
+
+func TestServeBothListeners(t *testing.T) {
+	mcpSrv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: "test"}, nil)
+	var h http.Handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpSrv }, nil)
+	h = withAuth(h, newStaticTokenChain(t), "", derivedChallengeURL("/mcp", nil))
+	prm := protectedResourceHandler("", "", "/mcp", nil)
+	primary := http.NewServeMux()
+	mountWellKnownRoutes(primary, prm, "/mcp")
+	mountMCPRoutes(primary, h, true, "/mcp")
+	servers := []*http.Server{
+		newHTTPServer("127.0.0.1:0", primary),
+		newHTTPServer("127.0.0.1:0", newMCPOnlyMux(h, prm, "/mcp")),
+	}
+	listeners, err := listenAll(servers)
+	if err != nil {
+		t.Fatalf("listenAll: %v", err)
+	}
+	bases := make([]string, len(listeners))
+	for i, ln := range listeners {
+		bases[i] = "http://" + ln.Addr().String()
+	}
+
+	sigCtx, stop := context.WithCancel(context.Background())
+	defer stop()
+	var drained bool
+	done := make(chan error, 1)
+	go func() { done <- serveAll(sigCtx, servers, listeners, func(context.Context) { drained = true }) }()
+
+	for _, base := range bases {
+		resp, body := postMCP(t, base, "secret-token-value", nil)
+		if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"serverInfo"`) {
+			t.Fatalf("%s: initialize status=%d body=%q, want a 200 handshake", base, resp.StatusCode, body)
+		}
+	}
+
+	resp, _ := postMCP(t, bases[1], "", nil)
+	want := `Bearer resource_metadata="` + bases[1] + `/.well-known/oauth-protected-resource/mcp"`
+	if resp.StatusCode != http.StatusUnauthorized || resp.Header.Get("WWW-Authenticate") != want {
+		t.Fatalf("MCP-only listener without a token: status=%d WWW-Authenticate=%q, want 401 %q", resp.StatusCode, resp.Header.Get("WWW-Authenticate"), want)
+	}
+
+	resp, _ = postMCP(t, bases[1], "secret-token-value", map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example"})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("MCP-only listener cross-site POST: status=%d want 403", resp.StatusCode)
+	}
+
+	stop()
+	if err := <-done; err != nil {
+		t.Fatalf("serveAll: %v", err)
+	}
+	if !drained {
+		t.Fatal("serveAll returned without running drain")
+	}
+	for _, ln := range listeners {
+		if conn, err := net.Dial("tcp", ln.Addr().String()); err == nil {
+			_ = conn.Close()
+			t.Fatalf("%s still accepts connections after shutdown", ln.Addr())
+		}
+	}
+}
+
+func TestListenAllClosesBoundListenersOnFailure(t *testing.T) {
+	free, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	firstAddr := free.Addr().String()
+	_ = free.Close()
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer busy.Close()
+
+	servers := []*http.Server{
+		newHTTPServer(firstAddr, http.NewServeMux()),
+		newHTTPServer(busy.Addr().String(), http.NewServeMux()),
+	}
+	if _, err := listenAll(servers); err == nil {
+		t.Fatal("listenAll on a busy address: want an error")
+	}
+	ln, err := net.Listen("tcp", firstAddr)
+	if err != nil {
+		t.Fatalf("first address still bound after the second bind failed: %v", err)
+	}
+	_ = ln.Close()
 }

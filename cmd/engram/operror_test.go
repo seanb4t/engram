@@ -212,7 +212,7 @@ var operatorCommandFiles = []string{
 // TestNoBareOperatorErrorReturns below.
 //
 // Zero sites carry it at this commit. Even the one deliberate D-03
-// backstop -- serve.go's ListenAndServe failure -- returns the SDK's own
+// backstop -- serve.go's listener bind or serve failure -- returns the stdlib's
 // error bare (`return err` / `serveErr <- err`), never a locally
 // constructed fmt.Errorf/errors.New, so there is nothing for this marker
 // to exempt yet; see the comment at that call site in serve.go for the

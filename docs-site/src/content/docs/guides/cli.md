@@ -626,8 +626,8 @@ still exit `1`:
 
 - A **mistyped verb** (`engram serach`), rejected during cobra's own command
   resolution before any engram hook runs.
-- A **genuinely unclassified internal error**, including `serve`'s own
-  `ListenAndServe()` call failing to bind (for example, "address already in
+- A **genuinely unclassified internal error**, including an HTTP
+  listener of `serve` failing to bind (for example, "address already in
   use"). This one is deliberate, not an oversight: exit `5` means "the
   remote server or Qdrant is unreachable" everywhere else in this taxonomy,
   and a local OS bind failure is a different condition — force-mapping it

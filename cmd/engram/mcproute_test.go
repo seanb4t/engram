@@ -110,3 +110,42 @@ func TestMountMCPRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestMCPOnlyMux(t *testing.T) {
+	stub := func(name string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("X-Reached", name)
+			w.WriteHeader(http.StatusOK)
+		})
+	}
+	mux := newMCPOnlyMux(stub("mcp"), stub("prm"), "/mcp")
+
+	cases := []struct {
+		name, method, path string
+		wantCode           int
+		wantReached        string
+	}{
+		{"MCP path", http.MethodPost, "/mcp", http.StatusOK, "mcp"},
+		{"host-only well-known path", http.MethodGet, wellKnownPRMBase, http.StatusOK, "prm"},
+		{"path-suffix well-known path", http.MethodGet, protectedResourcePaths("/mcp"), http.StatusOK, "prm"},
+		{"console", http.MethodGet, "/ui/", http.StatusNotFound, ""},
+		{"login", http.MethodGet, "/auth/login", http.StatusNotFound, ""},
+		{"Connect procedure", http.MethodPost, "/engram.v1.EngramService/SearchMemories", http.StatusNotFound, ""},
+		{"bare root is not a console redirect", http.MethodGet, "/", http.StatusNotFound, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+			if rec.Code != tc.wantCode {
+				t.Fatalf("%s %s: status=%d want %d", tc.method, tc.path, rec.Code, tc.wantCode)
+			}
+			if got := rec.Header().Get("X-Reached"); got != tc.wantReached {
+				t.Fatalf("%s %s: reached %q want %q", tc.method, tc.path, got, tc.wantReached)
+			}
+			if loc := rec.Header().Get("Location"); loc != "" {
+				t.Fatalf("%s %s: redirected to %q", tc.method, tc.path, loc)
+			}
+		})
+	}
+}

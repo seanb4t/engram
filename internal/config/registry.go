@@ -25,6 +25,7 @@ type field struct {
 var registry = []field{
 	{Key: "server.listen_addr", Env: "ENGRAM_LISTEN_ADDR", Legacy: "MEM_LISTEN_ADDR", Flag: "listen-addr", Default: ":8080"},
 	{Key: "server.mcp_path", Env: "ENGRAM_MCP_PATH", Legacy: "MEM_MCP_PATH", Flag: "mcp-path"},
+	{Key: "server.mcp_listen_addr", Env: "ENGRAM_MCP_LISTEN_ADDR", Flag: "mcp-listen-addr"},
 	// server.mcp_resource_url (D-03, GH-526): a brand-new key, no Legacy value
 	// (nothing retired to guard against) and no Flag (env-only — a deployment-
 	// topology value, never typed at a prompt).
