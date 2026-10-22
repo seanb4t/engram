@@ -119,6 +119,28 @@ func runServe(cmd *cobra.Command) error {
 	// state so the layer Record* helpers emit (no-op until this runs).
 	telemetry.InitLayerMetrics(otel.Meter("github.com/seanb4t/engram"))
 
+	// GH-526 / D-04: shape-checked here, at their single use site, rather
+	// than in Config.Validate (which is scoped to fields every command's
+	// store/embedder path consumes -- these fields are serve-only), and
+	// before any backend is dialled. Bucket 1: a malformed configured
+	// ENGRAM_MCP_RESOURCE_URL or ENGRAM_MCP_RESOURCE_ORIGINS, or both set.
+	resolvedMCPResourceURL, err := resolveMCPResourceURL(cfg.Server.MCPResourceURL)
+	if err != nil {
+		slog.Error("invalid MCP resource URL", "err", err)
+		return usageErrorf("%w", err)
+	}
+	resourceOrigins, err := resolveMCPResourceOrigins(cfg.Server.MCPResourceOrigins)
+	if err != nil {
+		slog.Error("invalid MCP resource origins", "err", err)
+		return usageErrorf("%w", err)
+	}
+	if len(resourceOrigins) > 0 && resolvedMCPResourceURL != "" {
+		err := usageErrorf("ENGRAM_MCP_RESOURCE_ORIGINS and ENGRAM_MCP_RESOURCE_URL are both set: the origin list bounds the per-request resource, which a set ENGRAM_MCP_RESOURCE_URL replaces; set one of them")
+		slog.Error("invalid MCP resource config", "err", err)
+		return err
+	}
+	resourceGate := newOriginGate(resourceOrigins)
+
 	mux := http.NewServeMux()
 
 	uiCfg, err := resolveUIConfig(uiRaw{
@@ -263,15 +285,6 @@ func runServe(cmd *cobra.Command) error {
 		// Bucket 1: a malformed/colliding --mcp-path.
 		return usageErrorf("%w", err)
 	}
-	// GH-526 / D-04: shape-checked here, at its single use site, rather than
-	// in Config.Validate (which is scoped to fields every command's
-	// store/embedder path consumes -- this field is serve-only). Bucket 1: a
-	// malformed configured ENGRAM_MCP_RESOURCE_URL.
-	resolvedMCPResourceURL, err := resolveMCPResourceURL(cfg.Server.MCPResourceURL)
-	if err != nil {
-		slog.Error("invalid MCP resource URL", "err", err)
-		return usageErrorf("%w", err)
-	}
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv }, nil)
@@ -280,7 +293,7 @@ func runServe(cmd *cobra.Command) error {
 	// document on each request's own derived origin.
 	handler = withAuth(handler, chain,
 		resolveResourceMetadataURL(cfg.OIDC.ResourceMetadata, resolvedMCPResourceURL, resolvedMCPPath),
-		derivedChallengeURL(resolvedMCPPath))
+		derivedChallengeURL(resolvedMCPPath, resourceGate))
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	handler = otelhttp.NewHandler(handler, "mcp")
 	// GH-526: mount the RFC 9728 protected-resource metadata document bare on
@@ -289,10 +302,13 @@ func runServe(cmd *cobra.Command) error {
 	// unauthenticated public reachability). The whole-mux
 	// CrossOriginProtection wrapper below still covers it and passes
 	// safe-method GET untouched.
-	mountWellKnownRoutes(mux, protectedResourceHandler(resolvedMCPResourceURL, cfg.OIDC.Issuer, resolvedMCPPath), resolvedMCPPath)
-	if resolvedMCPResourceURL != "" {
+	mountWellKnownRoutes(mux, protectedResourceHandler(resolvedMCPResourceURL, cfg.OIDC.Issuer, resolvedMCPPath, resourceGate), resolvedMCPPath)
+	switch {
+	case resolvedMCPResourceURL != "":
 		slog.Info("protected-resource metadata mounted", "resource", "configured")
-	} else {
+	case len(resourceOrigins) > 0:
+		slog.Info("protected-resource metadata mounted", "resource", "derived-per-request", "origins", len(resourceOrigins))
+	default:
 		slog.Info("protected-resource metadata mounted", "resource", "derived-per-request")
 	}
 	// Mount the MCP transport at its configured path and give "/" to the console

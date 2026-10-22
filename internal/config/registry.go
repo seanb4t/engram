@@ -29,6 +29,8 @@ var registry = []field{
 	// (nothing retired to guard against) and no Flag (env-only — a deployment-
 	// topology value, never typed at a prompt).
 	{Key: "server.mcp_resource_url", Env: "ENGRAM_MCP_RESOURCE_URL"},
+	// server.mcp_resource_origins: env-only, like server.mcp_resource_url.
+	{Key: "server.mcp_resource_origins", Env: "ENGRAM_MCP_RESOURCE_ORIGINS"},
 	{Key: "qdrant.addr", Env: "ENGRAM_QDRANT_ADDR", Legacy: "MEM_QDRANT_ADDR", Default: "localhost:6334"},
 	{Key: "qdrant.collection", Env: "ENGRAM_QDRANT_COLLECTION", Legacy: "MEM_QDRANT_COLLECTION", Default: "mem_eval"},
 	// qdrant.quantization / qdrant.schema_timeout (#698, #683): brand-new

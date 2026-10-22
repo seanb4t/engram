@@ -53,6 +53,10 @@ type ServerConfig struct {
 	// header can override it. Empty (default) means the value is derived
 	// per request from the forwarded/Host headers and the MCP path.
 	MCPResourceURL string `koanf:"mcp_resource_url"`
+	// MCPResourceOrigins is the comma-separated list of scheme://host[:port]
+	// origins the derived mode may name (cmd/engram/wellknown.go). Empty
+	// leaves the derived mode unbounded. Exclusive with MCPResourceURL.
+	MCPResourceOrigins string `koanf:"mcp_resource_origins"`
 }
 
 // QdrantConfig points engram at its vector backend: the gRPC endpoint to dial

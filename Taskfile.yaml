@@ -488,8 +488,10 @@ tasks:
         # Re-pinned 2026-10-10 for the with-guarded ENGRAM_DECISIONS_PATH row
         # (#793), inside the provider gate: the default render and a
         # provider=jev render without memory.decisions.path are both
-        # byte-identical to the pre-change render.
-        EXPECTED_CHECKSUM="a0245cd58c9987bcca82a4e32a924451dd42da43e5236db997b865011d1e1c4f"
+        # byte-identical to the pre-change render. Re-pinned 2026-10-22 for
+        # the with-guarded ENGRAM_MCP_RESOURCE_ORIGINS row (#866): the default
+        # render is byte-identical to the pre-change render.
+        EXPECTED_CHECKSUM="b20e735848759148d26444c0a44ea4ac2da163a7d0f1762ebb60d5628657400e"
         ACTUAL_CHECKSUM=$(awk '/define "engram.containerEnv"/{f=1} f{print} f && /^\{\{- end -\}\}$/{exit}' charts/engram/templates/_helpers.tpl | shasum -a 256 | awk '{print $1}')
         if [ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
           echo "chart:validate: engram.containerEnv block in _helpers.tpl has drifted (checksum $ACTUAL_CHECKSUM != expected $EXPECTED_CHECKSUM)."

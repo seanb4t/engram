@@ -123,6 +123,9 @@
 {{- with .Values.memory.mcpResourceUrl }}
 - { name: ENGRAM_MCP_RESOURCE_URL, value: "{{ . }}" }
 {{- end }}
+{{- with .Values.memory.mcpResourceOrigins }}
+- { name: ENGRAM_MCP_RESOURCE_ORIGINS, value: "{{ . }}" }
+{{- end }}
 {{- with .Values.memory.oidc.issuer }}
 - { name: ENGRAM_OIDC_ISSUER, value: "{{ . }}" }
 {{- end }}

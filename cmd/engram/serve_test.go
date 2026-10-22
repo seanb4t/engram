@@ -236,7 +236,7 @@ func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
 	chain := newStaticTokenChain(t)
 
 	t.Run("each origin gets its own document", func(t *testing.T) {
-		h := withAuth(inner, chain, "", derivedChallengeURL("/mcp"))
+		h := withAuth(inner, chain, "", derivedChallengeURL("/mcp", nil))
 		for _, host := range []string{"a.example", "b.example"} {
 			rec := challengeThrough(h, "https", host)
 			if rec.Code != http.StatusUnauthorized {
@@ -250,7 +250,7 @@ func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
 	})
 
 	t.Run("root MCP path uses the host-only document", func(t *testing.T) {
-		h := withAuth(inner, chain, "", derivedChallengeURL("/"))
+		h := withAuth(inner, chain, "", derivedChallengeURL("/", nil))
 		rec := challengeThrough(h, "https", "a.example")
 		want := `Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource"`
 		if got := rec.Header().Get("WWW-Authenticate"); got != want {
@@ -260,7 +260,7 @@ func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
 
 	t.Run("configured metadata URL wins", func(t *testing.T) {
 		fixed := resolveResourceMetadataURL("https://meta.example/prm", "", "/mcp")
-		h := withAuth(inner, chain, fixed, derivedChallengeURL("/mcp"))
+		h := withAuth(inner, chain, fixed, derivedChallengeURL("/mcp", nil))
 		for _, host := range []string{"a.example", "b.example"} {
 			rec := challengeThrough(h, "https", host)
 			if got, want := rec.Header().Get("WWW-Authenticate"), `Bearer resource_metadata="https://meta.example/prm"`; got != want {
@@ -270,7 +270,7 @@ func TestWithAuth_DerivedChallengePerRequest(t *testing.T) {
 	})
 
 	t.Run("a valid token is served", func(t *testing.T) {
-		h := withAuth(inner, chain, "", derivedChallengeURL("/mcp"))
+		h := withAuth(inner, chain, "", derivedChallengeURL("/mcp", nil))
 		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 		req.Header.Set("Authorization", "Bearer secret-token-value")
 		rec := httptest.NewRecorder()
@@ -681,6 +681,19 @@ func TestServePreflightGuardsExitUsage(t *testing.T) {
 			name: "connect-headless without a configured auth lane",
 			args: []string{"serve", "--listen-addr", "127.0.0.1:0", "--connect-headless", "true"},
 		},
+		{
+			name: "resource origins and a pinned resource URL",
+			args: []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env: map[string]string{
+				"ENGRAM_MCP_RESOURCE_URL":     "https://a.example/mcp",
+				"ENGRAM_MCP_RESOURCE_ORIGINS": "https://a.example",
+			},
+		},
+		{
+			name: "resource origins entry with a path",
+			args: []string{"serve", "--listen-addr", "127.0.0.1:0"},
+			env:  map[string]string{"ENGRAM_MCP_RESOURCE_ORIGINS": "https://a.example/mcp"},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -696,4 +709,43 @@ func TestServePreflightGuardsExitUsage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWithAuth_UnlistedOriginNoHint(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	set, err := resolveMCPResourceOrigins("https://a.example")
+	if err != nil {
+		t.Fatalf("resolveMCPResourceOrigins: %v", err)
+	}
+	h := withAuth(inner, newStaticTokenChain(t), "", derivedChallengeURL("/mcp", newOriginGate(set)))
+
+	t.Run("listed origin gets the hint", func(t *testing.T) {
+		rec := challengeThrough(h, "https", "a.example")
+		want := `Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource/mcp"`
+		if got := rec.Header().Get("WWW-Authenticate"); got != want {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, want)
+		}
+	})
+
+	t.Run("unlisted origin without a token gets a bare challenge", func(t *testing.T) {
+		rec := challengeThrough(h, "https", "c.example")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status=%d want 401", rec.Code)
+		}
+		if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+			t.Fatalf("WWW-Authenticate=%q want %q", got, "Bearer")
+		}
+	})
+
+	t.Run("unlisted origin with a valid token is served", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Host = "c.example"
+		req.Header.Set("X-Forwarded-Proto", "https")
+		req.Header.Set("Authorization", "Bearer secret-token-value")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusTeapot {
+			t.Fatalf("status=%d want %d", rec.Code, http.StatusTeapot)
+		}
+	})
 }

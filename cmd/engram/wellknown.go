@@ -6,9 +6,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 // wellKnownPRMBase is the RFC 9728 host-only path for the OAuth protected-
@@ -65,7 +67,7 @@ func protectedResourcePaths(mcpPath string) (suffix string) {
 // (parsing a protocol-relative form and confirming url.Parse reflects the
 // same Host back unchanged) catches anything the cheap checks above missed.
 // Callers MUST fall back to the trusted r.Host when this returns false --
-// documented at the resourceURLFor call site.
+// see derivedOrigin.
 func validForwardedHost(v string) bool {
 	if v == "" || len(v) > 255 {
 		return false
@@ -119,18 +121,6 @@ func resourceMetadataURLForOrigin(origin, mcpPath string) string {
 	return origin + wellKnownPRMBase
 }
 
-// resourceURLFor computes the RFC 9728 `resource` field for one request.
-// When configured is non-empty it is returned verbatim and NO request header
-// is consulted, so a spoofed X-Forwarded-Host or X-Forwarded-Proto can never
-// override a configured ENGRAM_MCP_RESOURCE_URL. Otherwise it is the
-// resource on the request's derivedOrigin.
-func resourceURLFor(configured, mcpPath string, r *http.Request) string {
-	if configured != "" {
-		return configured
-	}
-	return resourceForOrigin(derivedOrigin(r), mcpPath)
-}
-
 // resolveMCPResourceURL shape-checks the configured ENGRAM_MCP_RESOURCE_URL
 // (D-04): validated here, at its single use site in runServe, rather than in
 // Config.Validate, whose own doc comment scopes it to fields every command's
@@ -159,23 +149,130 @@ func resolveMCPResourceURL(raw string) (string, error) {
 	return v, nil
 }
 
+// originSet is the normalized ENGRAM_MCP_RESOURCE_ORIGINS list of
+// scheme://host[:port] origins, with scheme and host lowercased.
+type originSet map[string]struct{}
+
+// resolveMCPResourceOrigins parses ENGRAM_MCP_RESOURCE_ORIGINS, a
+// comma-separated list of http or https origins. An entry carries a scheme
+// and a host (with an optional port) and nothing else. Empty is a valid
+// no-op that returns a nil set. Like resolveMCPResourceURL it runs at its use
+// site in runServe and names the variable and quotes the offending value.
+func resolveMCPResourceOrigins(raw string) (originSet, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	set := originSet{}
+	for entry := range strings.SplitSeq(raw, ",") {
+		v := strings.TrimSpace(entry)
+		if v == "" {
+			return nil, fmt.Errorf("ENGRAM_MCP_RESOURCE_ORIGINS %q: the list has an empty entry", raw)
+		}
+		u, err := url.Parse(v)
+		if err != nil {
+			return nil, fmt.Errorf("ENGRAM_MCP_RESOURCE_ORIGINS entry %q: must be a valid URL: %w", v, err)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return nil, fmt.Errorf("ENGRAM_MCP_RESOURCE_ORIGINS entry %q: scheme must be http or https", v)
+		}
+		if u.User != nil {
+			return nil, fmt.Errorf("ENGRAM_MCP_RESOURCE_ORIGINS entry %q: must not contain userinfo", v)
+		}
+		if u.Host == "" {
+			return nil, fmt.Errorf("ENGRAM_MCP_RESOURCE_ORIGINS entry %q: missing host", v)
+		}
+		if u.Path != "" || u.RawQuery != "" || u.ForceQuery || strings.Contains(v, "#") {
+			return nil, fmt.Errorf("ENGRAM_MCP_RESOURCE_ORIGINS entry %q: an entry is a scheme and host only, with no path, query or fragment", v)
+		}
+		origin := u.Scheme + "://" + strings.ToLower(u.Host)
+		if _, dup := set[origin]; dup {
+			return nil, fmt.Errorf("ENGRAM_MCP_RESOURCE_ORIGINS entry %q: listed more than once", v)
+		}
+		set[origin] = struct{}{}
+	}
+	return set, nil
+}
+
+// maxWarnedOrigins caps how many distinct rejected origins an originGate
+// remembers, and maxWarnedOriginLen caps the length of each, so a flood of
+// spoofed hosts cannot grow memory without bound.
+const (
+	maxWarnedOrigins   = 256
+	maxWarnedOriginLen = 512
+)
+
+// originGate decides whether the derived mode may name a request's origin.
+// A nil gate, or one with an empty allowed set, allows every origin. It logs
+// one warning per distinct rejected origin, for at most maxWarnedOrigins
+// origins per process.
+type originGate struct {
+	allowed originSet
+
+	mu     sync.Mutex
+	warned map[string]struct{}
+}
+
+func newOriginGate(allowed originSet) *originGate {
+	return &originGate{allowed: allowed, warned: map[string]struct{}{}}
+}
+
+// originFor returns the origin the derived mode names for r, and false when
+// the gate rejects it. A listed origin comes back normalized.
+func (g *originGate) originFor(r *http.Request) (string, bool) {
+	origin := derivedOrigin(r)
+	if g == nil || len(g.allowed) == 0 {
+		return origin, true
+	}
+	normalized := strings.ToLower(origin)
+	if _, ok := g.allowed[normalized]; ok {
+		return normalized, true
+	}
+	g.warnRejected(normalized)
+	return "", false
+}
+
+func (g *originGate) warnRejected(origin string) {
+	if len(origin) > maxWarnedOriginLen {
+		origin = origin[:maxWarnedOriginLen]
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, seen := g.warned[origin]; seen || len(g.warned) >= maxWarnedOrigins {
+		return
+	}
+	g.warned[origin] = struct{}{}
+	slog.Warn("request origin is not in ENGRAM_MCP_RESOURCE_ORIGINS; serving no protected-resource metadata for it", "origin", origin)
+	if len(g.warned) == maxWarnedOrigins {
+		slog.Warn("rejected-origin warning limit reached; further rejected origins are not logged", "limit", maxWarnedOrigins)
+	}
+}
+
 // protectedResourceHandler serves the RFC 9728 protected-resource metadata
 // document. It is deliberately unauthenticated (RFC 9728 requires public
 // reachability): no bearer gate, no session lookup, and no store or embedder
-// call anywhere in this handler (T-526-04). When configuredResourceURL is
-// empty (the resource is derived per request) the response carries
-// Cache-Control: no-store, so a shared cache in front of engram can never
-// retain a document whose resource was derived from a spoofable header
-// (T-526-01); when configuredResourceURL is set, no Cache-Control header is
-// emitted at all -- the document is static for the life of the process.
-func protectedResourceHandler(configuredResourceURL, issuer, mcpPath string) http.Handler {
+// call anywhere in this handler (T-526-04). A configured resource URL is
+// served verbatim and no request header is consulted, so a spoofed
+// X-Forwarded-Host or X-Forwarded-Proto cannot override it; the document is
+// then static and carries no Cache-Control header. Otherwise the resource is
+// derived per request on the origin gate allows, and a rejected origin gets a
+// 404. Every derived response, the 404 included, carries Cache-Control:
+// no-store, so a shared cache can never retain a response derived from a
+// spoofable header (T-526-01).
+func protectedResourceHandler(configuredResourceURL, issuer, mcpPath string, gate *originGate) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if configuredResourceURL == "" {
+		resource := configuredResourceURL
+		if resource == "" {
 			w.Header().Set("Cache-Control", "no-store")
+			origin, ok := gate.originFor(r)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			resource = resourceForOrigin(origin, mcpPath)
 		}
+		w.Header().Set("Content-Type", "application/json")
 		doc := protectedResourceMetadata{
-			Resource:               resourceURLFor(configuredResourceURL, mcpPath, r),
+			Resource:               resource,
 			BearerMethodsSupported: []string{bearerMethodHeader},
 			ScopesSupported:        []string{offlineAccessScope},
 		}
@@ -214,10 +311,14 @@ func resolveResourceMetadataURL(configured, mcpResourceURL, mcpPath string) stri
 
 // derivedChallengeURL returns the per-request resource_metadata value of the
 // MCP 401 challenge in the derived mode: the document on the same origin the
-// document handler derives for that request.
-func derivedChallengeURL(mcpPath string) func(*http.Request) string {
+// document handler derives for that request, or "" when gate rejects it.
+func derivedChallengeURL(mcpPath string, gate *originGate) func(*http.Request) string {
 	return func(r *http.Request) string {
-		return resourceMetadataURLForOrigin(derivedOrigin(r), mcpPath)
+		origin, ok := gate.originFor(r)
+		if !ok {
+			return ""
+		}
+		return resourceMetadataURLForOrigin(origin, mcpPath)
 	}
 }
 

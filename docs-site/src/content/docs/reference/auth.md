@@ -28,6 +28,7 @@ The MCP bearer-token lane's serve flags that have both a `--flag` and an `ENGRAM
 | `--oidc-audience` | `ENGRAM_OIDC_AUDIENCE` | _(unset — audience not checked)_ |
 | `--oidc-resource-metadata` | `ENGRAM_OIDC_RESOURCE_METADATA` | _(unset)_ |
 | _(env-only)_ | `ENGRAM_MCP_RESOURCE_URL` | _(unset)_ |
+| _(env-only)_ | `ENGRAM_MCP_RESOURCE_ORIGINS` | _(unset)_ |
 
 Storage and embedding are configured via env-only variables (`ENGRAM_QDRANT_ADDR`,
 `ENGRAM_QDRANT_COLLECTION`, `ENGRAM_OPENAI_BASE_URL`, `ENGRAM_OPENAI_API_KEY`,
@@ -69,6 +70,19 @@ the URL of the document above:
   challenge.
 
 If the MCP path is `/`, the parameter names the host-only path instead.
+
+The derived mode trusts the forwarded headers of any caller. To limit the
+origins that it names, set `ENGRAM_MCP_RESOURCE_ORIGINS` to a
+comma-separated list of origins, for example
+`https://a.example,https://b.example`. A request from an origin that is not
+in the list gets a `404` on both protected-resource paths. Its `401`
+challenge is a bare `WWW-Authenticate: Bearer` header with no
+`resource_metadata` parameter. The list limits only what engram says about
+itself, so a valid token still works through any origin. engram logs a
+warning the first time that it rejects each origin. You cannot set this
+variable together with `ENGRAM_MCP_RESOURCE_URL`, and the server does not
+start when both are set. See [Configure](/guides/configure/) for the entry
+format.
 
 `ENGRAM_MCP_PATH` can no longer be set to `/.well-known` or any path under
 it — that root is reserved for these routes.
