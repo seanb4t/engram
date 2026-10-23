@@ -16,10 +16,8 @@ import (
 // stripComment returns the portion of a line before the first '#', which
 // starts a YAML comment in the files these tests read.
 func stripComment(line string) string {
-	if i := strings.IndexByte(line, '#'); i != -1 {
-		return line[:i]
-	}
-	return line
+	before, _, _ := strings.Cut(line, "#")
+	return before
 }
 
 // nonCommentLines reads a repo-root file and returns its lines with any
@@ -170,8 +168,9 @@ func TestReleaseConfigCaskInstallGate(t *testing.T) {
 	if idx := lineIndexes(uninstall, "recursive"); len(idx) != 0 {
 		t.Errorf("uninstall_steps line %d sets recursive; the uninstall removes files only", idx[0]+1)
 	}
-	var removed []string
-	for _, m := range quotedString.FindAllStringSubmatch(strings.Join(uninstall, "\n"), -1) {
+	quoted := quotedString.FindAllStringSubmatch(strings.Join(uninstall, "\n"), -1)
+	removed := make([]string, 0, len(quoted))
+	for _, m := range quoted {
 		if strings.HasSuffix(m[1], "/") {
 			t.Errorf("uninstall_steps removes %q, a directory", m[1])
 		}

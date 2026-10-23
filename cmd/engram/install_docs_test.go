@@ -40,7 +40,7 @@ func installGuideViolations(doc string) []error {
 
 	// Leg 2: one line must state that the cask installs BOTH completions
 	// and man pages -- the same install hook writes both
-	// (.goreleaser.yaml's post_install), so the cask-contents sentence
+	// (.goreleaser.yaml's install_steps), so the cask-contents sentence
 	// must not describe only completions.
 	caskContentsStated := false
 	for _, line := range strings.Split(doc, newline) {

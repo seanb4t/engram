@@ -41,8 +41,9 @@ Its install steps run the installed binary three times, in this order:
    `share/man/man1` directory.
 
 If any step fails, the install fails. After a cask install, `man engram` and
-`man engram-setup` describe the CLI and the setup command; `brew uninstall`
-removes them along with the completions, and leaves the shared directories.
+`man engram-setup` describe the CLI and the setup command. `brew uninstall`
+removes the completions and man pages it wrote, and leaves the shared
+directories.
 
 The macOS binaries are signed with a Developer ID and notarized by Apple, so
 the cask does not remove quarantine: macOS checks the binary with Apple the
