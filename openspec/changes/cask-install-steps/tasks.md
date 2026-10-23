@@ -50,29 +50,29 @@
 
 ## 3. Signing and the Gatekeeper check
 
-- [ ] 3.1 Add the `notarize.macos` entry to `.goreleaser.yaml` per design D7: the five-variable
+- [x] 3.1 Add the `notarize.macos` entry to `.goreleaser.yaml` per design D7: the five-variable
   `enabled:` conjunction, `ids: [engram]`, `sign.certificate` and `sign.password`, and
   `notarize.issuer_id`, `key_id`, `key`, `wait: true`, `timeout: 20m`. Replace the "engram ships
   unsigned (… no GoReleaser Pro and no Apple Developer Program membership)" comment with one that
   says the darwin binaries are signed and notarized and points at D8's check. Verify: v2.19.0
   `check` exits 0, and `rg -n 'no GoReleaser Pro|ships unsigned' .goreleaser.yaml` returns nothing.
-- [ ] 3.2 Pass `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`,
+- [x] 3.2 Pass `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`,
   `MACOS_NOTARY_KEY_ID` and `MACOS_NOTARY_KEY` from `secrets.*` into the `goreleaser-action` step's
   `env:` in `release.yaml`, and nowhere else. Verify: `actionlint` passes, and
   `rg -c 'secrets\.MACOS_' .github/workflows` prints only `.github/workflows/release.yaml:5`.
-- [ ] 3.3 Add the `release:gatekeeper` task to `Taskfile.yaml` per design D8: `TAG` input,
+- [x] 3.3 Add the `release:gatekeeper` task to `Taskfile.yaml` per design D8: `TAG` input,
   `preconditions:` for `TAG`, a darwin host and `gh`, then download, quarantine, `spctl -a -vv -t
   install` on both darwin binaries by exit status, and `engram version --expect` on the `arm64`
   binary. Verify on a Mac: `task release:gatekeeper TAG=v0.29.0` exits non-zero at the `spctl`
   step, because v0.29.0 was published unsigned. This proves the check can fail.
-- [ ] 3.4 Add the `verify-macos` job to `release.yaml`: `needs: release`, `runs-on: macos-latest`,
+- [x] 3.4 Add the `verify-macos` job to `release.yaml`: `needs: release`, `runs-on: macos-latest`,
   run only when the release job shipped, and run `task release:gatekeeper` with the shipped tag and
   `GH_TOKEN`. Expose the `ship` and `tag` step outputs as outputs of the `release` job. Verify:
   `actionlint` and `yamlfmt -lint` pass on `release.yaml`.
 
 ## 4. GoReleaser pin
 
-- [ ] 4.1 Set `GORELEASER_VERSION: v2.19.0` in `.github/workflows/ci.yaml` and
+- [x] 4.1 Set `GORELEASER_VERSION: v2.19.0` in `.github/workflows/ci.yaml` and
   `.github/workflows/release.yaml`. Replace the "Hold below v2.19" comment with one line saying both
   workflows pin the same Renovate-tracked value, and keep the `# renovate:` annotation. Verify:
   - `actionlint` and `yamlfmt -lint` pass on both files.

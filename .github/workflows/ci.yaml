@@ -10,10 +10,9 @@ permissions:
   contents: read
 
 env:
-  # Hold below v2.19, which deprecates homebrew_casks.hooks; `goreleaser check`
-  # fails on a deprecated property. ci.yaml and release.yaml pin the same value.
+  # ci.yaml and release.yaml pin the same Renovate-tracked value.
   # renovate: datasource=github-releases depName=goreleaser/goreleaser
-  GORELEASER_VERSION: v2.18.3
+  GORELEASER_VERSION: v2.19.0
 
 # CI installs each gate via its official action (the runner is bare; the local
 # `task lint`/`fmt` suite assumes the tools are already on PATH). `task` remains

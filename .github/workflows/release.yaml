@@ -22,15 +22,17 @@ permissions:
   contents: read
 
 env:
-  # Hold below v2.19, which deprecates homebrew_casks.hooks; `goreleaser check`
-  # fails on a deprecated property. ci.yaml and release.yaml pin the same value.
+  # ci.yaml and release.yaml pin the same Renovate-tracked value.
   # renovate: datasource=github-releases depName=goreleaser/goreleaser
-  GORELEASER_VERSION: v2.18.3
+  GORELEASER_VERSION: v2.19.0
 
 jobs:
   release:
     name: release-please + image + OCI chart
     runs-on: ubuntu-latest
+    outputs:
+      ship: ${{ steps.target.outputs.ship }}
+      tag: ${{ steps.target.outputs.tag }}
     permissions:
       contents: read
       packages: write # push image + chart to GHCR via GITHUB_TOKEN
@@ -235,6 +237,13 @@ jobs:
           # tap and nothing else. Keep it out of GITHUB_TOKEN so the tap
           # credential can never write a release, and vice versa.
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+          # .goreleaser.yaml's notarize: block runs only when all five are
+          # set. No other step or workflow reads them.
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
       # `.goreleaser.yaml`'s docker_manifests tags `ghcr.io/seanb4t/engram:latest`
       # unconditionally, so a dispatch re-ship of an OLDER tag drags the floating
       # `latest` backwards — backfilling v0.11.0 after v0.11.1 had shipped left
@@ -270,3 +279,29 @@ jobs:
         run: |-
           echo "$GHCR_TOKEN" | helm registry login ghcr.io -u "$GHCR_USER" --password-stdin
           task chart:push VERSION="${TAG_NAME#v}"
+
+  # GoReleaser's notarize pipe does not fail when a signing secret is missing
+  # or Apple times out, so this checks what was actually published. A failure
+  # means the release is out with a darwin binary Gatekeeper rejects: fix the
+  # cause, then re-ship the tag with workflow_dispatch.
+  verify-macos:
+    name: Gatekeeper check of the darwin binaries
+    needs: release
+    if: ${{ needs.release.outputs.ship == 'true' }}
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      # The workflow's own commit, not the tag, so a re-ship of a tag older
+      # than release:gatekeeper still has the task.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assess the published darwin binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release.outputs.tag }}
+        run: task release:gatekeeper TAG="$TAG_NAME"

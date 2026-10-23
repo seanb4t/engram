@@ -31,6 +31,36 @@ builds:
       - -s -w
       - -X main.version={{ .Version }}
 
+# Developer ID signing and Apple notarization of the darwin binaries, in
+# process through quill (no codesign or xcrun), so it runs on the Linux
+# release runner. It is a build-stage pipe, so the archives and checksums
+# below cover the signed bytes.
+#
+# `enabled` needs all five variables: given only the signing pair, the pipe
+# would sign without notarizing and the log would stay green. With none set
+# (local snapshots, pull requests) the pipe is skipped, and so is a release
+# missing any one. A notarization that times out or is still pending is
+# also logged and passed over, so release.yaml's verify-macos job, not this
+# pipe, is what fails a release whose darwin binary Gatekeeper rejects.
+# No entitlements: engram needs no JIT.
+notarize:
+  macos:
+    - enabled: |-
+        {{ and (isEnvSet "MACOS_SIGN_P12") (isEnvSet "MACOS_SIGN_PASSWORD") (isEnvSet "MACOS_NOTARY_ISSUER_ID") (isEnvSet "MACOS_NOTARY_KEY_ID") (isEnvSet "MACOS_NOTARY_KEY") }}
+      # The default is the project name, which happens to equal the build
+      # id; naming it keeps a build rename from silently skipping the pipe.
+      ids:
+        - engram
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
 archives:
   - id: default
     formats:
