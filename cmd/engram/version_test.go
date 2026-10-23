@@ -140,8 +140,12 @@ func TestVersionOutputFlagDefault(t *testing.T) {
 // error line naming both versions, an empty value is a usage error before
 // any output, and the comparison is an exact string match.
 func TestVersionExpect(t *testing.T) {
-	v := resolvedVersion()
-	jsonDoc := `{"version":"` + v + `"}` + "\n"
+	// A release-shaped version, so a normalisation that only touches SemVer
+	// input (such as stripping a leading v) cannot pass the v-prefix case.
+	saved := version
+	version = "0.30.0"
+	t.Cleanup(func() { version = saved })
+
 	cases := []struct {
 		name       string
 		args       []string
@@ -149,11 +153,11 @@ func TestVersionExpect(t *testing.T) {
 		wantCode   int
 		wantErrHas []string
 	}{
-		{name: "omitted", args: []string{"version"}, wantStdout: v + "\n", wantCode: exitOK},
-		{name: "match", args: []string{"version", "--expect", v}, wantStdout: v + "\n", wantCode: exitOK},
-		{name: "text mismatch", args: []string{"version", "--expect", "0.0.0-other"}, wantStdout: v + "\n", wantCode: exitFindings, wantErrHas: []string{v, "0.0.0-other"}},
-		{name: "json mismatch", args: []string{"version", "--expect", "0.0.0-other", "--output", "json"}, wantStdout: jsonDoc, wantCode: exitFindings, wantErrHas: []string{v, "0.0.0-other"}},
-		{name: "v prefix", args: []string{"version", "--expect", "v" + v}, wantStdout: v + "\n", wantCode: exitFindings, wantErrHas: []string{v, "v" + v}},
+		{name: "omitted", args: []string{"version"}, wantStdout: "0.30.0\n", wantCode: exitOK},
+		{name: "match", args: []string{"version", "--expect", "0.30.0"}, wantStdout: "0.30.0\n", wantCode: exitOK},
+		{name: "text mismatch", args: []string{"version", "--expect", "0.31.0"}, wantStdout: "0.30.0\n", wantCode: exitFindings, wantErrHas: []string{"0.30.0", "0.31.0"}},
+		{name: "json mismatch", args: []string{"version", "--expect", "0.31.0", "--output", "json"}, wantStdout: `{"version":"0.30.0"}` + "\n", wantCode: exitFindings, wantErrHas: []string{"0.30.0", "0.31.0"}},
+		{name: "v prefix", args: []string{"version", "--expect", "v0.30.0"}, wantStdout: "0.30.0\n", wantCode: exitFindings, wantErrHas: []string{"0.30.0", "v0.30.0"}},
 		{name: "empty", args: []string{"version", "--expect", ""}, wantStdout: "", wantCode: exitUsage, wantErrHas: []string{"--expect"}},
 	}
 	for _, tc := range cases {
@@ -163,10 +167,11 @@ func TestVersionExpect(t *testing.T) {
 			if stdout != tc.wantStdout {
 				t.Errorf("stdout = %q, want %q", stdout, tc.wantStdout)
 			}
-			// SilenceErrors leaves stderr to Execute, which prints err as one
-			// "Error: ..." line; so stderr's content is err's message.
+			// rootCmd silences cobra's own error printing, so the captured
+			// stderr is empty; the package-level Execute (root.go) prints
+			// err as the single "Error: ..." line the user sees.
 			if stderr != "" {
-				t.Errorf("stderr = %q, want empty (Execute prints the error)", stderr)
+				t.Errorf("stderr = %q, want empty", stderr)
 			}
 			if got := exitCodeFromError(err); got != tc.wantCode {
 				t.Fatalf("exit code = %d, want %d (err: %v)", got, tc.wantCode, err)

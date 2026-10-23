@@ -13,8 +13,10 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// stripComment returns the portion of a line before the first '#', which
-// starts a YAML comment in the files these tests read.
+// stripComment returns the portion of a line before the first '#'. That is
+// a YAML comment everywhere except shell parameter expansions such as
+// ${TAG_NAME#v} inside release.yaml's run blocks, which it also cuts; no
+// assertion reads those lines.
 func stripComment(line string) string {
 	before, _, _ := strings.Cut(line, "#")
 	return before
@@ -65,113 +67,147 @@ func countMatches(lines []string, substr string) int {
 // leaves it intact.
 var quotedHomebrewToken = regexp.MustCompile(`{{ "({{[A-Za-z_.]+}})" }}`)
 
-var quotedString = regexp.MustCompile(`"([^"]*)"`)
+var (
+	quotedString  = regexp.MustCompile(`"([^"]*)"`)
+	stdoutPathArg = regexp.MustCompile(`stdout_path:\s*"([^"]*)"`)
+	completionArg = regexp.MustCompile(`\["completion", "([a-z]+)"\]`)
+)
 
-// stepLines splits a steps body into lines with each quoted Homebrew token
-// rendered the way GoReleaser renders it, so string literals parse plainly.
-func stepLines(body string) []string {
-	return strings.Split(quotedHomebrewToken.ReplaceAllString(body, "$1"), "\n")
+// The spec's install paths (specs/homebrew-distribution), as the rendered
+// steps spell them.
+const (
+	homebrewPrefix = "{{HOMEBREW_PREFIX}}"
+	caskManDir     = homebrewPrefix + "/share/man/man1"
+)
+
+var caskCompletionPaths = map[string]string{
+	"bash": homebrewPrefix + "/etc/bash_completion.d/engram",
+	"zsh":  homebrewPrefix + "/share/zsh/site-functions/_engram",
+	"fish": homebrewPrefix + "/share/fish/vendor_completions.d/engram.fish",
 }
 
-// lineIndexes returns the indexes of the lines containing substr.
-func lineIndexes(lines []string, substr string) []int {
-	var idx []int
-	for i, l := range lines {
-		if strings.Contains(l, substr) {
-			idx = append(idx, i)
+// stepBlocks renders each quoted Homebrew token the way GoReleaser does and
+// splits a steps body into one string per step: a step starts on a line with
+// no leading space, and its indented option lines follow it.
+func stepBlocks(body string) []string {
+	var blocks []string
+	for _, l := range strings.Split(quotedHomebrewToken.ReplaceAllString(body, "$1"), "\n") {
+		if l == "" {
+			continue
 		}
+		if strings.HasPrefix(l, " ") && len(blocks) > 0 {
+			blocks[len(blocks)-1] += "\n" + l
+			continue
+		}
+		blocks = append(blocks, l)
 	}
-	return idx
+	return blocks
 }
 
-// TestReleaseConfigCaskInstallGate pins the cask's install and uninstall
-// steps in .goreleaser.yaml (REQ-cask-install-gate): the version gate runs
-// before the completions, which run before the man pages; no step may
-// fail softly or strip quarantine; the uninstall removes exactly the files
-// the install writes and never a directory; and the soft-failing Homebrew
-// mechanisms stay out.
-func TestReleaseConfigCaskInstallGate(t *testing.T) {
+// loadGoreleaser parses the repo's .goreleaser.yaml into v.
+func loadGoreleaser(t *testing.T, v any) {
+	t.Helper()
 	const file = "../../.goreleaser.yaml"
 	data, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatalf("reading %s: %v", file, err)
 	}
+	if err := yaml.Unmarshal(data, v); err != nil {
+		t.Fatalf("parsing %s: %v", file, err)
+	}
+}
+
+// TestReleaseConfigCaskInstallGate pins the cask's install and uninstall
+// steps in .goreleaser.yaml: every Homebrew token is written quoted; the
+// version gate runs against the cask's {{version}}, then the bash, zsh and
+// fish completions write the spec's paths, then the man pages go into the
+// spec's man1 directory; no step sets must_succeed or runs xattr; the
+// uninstall removes exactly the files the install writes and never a
+// directory. It also keeps out top-level brews and the cask keys that
+// install prebuilt files or soften a failure, and pins the description to
+// rootCmd.Short.
+func TestReleaseConfigCaskInstallGate(t *testing.T) {
 	var cfg struct {
 		Brews         any              `yaml:"brews"`
 		HomebrewCasks []map[string]any `yaml:"homebrew_casks"`
 	}
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("parsing %s: %v", file, err)
-	}
+	loadGoreleaser(t, &cfg)
 	if cfg.Brews != nil {
-		t.Errorf("%s: top-level `brews` is set; engram ships a cask only", file)
+		t.Error("top-level `brews` is set; engram ships a cask only")
 	}
 	if len(cfg.HomebrewCasks) != 1 {
-		t.Fatalf("%s: want exactly 1 homebrew_casks entry, got %d", file, len(cfg.HomebrewCasks))
+		t.Fatalf("want exactly 1 homebrew_casks entry, got %d", len(cfg.HomebrewCasks))
 	}
 	cask := cfg.HomebrewCasks[0]
 
 	for _, key := range []string{"generate_completions_from_executable", "completions", "manpages"} {
 		if _, ok := cask[key]; ok {
-			t.Errorf("%s: homebrew_casks[0].%s is set; it turns a failing binary into a warning", file, key)
+			t.Errorf("homebrew_casks[0].%s is set; the installed binary must write the completions and man pages, failing the install if it cannot", key)
 		}
 	}
 	if desc, _ := cask["description"].(string); desc != rootCmd.Short {
-		t.Errorf("%s: cask description %q does not byte-match rootCmd.Short %q", file, desc, rootCmd.Short)
+		t.Errorf("cask description %q does not byte-match rootCmd.Short %q", desc, rootCmd.Short)
 	}
 
 	hooks, _ := cask["hooks"].(map[string]any)
 	post, _ := hooks["post"].(map[string]any)
 	for _, legacy := range []string{"install", "uninstall"} {
 		if _, ok := post[legacy]; ok {
-			t.Errorf("%s: hooks.post.%s is set; it renders a Ruby flight block, use %s_steps", file, legacy, legacy)
+			t.Errorf("hooks.post.%s is set; it renders a Ruby flight block, use %s_steps", legacy, legacy)
 		}
 	}
 	installBody, _ := post["install_steps"].(string)
 	uninstallBody, _ := post["uninstall_steps"].(string)
 	if installBody == "" || uninstallBody == "" {
-		t.Fatalf("%s: hooks.post.install_steps and uninstall_steps must both be set", file)
+		t.Fatal("hooks.post.install_steps and uninstall_steps must both be set")
 	}
-
-	install := stepLines(installBody)
-	for _, banned := range []string{"must_succeed: false", "xattr"} {
-		if idx := lineIndexes(install, banned); len(idx) != 0 {
-			t.Errorf("install_steps line %d contains %q", idx[0]+1, banned)
+	for name, body := range map[string]string{"install_steps": installBody, "uninstall_steps": uninstallBody} {
+		if rest := quotedHomebrewToken.ReplaceAllString(body, ""); strings.Contains(rest, "{{") {
+			t.Errorf("%s has a {{ that is not a quoted Homebrew token; GoReleaser would template it", name)
+		}
+		for _, banned := range []string{"must_succeed", "xattr"} {
+			if strings.Contains(body, banned) {
+				t.Errorf("%s contains %q", name, banned)
+			}
 		}
 	}
-	// Homebrew's {{version}} token tracks the cask's version stanza at
-	// install time; a GoReleaser-rendered literal would not.
-	expect := lineIndexes(install, `"--expect", "{{version}}"`)
-	completion := lineIndexes(install, `["completion", `)
-	man := lineIndexes(install, `["man", `)
-	if len(expect) != 1 || len(completion) != 3 || len(man) != 1 {
-		t.Fatalf("install_steps: want 1 --expect, 3 completion and 1 man step, got %d, %d and %d", len(expect), len(completion), len(man))
-	}
-	if expect[0] > completion[0] {
-		t.Errorf("install_steps: the --expect step (line %d) must come before the completion steps (line %d)", expect[0]+1, completion[0]+1)
-	}
-	if completion[2] > man[0] {
-		t.Errorf("install_steps: the completion steps (last at line %d) must come before the man step (line %d)", completion[2]+1, man[0]+1)
-	}
 
-	var written []string
-	for _, l := range install {
-		if _, after, ok := strings.Cut(l, "stdout_path: "); ok {
-			written = append(written, strings.Trim(strings.TrimSpace(after), `",`))
+	var order, written []string
+	for _, step := range stepBlocks(installBody) {
+		switch {
+		case strings.HasPrefix(step, "mkdir_p "):
+			continue
+		case strings.Contains(step, `["version", "--expect", "{{version}}"]`):
+			order = append(order, "expect")
+		case completionArg.MatchString(step):
+			shell := completionArg.FindStringSubmatch(step)[1]
+			order = append(order, "completion "+shell)
+			path := stdoutPathArg.FindStringSubmatch(step)
+			if path == nil || path[1] != caskCompletionPaths[shell] {
+				t.Errorf("the %s completion step must write %q, got step:\n%s", shell, caskCompletionPaths[shell], step)
+				continue
+			}
+			written = append(written, path[1])
+		case strings.Contains(step, `["man", `):
+			order = append(order, "man")
+			if !strings.Contains(step, `["man", "`+caskManDir+`"]`) {
+				t.Errorf("the man step must write into %q, got step:\n%s", caskManDir, step)
+			}
+			written = append(written, caskManDir+"/engram.1", caskManDir+"/engram-*.1")
+		default:
+			t.Errorf("install_steps has an unexpected step:\n%s", step)
 		}
 	}
-	manArgs := quotedString.FindAllStringSubmatch(install[man[0]], -1)
-	if len(manArgs) != 2 {
-		t.Fatalf("install_steps man step %q: want [\"man\", <dir>]", install[man[0]])
+	wantOrder := []string{"expect", "completion bash", "completion zsh", "completion fish", "man"}
+	if !slices.Equal(order, wantOrder) {
+		t.Errorf("install_steps order = %q, want %q", order, wantOrder)
 	}
-	manDir := manArgs[1][1]
-	written = append(written, manDir+"/engram.1", manDir+"/engram-*.1")
 
-	uninstall := stepLines(uninstallBody)
-	if idx := lineIndexes(uninstall, "recursive"); len(idx) != 0 {
-		t.Errorf("uninstall_steps line %d sets recursive; the uninstall removes files only", idx[0]+1)
+	if strings.Contains(uninstallBody, "recursive") {
+		t.Error("uninstall_steps sets recursive; the uninstall removes files only")
 	}
-	quoted := quotedString.FindAllStringSubmatch(strings.Join(uninstall, "\n"), -1)
+	rendered := strings.Join(stepBlocks(uninstallBody), "\n")
+	quoted := quotedString.FindAllStringSubmatch(rendered, -1)
 	removed := make([]string, 0, len(quoted))
 	for _, m := range quoted {
 		if strings.HasSuffix(m[1], "/") {
@@ -183,6 +219,52 @@ func TestReleaseConfigCaskInstallGate(t *testing.T) {
 	slices.Sort(removed)
 	if !slices.Equal(written, removed) {
 		t.Errorf("uninstall_steps removes %q, want exactly what install_steps writes: %q", removed, written)
+	}
+}
+
+// TestReleaseConfigNotarizeMacOS pins the notarize block: one entry whose
+// ids are exactly the darwin builds, enabled only when all five MACOS_*
+// signing variables are set.
+func TestReleaseConfigNotarizeMacOS(t *testing.T) {
+	var cfg struct {
+		Builds []struct {
+			ID   string   `yaml:"id"`
+			Goos []string `yaml:"goos"`
+		} `yaml:"builds"`
+		Notarize struct {
+			MacOS []struct {
+				Enabled string   `yaml:"enabled"`
+				IDs     []string `yaml:"ids"`
+			} `yaml:"macos"`
+		} `yaml:"notarize"`
+	}
+	loadGoreleaser(t, &cfg)
+	if len(cfg.Notarize.MacOS) != 1 {
+		t.Fatalf("want exactly 1 notarize.macos entry, got %d", len(cfg.Notarize.MacOS))
+	}
+	entry := cfg.Notarize.MacOS[0]
+
+	var darwinBuilds []string
+	for _, b := range cfg.Builds {
+		if slices.Contains(b.Goos, "darwin") {
+			darwinBuilds = append(darwinBuilds, b.ID)
+		}
+	}
+	ids := slices.Clone(entry.IDs)
+	slices.Sort(ids)
+	slices.Sort(darwinBuilds)
+	if len(darwinBuilds) == 0 || !slices.Equal(ids, darwinBuilds) {
+		t.Errorf("notarize.macos[0].ids = %q, want exactly the darwin build ids %q", entry.IDs, darwinBuilds)
+	}
+
+	enabled := strings.TrimSpace(entry.Enabled)
+	if !strings.HasPrefix(enabled, "{{ and ") {
+		t.Errorf("notarize.macos[0].enabled = %q, want an `and` of every signing variable", enabled)
+	}
+	for _, v := range []string{"MACOS_SIGN_P12", "MACOS_SIGN_PASSWORD", "MACOS_NOTARY_ISSUER_ID", "MACOS_NOTARY_KEY_ID", "MACOS_NOTARY_KEY"} {
+		if !strings.Contains(enabled, `(isEnvSet "`+v+`")`) {
+			t.Errorf("notarize.macos[0].enabled does not require %s", v)
+		}
 	}
 }
 
