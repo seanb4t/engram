@@ -2,16 +2,16 @@
 
 ## 1. `engram version --expect`
 
-- [ ] 1.1 Add the `--expect` string flag to `versionCmd` and the comparison in `runVersion`, per
+- [x] 1.1 Add the `--expect` string flag to `versionCmd` and the comparison in `runVersion`, per
   design D2. An empty value is a usage error (exit 2) that names `--expect` and writes nothing to
   stdout. A mismatch prints the normal output, then returns a code-7 `cliError` that names both
   versions. Verify: `go test ./cmd/engram -run TestVersion -count=1` passes, with new cases for a
   match, a text mismatch, a JSON mismatch, a `v` prefix, an empty value and an omitted flag. Each
   case asserts stdout, stderr and the exit code.
-- [ ] 1.2 Regenerate the `--help` and catalog goldens with `task surfaces:gen`. Verify:
+- [x] 1.2 Regenerate the `--help` and catalog goldens with `task surfaces:gen`. Verify:
   `git diff cmd/engram/testdata` shows only the new `--expect` flag on `version`, and
   `go test ./cmd/engram -run 'TestHelpGolden|TestCatalogGolden' -count=1` passes.
-- [ ] 1.3 Document `--expect` in `docs-site/src/content/docs/guides/install.md`, next to the
+- [x] 1.3 Document `--expect` in `docs-site/src/content/docs/guides/install.md`, next to the
   existing `engram version --output json` checks, with its exit codes (0, 2 and 7). Verify:
   `task lint:markdown` passes, and the documented command gives exit 7 against a deliberately wrong
   version when run locally.

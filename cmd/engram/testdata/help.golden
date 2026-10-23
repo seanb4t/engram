@@ -1015,6 +1015,7 @@ Usage:
   engram version [flags]
 
 Flags:
+      --expect string   after printing, exit 7 unless this binary's version is exactly this value (no v-prefix normalisation)
   -h, --help            help for version
       --output string   output format: "json" or "text" (default: text, always — unlike every other --output flag in this binary, this one never auto-detects from stdout) (default "text")
 ```

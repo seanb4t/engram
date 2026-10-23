@@ -95,6 +95,22 @@ engram version --output json
 Expect `"version": "0.16.0"` for this archive. Add your chosen directory to your
 shell's `PATH` configuration if it is not already there.
 
+To make the check fail in a script instead of reading the output, pass the
+version you expect. `--expect` is new; `engram version --help` shows whether
+your binary has it:
+
+```sh
+engram version --expect 0.16.0
+```
+
+The command prints the version as usual, then exits with one of these codes:
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The binary's version is exactly the value given. |
+| `7` | The versions differ. One error line names both. A `v` prefix is not ignored, so `v0.16.0` does not match `0.16.0`. |
+| `2` | The value is empty. Nothing is printed. |
+
 ### Unsigned binary on macOS
 
 An archive installation does not run Homebrew's hooks: completions and man
