@@ -84,17 +84,28 @@ host that can reach Apple. The cask SHALL NOT remove the quarantine attribute.
 - **WHEN** `brew install` of the engram cask runs on macOS with quarantine enabled
 - **THEN** no install step removes `com.apple.quarantine` from the binary, and the version check runs and passes
 
-### Requirement: A release whose macOS binary fails Gatekeeper goes red
+### Requirement: A release does not publish unsigned macOS binaries for want of a secret
 
-After a release publishes, the release workflow SHALL assess both published darwin binaries as in
-the requirement above, and SHALL fail the workflow run when either assessment fails. This SHALL
-hold whatever the cause: a missing signing secret, a notarization that timed out or is still
-pending, or a binary that was never signed.
+The release workflow SHALL fail before it builds or publishes anything when any of the five macOS
+signing secrets is empty.
 
 #### Scenario: A signing secret is missing
 
-- **WHEN** a release runs with one of the five signing secrets unset
-- **THEN** the release publishes unsigned darwin binaries, and the workflow run ends failed on the Gatekeeper check
+- **WHEN** a release runs with one of the five signing secrets empty
+- **THEN** the release job fails before GoReleaser runs, and no release asset or cask is published
+
+### Requirement: A release whose macOS binary fails Gatekeeper goes red
+
+After a release publishes, the release workflow SHALL assess both published darwin binaries as in
+the requirement above, and SHALL fail the workflow run when either assessment fails, including
+when a later release step failed after the upload. This SHALL hold whatever the cause: a
+notarization that timed out or is still pending, a config edit that skipped signing, or a binary
+that was never signed.
+
+#### Scenario: Notarization did not finish
+
+- **WHEN** Apple's notarization of a darwin binary times out or is still pending when GoReleaser stops waiting
+- **THEN** the release publishes, and the workflow run ends failed on the Gatekeeper check
 
 #### Scenario: An unsigned earlier release
 

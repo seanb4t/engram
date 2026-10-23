@@ -36,19 +36,20 @@ builds:
 # release runner. It is a build-stage pipe, so the archives and checksums
 # below cover the signed bytes.
 #
-# `enabled` needs all five variables: given only the signing pair, the pipe
-# would sign without notarizing and the log would stay green. With none set
-# (local snapshots, pull requests) the pipe is skipped, and so is a release
-# missing any one. A notarization that times out or is still pending is
-# also logged and passed over, so release.yaml's verify-macos job, not this
-# pipe, is what fails a release whose darwin binary Gatekeeper rejects.
+# `enabled` needs all five variables set and non-empty: given only the
+# signing pair, the pipe signs without notarizing. Otherwise the pipe is
+# skipped, not failed, so a local snapshot builds unsigned. Apple rejecting
+# a submission, or a certificate that does not load, fails the pipe; a
+# notarization that times out or is still pending is logged and passed
+# over. release.yaml therefore refuses to start without the five secrets,
+# and its verify-macos job checks the published binaries with Gatekeeper.
 # No entitlements: engram needs no JIT.
 notarize:
   macos:
     - enabled: |-
         {{ and (isEnvSet "MACOS_SIGN_P12") (isEnvSet "MACOS_SIGN_PASSWORD") (isEnvSet "MACOS_NOTARY_ISSUER_ID") (isEnvSet "MACOS_NOTARY_KEY_ID") (isEnvSet "MACOS_NOTARY_KEY") }}
-      # The default is the project name, which happens to equal the build
-      # id; naming it keeps a build rename from silently skipping the pipe.
+      # Must name the darwin build's builds[].id; an id that matches no
+      # build skips the pipe. releaseconfig_test.go checks it.
       ids:
         - engram
       sign:
@@ -173,34 +174,34 @@ homebrew_casks:
     # v0.11.0 backfill after v0.11.1 had shipped, and a version-pinned cask
     # would fail the same way with no floating tag to notice it by.
     skip_upload: '{{ if index .Env "SKIP_HOMEBREW_UPLOAD" }}{{ .Env.SKIP_HOMEBREW_UPLOAD }}{{ else }}false{{ end }}'
-    # REQ-cask-install-gate: the install runs the installed binary, and any
-    # failure fails the install. These hooks render as the cask's
-    # postflight_steps and uninstall_postflight_steps, Homebrew's declarative
-    # steps DSL: literal step calls, no Ruby. Every `run` keeps the default
-    # must_succeed: true. Homebrew's completions:/manpages: fields and its
-    # generate_completions_from_executable helper are not used, because the
-    # helper turns a failure into a warning and a broken binary would install
-    # green. releaseconfig_test.go checks the step order and the absent keys.
+    # The install runs the installed binary, and any failure fails the
+    # install. These hooks render as the cask's postflight_steps and
+    # uninstall_postflight_steps, Homebrew's declarative steps DSL: literal
+    # step calls, no Ruby. No step sets must_succeed, so every `run` keeps
+    # the default, true. The cask keys completions:, manpages: and
+    # generate_completions_from_executable stay unset: the first two install
+    # prebuilt files instead of running the binary, and the helper turns a
+    # failure into a warning. releaseconfig_test.go checks all of this.
     #
-    # There is no quarantine removal: the darwin binaries are Developer ID
-    # signed and notarized (notarize: above), so Gatekeeper runs the
-    # quarantined binary, and release.yaml's verify-macos job fails the run
-    # if it would not.
+    # There is no quarantine removal: the darwin binaries are signed and
+    # notarized (notarize: above), so Gatekeeper runs the quarantined binary.
     #
-    # GoReleaser templates the rendered cask, and Homebrew's install-time
-    # tokens use the same delimiters, so HOMEBREW_PREFIX is written quoted.
-    # The paths stay explicit rather than Homebrew's completion tokens, so
-    # install and uninstall agree however an operator configures those.
+    # GoReleaser templates these bodies with the same {{ }} delimiters as
+    # Homebrew's install-time tokens, so every Homebrew token is written
+    # quoted, as {{ "{{HOMEBREW_PREFIX}}" }} and {{ "{{version}}" }}. The
+    # paths name HOMEBREW_PREFIX directories rather than Homebrew's
+    # {{bash_completion}}-style tokens, which follow per-install cask
+    # directory settings, so install and uninstall name the same files.
     hooks:
       post:
         # The `run "bin/engram", base: :homebrew_prefix` steps exercise the
         # linked binary, not the staged archive. `--expect` makes the binary
         # compare its own version with the cask's (the DSL cannot), exiting
-        # 7 on a mismatch. It reads Homebrew's {{version}} token, which
-        # expands to the cask's version stanza at install time; GoReleaser's
-        # .Version would be a literal frozen at render time, so an edited
-        # stanza would no longer be checked. A `run` with stdout_path writes
-        # the file only when the command succeeds.
+        # 7 on a mismatch. Its argument must be Homebrew's {{version}} token,
+        # which expands to the cask's version stanza at install time, not
+        # GoReleaser's .Version, which is fixed when the cask is rendered. A
+        # `run` with stdout_path writes the file only when the command
+        # succeeds.
         install_steps: |-
           run "bin/engram",
               base: :homebrew_prefix,
@@ -224,9 +225,9 @@ homebrew_casks:
               writable_paths: ["{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"]
         # Homebrew tracks only the files it installs, so without this an
         # uninstall leaves the completions and man pages behind. One `remove`
-        # with no `recursive:` is rm_f on each path: a missing file is not an
-        # error, the glob matches file names only, and the shared parent
-        # directories are never removed.
+        # with no `recursive:` is rm_f on each path and glob match: a missing
+        # file is not an error, and rm_f never removes a directory, so the
+        # shared parent directories stay.
         uninstall_steps: |-
           remove [
             "{{ "{{HOMEBREW_PREFIX}}" }}/etc/bash_completion.d/engram",

@@ -515,25 +515,29 @@ tasks:
     desc: Local goreleaser dry build (no publish)
     cmds:
       - goreleaser release --snapshot --clean
-  # Run by release.yaml's verify-macos job after every release, because
-  # GoReleaser's notarize pipe does not fail when signing is skipped or Apple
-  # is slow. The verdict is spctl's exit status plus the exact
-  # `source=Notarized Developer ID` line: `-t exec` rejects any bare binary,
-  # and a runner with Gatekeeper assessments disabled answers "accepted"
-  # with no notarized source.
+  # Run by release.yaml's verify-macos job after every release (why: the
+  # notarize: comment in .goreleaser.yaml). Each published darwin binary is
+  # marked quarantined, then assessed with `spctl -t install`; `-t exec`
+  # rejects any bare binary. The verdict is the exit status plus the exact
+  # `source=Notarized Developer ID` line, because a runner with Gatekeeper
+  # assessments disabled answers "accepted" with no notarized source. The
+  # quarantined arm64 binary then runs, which needs an Apple-silicon host.
+  # TAG reaches the script through the environment, never the script text.
   release:gatekeeper:
-    desc: Check a published release's darwin binaries with Gatekeeper (TAG required, macOS only)
+    desc: Check a published release's darwin binaries with Gatekeeper (TAG required, Apple-silicon macOS only)
     requires:
       vars: [TAG]
+    env:
+      GATEKEEPER_TAG: "{{.TAG}}"
     preconditions:
-      - sh: '[ "$(uname -s)" = Darwin ]'
-        msg: "release:gatekeeper needs macOS: it runs spctl and the darwin binary"
+      - sh: '[ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]'
+        msg: "release:gatekeeper needs an Apple-silicon Mac: it runs spctl and the arm64 binary"
       - sh: command -v gh
         msg: "release:gatekeeper downloads the release assets with gh"
     cmds:
       - |
         set -eu
-        tag="{{.TAG}}"
+        tag="$GATEKEEPER_TAG"
         version="${tag#v}"
         work=$(mktemp -d)
         trap 'rm -rf "$work"' EXIT

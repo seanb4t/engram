@@ -20,13 +20,14 @@
 
 - [x] 2.1 Replace `homebrew_casks[0].hooks.post.install` in `.goreleaser.yaml` with
   `hooks.post.install_steps`, per design D1, D2 and D3. The steps, in order:
-  1. `run "bin/engram", base: :homebrew_prefix` with `version --expect {{ .Version }}`.
+  1. `run "bin/engram", base: :homebrew_prefix` with `version --expect {{version}}`, Homebrew's
+     token, written quoted as `{{ "{{version}}" }}`.
   2. Three `completion` `run` steps with `stdout_path:` set to today's paths.
   3. `mkdir_p` of the `man1` directory.
   4. A `man` `run` with `writable_paths:` set to the `man1` directory.
 
   There is no quarantine step (design D7). Rewrite the existing rationale comments for the steps
-  form, and keep the `REQ-cask-install-gate` reasons. Verify: GoReleaser v2.19.0 `check` exits 0
+  form, and keep the fail-loudly reasons. Verify: GoReleaser v2.19.0 `check` exits 0
   and prints no deprecation. The local install is v2.17.1, so run
   `go run github.com/goreleaser/goreleaser/v2@v2.19.0 check`, or upgrade the local tool first.
 - [x] 2.2 Replace `hooks.post.uninstall` with `hooks.post.uninstall_steps`: one `remove` step for
@@ -38,6 +39,10 @@
   - `go test ./cmd/engram -run TestReleaseConfig -count=1` passes.
   - Moving the `completion` steps above the `--expect` step locally turns it red. Revert the move
     afterwards; this check is not committed.
+  - After the suite review, each of these scratch edits also turns it red, and is reverted: an
+    aligned `must_succeed:   false` on the man step; swapping the zsh and fish `completion` args;
+    `man1` changed to `man8` everywhere; a raw `{{version}}`; renaming the darwin build id. The
+    `v`-prefix case of `TestVersionExpect` fails against a comparison that strips a leading `v`.
 - [x] 2.4 Update `guides/install.md`:
   - The Homebrew section, which today says "Its install hooks check…" and that the cask removes
     quarantine because the binary is unsigned (lines 39-40), describes the install steps and the
@@ -58,17 +63,31 @@
   `check` exits 0, and `rg -n 'no GoReleaser Pro|ships unsigned' .goreleaser.yaml` returns nothing.
 - [x] 3.2 Pass `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`,
   `MACOS_NOTARY_KEY_ID` and `MACOS_NOTARY_KEY` from `secrets.*` into the `goreleaser-action` step's
-  `env:` in `release.yaml`, and nowhere else. Verify: `actionlint` passes, and
-  `rg -c 'secrets\.MACOS_' .github/workflows` prints only `.github/workflows/release.yaml:5`.
-- [x] 3.3 Add the `release:gatekeeper` task to `Taskfile.yaml` per design D8: `TAG` input,
-  `preconditions:` for `TAG`, a darwin host and `gh`, then download, quarantine, `spctl -a -vv -t
-  install` on both darwin binaries by exit status, and `engram version --expect` on the `arm64`
-  binary. Verify on a Mac: `task release:gatekeeper TAG=v0.29.0` exits non-zero at the `spctl`
-  step, because v0.29.0 was published unsigned. This proves the check can fail.
+  `env:` in `release.yaml`, and into no step but that one and the 3.5 check. Verify: `actionlint`
+  passes, and `rg -c 'secrets\.MACOS_' .github/workflows` prints only
+  `.github/workflows/release.yaml:10`.
+- [x] 3.3 Add the `release:gatekeeper` task to `Taskfile.yaml` per design D8: `TAG` input passed
+  through the task's `env:`, `preconditions:` for an Apple-silicon Mac and `gh`, then download,
+  quarantine, `spctl -a -vv -t install` on both darwin binaries judged by exit status plus the
+  exact `source=Notarized Developer ID` line, and `engram version --expect` on the `arm64` binary.
+  Verify on a Mac: `task release:gatekeeper TAG=v0.29.0` exits non-zero at the `spctl` step,
+  because v0.29.0 was published unsigned. This proves the check can fail.
 - [x] 3.4 Add the `verify-macos` job to `release.yaml`: `needs: release`, `runs-on: macos-latest`,
-  run only when the release job shipped, and run `task release:gatekeeper` with the shipped tag and
-  `GH_TOKEN`. Expose the `ship` and `tag` step outputs as outputs of the `release` job. Verify:
-  `actionlint` and `yamlfmt -lint` pass on `release.yaml`.
+  run when the release job shipped and the run was not cancelled (`!cancelled()`), and run
+  `task release:gatekeeper` with the shipped tag and `GH_TOKEN`. Expose the `ship` and `tag` step
+  outputs as outputs of the `release` job. Verify: `actionlint` and `yamlfmt -lint` pass on
+  `release.yaml`.
+- [x] 3.5 Add the "Require the macOS signing secrets" step before `goreleaser-action`, per design
+  D9: it fails the job when any of the five `MACOS_*` values is empty, printing only the names.
+  Verify: `actionlint` passes on `release.yaml`.
+- [ ] 3.6 Move the five secrets into a `release` environment, per design D9: create the
+  environment with a custom deployment branch policy allowing only `main`, set the five secrets
+  there from the same 1Password items, set `environment: release` on the release job, add
+  `sigstore/cosign-installer` (SHA-pinned) before `goreleaser-action`, then delete the five
+  repository-level secrets. Verify: `gh api repos/seanb4t/engram/environments/release` shows the
+  branch policy; `gh secret list -e release` lists the five; `gh secret list` lists no `MACOS_*`.
+- [x] 3.7 Document the `release` environment, its five secrets and `task release:gatekeeper` in
+  `docs-site/src/content/docs/contributing/releasing.md`. Verify: `task lint:markdown` passes.
 
 ## 4. GoReleaser pin
 

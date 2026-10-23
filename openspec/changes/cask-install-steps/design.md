@@ -216,10 +216,13 @@ already a direct dependency, and checks the hooks of `homebrew_casks[0]`:
 
 - The legacy `install` and `uninstall` keys are absent. `install_steps` and `uninstall_steps` are
   present.
-- In `install_steps`, the `--expect` step comes before the three `completion` steps, which come
-  before the `man` step. No step sets `must_succeed: false`, and no step runs `xattr`.
-- `uninstall_steps` names the five paths, has no `recursive: true`, and has no path that is a
-  bare directory.
+- Every `{{` in either body is a quoted Homebrew token, `{{ "{{NAME}}" }}`, so GoReleaser's own
+  templating cannot consume one.
+- `install_steps` is, in order: `--expect` with Homebrew's `{{version}}`; the bash, zsh and fish
+  `completion` runs, each writing the spec's path for its own shell; the `man` run into the
+  spec's `share/man/man1`. Neither body names `must_succeed` or runs `xattr`.
+- `uninstall_steps` removes exactly the files the install writes, has no `recursive`, and has no
+  path that is a bare directory.
 - The keys `generate_completions_from_executable`, `completions`, `manpages` and `brews` are
   absent. The test checks parsed keys, not substrings, so prose in a comment cannot trip it.
 - The cask description still byte-matches `rootCmd.Short`.
@@ -227,14 +230,18 @@ already a direct dependency, and checks the hooks of `homebrew_casks[0]`:
 `TestCheckOrderingCatchesTransposedLines`, `recordingT`, and the comment-stripping helpers that
 only served the line-grep checks are deleted (rule `3p0zsqrhmb`: no test for a test).
 
-The steps body is still an opaque string after the YAML parse, so the order check works on its
-lines. This is our config, so checking it does not test GoReleaser or Homebrew.
+The steps body is still an opaque string after the YAML parse, so the test splits it into one
+block per step (a step starts on an unindented line). This is our config, so checking it does not
+test GoReleaser or Homebrew.
 
-Behaviour of `--expect` is covered by Go tests on the command: match, mismatch with both output
-modes, `v` prefix, empty value, and flag omitted.
+Behaviour of `--expect` is covered by Go tests on the command, run with the version set to the
+spec's `0.30.0`: match, mismatch with both output modes, `v` prefix, empty value, and flag
+omitted.
 
-The test does not check the `notarize:` block. Whether signing worked is measured on the published
-binaries by the D8 job, which catches every cause, not only a config edit.
+`TestReleaseConfigNotarizeMacOS` checks the `notarize:` block: one entry, `ids` equal to the
+darwin builds' ids, and `enabled` an `and` over all five `MACOS_*` variables. A config edit then
+fails before merge. Whether signing worked is still measured on the published binaries by the D8
+job.
 
 ### D7. Sign and notarize with GoReleaser's open-source `notarize.macos`
 
@@ -242,10 +249,10 @@ One `notarize.macos` entry, copied from codegraph-go:
 
 - `enabled:` is `{{ and (isEnvSet "MACOS_SIGN_P12") (isEnvSet "MACOS_SIGN_PASSWORD") (isEnvSet
   "MACOS_NOTARY_ISSUER_ID") (isEnvSet "MACOS_NOTARY_KEY_ID") (isEnvSet "MACOS_NOTARY_KEY") }}`.
-  With fewer than five set, the pipe would sign without notarizing, so it must see all five or
-  none. Local snapshots and CI pull-request builds set none and skip it.
-- `ids: [engram]`. It is GoReleaser's default (the project name), but naming the build id keeps a
-  later build rename from silently skipping the pipe.
+  `isEnvSet` treats an empty value as unset. Given only the signing pair, the pipe would sign
+  without notarizing, so it must see all five or none. A local snapshot sets none and skips it.
+- `ids: [engram]`, the darwin build's id. It equals GoReleaser's default (the project name); an id
+  that matches no build skips the pipe, so D6's test pins it to the darwin builds.
 - `sign.certificate` and `sign.password` read `MACOS_SIGN_P12` (base64 of the `.p12`) and
   `MACOS_SIGN_PASSWORD`. There is no `entitlements:` key: engram uses no JIT or unsigned
   executable memory.
@@ -257,8 +264,8 @@ stages, and the checksums cover the signed bytes. The Linux binaries and the ima
 `quill` runs on Linux, and engram builds with `CGO_ENABLED=0`, so the release job stays on
 `ubuntu-latest`. codegraph-go needed a macOS runner only for its C build.
 
-The `goreleaser-action` step in `release.yaml` gets the five secrets in its `env:`. No other step
-or workflow reads them.
+The `goreleaser-action` step in `release.yaml` gets the five secrets in its `env:`. D9 says where
+they live and what else reads them.
 
 Alternatives rejected:
 
@@ -272,35 +279,64 @@ Alternatives rejected:
 
 ### D8. A Gatekeeper check after each release
 
-GoReleaser cannot be relied on to fail when signing does not happen: `enabled:` turns false
-quietly when a secret is missing, and a notarization timeout or pending status is logged and passed
-over. So a check runs on what was actually published.
+GoReleaser cannot be relied on to fail when notarization does not happen: a timeout or pending
+status is logged and passed over, and a config edit can skip the pipe. So a check runs on what was
+actually published.
 
 A new Taskfile task, `release:gatekeeper`, takes `TAG` and:
 
 1. downloads `engram_<version>_darwin_amd64.tar.gz` and `…_darwin_arm64.tar.gz` from the GitHub
    Release with `gh`, and extracts each binary;
 2. marks each binary with `com.apple.quarantine`;
-3. runs `spctl -a -vv -t install` on each, taking the exit status as the verdict (never a text
-   match, and never `-t exec`);
+3. runs `spctl -a -vv -t install` on each (never `-t exec`, which rejects any bare binary). The
+   verdict is exit status 0 plus the exact `source=Notarized Developer ID` line: a runner with
+   Gatekeeper assessments disabled answers "accepted" with no notarized source, so the exit status
+   alone could pass an unnotarized binary;
 4. runs the `arm64` binary as `engram version --expect <version>`, so a real exec of the
    quarantined binary passes Gatekeeper.
 
-It fails on a non-darwin host through a `preconditions:` entry.
+`TAG` reaches the script through the task's environment, not its text. A `preconditions:` entry
+fails the task on anything but an Apple-silicon Mac.
 
 A new `verify-macos` job in `release.yaml` runs the task on `macos-latest` with `needs: release`.
-It runs only when the release job shipped, so the release job exposes its `ship` and `tag` step
-outputs as job outputs. engram is a public repository, so the macOS runner costs nothing.
+It runs when the release job shipped, so the release job exposes its `ship` and `tag` step outputs
+as job outputs. Its condition includes `!cancelled()`: a release step after the upload can fail
+with the binaries already public, and a rerun of the failed job does not ship again, so the check
+must not be skipped then. engram is a public repository, so the macOS runner costs nothing.
 
 Alternatives rejected:
 
-- **Check secrets before GoReleaser runs.** It catches only the missing-secret case, not a timeout,
-  a pending status or a config edit.
+- **A secrets check before GoReleaser instead of this job.** It catches only the missing-secret
+  case, not a timeout, a pending status or a config edit. D9 adds it alongside this job.
 - **A separate workflow on `workflow_run`, as codegraph-go uses.** engram has one release job and a
   `workflow_dispatch` re-ship path that reruns the whole workflow, so a job in the same workflow
   re-checks every re-ship with no extra trigger logic.
 - **`codesign -dvv` or `notarytool history`.** Both can look healthy for a binary Gatekeeper still
   rejects. codegraph-go recorded `codesign -dvv` passing on an ad hoc signed binary.
+
+### D9. Guard the signing inputs
+
+The suite review on PR #886 found that a missing secret skips signing quietly, after which the
+release publishes unsigned darwin binaries and a cask with no quarantine removal. Every macOS
+install of that version would then fail until a re-ship. Three guards close the gaps the D8 check
+cannot, because D8 runs only after publishing:
+
+- **Secrets check.** A step before `goreleaser-action` fails the release job when any of the five
+  `MACOS_*` values is empty, so nothing is published unsigned for that reason.
+- **`release` environment.** The release job runs in a GitHub environment named `release` whose
+  deployment branch policy allows only `main`. The five secrets live there, not at repository
+  level, so a workflow on any other branch cannot read the signing identity.
+- **cosign.** `sigstore/cosign-installer` runs before `goreleaser-action`, which then verifies the
+  GoReleaser download against GoReleaser's signed `checksums.txt` (its sigstore bundle) as well as
+  the checksum, before that binary receives the secrets.
+
+Only the secrets-check step and the `goreleaser-action` step read the five secrets.
+
+Alternatives rejected:
+
+- **Repository-level secrets.** Every workflow on every branch can read them.
+- **A required reviewer on the environment.** Every release would wait for a person; the branch
+  policy already limits who can reach the secrets.
 
 ## Risks / Trade-offs
 

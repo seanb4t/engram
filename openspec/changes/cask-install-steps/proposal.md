@@ -45,13 +45,16 @@ change signs the binary and drops the quarantine removal, instead of porting it 
   pages. It never removes a shared directory.
 - **Signed and notarized macOS binaries.** A `notarize.macos` block signs the two darwin binaries
   with the Developer ID certificate and submits them to Apple for notarization, before they are
-  archived. It reads five repository secrets (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`,
-  `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_KEY`), and runs only when all
-  five are set. The release job stays on `ubuntu-latest`. The cask no longer removes quarantine.
+  archived. It reads five secrets (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`,
+  `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_KEY`) from a `release` GitHub
+  environment that only `main` can use, and runs only when all five are set. The release job fails
+  before GoReleaser runs if any is empty, and installs cosign so the GoReleaser download is
+  signature-verified. The release job stays on `ubuntu-latest`. The cask no longer removes
+  quarantine.
 - **Gatekeeper check after each release.** A new macOS job in `release.yaml` downloads both
   published darwin binaries, marks them quarantined, and fails the run unless Gatekeeper accepts
-  them as notarized. A missing secret or a slow Apple response does not fail GoReleaser, so this
-  job is what turns those cases red.
+  them as notarized. A slow Apple response does not fail GoReleaser, so this job is what turns
+  that case red.
 - **GoReleaser pin.** `GORELEASER_VERSION` in `ci.yaml` and `release.yaml` moves from v2.18.3 to
   v2.19.0, the first release with the `*_steps` fields. The "hold below v2.19" comment is removed.
   The pin and its Renovate annotation stay, so the release still builds with the version CI checks.
@@ -60,7 +63,8 @@ change signs the binary and drops the quarantine removal, instead of porting it 
   file paths. The meta-test that only tests the test's own helper is removed (rule `3p0zsqrhmb`).
 - **Docs.** The install guide describes the steps-based install, `version --expect` and the
   notarized binary. Its "Unsigned binary on macOS" section keeps the `xattr` advice only for
-  releases from before this change.
+  releases from before this change. The release guide lists the `release` environment, its five
+  secrets and `task release:gatekeeper`.
 
 Out of scope:
 
@@ -97,14 +101,16 @@ None. `cli-catalog` derives the flag list from the live binary, so `--expect` ap
 - **Console (`ui/`):** deliberately unchanged.
 - **Helm chart:** deliberately unchanged. The cask is not part of the cluster deployment.
 - **docs-site:** affected. `guides/install.md` describes the Homebrew section's install steps, the
-  new flag and the notarized binary.
+  new flag and the notarized binary. `contributing/releasing.md` lists the signing secrets and the
+  Gatekeeper task.
 - **engram skill:** deliberately unchanged. The skill does not drive Homebrew or `engram version`.
 - **Wire contract:** no proto field, MCP input schema, error hint code, `ENGRAM_` config key or
   stored payload key changes. The CLI contract grows by one opt-in flag. Existing exit codes keep
   their meaning; code 7 gains one more producer.
 - **Release pipeline:** affected. `.goreleaser.yaml`, `.github/workflows/ci.yaml`,
-  `.github/workflows/release.yaml` and `Taskfile.yaml` change. The release job reads five new
-  secrets and gains a notarize step that waits for Apple. A new `macos-latest` job runs after it.
+  `.github/workflows/release.yaml` and `Taskfile.yaml` change. The release job runs in the new
+  `release` environment, checks and reads five new secrets, installs cosign, and gains a notarize
+  step that waits for Apple. A new `macos-latest` job runs after it.
   The first release after merge publishes signed darwin binaries and a tap cask with
   `postflight_steps` and `uninstall_postflight_steps` instead of `postflight` and
   `uninstall_postflight`.

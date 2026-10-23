@@ -33,6 +33,12 @@ The `release` workflow uses a GitHub App token to open the release PR, cut the t
 1. A GitHub App with **Contents: write** and **Pull requests: write** on this repo, installed on the repo.
 2. Two repo secrets: `RELEASE_APP` (the App ID) and `RELEASE_APP_PRIVATE_KEY`.
 3. The App named as a **bypass actor** on the `main` branch ruleset.
+4. A GitHub environment named `release` whose deployment branch policy allows only `main`. It holds the five secrets that sign and notarize the macOS binaries:
+   - `MACOS_SIGN_P12`: the Developer ID Application certificate, as a base64 `.p12`.
+   - `MACOS_SIGN_PASSWORD`: the certificate's password.
+   - `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID` and `MACOS_NOTARY_KEY`: an App Store Connect team API key and its `.p8`.
+
+   The release job stops before GoReleaser runs if any of the five is empty.
 
 The default `GITHUB_TOKEN` keeps `packages: write` only — it pushes the image and OCI chart to GHCR, nothing else.
 
@@ -52,4 +58,5 @@ release-please re-cuts the open release PR at that version. Keep the footer in t
 
 - `task release:check` — `goreleaser check` (config validity).
 - `task release:snapshot` — local `goreleaser` dry build (no publish).
+- `task release:gatekeeper TAG=vX.Y.Z` — on an Apple-silicon Mac, checks a published release's macOS binaries with Gatekeeper, as the `verify-macos` job does after each release.
 - `task chart:lint` — `helm lint` + `helm template`.
