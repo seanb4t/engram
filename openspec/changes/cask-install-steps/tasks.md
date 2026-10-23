@@ -20,15 +20,14 @@
 
 - [ ] 2.1 Replace `homebrew_casks[0].hooks.post.install` in `.goreleaser.yaml` with
   `hooks.post.install_steps`, per design D1, D2 and D3. The steps, in order:
-  1. An `on_macos` xattr `run` on `{{ .StagedPath }}/engram`.
-  2. `run "bin/engram", base: :homebrew_prefix` with `version --expect {{ .Version }}`.
-  3. Three `completion` `run` steps with `stdout_path:` set to today's paths.
-  4. `mkdir_p` of the `man1` directory.
-  5. A `man` `run` with `writable_paths:` set to the `man1` directory.
+  1. `run "bin/engram", base: :homebrew_prefix` with `version --expect {{ .Version }}`.
+  2. Three `completion` `run` steps with `stdout_path:` set to today's paths.
+  3. `mkdir_p` of the `man1` directory.
+  4. A `man` `run` with `writable_paths:` set to the `man1` directory.
 
-  Rewrite the existing rationale comments for the steps form, and keep the
-  `REQ-cask-install-gate` reasons. Verify: GoReleaser v2.19.0 `check` exits 0 and prints no
-  deprecation. The local install is v2.17.1, so run
+  There is no quarantine step (design D7). Rewrite the existing rationale comments for the steps
+  form, and keep the `REQ-cask-install-gate` reasons. Verify: GoReleaser v2.19.0 `check` exits 0
+  and prints no deprecation. The local install is v2.17.1, so run
   `go run github.com/goreleaser/goreleaser/v2@v2.19.0 check`, or upgrade the local tool first.
 - [ ] 2.2 Replace `hooks.post.uninstall` with `hooks.post.uninstall_steps`: one `remove` step for
   the three completion paths, `…/man1/engram.1` and `…/man1/engram-*.1`, with no `recursive:`
@@ -39,49 +38,87 @@
   - `go test ./cmd/engram -run TestReleaseConfig -count=1` passes.
   - Moving the `completion` steps above the `--expect` step locally turns it red. Revert the move
     afterwards; this check is not committed.
-- [ ] 2.4 Update the Homebrew section of `guides/install.md`, which today says "Its install hooks
-  check…", to describe the install steps. Keep the description of what is installed and removed.
-  Verify: `task lint:markdown` passes, and the page's claims match the rendered cask from 4.1.
+- [ ] 2.4 Update `guides/install.md`:
+  - The Homebrew section, which today says "Its install hooks check…" and that the cask removes
+    quarantine because the binary is unsigned (lines 39-40), describes the install steps and the
+    notarized binary. Keep the description of what is installed and removed.
+  - The "Unsigned binary on macOS" section (lines 98-110) says that releases from this change on
+    are signed and notarized, and keeps the `xattr` command only for earlier releases.
 
-## 3. GoReleaser pin
+  Verify: `task lint:markdown` passes, `rg -n 'because the binary is unsigned' docs-site` returns
+  nothing, and the page's claims match the rendered cask from 5.1.
 
-- [ ] 3.1 Set `GORELEASER_VERSION: v2.19.0` in `.github/workflows/ci.yaml` and
+## 3. Signing and the Gatekeeper check
+
+- [ ] 3.1 Add the `notarize.macos` entry to `.goreleaser.yaml` per design D7: the five-variable
+  `enabled:` conjunction, `ids: [engram]`, `sign.certificate` and `sign.password`, and
+  `notarize.issuer_id`, `key_id`, `key`, `wait: true`, `timeout: 20m`. Replace the "engram ships
+  unsigned (… no GoReleaser Pro and no Apple Developer Program membership)" comment with one that
+  says the darwin binaries are signed and notarized and points at D8's check. Verify: v2.19.0
+  `check` exits 0, and `rg -n 'no GoReleaser Pro|ships unsigned' .goreleaser.yaml` returns nothing.
+- [ ] 3.2 Pass `MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`,
+  `MACOS_NOTARY_KEY_ID` and `MACOS_NOTARY_KEY` from `secrets.*` into the `goreleaser-action` step's
+  `env:` in `release.yaml`, and nowhere else. Verify: `actionlint` passes, and
+  `rg -c 'secrets\.MACOS_' .github/workflows` prints only `.github/workflows/release.yaml:5`.
+- [ ] 3.3 Add the `release:gatekeeper` task to `Taskfile.yaml` per design D8: `TAG` input,
+  `preconditions:` for `TAG`, a darwin host and `gh`, then download, quarantine, `spctl -a -vv -t
+  install` on both darwin binaries by exit status, and `engram version --expect` on the `arm64`
+  binary. Verify on a Mac: `task release:gatekeeper TAG=v0.29.0` exits non-zero at the `spctl`
+  step, because v0.29.0 was published unsigned. This proves the check can fail.
+- [ ] 3.4 Add the `verify-macos` job to `release.yaml`: `needs: release`, `runs-on: macos-latest`,
+  run only when the release job shipped, and run `task release:gatekeeper` with the shipped tag and
+  `GH_TOKEN`. Expose the `ship` and `tag` step outputs as outputs of the `release` job. Verify:
+  `actionlint` and `yamlfmt -lint` pass on `release.yaml`.
+
+## 4. GoReleaser pin
+
+- [ ] 4.1 Set `GORELEASER_VERSION: v2.19.0` in `.github/workflows/ci.yaml` and
   `.github/workflows/release.yaml`. Replace the "Hold below v2.19" comment with one line saying both
   workflows pin the same Renovate-tracked value, and keep the `# renovate:` annotation. Verify:
   - `actionlint` and `yamlfmt -lint` pass on both files.
   - `rg -n 'v2\.18\.3|Hold below' .github/workflows` returns nothing.
 
-## 4. Rendered-cask verification (macOS, before merge)
+## 5. Signed snapshot and rendered-cask verification (macOS, before merge)
 
-- [ ] 4.1 Render the cask with GoReleaser v2.19.0:
-  `goreleaser release --snapshot --clean`, or the `go run …@v2.19.0` form. Verify that
-  `dist/homebrew/Casks/engram.rb` has:
-  - `postflight_steps do` and `uninstall_postflight_steps do`;
-  - no `postflight do` and no `uninstall_postflight do`;
-  - literal `{{HOMEBREW_PREFIX}}` and `{{staged_path}}` tokens;
-  - the snapshot version literal after `--expect`.
-- [ ] 4.2 Run `brew style` on the rendered cask file. Verify: it reports no offenses in the
+- [ ] 5.1 Build a signed snapshot with GoReleaser v2.19.0 under `op run`, with the five `MACOS_*`
+  variables set from the same 1Password references codegraph-go's `.env` uses:
+  `goreleaser release --snapshot --clean`, or the `go run …@v2.19.0` form. Verify:
+  - the log shows both darwin binaries signed and notarization accepted;
+  - each `dist/` darwin binary, copied and marked with `com.apple.quarantine`, passes
+    `spctl -a -vv -t install` with exit 0;
+  - `dist/homebrew/Casks/engram.rb` has `postflight_steps do` and `uninstall_postflight_steps do`;
+  - it has no `postflight do`, no `uninstall_postflight do` and no `xattr`;
+  - it has literal `{{HOMEBREW_PREFIX}}` tokens and the snapshot version literal after `--expect`.
+- [ ] 5.2 Run `brew style` on the rendered cask file. Verify: it reports no offenses in the
   steps blocks.
-- [ ] 4.3 In a scratch tap made with `brew tap-new`, install the rendered cask with its `url`
-  pointed at the snapshot's darwin archive (`file://` plus that archive's sha256). Record each of
-  the following in the PR body, as the spec scenarios state them:
+- [ ] 5.3 In a scratch tap made with `brew tap-new`, install the rendered cask with its `url`
+  pointed at the signed snapshot's darwin archive (`file://` plus that archive's sha256). Record
+  each of the following in the PR body, as the spec scenarios state them:
   - The install succeeds.
+  - `xattr -p com.apple.quarantine` on the staged binary under the Caskroom prints a value. If it
+    does not, this install did not exercise Gatekeeper, and the Workflow follow-up `brew upgrade`
+    becomes the measurement for design.md's sandbox risk.
   - The three completion files hold the `engram completion <shell>` output.
   - `man engram-setup` opens.
   - `brew uninstall` removes those files and every `engram*.1` page, and leaves the four
     directories in place.
   - Reinstalling with the cask's `version` edited to a wrong value fails at the `--expect` step.
 
-## 5. Quality gate
+## 6. Quality gate
 
-- [ ] 5.1 Run `task` (lint and test). Verify: it exits 0. `charts/` and `ui/` are unchanged, so
+- [ ] 6.1 Run `task` (lint and test). Verify: it exits 0. `charts/` and `ui/` are unchanged, so
   `task chart:validate` and `task ui:build` are not needed.
 
 ## Workflow follow-up
 
-- After the next release publishes the steps-based cask to `seanb4t/homebrew-tap`, run
+- On the first release after merge, confirm the `verify-macos` job passed. If it failed, re-ship
+  the tag through `workflow_dispatch` after fixing the cause.
+- After that release publishes the steps-based cask to `seanb4t/homebrew-tap`, run
   `brew upgrade engram` on macOS from a pre-change install. Then run `brew uninstall engram` and
-  `brew install seanb4t/tap/engram`, and confirm that the files appear and are removed as in 4.3.
+  `brew install seanb4t/tap/engram`, and confirm that the files appear and are removed as in 5.3.
   This also confirms the design trade-off that an old install uninstalls through its stored Ruby
   block.
+- File a GitHub issue to renew the Developer ID certificate before 2027-02-01 and set
+  `MACOS_SIGN_P12` and `MACOS_SIGN_PASSWORD` again in `seanb4t/engram` and
+  `seanb4t/codegraph-go`.
 - Close #880 when the PR merges, then archive the change.

@@ -30,6 +30,30 @@ Current state:
   explicit opt-in flag; the command itself succeeded".
 - `ci.yaml` and `release.yaml` both read `GORELEASER_VERSION: v2.18.3` (#881). Renovate tracks the
   value through a `# renovate:` annotation.
+- The darwin binaries ship unsigned. The comment above the install hook blames "no GoReleaser Pro
+  and no Apple Developer Program membership", and both halves are wrong: signing needs no Pro
+  feature, and the maintainer holds a Developer ID. The release job runs on `ubuntu-latest`, and
+  the build sets `CGO_ENABLED=0`.
+- `install.md` says the cask removes quarantine "because the binary is unsigned" (lines 39-40),
+  and its "Unsigned binary on macOS" section (lines 98-110) tells archive users to run `xattr`.
+
+**codegraph-go's signing setup**, the precedent this change copies (`.goreleaser.yaml:185-267` and
+`release.yml:216-245` in that repo; its post-release Gatekeeper check last passed for v0.15.0 on
+2026-10-17):
+
+- A `notarize.macos` entry signs the two darwin binaries with the Developer ID certificate and
+  notarizes them, in-process through the `quill` library, with no `codesign` or `xcrun` call.
+- `enabled:` is a conjunction of `isEnvSet` over the same five variables this change uses. With
+  only some of them set, the pipe signs without notarizing and the log stays green.
+- A notarization that times out or is still pending is logged and passed over. Neither fails the
+  pipe.
+- Its cask has no quarantine removal, and its install hook still runs the binary.
+- Its post-release check (`task verify:gatekeeper`) assesses the published asset with
+  `spctl -a -vv -t install` and takes the exit status as the verdict. `-t exec` rejects a bare
+  binary because it is not an app, whether or not it is notarized, so it cannot tell the two cases
+  apart.
+- Measured there: both arches signed, notarized and accepted by Gatekeeper; a wrong certificate
+  password fails in under a second with no secret material in the log.
 
 **Homebrew's install-steps DSL**, as read from upstream `Library/Homebrew/install_steps.rb` and
 `docs/Cask-Cookbook.md` (the `*flight_steps` section) on 2026-10-23:
@@ -74,12 +98,16 @@ Current state:
   same paths today's Ruby writes.
 - No Ruby left in the cask's flight stanzas.
 - One small CLI addition, testable in Go, carries the only logic the DSL cannot express.
+- The darwin binaries are signed and notarized, so nothing strips quarantine, and a release that
+  ships an unnotarized darwin binary ends red.
 
 **Non-Goals:**
 
-- Running a real `brew install` in CI. There is no macOS runner with Homebrew in the pipeline, and
-  that would test Homebrew's runner, which this repo does not own (rule `m45p2b4bp7`).
+- Running a real `brew install` in CI. That would test Homebrew's step runner, which this repo
+  does not own (rule `m45p2b4bp7`). The D8 macOS job checks engram's own binaries, not Homebrew.
 - Making the archive install (no Homebrew) ship completions or man pages.
+- A new engram setting. The five `MACOS_*` variables are release-pipeline secrets read only by
+  GoReleaser; the server and CLI never read them, so no `ENGRAM_` key or Helm value is added.
 
 ## Decisions
 
@@ -94,7 +122,8 @@ Each completion is one `run` step:
 Man pages are a `mkdir_p` of `{{HOMEBREW_PREFIX}}/share/man/man1`, then `run "bin/engram"` with
 `args: ["man", "<that dir>"]` and `writable_paths:` set to the same directory. So the install still
 runs the installed binary, and a binary that cannot produce its completions or pages still fails
-the install. `REQ-cask-install-gate` and its D-09 order are unchanged.
+the install. `REQ-cask-install-gate`'s fail-loudly rule and its D-09 order are unchanged, except
+that its first step, the quarantine removal, is gone (D7).
 
 Alternatives rejected:
 
@@ -105,8 +134,8 @@ Alternatives rejected:
   - `manpages:` must list each page by path. engram writes one page per command (47 today),
     and the list changes with every new command, which is a sync burden the test would have to
     police.
-  - The install would still need steps for the quarantine removal and the version gate, so the
-    cask would use two mechanisms for one concern.
+  - The install would still need a step for the version gate, so the cask would use two
+    mechanisms for one concern.
   - The installed binary would no longer produce the files, which weakens the gate.
 - **`generate_completions_from_executable`.** It is still rejected for the reason recorded in
   `REQ-cask-install-gate`: Homebrew turns its failures into warnings.
@@ -149,11 +178,12 @@ Alternatives rejected:
 
 The `HOMEBREW_PREFIX` paths in `stdout_path:`, `args:` and `remove` are written as
 `{{ "{{HOMEBREW_PREFIX}}" }}/…`. Where a `base:` option exists (the `run` command), the step uses
-`base: :homebrew_prefix` instead, and no token is needed. The quarantine step uses
-`{{ .StagedPath }}`, which GoReleaser maps.
+`base: :homebrew_prefix` instead, and no token is needed.
 
-Alternative rejected: a GoReleaser `variables:` entry. It is a GoReleaser Pro feature, and the
-project uses the open-source build.
+Alternative rejected: a GoReleaser Pro `variables:` entry holding the token. The maintainer has a
+Pro licence, but CI runs the open-source build on purpose: `goreleaser check` then validates the
+same config locally and on pull requests from forks, which cannot read a licence key. The quoting
+it would save is a few characters per path.
 
 ### D4. Uninstall removes files by name, never directories
 
@@ -181,9 +211,8 @@ already a direct dependency, and checks the hooks of `homebrew_casks[0]`:
 
 - The legacy `install` and `uninstall` keys are absent. `install_steps` and `uninstall_steps` are
   present.
-- In `install_steps`, the `on_macos` xattr step comes before the `--expect` step. That comes before
-  the three `completion` steps, which come before the `man` step. No step sets
-  `must_succeed: false`.
+- In `install_steps`, the `--expect` step comes before the three `completion` steps, which come
+  before the `man` step. No step sets `must_succeed: false`, and no step runs `xattr`.
 - `uninstall_steps` names the five paths, has no `recursive: true`, and has no path that is a
   bare directory.
 - The keys `generate_completions_from_executable`, `completions`, `manpages` and `brews` are
@@ -199,13 +228,82 @@ lines. This is our config, so checking it does not test GoReleaser or Homebrew.
 Behaviour of `--expect` is covered by Go tests on the command: match, mismatch with both output
 modes, `v` prefix, empty value, and flag omitted.
 
+The test does not check the `notarize:` block. Whether signing worked is measured on the published
+binaries by the D8 job, which catches every cause, not only a config edit.
+
+### D7. Sign and notarize with GoReleaser's open-source `notarize.macos`
+
+One `notarize.macos` entry, copied from codegraph-go:
+
+- `enabled:` is `{{ and (isEnvSet "MACOS_SIGN_P12") (isEnvSet "MACOS_SIGN_PASSWORD") (isEnvSet
+  "MACOS_NOTARY_ISSUER_ID") (isEnvSet "MACOS_NOTARY_KEY_ID") (isEnvSet "MACOS_NOTARY_KEY") }}`.
+  With fewer than five set, the pipe would sign without notarizing, so it must see all five or
+  none. Local snapshots and CI pull-request builds set none and skip it.
+- `ids: [engram]`. It is GoReleaser's default (the project name), but naming the build id keeps a
+  later build rename from silently skipping the pipe.
+- `sign.certificate` and `sign.password` read `MACOS_SIGN_P12` (base64 of the `.p12`) and
+  `MACOS_SIGN_PASSWORD`. There is no `entitlements:` key: engram uses no JIT or unsigned
+  executable memory.
+- `notarize.issuer_id`, `key_id` and `key` read the App Store Connect team API key. `wait: true`
+  and `timeout: 20m`, which is GoReleaser's cap.
+
+The pipe is part of GoReleaser's build stage, so it signs before the archive, checksum and Docker
+stages, and the checksums cover the signed bytes. The Linux binaries and the image are unaffected.
+`quill` runs on Linux, and engram builds with `CGO_ENABLED=0`, so the release job stays on
+`ubuntu-latest`. codegraph-go needed a macOS runner only for its C build.
+
+The `goreleaser-action` step in `release.yaml` gets the five secrets in its `env:`. No other step
+or workflow reads them.
+
+Alternatives rejected:
+
+- **Keep the `xattr` step.** GoReleaser's cask docs and Homebrew both advise against it, and it
+  does nothing for people who install from the archive by hand.
+- **GoReleaser Pro's `notarize.macos_native`.** It calls `codesign` and `xcrun`, so it needs a macOS
+  runner and a temporary keychain, and it is meant for app bundles, DMGs and installer packages.
+- **Ship a DMG or installer package so the ticket can be stapled.** This adds a packaging format
+  for a command-line tool. `brew install` downloads over the network anyway, so Gatekeeper's online
+  lookup is always possible there.
+
+### D8. A Gatekeeper check after each release
+
+GoReleaser cannot be relied on to fail when signing does not happen: `enabled:` turns false
+quietly when a secret is missing, and a notarization timeout or pending status is logged and passed
+over. So a check runs on what was actually published.
+
+A new Taskfile task, `release:gatekeeper`, takes `TAG` and:
+
+1. downloads `engram_<version>_darwin_amd64.tar.gz` and `…_darwin_arm64.tar.gz` from the GitHub
+   Release with `gh`, and extracts each binary;
+2. marks each binary with `com.apple.quarantine`;
+3. runs `spctl -a -vv -t install` on each, taking the exit status as the verdict (never a text
+   match, and never `-t exec`);
+4. runs the `arm64` binary as `engram version --expect <version>`, so a real exec of the
+   quarantined binary passes Gatekeeper.
+
+It fails on a non-darwin host through a `preconditions:` entry.
+
+A new `verify-macos` job in `release.yaml` runs the task on `macos-latest` with `needs: release`.
+It runs only when the release job shipped, so the release job exposes its `ship` and `tag` step
+outputs as job outputs. engram is a public repository, so the macOS runner costs nothing.
+
+Alternatives rejected:
+
+- **Check secrets before GoReleaser runs.** It catches only the missing-secret case, not a timeout,
+  a pending status or a config edit.
+- **A separate workflow on `workflow_run`, as codegraph-go uses.** engram has one release job and a
+  `workflow_dispatch` re-ship path that reruns the whole workflow, so a job in the same workflow
+  re-checks every re-ship with no extra trigger logic.
+- **`codesign -dvv` or `notarytool history`.** Both can look healthy for a binary Gatekeeper still
+  rejects. codegraph-go recorded `codesign -dvv` passing on an ad hoc signed binary.
+
 ## Risks / Trade-offs
 
 - **[Risk] The sandbox blocks a step that writes outside its declared paths.** For example,
   `engram man` creating `man1` when it does not exist. → `mkdir_p` runs first and declares the
   directory, and `writable_paths` declares it again for the `run`. The completion parents are
   declared through `stdout_path`. **Measurement before shipping:** a local `brew install` from the
-  snapshot-rendered cask on macOS (task group 4).
+  snapshot-rendered cask on macOS (task group 5).
 - **[Risk] The installed binary reads `$HOME` at startup and the sandbox denies it.** →
   `PersistentPreRunE` only checks the environment for legacy `MEM_*` variables and validates flag
   groups. `version`, `completion` and `man` load no config file. The same local install confirms
@@ -213,22 +311,43 @@ modes, `v` prefix, empty value, and flag omitted.
 - **[Risk] The token quoting renders wrongly, and the tap gets a broken cask.** → `goreleaser
   check`, plus `goreleaser release --snapshot --clean` and a review of the rendered
   `dist/homebrew/Casks/engram.rb`. Then `brew style` on that file, which runs Homebrew's own cask
-  cops over the steps block (task group 4).
+  cops over the steps block (task group 5).
 - **[Trade-off] A cask installed before this change uninstalls with its own copy.** Homebrew keeps
   the installed cask file under the caskroom metadata. An uninstall or upgrade of an older install
   is expected to run the old Ruby `uninstall_postflight`, which removes the same paths. Not
   verified; the first `brew upgrade` after release confirms it (tasks.md, Workflow follow-up).
 - **[Trade-off] Homebrew still accepts legacy flight blocks in third-party taps.** The deadline
   comes from GoReleaser and Renovate, not from Homebrew rejecting the current cask.
+- **[Risk] Gatekeeper's online ticket lookup fails inside the install-steps sandbox.** The steps
+  sandbox has no network access, and the first exec of the quarantined binary is the `--expect`
+  step. Gatekeeper's lookup is expected to run in a system service outside that sandbox, but this
+  is not measured. **Measurement before shipping:** the local `brew install` in task 5.3 uses a
+  notarized snapshot binary and confirms the staged binary still carries `com.apple.quarantine`.
+- **[Trade-off] The ticket cannot be stapled.** The first launch of a binary downloaded by hand
+  needs to reach Apple. Offline, Gatekeeper blocks it until the machine is online. `brew install`
+  is online by nature, so the cask path is unaffected.
+- **[Risk] The Developer ID certificate expires on 2027-02-01**, per the codegraph-go record. After
+  that, signing fails and the D8 job goes red on the next release. Binaries signed before then stay
+  valid, because the signature carries a secure timestamp. → A follow-up issue tracks renewing the
+  certificate and setting `MACOS_SIGN_P12` again in both repos.
+- **[Trade-off] Re-shipping a tag from before this change builds unsigned binaries,** because the
+  tag's own `.goreleaser.yaml` has no `notarize:` block. The D8 job then fails, which is accurate.
+- **[Trade-off] Notarization adds wait time to every release.** Apple usually answers in minutes;
+  the timeout is 20 minutes per binary.
 
 ## Migration Plan
 
-1. One PR changes the CLI flag, `.goreleaser.yaml`, the test, both workflow pins and the install
-   guide together. The `_steps` fields need v2.19, and v2.19 fails `check` on the legacy fields, so
-   the config and the pin cannot land separately.
-2. The next release-please release publishes the steps-based cask to the tap.
-3. Verify with `brew upgrade engram` on macOS, then `brew uninstall` and `brew install` (tasks.md,
+1. The five `MACOS_*` repository secrets were set on `seanb4t/engram` on 2026-10-23, from the
+   same 1Password items codegraph-go uses.
+2. One PR changes the CLI flag, `.goreleaser.yaml`, the test, both workflows, the Taskfile and the
+   install guide together. The `_steps` fields need v2.19, and v2.19 fails `check` on the legacy
+   fields, so the config and the pin cannot land separately. Dropping the quarantine step is safe
+   only with signing in place, so those cannot land separately either.
+3. The next release-please release publishes signed darwin binaries and the steps-based cask. The
+   `verify-macos` job must pass on that run.
+4. Verify with `brew upgrade engram` on macOS, then `brew uninstall` and `brew install` (tasks.md,
    Workflow follow-up).
 
-Rollback: revert the PR. The pin goes back to v2.18.3 with the Ruby hooks, and the next release
-republishes a Ruby cask. `--expect` can stay, because it is opt-in.
+Rollback: revert the PR. The pin goes back to v2.18.3 with the Ruby hooks and the quarantine
+removal, and the next release republishes an unsigned binary and a Ruby cask. `--expect` can stay,
+because it is opt-in. The secrets can stay; nothing reads them after the revert.

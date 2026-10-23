@@ -2,9 +2,10 @@
 
 ## Purpose
 
-What a Homebrew cask install and uninstall of engram do and fail on, and the `engram version`
-check the install gate rests on, so a broken or mismatched binary never installs green and an
-uninstall leaves nothing the install wrote.
+What a Homebrew cask install and uninstall of engram do and fail on, the `engram version` check the
+install gate rests on, and the signing that lets macOS run the binary without removing quarantine,
+so a broken, mismatched or unnotarized binary never installs green and an uninstall leaves nothing
+the install wrote.
 
 ## ADDED Requirements
 
@@ -61,20 +62,44 @@ mismatch SHALL NOT be downgraded to a warning.
 - **WHEN** the cask declares version `0.30.0` and its binary reports `0.30.0`
 - **THEN** the install continues past the version check
 
-### Requirement: The cask removes macOS quarantine before it runs the binary
+### Requirement: The macOS release binaries are signed and notarized
 
-On macOS, the cask install SHALL remove the `com.apple.quarantine` attribute from the staged
-`engram` binary before any step runs the binary. On Linux, the cask SHALL NOT run this step.
+Every published darwin release binary, for both `amd64` and `arm64`, SHALL be signed with the
+maintainer's Apple Developer ID and notarized by Apple. A copy of the published binary that carries
+the `com.apple.quarantine` attribute SHALL pass a Gatekeeper assessment and SHALL run on a macOS
+host that can reach Apple. The cask SHALL NOT remove the quarantine attribute.
 
-#### Scenario: Quarantined download on macOS
+#### Scenario: Quarantined published binary
 
-- **WHEN** `brew install` runs on macOS with quarantine enabled
-- **THEN** the binary runs its version check without Gatekeeper killing it
+- **WHEN** a published darwin binary is extracted from its release archive, marked with `com.apple.quarantine`, and assessed with `spctl -a -vv -t install`
+- **THEN** the assessment exits 0 and names the source as a notarized Developer ID
 
-#### Scenario: Linux
+#### Scenario: Quarantined binary runs
 
-- **WHEN** `brew install` runs on Linux
-- **THEN** no quarantine step runs and the install does not fail for lack of `xattr`
+- **WHEN** the quarantined `arm64` binary runs `engram version --expect <its release version>` on an Apple silicon Mac
+- **THEN** the exit code is 0, and macOS does not block or kill the process
+
+#### Scenario: Cask install on macOS
+
+- **WHEN** `brew install` of the engram cask runs on macOS with quarantine enabled
+- **THEN** no install step removes `com.apple.quarantine` from the binary, and the version check runs and passes
+
+### Requirement: A release whose macOS binary fails Gatekeeper goes red
+
+After a release publishes, the release workflow SHALL assess both published darwin binaries as in
+the requirement above, and SHALL fail the workflow run when either assessment fails. This SHALL
+hold whatever the cause: a missing signing secret, a notarization that timed out or is still
+pending, or a binary that was never signed.
+
+#### Scenario: A signing secret is missing
+
+- **WHEN** a release runs with one of the five signing secrets unset
+- **THEN** the release publishes unsigned darwin binaries, and the workflow run ends failed on the Gatekeeper check
+
+#### Scenario: An unsigned earlier release
+
+- **WHEN** the Gatekeeper check runs against `v0.29.0`, which was published unsigned
+- **THEN** the check exits non-zero
 
 ### Requirement: The cask installs shell completions from the binary
 
