@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   persistResume,
   peekResume,
@@ -126,15 +126,25 @@ describe('resume', () => {
   });
 
   it('TTL boundary: an envelope aged exactly RESUME_TTL_MS (600000 ms) still peeks', () => {
-    const ts = Date.now() - 600000;
-    sessionStorage.setItem(RESUME_KEY, JSON.stringify({ ...baseDraft, v: 2, ts }));
-    expect(peekResume()).not.toBeNull();
+    vi.useFakeTimers();
+    try {
+      const ts = Date.now() - 600000;
+      sessionStorage.setItem(RESUME_KEY, JSON.stringify({ ...baseDraft, v: 2, ts }));
+      expect(peekResume()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('TTL boundary: an envelope aged 600001 ms peeks null', () => {
-    const ts = Date.now() - 600001;
-    sessionStorage.setItem(RESUME_KEY, JSON.stringify({ ...baseDraft, v: 2, ts }));
-    expect(peekResume()).toBeNull();
+    vi.useFakeTimers();
+    try {
+      const ts = Date.now() - 600001;
+      sessionStorage.setItem(RESUME_KEY, JSON.stringify({ ...baseDraft, v: 2, ts }));
+      expect(peekResume()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('peeks null on malformed JSON', () => {
