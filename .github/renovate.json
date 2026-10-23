@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:best-practices"
+    "config:best-practices",
+    "customManagers:githubActionsVersions"
   ],
   "description": [
     "ignorePaths replaces the preset default, so the two preset entries are repeated here. `.planning/**` is the retired GSD planning archive (read-only by convention, see CLAUDE.md); it carries a frozen sdk-eval go.mod that must never be bumped (measured 2026-10-18: #811 touched .planning/**/sdk-eval/go.mod)."

@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # Hold below v2.19, which deprecates homebrew_casks.hooks; `goreleaser check`
+  # fails on a deprecated property. ci.yaml and release.yaml pin the same value.
+  # renovate: datasource=github-releases depName=goreleaser/goreleaser
+  GORELEASER_VERSION: v2.18.3
+
 # CI installs each gate via its official action (the runner is bare; the local
 # `task lint`/`fmt` suite assumes the tools are already on PATH). `task` remains
 # the local-dev entrypoint; these jobs mirror its gates with reliable installs.
@@ -171,7 +177,7 @@ jobs:
           fi
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7
         with:
-          version: "~> v2"
+          version: ${{ env.GORELEASER_VERSION }}
           args: check
 
   golangci:
