@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.29.0](https://github.com/seanb4t/engram/compare/v0.28.0...v0.29.0) (2026-10-23)
+
+
+### Features
+
+* **mcp:** per-origin discovery, an origin allowlist and an MCP-only listener ([#877](https://github.com/seanb4t/engram/issues/877)) ([aa455c4](https://github.com/seanb4t/engram/commit/aa455c4135bfc78e47fc32ab84e8c303891bb185))
+
+
+### Bug Fixes
+
+* **ci:** pin goreleaser at v2.18.3 and freeze the clock in the resume TTL tests ([#881](https://github.com/seanb4t/engram/issues/881)) ([eb868a9](https://github.com/seanb4t/engram/commit/eb868a953c4303b65d3f69dc3bc8e7dbee93716d))
+* **deps:** update module github.com/chromedp/cdproto to v0.158.3 ([#874](https://github.com/seanb4t/engram/issues/874)) ([c5e33f9](https://github.com/seanb4t/engram/commit/c5e33f95cfb82d61a17782ebc85086aa085d8493))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.4.1 ([#870](https://github.com/seanb4t/engram/issues/870)) ([8f70df6](https://github.com/seanb4t/engram/commit/8f70df6f12f7bc88767342317d68e24543d2f899))
+
 ## [0.28.0](https://github.com/seanb4t/engram/compare/v0.27.1...v0.28.0) (2026-10-20)
 
 
