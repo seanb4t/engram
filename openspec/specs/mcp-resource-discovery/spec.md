@@ -1,0 +1,238 @@
+# mcp-resource-discovery Specification
+
+## Purpose
+
+What the RFC 9728 protected-resource document and the 401 `WWW-Authenticate` challenge name on
+each origin an engram deployment serves, which origins the derived mode may name, and what a
+request from an unlisted origin receives.
+
+## Requirements
+
+### Requirement: A pinned resource URL names one origin everywhere
+
+When `ENGRAM_MCP_RESOURCE_URL` is set, the document's `resource` field SHALL be that value verbatim
+on every request, and the 401 challenge SHALL carry `resource_metadata` pointing at the well-known
+document on that value's origin. No request header SHALL change either.
+
+#### Scenario: Document ignores forwarded headers in pinned mode
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_URL` is `https://a.example/mcp` and a client requests the document with `X-Forwarded-Host: b.example`
+- **THEN** the document's `resource` is `https://a.example/mcp`
+
+#### Scenario: Challenge names the pinned origin
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_URL` is `https://a.example/mcp`, `ENGRAM_OIDC_RESOURCE_METADATA` is empty, and an unauthenticated client POSTs to the MCP path with `Host: b.example`
+- **THEN** the response is 401 with `WWW-Authenticate: Bearer resource_metadata="https://a.example/.well-known/oauth-protected-resource/mcp"`
+
+### Requirement: The derived mode names the requesting origin in the document and the challenge
+
+When `ENGRAM_MCP_RESOURCE_URL` is empty, the document's `resource` SHALL be the origin derived from
+the request plus the MCP path, and the 401 challenge SHALL carry `resource_metadata` pointing at the
+path-suffix well-known document on that same origin. A configured `ENGRAM_OIDC_RESOURCE_METADATA`
+SHALL replace the derived challenge value.
+
+#### Scenario: Two origins get two documents
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_URL` is empty and clients request the document through `https://a.example` and through `https://b.example`
+- **THEN** the first document's `resource` is `https://a.example/mcp` and the second's is `https://b.example/mcp`
+
+#### Scenario: Two origins get two challenges
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_URL` and `ENGRAM_OIDC_RESOURCE_METADATA` are empty and unauthenticated clients POST to the MCP path through `https://a.example` and through `https://b.example`
+- **THEN** each 401 carries `resource_metadata` naming `/.well-known/oauth-protected-resource/mcp` on its own origin
+
+#### Scenario: Root-mounted MCP path uses the host-only document path
+
+- **WHEN** `ENGRAM_MCP_PATH` is `/` and an unauthenticated client POSTs through `https://a.example`
+- **THEN** the 401 carries `resource_metadata="https://a.example/.well-known/oauth-protected-resource"`
+
+#### Scenario: Configured metadata URL wins over derivation
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_URL` is empty and `ENGRAM_OIDC_RESOURCE_METADATA` is `https://meta.example/prm`
+- **THEN** every 401 carries `resource_metadata="https://meta.example/prm"` whatever the request origin
+
+### Requirement: The derived mode reads the origin from forwarded headers with a trusted fallback
+
+In the derived mode the scheme SHALL come from `X-Forwarded-Proto` only when it is exactly `http`
+or `https`, else from the connection. The host SHALL come from `X-Forwarded-Host` only when it is a
+bare authority (a DNS name or a bracketed IPv6 address with no zone, with an optional port from
+1 to 65535) and the request carries exactly one such header, else from the request `Host`. A derived document SHALL carry `Cache-Control: no-store`.
+
+#### Scenario: Forwarded headers set the origin
+
+- **WHEN** a request arrives over plain HTTP with `X-Forwarded-Proto: https` and `X-Forwarded-Host: a.example`
+- **THEN** the document's `resource` is `https://a.example/mcp` and the response carries `Cache-Control: no-store`
+
+#### Scenario: A malformed forwarded host is ignored
+
+- **WHEN** a request arrives with `Host: a.example` and `X-Forwarded-Host: evil.example/path`
+- **THEN** the document's `resource` is built from `a.example`
+
+### Requirement: The derived origin is normalized
+
+The derived origin SHALL have its scheme and host lowercased, a trailing dot removed from a host
+name, a bracketed IPv6 address in its canonical form, and the default port of its scheme (443 for
+`https`, 80 for `http`) removed, in the document, in the challenge and in the allowlist comparison.
+
+#### Scenario: A default port is removed
+
+- **WHEN** a request arrives with `X-Forwarded-Proto: https` and `X-Forwarded-Host: a.example:443`
+- **THEN** the document's `resource` is `https://a.example/mcp`
+
+#### Scenario: Host case is folded
+
+- **WHEN** a request arrives with `Host: A.Example`
+- **THEN** the document's `resource` is `http://a.example/mcp`
+
+#### Scenario: An IPv6 address is canonical
+
+- **WHEN** a request arrives with `Host: [0:0:0:0:0:0:0:1]:8080`
+- **THEN** the document's `resource` is `http://[::1]:8080/mcp`
+
+#### Scenario: Two forwarded host headers are ignored
+
+- **WHEN** a request arrives with `Host: a.example` and two `X-Forwarded-Host` lines
+- **THEN** the document's `resource` is built from `a.example`
+
+### Requirement: An origin allowlist bounds the derived mode
+
+When `ENGRAM_MCP_RESOURCE_ORIGINS` is set, the derived document and the derived challenge SHALL
+name an origin only when it is in the list. The comparison SHALL be exact on scheme, host and port
+after lowercasing scheme and host and removing the default port of the scheme, on both sides. An
+empty list SHALL keep the unbounded derived mode.
+
+#### Scenario: Listed origin is served
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example,https://b.example` and a client requests the document through `https://b.example`
+- **THEN** the document's `resource` is `https://b.example/mcp`
+
+#### Scenario: Listed origin with a port
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `http://localhost:8080` and a client requests the document with `Host: localhost:8080` over plain HTTP
+- **THEN** the document's `resource` is `http://localhost:8080/mcp`
+
+#### Scenario: Case of the host does not matter
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and a client requests the document with `X-Forwarded-Host: A.EXAMPLE` and `X-Forwarded-Proto: https`
+- **THEN** the document's `resource` is `https://a.example/mcp`
+
+#### Scenario: Default port in the entry or the request does not matter
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and a client requests the document with `X-Forwarded-Host: a.example:443` and `X-Forwarded-Proto: https`
+- **THEN** the document's `resource` is `https://a.example/mcp`
+
+#### Scenario: Scheme or port that differs is refused
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and a client requests the document over plain HTTP with `Host: a.example`, or with `X-Forwarded-Host: a.example:8443`
+- **THEN** the response is 404
+
+#### Scenario: Empty list keeps the unbounded mode
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is unset and a client requests the document through any origin
+- **THEN** the document names that origin, as it does without the setting
+
+### Requirement: An unlisted origin gets no path-suffix document and no hint
+
+When `ENGRAM_MCP_RESOURCE_ORIGINS` is set and the derived origin is not in it, the path-suffix
+well-known path SHALL answer 404 and the 401 challenge SHALL carry no `resource_metadata`
+parameter, unless `ENGRAM_OIDC_RESOURCE_METADATA` is set. The host-only well-known path SHALL
+answer every origin with the derived document, because `engram login` reads its
+`authorization_servers` through whatever name the CLI uses. The bearer check itself SHALL be
+unchanged.
+
+#### Scenario: Unlisted origin on the path-suffix path
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and a client requests the path-suffix document through `https://c.example`
+- **THEN** the response is 404 and a warning log names `https://c.example`
+
+#### Scenario: Unlisted origin on the host-only path
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and `engram login --server https://c.example` requests the host-only document
+- **THEN** the response is 200 with the configured `authorization_servers`, and no warning is logged
+
+#### Scenario: Spoofed forwarded host outside the list
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and a client requests the path-suffix document with `X-Forwarded-Host: c.example` and `X-Forwarded-Proto: https`
+- **THEN** the response is 404 and its body does not name `c.example`
+
+#### Scenario: Unlisted origin on the MCP path with a valid token
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and an authenticated client POSTs to the MCP path through `https://c.example`
+- **THEN** the request is served with no refused-origin warning, because the allowlist bounds discovery only
+
+#### Scenario: Unlisted origin on the MCP path without a token
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example` and an unauthenticated client POSTs to the MCP path through `https://c.example`
+- **THEN** the response is 401 with `WWW-Authenticate: Bearer` and no `resource_metadata` parameter
+
+### Requirement: A refused document is logged once per origin and counted every time
+
+When it refuses the document for an unlisted origin, the server SHALL log the origin at warning
+level once per distinct origin in each hour, up to a fixed number of origins, together with any
+`X-Forwarded-Host` value it ignored, and SHALL count every refusal in the
+`engram.resource_metadata.refused` metric. A request on the MCP path SHALL log no such warning.
+
+#### Scenario: Repeated unlisted origin logs once
+
+- **WHEN** ten document requests arrive through `https://c.example` while it is unlisted
+- **THEN** the warning for `https://c.example` appears once and the metric counts ten refusals
+
+#### Scenario: Warnings start again after an hour
+
+- **WHEN** the warning limit was reached and an hour has passed
+- **THEN** the next refused origin is logged
+
+### Requirement: A challenge from the bearer check is not cached
+
+Every 401 that the bearer check writes SHALL carry `Cache-Control: no-store`. A 401 whose
+`resource_metadata` is derived from the request SHALL also carry
+`Vary: X-Forwarded-Host, X-Forwarded-Proto`.
+
+#### Scenario: Derived challenge
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_URL` and `ENGRAM_OIDC_RESOURCE_METADATA` are empty and an unauthenticated client POSTs to the MCP path
+- **THEN** the 401 carries `Cache-Control: no-store` and a `Vary` that names `X-Forwarded-Host`
+
+### Requirement: The allowlist and the pinned URL are exclusive at startup
+
+`engram serve` SHALL refuse to start when `ENGRAM_MCP_RESOURCE_ORIGINS` and
+`ENGRAM_MCP_RESOURCE_URL` are both set, and when an allowlist entry is not an `http` or `https`
+origin without path, query or fragment whose host is a DNS name or an IP address with an optional
+port from 1 to 65535. The error SHALL name the variable and quote the offending value. There is no
+tool-call `hint` code, because the rejection happens before any request.
+
+#### Scenario: Both settings set
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_URL` is `https://a.example/mcp` and `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example`
+- **THEN** `engram serve` exits as a usage error whose message names both variables
+
+#### Scenario: Entry carries a path
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example/mcp`
+- **THEN** `engram serve` exits as a usage error that names `ENGRAM_MCP_RESOURCE_ORIGINS`, quotes `https://a.example/mcp` and states that an entry is a scheme and host only
+
+#### Scenario: Entry has an unsupported scheme
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `ftp://a.example`
+- **THEN** `engram serve` exits as a usage error that names the variable and states the scheme must be `http` or `https`
+
+#### Scenario: Entry has a wildcard host
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://*.a.example`
+- **THEN** `engram serve` exits as a usage error that names the variable, quotes the entry and states the host must be a DNS name or an IP address
+
+#### Scenario: Empty entry in the list
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_ORIGINS` is `https://a.example,,https://b.example`
+- **THEN** `engram serve` exits as a usage error that names the variable and states the list has an empty entry
+
+### Requirement: The pinned URL is shape-checked at startup
+
+`engram serve` SHALL refuse to start when `ENGRAM_MCP_RESOURCE_URL` is not an `http` or `https` URL,
+or has userinfo, a query, a fragment, or a host that is not a DNS name or an IP address with an
+optional port from 1 to 65535. The error SHALL name the variable and quote the offending value.
+
+#### Scenario: Pinned URL with userinfo
+
+- **WHEN** `ENGRAM_MCP_RESOURCE_URL` is `https://user:secret@a.example/mcp`
+- **THEN** `engram serve` exits as a usage error that names `ENGRAM_MCP_RESOURCE_URL` and states it must not contain userinfo
