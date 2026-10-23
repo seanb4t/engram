@@ -203,21 +203,21 @@ homebrew_casks:
               base: :homebrew_prefix,
               args: ["version", "--expect", "{{ .Version }}"]
           run "bin/engram",
-              base: :homebrew_prefix,
-              args: ["completion", "bash"],
+              base:        :homebrew_prefix,
+              args:        ["completion", "bash"],
               stdout_path: "{{ "{{HOMEBREW_PREFIX}}" }}/etc/bash_completion.d/engram"
           run "bin/engram",
-              base: :homebrew_prefix,
-              args: ["completion", "zsh"],
+              base:        :homebrew_prefix,
+              args:        ["completion", "zsh"],
               stdout_path: "{{ "{{HOMEBREW_PREFIX}}" }}/share/zsh/site-functions/_engram"
           run "bin/engram",
-              base: :homebrew_prefix,
-              args: ["completion", "fish"],
+              base:        :homebrew_prefix,
+              args:        ["completion", "fish"],
               stdout_path: "{{ "{{HOMEBREW_PREFIX}}" }}/share/fish/vendor_completions.d/engram.fish"
           mkdir_p "{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"
           run "bin/engram",
-              base: :homebrew_prefix,
-              args: ["man", "{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"],
+              base:           :homebrew_prefix,
+              args:           ["man", "{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"],
               writable_paths: ["{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"]
         # Homebrew tracks only the files it installs, so without this an
         # uninstall leaves the completions and man pages behind. One `remove`

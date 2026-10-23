@@ -38,7 +38,7 @@
   - `go test ./cmd/engram -run TestReleaseConfig -count=1` passes.
   - Moving the `completion` steps above the `--expect` step locally turns it red. Revert the move
     afterwards; this check is not committed.
-- [ ] 2.4 Update `guides/install.md`:
+- [x] 2.4 Update `guides/install.md`:
   - The Homebrew section, which today says "Its install hooks check…" and that the cask removes
     quarantine because the binary is unsigned (lines 39-40), describes the install steps and the
     notarized binary. Keep the description of what is installed and removed.
@@ -80,7 +80,7 @@
 
 ## 5. Signed snapshot and rendered-cask verification (macOS, before merge)
 
-- [ ] 5.1 Build a signed snapshot with GoReleaser v2.19.0 under `op run`, with the five `MACOS_*`
+- [x] 5.1 Build a signed snapshot with GoReleaser v2.19.0 under `op run`, with the five `MACOS_*`
   variables set from the same 1Password references codegraph-go's `.env` uses:
   `goreleaser release --snapshot --clean`, or the `go run …@v2.19.0` form. Verify:
   - the log shows both darwin binaries signed and notarization accepted;
@@ -89,7 +89,7 @@
   - `dist/homebrew/Casks/engram.rb` has `postflight_steps do` and `uninstall_postflight_steps do`;
   - it has no `postflight do`, no `uninstall_postflight do` and no `xattr`;
   - it has literal `{{HOMEBREW_PREFIX}}` tokens and the snapshot version literal after `--expect`.
-- [ ] 5.2 Run `brew style` on the rendered cask file. Verify: it reports no offenses in the
+- [x] 5.2 Run `brew style` on the rendered cask file. Verify: it reports no offenses in the
   steps blocks.
 - [ ] 5.3 In a scratch tap made with `brew tap-new`, install the rendered cask with its `url`
   pointed at the signed snapshot's darwin archive (`file://` plus that archive's sha256). Record
