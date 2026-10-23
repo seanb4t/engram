@@ -92,9 +92,8 @@ func runVersion(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	// --expect is the Homebrew cask's install gate: the steps DSL cannot
-	// compare values, so the binary does. A mismatch is a failed opt-in
-	// check, not a broken command, hence exitFindings rather than 1 or 2.
+	// A mismatch is a failed check the caller opted into, reported after the
+	// normal output with exitFindings.
 	if checkExpect && v != expect {
 		return &cliError{code: exitFindings, err: fmt.Errorf("version mismatch: this binary is %s, --expect %s", v, expect)}
 	}

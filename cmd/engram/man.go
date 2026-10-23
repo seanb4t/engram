@@ -127,7 +127,7 @@ func pruneToSnapshot(snap map[*cobra.Command][]*cobra.Command) {
 }
 
 // manCmd is a hidden command wrapping cobra/doc.GenManTree over the live
-// rootCmd. It is used by the Homebrew cask's post_install hook to write
+// rootCmd. It is used by the Homebrew cask's install steps to write
 // this binary's own man pages straight into the installed man1
 // directory (.goreleaser.yaml). Hidden: true excludes it from every
 // consumer of this package's shared hidden/help/completion skip
@@ -136,7 +136,7 @@ func pruneToSnapshot(snap map[*cobra.Command][]*cobra.Command) {
 // task surfaces:gen must not be run for it.
 var manCmd = &cobra.Command{
 	Use:    "man <dir>",
-	Short:  "Write one roff man page per command into <dir> (used by the Homebrew cask post-install hook)",
+	Short:  "Write one roff man page per command into <dir> (used by the Homebrew cask's install steps)",
 	Hidden: true,
 	Args:   cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
