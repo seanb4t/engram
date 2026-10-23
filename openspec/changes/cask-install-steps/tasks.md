@@ -18,7 +18,7 @@
 
 ## 2. Cask install and uninstall steps
 
-- [ ] 2.1 Replace `homebrew_casks[0].hooks.post.install` in `.goreleaser.yaml` with
+- [x] 2.1 Replace `homebrew_casks[0].hooks.post.install` in `.goreleaser.yaml` with
   `hooks.post.install_steps`, per design D1, D2 and D3. The steps, in order:
   1. `run "bin/engram", base: :homebrew_prefix` with `version --expect {{ .Version }}`.
   2. Three `completion` `run` steps with `stdout_path:` set to today's paths.
@@ -29,10 +29,10 @@
   form, and keep the `REQ-cask-install-gate` reasons. Verify: GoReleaser v2.19.0 `check` exits 0
   and prints no deprecation. The local install is v2.17.1, so run
   `go run github.com/goreleaser/goreleaser/v2@v2.19.0 check`, or upgrade the local tool first.
-- [ ] 2.2 Replace `hooks.post.uninstall` with `hooks.post.uninstall_steps`: one `remove` step for
+- [x] 2.2 Replace `hooks.post.uninstall` with `hooks.post.uninstall_steps`: one `remove` step for
   the three completion paths, `…/man1/engram.1` and `…/man1/engram-*.1`, with no `recursive:`
   option, per design D4. Verify: the same v2.19.0 `check` exits 0.
-- [ ] 2.3 Rewrite `cmd/engram/releaseconfig_test.go` per design D6. Delete
+- [x] 2.3 Rewrite `cmd/engram/releaseconfig_test.go` per design D6. Delete
   `TestCheckOrderingCatchesTransposedLines`, `recordingT`, and the helpers only the line-grep checks
   used. Verify:
   - `go test ./cmd/engram -run TestReleaseConfig -count=1` passes.
