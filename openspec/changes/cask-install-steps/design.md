@@ -157,8 +157,9 @@ Alternatives rejected:
   message to stderr.
 
 The cask step is `run "bin/engram", base: :homebrew_prefix, args: ["version", "--expect",
-"{{ .Version }}"]`. GoReleaser renders `{{ .Version }}` to the literal release version. That is
-the same value it renders into the cask's `version` stanza.
+"{{version}}"]`, written quoted in `.goreleaser.yaml` as `{{ "{{version}}" }}` (D3). Homebrew
+expands `{{version}}` at install time to the cask's `version` stanza, so the binary is checked
+against the version the cask declares, as the old Ruby hook's `version.to_s` did.
 
 Alternatives rejected:
 
@@ -171,8 +172,12 @@ Alternatives rejected:
 - **Exit code 1 or 2.** Code 1 means unclassified and code 2 means the caller's mistake. A
   mismatch is a failed check that the caller opted into, which is exactly what code 7 means. The
   catalog meaning of code 7 already covers it, so the code table does not change.
-- **Homebrew's `{{version}}` token instead of `{{ .Version }}`.** Both give the same value. The
-  GoReleaser variable needs no quoting.
+- **GoReleaser's `{{ .Version }}` instead of Homebrew's `{{version}}`.** It needs no quoting, and
+  it renders the same value into the cask when GoReleaser writes it. But it renders a literal,
+  so a cask whose `version` stanza is later edited would still compare against the old value.
+  Measured in task 5.3 on 2026-10-23: with the stanza set to `0.0.0-wrong`, the literal form
+  installed green; the `{{version}}` form failed the install at this step with exit 7, and
+  Homebrew rolled the install back.
 
 ### D3. Quote the Homebrew tokens that GoReleaser does not map
 

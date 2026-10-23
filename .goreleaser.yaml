@@ -196,12 +196,15 @@ homebrew_casks:
         # The `run "bin/engram", base: :homebrew_prefix` steps exercise the
         # linked binary, not the staged archive. `--expect` makes the binary
         # compare its own version with the cask's (the DSL cannot), exiting
-        # 7 on a mismatch. A `run` with stdout_path writes the file only when
-        # the command succeeds.
+        # 7 on a mismatch. It reads Homebrew's {{version}} token, which
+        # expands to the cask's version stanza at install time; GoReleaser's
+        # .Version would be a literal frozen at render time, so an edited
+        # stanza would no longer be checked. A `run` with stdout_path writes
+        # the file only when the command succeeds.
         install_steps: |-
           run "bin/engram",
               base: :homebrew_prefix,
-              args: ["version", "--expect", "{{ .Version }}"]
+              args: ["version", "--expect", "{{ "{{version}}" }}"]
           run "bin/engram",
               base:        :homebrew_prefix,
               args:        ["completion", "bash"],

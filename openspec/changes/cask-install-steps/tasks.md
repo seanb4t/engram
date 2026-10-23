@@ -88,10 +88,10 @@
     `spctl -a -vv -t install` with exit 0;
   - `dist/homebrew/Casks/engram.rb` has `postflight_steps do` and `uninstall_postflight_steps do`;
   - it has no `postflight do`, no `uninstall_postflight do` and no `xattr`;
-  - it has literal `{{HOMEBREW_PREFIX}}` tokens and the snapshot version literal after `--expect`.
+  - it has literal `{{HOMEBREW_PREFIX}}` tokens and the `{{version}}` token after `--expect`.
 - [x] 5.2 Run `brew style` on the rendered cask file. Verify: it reports no offenses in the
   steps blocks.
-- [ ] 5.3 In a scratch tap made with `brew tap-new`, install the rendered cask with its `url`
+- [x] 5.3 In a scratch tap made with `brew tap-new`, install the rendered cask with its `url`
   pointed at the signed snapshot's darwin archive (`file://` plus that archive's sha256). Record
   each of the following in the PR body, as the spec scenarios state them:
   - The install succeeds.
@@ -106,7 +106,7 @@
 
 ## 6. Quality gate
 
-- [ ] 6.1 Run `task` (lint and test). Verify: it exits 0. `charts/` and `ui/` are unchanged, so
+- [x] 6.1 Run `task` (lint and test). Verify: it exits 0. `charts/` and `ui/` are unchanged, so
   `task chart:validate` and `task ui:build` are not needed.
 
 ## Workflow follow-up

@@ -60,16 +60,17 @@ func countMatches(lines []string, substr string) int {
 	return n
 }
 
-// quotedPrefixToken is how .goreleaser.yaml writes Homebrew's install-time
-// {{HOMEBREW_PREFIX}} token so GoReleaser's own templating leaves it intact.
-const quotedPrefixToken = `{{ "{{HOMEBREW_PREFIX}}" }}`
+// quotedHomebrewToken matches how .goreleaser.yaml writes a Homebrew
+// install-time token, {{ "{{NAME}}" }}, so GoReleaser's own templating
+// leaves it intact.
+var quotedHomebrewToken = regexp.MustCompile(`{{ "({{[A-Za-z_.]+}})" }}`)
 
 var quotedString = regexp.MustCompile(`"([^"]*)"`)
 
-// stepLines splits a steps body into lines with the quoted prefix token
+// stepLines splits a steps body into lines with each quoted Homebrew token
 // rendered the way GoReleaser renders it, so string literals parse plainly.
 func stepLines(body string) []string {
-	return strings.Split(strings.ReplaceAll(body, quotedPrefixToken, "{{HOMEBREW_PREFIX}}"), "\n")
+	return strings.Split(quotedHomebrewToken.ReplaceAllString(body, "$1"), "\n")
 }
 
 // lineIndexes returns the indexes of the lines containing substr.
@@ -138,7 +139,9 @@ func TestReleaseConfigCaskInstallGate(t *testing.T) {
 			t.Errorf("install_steps line %d contains %q", idx[0]+1, banned)
 		}
 	}
-	expect := lineIndexes(install, `"--expect", "{{ .Version }}"`)
+	// Homebrew's {{version}} token tracks the cask's version stanza at
+	// install time; a GoReleaser-rendered literal would not.
+	expect := lineIndexes(install, `"--expect", "{{version}}"`)
 	completion := lineIndexes(install, `["completion", `)
 	man := lineIndexes(install, `["man", `)
 	if len(expect) != 1 || len(completion) != 3 || len(man) != 1 {
