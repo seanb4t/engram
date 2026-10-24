@@ -36,14 +36,16 @@ builds:
 # release runner. It is a build-stage pipe, so the archives and checksums
 # below cover the signed bytes.
 #
-# `enabled` needs all five variables set and non-empty: given only the
-# signing pair, the pipe signs without notarizing. Otherwise the pipe is
-# skipped, not failed, so a local snapshot builds unsigned. Apple rejecting
-# a submission, or a certificate that does not load, fails the pipe; a
-# notarization that times out or is still pending is logged and passed
-# over. release.yaml therefore refuses to start without the five secrets,
-# and its verify-macos job checks the published binaries with Gatekeeper.
-# No entitlements: engram needs no JIT.
+# `enabled` requires all five variables set and non-empty. With any of them
+# missing the pipe is skipped, not failed, so a local snapshot builds
+# unsigned; on a release, release.yaml's "Require the macOS signing secrets"
+# step fails the job before GoReleaser runs instead (the tag and GitHub
+# Release already exist by then). Do not narrow `enabled` to the signing
+# pair: GoReleaser would then sign and quietly skip notarization. Apple
+# rejecting a submission, or a certificate that does not load, fails the
+# pipe; a notarization that times out or is still pending is logged and
+# passed over, which release.yaml's verify-macos job catches after the
+# binaries are published. No entitlements: engram needs no JIT.
 notarize:
   macos:
     - enabled: |-
@@ -181,10 +183,12 @@ homebrew_casks:
     # the default, true. The cask keys completions:, manpages: and
     # generate_completions_from_executable stay unset: the first two install
     # prebuilt files instead of running the binary, and the helper turns a
-    # failure into a warning. releaseconfig_test.go checks all of this.
+    # failure into a warning. releaseconfig_test.go checks the steps, their
+    # order and paths, and that these keys, must_succeed and xattr stay out.
     #
-    # There is no quarantine removal: the darwin binaries are signed and
-    # notarized (notarize: above), so Gatekeeper runs the quarantined binary.
+    # Do not add quarantine removal (xattr), here, in a pre hook or in a
+    # custom_block: the darwin binaries are signed and notarized (notarize:
+    # above), so Gatekeeper runs the quarantined binary.
     #
     # GoReleaser templates these bodies with the same {{ }} delimiters as
     # Homebrew's install-time tokens, so every Homebrew token is written
@@ -196,12 +200,15 @@ homebrew_casks:
       post:
         # The `run "bin/engram", base: :homebrew_prefix` steps exercise the
         # linked binary, not the staged archive. `--expect` makes the binary
-        # compare its own version with the cask's (the DSL cannot), exiting
-        # 7 on a mismatch. Its argument must be Homebrew's {{version}} token,
-        # which expands to the cask's version stanza at install time, not
-        # GoReleaser's .Version, which is fixed when the cask is rendered. A
-        # `run` with stdout_path writes the file only when the command
-        # succeeds.
+        # compare its own version with the cask's (the DSL cannot) and exit
+        # non-zero on a mismatch. Its argument must be Homebrew's {{version}}
+        # token, which expands to the cask's version stanza at install time,
+        # not GoReleaser's .Version, which is fixed when the cask is rendered.
+        # A `run` with stdout_path writes the file only when the command
+        # succeeds. The steps run in Homebrew's write sandbox, which allows
+        # writes only to the paths a step declares: keep both the mkdir_p and
+        # the man step's writable_paths, although `engram man` also creates
+        # the directory.
         install_steps: |-
           run "bin/engram",
               base: :homebrew_prefix,
@@ -225,9 +232,10 @@ homebrew_casks:
               writable_paths: ["{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"]
         # Homebrew tracks only the files it installs, so without this an
         # uninstall leaves the completions and man pages behind. One `remove`
-        # with no `recursive:` is rm_f on each path and glob match: a missing
-        # file is not an error, and rm_f never removes a directory, so the
-        # shared parent directories stay.
+        # with no `recursive:` is rm_f on each path and glob match: it never
+        # removes a directory, so the shared parent directories stay, and a
+        # file it cannot remove (missing, or a permission denial) is left
+        # without an error.
         uninstall_steps: |-
           remove [
             "{{ "{{HOMEBREW_PREFIX}}" }}/etc/bash_completion.d/engram",

@@ -25,6 +25,8 @@ env:
   # ci.yaml and release.yaml pin the same Renovate-tracked value.
   # renovate: datasource=github-releases depName=goreleaser/goreleaser
   GORELEASER_VERSION: v2.19.0
+  # renovate: datasource=github-releases depName=go-task/task extractVersion=^v(?<version>.*)$
+  TASK_VERSION: 3.54.0
 
 jobs:
   release:
@@ -135,6 +137,7 @@ jobs:
       - if: ${{ steps.target.outputs.ship == 'true' }}
         uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
         with:
+          version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - if: ${{ steps.target.outputs.ship == 'true' }}
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
@@ -229,6 +232,8 @@ jobs:
       # .goreleaser.yaml's notarize: block is skipped, not failed, when any of
       # these is empty, and the release would then publish unsigned darwin
       # binaries and a cask that cannot install on macOS. Stop before that.
+      # The loop checks every MACOS_* variable in this step's env, and
+      # releaseconfig_test.go pins that env to the goreleaser step's.
       - if: ${{ steps.target.outputs.ship == 'true' }}
         name: Require the macOS signing secrets
         env:
@@ -240,16 +245,18 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          for v in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_ISSUER_ID MACOS_NOTARY_KEY_ID MACOS_NOTARY_KEY; do
+          for v in "${!MACOS_@}"; do
             if [ -z "${!v}" ]; then
               echo "::error::$v is empty in the release environment"
               missing=1
             fi
           done
           exit "$missing"
-      # With cosign on PATH, goreleaser-action verifies the GoReleaser download
-      # against its signed checksums.txt, not only the checksum, before that
-      # binary receives the signing secrets.
+      # With cosign on PATH, goreleaser-action also checks the sigstore
+      # signature on GoReleaser's checksums.txt before that binary receives
+      # the signing secrets. The check is best-effort: when the signature
+      # bundle or checksums.txt cannot be downloaded, the action logs a
+      # warning and skips that check.
       - if: ${{ steps.target.outputs.ship == 'true' }}
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       # release-please already created the tag-keyed GitHub Release (changelog
@@ -267,7 +274,8 @@ jobs:
           # credential can never write a release, and vice versa.
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
           # Read by .goreleaser.yaml's notarize: block. Only this step and the
-          # "Require the macOS signing secrets" step above read them.
+          # "Require the macOS signing secrets" step above read them, and
+          # releaseconfig_test.go checks both.
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
           MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
@@ -310,11 +318,14 @@ jobs:
           task chart:push VERSION="${TAG_NAME#v}"
 
   # Checks the darwin binaries actually published (see `release:gatekeeper`
-  # in Taskfile.yaml). A failure means a published darwin binary did not pass
-  # Gatekeeper, or the check itself could not run; the task output says which.
-  # A re-ship of a tag whose .goreleaser.yaml has no notarize: block always
-  # fails here. Runs even when a later release step failed, because the
-  # binaries may already be published by then.
+  # in Taskfile.yaml): Gatekeeper must accept each as a notarized Developer
+  # ID binary, and the arm64 binary must run and report the tag's version.
+  # The task output says which check failed; "When verify-macos fails" in
+  # contributing/releasing.md says what to do. A re-ship of a tag whose
+  # .goreleaser.yaml has no notarize: block always fails here. Runs whenever
+  # the release job resolved a tag to ship, even if a step failed: a step
+  # after the upload can fail with the binaries already public. If the job
+  # failed before the upload, this job fails too, at the download.
   verify-macos:
     name: Gatekeeper check of the darwin binaries
     needs: release
@@ -330,6 +341,7 @@ jobs:
           persist-credentials: false
       - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
         with:
+          version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Assess the published darwin binaries
         env:

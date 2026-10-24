@@ -54,6 +54,18 @@ Release-As: 0.5.0
 
 release-please re-cuts the open release PR at that version. Keep the footer in the squashed commit body so it survives squash-merge.
 
+## When verify-macos fails
+
+The `verify-macos` job checks the darwin binaries after a release publishes them. Its log names the check that failed. Find the failure below.
+
+- **The download fails.** The release job failed before it uploaded anything. Fix that failure, then re-ship the tag.
+- **"Gatekeeper rejected" or "is not a notarized Developer ID binary".** Open the release job's GoReleaser step log and search for `notarize`.
+  - `notarize timeout` or `notarize still pending`: Apple had not answered when GoReleaser stopped waiting. GoReleaser signed the binaries, and Apple can still accept them later. Re-run the `verify-macos` job after a while. If it passes, you need to do nothing else. If it still fails, re-ship the tag.
+  - `skipped` with `reason=disabled`, or no `notarize` lines: GoReleaser did not sign the binaries. Fix the cause, then re-ship the tag.
+- **"did not run, or does not report".** macOS blocked the arm64 binary, or the binary reports a version that is not the tag's. Fix the cause, then re-ship the tag.
+
+To re-ship a tag, run the `release` workflow by hand (`workflow_dispatch`) and give it the tag.
+
 ## Local checks
 
 - `task release:check` — `goreleaser check` (config validity).
