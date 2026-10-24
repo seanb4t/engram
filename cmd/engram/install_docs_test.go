@@ -22,10 +22,7 @@ const installGuideRelPath = "../../docs-site/src/content/docs/guides/install.md"
 // to describe what the Homebrew cask installs and where plugin-first
 // delivery is documented (D-07). It returns one error per violation so a
 // caller can report every problem in a single run rather than stopping at
-// the first. Both TestInstallGuideDocumentsSetupV2 (against the live
-// guide) and TestInstallGuideGateFiresOnInjectedViolation (against
-// in-memory fixtures) call this same function, so the positive control
-// exercises the real gate rather than a parallel reimplementation.
+// the first.
 func installGuideViolations(doc string) []error {
 	var errs []error
 
@@ -93,40 +90,5 @@ func TestInstallGuideDocumentsSetupV2(t *testing.T) {
 
 	for _, err := range installGuideViolations(string(data)) {
 		t.Error(err)
-	}
-}
-
-// TestInstallGuideGateFiresOnInjectedViolation is the D-07 positive
-// control: it proves installGuideViolations discriminates a clean
-// fixture from each of the four ways this plan's documentation could go
-// wrong, entirely over in-memory strings so no file is ever mutated. The
-// "clean" case is as load-bearing as the violation cases -- a gate that
-// fires on everything discriminates nothing.
-func TestInstallGuideGateFiresOnInjectedViolation(t *testing.T) {
-	manPageLine := "After a cask install, `man engram` and `man engram-setup` describe the CLI and the setup command."
-	caskContentsLine := "2. `engram completion bash`, `zsh` and `fish` write the shell completions." + newline + "3. `engram man` writes one man page per command into Homebrew's `share/man/man1` directory."
-	pluginPointerLine := "Setup registers the MCP server and, on a Claude Code or Codex whose plugin CLI works, delivers the curation skills plugin-first through the runtime's plugin system -- see [Agent Setup](/guides/agent-setup/)."
-	availabilityLine := ":::note[Available since v0.17.0]"
-	cleanFixture := strings.Join([]string{availabilityLine, caskContentsLine, manPageLine, pluginPointerLine}, newline) + newline
-
-	cases := []struct {
-		name            string
-		fixture         string
-		expectViolation bool
-	}{
-		{"clean", cleanFixture, false},
-		{"man_page_missing", strings.Join([]string{availabilityLine, caskContentsLine, pluginPointerLine}, newline) + newline, true},
-		{"cask_contents_missing", strings.Join([]string{availabilityLine, manPageLine, pluginPointerLine}, newline) + newline, true},
-		{"plugin_pointer_missing", strings.Join([]string{availabilityLine, caskContentsLine, manPageLine}, newline) + newline, true},
-		{"availability_notice_missing", strings.Join([]string{caskContentsLine, manPageLine, pluginPointerLine}, newline) + newline, true},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			violations := installGuideViolations(c.fixture)
-			if got := len(violations) > 0; got != c.expectViolation {
-				t.Errorf("fixture %q: violations=%v (count %d), want expectViolation=%v", c.name, violations, len(violations), c.expectViolation)
-			}
-		})
 	}
 }

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -63,18 +64,25 @@ func countMatches(lines []string, substr string) int {
 }
 
 // quotedHomebrewToken matches how .goreleaser.yaml writes a Homebrew
-// install-time token, {{ "{{NAME}}" }}, so GoReleaser's own templating
-// leaves it intact.
+// install-time token, {{ "{{NAME}}" }}, so GoReleaser's templating emits the
+// bare Homebrew token.
 var quotedHomebrewToken = regexp.MustCompile(`{{ "({{[A-Za-z_.]+}})" }}`)
 
 var (
-	quotedString  = regexp.MustCompile(`"([^"]*)"`)
-	stdoutPathArg = regexp.MustCompile(`stdout_path:\s*"([^"]*)"`)
-	completionArg = regexp.MustCompile(`\["completion", "([a-z]+)"\]`)
+	quotedString       = regexp.MustCompile(`"([^"]*)"`)
+	stdoutPathArg      = regexp.MustCompile(`stdout_path:\s*"([^"]*)"`)
+	completionArg      = regexp.MustCompile(`\["completion", "([a-z]+)"\]`)
+	homebrewPrefixBase = regexp.MustCompile(`\bbase:\s*:homebrew_prefix\b`)
 )
 
-// The spec's install paths (specs/homebrew-distribution), as the rendered
-// steps spell them.
+// macosSigningVars are the variables .goreleaser.yaml's notarize: block reads
+// and release.yaml fills from the release environment's secrets, in the order
+// the enabled condition lists them.
+var macosSigningVars = []string{
+	"MACOS_SIGN_P12", "MACOS_SIGN_PASSWORD", "MACOS_NOTARY_ISSUER_ID", "MACOS_NOTARY_KEY_ID", "MACOS_NOTARY_KEY",
+}
+
+// Install paths as the rendered install_steps spell them.
 const (
 	homebrewPrefix = "{{HOMEBREW_PREFIX}}"
 	caskManDir     = homebrewPrefix + "/share/man/man1"
@@ -88,14 +96,15 @@ var caskCompletionPaths = map[string]string{
 
 // stepBlocks renders each quoted Homebrew token the way GoReleaser does and
 // splits a steps body into one string per step: a step starts on a line with
-// no leading space, and its indented option lines follow it.
+// no leading space, and its indented option lines and the closing bracket of
+// a multi-line list follow it.
 func stepBlocks(body string) []string {
 	var blocks []string
-	for _, l := range strings.Split(quotedHomebrewToken.ReplaceAllString(body, "$1"), "\n") {
+	for l := range strings.SplitSeq(quotedHomebrewToken.ReplaceAllString(body, "$1"), "\n") {
 		if l == "" {
 			continue
 		}
-		if strings.HasPrefix(l, " ") && len(blocks) > 0 {
+		if (strings.HasPrefix(l, " ") || strings.HasPrefix(l, "]")) && len(blocks) > 0 {
 			blocks[len(blocks)-1] += "\n" + l
 			continue
 		}
@@ -104,34 +113,34 @@ func stepBlocks(body string) []string {
 	return blocks
 }
 
-// loadGoreleaser parses the repo's .goreleaser.yaml into v.
-func loadGoreleaser(t *testing.T, v any) {
+// loadYAML parses a file, relative to this package's directory, into v.
+func loadYAML(t *testing.T, relPath string, v any) {
 	t.Helper()
-	const file = "../../.goreleaser.yaml"
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(relPath)
 	if err != nil {
-		t.Fatalf("reading %s: %v", file, err)
+		t.Fatalf("reading %s: %v", relPath, err)
 	}
 	if err := yaml.Unmarshal(data, v); err != nil {
-		t.Fatalf("parsing %s: %v", file, err)
+		t.Fatalf("parsing %s: %v", relPath, err)
 	}
 }
 
 // TestReleaseConfigCaskInstallGate pins the cask's install and uninstall
-// steps in .goreleaser.yaml: every Homebrew token is written quoted; the
-// version gate runs against the cask's {{version}}, then the bash, zsh and
-// fish completions write the spec's paths, then the man pages go into the
-// spec's man1 directory; no step sets must_succeed or runs xattr; the
-// uninstall removes exactly the files the install writes and never a
-// directory. It also keeps out top-level brews and the cask keys that
-// install prebuilt files or soften a failure, and pins the description to
-// rootCmd.Short.
+// steps in .goreleaser.yaml: the only hooks are post install_steps and
+// uninstall_steps, with no custom_block; every Homebrew token is written
+// quoted; every run step runs the linked bin/engram; the version gate runs
+// against the cask's {{version}}, then the bash, zsh and fish completions
+// write their install paths, then the man pages go into the man1 directory;
+// no step sets must_succeed or runs xattr; the uninstall is one remove of
+// exactly the files the install writes and never a directory. It also keeps
+// out top-level brews and the cask keys that install prebuilt files or
+// soften a failure, and pins the description to rootCmd.Short.
 func TestReleaseConfigCaskInstallGate(t *testing.T) {
 	var cfg struct {
 		Brews         any              `yaml:"brews"`
 		HomebrewCasks []map[string]any `yaml:"homebrew_casks"`
 	}
-	loadGoreleaser(t, &cfg)
+	loadYAML(t, "../../.goreleaser.yaml", &cfg)
 	if cfg.Brews != nil {
 		t.Error("top-level `brews` is set; engram ships a cask only")
 	}
@@ -149,12 +158,16 @@ func TestReleaseConfigCaskInstallGate(t *testing.T) {
 		t.Errorf("cask description %q does not byte-match rootCmd.Short %q", desc, rootCmd.Short)
 	}
 
+	if _, ok := cask["custom_block"]; ok {
+		t.Error("homebrew_casks[0].custom_block is set; it adds Ruby to the cask that the steps checks below never see")
+	}
 	hooks, _ := cask["hooks"].(map[string]any)
+	if keys := slices.Sorted(maps.Keys(hooks)); !slices.Equal(keys, []string{"post"}) {
+		t.Errorf("homebrew_casks[0].hooks keys = %q, want only post", keys)
+	}
 	post, _ := hooks["post"].(map[string]any)
-	for _, legacy := range []string{"install", "uninstall"} {
-		if _, ok := post[legacy]; ok {
-			t.Errorf("hooks.post.%s is set; it renders a Ruby flight block, use %s_steps", legacy, legacy)
-		}
+	if keys, want := slices.Sorted(maps.Keys(post)), []string{"install_steps", "uninstall_steps"}; !slices.Equal(keys, want) {
+		t.Errorf("hooks.post keys = %q, want %q; install and uninstall render Ruby flight blocks", keys, want)
 	}
 	installBody, _ := post["install_steps"].(string)
 	uninstallBody, _ := post["uninstall_steps"].(string)
@@ -174,9 +187,13 @@ func TestReleaseConfigCaskInstallGate(t *testing.T) {
 
 	var order, written []string
 	for _, step := range stepBlocks(installBody) {
-		switch {
-		case strings.HasPrefix(step, "mkdir_p "):
+		if strings.HasPrefix(step, "mkdir_p ") {
 			continue
+		}
+		if !strings.HasPrefix(step, `run "bin/engram",`) || !homebrewPrefixBase.MatchString(step) {
+			t.Errorf("every install run step must be run \"bin/engram\" with base: :homebrew_prefix, got step:\n%s", step)
+		}
+		switch {
 		case strings.Contains(step, `["version", "--expect", "{{version}}"]`):
 			order = append(order, "expect")
 		case completionArg.MatchString(step):
@@ -206,8 +223,11 @@ func TestReleaseConfigCaskInstallGate(t *testing.T) {
 	if strings.Contains(uninstallBody, "recursive") {
 		t.Error("uninstall_steps sets recursive; the uninstall removes files only")
 	}
-	rendered := strings.Join(stepBlocks(uninstallBody), "\n")
-	quoted := quotedString.FindAllStringSubmatch(rendered, -1)
+	uninstall := stepBlocks(uninstallBody)
+	if len(uninstall) != 1 || !strings.HasPrefix(uninstall[0], "remove [") {
+		t.Fatalf("uninstall_steps must be one `remove [...]` step, got:\n%s", strings.Join(uninstall, "\n"))
+	}
+	quoted := quotedString.FindAllStringSubmatch(uninstall[0], -1)
 	removed := make([]string, 0, len(quoted))
 	for _, m := range quoted {
 		if strings.HasSuffix(m[1], "/") {
@@ -223,8 +243,9 @@ func TestReleaseConfigCaskInstallGate(t *testing.T) {
 }
 
 // TestReleaseConfigNotarizeMacOS pins the notarize block: one entry whose
-// ids are exactly the darwin builds, enabled only when all five MACOS_*
-// signing variables are set.
+// ids are exactly the darwin builds, whose sign and notarize fields read the
+// five MACOS_* variables and wait for Apple's verdict, and that is enabled
+// exactly when all five are set.
 func TestReleaseConfigNotarizeMacOS(t *testing.T) {
 	var cfg struct {
 		Builds []struct {
@@ -235,10 +256,20 @@ func TestReleaseConfigNotarizeMacOS(t *testing.T) {
 			MacOS []struct {
 				Enabled string   `yaml:"enabled"`
 				IDs     []string `yaml:"ids"`
+				Sign    struct {
+					Certificate string `yaml:"certificate"`
+					Password    string `yaml:"password"`
+				} `yaml:"sign"`
+				Notarize struct {
+					IssuerID string `yaml:"issuer_id"`
+					KeyID    string `yaml:"key_id"`
+					Key      string `yaml:"key"`
+					Wait     bool   `yaml:"wait"`
+				} `yaml:"notarize"`
 			} `yaml:"macos"`
 		} `yaml:"notarize"`
 	}
-	loadGoreleaser(t, &cfg)
+	loadYAML(t, "../../.goreleaser.yaml", &cfg)
 	if len(cfg.Notarize.MacOS) != 1 {
 		t.Fatalf("want exactly 1 notarize.macos entry, got %d", len(cfg.Notarize.MacOS))
 	}
@@ -257,14 +288,76 @@ func TestReleaseConfigNotarizeMacOS(t *testing.T) {
 		t.Errorf("notarize.macos[0].ids = %q, want exactly the darwin build ids %q", entry.IDs, darwinBuilds)
 	}
 
-	enabled := strings.TrimSpace(entry.Enabled)
-	if !strings.HasPrefix(enabled, "{{ and ") {
-		t.Errorf("notarize.macos[0].enabled = %q, want an `and` of every signing variable", enabled)
-	}
-	for _, v := range []string{"MACOS_SIGN_P12", "MACOS_SIGN_PASSWORD", "MACOS_NOTARY_ISSUER_ID", "MACOS_NOTARY_KEY_ID", "MACOS_NOTARY_KEY"} {
-		if !strings.Contains(enabled, `(isEnvSet "`+v+`")`) {
-			t.Errorf("notarize.macos[0].enabled does not require %s", v)
+	for _, f := range []struct{ field, got, env string }{
+		{"sign.certificate", entry.Sign.Certificate, "MACOS_SIGN_P12"},
+		{"sign.password", entry.Sign.Password, "MACOS_SIGN_PASSWORD"},
+		{"notarize.issuer_id", entry.Notarize.IssuerID, "MACOS_NOTARY_ISSUER_ID"},
+		{"notarize.key_id", entry.Notarize.KeyID, "MACOS_NOTARY_KEY_ID"},
+		{"notarize.key", entry.Notarize.Key, "MACOS_NOTARY_KEY"},
+	} {
+		if want := "{{ .Env." + f.env + " }}"; f.got != want {
+			t.Errorf("notarize.macos[0].%s = %q, want %q", f.field, f.got, want)
 		}
+	}
+	if !entry.Notarize.Wait {
+		t.Error("notarize.macos[0].notarize.wait is not true; without it Apple rejecting a binary cannot fail the release")
+	}
+
+	terms := make([]string, len(macosSigningVars))
+	for i, v := range macosSigningVars {
+		terms[i] = `(isEnvSet "` + v + `")`
+	}
+	if got, want := strings.TrimSpace(entry.Enabled), "{{ and "+strings.Join(terms, " ")+" }}"; got != want {
+		t.Errorf("notarize.macos[0].enabled = %q, want %q", got, want)
+	}
+}
+
+// TestReleaseConfigSigningSecretsEnv pins which release.yaml steps get the
+// signing secrets: only the release job's "Require the macOS signing secrets"
+// step and its goreleaser-action step, each with exactly the five MACOS_*
+// secrets under their own names, so the check reads what GoReleaser reads.
+func TestReleaseConfigSigningSecretsEnv(t *testing.T) {
+	var wf struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string            `yaml:"name"`
+				Uses string            `yaml:"uses"`
+				Env  map[string]string `yaml:"env"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	loadYAML(t, "../../.github/workflows/release.yaml", &wf)
+
+	want := make(map[string]string, len(macosSigningVars))
+	for _, v := range macosSigningVars {
+		want[v] = "${{ secrets." + v + " }}"
+	}
+	var readers []string
+	for job, j := range wf.Jobs {
+		for _, s := range j.Steps {
+			got := map[string]string{}
+			for k, v := range s.Env {
+				if strings.HasPrefix(k, "MACOS_") || strings.Contains(v, "secrets.MACOS_") {
+					got[k] = v
+				}
+			}
+			if len(got) == 0 {
+				continue
+			}
+			step := job + ": " + s.Name + s.Uses
+			readers = append(readers, step)
+			allowed := s.Name == "Require the macOS signing secrets" || strings.HasPrefix(s.Uses, "goreleaser/goreleaser-action@")
+			if job != "release" || !allowed {
+				t.Errorf("%s reads the signing secrets; only the release job's check and goreleaser steps may", step)
+				continue
+			}
+			if !maps.Equal(got, want) {
+				t.Errorf("%s env MACOS_* = %v, want %v", step, got, want)
+			}
+		}
+	}
+	if len(readers) != 2 {
+		t.Errorf("signing secrets reach %q, want exactly the check step and the goreleaser step", readers)
 	}
 }
 
