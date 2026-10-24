@@ -46,6 +46,8 @@ func init() {
 	versionCmd.Flags().String("output", "text",
 		`output format: "json" or "text" (default: text, always — unlike every `+
 			`other --output flag in this binary, this one never auto-detects from stdout)`)
+	versionCmd.Flags().String("expect", "",
+		"after printing, exit 7 unless this binary's version is exactly this value (no v-prefix normalisation)")
 }
 
 // runVersion validates --output through the single shared validator
@@ -68,6 +70,14 @@ func runVersion(cmd *cobra.Command, _ []string) error {
 	if err := config.ValidateOutputFormat(output); err != nil {
 		return usageErrorf("%w", err)
 	}
+	expect, err := cmd.Flags().GetString("expect")
+	if err != nil {
+		return err
+	}
+	checkExpect := cmd.Flags().Changed("expect")
+	if checkExpect && expect == "" {
+		return usageErrorf("--expect needs a version to compare against")
+	}
 
 	// resolvedVersion (buildversion.go) is the ONLY place this value is
 	// obtained: both the json and text lanes below read it, so D-07's
@@ -75,8 +85,17 @@ func runVersion(cmd *cobra.Command, _ []string) error {
 	// two separate render paths.
 	v := resolvedVersion()
 	if output == "json" {
-		return json.NewEncoder(cmd.OutOrStdout()).Encode(versionDoc{Version: v})
+		err = json.NewEncoder(cmd.OutOrStdout()).Encode(versionDoc{Version: v})
+	} else {
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), v)
 	}
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), v)
-	return err
+	if err != nil {
+		return err
+	}
+	// A mismatch is a failed check the caller opted into, reported after the
+	// normal output with exitFindings.
+	if checkExpect && v != expect {
+		return &cliError{code: exitFindings, err: fmt.Errorf("version mismatch: this binary is %s, --expect %s", v, expect)}
+	}
+	return nil
 }

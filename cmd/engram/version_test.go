@@ -134,3 +134,60 @@ func TestVersionOutputFlagDefault(t *testing.T) {
 		t.Fatalf(`versionCmd.Flags().Lookup("output").DefValue = %q, want "text"`, f.DefValue)
 	}
 }
+
+// TestVersionExpect pins --expect, the cask install gate: the normal output
+// is printed whether or not the versions match, a mismatch exits 7 with one
+// error line naming both versions, an empty value is a usage error before
+// any output, and the comparison is an exact string match.
+func TestVersionExpect(t *testing.T) {
+	// A release-shaped version, so a normalisation that only touches SemVer
+	// input (such as stripping a leading v) cannot pass the v-prefix case.
+	saved := version
+	version = "0.30.0"
+	t.Cleanup(func() { version = saved })
+
+	cases := []struct {
+		name       string
+		args       []string
+		wantStdout string
+		wantCode   int
+		wantErrHas []string
+	}{
+		{name: "omitted", args: []string{"version"}, wantStdout: "0.30.0\n", wantCode: exitOK},
+		{name: "match", args: []string{"version", "--expect", "0.30.0"}, wantStdout: "0.30.0\n", wantCode: exitOK},
+		{name: "text mismatch", args: []string{"version", "--expect", "0.31.0"}, wantStdout: "0.30.0\n", wantCode: exitFindings, wantErrHas: []string{"0.30.0", "0.31.0"}},
+		{name: "json mismatch", args: []string{"version", "--expect", "0.31.0", "--output", "json"}, wantStdout: `{"version":"0.30.0"}` + "\n", wantCode: exitFindings, wantErrHas: []string{"0.30.0", "0.31.0"}},
+		{name: "v prefix", args: []string{"version", "--expect", "v0.30.0"}, wantStdout: "0.30.0\n", wantCode: exitFindings, wantErrHas: []string{"0.30.0", "v0.30.0"}},
+		{name: "empty", args: []string{"version", "--expect", ""}, wantStdout: "", wantCode: exitUsage, wantErrHas: []string{"--expect"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetClientFlags(t)
+			stdout, stderr, err := runClient(t, tc.args...)
+			if stdout != tc.wantStdout {
+				t.Errorf("stdout = %q, want %q", stdout, tc.wantStdout)
+			}
+			// rootCmd silences cobra's own error printing, so the captured
+			// stderr is empty; the package-level Execute (root.go) prints
+			// err as the single "Error: ..." line the user sees.
+			if stderr != "" {
+				t.Errorf("stderr = %q, want empty", stderr)
+			}
+			if got := exitCodeFromError(err); got != tc.wantCode {
+				t.Fatalf("exit code = %d, want %d (err: %v)", got, tc.wantCode, err)
+			}
+			if err == nil {
+				return
+			}
+			msg := err.Error()
+			if strings.Contains(msg, "\n") {
+				t.Errorf("error %q spans more than one line", msg)
+			}
+			for _, want := range tc.wantErrHas {
+				if !strings.Contains(msg, want) {
+					t.Errorf("error %q does not name %q", msg, want)
+				}
+			}
+		})
+	}
+}

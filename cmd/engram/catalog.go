@@ -139,9 +139,9 @@ func buildCatalog(root *cobra.Command) catalogDoc {
 		// transport/server-unavailable failure — "raise --timeout" and
 		// "check the server is up" are different remedies.
 		{Code: exitTimeout, Meaning: "request deadline exceeded"},
-		// exitFindings has NO connect-error producer at all -- a report
-		// command's own explicit opt-in flag (spine-review verify
-		// --fail-on) raises it directly. catalog_test.go's
+		// exitFindings has NO connect-error producer at all -- a command's
+		// own explicit opt-in check flag (spine-review verify --fail-on,
+		// version --expect) raises it directly. catalog_test.go's
 		// TestCatalogExitCodesMatchMapper carries a NAMED allowlist entry
 		// recording this, so advertising the code here does not break that
 		// gate's set-equality derivation.

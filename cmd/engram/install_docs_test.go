@@ -38,19 +38,11 @@ func installGuideViolations(doc string) []error {
 		errs = append(errs, fmt.Errorf("%s: no occurrence of `man engram-setup` -- the guide must name the installed setup man page", installGuideRelPath))
 	}
 
-	// Leg 2: one line must state that the cask installs BOTH completions
-	// and man pages -- the same install hook writes both
-	// (.goreleaser.yaml's post_install), so the cask-contents sentence
-	// must not describe only completions.
-	caskContentsStated := false
-	for _, line := range strings.Split(doc, newline) {
-		if strings.Contains(line, "completions") && strings.Contains(line, "man page") {
-			caskContentsStated = true
-			break
-		}
-	}
-	if !caskContentsStated {
-		errs = append(errs, fmt.Errorf("%s: no line names both `completions` and `man page` -- the cask-contents sentence is missing or incomplete", installGuideRelPath))
+	// Leg 2: the guide must name both install steps that write files, the
+	// `engram completion` runs and the `engram man` run (.goreleaser.yaml's
+	// install_steps), so it cannot describe only one of them.
+	if !strings.Contains(doc, "`engram completion") || !strings.Contains(doc, "`engram man`") {
+		errs = append(errs, fmt.Errorf("%s: the install steps must name both `engram completion` and `engram man` -- the cask-contents list is missing or incomplete", installGuideRelPath))
 	}
 
 	// Leg 3: one line must point at the plugin-first delivery pointer --
@@ -112,7 +104,7 @@ func TestInstallGuideDocumentsSetupV2(t *testing.T) {
 // fires on everything discriminates nothing.
 func TestInstallGuideGateFiresOnInjectedViolation(t *testing.T) {
 	manPageLine := "After a cask install, `man engram` and `man engram-setup` describe the CLI and the setup command."
-	caskContentsLine := "The cask's install hooks check the installed version, generate bash, zsh, and fish completions, and write one man page per command into Homebrew's `share/man/man1` directory."
+	caskContentsLine := "2. `engram completion bash`, `zsh` and `fish` write the shell completions." + newline + "3. `engram man` writes one man page per command into Homebrew's `share/man/man1` directory."
 	pluginPointerLine := "Setup registers the MCP server and, on a Claude Code or Codex whose plugin CLI works, delivers the curation skills plugin-first through the runtime's plugin system -- see [Agent Setup](/guides/agent-setup/)."
 	availabilityLine := ":::note[Available since v0.17.0]"
 	cleanFixture := strings.Join([]string{availabilityLine, caskContentsLine, manPageLine, pluginPointerLine}, newline) + newline

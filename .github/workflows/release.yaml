@@ -22,15 +22,20 @@ permissions:
   contents: read
 
 env:
-  # Hold below v2.19, which deprecates homebrew_casks.hooks; `goreleaser check`
-  # fails on a deprecated property. ci.yaml and release.yaml pin the same value.
+  # ci.yaml and release.yaml pin the same Renovate-tracked value.
   # renovate: datasource=github-releases depName=goreleaser/goreleaser
-  GORELEASER_VERSION: v2.18.3
+  GORELEASER_VERSION: v2.19.0
 
 jobs:
   release:
     name: release-please + image + OCI chart
     runs-on: ubuntu-latest
+    # Holds the five MACOS_* signing secrets. Its deployment branch policy
+    # allows only main, so no other branch's run can read them.
+    environment: release
+    outputs:
+      ship: ${{ steps.target.outputs.ship }}
+      tag: ${{ steps.target.outputs.tag }}
     permissions:
       contents: read
       packages: write # push image + chart to GHCR via GITHUB_TOKEN
@@ -221,6 +226,32 @@ jobs:
           else
             echo "SKIP_HOMEBREW_UPLOAD=true" >> "$GITHUB_ENV"
           fi
+      # .goreleaser.yaml's notarize: block is skipped, not failed, when any of
+      # these is empty, and the release would then publish unsigned darwin
+      # binaries and a cask that cannot install on macOS. Stop before that.
+      - if: ${{ steps.target.outputs.ship == 'true' }}
+        name: Require the macOS signing secrets
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_ISSUER_ID MACOS_NOTARY_KEY_ID MACOS_NOTARY_KEY; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is empty in the release environment"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      # With cosign on PATH, goreleaser-action verifies the GoReleaser download
+      # against its signed checksums.txt, not only the checksum, before that
+      # binary receives the signing secrets.
+      - if: ${{ steps.target.outputs.ship == 'true' }}
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       # release-please already created the tag-keyed GitHub Release (changelog
       # body); GoReleaser uploads the binary + image to it. The app token (not
       # GITHUB_TOKEN) writes the release, matching the release-PR actor.
@@ -235,6 +266,13 @@ jobs:
           # tap and nothing else. Keep it out of GITHUB_TOKEN so the tap
           # credential can never write a release, and vice versa.
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+          # Read by .goreleaser.yaml's notarize: block. Only this step and the
+          # "Require the macOS signing secrets" step above read them.
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
       # `.goreleaser.yaml`'s docker_manifests tags `ghcr.io/seanb4t/engram:latest`
       # unconditionally, so a dispatch re-ship of an OLDER tag drags the floating
       # `latest` backwards — backfilling v0.11.0 after v0.11.1 had shipped left
@@ -270,3 +308,31 @@ jobs:
         run: |-
           echo "$GHCR_TOKEN" | helm registry login ghcr.io -u "$GHCR_USER" --password-stdin
           task chart:push VERSION="${TAG_NAME#v}"
+
+  # Checks the darwin binaries actually published (see `release:gatekeeper`
+  # in Taskfile.yaml). A failure means a published darwin binary did not pass
+  # Gatekeeper, or the check itself could not run; the task output says which.
+  # A re-ship of a tag whose .goreleaser.yaml has no notarize: block always
+  # fails here. Runs even when a later release step failed, because the
+  # binaries may already be published by then.
+  verify-macos:
+    name: Gatekeeper check of the darwin binaries
+    needs: release
+    if: ${{ !cancelled() && needs.release.outputs.ship == 'true' }}
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      # The workflow's own commit, not the tag: the tag's Taskfile.yaml may
+      # predate release:gatekeeper.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assess the published darwin binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release.outputs.tag }}
+        run: task release:gatekeeper TAG="$TAG_NAME"

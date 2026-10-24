@@ -367,7 +367,7 @@ func TestCatalogNeedsNoServer(t *testing.T) {
 // decision: add exitFindings to the catalog AND edit this derivation, in
 // the same commit, rather than leaving the pair internally unsatisfiable).
 var nonConnectProducedCodes = map[int]string{
-	exitFindings:    "spine-review verify --fail-on",
+	exitFindings:    "spine-review verify --fail-on, version --expect",
 	exitPartial:     "setup (partial per-runtime failure)",
 	exitSetupFailed: "setup (all attempted runtimes failed)",
 }

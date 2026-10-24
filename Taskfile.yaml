@@ -515,6 +515,51 @@ tasks:
     desc: Local goreleaser dry build (no publish)
     cmds:
       - goreleaser release --snapshot --clean
+  # Run by release.yaml's verify-macos job after every release (why: the
+  # notarize: comment in .goreleaser.yaml). Each published darwin binary is
+  # marked quarantined, then assessed with `spctl -t install`; `-t exec`
+  # rejects any bare binary. The verdict is the exit status plus the exact
+  # `source=Notarized Developer ID` line, because a runner with Gatekeeper
+  # assessments disabled answers "accepted" with no notarized source. The
+  # quarantined arm64 binary then runs, which needs an Apple-silicon host.
+  # TAG reaches the script through the environment, never the script text.
+  release:gatekeeper:
+    desc: Check a published release's darwin binaries with Gatekeeper (TAG required, Apple-silicon macOS only)
+    requires:
+      vars: [TAG]
+    env:
+      GATEKEEPER_TAG: "{{.TAG}}"
+    preconditions:
+      - sh: '[ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]'
+        msg: "release:gatekeeper needs an Apple-silicon Mac: it runs spctl and the arm64 binary"
+      - sh: command -v gh
+        msg: "release:gatekeeper downloads the release assets with gh"
+    cmds:
+      - |
+        set -eu
+        tag="$GATEKEEPER_TAG"
+        version="${tag#v}"
+        work=$(mktemp -d)
+        trap 'rm -rf "$work"' EXIT
+        for arch in amd64 arm64; do
+          archive="engram_${version}_darwin_${arch}.tar.gz"
+          gh release download "$tag" --repo seanb4t/engram --pattern "$archive" --dir "$work"
+          mkdir "$work/$arch"
+          tar -xzf "$work/$archive" -C "$work/$arch" engram
+          bin="$work/$arch/engram"
+          xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");release-gatekeeper;" "$bin"
+          if ! verdict=$(spctl -a -vv -t install "$bin" 2>&1); then
+            echo "$verdict"
+            echo "release:gatekeeper: Gatekeeper rejected $archive"
+            exit 1
+          fi
+          echo "$verdict"
+          if ! echo "$verdict" | grep -qx 'source=Notarized Developer ID'; then
+            echo "release:gatekeeper: $archive is not a notarized Developer ID binary"
+            exit 1
+          fi
+        done
+        "$work/arm64/engram" version --expect "$version"
 
   proto:lint:
     desc: Lint protobuf schema
