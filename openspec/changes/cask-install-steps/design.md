@@ -378,8 +378,9 @@ Alternatives rejected:
 
 ## Migration Plan
 
-1. The five `MACOS_*` repository secrets were set on `seanb4t/engram` on 2026-10-23, from the
-   same 1Password items codegraph-go uses.
+1. The five `MACOS_*` secrets were set on `seanb4t/engram` on 2026-10-23, from the same
+   1Password items codegraph-go uses. On 2026-10-24 they were set in the `release` environment
+   (deployment branch policy: `main` only) and the repository-level copies were deleted (D9).
 2. One PR changes the CLI flag, `.goreleaser.yaml`, the test, both workflows, the Taskfile and the
    install guide together. The `_steps` fields need v2.19, and v2.19 fails `check` on the legacy
    fields, so the config and the pin cannot land separately. Dropping the quarantine step is safe

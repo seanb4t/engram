@@ -80,7 +80,7 @@
 - [x] 3.5 Add the "Require the macOS signing secrets" step before `goreleaser-action`, per design
   D9: it fails the job when any of the five `MACOS_*` values is empty, printing only the names.
   Verify: `actionlint` passes on `release.yaml`.
-- [ ] 3.6 Move the five secrets into a `release` environment, per design D9: create the
+- [x] 3.6 Move the five secrets into a `release` environment, per design D9: create the
   environment with a custom deployment branch policy allowing only `main`, set the five secrets
   there from the same 1Password items, set `environment: release` on the release job, add
   `sigstore/cosign-installer` (SHA-pinned) before `goreleaser-action`, then delete the five
