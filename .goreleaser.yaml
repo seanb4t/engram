@@ -31,6 +31,39 @@ builds:
       - -s -w
       - -X main.version={{ .Version }}
 
+# Developer ID signing and Apple notarization of the darwin binaries, in
+# process through quill (no codesign or xcrun), so it runs on the Linux
+# release runner. It is a build-stage pipe, so the archives and checksums
+# below cover the signed bytes.
+#
+# `enabled` requires all five variables set and non-empty. With any of them
+# missing the pipe is skipped, not failed, so a local snapshot builds
+# unsigned; on a release, release.yaml's "Require the macOS signing secrets"
+# step fails the job before GoReleaser runs instead (the tag and GitHub
+# Release already exist by then). Do not narrow `enabled` to the signing
+# pair: GoReleaser would then sign and quietly skip notarization. Apple
+# rejecting a submission, or a certificate that does not load, fails the
+# pipe; a notarization that times out or is still pending is logged and
+# passed over, which release.yaml's verify-macos job catches after the
+# binaries are published. No entitlements: engram needs no JIT.
+notarize:
+  macos:
+    - enabled: |-
+        {{ and (isEnvSet "MACOS_SIGN_P12") (isEnvSet "MACOS_SIGN_PASSWORD") (isEnvSet "MACOS_NOTARY_ISSUER_ID") (isEnvSet "MACOS_NOTARY_KEY_ID") (isEnvSet "MACOS_NOTARY_KEY") }}
+      # Must name the darwin build's builds[].id; an id that matches no
+      # build skips the pipe. releaseconfig_test.go checks it.
+      ids:
+        - engram
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
 archives:
   - id: default
     formats:
@@ -143,97 +176,71 @@ homebrew_casks:
     # v0.11.0 backfill after v0.11.1 had shipped, and a version-pinned cask
     # would fail the same way with no floating tag to notice it by.
     skip_upload: '{{ if index .Env "SKIP_HOMEBREW_UPLOAD" }}{{ .Env.SKIP_HOMEBREW_UPLOAD }}{{ else }}false{{ end }}'
+    # The install runs the installed binary, and any failure fails the
+    # install. These hooks render as the cask's postflight_steps and
+    # uninstall_postflight_steps, Homebrew's declarative steps DSL: literal
+    # step calls, no Ruby. No step sets must_succeed, so every `run` keeps
+    # the default, true. The cask keys completions:, manpages: and
+    # generate_completions_from_executable stay unset: the first two install
+    # prebuilt files instead of running the binary, and the helper turns a
+    # failure into a warning. releaseconfig_test.go checks the steps, their
+    # order and paths, and that these keys, must_succeed and xattr stay out.
+    #
+    # Do not add quarantine removal (xattr), here, in a pre hook or in a
+    # custom_block: the darwin binaries are signed and notarized (notarize:
+    # above), so Gatekeeper runs the quarantined binary.
+    #
+    # GoReleaser templates these bodies with the same {{ }} delimiters as
+    # Homebrew's install-time tokens, so every Homebrew token is written
+    # quoted, as {{ "{{HOMEBREW_PREFIX}}" }} and {{ "{{version}}" }}. The
+    # paths name HOMEBREW_PREFIX directories rather than Homebrew's
+    # {{bash_completion}}-style tokens, which follow per-install cask
+    # directory settings, so install and uninstall name the same files.
     hooks:
       post:
-        install: |-
-          # engram ships unsigned (CGO_ENABLED=0, no GoReleaser Pro and no
-          # Apple Developer Program membership). Invoking the binary before
-          # stripping quarantine gets it SIGKILLed by Gatekeeper instead of
-          # failing cleanly with a diagnosable message, so the strip must be
-          # the literal first statement in this hook. xattr does not exist on
-          # Linux, which has no Gatekeeper quarantine to strip in the first
-          # place, so this is guarded to macOS only.
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/engram"]
-          end
-
-          # This runs after Homebrew's install_artifacts has already created
-          # the HOMEBREW_PREFIX symlink, so the installed binary (not the
-          # staged archive) is what gets exercised here. system_command
-          # defaults to must_succeed: true, so a non-zero exit from the
-          # binary raises on its own; the explicit raise below covers the
-          # case where the binary exits zero but reports the wrong version.
-          # No v-prefix normalization on either side: engram's version string
-          # and archive names are bare SemVer with no "v" prefix already, so
-          # both sides are already in the same shape.
-          binary = "#{HOMEBREW_PREFIX}/bin/engram"
-          result = system_command binary, args: ["version", "--output", "json"]
-          reported_version = JSON.parse(result.stdout)["version"].to_s
-          declared_version = version.to_s
-          if reported_version != declared_version
-            raise "engram cask post-install: installed binary reports version " \
-                  "#{reported_version.inspect}, cask declares #{declared_version.inspect}"
-          end
-
-          # Completions are written from the installed binary via
-          # system_command (which raises on failure), never via the
-          # declarative completions: field and never via Homebrew's
-          # completion-generation helper — that helper's write_completion
-          # wraps execution in a rescue that downgrades a failure to a
-          # warning, so a broken binary would install green. The helper is
-          # named neither here nor anywhere else in this file on purpose:
-          # the acceptance gate for this decision is a literal occurrence
-          # count over this file, so naming it even in a comment destroys
-          # the gate's ability to tell prose from actual use.
-          # This is the second time the hook exercises the binary, which is
-          # the point: a binary that cannot produce completions is a binary
-          # that fails the install rather than one that installs with a
-          # warning.
-          {
-            "bash" => "#{HOMEBREW_PREFIX}/etc/bash_completion.d/engram",
-            "zsh" => "#{HOMEBREW_PREFIX}/share/zsh/site-functions/_engram",
-            "fish" => "#{HOMEBREW_PREFIX}/share/fish/vendor_completions.d/engram.fish",
-          }.each do |shell, dest|
-            completion = system_command binary, args: ["completion", shell]
-            FileUtils.mkdir_p(File.dirname(dest))
-            File.write(dest, completion.stdout)
-          end
-
-          # This is the hook's fourth exercise of the installed binary
-          # (after the quarantine strip, the version gate, and the
-          # completions loop above): the binary writes one roff man page
-          # per available command straight into the shared man1 directory
-          # below. system_command's default must_succeed (true) raises if
-          # the binary cannot document itself, exactly as it already does
-          # for a broken version report or a failed completion write.
-          # Homebrew's own declarative field for installing man pages is
-          # not used, for the same rescue-to-warning reason the
-          # completions loop above avoids its own declarative alternative
-          # and helper — neither is named here, or anywhere else in this
-          # file, on purpose: the acceptance gate for this decision is a
-          # literal occurrence count over the whole file, so naming either
-          # even in a comment would destroy the gate's ability to tell
-          # prose from actual use.
-          man1_dir = "#{HOMEBREW_PREFIX}/share/man/man1"
-          FileUtils.mkdir_p(man1_dir)
-          system_command binary, args: ["man", man1_dir]
-        uninstall: |-
-          # Homebrew tracks only the files IT installs, never files a hook
-          # wrote, so without this an uninstall leaves the completion
-          # files (and, below, the generated man pages) behind. Removes
-          # exactly the paths the install hook wrote — never their parent
-          # directories, which are shared with other formulae and casks —
-          # with the file-scoped remover, never the recursive tree
-          # remover.
-          FileUtils.rm_f "#{HOMEBREW_PREFIX}/etc/bash_completion.d/engram"
-          FileUtils.rm_f "#{HOMEBREW_PREFIX}/share/zsh/site-functions/_engram"
-          FileUtils.rm_f "#{HOMEBREW_PREFIX}/share/fish/vendor_completions.d/engram.fish"
-
-          # The pages the install hook wrote above are removed by globbing
-          # exactly engram.1 and engram-*.1 under man1 and applying the
-          # same file-scoped remover to each match — never the directory,
-          # which is shared with other formulae and casks, and never a
-          # recursive remover. There is no install-time manifest: the
-          # binary symlink is already gone by the time this hook runs, so
-          # the page set cannot be regenerated here to diff against.
-          Dir.glob("#{HOMEBREW_PREFIX}/share/man/man1/engram{,-*}.1").each { |f| FileUtils.rm_f f }
+        # The `run "bin/engram", base: :homebrew_prefix` steps exercise the
+        # linked binary, not the staged archive. `--expect` makes the binary
+        # compare its own version with the cask's (the DSL cannot) and exit
+        # non-zero on a mismatch. Its argument must be Homebrew's {{version}}
+        # token, which expands to the cask's version stanza at install time,
+        # not GoReleaser's .Version, which is fixed when the cask is rendered.
+        # A `run` with stdout_path writes the file only when the command
+        # succeeds. The steps run in Homebrew's write sandbox, which allows
+        # writes only to the paths a step declares: keep both the mkdir_p and
+        # the man step's writable_paths, although `engram man` also creates
+        # the directory.
+        install_steps: |-
+          run "bin/engram",
+              base: :homebrew_prefix,
+              args: ["version", "--expect", "{{ "{{version}}" }}"]
+          run "bin/engram",
+              base:        :homebrew_prefix,
+              args:        ["completion", "bash"],
+              stdout_path: "{{ "{{HOMEBREW_PREFIX}}" }}/etc/bash_completion.d/engram"
+          run "bin/engram",
+              base:        :homebrew_prefix,
+              args:        ["completion", "zsh"],
+              stdout_path: "{{ "{{HOMEBREW_PREFIX}}" }}/share/zsh/site-functions/_engram"
+          run "bin/engram",
+              base:        :homebrew_prefix,
+              args:        ["completion", "fish"],
+              stdout_path: "{{ "{{HOMEBREW_PREFIX}}" }}/share/fish/vendor_completions.d/engram.fish"
+          mkdir_p "{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"
+          run "bin/engram",
+              base:           :homebrew_prefix,
+              args:           ["man", "{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"],
+              writable_paths: ["{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1"]
+        # Homebrew tracks only the files it installs, so without this an
+        # uninstall leaves the completions and man pages behind. One `remove`
+        # with no `recursive:` is rm_f on each path and glob match: it never
+        # removes a directory, so the shared parent directories stay, and a
+        # file it cannot remove (missing, or a permission denial) is left
+        # without an error.
+        uninstall_steps: |-
+          remove [
+            "{{ "{{HOMEBREW_PREFIX}}" }}/etc/bash_completion.d/engram",
+            "{{ "{{HOMEBREW_PREFIX}}" }}/share/zsh/site-functions/_engram",
+            "{{ "{{HOMEBREW_PREFIX}}" }}/share/fish/vendor_completions.d/engram.fish",
+            "{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1/engram.1",
+            "{{ "{{HOMEBREW_PREFIX}}" }}/share/man/man1/engram-*.1",
+          ]

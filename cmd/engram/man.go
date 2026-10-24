@@ -15,7 +15,7 @@ import (
 // page's .TH date is byte-stable across machines and releases. cobra/doc
 // renders the .TH date with Format("Jan 2006"): a nil Date falls back to
 // SOURCE_DATE_EPOCH then time.Now(), which is byte-stable only within a
-// calendar month and depends on an env var the cask hook's end-user
+// calendar month and depends on an env var the cask install's end-user
 // machine never exports. .UTC() is load-bearing, not decorative: the
 // same epoch instant with no zone conversion renders in the process's
 // local zone, which prints "Dec 1969" on any negative-UTC-offset machine
@@ -127,7 +127,7 @@ func pruneToSnapshot(snap map[*cobra.Command][]*cobra.Command) {
 }
 
 // manCmd is a hidden command wrapping cobra/doc.GenManTree over the live
-// rootCmd. It is used by the Homebrew cask's post_install hook to write
+// rootCmd. It is used by the Homebrew cask's install steps to write
 // this binary's own man pages straight into the installed man1
 // directory (.goreleaser.yaml). Hidden: true excludes it from every
 // consumer of this package's shared hidden/help/completion skip
@@ -136,7 +136,7 @@ func pruneToSnapshot(snap map[*cobra.Command][]*cobra.Command) {
 // task surfaces:gen must not be run for it.
 var manCmd = &cobra.Command{
 	Use:    "man <dir>",
-	Short:  "Write one roff man page per command into <dir> (used by the Homebrew cask post-install hook)",
+	Short:  "Write one roff man page per command into <dir> (used by the Homebrew cask's install steps)",
 	Hidden: true,
 	Args:   cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {

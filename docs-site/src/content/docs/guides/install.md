@@ -32,12 +32,22 @@ engram version --output json
 The [engram cask](https://github.com/seanb4t/homebrew-tap/blob/main/Casks/engram.rb)
 selects the macOS or Linux archive for your architecture.
 
-Its install hooks check the installed version, generate bash, zsh, and fish completions, and write one man page per command into Homebrew's `share/man/man1` directory.
+Its install steps run the installed binary in three stages, in this order:
 
-After a cask install, `man engram` and `man engram-setup` describe the CLI and
-the setup command; `brew uninstall` removes them along with the completions.
-On macOS, the cask also removes quarantine from the downloaded engram
-executable because the binary is unsigned.
+1. `engram version --expect <cask version>` checks that the binary is the
+   version the cask declares.
+2. `engram completion bash`, `zsh` and `fish` write the shell completions.
+3. `engram man` writes one man page per command into Homebrew's
+   `share/man/man1` directory.
+
+If any step fails, the install fails. After a cask install, `man engram` and
+`man engram-setup` describe the CLI and the setup command. `brew uninstall`
+removes the completions and man pages it wrote, and leaves the shared
+directories.
+
+The maintainer signs the macOS binaries with a Developer ID, and Apple
+notarizes them. So the cask does not remove quarantine. macOS checks the
+binary with Apple the first time it runs.
 
 ## Release archives
 
@@ -95,13 +105,45 @@ engram version --output json
 Expect `"version": "0.16.0"` for this archive. Add your chosen directory to your
 shell's `PATH` configuration if it is not already there.
 
-### Unsigned binary on macOS
+To make the check fail in a script instead of reading the output, pass the
+version you expect in place of `<version>`. Older binaries do not have
+`--expect`. Run `engram version --help` to see whether yours has it:
 
-An archive installation does not run Homebrew's hooks: completions and man
-pages are not installed by hand, and `engram <command> --help` covers the same
-content. If macOS blocks the downloaded executable because it is quarantined,
-first confirm you downloaded the intended release and verified its checksum.
-Then remove quarantine only from that executable and retry the version check:
+```sh
+engram version --expect <version>
+```
+
+The command prints the version as usual, then exits with one of these codes:
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The binary's version is exactly the value given. |
+| `7` | The versions differ. One error line names both. A `v` prefix is not ignored, so `v<version>` does not match `<version>`. |
+| `2` | The value is empty. Nothing is printed. |
+
+<a id="unsigned-binary-on-macos"></a>
+
+### Signing and quarantine on macOS
+
+An archive installation does not run Homebrew's install steps: completions and
+man pages are not installed by hand, and `engram <command> --help` covers the
+same content.
+
+Releases from the one that adds `engram version --expect` onward have signed
+and notarized macOS binaries. The first time a downloaded binary runs, macOS
+checks it with Apple, so that first run needs a network connection. To check
+whether Apple notarized your binary:
+
+```sh
+spctl -a -vv -t install "$engram_bin_dir/engram"
+```
+
+A notarized binary reports `accepted` and `source=Notarized Developer ID`.
+
+Earlier releases have unsigned binaries, and macOS blocks a quarantined copy
+of one. First
+confirm you downloaded the intended release and verified its checksum. Then
+remove quarantine only from that executable and retry the version check:
 
 ```sh
 xattr -d com.apple.quarantine "$engram_bin_dir/engram"

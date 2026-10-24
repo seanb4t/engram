@@ -397,8 +397,8 @@ const (
 	exitNotFound    = 4 // not found
 	exitUnavailable = 5 // transport or server unavailable
 	exitTimeout     = 6 // request deadline exceeded (D-06)
-	// exitFindings is produced by a report command's own explicit opt-in
-	// flag (e.g. `spine-review verify --fail-on`) -- and by NO connect-error
+	// exitFindings is produced by a command's own explicit opt-in check flag
+	// (`spine-review verify --fail-on`, `version --expect`) -- and by NO connect-error
 	// mapping, which is exactly why TestCatalogExitCodesMatchMapper's
 	// derivation must know about it via a named allowlist entry
 	// (catalog_test.go's nonConnectProducedCodes) rather than deriving it

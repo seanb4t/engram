@@ -2351,6 +2351,12 @@
       "summary": "Print the engram version",
       "flags": [
         {
+          "name": "expect",
+          "type": "string",
+          "default": "",
+          "usage": "after printing, exit 7 unless this binary's version is exactly this value (no v-prefix normalisation)"
+        },
+        {
           "name": "output",
           "type": "string",
           "default": "text",

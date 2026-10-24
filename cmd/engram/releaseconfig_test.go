@@ -4,30 +4,23 @@
 package main
 
 import (
+	"maps"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
-// stripComment returns the portion of a line before the first '#' that
-// starts a comment. This is used both for YAML comments and for the Ruby
-// block scalar embedded in .goreleaser.yaml's cask post-install hook, where
-// '#' also starts a Ruby comment — EXCEPT that hook's paths are built with
-// Ruby string interpolation ("#{HOMEBREW_PREFIX}/..."), where '#{' is not a
-// comment marker. A bare "strip from first #" would truncate every
-// interpolated line to nothing and blind every assertion that greps for a
-// completion path, so '#' immediately followed by '{' is skipped over.
+// stripComment returns the portion of a line before the first '#'. That is
+// a YAML comment everywhere except shell parameter expansions such as
+// ${TAG_NAME#v} inside release.yaml's run blocks, which it also cuts; no
+// assertion reads those lines.
 func stripComment(line string) string {
-	for i := 0; i < len(line); i++ {
-		if line[i] == '#' {
-			if i+1 < len(line) && line[i+1] == '{' {
-				continue
-			}
-			return line[:i]
-		}
-	}
-	return line
+	before, _, _ := strings.Cut(line, "#")
+	return before
 }
 
 // nonCommentLines reads a repo-root file and returns its lines with any
@@ -70,131 +63,301 @@ func countMatches(lines []string, substr string) int {
 	return n
 }
 
-// checkOrdering is the reusable ordering assertion used by
-// TestReleaseConfigCaskInstallGate. It fails with the file name, the
-// expected ordering, and the line numbers actually found for `before`/
-// `after`, so both real-file and fixture-string callers get an actionable
-// message.
-func checkOrdering(t testing.TB, file string, lines []string, lineNos []int, before, after string) {
+// quotedHomebrewToken matches how .goreleaser.yaml writes a Homebrew
+// install-time token, {{ "{{NAME}}" }}, so GoReleaser's templating emits the
+// bare Homebrew token.
+var quotedHomebrewToken = regexp.MustCompile(`{{ "({{[A-Za-z_.]+}})" }}`)
+
+var (
+	quotedString       = regexp.MustCompile(`"([^"]*)"`)
+	stdoutPathArg      = regexp.MustCompile(`stdout_path:\s*"([^"]*)"`)
+	completionArg      = regexp.MustCompile(`\["completion", "([a-z]+)"\]`)
+	homebrewPrefixBase = regexp.MustCompile(`\bbase:\s*:homebrew_prefix\b`)
+)
+
+// macosSigningVars are the variables .goreleaser.yaml's notarize: block reads
+// and release.yaml fills from the release environment's secrets, in the order
+// the enabled condition lists them.
+var macosSigningVars = []string{
+	"MACOS_SIGN_P12", "MACOS_SIGN_PASSWORD", "MACOS_NOTARY_ISSUER_ID", "MACOS_NOTARY_KEY_ID", "MACOS_NOTARY_KEY",
+}
+
+// Install paths as the rendered install_steps spell them.
+const (
+	homebrewPrefix = "{{HOMEBREW_PREFIX}}"
+	caskManDir     = homebrewPrefix + "/share/man/man1"
+)
+
+var caskCompletionPaths = map[string]string{
+	"bash": homebrewPrefix + "/etc/bash_completion.d/engram",
+	"zsh":  homebrewPrefix + "/share/zsh/site-functions/_engram",
+	"fish": homebrewPrefix + "/share/fish/vendor_completions.d/engram.fish",
+}
+
+// stepBlocks renders each quoted Homebrew token the way GoReleaser does and
+// splits a steps body into one string per step: a step starts on a line with
+// no leading space, and its indented option lines and the closing bracket of
+// a multi-line list follow it.
+func stepBlocks(body string) []string {
+	var blocks []string
+	for l := range strings.SplitSeq(quotedHomebrewToken.ReplaceAllString(body, "$1"), "\n") {
+		if l == "" {
+			continue
+		}
+		if (strings.HasPrefix(l, " ") || strings.HasPrefix(l, "]")) && len(blocks) > 0 {
+			blocks[len(blocks)-1] += "\n" + l
+			continue
+		}
+		blocks = append(blocks, l)
+	}
+	return blocks
+}
+
+// loadYAML parses a file, relative to this package's directory, into v.
+func loadYAML(t *testing.T, relPath string, v any) {
 	t.Helper()
-	beforeLine := firstMatch(lines, lineNos, before)
-	afterLine := firstMatch(lines, lineNos, after)
-	if beforeLine == -1 {
-		t.Errorf("%s: expected a non-comment line containing %q, found none", file, before)
-		return
+	data, err := os.ReadFile(relPath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", relPath, err)
 	}
-	if afterLine == -1 {
-		t.Errorf("%s: expected a non-comment line containing %q, found none", file, after)
-		return
-	}
-	if beforeLine >= afterLine {
-		t.Errorf("%s: expected line containing %q (found at line %d) strictly BEFORE line containing %q (found at line %d)",
-			file, before, beforeLine, after, afterLine)
+	if err := yaml.Unmarshal(data, v); err != nil {
+		t.Fatalf("parsing %s: %v", relPath, err)
 	}
 }
 
-// TestCheckOrderingCatchesTransposedLines proves checkOrdering actually goes
-// RED on a wrong ordering, using an inline fixture with the two markers
-// transposed relative to what the cask hook requires.
-func TestCheckOrderingCatchesTransposedLines(t *testing.T) {
-	fixture := "version --output json gate\nxattr strip happens second, wrongly\n"
-	raw := strings.Split(fixture, "\n")
-	lines := make([]string, len(raw))
-	lineNos := make([]int, len(raw))
-	for i, l := range raw {
-		lines[i] = stripComment(l)
-		lineNos[i] = i + 1
-	}
-	rt := &recordingT{T: t}
-	checkOrdering(rt, "fixture", lines, lineNos, "xattr strip", "version --output json")
-	if !rt.failed {
-		t.Fatal("checkOrdering did not fail on a fixture with transposed ordering — the checker is not sensitive to order")
-	}
-}
-
-// recordingT wraps *testing.T to capture Errorf calls without failing the
-// outer test, so we can assert the *checker* goes red without failing this
-// meta-test itself.
-type recordingT struct {
-	*testing.T
-	failed bool
-}
-
-func (r *recordingT) Errorf(_ string, _ ...any) {
-	r.failed = true
-}
-
-// TestReleaseConfigCaskInstallGate pins the cask post-install hook's
-// ordering and shape in .goreleaser.yaml (REQ-cask-install-gate): the
-// Gatekeeper quarantine strip, guarded to macOS, must run before the
-// binary-version gate, which must run before completions are generated,
-// which must run before man pages are generated (D-09) — and the
-// declarative/deprecated GoReleaser mechanisms this design deliberately
-// avoids must not reappear.
+// TestReleaseConfigCaskInstallGate pins the cask's install and uninstall
+// steps in .goreleaser.yaml: the only hooks are post install_steps and
+// uninstall_steps, with no custom_block; every Homebrew token is written
+// quoted; every run step runs the linked bin/engram; the version gate runs
+// against the cask's {{version}}, then the bash, zsh and fish completions
+// write their install paths, then the man pages go into the man1 directory;
+// no step sets must_succeed or runs xattr; the uninstall is one remove of
+// exactly the files the install writes and never a directory. It also keeps
+// out top-level brews and the cask keys that install prebuilt files or
+// soften a failure, and pins the description to rootCmd.Short.
 func TestReleaseConfigCaskInstallGate(t *testing.T) {
-	const file = "../../.goreleaser.yaml"
-	lines, lineNos := nonCommentLines(t, file)
+	var cfg struct {
+		Brews         any              `yaml:"brews"`
+		HomebrewCasks []map[string]any `yaml:"homebrew_casks"`
+	}
+	loadYAML(t, "../../.goreleaser.yaml", &cfg)
+	if cfg.Brews != nil {
+		t.Error("top-level `brews` is set; engram ships a cask only")
+	}
+	if len(cfg.HomebrewCasks) != 1 {
+		t.Fatalf("want exactly 1 homebrew_casks entry, got %d", len(cfg.HomebrewCasks))
+	}
+	cask := cfg.HomebrewCasks[0]
 
-	xattrCount := countMatches(lines, `system_command "/usr/bin/xattr"`)
-	if xattrCount != 1 {
-		t.Errorf("%s: expected exactly 1 non-comment occurrence of `system_command \"/usr/bin/xattr\"`, found %d", file, xattrCount)
+	for _, key := range []string{"generate_completions_from_executable", "completions", "manpages"} {
+		if _, ok := cask[key]; ok {
+			t.Errorf("homebrew_casks[0].%s is set; the installed binary must write the completions and man pages, failing the install if it cannot", key)
+		}
+	}
+	if desc, _ := cask["description"].(string); desc != rootCmd.Short {
+		t.Errorf("cask description %q does not byte-match rootCmd.Short %q", desc, rootCmd.Short)
 	}
 
-	checkOrdering(t, file, lines, lineNos, "if OS.mac?", `system_command "/usr/bin/xattr"`)
-	checkOrdering(t, file, lines, lineNos, `system_command "/usr/bin/xattr"`, `"version", "--output", "json"`)
-	checkOrdering(t, file, lines, lineNos, `"version", "--output", "json"`, `args: ["completion"`)
-	checkOrdering(t, file, lines, lineNos, `args: ["completion"`, `args: ["man"`)
-
-	if n := countMatches(lines, `args: ["man"`); n != 1 {
-		t.Errorf("%s: expected exactly 1 non-comment occurrence of `args: [\"man\"`, found %d", file, n)
+	if _, ok := cask["custom_block"]; ok {
+		t.Error("homebrew_casks[0].custom_block is set; it adds Ruby to the cask that the steps checks below never see")
 	}
-
-	const manPageUninstallGlob = `Dir.glob("#{HOMEBREW_PREFIX}/share/man/man1/engram{,-*}.1")`
-	if n := countMatches(lines, manPageUninstallGlob); n != 1 {
-		t.Errorf("%s: expected exactly 1 non-comment occurrence of the uninstall man-page glob, found %d", file, n)
+	hooks, _ := cask["hooks"].(map[string]any)
+	if keys := slices.Sorted(maps.Keys(hooks)); !slices.Equal(keys, []string{"post"}) {
+		t.Errorf("homebrew_casks[0].hooks keys = %q, want only post", keys)
 	}
-
-	if n := countMatches(lines, "share/man/man1"); n != 2 {
-		t.Errorf("%s: expected exactly 2 non-comment occurrences of `share/man/man1` (install + uninstall), found %d", file, n)
+	post, _ := hooks["post"].(map[string]any)
+	if keys, want := slices.Sorted(maps.Keys(post)), []string{"install_steps", "uninstall_steps"}; !slices.Equal(keys, want) {
+		t.Errorf("hooks.post keys = %q, want %q; install and uninstall render Ruby flight blocks", keys, want)
 	}
-
-	forbidden := []string{"generate_completions_from_executable", "brews:", "rm_rf", "manpage:"}
-	for _, f := range forbidden {
-		if n := countMatches(lines, f); n != 0 {
-			t.Errorf("%s: expected 0 non-comment occurrences of %q, found %d", file, f, n)
+	installBody, _ := post["install_steps"].(string)
+	uninstallBody, _ := post["uninstall_steps"].(string)
+	if installBody == "" || uninstallBody == "" {
+		t.Fatal("hooks.post.install_steps and uninstall_steps must both be set")
+	}
+	for name, body := range map[string]string{"install_steps": installBody, "uninstall_steps": uninstallBody} {
+		if rest := quotedHomebrewToken.ReplaceAllString(body, ""); strings.Contains(rest, "{{") {
+			t.Errorf("%s has a {{ that is not a quoted Homebrew token; GoReleaser would template it", name)
+		}
+		for _, banned := range []string{"must_succeed", "xattr"} {
+			if strings.Contains(body, banned) {
+				t.Errorf("%s contains %q", name, banned)
+			}
 		}
 	}
 
-	completionPaths := []string{
-		"etc/bash_completion.d/engram",
-		"share/zsh/site-functions/_engram",
-		"share/fish/vendor_completions.d/engram.fish",
-	}
-	for _, p := range completionPaths {
-		if n := countMatches(lines, p); n != 2 {
-			t.Errorf("%s: expected exactly 2 non-comment occurrences of %q (install + uninstall), found %d", file, p, n)
+	var order, written []string
+	for _, step := range stepBlocks(installBody) {
+		if strings.HasPrefix(step, "mkdir_p ") {
+			continue
 		}
+		if !strings.HasPrefix(step, `run "bin/engram",`) || !homebrewPrefixBase.MatchString(step) {
+			t.Errorf("every install run step must be run \"bin/engram\" with base: :homebrew_prefix, got step:\n%s", step)
+		}
+		switch {
+		case strings.Contains(step, `["version", "--expect", "{{version}}"]`):
+			order = append(order, "expect")
+		case completionArg.MatchString(step):
+			shell := completionArg.FindStringSubmatch(step)[1]
+			order = append(order, "completion "+shell)
+			path := stdoutPathArg.FindStringSubmatch(step)
+			if path == nil || path[1] != caskCompletionPaths[shell] {
+				t.Errorf("the %s completion step must write %q, got step:\n%s", shell, caskCompletionPaths[shell], step)
+				continue
+			}
+			written = append(written, path[1])
+		case strings.Contains(step, `["man", `):
+			order = append(order, "man")
+			if !strings.Contains(step, `["man", "`+caskManDir+`"]`) {
+				t.Errorf("the man step must write into %q, got step:\n%s", caskManDir, step)
+			}
+			written = append(written, caskManDir+"/engram.1", caskManDir+"/engram-*.1")
+		default:
+			t.Errorf("install_steps has an unexpected step:\n%s", step)
+		}
+	}
+	wantOrder := []string{"expect", "completion bash", "completion zsh", "completion fish", "man"}
+	if !slices.Equal(order, wantOrder) {
+		t.Errorf("install_steps order = %q, want %q", order, wantOrder)
 	}
 
-	// The cask description must be byte-identical to rootCmd.Short.
-	descLine := ""
-	descLineNo := -1
-	for i, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "description:") {
-			descLine = l
-			descLineNo = lineNos[i]
-			break
+	if strings.Contains(uninstallBody, "recursive") {
+		t.Error("uninstall_steps sets recursive; the uninstall removes files only")
+	}
+	uninstall := stepBlocks(uninstallBody)
+	if len(uninstall) != 1 || !strings.HasPrefix(uninstall[0], "remove [") {
+		t.Fatalf("uninstall_steps must be one `remove [...]` step, got:\n%s", strings.Join(uninstall, "\n"))
+	}
+	quoted := quotedString.FindAllStringSubmatch(uninstall[0], -1)
+	removed := make([]string, 0, len(quoted))
+	for _, m := range quoted {
+		if strings.HasSuffix(m[1], "/") {
+			t.Errorf("uninstall_steps removes %q, a directory", m[1])
+		}
+		removed = append(removed, m[1])
+	}
+	slices.Sort(written)
+	slices.Sort(removed)
+	if !slices.Equal(written, removed) {
+		t.Errorf("uninstall_steps removes %q, want exactly what install_steps writes: %q", removed, written)
+	}
+}
+
+// TestReleaseConfigNotarizeMacOS pins the notarize block: one entry whose
+// ids are exactly the darwin builds, whose sign and notarize fields read the
+// five MACOS_* variables and wait for Apple's verdict, and that is enabled
+// exactly when all five are set.
+func TestReleaseConfigNotarizeMacOS(t *testing.T) {
+	var cfg struct {
+		Builds []struct {
+			ID   string   `yaml:"id"`
+			Goos []string `yaml:"goos"`
+		} `yaml:"builds"`
+		Notarize struct {
+			MacOS []struct {
+				Enabled string   `yaml:"enabled"`
+				IDs     []string `yaml:"ids"`
+				Sign    struct {
+					Certificate string `yaml:"certificate"`
+					Password    string `yaml:"password"`
+				} `yaml:"sign"`
+				Notarize struct {
+					IssuerID string `yaml:"issuer_id"`
+					KeyID    string `yaml:"key_id"`
+					Key      string `yaml:"key"`
+					Wait     bool   `yaml:"wait"`
+				} `yaml:"notarize"`
+			} `yaml:"macos"`
+		} `yaml:"notarize"`
+	}
+	loadYAML(t, "../../.goreleaser.yaml", &cfg)
+	if len(cfg.Notarize.MacOS) != 1 {
+		t.Fatalf("want exactly 1 notarize.macos entry, got %d", len(cfg.Notarize.MacOS))
+	}
+	entry := cfg.Notarize.MacOS[0]
+
+	var darwinBuilds []string
+	for _, b := range cfg.Builds {
+		if slices.Contains(b.Goos, "darwin") {
+			darwinBuilds = append(darwinBuilds, b.ID)
 		}
 	}
-	if descLineNo == -1 {
-		t.Fatalf("%s: no non-comment `description:` line found", file)
+	ids := slices.Clone(entry.IDs)
+	slices.Sort(ids)
+	slices.Sort(darwinBuilds)
+	if len(darwinBuilds) == 0 || !slices.Equal(ids, darwinBuilds) {
+		t.Errorf("notarize.macos[0].ids = %q, want exactly the darwin build ids %q", entry.IDs, darwinBuilds)
 	}
-	trimmed := strings.TrimSpace(descLine)
-	trimmed = strings.TrimPrefix(trimmed, "description:")
-	trimmed = strings.TrimSpace(trimmed)
-	trimmed = strings.Trim(trimmed, `"`)
-	if trimmed != rootCmd.Short {
-		t.Errorf("%s:%d: cask description %q does not byte-match rootCmd.Short %q", file, descLineNo, trimmed, rootCmd.Short)
+
+	for _, f := range []struct{ field, got, env string }{
+		{"sign.certificate", entry.Sign.Certificate, "MACOS_SIGN_P12"},
+		{"sign.password", entry.Sign.Password, "MACOS_SIGN_PASSWORD"},
+		{"notarize.issuer_id", entry.Notarize.IssuerID, "MACOS_NOTARY_ISSUER_ID"},
+		{"notarize.key_id", entry.Notarize.KeyID, "MACOS_NOTARY_KEY_ID"},
+		{"notarize.key", entry.Notarize.Key, "MACOS_NOTARY_KEY"},
+	} {
+		if want := "{{ .Env." + f.env + " }}"; f.got != want {
+			t.Errorf("notarize.macos[0].%s = %q, want %q", f.field, f.got, want)
+		}
+	}
+	if !entry.Notarize.Wait {
+		t.Error("notarize.macos[0].notarize.wait is not true; without it Apple rejecting a binary cannot fail the release")
+	}
+
+	terms := make([]string, len(macosSigningVars))
+	for i, v := range macosSigningVars {
+		terms[i] = `(isEnvSet "` + v + `")`
+	}
+	if got, want := strings.TrimSpace(entry.Enabled), "{{ and "+strings.Join(terms, " ")+" }}"; got != want {
+		t.Errorf("notarize.macos[0].enabled = %q, want %q", got, want)
+	}
+}
+
+// TestReleaseConfigSigningSecretsEnv pins which release.yaml steps get the
+// signing secrets: only the release job's "Require the macOS signing secrets"
+// step and its goreleaser-action step, each with exactly the five MACOS_*
+// secrets under their own names, so the check reads what GoReleaser reads.
+func TestReleaseConfigSigningSecretsEnv(t *testing.T) {
+	var wf struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string            `yaml:"name"`
+				Uses string            `yaml:"uses"`
+				Env  map[string]string `yaml:"env"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	loadYAML(t, "../../.github/workflows/release.yaml", &wf)
+
+	want := make(map[string]string, len(macosSigningVars))
+	for _, v := range macosSigningVars {
+		want[v] = "${{ secrets." + v + " }}"
+	}
+	var readers []string
+	for job, j := range wf.Jobs {
+		for _, s := range j.Steps {
+			got := map[string]string{}
+			for k, v := range s.Env {
+				if strings.HasPrefix(k, "MACOS_") || strings.Contains(v, "secrets.MACOS_") {
+					got[k] = v
+				}
+			}
+			if len(got) == 0 {
+				continue
+			}
+			step := job + ": " + s.Name + s.Uses
+			readers = append(readers, step)
+			allowed := s.Name == "Require the macOS signing secrets" || strings.HasPrefix(s.Uses, "goreleaser/goreleaser-action@")
+			if job != "release" || !allowed {
+				t.Errorf("%s reads the signing secrets; only the release job's check and goreleaser steps may", step)
+				continue
+			}
+			if !maps.Equal(got, want) {
+				t.Errorf("%s env MACOS_* = %v, want %v", step, got, want)
+			}
+		}
+	}
+	if len(readers) != 2 {
+		t.Errorf("signing secrets reach %q, want exactly the check step and the goreleaser step", readers)
 	}
 }
 

@@ -33,6 +33,12 @@ The `release` workflow uses a GitHub App token to open the release PR, cut the t
 1. A GitHub App with **Contents: write** and **Pull requests: write** on this repo, installed on the repo.
 2. Two repo secrets: `RELEASE_APP` (the App ID) and `RELEASE_APP_PRIVATE_KEY`.
 3. The App named as a **bypass actor** on the `main` branch ruleset.
+4. A GitHub environment named `release` whose deployment branch policy allows only `main`. It holds the five secrets that sign and notarize the macOS binaries:
+   - `MACOS_SIGN_P12`: the Developer ID Application certificate, as a base64 `.p12`.
+   - `MACOS_SIGN_PASSWORD`: the certificate's password.
+   - `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID` and `MACOS_NOTARY_KEY`: an App Store Connect team API key and its `.p8`.
+
+   The release job stops before GoReleaser runs if any of the five is empty.
 
 The default `GITHUB_TOKEN` keeps `packages: write` only — it pushes the image and OCI chart to GHCR, nothing else.
 
@@ -48,8 +54,21 @@ Release-As: 0.5.0
 
 release-please re-cuts the open release PR at that version. Keep the footer in the squashed commit body so it survives squash-merge.
 
+## When verify-macos fails
+
+The `verify-macos` job checks the darwin binaries after a release publishes them. Its log names the check that failed. Find the failure below.
+
+- **The download fails.** The release job failed before it uploaded anything. Fix that failure, then re-ship the tag.
+- **"Gatekeeper rejected" or "is not a notarized Developer ID binary".** Open the release job's GoReleaser step log and search for `notarize`.
+  - `notarize timeout` or `notarize still pending`: Apple had not answered when GoReleaser stopped waiting. GoReleaser signed the binaries, and Apple can still accept them later. Re-run the `verify-macos` job after a while. If it passes, you need to do nothing else. If it still fails, re-ship the tag.
+  - `skipped` with `reason=disabled`, or no `notarize` lines: GoReleaser did not sign the binaries. Fix the cause, then re-ship the tag.
+- **"did not run, or does not report".** macOS blocked the arm64 binary, or the binary reports a version that is not the tag's. Fix the cause, then re-ship the tag.
+
+To re-ship a tag, run the `release` workflow by hand (`workflow_dispatch`) and give it the tag.
+
 ## Local checks
 
 - `task release:check` — `goreleaser check` (config validity).
 - `task release:snapshot` — local `goreleaser` dry build (no publish).
+- `task release:gatekeeper TAG=vX.Y.Z` — on an Apple-silicon Mac, checks a published release's macOS binaries with Gatekeeper, as the `verify-macos` job does after each release.
 - `task chart:lint` — `helm lint` + `helm template`.
