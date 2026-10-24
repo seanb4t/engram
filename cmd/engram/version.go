@@ -46,8 +46,8 @@ func init() {
 	versionCmd.Flags().String("output", "text",
 		`output format: "json" or "text" (default: text, always — unlike every `+
 			`other --output flag in this binary, this one never auto-detects from stdout)`)
-	versionCmd.Flags().String("expect", "",
-		"after printing, exit 7 unless this binary's version is exactly this value (no v-prefix normalisation)")
+	versionCmd.Flags().String("expect", "", fmt.Sprintf(
+		"after printing, exit %d unless this binary's version is exactly this value (no v-prefix normalisation)", exitFindings))
 }
 
 // runVersion validates --output through the single shared validator

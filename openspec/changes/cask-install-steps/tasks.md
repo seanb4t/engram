@@ -12,7 +12,8 @@
   `git diff cmd/engram/testdata` shows only the new `--expect` flag on `version`, and
   `go test ./cmd/engram -run 'TestHelpGolden|TestCatalogGolden' -count=1` passes.
 - [x] 1.3 Document `--expect` in `docs-site/src/content/docs/guides/install.md`, next to the
-  existing `engram version --output json` checks, with its exit codes (0, 2 and 7). Verify:
+  existing `engram version --output json` checks, with its exit codes (0, 2 and 7). Add §26 to
+  `guides/upgrade.md`: `--expect` is a second command that exits 7. Verify:
   `task lint:markdown` passes, and the documented command gives exit 7 against a deliberately wrong
   version when run locally.
 
@@ -43,6 +44,11 @@
     aligned `must_succeed:   false` on the man step; swapping the zsh and fish `completion` args;
     `man1` changed to `man8` everywhere; a raw `{{version}}`; renaming the darwin build id. The
     `v`-prefix case of `TestVersionExpect` fails against a comparison that strips a leading `v`.
+  - After the second suite review, these scratch edits also turn `TestReleaseConfig` red: deleting
+    the `sign:` or `notarize:` block; `wait: false`; a sixth `isEnvSet` term; a `run` step that is
+    not `run "bin/engram"` with `base: :homebrew_prefix`; `xattr` in `hooks.pre` or a
+    `custom_block`; `remove` changed to `rmdir`; the goreleaser step's env dropping or renaming a
+    secret; another step getting a signing secret.
 - [x] 2.4 Update `guides/install.md`:
   - The Homebrew section, which today says "Its install hooks check…" and that the cask removes
     quarantine because the binary is unsigned (lines 39-40), describes the install steps and the
@@ -78,8 +84,10 @@
   outputs as outputs of the `release` job. Verify: `actionlint` and `yamlfmt -lint` pass on
   `release.yaml`.
 - [x] 3.5 Add the "Require the macOS signing secrets" step before `goreleaser-action`, per design
-  D9: it fails the job when any of the five `MACOS_*` values is empty, printing only the names.
-  Verify: `actionlint` passes on `release.yaml`.
+  D9: it fails the job when any `MACOS_*` value in its env is empty, printing only the names.
+  `TestReleaseConfigSigningSecretsEnv` pins its env and the goreleaser step's to the five secrets.
+  Verify: `actionlint` passes on `release.yaml`, and the step's script exits 1 naming each empty
+  variable when run in bash with two of the five empty.
 - [x] 3.6 Move the five secrets into a `release` environment, per design D9: create the
   environment with a custom deployment branch policy allowing only `main`, set the five secrets
   there from the same 1Password items, set `environment: release` on the release job, add
@@ -87,7 +95,10 @@
   repository-level secrets. Verify: `gh api repos/seanb4t/engram/environments/release` shows the
   branch policy; `gh secret list -e release` lists the five; `gh secret list` lists no `MACOS_*`.
 - [x] 3.7 Document the `release` environment, its five secrets and `task release:gatekeeper` in
-  `docs-site/src/content/docs/contributing/releasing.md`. Verify: `task lint:markdown` passes.
+  `docs-site/src/content/docs/contributing/releasing.md`, with a "When verify-macos fails" section
+  that the task's failure messages point to. Verify: `task lint:markdown` passes.
+- [x] 3.8 Install Task at a pinned `TASK_VERSION` (Renovate-tracked) in both jobs of
+  `release.yaml`, per design D9. Verify: `actionlint` passes.
 
 ## 4. GoReleaser pin
 

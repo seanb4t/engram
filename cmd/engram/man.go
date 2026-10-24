@@ -15,7 +15,7 @@ import (
 // page's .TH date is byte-stable across machines and releases. cobra/doc
 // renders the .TH date with Format("Jan 2006"): a nil Date falls back to
 // SOURCE_DATE_EPOCH then time.Now(), which is byte-stable only within a
-// calendar month and depends on an env var the cask hook's end-user
+// calendar month and depends on an env var the cask install's end-user
 // machine never exports. .UTC() is load-bearing, not decorative: the
 // same epoch instant with no zone conversion renders in the process's
 // local zone, which prints "Dec 1969" on any negative-UTC-offset machine

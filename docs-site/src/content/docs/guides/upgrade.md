@@ -44,6 +44,7 @@ one predictable, migration-safe contract.
 | hand-tune the Qdrant collection's quantization, run Qdrant with little memory headroom, or have a collection whose index builds take minutes | §23 |
 | run a bare `engram` from a script or an agent to read the self-describe catalog | §24 |
 | rely on a `401` from the MCP path carrying no `WWW-Authenticate` header, set `ENGRAM_MCP_RESOURCE_URL` to a value with userinfo or an unusual host, or compare the derived `resource` value byte for byte | §25 |
+| treat exit `7` as meaning only `spine-review verify --fail-on` findings | §26 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -675,6 +676,21 @@ Three smaller changes come with it:
 an operator whose `ENGRAM_MCP_RESOURCE_URL` holds userinfo or an unusual host.
 MCP clients that follow the MCP authorization spec use the new challenge to
 find the document.
+
+### 26. `engram version --expect` also exits with code 7
+
+`engram version` has a new flag, `--expect <version>`. The command prints
+the version as before. Then, when the running binary's version is not
+exactly the given value, it exits with code `7`, and one stderr line names
+both versions. An empty value is a usage error (exit `2`). Without the flag,
+nothing changes. The Homebrew cask runs this check at install time.
+
+Code `7` keeps its meaning: the command worked, and a check the caller asked
+for failed. Before this release, `spine-review verify --fail-on` was the
+only command that exited with it.
+
+**Who needs to act:** nobody, unless a script treats exit `7` as meaning
+only `spine-review verify` findings.
 
 ---
 

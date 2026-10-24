@@ -214,15 +214,16 @@ on an unrelated PR. A pin also keeps the release building with the version CI ch
 `TestReleaseConfigCaskInstallGate` loads `.goreleaser.yaml` with `go.yaml.in/yaml/v3`, which is
 already a direct dependency, and checks the hooks of `homebrew_casks[0]`:
 
-- The legacy `install` and `uninstall` keys are absent. `install_steps` and `uninstall_steps` are
-  present.
+- `hooks` has only `post`, whose only keys are `install_steps` and `uninstall_steps`, and the
+  cask has no `custom_block`. So no Ruby, such as a quarantine removal, reaches the cask.
 - Every `{{` in either body is a quoted Homebrew token, `{{ "{{NAME}}" }}`, so GoReleaser's own
   templating cannot consume one.
 - `install_steps` is, in order: `--expect` with Homebrew's `{{version}}`; the bash, zsh and fish
   `completion` runs, each writing the spec's path for its own shell; the `man` run into the
-  spec's `share/man/man1`. Neither body names `must_succeed` or runs `xattr`.
-- `uninstall_steps` removes exactly the files the install writes, has no `recursive`, and has no
-  path that is a bare directory.
+  spec's `share/man/man1`. Every `run` step is `run "bin/engram"` with `base: :homebrew_prefix`.
+  Neither body names `must_succeed` or runs `xattr`.
+- `uninstall_steps` is one `remove` step of exactly the files the install writes, has no
+  `recursive`, and has no path that is a bare directory.
 - The keys `generate_completions_from_executable`, `completions`, `manpages` and `brews` are
   absent. The test checks parsed keys, not substrings, so prose in a comment cannot trip it.
 - The cask description still byte-matches `rootCmd.Short`.
@@ -231,15 +232,18 @@ already a direct dependency, and checks the hooks of `homebrew_casks[0]`:
 only served the line-grep checks are deleted (rule `3p0zsqrhmb`: no test for a test).
 
 The steps body is still an opaque string after the YAML parse, so the test splits it into one
-block per step (a step starts on an unindented line). This is our config, so checking it does not
-test GoReleaser or Homebrew.
+block per step (a step starts on an unindented line; indented lines and a closing bracket continue
+it). This is our config, so checking it does not test GoReleaser or Homebrew.
 
 Behaviour of `--expect` is covered by Go tests on the command, run with the version set to the
 spec's `0.30.0`: match, mismatch with both output modes, `v` prefix, empty value, and flag
 omitted.
 
 `TestReleaseConfigNotarizeMacOS` checks the `notarize:` block: one entry, `ids` equal to the
-darwin builds' ids, and `enabled` an `and` over all five `MACOS_*` variables. A config edit then
+darwin builds' ids, the `sign` and `notarize` fields reading the five `MACOS_*` variables with
+`wait: true`, and `enabled` exactly the `and` over all five. `TestReleaseConfigSigningSecretsEnv`
+checks that in `release.yaml` only the D9 secrets check and the `goreleaser-action` step get the
+five secrets, each under its own name, so the check reads what GoReleaser reads. A config edit then
 fails before merge. Whether signing worked is still measured on the published binaries by the D8
 job.
 
@@ -296,7 +300,9 @@ A new Taskfile task, `release:gatekeeper`, takes `TAG` and:
    quarantined binary passes Gatekeeper.
 
 `TAG` reaches the script through the task's environment, not its text. A `preconditions:` entry
-fails the task on anything but an Apple-silicon Mac.
+fails the task on anything but an Apple-silicon Mac. Each failure message points at "When
+verify-macos fails" in `contributing/releasing.md`, which tells a notarization that timed out
+(re-run the job later) from an unsigned build (re-ship the tag).
 
 A new `verify-macos` job in `release.yaml` runs the task on `macos-latest` with `needs: release`.
 It runs when the release job shipped, so the release job exposes its `ship` and `tag` step outputs
@@ -322,15 +328,19 @@ install of that version would then fail until a re-ship. Three guards close the 
 cannot, because D8 runs only after publishing:
 
 - **Secrets check.** A step before `goreleaser-action` fails the release job when any of the five
-  `MACOS_*` values is empty, so nothing is published unsigned for that reason.
+  `MACOS_*` values is empty, so nothing is published unsigned for that reason. It checks every
+  `MACOS_*` variable in its own env, and D6's test pins that env to the `goreleaser-action` step's.
 - **`release` environment.** The release job runs in a GitHub environment named `release` whose
   deployment branch policy allows only `main`. The five secrets live there, not at repository
   level, so a workflow on any other branch cannot read the signing identity.
-- **cosign.** `sigstore/cosign-installer` runs before `goreleaser-action`, which then verifies the
-  GoReleaser download against GoReleaser's signed `checksums.txt` (its sigstore bundle) as well as
-  the checksum, before that binary receives the secrets.
+- **cosign.** `sigstore/cosign-installer` runs before `goreleaser-action`, which then also checks
+  the sigstore signature on GoReleaser's `checksums.txt`, before that binary receives the secrets.
+  The check is best-effort: when the signature bundle or `checksums.txt` cannot be downloaded, the
+  action logs a warning and skips that check. Defeating it needs control of GoReleaser's GitHub
+  release downloads, so a separate `cosign verify-blob` step is not added.
 
-Only the secrets-check step and the `goreleaser-action` step read the five secrets.
+Only the secrets-check step and the `goreleaser-action` step read the five secrets. Both jobs
+install Task at the pinned, Renovate-tracked `TASK_VERSION`, not the action's floating `3.x`.
 
 Alternatives rejected:
 

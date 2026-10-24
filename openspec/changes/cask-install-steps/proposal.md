@@ -64,7 +64,8 @@ change signs the binary and drops the quarantine removal, instead of porting it 
 - **Docs.** The install guide describes the steps-based install, `version --expect` and the
   notarized binary. Its "Unsigned binary on macOS" section keeps the `xattr` advice only for
   releases from before this change. The release guide lists the `release` environment, its five
-  secrets and `task release:gatekeeper`.
+  secrets and `task release:gatekeeper`, and says what to do when `verify-macos` fails. The
+  upgrade guide notes that `version --expect` is a second command that exits 7.
 
 Out of scope:
 
@@ -102,7 +103,7 @@ None. `cli-catalog` derives the flag list from the live binary, so `--expect` ap
 - **Helm chart:** deliberately unchanged. The cask is not part of the cluster deployment.
 - **docs-site:** affected. `guides/install.md` describes the Homebrew section's install steps, the
   new flag and the notarized binary. `contributing/releasing.md` lists the signing secrets and the
-  Gatekeeper task.
+  Gatekeeper task, and what to do when it fails. `guides/upgrade.md` gains §26 on exit code 7.
 - **engram skill:** deliberately unchanged. The skill does not drive Homebrew or `engram version`.
 - **Wire contract:** no proto field, MCP input schema, error hint code, `ENGRAM_` config key or
   stored payload key changes. The CLI contract grows by one opt-in flag. Existing exit codes keep

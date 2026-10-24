@@ -140,8 +140,8 @@ func TestVersionOutputFlagDefault(t *testing.T) {
 // error line naming both versions, an empty value is a usage error before
 // any output, and the comparison is an exact string match.
 func TestVersionExpect(t *testing.T) {
-	// A release-shaped version, so a normalisation that only touches SemVer
-	// input (such as stripping a leading v) cannot pass the v-prefix case.
+	// A release-shaped version: an implementation that strips a leading v
+	// from --expect would then match in the v-prefix case, which wants exit 7.
 	saved := version
 	version = "0.30.0"
 	t.Cleanup(func() { version = saved })
