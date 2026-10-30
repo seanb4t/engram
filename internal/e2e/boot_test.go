@@ -6,6 +6,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os/exec"
 	"strings"
 	"testing"
@@ -94,29 +95,67 @@ var documentedTools = []string{
 	"store_memory", "store_rule", "supersede_memory", "update_memory",
 }
 
-// mcpConnect dials the running server over the real streamable-HTTP transport,
-// completing the full initialize handshake.
+// mcpConnect dials the running server over the real streamable-HTTP transport
+// at the client's default protocol version.
 func mcpConnect(t *testing.T, srv *serverProc) *mcp.ClientSession {
+	t.Helper()
+	return mcpConnectAt(t, srv.endpoint(), "", "")
+}
+
+// mcpConnectAt dials endpoint at protocol version, with token as the bearer
+// token when it is not empty. A non-empty version must be the version the
+// server negotiates: the client falls back from 2026-07-28 to initialize
+// without an error, so only this check proves the protocol generation.
+func mcpConnectAt(t *testing.T, endpoint, version, token string) *mcp.ClientSession {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
+	transport := &mcp.StreamableClientTransport{Endpoint: endpoint}
+	if token != "" {
+		transport.HTTPClient = &http.Client{Transport: bearerTransport{token: token}}
+	}
 	c := mcp.NewClient(&mcp.Implementation{Name: "engram-e2e", Version: "test"}, nil)
-	cs, err := c.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.endpoint()}, nil)
+	cs, err := c.Connect(ctx, transport, &mcp.ClientSessionOptions{ProtocolVersion: version})
 	if err != nil {
-		t.Fatalf("MCP connect to %s: %v", srv.endpoint(), err)
+		t.Fatalf("MCP connect to %s at %q: %v", endpoint, version, err)
 	}
 	t.Cleanup(func() { _ = cs.Close() })
+	if got := cs.InitializeResult().ProtocolVersion; version != "" && got != version {
+		t.Fatalf("MCP connect to %s negotiated %s, want %s", endpoint, got, version)
+	}
 	return cs
 }
 
+// bearerTransport adds a bearer token to every request.
+type bearerTransport struct{ token string }
+
+func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("Authorization", "Bearer "+b.token)
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// protocolGenerations are the two MCP protocol generations the server
+// serves, each named by the version a client asks for.
+var protocolGenerations = []string{"2026-07-28", "2025-11-25"}
+
 // TestBootServesDocumentedToolSurface is the core wiring smoke test: build ->
-// boot -> MCP handshake -> tools/list. It is the only test that would catch a
-// break in cobra/env -> runServe -> mux -> transport -> registration.
+// boot -> MCP handshake -> tools/list, on each protocol generation. It is the
+// only test that would catch a break in cobra/env -> runServe -> mux ->
+// transport -> registration.
 func TestBootServesDocumentedToolSurface(t *testing.T) {
 	srv := startServer(t, nil)
-	cs := mcpConnect(t, srv)
+	for _, version := range protocolGenerations {
+		t.Run(version, func(t *testing.T) {
+			checkDocumentedTools(t, mcpConnectAt(t, srv.endpoint(), version, ""))
+		})
+	}
+}
 
+// checkDocumentedTools fails unless cs lists exactly documentedTools.
+func checkDocumentedTools(t *testing.T, cs *mcp.ClientSession) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	res, err := cs.ListTools(ctx, nil)
