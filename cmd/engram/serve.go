@@ -269,7 +269,7 @@ func runServe(cmd *cobra.Command) error {
 	// resolve==nil gate is untouched.
 	connectResolve := connectResolverFor(chain, headless, cookieResolve)
 
-	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: resolvedVersion()}, nil)
+	srv := newMCPServer(resolvedVersion())
 	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify, connectReseal)
 	if err != nil {
 		slog.Error("server registration failed", "err", err)
@@ -347,24 +347,42 @@ func runServe(cmd *cobra.Command) error {
 // and the queues to drain.
 const shutdownGrace = 15 * time.Second
 
+// newMCPServer is the MCP server of engram serve, at version. It advertises
+// the tools capability without listChanged, because the tool set never
+// changes while the server runs. A 2026-07-28 subscriptions/listen call is
+// then granted nothing and returns at once, instead of staying open until
+// shutdown. It advertises no logging capability, which 2026-07-28
+// deprecates (SEP-2577): engram sends no log messages to clients, and
+// logging/setLevel still succeeds.
+func newMCPServer(version string) *mcp.Server {
+	return mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, &mcp.ServerOptions{
+		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: false}},
+	})
+}
+
 // mcpTransport is the MCP streamable-HTTP handler for srv behind the bearer
 // gate (withAuth, its challenge from resource), the access log and tracing.
-// A GET, the long-lived event stream, also ends when streams is done.
-// runServe mounts this one value on every listener.
+// It serves two protocol generations from srv, chosen per request by
+// protocolRouter: 2026-07-28 and later on a stateless handler, and every
+// legacy version on a stateful handler with sessions. A legacy GET, the
+// long-lived event stream, also ends when streams is done. runServe mounts
+// this one value on every listener.
 func mcpTransport(streams context.Context, srv *mcp.Server, chain mcpauth.TokenVerifier, resource *protectedResource, tm *telemetry.ToolMetrics) http.Handler {
-	var handler http.Handler = mcp.NewStreamableHTTPHandler(
-		func(*http.Request) *mcp.Server { return srv }, nil)
-	handler = endGETWith(streams, handler)
+	getServer := func(*http.Request) *mcp.Server { return srv }
+	sessions := mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Logger: slog.Default()})
+	sessionless := mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true, Logger: slog.Default()})
+	var handler http.Handler = newProtocolRouter(endGETWith(streams, sessions), sessionless)
 	handler = withAuth(handler, chain, resource)
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	return otelhttp.NewHandler(handler, "mcp")
 }
 
 // endGETWith cancels the context of each GET request to next when ctx is
-// done. A GET to the MCP transport is the event stream, which stays open
-// until its context ends and would otherwise hold http.Server.Shutdown until
-// its deadline. Every other method keeps its own request context and
-// finishes normally.
+// done. A GET to the stateful MCP handler is the legacy event stream, which
+// stays open until its context ends and would otherwise hold
+// http.Server.Shutdown until its deadline. Every other method keeps its own
+// request context and finishes normally. The stateless handler needs no
+// such hook: it answers GET with 405, and no 2026-07-28 request stays open.
 func endGETWith(ctx context.Context, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
