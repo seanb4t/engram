@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.0](https://github.com/seanb4t/engram/compare/v0.29.0...v0.30.0) (2026-10-30)
+
+
+### Features
+
+* **release:** sign macOS binaries and move the cask to Homebrew install steps ([#886](https://github.com/seanb4t/engram/issues/886)) ([06675e1](https://github.com/seanb4t/engram/commit/06675e1f5a266ee4045f6145df3fe1eeb33cd2dd))
+
 ## [0.29.0](https://github.com/seanb4t/engram/compare/v0.28.0...v0.29.0) (2026-10-23)
 
 
