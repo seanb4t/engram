@@ -32,7 +32,8 @@ type authFailureFunc func(ctx context.Context, reason string)
 // accessLog emits one structured log line per request and counts 401/403
 // responses as auth failures. The line's "local" field is the local address
 // of the connection; its port tells the primary listener from the MCP-only
-// one. observe is a test seam (nil in production).
+// one. The line carries "mcp_protocol_version" when the request names one.
+// observe is a test seam (nil in production).
 func accessLog(authFail authFailureFunc, observe func(int)) func(http.Handler) http.Handler {
 	if authFail == nil {
 		authFail = func(context.Context, string) {}
@@ -59,9 +60,12 @@ func accessLog(authFail authFailureFunc, observe func(int)) func(http.Handler) h
 			if addr, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
 				local = addr.String()
 			}
-			slog.InfoContext(r.Context(), "http request",
-				"method", r.Method, "path", r.URL.Path, "status", sw.status,
-				"dur_ms", ms, "remote", r.RemoteAddr, "local", local, "ua", r.UserAgent())
+			attrs := []any{"method", r.Method, "path", r.URL.Path, "status", sw.status,
+				"dur_ms", ms, "remote", r.RemoteAddr, "local", local, "ua", r.UserAgent()}
+			if v := r.Header.Get("Mcp-Protocol-Version"); v != "" {
+				attrs = append(attrs, "mcp_protocol_version", v)
+			}
+			slog.InfoContext(r.Context(), "http request", attrs...)
 		})
 	}
 }

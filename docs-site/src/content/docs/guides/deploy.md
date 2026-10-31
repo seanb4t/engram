@@ -113,8 +113,15 @@ protected-resource document. If two names reach the same server, list both:
 each name then gets its own document. `engram login` works through any name,
 listed or not, because the host-only document answers every origin.
 
-On shutdown, engram ends the open MCP event streams on both ports, so the
-shutdown does not wait for them. Clients open a new stream to the next pod.
+On shutdown, engram ends the open legacy MCP event streams on both ports, so
+the shutdown does not wait for them. Clients open a new stream to the next
+pod. A 2026-07-28 client holds no request open, so the shutdown does not wait
+for it either. See [MCP protocol versions](#mcp-protocol-versions).
+
+Hosted connectors, such as a claude.ai or ChatGPT custom connector, reach
+engram at the public name plus the MCP path, for example
+`https://engram.example.com/mcp`. Each connector signs in through the
+authorization server that the protected-resource document names.
 
 ### Summary sweep
 
@@ -169,3 +176,37 @@ docker run -d \
 **No volumes needed** — all state lives in Qdrant. Run a separate Qdrant container (see [Quickstart](/guides/quickstart/)) and point `ENGRAM_QDRANT_ADDR` at it.
 
 The MCP endpoint is served at `http://host:8080/mcp` by default. Set `ENGRAM_MCP_PATH=/` to restore the pre-0.7 behavior where the transport answered at the bare root.
+
+## MCP protocol versions
+
+The MCP path serves two protocol generations from the same tools:
+
+| Generation | Protocol versions | Sessions | GET and DELETE |
+|---|---|---|---|
+| 2026-07-28 | 2026-07-28 | None. Each request stands alone. | `405`, with `Allow: POST` |
+| Legacy | 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05 | `initialize` returns an `Mcp-Session-Id` | GET opens the event stream, DELETE ends the session |
+
+The server picks the generation of each request from its
+`Mcp-Protocol-Version` header. A header of 2026-07-28 or later selects the
+2026-07-28 generation. A request with no header, or with an earlier version,
+gets the legacy generation. You do not configure this. Both generations use
+the same bearer check, the same `401` challenge and the same tool results.
+
+A `server/discover` call lists every version above. A client that tries
+2026-07-28 first, such as Claude Code or claude.ai, then stays on the
+2026-07-28 generation. A client that speaks only 2026-07-28, such as the
+ChatGPT connector, can list and call the tools.
+
+The server advertises the `tools` capability without `listChanged`, because
+its tool set never changes while it runs. A 2026-07-28 `subscriptions/listen`
+call therefore returns at once. The server advertises no `logging`
+capability, because it sends no log messages to clients.
+
+Each access-log line for the MCP path carries `mcp_protocol_version` when the
+request names a version, and the server span carries `mcp.protocol.version`.
+If a client names a version that the server does not serve, the server logs a
+warning with the version and the user agent, once per version in each hour.
+
+If a connector signs in but shows no tools, read the access log for its
+requests. If its user agent sends only one request with
+`mcp_protocol_version`, compare that version with the table above.

@@ -82,3 +82,21 @@ func TestAccessLogNamesLocalAddress(t *testing.T) {
 		t.Fatalf("access log does not name the local address: %s", logs.String())
 	}
 }
+
+func TestAccessLogNamesProtocolVersion(t *testing.T) {
+	h := accessLog(nil, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	logs := captureLogs(t)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if !strings.Contains(logs.String(), `"mcp_protocol_version":"2026-07-28"`) {
+		t.Fatalf("access log does not name the protocol version: %s", logs.String())
+	}
+
+	logs = captureLogs(t)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/mcp", nil))
+	if strings.Contains(logs.String(), "mcp_protocol_version") {
+		t.Fatalf("access log names a protocol version the request did not carry: %s", logs.String())
+	}
+}
