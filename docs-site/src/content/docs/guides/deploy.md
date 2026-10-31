@@ -189,24 +189,37 @@ The MCP path serves two protocol generations from the same tools:
 The server picks the generation of each request from its
 `Mcp-Protocol-Version` header. A header of 2026-07-28 or later selects the
 2026-07-28 generation. A request with no header, or with an earlier version,
-gets the legacy generation. You do not configure this. Both generations use
-the same bearer check, the same `401` challenge and the same tool results.
+gets the legacy generation. One request with no header is different: a POST
+with no `Mcp-Session-Id` whose JSON-RPC `_meta` names a protocol version. That
+request goes to the 2026-07-28 generation, which answers that the header is
+required. You do not configure this. Both generations use the same bearer
+check, the same `401` challenge and the same tool results.
 
-A `server/discover` call lists every version above. A client that tries
-2026-07-28 first, such as Claude Code or claude.ai, then stays on the
-2026-07-28 generation. A client that speaks only 2026-07-28, such as the
-ChatGPT connector, can list and call the tools.
+A `server/discover` call returns the versions that the running server serves,
+which are the versions in the table above. A client that tries 2026-07-28
+first, such as Claude Code or claude.ai, then stays on the 2026-07-28
+generation. A client that speaks only 2026-07-28, such as the ChatGPT
+connector, can list and call the tools.
 
 The server advertises the `tools` capability without `listChanged`, because
 its tool set never changes while it runs. A 2026-07-28 `subscriptions/listen`
 call therefore returns at once. The server advertises no `logging`
-capability, because it sends no log messages to clients.
+capability, because it sends no log messages to clients. A legacy
+`logging/setLevel` call still succeeds.
 
 Each access-log line for the MCP path carries `mcp_protocol_version` when the
 request names a version, and the server span carries `mcp.protocol.version`.
-If a client names a version that the server does not serve, the server logs a
-warning with the version and the user agent, once per version in each hour.
+The server cuts a long value in both. The server logs a warning when a client
+names a version that the server does not serve. The warning names the version
+and the user agent. The server also logs a warning when a request names a
+protocol version in its `_meta` but sends no `Mcp-Protocol-Version` header.
+It logs each of these warnings once per value in each hour.
+
+Warnings and errors of the MCP library also go to the server log, for example
+a call to a method that protocol 2026-07-28 removed. Its info messages do not.
 
 If a connector signs in but shows no tools, read the access log for its
 requests. If its user agent sends only one request with
-`mcp_protocol_version`, compare that version with the table above.
+`mcp_protocol_version`, compare that version with the table above. If the
+server logs the missing-header warning for the connector, make sure that the
+proxy in front of engram passes the `Mcp-Protocol-Version` header.
