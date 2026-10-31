@@ -24,22 +24,26 @@ each change decides alone.
   - A fuzz target uses Go native fuzzing (`testing.F`), for parsers and sanitizers.
 - **Invariant tests across the core.** The pilot covers the invariants that the memory contract
   states:
-  - In `internal/store`, a state machine for isolation, supersession, the derived states, cursor
-    pagination and `recall_gate_hidden`.
-  - Lane parity: MCP, Connect and the CLI return the same outcome, `field` and `hint` for the same
-    input.
-  - Idempotency: a replayed `idempotency_key` returns the first result and never writes twice.
-  - Migration: every registered step is additive, and applying the sweep twice equals applying it
-    once.
-  - Bounds: the content, summary and tag limits hold on every write path.
+  - In `internal/store`, a state machine for isolation, supersession, the derived states and cursor
+    pagination.
+  - Lane parity: inside their shared contract, MCP, Connect and the CLI return the same outcome,
+    `field` and `hint` for the same input. The lanes' intended difference on update is asserted on
+    its own.
+  - `recall_gate_hidden`: the server's counts match a model of the same page under the same flags.
+  - Idempotency: a replayed `idempotency_key` returns the first result and never writes again.
+  - Migration: every registered step is additive, and a second `Store.Migrate` run changes no
+    stored payload.
+  - Bounds: each verb's effective content, summary and tag limit holds on every write path.
   - Authorization: the policy decision matches a small model of owner, visibility and principal.
   - Error envelope: every rejection carries a `field` and a `hint` from the documented vocabulary.
-  - Pure round-trips: cursor, `short_id`, scope and RFC3339 windows.
-- **Fuzz targets** for the view sanitizers, the cursor decoder, scope and `short_id`
-  normalization, and the RFC3339 window parsing. The sanitizer target fails today, so this change
+  - Pure transformations: cursor round-trips, `short_id` canonicalization, scope normalization of
+    well-formed remotes, and RFC3339 windows.
+- **Fuzz targets** for the view sanitizer, the cursor decoder, `short_id` canonicalization and the
+  RFC3339 window parsing. The sanitizer target fails today, so this change
   fixes #831.
-- **A weekly deep run.** A scheduled workflow runs each fuzz target for a fixed time and the
-  invariant tests with more checks than the per-PR suite. `task test:deep` runs the same stages
+- **A weekly deep run.** A scheduled workflow runs each Go fuzz target for a fixed time and the
+  Go invariant tests with more checks than the per-PR suite. The UI properties are cheap and run
+  per PR only. `task test:deep` runs the same stages
   locally.
 - **A test plan and a gap review.** A new contributor page, `docs-site` `contributing/testing.md`,
   holds the test plan and lists the gaps for each area. The plan says which test kinds each layer
@@ -61,7 +65,8 @@ each change decides alone.
 
 None. The invariant tests cover behaviour that today's specs and the memory contract already define.
 They add no requirement to those capabilities. The #831 fix makes `sanitizeViewValue` do what its
-contract already says.
+contract already says. `listRecallHidden` reads the handler clock instead of `time.Now()`, which
+keeps its behaviour and lets a test control time.
 
 ## Impact
 

@@ -11,13 +11,14 @@ coverage that every pull request runs.
 ### Requirement: Scheduled deep run
 
 A workflow SHALL run once a week and on manual dispatch from `main`. It SHALL run each Go fuzz
-target for a fixed time. It SHALL run the invariant tests with more checks and more steps than the
-per-PR suite.
+target for a fixed time. It SHALL run the Go invariant tests with more checks and more steps than
+the per-PR suite. The UI invariant tests are not part of the deep run.
 
 #### Scenario: The weekly run
 
 - **WHEN** the weekly schedule fires
-- **THEN** the workflow runs every Go fuzz target and every invariant test at the deep-run settings
+- **THEN** the workflow runs every Go fuzz target and every Go invariant test at the deep-run
+  settings
 
 #### Scenario: A manual run
 
@@ -26,7 +27,7 @@ per-PR suite.
 
 ### Requirement: Deep-run failures
 
-In the scheduled deep run, a fuzz target that finds a failing input, or an invariant test that
+In the scheduled deep run, a fuzz target that finds a failing input, or a Go invariant test that
 fails, SHALL fail the workflow run. The run SHALL upload each failing fuzz input as an artifact. A
 failing invariant test SHALL report the seed that replays it.
 
@@ -64,7 +65,7 @@ deep-run stages. No required status check SHALL depend on the deep run.
 
 - **WHEN** a pull request runs CI
 - **THEN** no job runs a fuzz target past its seed corpus
-- **AND** no job runs an invariant test at the deep-run settings
+- **AND** no job runs a Go invariant test at the deep-run settings
 - **AND** the required checks are the same as before this change
 
 ### Requirement: Local deep run
@@ -76,15 +77,21 @@ durations and check counts.
 
 - **WHEN** a developer runs `task test:deep`
 - **THEN** each Go fuzz target runs for the deep-run time
-- **AND** the invariant tests run at the deep-run settings
+- **AND** the Go invariant tests run at the deep-run settings
 
 ### Requirement: Per-PR fuzz and invariant coverage
 
 `go test ./...` SHALL run each fuzz target's seed corpus, which includes every input committed under
-`testdata/fuzz/`. It SHALL also run each invariant test at its per-PR settings.
+`testdata/fuzz/`. It SHALL also run each Go invariant test at its per-PR settings. `pnpm test` in
+`ui/` SHALL run each UI invariant test at the library's default run count.
 
 #### Scenario: A committed failing input
 
 - **WHEN** a contributor commits an input that once failed a fuzz target under that target's
   `testdata/fuzz/` directory
 - **THEN** `go test ./...` runs that input in every pull request
+
+#### Scenario: A UI invariant test
+
+- **WHEN** a pull request runs the `ui tests` job
+- **THEN** `pnpm test` runs every UI invariant test at the library's default run count
