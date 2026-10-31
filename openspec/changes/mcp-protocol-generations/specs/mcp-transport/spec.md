@@ -79,7 +79,7 @@ SHALL each work.
 
 ### Requirement: Each request uses exactly one protocol generation
 
-The server SHALL pick the generation of a request from its `Mcp-Protocol-Version` header alone.
+The server SHALL pick the generation of a request from its `Mcp-Protocol-Version` header.
 A header of 2026-07-28 or later SHALL select the 2026-07-28 generation. An `Mcp-Session-Id` on the
 same request SHALL not change that choice. A later version that the server does not serve SHALL get
 a JSON-RPC error that lists the supported versions, so the client can choose again.
@@ -98,6 +98,23 @@ a JSON-RPC error that lists the supported versions, so the client can choose aga
 
 - **WHEN** an authenticated client POSTs a request with `Mcp-Protocol-Version: 2024-01-01`
 - **THEN** the response is 400 and names the supported versions
+
+### Requirement: A call that lost its protocol header is told the header is required
+
+A POST with no `Mcp-Protocol-Version` header and no `Mcp-Session-Id` whose JSON-RPC `_meta` names a
+protocol version SHALL go to the 2026-07-28 generation, which answers that the header is required.
+The server SHALL log a warning for that request that names the `_meta` version and the user agent,
+once per version per hour.
+
+#### Scenario: A call without the header
+
+- **WHEN** an authenticated client POSTs `tools/list` with a 2026-07-28 `_meta`, no `Mcp-Protocol-Version` header and no `Mcp-Session-Id`
+- **THEN** the request is served as a 2026-07-28 request, and the server logs a warning that names the `_meta` version and the user agent
+
+#### Scenario: A legacy initialize without the header
+
+- **WHEN** an authenticated client POSTs a legacy `initialize` with no `Mcp-Protocol-Version` header
+- **THEN** the request is served as a legacy request with the same body, and the server logs no protocol warning
 
 ### Requirement: Tool behavior is the same on both generations
 
@@ -152,10 +169,10 @@ sends no log messages to clients. A legacy `logging/setLevel` call SHALL still s
 ### Requirement: The server logs the protocol version of each MCP request
 
 Each access-log line and each server trace span for the MCP path SHALL carry the value of the
-request's `Mcp-Protocol-Version` header. If the header is absent, neither SHALL carry a version.
-If the header names a version that the server does not serve, the server SHALL log a warning that
-names the version, the generation that the request went to, and the user agent. The server SHALL
-log each distinct version once per hour, up to a fixed number of versions.
+request's `Mcp-Protocol-Version` header, cut to a fixed length. If the header is absent, neither
+SHALL carry a version. For a version that the server does not serve, the server SHALL log a
+warning that names the version, the generation of the request and the user agent, each cut to a
+fixed length, once per version per hour, for a fixed number of versions.
 
 #### Scenario: Access log names the version
 
@@ -181,3 +198,18 @@ log each distinct version once per hour, up to a fixed number of versions.
 
 - **WHEN** ten requests in one hour name `Mcp-Protocol-Version: 2099-01-01`
 - **THEN** the server log carries one protocol-version warning for `2099-01-01`
+
+#### Scenario: A long version is cut
+
+- **WHEN** a client POSTs to the MCP path with an `Mcp-Protocol-Version` header far longer than any protocol version
+- **THEN** the access-log line, the server span and the warning carry the version cut to the fixed length
+
+### Requirement: MCP library warnings and errors reach the server log
+
+Warnings and errors that the MCP library logs SHALL reach the server log. Its info messages SHALL
+not, because it logs two of them for each 2026-07-28 request.
+
+#### Scenario: An MCP library error reaches the server log
+
+- **WHEN** the MCP library logs an error, and later logs an info message for a new session
+- **THEN** the server log carries the error and not the info message

@@ -28,7 +28,8 @@ Issue #910, the live check of the ChatGPT connector, cannot pass until this chan
   that never came. A 2026-07-28 `subscriptions/listen` call then completes at once and holds no
   connection open.
 - The server stops advertising the logging capability, which protocol 2026-07-28 deprecates
-  (SEP-2577). engram never sends log messages to clients, and `logging/setLevel` still succeeds.
+  (SEP-2577). engram never sends log messages to clients, and a legacy `logging/setLevel` call
+  still succeeds. Protocol 2026-07-28 removes that method.
 - The silent failure becomes visible. Each MCP access-log line records the protocol version that
   the request names. The go-sdk transport logs, which engram discards today, go to the server log,
   so a rejected protocol version shows up as a warning.
@@ -81,10 +82,14 @@ Surfaces:
 - Console (`ui/`): deliberately unchanged. It uses Connect.
 - Helm chart: deliberately unchanged. No value or port changes.
 - docs-site: affected. `guides/deploy.md` gains the protocol versions and the hosted connectors.
-  `guides/configure.md` keeps its shutdown text, which stays true.
+  The shutdown sentence of `guides/configure.md` now names legacy event streams and links to the
+  new section.
 - engram skill (`skill/engram/`): deliberately unchanged. It names no transport behavior.
 - CLAUDE.md memory contract: deliberately unchanged. It describes tools, not the transport.
 
 Code: `cmd/engram/serve.go` (`mcpTransport` and the `mcp.NewServer` options),
-`cmd/engram/httplog.go` (the access-log field), `cmd/engram/serve_test.go`,
-`internal/e2e/boot_test.go` and `internal/e2e/mcp_listener_test.go`.
+`cmd/engram/mcpprotocol.go` (the router and the served versions), `cmd/engram/warnlimit.go` (the
+shared warning limiter), `cmd/engram/wellknown.go` (the refused-origin warning on that limiter),
+`cmd/engram/httplog.go` (the access-log field and the log-level floor), their tests,
+`internal/e2e/boot_test.go`, `internal/e2e/mcp_listener_test.go` and
+`internal/e2e/protocol_parity_test.go`.

@@ -60,10 +60,21 @@ for each request. A request whose `Mcp-Protocol-Version` header compares greater
 
 The comparison is the string comparison that go-sdk itself uses for the cutover
 (`mcp/streamable.go:354`). The SDK keeps its version constants unexported, so engram declares its
-own `protocolVersion20260728` constant. The header alone decides, because SEP-2575 requires it on
-every 2026-07-28 request, and because a body read repeats the parsing that go-sdk does.
-A 2026-07-28 request with a stale `Mcp-Session-Id` still goes to the stateless handler, which
-ignores the session header.
+own `protocolVersion20260728` constant. The header decides, because SEP-2575 requires it on every
+2026-07-28 request. A 2026-07-28 request with a stale `Mcp-Session-Id` still goes to the stateless
+handler, which ignores the session header.
+
+The router reads the body in one case only: a POST with no header and no `Mcp-Session-Id`. If its
+JSON-RPC `_meta` names a protocol version, the request goes to the stateless handler. That handler
+answers with the accurate error, that the header is required. The stateful handler would answer that
+2025-03-26 is not supported, and go-sdk would log advice to set `Stateless`, which is wrong for
+engram. The router also logs a warning, because a proxy that drops the header causes this case. It
+reads at most `mcp.DefaultMaxRequestBodyBytes` and gives the handler the same bytes.
+
+engram owns its list of served versions (`servedProtocolVersions`). `newMCPServer` passes it to
+`ServerOptions.SupportedProtocolVersions`, and the router warns about every version outside it. A
+go-sdk upgrade then adds no version until engram lists it, and go-sdk panics at startup if it drops
+a listed one.
 
 Rejected alternatives:
 
@@ -72,8 +83,8 @@ Rejected alternatives:
   keep backward compatibility.
 - An `ENGRAM_` key to choose stateful or stateless. Neither mode alone serves both generations,
   and a key doubles the test matrix for no operator benefit.
-- Routing on the `_meta` protocol version in the body. The header is mandatory, so the body adds
-  only a second parse.
+- Routing every request on the `_meta` protocol version in the body. The header is mandatory, so
+  the body adds only a second parse. The router reads it only when the header is missing.
 - The `MCPGODEBUG=allowsessionsinstateless=1` flag. It is a temporary compatibility switch that
   go-sdk plans to remove, and it does not restore the GET event stream.
 
@@ -90,8 +101,9 @@ same token. `endGETWith` stays, because the legacy GET event stream stays.
 
 A new `newMCPServer(version)` in `serve.go` builds the server with one explicit capability: tools
 with `ListChanged: false`. The logging capability, the SDK default today, is left out. Protocol
-2026-07-28 deprecates it (SEP-2577), engram sends no log messages, and go-sdk answers
-`logging/setLevel` with or without it (`mcp/server.go:2123`). `runServe` and the tests use it, so
+2026-07-28 deprecates it (SEP-2577), engram sends no log messages, and go-sdk answers a legacy
+`logging/setLevel` with or without it (`mcp/server.go:2123`). Protocol 2026-07-28 removes the
+method. `runServe` and the tests use it, so
 the tests check the production capabilities. A 2026-07-28 `subscriptions/listen` then grants
 nothing and returns at once. No 2026-07-28 request stays open, so shutdown needs no new hook.
 
@@ -102,26 +114,29 @@ unreleased (go-sdk #1232). A proxy idle timeout then cuts the stream, and the cl
 in a loop.
 
 A later change that makes the tool set dynamic, or that adds prompts or resources, must restore a
-shutdown path for listen calls. The shutdown scenario in `mcp-listener-isolation` then fails, which
-makes the regression visible.
+shutdown path for listen calls. go-sdk advertises `listChanged` for prompts and resources on its
+own. The e2e boot test asserts that the built binary advertises exactly `{"tools":{}}`, so such a
+change fails it.
 
 ### D5. Protocol versions in the logs and the trace
 
-- If the request carries the header, `accessLog` adds `mcp_protocol_version` to the line. The
-  field name follows the snake case of the other fields (`dur_ms`).
+- If the request carries the header, `accessLog` adds `mcp_protocol_version` to the line, cut to
+  64 bytes. The field name follows the snake case of the other fields (`dur_ms`).
 - The router sets `mcp.protocol.version` on the server span, the key of the OpenTelemetry semantic
   conventions for MCP. `go.opentelemetry.io/otel/semconv/v1.41.0` in otel v1.47.0, which engram
   already requires, defines it as `McpProtocolVersionKey`. The router imports that package for the
   key only. `internal/telemetry` keeps `semconv/v1.26.0` for its resource schema.
-- If the header names a version outside `mcp.SupportedProtocolVersions()`, the router logs a
-  warning. The warning names the version, the generation that the request went to, and the user
-  agent. The version is client input, so the warning uses the limiter of the refused-origin warning
-  (`protectedResource.refused`): once per distinct value per hour, up to a fixed number of values,
-  then one limit warning, with the value truncated. That limiter becomes a small shared type, and
-  the refused-origin behavior stays the same.
+- If the header names a version outside `servedProtocolVersions`, the router logs a warning. The
+  warning names the version, the generation that the request went to, and the user agent, cut to
+  256 bytes. The version is client input, so the warning uses the limiter of the refused-origin
+  warning (`protectedResource.refused`): once per distinct value per hour, up to a fixed number of
+  values, then one limit warning. That limiter becomes the shared type `distinctWarner`. It cuts
+  each value to its own length bound, so no caller can forget the cut, and its constructor refuses
+  a zero bound. The refused-origin behavior stays the same.
 - Both handlers get `StreamableHTTPOptions.Logger: slog.Default()`, so transport warnings and errors
-  reach the server log. engram discards them today. `ServerOptions.Logger` stays unset. With
-  temporary sessions, it logs two info lines for each 2026-07-28 request.
+  reach the server log. engram discards them today. `ServerOptions.Logger` gets the default handler
+  behind a warn-level floor (`minLevel`). The server's errors, such as a method that 2026-07-28
+  removed, then reach the log. Its info lines, two for each 2026-07-28 request, do not.
 
 ### D6. Handler options that stay at their defaults
 
@@ -132,17 +147,23 @@ This matches the legacy behavior.
 
 ### D7. Tests by layer
 
-- Router unit test in `cmd/engram`: stub handlers record which one ran, for each header case in the
-  spec, and a captured log shows which cases warn. This is the only test of the two unserved-version
+- Router unit test in `cmd/engram`: stub handlers record which one ran and the body they read, for
+  each header case in the spec and the header-less `_meta` cases, and a captured log shows which
+  cases warn. Subtests cover the limit warning and the cut of a long version and user agent. This is the only test of the two unserved-version
   scenarios. The error bodies that go-sdk writes for them are its behavior, so no test asserts them.
 - Transport test in `cmd/engram`: `mcpTransport` over `httptest`, with `newMCPServer` and a stub
   tool that returns the caller's subject. One go-sdk client connects with 2026-07-28 and one with
   each legacy version. Each test asserts the negotiated version, because the client falls back
   without an error. Raw requests check the session header, GET, DELETE and `subscriptions/listen`.
   The listen call is a raw POST with the SEP-2575 `_meta` envelope, because the client exports no
-  method for it.
-- End-to-end tests in `internal/e2e` against the built binary: the documented tool surface on both
-  generations, recall parity across the four derived states, owner isolation on 2026-07-28, and
+  method for it. The listen call runs on the test goroutine with no timer, so a listen that stays
+  open shows as the `go test` timeout. A legacy `logging/setLevel` is a raw call on a legacy
+  session, because the client method for it is deprecated. A separate test sends one request
+  through `mcpTransport` with a recording tracer provider and reads the attribute from the
+  `otelhttp` server span.
+- Unit tests for `distinctWarner` and `minLevel`.
+- End-to-end tests in `internal/e2e` against the built binary: the documented tool surface and the
+  advertised capabilities on both generations, recall parity across the four derived states, owner isolation on 2026-07-28, and
   SIGTERM with a 2026-07-28 client and a legacy event stream both connected.
 
 ## Risks / Trade-offs
