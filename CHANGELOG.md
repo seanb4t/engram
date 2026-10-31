@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.31.0](https://github.com/seanb4t/engram/compare/v0.30.0...v0.31.0) (2026-10-31)
+
+
+### Features
+
+* **mcp:** serve protocol 2026-07-28 alongside legacy sessions ([#914](https://github.com/seanb4t/engram/issues/914)) ([b20ce5c](https://github.com/seanb4t/engram/commit/b20ce5c9db9c0c2848e7a4e3f14caa65cdd2c6a7))
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies (minor) ([#887](https://github.com/seanb4t/engram/issues/887)) ([4a2d6ad](https://github.com/seanb4t/engram/commit/4a2d6ade65a25c15c60c6e3829f760fa4ff8aa35))
+* **deps:** update module google.golang.org/protobuf to v1.37.0-rc.1 ([#920](https://github.com/seanb4t/engram/issues/920)) ([4bc3ca4](https://github.com/seanb4t/engram/commit/4bc3ca481f789b7da53af3c1a9c7976a8dc750f9))
+
 ## [0.30.0](https://github.com/seanb4t/engram/compare/v0.29.0...v0.30.0) (2026-10-30)
 
 
