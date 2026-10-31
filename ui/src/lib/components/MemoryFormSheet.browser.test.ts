@@ -73,9 +73,9 @@ describe('MemoryFormSheet — create mode field set', () => {
     await expect.element(screen.getByText('New memory')).toBeInTheDocument();
     await expect.element(screen.getByLabelText('content')).toBeInTheDocument();
     await expect.element(screen.getByLabelText('content')).toHaveAttribute('placeholder', 'write the memory…');
-    await expect.element(screen.getByRole('button', { name: 'category' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('combobox', { name: 'category' })).toBeInTheDocument();
     await expect.element(screen.getByLabelText('add tag')).toBeInTheDocument();
-    await expect.element(screen.getByRole('button', { name: 'visibility' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('combobox', { name: 'visibility' })).toBeInTheDocument();
     await expect.element(screen.getByLabelText('summary (optional)')).toBeInTheDocument();
     await expect.element(screen.getByLabelText('schedule this memory')).toBeInTheDocument();
     await expect.element(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('MemoryFormSheet — create mode field set', () => {
 describe('MemoryFormSheet — share-warning gate', () => {
   it('shows ShareWarningInline on selecting shared and does not set the shared intent until acknowledged', async () => {
     const screen = await render(MemoryFormSheet, { open: true, mode: 'create', scope: 'repo:default' });
-    await screen.getByRole('button', { name: 'visibility' }).click();
+    await screen.getByRole('combobox', { name: 'visibility' }).click();
     await screen.getByRole('option', { name: 'shared' }).click();
     await expect.element(screen.getByText(/sharing makes this readable/)).toBeInTheDocument();
 
@@ -122,7 +122,7 @@ describe('MemoryFormSheet — share-warning gate', () => {
 
   it('sets the shared intent to true only after Share anyway is clicked', async () => {
     const screen = await render(MemoryFormSheet, { open: true, mode: 'create', scope: 'repo:default' });
-    await screen.getByRole('button', { name: 'visibility' }).click();
+    await screen.getByRole('combobox', { name: 'visibility' }).click();
     await screen.getByRole('option', { name: 'shared' }).click();
     await screen.getByRole('button', { name: 'Share anyway' }).click();
     await expect.element(screen.getByText(/sharing makes this readable/)).not.toBeInTheDocument();
@@ -134,11 +134,11 @@ describe('MemoryFormSheet — share-warning gate', () => {
 
   it('Cancel on the warning reverts the selection to private', async () => {
     const screen = await render(MemoryFormSheet, { open: true, mode: 'create', scope: 'repo:default' });
-    await screen.getByRole('button', { name: 'visibility' }).click();
+    await screen.getByRole('combobox', { name: 'visibility' }).click();
     await screen.getByRole('option', { name: 'shared' }).click();
     await screen.getByRole('alert').getByRole('button', { name: 'Cancel' }).click();
     await expect.element(screen.getByText(/sharing makes this readable/)).not.toBeInTheDocument();
-    await expect.element(screen.getByRole('button', { name: 'visibility' })).toHaveTextContent('private');
+    await expect.element(screen.getByRole('combobox', { name: 'visibility' })).toHaveTextContent('private');
   });
 });
 
@@ -149,7 +149,7 @@ describe('MemoryFormSheet — create+schedule window', () => {
     await screen.getByLabelText('schedule this memory').click();
     await screen.getByLabelText('not before').fill('2026-08-01T00:00');
 
-    await screen.getByRole('button', { name: 'visibility' }).click();
+    await screen.getByRole('combobox', { name: 'visibility' }).click();
     await screen.getByRole('option', { name: 'shared' }).click();
     await screen.getByRole('button', { name: 'Share anyway' }).click();
 
@@ -192,7 +192,7 @@ describe('MemoryFormSheet — edit mode', () => {
       memory: fakeMemory({ visibility: '' }),
       scope: 'repo:x'
     });
-    await expect.element(screen.getByRole('button', { name: 'visibility' })).toHaveTextContent('private');
+    await expect.element(screen.getByRole('combobox', { name: 'visibility' })).toHaveTextContent('private');
   });
 
   it('disables Save when nothing has changed, and enables it with only the changed field in the mask', async () => {
@@ -219,7 +219,7 @@ describe('MemoryFormSheet — edit mode', () => {
       scope: 'repo:x'
     });
     await expect.element(screen.getByTestId('visibility-readonly')).toHaveTextContent('shared');
-    await expect.element(screen.getByRole('button', { name: 'visibility' })).not.toBeInTheDocument();
+    await expect.element(screen.getByRole('combobox', { name: 'visibility' })).not.toBeInTheDocument();
 
     await screen.getByLabelText('content').fill('updated content on a shared record');
     await screen.getByRole('button', { name: 'Save' }).click();
@@ -234,7 +234,7 @@ describe('MemoryFormSheet — edit mode', () => {
       memory: fakeMemory({ visibility: 'private' }),
       scope: 'repo:x'
     });
-    await screen.getByRole('button', { name: 'visibility' }).click();
+    await screen.getByRole('combobox', { name: 'visibility' }).click();
     await screen.getByRole('option', { name: 'shared' }).click();
     await expect.element(screen.getByText(/sharing makes this readable/)).toBeInTheDocument();
     await screen.getByRole('button', { name: 'Share anyway' }).click();
