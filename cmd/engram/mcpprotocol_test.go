@@ -6,18 +6,20 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/telemetry"
@@ -44,11 +46,40 @@ func TestNewMCPServerCapabilities(t *testing.T) {
 	}
 }
 
+func TestNewMCPServerLogsWarningsOnly(t *testing.T) {
+	logs := captureLogs(t)
+	srv := newMCPServer("test")
+	mcp.AddTool(srv, &mcp.Tool{Name: "bad name"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, any, error) {
+		return nil, nil, nil
+	})
+	st, ct := mcp.NewInMemoryTransports()
+	ss, err := srv.Connect(t.Context(), st, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	defer func() { _ = ss.Close() }()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).Connect(t.Context(), ct, &mcp.ClientSessionOptions{ProtocolVersion: "2025-11-25"})
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	defer func() { _ = cs.Close() }()
+	if !strings.Contains(logs.String(), "invalid tool name") {
+		t.Fatalf("the go-sdk error for an invalid tool name did not reach the log: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), `"level":"INFO"`) {
+		t.Fatalf("a go-sdk info record reached the log: %s", logs.String())
+	}
+}
+
 func TestMCPProtocolRouter(t *testing.T) {
+	metaCall := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`
+	long := "2099" + strings.Repeat("9", 2*maxProtocolVersionLen)
 	cases := []struct {
-		name, version, session string
-		wantSessionless        bool
-		wantWarning            bool
+		name, version, session, body string
+		wantSessionless              bool
+		// wantWarning is the text of the one warning the request logs, or
+		// "" for none.
+		wantWarning string
 	}{
 		{name: "no header"},
 		{name: "2025-11-25", version: "2025-11-25"},
@@ -57,19 +88,28 @@ func TestMCPProtocolRouter(t *testing.T) {
 		{name: "2024-11-05", version: "2024-11-05"},
 		{name: "2026-07-28", version: "2026-07-28", wantSessionless: true},
 		{name: "2026-07-28 with a session id", version: "2026-07-28", session: "stale", wantSessionless: true},
-		{name: "unserved later version", version: "2099-01-01", wantSessionless: true, wantWarning: true},
-		{name: "unserved earlier version", version: "2024-01-01", wantWarning: true},
+		{name: "unserved later version", version: "2099-01-01", wantSessionless: true, wantWarning: "does not serve"},
+		{name: "unserved earlier version", version: "2024-01-01", wantWarning: "does not serve"},
+		{name: "a long unserved version is cut", version: long, wantSessionless: true, wantWarning: "does not serve"},
+		{name: "no header and a legacy initialize", body: initializeRequest},
+		{name: "no header and a 2026-07-28 _meta", body: metaCall, wantSessionless: true, wantWarning: "sends no Mcp-Protocol-Version header"},
+		{name: "no header, a 2026-07-28 _meta and a session id", session: "s1", body: metaCall},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := captureLogs(t)
-			var ran string
-			router := newProtocolRouter(
-				http.HandlerFunc(func(http.ResponseWriter, *http.Request) { ran = "sessions" }),
-				http.HandlerFunc(func(http.ResponseWriter, *http.Request) { ran = "sessionless" }))
+			var ran, read string
+			record := func(name string) http.Handler {
+				return http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					ran = name
+					b, _ := io.ReadAll(r.Body)
+					read = string(b)
+				})
+			}
+			router := newProtocolRouter(record("sessions"), record("sessionless"), servedProtocolVersions())
 			spans := tracetest.NewSpanRecorder()
 			ctx, span := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)).Tracer("test").Start(t.Context(), "mcp")
-			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/mcp", nil)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/mcp", strings.NewReader(tc.body))
 			req.Header.Set("User-Agent", "router-test/1.0")
 			if tc.version != "" {
 				req.Header.Set("Mcp-Protocol-Version", tc.version)
@@ -87,43 +127,87 @@ func TestMCPProtocolRouter(t *testing.T) {
 			if ran != want {
 				t.Fatalf("handler = %q, want %q", ran, want)
 			}
+			if read != tc.body {
+				t.Fatalf("handler read body %q, want %q", read, tc.body)
+			}
+			wantVersion := tc.version
+			if len(wantVersion) > maxProtocolVersionLen {
+				wantVersion = wantVersion[:maxProtocolVersionLen]
+			}
 			var attr string
 			for _, kv := range spans.Ended()[0].Attributes() {
 				if kv.Key == "mcp.protocol.version" {
 					attr = kv.Value.AsString()
 				}
 			}
-			if attr != tc.version {
-				t.Fatalf("span mcp.protocol.version = %q, want %q", attr, tc.version)
+			if attr != wantVersion {
+				t.Fatalf("span mcp.protocol.version = %q, want %q", attr, wantVersion)
 			}
-			warned := strings.Contains(logs.String(), "does not serve")
-			if warned != tc.wantWarning {
-				t.Fatalf("warning logged = %v, want %v: %s", warned, tc.wantWarning, logs.String())
+			warnings := strings.Count(logs.String(), `"level":"WARN"`)
+			if tc.wantWarning == "" {
+				if warnings != 0 {
+					t.Fatalf("warnings logged: %s", logs.String())
+				}
+				return
 			}
-			if tc.wantWarning {
+			if warnings != 1 || !strings.Contains(logs.String(), tc.wantWarning) {
+				t.Fatalf("want one warning %q: %s", tc.wantWarning, logs.String())
+			}
+			wants := []string{`"ua":"router-test/1.0"`, `"meta_protocol_version":"2026-07-28"`}
+			if tc.version != "" {
 				generation := generationLegacy
 				if tc.wantSessionless {
 					generation = generation20260728
 				}
-				for _, want := range []string{`"mcp_protocol_version":"` + tc.version + `"`, `"generation":"` + generation + `"`, `"ua":"router-test/1.0"`} {
-					if !strings.Contains(logs.String(), want) {
-						t.Fatalf("warning lacks %s: %s", want, logs.String())
-					}
+				wants = []string{`"ua":"router-test/1.0"`, `"mcp_protocol_version":"` + wantVersion + `"`, `"generation":"` + generation + `"`}
+			}
+			for _, want := range wants {
+				if !strings.Contains(logs.String(), want) {
+					t.Fatalf("warning lacks %s: %s", want, logs.String())
 				}
 			}
 		})
 	}
 
+	unserved := func(router *protocolRouter, version, ua string) {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.Header.Set("Mcp-Protocol-Version", version)
+		req.Header.Set("User-Agent", ua)
+		router.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
 	t.Run("a repeated unserved version warns once", func(t *testing.T) {
 		logs := captureLogs(t)
-		router := newProtocolRouter(http.NotFoundHandler(), http.NotFoundHandler())
+		router := newProtocolRouter(http.NotFoundHandler(), http.NotFoundHandler(), servedProtocolVersions())
 		for range 10 {
-			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-			req.Header.Set("Mcp-Protocol-Version", "2099-01-01")
-			router.ServeHTTP(httptest.NewRecorder(), req)
+			unserved(router, "2099-01-01", "router-test/1.0")
 		}
 		if n := strings.Count(logs.String(), "does not serve"); n != 1 {
 			t.Fatalf("warnings = %d, want 1: %s", n, logs.String())
+		}
+	})
+
+	t.Run("warnings stop at the limit", func(t *testing.T) {
+		logs := captureLogs(t)
+		router := newProtocolRouter(http.NotFoundHandler(), http.NotFoundHandler(), servedProtocolVersions())
+		for i := range maxWarnedVersions + 10 {
+			unserved(router, "2099-01-"+strconv.Itoa(i), "router-test/1.0")
+		}
+		if n := strings.Count(logs.String(), "does not serve"); n != maxWarnedVersions {
+			t.Fatalf("version warnings = %d, want %d", n, maxWarnedVersions)
+		}
+		if n := strings.Count(logs.String(), "warning limit reached"); n != 1 {
+			t.Fatalf("limit warnings = %d, want 1", n)
+		}
+	})
+
+	t.Run("a long user agent is cut in the warning", func(t *testing.T) {
+		logs := captureLogs(t)
+		router := newProtocolRouter(http.NotFoundHandler(), http.NotFoundHandler(), servedProtocolVersions())
+		ua := strings.Repeat("u", 2*maxWarnedUserAgentLen)
+		unserved(router, "2099-01-01", ua)
+		if !strings.Contains(logs.String(), `"ua":"`+ua[:maxWarnedUserAgentLen]+`"`) || strings.Contains(logs.String(), ua) {
+			t.Fatalf("no warning names the user agent cut to %d bytes: %s", maxWarnedUserAgentLen, logs.String())
 		}
 	})
 }
@@ -214,7 +298,7 @@ func checkToolsAsCaller(t *testing.T, cs *mcp.ClientSession) {
 	}
 }
 
-// meta20260728 is the SEP-2575 _meta envelope of a raw 2026-07-28 call.
+// meta20260728 is the _meta envelope of a raw 2026-07-28 call.
 var meta20260728 = map[string]any{
 	"io.modelcontextprotocol/protocolVersion":    protocolVersion20260728,
 	"io.modelcontextprotocol/clientInfo":         map[string]string{"name": "raw", "version": "test"},
@@ -255,10 +339,11 @@ func call20260728(t *testing.T, base, method string, params map[string]any, head
 	return nil, nil
 }
 
-// rawMCP sends method to base/mcp with the static token and headers.
+// rawMCP sends a request of method with no body to base/mcp with header,
+// and with token as the bearer token when it is not empty.
 func rawMCP(t *testing.T, method, base, token string, header map[string]string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(method, base+"/mcp", nil)
+	req, err := http.NewRequestWithContext(t.Context(), method, base+"/mcp", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -306,7 +391,7 @@ func TestMCPTransportGenerations(t *testing.T) {
 		if err := json.Unmarshal(result, &discover); err != nil {
 			t.Fatalf("decode discover: %v", err)
 		}
-		if want := []string{"2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}; !slices.Equal(discover.SupportedVersions, want) {
+		if want := servedProtocolVersions(); !slices.Equal(discover.SupportedVersions, want) {
 			t.Fatalf("discover supportedVersions = %v, want %v", discover.SupportedVersions, want)
 		}
 		if got := string(discover.Capabilities); got != `{"tools":{}}` {
@@ -327,20 +412,15 @@ func TestMCPTransportGenerations(t *testing.T) {
 				t.Fatalf("%s: status=%d Allow=%q, want 405 POST", method, resp.StatusCode, resp.Header.Get("Allow"))
 			}
 		}
-		if resp := rawMCP(t, http.MethodGet, base, "", header); resp.StatusCode != http.StatusUnauthorized || resp.Header.Get("WWW-Authenticate") == "" {
-			t.Fatalf("GET without a token: status=%d WWW-Authenticate=%q, want a 401 challenge", resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+		legacy, _ := postMCP(t, base, "", nil)
+		challenge := legacy.Header.Get("WWW-Authenticate")
+		if resp := rawMCP(t, http.MethodGet, base, "", header); resp.StatusCode != http.StatusUnauthorized || challenge == "" || resp.Header.Get("WWW-Authenticate") != challenge {
+			t.Fatalf("GET without a token: status=%d WWW-Authenticate=%q, want 401 and the legacy challenge %q", resp.StatusCode, resp.Header.Get("WWW-Authenticate"), challenge)
 		}
 
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			call20260728(t, base, "subscriptions/listen", map[string]any{"notifications": map[string]bool{"toolsListChanged": true}}, nil)
-		}()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Fatal("subscriptions/listen for tool-list changes did not complete")
-		}
+		// A listen call that stayed open would hold this test until the go
+		// test timeout.
+		call20260728(t, base, "subscriptions/listen", map[string]any{"notifications": map[string]bool{"toolsListChanged": true}}, nil)
 	})
 
 	for _, version := range []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"} {
@@ -353,6 +433,9 @@ func TestMCPTransportGenerations(t *testing.T) {
 
 			session := rawLegacySession(t, base, version)
 			header := map[string]string{"Mcp-Session-Id": session, "Mcp-Protocol-Version": version}
+			if resp, body := postMCPBody(t, base, generationsToken, `{"jsonrpc":"2.0","id":3,"method":"logging/setLevel","params":{"level":"info"}}`, header); resp.StatusCode != http.StatusOK || !strings.Contains(body, `"result":{}`) {
+				t.Fatalf("logging/setLevel: status=%d body=%q, want an empty result", resp.StatusCode, body)
+			}
 			stream := rawMCP(t, http.MethodGet, base, generationsToken, map[string]string{"Mcp-Session-Id": session, "Mcp-Protocol-Version": version, "Accept": "text/event-stream"})
 			if stream.StatusCode != http.StatusOK || !strings.HasPrefix(stream.Header.Get("Content-Type"), "text/event-stream") {
 				t.Fatalf("GET: status=%d Content-Type=%q, want an event stream", stream.StatusCode, stream.Header.Get("Content-Type"))
@@ -368,4 +451,40 @@ func TestMCPTransportGenerations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMCPTransportTracesProtocolVersion(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)))
+	t.Cleanup(func() { otel.SetTracerProvider(prev) })
+	h := mcpTransport(t.Context(), newMCPServer("test"), newStaticTokenChain(t), mustResource(t, protectedResourceConfig{MCPPath: "/mcp"}), telemetry.NewToolMetrics(otel.Meter("test")))
+
+	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": map[string]any{"_meta": meta20260728}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/mcp", strings.NewReader(string(body)))
+	for k, v := range map[string]string{
+		"Content-Type":         "application/json",
+		"Accept":               "application/json, text/event-stream",
+		"Authorization":        "Bearer " + generationsToken,
+		"Mcp-Protocol-Version": protocolVersion20260728,
+		"Mcp-Method":           "tools/list",
+	} {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tools/list: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	for _, s := range spans.Ended() {
+		for _, kv := range s.Attributes() {
+			if s.SpanKind() == trace.SpanKindServer && kv.Key == "mcp.protocol.version" && kv.Value.AsString() == protocolVersion20260728 {
+				return
+			}
+		}
+	}
+	t.Fatalf("no server span carries mcp.protocol.version %s", protocolVersion20260728)
 }

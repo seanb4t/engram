@@ -877,7 +877,7 @@ func postMCP(t *testing.T, base, token string, header map[string]string) (*http.
 
 func postMCPBody(t *testing.T, base, token, body string, header map[string]string) (*http.Response, string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, base+"/mcp", strings.NewReader(body))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/mcp", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}

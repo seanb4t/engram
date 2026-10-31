@@ -340,8 +340,8 @@ type protectedResource struct {
 	// allowed bounds the derived mode. Empty allows every origin.
 	allowed   originSet
 	onRefused func(context.Context)
-	// distinctWarner bounds the refused-origin warnings.
-	distinctWarner
+	// warner bounds the refused-origin warnings.
+	warner *distinctWarner
 }
 
 // newProtectedResource validates ENGRAM_MCP_RESOURCE_URL and
@@ -361,12 +361,12 @@ func newProtectedResource(cfg protectedResourceConfig) (*protectedResource, erro
 		return nil, errors.New("ENGRAM_MCP_RESOURCE_ORIGINS and ENGRAM_MCP_RESOURCE_URL are both set: the origin list bounds the resource derived for each request, which a set ENGRAM_MCP_RESOURCE_URL replaces; set one of them")
 	}
 	p := &protectedResource{
-		mcpPath:        cfg.MCPPath,
-		pinned:         pinned,
-		challenge:      strings.TrimSpace(cfg.MetadataURL),
-		allowed:        allowed,
-		onRefused:      cfg.OnRefused,
-		distinctWarner: distinctWarner{limit: maxWarnedOrigins},
+		mcpPath:   cfg.MCPPath,
+		pinned:    pinned,
+		challenge: strings.TrimSpace(cfg.MetadataURL),
+		allowed:   allowed,
+		onRefused: cfg.OnRefused,
+		warner:    newDistinctWarner(maxWarnedOrigins, maxWarnedOriginLen),
 	}
 	if p.challenge == "" && pinned != "" {
 		p.challenge = resourceMetadataURLForOrigin(pinnedOrigin, cfg.MCPPath)
@@ -433,8 +433,7 @@ func (p *protectedResource) refused(r *http.Request, origin string) {
 	if p.onRefused != nil {
 		p.onRefused(ctx)
 	}
-	origin = truncate(origin, maxWarnedOriginLen)
-	warn, atLimit := p.admit(origin)
+	origin, warn, atLimit := p.warner.admit(origin)
 	if !warn {
 		return
 	}
@@ -444,7 +443,7 @@ func (p *protectedResource) refused(r *http.Request, origin string) {
 	}
 	slog.WarnContext(ctx, "request origin is not in ENGRAM_MCP_RESOURCE_ORIGINS; serving no path-suffix protected-resource metadata for it", attrs...)
 	if atLimit {
-		slog.WarnContext(ctx, "refused-origin warning limit reached; further refused origins are not logged until the window ends", "limit", maxWarnedOrigins, "window", warnWindow)
+		slog.WarnContext(ctx, "refused-origin warning limit reached; further refused origins are not logged until the window ends", "limit", p.warner.limit, "window", warnWindow)
 	}
 }
 

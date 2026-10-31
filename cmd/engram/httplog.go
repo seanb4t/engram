@@ -32,7 +32,8 @@ type authFailureFunc func(ctx context.Context, reason string)
 // accessLog emits one structured log line per request and counts 401/403
 // responses as auth failures. The line's "local" field is the local address
 // of the connection; its port tells the primary listener from the MCP-only
-// one. The line carries "mcp_protocol_version" when the request names one.
+// one. The line carries "mcp_protocol_version", cut to maxProtocolVersionLen
+// bytes, when the request names one.
 // observe is a test seam (nil in production).
 func accessLog(authFail authFailureFunc, observe func(int)) func(http.Handler) http.Handler {
 	if authFail == nil {
@@ -63,9 +64,35 @@ func accessLog(authFail authFailureFunc, observe func(int)) func(http.Handler) h
 			attrs := []any{"method", r.Method, "path", r.URL.Path, "status", sw.status,
 				"dur_ms", ms, "remote", r.RemoteAddr, "local", local, "ua", r.UserAgent()}
 			if v := r.Header.Get("Mcp-Protocol-Version"); v != "" {
-				attrs = append(attrs, "mcp_protocol_version", v)
+				attrs = append(attrs, "mcp_protocol_version", truncate(v, maxProtocolVersionLen))
 			}
 			slog.InfoContext(r.Context(), "http request", attrs...)
 		})
 	}
+}
+
+// minLevel passes the records of Handler at level min and above, and drops
+// the rest.
+type minLevel struct {
+	slog.Handler
+	min slog.Level
+}
+
+func (h minLevel) Enabled(ctx context.Context, l slog.Level) bool {
+	return l >= h.min && h.Handler.Enabled(ctx, l)
+}
+
+func (h minLevel) Handle(ctx context.Context, rec slog.Record) error {
+	if rec.Level < h.min {
+		return nil
+	}
+	return h.Handler.Handle(ctx, rec)
+}
+
+func (h minLevel) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return minLevel{Handler: h.Handler.WithAttrs(attrs), min: h.min}
+}
+
+func (h minLevel) WithGroup(name string) slog.Handler {
+	return minLevel{Handler: h.Handler.WithGroup(name), min: h.min}
 }

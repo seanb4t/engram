@@ -756,7 +756,7 @@ func TestProtectedResourceOriginAllowlist(t *testing.T) {
 		logs := captureLogs(t)
 		p := mustResource(t, protectedResourceConfig{Origins: "https://a.example", MCPPath: "/mcp"})
 		now := time.Unix(0, 0)
-		p.now = func() time.Time { return now }
+		p.warner.now = func() time.Time { return now }
 		h := protectedResourceHandler(p, "")
 		for i := range maxWarnedOrigins + 1 {
 			prmThrough(h, "c"+strconv.Itoa(i)+".example", "https", "")
