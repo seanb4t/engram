@@ -14,8 +14,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 )
 
 // wellKnownPRMBase is the RFC 9728 host-only path for the OAuth protected-
@@ -305,13 +303,10 @@ func resolveMCPResourceOrigins(raw string) (originSet, error) {
 
 // maxWarnedOrigins caps how many distinct refused origins a protectedResource
 // remembers in one warnWindow, and maxWarnedOriginLen caps the length of
-// each, so a flood of spoofed hosts cannot grow memory without bound. The
-// remembered set starts again empty after each warnWindow, so a flood cannot
-// silence a later refusal for longer than that.
+// each, so a flood of spoofed hosts cannot grow memory without bound.
 const (
 	maxWarnedOrigins   = 256
 	maxWarnedOriginLen = 512
-	warnWindow         = time.Hour
 )
 
 // protectedResourceConfig is the configuration newProtectedResource builds a
@@ -345,12 +340,8 @@ type protectedResource struct {
 	// allowed bounds the derived mode. Empty allows every origin.
 	allowed   originSet
 	onRefused func(context.Context)
-	// now is the clock for warnWindow; nil means time.Now.
-	now func() time.Time
-
-	mu          sync.Mutex
-	warned      map[string]struct{}
-	warnedSince time.Time
+	// warner bounds the refused-origin warnings.
+	warner *distinctWarner
 }
 
 // newProtectedResource validates ENGRAM_MCP_RESOURCE_URL and
@@ -375,6 +366,7 @@ func newProtectedResource(cfg protectedResourceConfig) (*protectedResource, erro
 		challenge: strings.TrimSpace(cfg.MetadataURL),
 		allowed:   allowed,
 		onRefused: cfg.OnRefused,
+		warner:    newDistinctWarner(maxWarnedOrigins, maxWarnedOriginLen),
 	}
 	if p.challenge == "" && pinned != "" {
 		p.challenge = resourceMetadataURLForOrigin(pinnedOrigin, cfg.MCPPath)
@@ -441,28 +433,17 @@ func (p *protectedResource) refused(r *http.Request, origin string) {
 	if p.onRefused != nil {
 		p.onRefused(ctx)
 	}
-	origin = truncate(origin, maxWarnedOriginLen)
-	now := time.Now
-	if p.now != nil {
-		now = p.now
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if t := now(); p.warned == nil || t.Sub(p.warnedSince) >= warnWindow {
-		p.warned = map[string]struct{}{}
-		p.warnedSince = t
-	}
-	if _, seen := p.warned[origin]; seen || len(p.warned) >= maxWarnedOrigins {
+	origin, warn, atLimit := p.warner.admit(origin)
+	if !warn {
 		return
 	}
-	p.warned[origin] = struct{}{}
 	attrs := []any{"origin", origin}
 	if ignored := ignoredForwardedHost(r); ignored != "" {
 		attrs = append(attrs, "ignored_x_forwarded_host", ignored)
 	}
 	slog.WarnContext(ctx, "request origin is not in ENGRAM_MCP_RESOURCE_ORIGINS; serving no path-suffix protected-resource metadata for it", attrs...)
-	if len(p.warned) == maxWarnedOrigins {
-		slog.WarnContext(ctx, "refused-origin warning limit reached; further refused origins are not logged until the window ends", "limit", maxWarnedOrigins, "window", warnWindow)
+	if atLimit {
+		slog.WarnContext(ctx, "refused-origin warning limit reached; further refused origins are not logged until the window ends", "limit", p.warner.limit, "window", warnWindow)
 	}
 }
 

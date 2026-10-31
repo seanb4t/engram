@@ -4,7 +4,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -80,5 +82,49 @@ func TestAccessLogNamesLocalAddress(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	if !strings.Contains(logs.String(), `"local":"127.0.0.1:8081"`) {
 		t.Fatalf("access log does not name the local address: %s", logs.String())
+	}
+}
+
+func TestAccessLogNamesProtocolVersion(t *testing.T) {
+	h := accessLog(nil, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	logs := captureLogs(t)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if !strings.Contains(logs.String(), `"mcp_protocol_version":"2026-07-28"`) {
+		t.Fatalf("access log does not name the protocol version: %s", logs.String())
+	}
+
+	logs = captureLogs(t)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/mcp", nil))
+	if strings.Contains(logs.String(), "mcp_protocol_version") {
+		t.Fatalf("access log names a protocol version the request did not carry: %s", logs.String())
+	}
+
+	logs = captureLogs(t)
+	long := strings.Repeat("9", 2*maxProtocolVersionLen)
+	req = httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Mcp-Protocol-Version", long)
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if !strings.Contains(logs.String(), `"mcp_protocol_version":"`+long[:maxProtocolVersionLen]+`"`) || strings.Contains(logs.String(), long) {
+		t.Fatalf("access log does not cut a long protocol version to %d bytes: %s", maxProtocolVersionLen, logs.String())
+	}
+}
+
+func TestMinLevel(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(minLevel{Handler: slog.NewJSONHandler(&buf, nil), min: slog.LevelWarn}).With("k", "v").WithGroup("g")
+	logger.Info("info record")
+	logger.Warn("warn record")
+	logger.Error("error record")
+	out := buf.String()
+	if strings.Contains(out, "info record") {
+		t.Fatalf("an info record passed the warn floor: %s", out)
+	}
+	for _, want := range []string{"warn record", "error record", `"k":"v"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %s: %s", want, out)
+		}
 	}
 }

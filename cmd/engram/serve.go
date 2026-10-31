@@ -269,7 +269,7 @@ func runServe(cmd *cobra.Command) error {
 	// resolve==nil gate is untouched.
 	connectResolve := connectResolverFor(chain, headless, cookieResolve)
 
-	srv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: resolvedVersion()}, nil)
+	srv := newMCPServer(resolvedVersion())
 	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify, connectReseal)
 	if err != nil {
 		slog.Error("server registration failed", "err", err)
@@ -347,24 +347,48 @@ func runServe(cmd *cobra.Command) error {
 // and the queues to drain.
 const shutdownGrace = 15 * time.Second
 
+// newMCPServer is the MCP server of engram serve, at version, for the
+// protocol versions of servedProtocolVersions. It advertises only the tools
+// capability, without listChanged, because the tool set never changes while
+// the server runs. A subscriptions/listen call is then granted nothing and
+// returns at once. engram registers no prompts or resources: go-sdk would
+// advertise listChanged for them, and a listen call for them would stay open
+// until shutdown. The server advertises no logging capability, because
+// engram sends no log messages to clients. A legacy logging/setLevel call
+// still succeeds. go-sdk server logs at warn level and above go to the
+// default logger at the time of the call, and its info logs are dropped.
+func newMCPServer(version string) *mcp.Server {
+	return mcp.NewServer(&mcp.Implementation{Name: "engram", Version: version}, &mcp.ServerOptions{
+		Capabilities:              &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: false}},
+		SupportedProtocolVersions: servedProtocolVersions(),
+		Logger:                    slog.New(minLevel{Handler: slog.Default().Handler(), min: slog.LevelWarn}),
+	})
+}
+
 // mcpTransport is the MCP streamable-HTTP handler for srv behind the bearer
 // gate (withAuth, its challenge from resource), the access log and tracing.
-// A GET, the long-lived event stream, also ends when streams is done.
-// runServe mounts this one value on every listener.
+// protocolRouter sends each request to one of two handlers of srv: a
+// stateless handler for 2026-07-28 and later, and a stateful handler with
+// sessions for every legacy version. A legacy GET, the long-lived event
+// stream, also ends when streams is done. runServe mounts this one value on
+// every listener.
 func mcpTransport(streams context.Context, srv *mcp.Server, chain mcpauth.TokenVerifier, resource *protectedResource, tm *telemetry.ToolMetrics) http.Handler {
-	var handler http.Handler = mcp.NewStreamableHTTPHandler(
-		func(*http.Request) *mcp.Server { return srv }, nil)
-	handler = endGETWith(streams, handler)
+	getServer := func(*http.Request) *mcp.Server { return srv }
+	sessions := mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Logger: slog.Default()})
+	sessionless := mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true, Logger: slog.Default()})
+	var handler http.Handler = newProtocolRouter(endGETWith(streams, sessions), sessionless, servedProtocolVersions())
 	handler = withAuth(handler, chain, resource)
 	handler = accessLog(tm.RecordAuthFailure, nil)(handler)
 	return otelhttp.NewHandler(handler, "mcp")
 }
 
 // endGETWith cancels the context of each GET request to next when ctx is
-// done. A GET to the MCP transport is the event stream, which stays open
-// until its context ends and would otherwise hold http.Server.Shutdown until
-// its deadline. Every other method keeps its own request context and
-// finishes normally.
+// done. A GET to the stateful MCP handler is the legacy event stream, which
+// stays open until its context ends and would otherwise hold
+// http.Server.Shutdown until its deadline. Every other method keeps its own
+// request context and finishes normally. The stateless handler needs no
+// such hook: it answers GET with 405, and its POST ends when the call
+// returns while newMCPServer grants no subscription.
 func endGETWith(ctx context.Context, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

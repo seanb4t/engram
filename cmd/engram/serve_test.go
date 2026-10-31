@@ -27,7 +27,6 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
 
 	"github.com/seanb4t/engram/internal/auth"
@@ -878,7 +877,7 @@ func postMCP(t *testing.T, base, token string, header map[string]string) (*http.
 
 func postMCPBody(t *testing.T, base, token, body string, header map[string]string) (*http.Response, string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, base+"/mcp", strings.NewReader(body))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/mcp", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -934,7 +933,7 @@ func openEventStream(t *testing.T, base, token string) *http.Response {
 }
 
 func TestServeBothListeners(t *testing.T) {
-	mcpSrv := mcp.NewServer(&mcp.Implementation{Name: "engram", Version: "test"}, nil)
+	mcpSrv := newMCPServer("test")
 	streams, endStreams := context.WithCancel(context.Background())
 	defer endStreams()
 	resource := mustResource(t, protectedResourceConfig{MCPPath: "/mcp"})

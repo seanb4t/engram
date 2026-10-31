@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 const mcpListenerToken = "e2e-listener-secret"
@@ -56,8 +58,9 @@ const mcpInitialize = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"
 // API, and checks end to end: the second port serves the gated MCP
 // transport and the discovery documents and nothing else, the primary port
 // still serves Connect, both ports refuse the path-suffix document for an
-// unlisted origin and serve it the host-only document, and a SIGTERM with an
-// event stream open exits 0.
+// unlisted origin and serve it the host-only document, and a SIGTERM exits 0
+// before the shutdown deadline with legacy event streams open on both ports
+// and a 2026-07-28 client that called subscriptions/listen.
 func TestMCPOnlyListener(t *testing.T) {
 	mcpAddr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
 	srv := startServer(t, map[string]string{
@@ -137,39 +140,83 @@ func TestMCPOnlyListener(t *testing.T) {
 		}
 	})
 
-	t.Run("SIGTERM with an open event stream exits 0", func(t *testing.T) {
-		resp, _ := mcpRequest(t, http.MethodPost, base+"/mcp", "", mcpListenerToken, mcpInitialize, nil)
-		session := resp.Header.Get("Mcp-Session-Id")
-		if session == "" {
-			t.Fatal("initialize returned no Mcp-Session-Id")
+	t.Run("SIGTERM with both protocol generations connected exits 0", func(t *testing.T) {
+		streams := []*http.Response{openLegacyEventStream(t, base), openLegacyEventStream(t, srv.baseURL())}
+		defer func() {
+			for _, s := range streams {
+				_ = s.Body.Close()
+			}
+		}()
+
+		cs := mcpConnectAt(t, base+"/mcp", "2026-07-28", mcpListenerToken)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := cs.ListTools(ctx, nil); err != nil {
+			t.Fatalf("2026-07-28 tools/list: %v", err)
 		}
-		headers := map[string]string{"Mcp-Session-Id": session, "Mcp-Protocol-Version": "2025-06-18"}
-		mcpRequest(t, http.MethodPost, base+"/mcp", "", mcpListenerToken, `{"jsonrpc":"2.0","method":"notifications/initialized"}`, headers)
-		req, err := http.NewRequest(http.MethodGet, base+"/mcp", nil)
+		listen := `{"jsonrpc":"2.0","id":7,"method":"subscriptions/listen","params":{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"engram-e2e","version":"test"},"io.modelcontextprotocol/clientCapabilities":{}}}}`
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/mcp", strings.NewReader(listen))
 		if err != nil {
 			t.Fatalf("new request: %v", err)
 		}
-		req.Header.Set("Accept", "text/event-stream")
-		req.Header.Set("Authorization", "Bearer "+mcpListenerToken)
-		for k, v := range headers {
+		for k, v := range map[string]string{
+			"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+			"Authorization": "Bearer " + mcpListenerToken, "Mcp-Protocol-Version": "2026-07-28", "Mcp-Method": "subscriptions/listen",
+		} {
 			req.Header.Set(k, v)
 		}
-		stream, err := http.DefaultClient.Do(req)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			t.Fatalf("open the event stream: %v", err)
+			t.Fatalf("subscriptions/listen: %v", err)
 		}
-		defer stream.Body.Close()
-		if stream.StatusCode != http.StatusOK {
-			t.Fatalf("event stream status=%d want 200", stream.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil || resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"id":7`) || !strings.Contains(string(body), `"result"`) {
+			t.Fatalf("subscriptions/listen did not complete: status=%d err=%v body=%q", resp.StatusCode, err, body)
 		}
 
+		signalled := time.Now()
 		if err := srv.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			t.Fatalf("SIGTERM: %v", err)
 		}
 		if err := srv.cmd.Wait(); err != nil {
 			t.Fatalf("engram serve after SIGTERM: %v, want exit 0", err)
 		}
+		if elapsed := time.Since(signalled); elapsed >= 15*time.Second {
+			t.Fatalf("shutdown took %s, want less than the 15s deadline", elapsed)
+		}
 	})
+}
+
+// openLegacyEventStream initializes a legacy session on base and opens its
+// GET event stream, returning the open response.
+func openLegacyEventStream(t *testing.T, base string) *http.Response {
+	t.Helper()
+	resp, _ := mcpRequest(t, http.MethodPost, base+"/mcp", "", mcpListenerToken, mcpInitialize, nil)
+	session := resp.Header.Get("Mcp-Session-Id")
+	if session == "" {
+		t.Fatalf("initialize on %s returned no Mcp-Session-Id", base)
+	}
+	headers := map[string]string{"Mcp-Session-Id": session, "Mcp-Protocol-Version": "2025-06-18"}
+	mcpRequest(t, http.MethodPost, base+"/mcp", "", mcpListenerToken, `{"jsonrpc":"2.0","method":"notifications/initialized"}`, headers)
+	req, err := http.NewRequest(http.MethodGet, base+"/mcp", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+mcpListenerToken)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	stream, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("open the event stream on %s: %v", base, err)
+	}
+	if stream.StatusCode != http.StatusOK {
+		_ = stream.Body.Close()
+		t.Fatalf("event stream on %s: status=%d want 200", base, stream.StatusCode)
+	}
+	return stream
 }
 
 // TestMCPOnlyListenerWithConsole runs `engram serve` with the console and
