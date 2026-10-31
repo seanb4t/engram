@@ -33,14 +33,14 @@ describe('DiscoveryFormSheet — field set', () => {
     const screen = await render(DiscoveryFormSheet, { open: true, scope: 'discovery:repo:x' });
     await expect.element(screen.getByText('New discovery')).toBeInTheDocument();
     await expect.element(screen.getByLabelText('content')).toBeInTheDocument();
-    await expect.element(screen.getByRole('button', { name: /^kind: / })).toHaveTextContent('map');
+    await expect.element(screen.getByRole('combobox', { name: /^kind: / })).toHaveTextContent('map');
     await expect.element(screen.getByTestId('citation-row')).toBeInTheDocument();
-    await expect.element(screen.getByRole('button', { name: 'citation 1 kind' })).toBeInTheDocument();
+    await expect.element(screen.getByRole('combobox', { name: 'citation 1 kind' })).toBeInTheDocument();
     await expect.element(screen.getByLabelText('citation 1 ref')).toBeInTheDocument();
     await expect.element(screen.getByLabelText('summary (optional)')).toBeInTheDocument();
     await expect.element(screen.getByLabelText('add tag')).toBeInTheDocument();
     await expect.element(screen.getByRole('textbox', { name: 'scope' })).toHaveValue('discovery:repo:x');
-    await expect.element(screen.getByRole('button', { name: 'visibility' })).toHaveTextContent('private');
+    await expect.element(screen.getByRole('combobox', { name: 'visibility' })).toHaveTextContent('private');
     await expect.element(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument();
   });
 
@@ -82,7 +82,7 @@ describe('DiscoveryFormSheet — submit', () => {
   it('calls useCreateDiscovery with non-empty content, typed citations, and a discovery:-prefixed scope', async () => {
     const screen = await render(DiscoveryFormSheet, { open: true, scope: 'discovery:repo:x' });
     await screen.getByLabelText('content').fill('a mapped subsystem');
-    await screen.getByRole('button', { name: 'citation 1 kind' }).click();
+    await screen.getByRole('combobox', { name: 'citation 1 kind' }).click();
     await screen.getByRole('option', { name: 'url' }).click();
     await screen.getByLabelText('citation 1 ref').fill('https://example.com/doc');
     await screen.getByRole('button', { name: 'Create' }).click();
@@ -102,7 +102,7 @@ describe('DiscoveryFormSheet — submit', () => {
     await screen.getByRole('button', { name: 'add citation' }).click();
     await expect.element(screen.getByLabelText('citation 2 ref')).toBeInTheDocument();
     await screen.getByLabelText('citation 2 ref').fill('a1b2c3d');
-    await screen.getByRole('button', { name: 'citation 2 kind' }).click();
+    await screen.getByRole('combobox', { name: 'citation 2 kind' }).click();
     await screen.getByRole('option', { name: 'commit' }).click();
     await screen.getByRole('button', { name: 'Create' }).click();
 
@@ -181,7 +181,7 @@ describe('DiscoveryFormSheet — D-09 inline re-auth + resume', () => {
       onresumeapplied
     });
     await expect.element(screen.getByLabelText('content')).toHaveValue('restored discovery content');
-    await expect.element(screen.getByRole('button', { name: /^kind: / })).toHaveTextContent('fact');
+    await expect.element(screen.getByRole('combobox', { name: /^kind: / })).toHaveTextContent('fact');
     await expect.element(screen.getByRole('textbox', { name: 'scope' })).toHaveValue('discovery:repo:restored');
     await expect.element(screen.getByLabelText('citation 1 ref')).toHaveValue('https://example.com');
     expect(onresumeapplied).toHaveBeenCalledTimes(1);

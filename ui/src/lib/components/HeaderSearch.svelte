@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { Command as CommandPrimitive } from 'bits-ui';
   import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { timestampDate } from '@bufbuild/protobuf/wkt';
@@ -48,6 +49,7 @@
   let open = $state(false);
   let inputWrapperEl = $state<HTMLElement | null>(null);
   let inputEl = $state<HTMLInputElement | null>(null);
+  let commandRoot = $state<ReturnType<typeof CommandPrimitive.Root>>();
   let crossSpineOff = $state(false);
   let sourceOpen = $state(false);
 
@@ -304,6 +306,25 @@
       : commandItems
   );
 
+  // The rows that arrive after the typed text, from the debounce and the
+  // queries. Each change highlights the first row again, so Enter acts on the
+  // top row, such as the memory a pasted id resolved to. bits-ui Command
+  // moves the highlight to the first row only when its search text changes.
+  const rowsKey = $derived(
+    [
+      classified.kind,
+      searchError?.kind ?? '',
+      shownMemories.map((m) => m.id).join(','),
+      filteredScopes.map((s) => s.scope).join(','),
+      tagRank.matches.map((m) => m.tag).join(','),
+      visibleCommands.map((c) => c.href).join(',')
+    ].join('|')
+  );
+  $effect(() => {
+    void rowsKey;
+    void tick().then(() => commandRoot?.updateSelectedToIndex(0));
+  });
+
   // Enter on the top row hands the classified query and chips to /search
   // through the one shared codec (D-10, ENTRY-06).
   function runTopSearch() {
@@ -396,7 +417,7 @@
 <svelte:window onkeydown={onGlobalKeydown} />
 
 <div class="hd-search relative mx-auto w-full max-w-[calc(560*var(--u))]">
-  <CommandPrimitive.Root shouldFilter={false} class="contents">
+  <CommandPrimitive.Root bind:this={commandRoot} shouldFilter={false} class="contents">
     <div
       bind:this={inputWrapperEl}
       class="hd-input flex h-9 items-center gap-2 rounded-md border border-input bg-background px-2 focus-within:border-primary focus-within:ring-[calc(3*var(--u))] focus-within:ring-primary/20"
