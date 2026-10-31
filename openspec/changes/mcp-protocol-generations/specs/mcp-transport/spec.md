@@ -118,20 +118,36 @@ archived, superseded, expired and scheduled records from `search_memory`, `list_
 
 ### Requirement: The server advertises no tool-list change notifications
 
-The server SHALL advertise `tools.listChanged: false` in the `initialize` result and in the
-`server/discover` result, because the tool set never changes while the server runs. A 2026-07-28
+The server SHALL advertise a `tools` capability with `listChanged` false in the `initialize`
+result and in the `server/discover` result, because the tool set never changes while the server
+runs. On the wire, false means that the `listChanged` field is absent. A 2026-07-28
 `subscriptions/listen` call for tool-list changes SHALL complete at once, grant no subscription
 and hold no connection open.
 
 #### Scenario: Capabilities on both generations
 
 - **WHEN** a legacy client calls `initialize`, and a 2026-07-28 client calls `server/discover`
-- **THEN** both results carry `capabilities.tools.listChanged` set to `false`
+- **THEN** both results carry `capabilities.tools`, and neither carries `listChanged: true`
 
 #### Scenario: A listen call completes at once
 
 - **WHEN** a 2026-07-28 client POSTs `subscriptions/listen` that asks for tool-list changes
 - **THEN** the response completes without waiting, and grants no tool-list subscription
+
+### Requirement: The server advertises no logging capability
+
+The server SHALL advertise no `logging` capability, which protocol 2026-07-28 deprecates, because it
+sends no log messages to clients. A legacy `logging/setLevel` call SHALL still succeed.
+
+#### Scenario: No logging capability on either generation
+
+- **WHEN** a legacy client calls `initialize`, and a 2026-07-28 client calls `server/discover`
+- **THEN** neither result carries `capabilities.logging`
+
+#### Scenario: Legacy setLevel still succeeds
+
+- **WHEN** a client with a legacy session calls `logging/setLevel`
+- **THEN** the call succeeds with an empty result
 
 ### Requirement: The server logs the protocol version of each MCP request
 

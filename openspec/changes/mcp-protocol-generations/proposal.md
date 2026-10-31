@@ -27,6 +27,8 @@ Issue #910, the live check of the ChatGPT connector, cannot pass until this chan
   tool set at run time, so the value `true`, which go-sdk sets by default, promised notifications
   that never came. A 2026-07-28 `subscriptions/listen` call then completes at once and holds no
   connection open.
+- The server stops advertising the logging capability, which protocol 2026-07-28 deprecates
+  (SEP-2577). engram never sends log messages to clients, and `logging/setLevel` still succeeds.
 - The silent failure becomes visible. Each MCP access-log line records the protocol version that
   the request names. The go-sdk transport logs, which engram discards today, go to the server log,
   so a rejected protocol version shows up as a warning.
@@ -62,8 +64,9 @@ Out of scope:
 Compatibility decisions:
 
 - Wire contract of the MCP transport: additive. 2026-07-28 becomes available. Every legacy request
-  gets the answer it gets today, except that `capabilities.tools.listChanged` is now `false`. No
-  client loses a notification, because engram never sent one.
+  gets the answer it gets today, with two exceptions in the advertised capabilities:
+  `tools.listChanged` is now `false`, and `logging` is absent. No client loses a notification or a
+  log message, because engram never sent one.
 - MCP tool input schemas and output shapes: unchanged on both generations.
 - Error `hint` codes: unchanged. A protocol-version rejection comes from the transport, before any
   tool runs, and carries no hint code.

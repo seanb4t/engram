@@ -88,8 +88,10 @@ same token. `endGETWith` stays, because the legacy GET event stream stays.
 
 ### D4. Truthful capabilities: `tools.listChanged: false`
 
-A new `newMCPServer(version)` in `serve.go` builds the server with explicit capabilities: logging
-(the SDK default today) and tools with `ListChanged: false`. `runServe` and the tests use it, so
+A new `newMCPServer(version)` in `serve.go` builds the server with one explicit capability: tools
+with `ListChanged: false`. The logging capability, the SDK default today, is left out. Protocol
+2026-07-28 deprecates it (SEP-2577), engram sends no log messages, and go-sdk answers
+`logging/setLevel` with or without it (`mcp/server.go:2123`). `runServe` and the tests use it, so
 the tests check the production capabilities. A 2026-07-28 `subscriptions/listen` then grants
 nothing and returns at once. No 2026-07-28 request stays open, so shutdown needs no new hook.
 
