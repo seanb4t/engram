@@ -171,7 +171,7 @@ func TestMCPOnlyListener(t *testing.T) {
 		}
 		body, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		if err != nil || resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"id":7`) {
+		if err != nil || resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"id":7`) || !strings.Contains(string(body), `"result"`) {
 			t.Fatalf("subscriptions/listen did not complete: status=%d err=%v body=%q", resp.StatusCode, err, body)
 		}
 

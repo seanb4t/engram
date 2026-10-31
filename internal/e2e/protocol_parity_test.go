@@ -48,10 +48,11 @@ func readRecallView(t *testing.T, res *mcp.CallToolResult) recallView {
 	return v
 }
 
-// TestRecallParityAcrossGenerations seeds one live record and one record in
-// each derived state, then checks that a legacy session and a 2026-07-28
-// client of the same caller get the same recall, and that another caller is
-// refused the same way on both generations.
+// TestRecallParityAcrossGenerations seeds two live records, one of them the
+// correction of the superseded record, and one record in each derived state.
+// It checks that a legacy session and a 2026-07-28 client of the same caller
+// get the same recall, and that another caller is refused the same way on
+// both generations.
 func TestRecallParityAcrossGenerations(t *testing.T) {
 	if storetest.Addr() == "" {
 		storetest.SkipOrFailNoQdrant(t)

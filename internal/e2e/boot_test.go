@@ -140,15 +140,20 @@ func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // serves, each named by the version a client asks for.
 var protocolGenerations = []string{"2026-07-28", "2025-11-25"}
 
-// TestBootServesDocumentedToolSurface is the core wiring smoke test: build ->
-// boot -> MCP handshake -> tools/list, on each protocol generation. It is the
-// only test that would catch a break in cobra/env -> runServe -> mux ->
-// transport -> registration.
+// TestBootServesDocumentedToolSurface boots the binary and, on each protocol
+// generation, checks the advertised capabilities and that the served tool set
+// is exactly documentedTools. It is the only test of the real binary's
+// capabilities: a listChanged capability keeps a subscriptions/listen call
+// open until shutdown.
 func TestBootServesDocumentedToolSurface(t *testing.T) {
 	srv := startServer(t, nil)
 	for _, version := range protocolGenerations {
 		t.Run(version, func(t *testing.T) {
-			checkDocumentedTools(t, mcpConnectAt(t, srv.endpoint(), version, ""))
+			cs := mcpConnectAt(t, srv.endpoint(), version, "")
+			if caps, err := json.Marshal(cs.InitializeResult().Capabilities); err != nil || string(caps) != `{"tools":{}}` {
+				t.Fatalf("capabilities = %s (%v), want {\"tools\":{}}", caps, err)
+			}
+			checkDocumentedTools(t, cs)
 		})
 	}
 }
