@@ -266,7 +266,7 @@ rapid reads one check count per test binary. So each stage with its own count ru
 | Stage | Per PR | Deep run |
 | --- | --- | --- |
 | `TestProperty...` (Go) | In `go test ./...`, rapid default, 100 checks | `RAPID_CHECKS=10000 go test -run '^TestProperty' ./...` |
-| `TestModel...` (Go) | In `go test ./...`. Measured. At most 50 s added to the `test` job. | `RAPID_CHECKS=1000 RAPID_STEPS=100 go test -run '^TestModel' ./internal/store/... ./internal/server/...` |
+| `TestModel...` (Go) | Its own CI step, `RAPID_CHECKS=100`. Measured. At most 50 s added to the `test` job. | `RAPID_CHECKS=1000 RAPID_STEPS=100 go test -run '^TestModel' ./internal/store/... ./internal/server/...` |
 | `Fuzz...` (Go) | Seed corpus, in `go test ./...` | 60 s per target |
 | UI properties | In `pnpm test`, fast-check default | None |
 
@@ -278,10 +278,12 @@ fit the budget.
 Measured on the pull request's CI run 41310756650 at the default 100 checks: `internal/store` grew
 from 117 s to 203 s and `internal/server` from 29 s to 52 s, so the `Test` step grew by 89 s. That
 is over the budget, so the step is split. The first step runs `go test -skip '^TestModel' ./...`.
-The second step runs `RAPID_CHECKS=40 go test -v -run '^TestModel'` on the two packages. Locally,
-40 checks take 16 s for the store tests and 7 s for the server tests. On CI run 41311571499, the model step took 25 s and
-the `test` job took 297 s, against 254 s to 273 s for the last four `main` runs. Each `TestModel` test
-appears once in the job log.
+The second step runs `go test -v -run '^TestModel'` on the two packages at `RAPID_CHECKS=100`.
+
+`TestModelStore` then changed its invariant check to read the scope in one scroll per step (see D3).
+On CI run 41316192742, at 100 checks, the model step took 26 s and `TestModelStore` 22 s. The `test`
+job took 280 s, against 254 s to 273 s for the last four `main` runs. Each `TestModel` test appears
+once in the job log.
 
 ### D12. The test plan lives in the contributor docs
 
