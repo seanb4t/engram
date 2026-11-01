@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.31.1](https://github.com/seanb4t/engram/compare/v0.31.0...v0.31.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **cli:** strip C1 control runes from operator text output ([0c4fd3e](https://github.com/seanb4t/engram/commit/0c4fd3e55909f02973573a04abf049a3bf7d2d6f))
+* **deps:** update module go.yaml.in/yaml/v3 to v3.0.6 ([#927](https://github.com/seanb4t/engram/issues/927)) ([1e2bc88](https://github.com/seanb4t/engram/commit/1e2bc88366cf54e1530a909c1b4a6745e386d160))
+* **server:** bound the update summary on the Connect lane ([0c4fd3e](https://github.com/seanb4t/engram/commit/0c4fd3e55909f02973573a04abf049a3bf7d2d6f))
+* **shortid:** fold confusables after lowercasing ([0c4fd3e](https://github.com/seanb4t/engram/commit/0c4fd3e55909f02973573a04abf049a3bf7d2d6f))
+
 ## [0.31.0](https://github.com/seanb4t/engram/compare/v0.30.0...v0.31.0) (2026-10-31)
 
 
