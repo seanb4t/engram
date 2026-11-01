@@ -11,7 +11,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	connectrpc.com/connect v1.21.1
 	connectrpc.com/otelconnect v0.12.0
-	github.com/cedar-policy/cedar-go v1.8.0
+	github.com/cedar-policy/cedar-go v1.9.0
 	github.com/cenkalti/backoff/v7 v7.0.2
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
