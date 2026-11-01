@@ -30,7 +30,12 @@ context: |
     plan a version number, a tag or a CHANGELOG edit.
   - Prefer an established OSS or idiomatic solution over a hand-rolled one.
   - Tests verify our own behaviour. Never plan a test or gate that asserts a dependency's
-    behaviour, and never a test for a test or a gate for a gate.
+    behaviour, and never a test for a test or a gate for a gate. Never plan hand-rolled
+    machinery that tests the suite.
+  - The test kinds are scenario tests, invariant tests (rapid in Go, fast-check in ui/) and Go
+    fuzz targets. Name prefixes select the stages: `TestProperty` for a pure property,
+    `TestModel` for a property or state machine against the real store, `Fuzz` for a fuzz
+    target. docs-site `contributing/testing.md` holds the test plan.
   - Files under openspec/ carry no SPDX header, and every Markdown file there must pass
     `task lint:markdown`.
 
@@ -51,6 +56,9 @@ rules:
     - >-
       For a requirement that affects recall, state the behaviour for each derived state (archived, superseded, expired, scheduled)
       and for a caller who does not own the record.
+    - >-
+      State an invariant as a requirement that holds after any sequence of named operations. Where recall is involved, name
+      each derived state and the caller who does not own the record.
   design:
     - Record each alternative considered and why it was rejected.
     - >-
@@ -59,8 +67,17 @@ rules:
     - >-
       Where the design rests on measured behaviour (Qdrant, an embedder, a provider), cite the measurement or mark it as a
       measurement to take before shipping.
+    - >-
+      Name the test kind for each requirement. For a stateful invariant, name the model that the test compares against.
   tasks:
     - Give each task its own verification, as a command or an observable result.
+    - >-
+      Give each scenario about owned application behaviour a scenario-test task, with the scenario title as the subtest or
+      `it` title. Give each tooling or configuration scenario a task that names the command or review step and records the
+      result. Give each invariant a property or state-machine task, and each new parser or sanitizer a fuzz target.
+    - >-
+      Verify a task that runs a new Go test with `-v` and its `--- PASS: <name>` line, so a selector that matches nothing
+      cannot pass.
     - >-
       Add a regeneration task whenever a generated tree's source changes: `task proto:gen` for `proto/`, `task ui:build` for
       `ui/`, `task surfaces:gen` for the surface catalog, and `task skills:vendor` for `skill/engram/skills/`.

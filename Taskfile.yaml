@@ -76,6 +76,30 @@ tasks:
   test:short:
     cmds:
       - go test -short ./...
+  test:deep:
+    desc: Run the deep test stages - every fuzz target, then the property and model tests at high counts (needs Qdrant)
+    cmds:
+      - task: test:deep:fuzz
+      - task: test:deep:invariants
+  test:deep:fuzz:
+    desc: Fuzz every Go fuzz target in turn for FUZZTIME (default 60s)
+    vars:
+      FUZZTIME: '{{.FUZZTIME | default "60s"}}'
+    cmds:
+      - |
+        set -eu
+        go test -list '^Fuzz' ./... | awk '/^Fuzz/ { t[++n] = $1; next } /^ok/ { for (i = 1; i <= n; i++) print $2, t[i]; n = 0 }' |
+        while read -r pkg target; do
+          echo "== ${pkg} ${target}"
+          go test "${pkg}" -run '^$' -fuzz "^${target}\$" -fuzztime '{{.FUZZTIME}}'
+        done
+  test:deep:invariants:
+    desc: Run the TestProperty and TestModel tests at deep-run counts (needs Qdrant)
+    env:
+      ENGRAM_REQUIRE_QDRANT: '1'
+    cmds:
+      - RAPID_CHECKS=10000 go test -count=1 -run '^TestProperty' ./...
+      - RAPID_CHECKS=1000 RAPID_STEPS=100 go test -count=1 -timeout 2h -run '^TestModel' ./internal/store/... ./internal/server/...
   bench:
     desc: Run Go microbenchmarks for hot paths (no live Qdrant required)
     cmds:

@@ -144,7 +144,17 @@ jobs:
           # ubuntu-latest already ships Chrome 151 and Chromium 151 preinstalled
           # (verified against the runner-images manifest at plan time).
           ENGRAM_REQUIRE_BROWSER: "1"
-        run: go test ./...
+        # The TestModel tests run in the next step at their own rapid count,
+        # so this step skips them and no test runs twice.
+        run: go test -skip '^TestModel' ./...
+      - name: Test (model tests)
+        env:
+          ENGRAM_REQUIRE_QDRANT: "1"
+          ENGRAM_QDRANT_TEST_ADDR: localhost:6334
+          # The per-PR budget for the TestModel tests is 50 s on top of the
+          # main step. The weekly deep-test workflow runs them at a high count.
+          RAPID_CHECKS: "100"
+        run: go test -v -run '^TestModel' ./internal/store/... ./internal/server/...
       # D-19: capture WHY the Qdrant container died as a CI post-step rather
       # than in-Go — when the container dies mid-run the Go process often
       # cannot reach it either, so in-process capture yields nothing in

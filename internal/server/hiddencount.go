@@ -146,7 +146,7 @@ func (d *deps) listRecallHidden(ctx context.Context, c caller, scope string, opt
 		slog.ErrorContext(ctx, "recall gate hidden count: comparison List failed", "error", err)
 		return nil
 	}
-	h := countRecallHidden(items, g, time.Now().UTC())
+	h := countRecallHidden(items, g, d.clock())
 	return &h
 }
 
@@ -190,7 +190,7 @@ func (d *deps) searchRecallHidden(ctx context.Context, c caller, scope string, v
 		slog.ErrorContext(ctx, "recall gate hidden count: comparison Search failed", "error", err)
 		return nil
 	}
-	h := countRecallHidden(out, g, time.Now().UTC())
+	h := countRecallHidden(out, g, d.clock())
 	return &h
 }
 
