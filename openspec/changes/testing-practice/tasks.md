@@ -117,7 +117,7 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
   `permissions: contents: read`, and the two D10 jobs. The invariant job uses the Qdrant image that
   `ci.yaml` pins. Verify: `actionlint` passes, and the file names no secret other than
   `GITHUB_TOKEN`.
-- [ ] 6.3 Add an upload step to the fuzz job. It runs only on failure, and it uploads the new
+- [x] 6.3 Add an upload step to the fuzz job. It runs only on failure, and it uploads the new
   `testdata/fuzz/` files as an artifact. Verify: a manual dispatch from the branch completes, and
   both jobs pass.
 - [x] 6.4 Verify the failure rules. In a scratch branch, make one fuzz target and one invariant test
