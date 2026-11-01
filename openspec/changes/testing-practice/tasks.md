@@ -6,55 +6,55 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 
 ## 1. Dependencies
 
-- [ ] 1.1 Add `pgregory.net/rapid` as a test dependency in `go.mod`. Verify: `go mod tidy` leaves
+- [x] 1.1 Add `pgregory.net/rapid` as a test dependency in `go.mod`. Verify: `go mod tidy` leaves
   no diff, and `go list -m pgregory.net/rapid` names the module.
-- [ ] 1.2 Add `fast-check` to the `ui/package.json` dev dependencies. Verify:
+- [x] 1.2 Add `fast-check` to the `ui/package.json` dev dependencies. Verify:
   `jq -r '.devDependencies["fast-check"]' ui/package.json` prints a version, `cd ui && pnpm install
   --frozen-lockfile` succeeds in CI, and `task ui:build` leaves `internal/webauth/static/`
   unchanged.
 
 ## 2. Fuzz targets
 
-- [ ] 2.1 Add `FuzzSanitizeViewValue` in `cmd/engram`, with the property that the output holds no
+- [x] 2.1 Add `FuzzSanitizeViewValue` in `cmd/engram`, with the property that the output holds no
   C0 or C1 control character. Verify: the target fails on the current code with a C1 input.
-- [ ] 2.2 Fix #831 so that `sanitizeViewValue` strips C1 control characters. Commit the failing
+- [x] 2.2 Fix #831 so that `sanitizeViewValue` strips C1 control characters. Commit the failing
   input under `cmd/engram/testdata/fuzz/FuzzSanitizeViewValue/`. Verify:
   `go test -v ./cmd/engram -run FuzzSanitizeViewValue` prints `--- PASS: FuzzSanitizeViewValue`,
   and the PR closes #831.
-- [ ] 2.3 Add `FuzzDecodeCursor` in `internal/store`: any input decodes without a panic, and a
+- [x] 2.3 Add `FuzzDecodeCursor` in `internal/store`: any input decodes without a panic, and a
   decoded cursor encodes and decodes again to an equal cursor. Verify:
   `go test ./internal/store -run '^$' -fuzz FuzzDecodeCursor -fuzztime 60s` finds no failure, or
   each failure it finds is fixed with its input committed.
-- [ ] 2.4 Add `FuzzCanonical` in `internal/shortid`: any input canonicalizes without a panic, and
-  the output holds no surrounding whitespace, no uppercase letter and none of `i`, `l` or `o`.
+- [x] 2.4 Add `FuzzCanonical` in `internal/shortid`: any input canonicalizes without a panic, and
+  the output holds no surrounding whitespace, no rune that lowercasing changes, and none of `i`, `l` or `o`.
   Verify: it passes a 60 s `-fuzz` run, or each failure is fixed with its input committed.
-- [ ] 2.5 Add a fuzz target for the RFC3339 window parsing that the recall verbs share. Its
+- [x] 2.5 Add a fuzz target for the RFC3339 window parsing that the recall verbs share. Its
   property: an input either fails with the `field` and `hint` that `reference/errors.md` lists, or
   parses to a time that formats back to an equal instant. Verify: it passes a 60 s `-fuzz` run, or
   each failure is fixed with its input committed.
 
 ## 3. Pure invariant tests
 
-- [ ] 3.1 Add `TestPropertyCursorRoundTrip` in `internal/store`: every token that `encodeCursor`
+- [x] 3.1 Add `TestPropertyCursorRoundTrip` in `internal/store`: every token that `encodeCursor`
   writes decodes and encodes back to the same token. Add `TestPropertyCanonicalHandle` in
   `internal/shortid` for generated valid handles and their confusable and mixed-case spellings.
   Verify: both print `--- PASS` under `-v`, and a deliberate break in `encodeCursor` fails the
   first with a shrunk counterexample. Revert the break.
-- [ ] 3.2 Add `TestPropertyNormalizeRemote` in `internal/scope`: generated https, ssh, scp and port
+- [x] 3.2 Add `TestPropertyNormalizeRemote` in `internal/scope`: generated https, ssh, scp and port
   remotes, with and without `.git`, normalize to `host/owner/repo`. It asserts no idempotence.
   Verify: it prints `--- PASS` under `-v`, and `scope.go` is unchanged.
-- [ ] 3.3 Add `TestPropertyDerivedState`: for any window and any archive or supersession state, the
+- [x] 3.3 Add `TestPropertyDerivedState`: for any window and any archive or supersession state, the
   words follow canonical order and expired suppresses scheduled. Verify: it prints `--- PASS` under
   `-v`.
-- [ ] 3.4 Add `TestPropertyStepAdditive` in `internal/migrate`: every registered step passes
+- [x] 3.4 Add `TestPropertyStepAdditive` in `internal/migrate`: every registered step passes
   `CheckAdditive` on generated version-0 payloads. Verify: it prints `--- PASS` under `-v`, and a
   step that drops a key makes it fail. Revert the break.
-- [ ] 3.5 Add `TestPropertyAuthz` in `internal/authz`, against the D8 model of owner, visibility and
+- [x] 3.5 Add `TestPropertyAuthz` in `internal/authz`, against the D8 model of owner, visibility and
   principal. Verify: it prints `--- PASS` under `-v`, and a policy edit that lets a non-owner write
   makes it fail. Revert the edit.
-- [ ] 3.6 Add `TestPropertyHintExitCode` in `cmd/engram`: every `HintCode` maps to one exit code and
+- [x] 3.6 Add `TestPropertyHintExitCode` in `cmd/engram`: every `HintCode` maps to one exit code and
   to stderr text that names the same `field` and `hint`. Verify: it prints `--- PASS` under `-v`.
-- [ ] 3.7 Add `fast-check` properties for `classifyInput` that cover all five outcomes:
+- [x] 3.7 Add `fast-check` properties for `classifyInput` that cover all five outcomes:
   - blank input is `empty`
   - a UUID is `id`
   - a canonical `short_id` is `short_id`

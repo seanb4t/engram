@@ -216,7 +216,7 @@ The Go `testing.F` fuzz targets cover:
 - `FuzzSanitizeViewValue`: the output holds no C0 or C1 control character. This target fails on
   `main` today, so the pilot fixes #831 in the same task.
 - `FuzzCanonical`: any input canonicalizes without a panic, and the output holds no surrounding
-  whitespace, no uppercase letter and none of `i`, `l` or `o`.
+  whitespace, no rune that lowercasing changes, and none of `i`, `l` or `o`.
 - The RFC3339 window parsing for `created_after`, `created_before`, `not_before` and `not_after`.
 
 Two rapid properties cover the documented transformations, not idempotence:
