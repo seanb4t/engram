@@ -188,7 +188,10 @@ and asserts that every registered step passes `CheckAdditive` on it.
 `TestModelMigrateSweep` in `internal/store` seeds a fresh collection with generated version-0
 records and runs `Store.Migrate` with apply twice. The first run moves every record to
 `migrate.CurrentVersion`. The second run changes no stored payload. `schema_version` never
-decreases between the runs.
+decreases between the runs. The sweep writes only the keys that a step adds, plus
+`schema_version`, and it never selects a current record again. So a step that rewrites an existing
+key cannot change a stored payload, and the property catches a sweep that stamps the wrong version
+instead.
 
 ### D8. Authorization against a model
 

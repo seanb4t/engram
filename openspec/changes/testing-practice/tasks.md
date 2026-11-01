@@ -66,18 +66,19 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 
 ## 4. Store invariant tests
 
-- [ ] 4.1 Add the D3 model and `TestModelStore`, a `T.Repeat` state machine with the D3 action set
+- [x] 4.1 Add the D3 model and `TestModelStore`, a `T.Repeat` state machine with the D3 action set
   and two principals, against a fresh collection from `newTestStore` with `store.WithClock`. Verify:
   `ENGRAM_REQUIRE_QDRANT=1 go test -v ./internal/store -run TestModelStore` prints
   `--- PASS: TestModelStore`.
-- [ ] 4.2 Add the D3 invariant assertions for isolation, supersession (no fork, no cycle, deleted
+- [x] 4.2 Add the D3 invariant assertions for isolation, supersession (no fork, no cycle, deleted
   records tracked), derived states and pagination. Verify: break each rule in the model only, and
   the matching assertion fails. Revert the break.
-- [ ] 4.3 Add `TestModelMigrateSweep`: seed generated version-0 records and run `Store.Migrate` with
+- [x] 4.3 Add `TestModelMigrateSweep`: seed generated version-0 records and run `Store.Migrate` with
   apply twice. The first run reaches `migrate.CurrentVersion`, and the second changes no stored
-  payload. Verify: it prints `--- PASS` under `-v`, and a step that rewrites a key on every run
-  makes it fail. Revert the break.
-- [ ] 4.4 File an issue for each disagreement between the model and the store that the contract
+  payload. Verify: it prints `--- PASS` under `-v`, and a sweep that stamps a version below the
+  target makes it fail. Revert the break. A step that rewrites a key cannot make it fail, because
+  the sweep writes only added keys and never selects a current record again.
+- [x] 4.4 File an issue for each disagreement between the model and the store that the contract
   does not settle. Verify: each issue is linked from the PR.
 
 ## 5. Server invariant tests
