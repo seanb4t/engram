@@ -2245,6 +2245,11 @@ func (d *deps) searchDiscovery(ctx context.Context, c caller, a searchDiscoveryA
 // through the vector-upsert path (store.Update) — the embedded document is a
 // function of both content and tags (landmine 2).
 func (d *deps) updateMemory(ctx context.Context, c caller, a updateArgs) (mutationResult, error) {
+	// The summary bound runs first in the shared core, so Connect enforces it
+	// and both lanes name the same field when several fields fail.
+	if d.maxSummaryBytes > 0 && a.Summary != nil && len(*a.Summary) > d.maxSummaryBytes {
+		return mutationResult{}, argErrf(classOutOfRange, HintTooLong, "summary", "summary too large: %d bytes (max %d)", len(*a.Summary), d.maxSummaryBytes)
+	}
 	// D-06a: requireID here (shared core) — symmetric across both lanes,
 	// unlike Content (see updateArgs.Content's doc comment for why THAT
 	// check must stay out of this function).
