@@ -368,9 +368,10 @@ func humanizeKey(key string) string {
 	return strings.ToUpper(string(r)) + s[size:]
 }
 
-// sanitizeViewValue replaces every rune strictly below 0x20 and the DEL
-// rune 0x7f with a single space, leaving all other runes untouched. This
-// covers \n, \r, \t, and ESC (0x1b): a stored scope, category, tag, id, or
+// sanitizeViewValue replaces every rune strictly below 0x20, the DEL rune
+// 0x7f and the C1 control runes 0x80 to 0x9f with a single space, leaving
+// all other runes untouched. This covers \n, \r, \t, ESC (0x1b) and the
+// 8-bit CSI (0x9b): a stored scope, category, tag, id, or
 // free-form reason value can never forge an extra report line or emit a
 // terminal escape sequence into an operator's console (threat T-06-03).
 // The json lane needs no equivalent sanitization — encoding/json already
@@ -392,16 +393,7 @@ func humanizeKey(key string) string {
 // rendered output carries no unsanitized control rune — not, as its name
 // once implied, by forbidding nesting from existing at all.
 func sanitizeViewValue(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		if r < 0x20 || r == 0x7f {
-			b.WriteRune(' ')
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
+	return consoleText(s, false)
 }
 
 // renderOperatorView writes headline to w, followed by a rendered view of

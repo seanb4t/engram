@@ -384,10 +384,10 @@ func TestOperatorDocsAreHandDeclared(t *testing.T) {
 
 // hostileLeafValue is the replacement text TestOperatorViewFixturesHaveNoUnsanitizedNesting
 // substitutes for every string leaf of every fixture: an ASCII newline, a
-// carriage return, a tab, ESC (0x1b) and DEL (0x7f), each surrounded by
+// carriage return, a tab, ESC (0x1b), DEL (0x7f) and the C1 CSI (0x9b), each surrounded by
 // plain text so a failure to sanitize is visible as extra lines or stray
 // bytes rather than silently absorbed into an adjacent word.
-const hostileLeafValue = "x\ny\r\t\x1b\x7fz"
+const hostileLeafValue = "x\ny\r\t\x1b\x7f\u009bz"
 
 // replaceStringLeaves walks v — the result of json.Unmarshal(b, &v) for
 // some `any` v, so objects decode as map[string]any and arrays as []any —
@@ -417,7 +417,8 @@ func replaceStringLeaves(v any) any {
 }
 
 // sanitizationViolations checks a rendered operator-view string for (a) any
-// rune strictly below 0x20 other than newline, or the DEL rune 0x7f, and
+// rune strictly below 0x20 other than newline, the DEL rune 0x7f, or a C1
+// control rune 0x80 to 0x9f, and
 // (b) exactly wantNewlines newlines — returning one error per violation
 // found. This is the ONE checker both TestOperatorViewFixturesHaveNoUnsanitizedNesting
 // (run over every real fixture, hostile-leaf-substituted) and its own
@@ -430,7 +431,7 @@ func sanitizationViolations(out string, wantNewlines int) []error {
 		if r == '\n' {
 			continue
 		}
-		if r < 0x20 || r == 0x7f {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
 			errs = append(errs, fmt.Errorf("rendered output contains unsanitized control rune %U", r))
 		}
 	}
