@@ -110,7 +110,7 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 
 ## 6. Deep run
 
-- [ ] 6.1 Add `task test:deep`. It runs every Go fuzz target for 60 s in turn (targets listed with
+- [x] 6.1 Add `task test:deep`. It runs every Go fuzz target for 60 s in turn (targets listed with
   `go test -list '^Fuzz'`), then runs the two D11 deep invocations for `TestProperty` and
   `TestModel`. Verify: `task test:deep` runs each target and exits 0 on a clean tree.
 - [x] 6.2 Add `.github/workflows/deep-test.yaml` with a weekly cron and `workflow_dispatch`,
@@ -142,7 +142,7 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
   CLI, `internal/migrate`, auth and authz, `internal/e2e`, `ui/`, the skill hooks and the Helm
   chart. Add one table per area to the testing page, with the test kind that closes each gap.
   Verify: every area has a table, and each row names a test kind.
-- [ ] 7.4 File a GitHub issue for each gap that this change does not close. Fold in the open test
+- [x] 7.4 File a GitHub issue for each gap that this change does not close. Fold in the open test
   issues #851, #646, #652, #366, #499, #357 and #723 where they fit. Link each issue from its row.
   Verify: every row that this change does not close has an issue link.
 - [x] 7.5 Leave the engram skill and the CLAUDE.md memory contract unchanged, because no agent

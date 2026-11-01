@@ -73,7 +73,7 @@ To keep the input, commit the file beside the fix. From then on it runs in every
 
 ## Gap review
 
-The gap review lists, for each area, behaviour that no test covers and the test kind that closes it. A row with an issue link is open work. A row that names a test is closed, and the test is named.
+The gap review lists, for each area, behaviour that no test covers and the test kind that closes it. A row with an issue link is open work, tracked in that issue. A row that names a test is closed, and the test is named.
 
 ### internal/store
 
@@ -81,9 +81,9 @@ The gap review lists, for each area, behaviour that no test covers and the test 
 | --- | --- | --- |
 | Isolation, supersession, derived states and pagination hold after any sequence of writes | model test | Closed by `TestModelStore` |
 | A list cursor survives a decode and a round trip for any input | fuzz target | Closed by `FuzzDecodeCursor` and `TestPropertyCursorRoundTrip` |
-| Every search result stays in the caller's visible set after any sequence of writes | model test | ISSUE |
-| Update and prune-expired keep the state words and the pagination correct after any sequence | model test | ISSUE |
-| Related memories and tag counts stay in the caller's visible set after share, archive and supersede | model test | ISSUE |
+| Every search result stays in the caller's visible set after any sequence of writes | model test | [#932](https://github.com/seanb4t/engram/issues/932) |
+| Update and prune-expired keep the state words and the pagination correct after any sequence | model test | [#932](https://github.com/seanb4t/engram/issues/932) |
+| Related memories and tag counts stay in the caller's visible set after share, archive and supersede | model test | [#932](https://github.com/seanb4t/engram/issues/932) |
 
 ### MCP lane
 
@@ -91,9 +91,9 @@ The gap review lists, for each area, behaviour that no test covers and the test 
 | --- | --- | --- |
 | Write size bounds give the same envelope on both lanes | model test | Closed by `TestModelWriteBounds` |
 | A replayed store or supersede returns the same record and writes nothing | model test | Closed by `TestModelIdempotency` |
-| `recall_gate_hidden` on `search_memory` matches the recall gate | model test | ISSUE |
-| A replayed `schedule_memory` with the same `idempotency_key` writes nothing | model test | ISSUE |
-| `delete_all` never removes a record that another caller owns | model test | ISSUE |
+| `recall_gate_hidden` on `search_memory` matches the recall gate | model test | [#933](https://github.com/seanb4t/engram/issues/933) |
+| A replayed `schedule_memory` with the same `idempotency_key` writes nothing | model test | [#933](https://github.com/seanb4t/engram/issues/933) |
+| `delete_all` never removes a record that another caller owns | model test | [#933](https://github.com/seanb4t/engram/issues/933) |
 
 ### Connect lane
 
@@ -102,8 +102,8 @@ The gap review lists, for each area, behaviour that no test covers and the test 
 | MCP and Connect give the same outcome, field and hint for store, schedule, supersede, update and list | model test | Closed by `TestModelLaneParity` |
 | A Connect window bound fails with `hint=format` or parses to an equal instant | fuzz target | Closed by `FuzzParseConnectWindowBound` |
 | The wire negative matrix covers archive, restore, supersede, the schedule window order and nested citations | scenario test | [#357](https://github.com/seanb4t/engram/issues/357) |
-| Lane parity runs through the validation and auth interceptors that real Connect callers pass | model test | ISSUE |
-| Generated lane parity covers archive, restore, delete, set visibility and search | model test | ISSUE |
+| Lane parity runs through the validation and auth interceptors that real Connect callers pass | model test | [#934](https://github.com/seanb4t/engram/issues/934) |
+| Generated lane parity covers archive, restore, delete, set visibility and search | model test | [#934](https://github.com/seanb4t/engram/issues/934) |
 
 ### CLI
 
@@ -112,7 +112,7 @@ The gap review lists, for each area, behaviour that no test covers and the test 
 | Operator text output holds no control character for any input | fuzz target | Closed by `FuzzSanitizeViewValue` |
 | State words and hint exit codes hold for generated records and hints | property test | Closed by `TestPropertyDerivedState` and `TestPropertyHintExitCode` |
 | A stored record goes through `memoryToProto` to the rendered CLI document | scenario test | [#499](https://github.com/seanb4t/engram/issues/499) |
-| The terminal console keeps a valid selection and overlay state for any key sequence | model test | ISSUE |
+| The terminal console keeps a valid selection and overlay state for any key sequence | model test | [#935](https://github.com/seanb4t/engram/issues/935) |
 
 ### internal/migrate
 
@@ -120,18 +120,18 @@ The gap review lists, for each area, behaviour that no test covers and the test 
 | --- | --- | --- |
 | Every registered step is additive for any version-0 payload | property test | Closed by `TestPropertyStepAdditive` |
 | The sweep reaches the current version once and changes nothing on a second run | model test | Closed by `TestModelMigrateSweep` |
-| Applying the registry to its own output changes nothing, and never changes the input map | property test | ISSUE |
-| `Validate` and `StepsFrom` accept and select only well-formed chains, for generated step lists | property test | ISSUE |
+| Applying the registry to its own output changes nothing, and never changes the input map | property test | [#936](https://github.com/seanb4t/engram/issues/936) |
+| `Validate` and `StepsFrom` accept and select only well-formed chains, for generated step lists | property test | [#936](https://github.com/seanb4t/engram/issues/936) |
 
 ### Auth and authz
 
 | Gap | Test kind | Status |
 | --- | --- | --- |
 | `DecideRecord` matches the isolation model for every principal, record and action | property test | Closed by `TestPropertyAuthz` |
-| `DecideBucket` matches the isolation model | property test | ISSUE |
-| The namespaced owner is injective for generated issuer and subject pairs | property test | ISSUE |
-| Session unsealing and bearer extraction never panic and accept only well-formed values | fuzz target | ISSUE |
-| A CSRF token verifies only for the owner it was minted for | property test | ISSUE |
+| `DecideBucket` matches the isolation model | property test | [#937](https://github.com/seanb4t/engram/issues/937) |
+| The namespaced owner is injective for generated issuer and subject pairs | property test | [#937](https://github.com/seanb4t/engram/issues/937) |
+| Session unsealing and bearer extraction never panic and accept only well-formed values | fuzz target | [#937](https://github.com/seanb4t/engram/issues/937) |
+| A CSRF token verifies only for the owner it was minted for | property test | [#937](https://github.com/seanb4t/engram/issues/937) |
 
 ### internal/e2e
 
@@ -139,15 +139,15 @@ The gap review lists, for each area, behaviour that no test covers and the test 
 | --- | --- | --- |
 | `engram migrate` status, apply and status run against the full stack | e2e test | [#652](https://github.com/seanb4t/engram/issues/652) |
 | Console write flows log in through a token-issuing OIDC provider | e2e test | [#366](https://github.com/seanb4t/engram/issues/366) |
-| The console restores a draft from the re-auth resume envelope after the session expires mid-write | e2e test | ISSUE |
+| The console restores a draft from the re-auth resume envelope after the session expires mid-write | e2e test | [#938](https://github.com/seanb4t/engram/issues/938) |
 
 ### ui/
 
 | Gap | Test kind | Status |
 | --- | --- | --- |
 | `classifyInput` returns the right outcome for generated input | property test | Closed by `classify.property.test.ts` |
-| The search, related, rules and scheduled URL parameters survive an encode and a parse | property test | ISSUE |
-| A resume destination is never an off-origin or unknown route | property test | ISSUE |
+| The search, related, rules and scheduled URL parameters survive an encode and a parse | property test | [#939](https://github.com/seanb4t/engram/issues/939) |
+| A resume destination is never an off-origin or unknown route | property test | [#939](https://github.com/seanb4t/engram/issues/939) |
 | The chain dialog and supersede footer browser tests pass on every run | browser test | [#851](https://github.com/seanb4t/engram/issues/851) |
 | On a feature branch, an embedded console older than the `ui/` sources fails the check | scenario test | [#723](https://github.com/seanb4t/engram/issues/723) |
 
@@ -156,15 +156,15 @@ The gap review lists, for each area, behaviour that no test covers and the test 
 | Gap | Test kind | Status |
 | --- | --- | --- |
 | Go `NormalizeRemote` gives `host/owner/repo` for generated remotes | property test | Closed by `TestPropertyNormalizeRemote` |
-| The Python scope derivation matches Go for generated remotes and worktree names | property test | ISSUE |
-| Two hooks for one session show the capture nudge once | scenario test | ISSUE |
-| The session-start hook works with a built `engram prime` against a live server | e2e test | ISSUE |
+| The Python scope derivation matches Go for generated remotes and worktree names | property test | [#940](https://github.com/seanb4t/engram/issues/940) |
+| Two hooks for one session show the capture nudge once | scenario test | [#940](https://github.com/seanb4t/engram/issues/940) |
+| The session-start hook works with a built `engram prime` against a live server | e2e test | [#940](https://github.com/seanb4t/engram/issues/940) |
 
 ### Helm chart
 
 | Gap | Test kind | Status |
 | --- | --- | --- |
-| `expose.mode` ingress and httproute render, and a missing host, missing parentRefs or unknown mode fails | chart test | ISSUE |
-| The OIDC and console values render their `ENGRAM_` variables, with the client secret as a secret reference | chart test | ISSUE |
-| Every `ENGRAM_` variable that the chart renders is a key the binary knows | chart test | ISSUE |
-| The Qdrant S3 snapshot values render | chart test | ISSUE |
+| `expose.mode` ingress and httproute render, and a missing host, missing parentRefs or unknown mode fails | chart test | [#941](https://github.com/seanb4t/engram/issues/941) |
+| The OIDC and console values render their `ENGRAM_` variables, with the client secret as a secret reference | chart test | [#941](https://github.com/seanb4t/engram/issues/941) |
+| Every `ENGRAM_` variable that the chart renders is a key the binary knows | chart test | [#941](https://github.com/seanb4t/engram/issues/941) |
+| The Qdrant S3 snapshot values render | chart test | [#941](https://github.com/seanb4t/engram/issues/941) |
