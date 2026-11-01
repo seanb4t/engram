@@ -102,7 +102,7 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 - [x] 5.5 Add `TestModelIdempotency` for store and supersede, with the five D6 assertions, including
   the byte-equal stored payload after the last replay. Verify: it prints `--- PASS` under `-v`, and
   a change that rewrites the payload on replay makes it fail. Revert the change.
-- [ ] 5.6 Measure the per-PR cost of every `TestModel` test on CI at the default `RAPID_CHECKS`.
+- [x] 5.6 Measure the per-PR cost of every `TestModel` test on CI at the default `RAPID_CHECKS`.
   Record it in design.md D11. If it goes over 50 s, split the CI test step as D11 describes, with
   disjoint `-skip '^TestModel'` and `-run '^TestModel'` selections. Verify: the PR's `test` job
   time grows by at most 50 s over the `main` baseline, and each `TestModel` test appears once in

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/qdrant/go-client/qdrant"
 	"pgregory.net/rapid"
 )
 
@@ -54,6 +55,9 @@ type storeModel struct {
 	records    map[string]*modelRecord
 	order      []string
 	principals []string
+	// touched is the record the last action named, if any. Its
+	// readability is checked by id after the action.
+	touched string
 }
 
 func (m *storeModel) nextID() string {
@@ -87,6 +91,7 @@ func (m *storeModel) put(t *rapid.T, principal string, nb, na *time.Time) {
 	}
 	m.records[id] = &modelRecord{owner: principal, shared: shared, notBefore: nb, notAfter: na}
 	m.order = append(m.order, id)
+	m.touched = id
 }
 
 func (m *storeModel) offset(t *rapid.T, label string) time.Time {
@@ -130,9 +135,11 @@ func (m *storeModel) actions() map[string]func(*rapid.T) {
 			if (err == nil) != ok {
 				t.Fatalf("Supersede(%v) by %s: err = %v, model says ok = %v", targets, principal, err, ok)
 			}
+			m.touched = targets[0]
 			if !ok {
 				return
 			}
+			m.touched = id
 			m.records[id] = &modelRecord{owner: principal}
 			m.order = append(m.order, id)
 			for _, target := range targets {
@@ -142,18 +149,21 @@ func (m *storeModel) actions() map[string]func(*rapid.T) {
 		"archive": func(t *rapid.T) {
 			principal := rapid.SampledFrom(m.principals).Draw(t, "principal")
 			id := m.anyID(t, "id")
+			m.touched = id
 			res, err := m.s.ArchiveAs(m.ctx, id, Authenticated(principal))
 			m.checkArchiveOutcome(t, "ArchiveAs", id, principal, res, err, true)
 		},
 		"restore": func(t *rapid.T) {
 			principal := rapid.SampledFrom(m.principals).Draw(t, "principal")
 			id := m.anyID(t, "id")
+			m.touched = id
 			res, err := m.s.RestoreAs(m.ctx, id, Authenticated(principal))
 			m.checkArchiveOutcome(t, "RestoreAs", id, principal, res, err, false)
 		},
 		"delete": func(t *rapid.T) {
 			principal := rapid.SampledFrom(m.principals).Draw(t, "principal")
 			id := m.anyID(t, "id")
+			m.touched = id
 			err := m.s.Delete(m.ctx, id, Authenticated(principal))
 			if ok := m.writable(id, principal); (err == nil) != ok || (!ok && !errors.Is(err, ErrNotFound)) {
 				t.Fatalf("Delete(%s) by %s: err = %v, model says ok = %v", id, principal, err, ok)
@@ -166,6 +176,7 @@ func (m *storeModel) actions() map[string]func(*rapid.T) {
 			principal := rapid.SampledFrom(m.principals).Draw(t, "principal")
 			id := m.anyID(t, "id")
 			shared := rapid.Bool().Draw(t, "shared")
+			m.touched = id
 			err := m.s.SetVisibility(m.ctx, id, Authenticated(principal), shared)
 			if ok := m.writable(id, principal); (err == nil) != ok {
 				t.Fatalf("SetVisibility(%s) by %s: err = %v, model says ok = %v", id, principal, err, ok)
@@ -200,18 +211,42 @@ func (m *storeModel) checkArchiveOutcome(t *rapid.T, verb, id, principal string,
 	}
 }
 
+// snapshot reads every record of the check's scope in one scroll, so the
+// invariant check costs a few calls per step instead of several per record.
+func (m *storeModel) snapshot(t *rapid.T) map[string]Memory {
+	pts, err := m.s.client.Scroll(m.ctx, &qdrant.ScrollPoints{
+		CollectionName: m.s.collection,
+		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatch("scope", m.scope)}},
+		Limit:          new(uint32(len(m.order) + 1)),
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		t.Fatalf("Scroll(%s): %v", m.scope, err)
+	}
+	out := make(map[string]Memory, len(pts))
+	for _, p := range pts {
+		id := p.GetId().GetUuid()
+		out[id] = fromPayload(id, p.GetPayload())
+	}
+	return out
+}
+
 func (m *storeModel) checkInvariants(t *rapid.T) {
 	for _, principal := range m.principals {
-		m.checkPagination(t, principal)
+		m.checkVisible(t, principal, uint64(len(m.order)+1))
 	}
+	stored := m.snapshot(t)
 	for _, id := range m.order {
 		r := m.records[id]
+		got, ok := stored[id]
 		if r.deleted {
+			if ok {
+				t.Fatalf("%s: deleted in the model but still stored", id)
+			}
 			continue
 		}
-		got, err := m.s.Get(m.ctx, id)
-		if err != nil {
-			t.Fatalf("Get(%s): %v", id, err)
+		if !ok {
+			t.Fatalf("%s: missing from the store", id)
 		}
 		if succ := deref(got.SupersededBy); succ != r.supersededBy {
 			t.Fatalf("%s: superseded_by = %q, model %q", id, succ, r.supersededBy)
@@ -225,23 +260,51 @@ func (m *storeModel) checkInvariants(t *rapid.T) {
 		if r.expired(m.now) && r.scheduled(m.now) {
 			t.Fatalf("%s: expired did not suppress scheduled", id)
 		}
-		m.checkNoCycle(t, id)
-		for _, principal := range m.principals {
-			_, err := m.s.GetReadable(m.ctx, id, Authenticated(principal))
-			if readable := r.owner == principal || r.shared; (err == nil) != readable {
-				t.Fatalf("GetReadable(%s) by %s: err = %v, model readable = %v", id, principal, err, readable)
-			}
+		checkNoCycle(t, stored, id)
+	}
+	if len(stored) != len(m.order)-m.deletedCount() {
+		t.Fatalf("store holds %d records, model %d", len(stored), len(m.order)-m.deletedCount())
+	}
+	m.checkTouchedReadable(t)
+}
+
+func (m *storeModel) deletedCount() int {
+	n := 0
+	for _, r := range m.records {
+		if r.deleted {
+			n++
+		}
+	}
+	return n
+}
+
+// checkTouchedReadable reads the last action's record by id for each
+// principal. The page walk covers every record that recall shows, and this
+// covers the hidden and deleted cases one record at a time.
+func (m *storeModel) checkTouchedReadable(t *rapid.T) {
+	r, ok := m.records[m.touched]
+	if !ok {
+		return
+	}
+	for _, principal := range m.principals {
+		_, err := m.s.GetReadable(m.ctx, m.touched, Authenticated(principal))
+		readable := !r.deleted && (r.owner == principal || r.shared)
+		if (err == nil) != readable {
+			t.Fatalf("GetReadable(%s) by %s: err = %v, model readable = %v", m.touched, principal, err, readable)
 		}
 	}
 }
 
-// checkPagination walks every cursor page and compares the union with the
-// model's recall-visible set, with no duplicate and no gap.
-func (m *storeModel) checkPagination(t *rapid.T, principal string) {
+// checkVisible walks every cursor page of pageSize records and compares the
+// union with the model's recall-visible set, with no duplicate and no gap.
+// After each step it runs with one page that holds every record. The walk
+// with small pages runs once, at the end of the sequence, because a walk
+// after every step costs a call per page per step.
+func (m *storeModel) checkVisible(t *rapid.T, principal string, pageSize uint64) {
 	var got []string
 	cursor := ""
 	for page := 0; ; page++ {
-		items, _, next, err := m.s.List(m.ctx, m.scope, Authenticated(principal), ListOptions{Limit: 2, CursorMode: true, Cursor: cursor})
+		items, _, next, err := m.s.List(m.ctx, m.scope, Authenticated(principal), ListOptions{Limit: pageSize, CursorMode: true, Cursor: cursor})
 		if err != nil {
 			t.Fatalf("List page %d for %s: %v", page, principal, err)
 		}
@@ -270,22 +333,18 @@ func (m *storeModel) checkPagination(t *rapid.T, principal string) {
 	}
 }
 
-func (m *storeModel) checkNoCycle(t *rapid.T, id string) {
+func checkNoCycle(t *rapid.T, stored map[string]Memory, id string) {
 	seen := map[string]bool{}
 	for cur := id; cur != ""; {
 		if seen[cur] {
 			t.Fatalf("supersession chain from %s has a cycle at %s", id, cur)
 		}
 		seen[cur] = true
-		r, ok := m.records[cur]
-		if !ok || r.deleted {
+		next, ok := stored[cur]
+		if !ok {
 			return
 		}
-		got, err := m.s.Get(m.ctx, cur)
-		if err != nil {
-			t.Fatalf("Get(%s) in chain from %s: %v", cur, id, err)
-		}
-		cur = deref(got.SupersededBy)
+		cur = deref(next.SupersededBy)
 	}
 }
 
@@ -325,5 +384,9 @@ func TestModelStore(t *testing.T) {
 		// both clocks at once.
 		clock.Store(&m.now)
 		t.Repeat(m.actions())
+		pageSize := uint64(rapid.IntRange(1, 5).Draw(t, "page_size"))
+		for _, principal := range m.principals {
+			m.checkVisible(t, principal, pageSize)
+		}
 	})
 }

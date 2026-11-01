@@ -118,6 +118,12 @@ checker compares the store with the model:
 - Pagination: walking every cursor page returns the model's visible set with no duplicates and no
   gaps.
 
+The check reads the scope's records in one scroll and compares them with the model in memory,
+including the supersession chains. After each step it lists each principal's visible set in one
+page and reads the touched record by id for each principal. The walk with small pages, from one to
+five records, runs once at the end of each sequence. A check that read each record by id after every
+step cost several calls per record, so its cost grew with the square of the sequence length.
+
 Search is not in the action set, because the model cannot predict vector ranking. A search
 invariant is stated as membership only: every search result is in the caller's visible set.
 
@@ -273,7 +279,9 @@ Measured on the pull request's CI run 41310756650 at the default 100 checks: `in
 from 117 s to 203 s and `internal/server` from 29 s to 52 s, so the `Test` step grew by 89 s. That
 is over the budget, so the step is split. The first step runs `go test -skip '^TestModel' ./...`.
 The second step runs `RAPID_CHECKS=40 go test -v -run '^TestModel'` on the two packages. Locally,
-40 checks take 16 s for the store tests and 7 s for the server tests.
+40 checks take 16 s for the store tests and 7 s for the server tests. On CI run 41311571499, the model step took 25 s and
+the `test` job took 297 s, against 254 s to 273 s for the last four `main` runs. Each `TestModel` test
+appears once in the job log.
 
 ### D12. The test plan lives in the contributor docs
 

@@ -153,7 +153,7 @@ jobs:
           ENGRAM_QDRANT_TEST_ADDR: localhost:6334
           # The per-PR budget for the TestModel tests is 50 s on top of the
           # main step. The weekly deep-test workflow runs them at a high count.
-          RAPID_CHECKS: "40"
+          RAPID_CHECKS: "100"
         run: go test -v -run '^TestModel' ./internal/store/... ./internal/server/...
       # D-19: capture WHY the Qdrant container died as a CI post-step rather
       # than in-Go — when the container dies mid-run the Go process often
