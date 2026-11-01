@@ -78,8 +78,8 @@ github.com/bufbuild/protocompile v0.14.2-0.20261020145055-56248e843b50 h1:JjQ4WX
 github.com/bufbuild/protocompile v0.14.2-0.20261020145055-56248e843b50/go.mod h1:mcyF/iWO0TSVh4LvVBH5gJO1N9pQyooNy+XR4tNlbO0=
 github.com/bufbuild/protoplugin v0.0.0-20260414125817-25d1d281b46b h1:b7wvo9ZhjLzCp7tGbOUMvgtYTnd33zGSAmMxcdxMnhQ=
 github.com/bufbuild/protoplugin v0.0.0-20260414125817-25d1d281b46b/go.mod h1:c5D8gWRIZ2HLWO3gXYTtUfw/hbJyD8xikv2ooPxnklQ=
-github.com/cedar-policy/cedar-go v1.8.0 h1:9gcU7EHXwHC2RMdpph68yTAkdB3behTTssC+kt4GoS8=
-github.com/cedar-policy/cedar-go v1.8.0/go.mod h1:h5+3CVW1oI5LXVskJG+my9TFCYI5yjh/+Ul3EJie6MI=
+github.com/cedar-policy/cedar-go v1.9.0 h1:p6KSbPT0E79gO5mXNdwAqbDPn4ypz7gX5WV0ScLWmFc=
+github.com/cedar-policy/cedar-go v1.9.0/go.mod h1:+pmZnfwQkIUKO9qHzoL2wg8Q6xn7c9le15sexhinvVw=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
