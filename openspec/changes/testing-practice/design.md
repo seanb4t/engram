@@ -267,7 +267,13 @@ rapid reads one check count per test binary. So each stage with its own count ru
 The per-PR `TestModel` budget is a measurement to take before shipping. If the default count goes
 over 50 s, the CI test step splits in two. The first step runs `go test -skip '^TestModel' ./...`.
 The second runs `RAPID_CHECKS=<n> go test -run '^TestModel'` on the two packages, with `<n>` set to
-fit the budget. The task records the measured values here.
+fit the budget.
+
+Measured on the pull request's CI run 41310756650 at the default 100 checks: `internal/store` grew
+from 117 s to 203 s and `internal/server` from 29 s to 52 s, so the `Test` step grew by 89 s. That
+is over the budget, so the step is split. The first step runs `go test -skip '^TestModel' ./...`.
+The second step runs `RAPID_CHECKS=40 go test -v -run '^TestModel'` on the two packages. Locally,
+40 checks take 16 s for the store tests and 7 s for the server tests.
 
 ### D12. The test plan lives in the contributor docs
 

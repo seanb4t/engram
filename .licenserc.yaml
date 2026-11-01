@@ -24,6 +24,9 @@ header:
     - "AGENTS.md"
     - "**/*.golden"
     - "**/.gitkeep"
+    # Go fuzz corpus files must start with "go test fuzz v1", so they cannot
+    # carry a header.
+    - "**/testdata/fuzz/**"
     # Python test/lint caches (created by `task test:python` under skill/**);
     # the root .pytest_cache/.ruff_cache are already git-ignored, but the tools
     # also drop nested caches (e.g. skill/engram/hooks/.pytest_cache) that a

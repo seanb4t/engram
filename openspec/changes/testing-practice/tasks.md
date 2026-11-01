@@ -120,7 +120,7 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 - [ ] 6.3 Add an upload step to the fuzz job. It runs only on failure, and it uploads the new
   `testdata/fuzz/` files as an artifact. Verify: a manual dispatch from the branch completes, and
   both jobs pass.
-- [ ] 6.4 Verify the failure rules. In a scratch branch, make one fuzz target and one invariant test
+- [x] 6.4 Verify the failure rules. In a scratch branch, make one fuzz target and one invariant test
   fail, and dispatch the workflow. Verify: the run fails, the failing input is an artifact, and the
   invariant job log names the replay seed. Delete the scratch branch.
 - [x] 6.5 Make sure that the deep stages stay off the per-PR path. Review `task --dry` and
@@ -150,8 +150,8 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 
 ## 8. Quality gate
 
-- [ ] 8.1 Run `task` (lint and test). Verify: it exits 0.
-- [ ] 8.2 Run `task ui:build`. Verify: `git diff --exit-code internal/webauth/static/` passes.
+- [x] 8.1 Run `task` (lint and test). Verify: it exits 0.
+- [x] 8.2 Run `task ui:build`. Verify: `git diff --exit-code internal/webauth/static/` passes.
 
 ## Workflow follow-up
 
