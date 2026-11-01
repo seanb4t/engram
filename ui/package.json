@@ -29,7 +29,7 @@
     "fast-check": "4.10.2",
     "paneforge": "1.0.2",
     "playwright": "1.64.1",
-    "shadcn-svelte": "1.7.1",
+    "shadcn-svelte": "1.7.2",
     "svelte": "5.57.3",
     "svelte-check": "4.7.7",
     "svelte-sonner": "1.2.2",
