@@ -83,23 +83,23 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 
 ## 5. Server invariant tests
 
-- [ ] 5.1 Change `listRecallHidden` to read the `deps` clock instead of `time.Now()`. Verify: the
+- [x] 5.1 Change `listRecallHidden` to read the `deps` clock instead of `time.Now()`. Verify: the
   existing `internal/server` tests pass unchanged, and `rg -n 'time\.Now' internal/server/hiddencount.go`
   finds nothing.
-- [ ] 5.2 Add `TestModelRecallHidden` from design D4: under a controlled clock, the counts from
+- [x] 5.2 Add `TestModelRecallHidden` from design D4: under a controlled clock, the counts from
   `deps.listMemory` match the model for the same ungated page and flags. Verify: it prints
   `--- PASS` under `-v`.
-- [ ] 5.3 Add `TestModelLaneParity` for the store, schedule, supersede, update and list verbs, with
+- [x] 5.3 Add `TestModelLaneParity` for the store, schedule, supersede, update and list verbs, with
   generators inside the lanes' shared contract and drawn from the `HintCode` list. Add the explicit
   update assertions: MCP rejects a missing `content` with `field=content hint=required`, and
   Connect applies the same partial update. Verify: it prints `--- PASS` under `-v`, and a change
   that makes one lane return a different `hint` for one field makes it fail. Revert the change.
-- [ ] 5.4 Add `TestModelWriteBounds` for store, schedule, supersede, update, store rule and store
+- [x] 5.4 Add `TestModelWriteBounds` for store, schedule, supersede, update, store rule and store
   discovery on both lanes. Memory limits come from the test configuration, rule and discovery
   limits from the production constants, and a 0 summary limit asserts no summary rejection.
   Verify: it prints `--- PASS` under `-v`, and the shrunk counterexample for a deliberately
   off-by-one limit names that field. Revert the break.
-- [ ] 5.5 Add `TestModelIdempotency` for store and supersede, with the five D6 assertions, including
+- [x] 5.5 Add `TestModelIdempotency` for store and supersede, with the five D6 assertions, including
   the byte-equal stored payload after the last replay. Verify: it prints `--- PASS` under `-v`, and
   a change that rewrites the payload on replay makes it fail. Revert the change.
 - [ ] 5.6 Measure the per-PR cost of every `TestModel` test on CI at the default `RAPID_CHECKS`.
@@ -113,7 +113,7 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 - [ ] 6.1 Add `task test:deep`. It runs every Go fuzz target for 60 s in turn (targets listed with
   `go test -list '^Fuzz'`), then runs the two D11 deep invocations for `TestProperty` and
   `TestModel`. Verify: `task test:deep` runs each target and exits 0 on a clean tree.
-- [ ] 6.2 Add `.github/workflows/deep-test.yaml` with a weekly cron and `workflow_dispatch`,
+- [x] 6.2 Add `.github/workflows/deep-test.yaml` with a weekly cron and `workflow_dispatch`,
   `permissions: contents: read`, and the two D10 jobs. The invariant job uses the Qdrant image that
   `ci.yaml` pins. Verify: `actionlint` passes, and the file names no secret other than
   `GITHUB_TOKEN`.
@@ -123,7 +123,7 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 - [ ] 6.4 Verify the failure rules. In a scratch branch, make one fuzz target and one invariant test
   fail, and dispatch the workflow. Verify: the run fails, the failing input is an artifact, and the
   invariant job log names the replay seed. Delete the scratch branch.
-- [ ] 6.5 Make sure that the deep stages stay off the per-PR path. Review `task --dry` and
+- [x] 6.5 Make sure that the deep stages stay off the per-PR path. Review `task --dry` and
   `task --dry test`, and every workflow that `rg -l 'pull_request' .github/workflows` lists,
   including the commands each one invokes. Verify: none of them runs `test:deep`, a `-fuzz` or
   `-fuzztime` flag, or the deep-run `RAPID_CHECKS` or `RAPID_STEPS` values. The PR's
@@ -131,21 +131,21 @@ of a `TestModel` test sets `ENGRAM_REQUIRE_QDRANT=1`.
 
 ## 7. Practice and test plan
 
-- [ ] 7.1 Update `openspec/config.yaml` as design D13 describes, in `context`, `rules.specs`,
+- [x] 7.1 Update `openspec/config.yaml` as design D13 describes, in `context`, `rules.specs`,
   `rules.design` and `rules.tasks`. Verify: `openspec instructions specs --change testing-practice
   --json` shows the new rules, and `task lint` passes.
-- [ ] 7.2 Write `docs-site/src/content/docs/contributing/testing.md` with the test plan from design
+- [x] 7.2 Write `docs-site/src/content/docs/contributing/testing.md` with the test plan from design
   D12: test kinds per layer, the D2 name prefixes, and the per-PR, `main`, weekly and on-demand
   runs. Include how to replay a failing seed and how to commit a fuzz input. Verify:
   `task lint:markdown` passes and the docs-site build lists the page under Contributing.
-- [ ] 7.3 Run the gap review for each area: `internal/store`, the MCP lane, the Connect lane, the
+- [x] 7.3 Run the gap review for each area: `internal/store`, the MCP lane, the Connect lane, the
   CLI, `internal/migrate`, auth and authz, `internal/e2e`, `ui/`, the skill hooks and the Helm
   chart. Add one table per area to the testing page, with the test kind that closes each gap.
   Verify: every area has a table, and each row names a test kind.
 - [ ] 7.4 File a GitHub issue for each gap that this change does not close. Fold in the open test
   issues #851, #646, #652, #366, #499, #357 and #723 where they fit. Link each issue from its row.
   Verify: every row that this change does not close has an issue link.
-- [ ] 7.5 Leave the engram skill and the CLAUDE.md memory contract unchanged, because no agent
+- [x] 7.5 Leave the engram skill and the CLAUDE.md memory contract unchanged, because no agent
   capability changes. Verify: `git diff main -- skill/ CLAUDE.md` is empty.
 
 ## 8. Quality gate
