@@ -71,5 +71,5 @@ ui/**/__screenshots__/
 # Private real-spine pair files for ENGRAM_CURATION_EVAL_PAIRS (D-01); never commit
 internal/curationeval/testdata/local/
 
-# rapid failure files (replay with -rapid.seed)
-testdata/rapid/
+# rapid failure files, written under each test package (replay with -rapid.seed)
+**/testdata/rapid/

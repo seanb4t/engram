@@ -61,7 +61,7 @@ To replay it, run the same test with that seed:
 go test ./internal/store -run '^TestModelStore$' -rapid.seed=7038422364071888785 -v
 ```
 
-rapid also writes a failure file under `testdata/rapid/`. Git ignores that directory, so do not commit it. The seed replays the failure.
+rapid also writes a failure file under the test package's `testdata/rapid/` directory. Git ignores that directory in every package, so do not commit it. The seed replays the failure.
 
 A failing fuzz run writes its input to the package's `testdata/fuzz/<target>/` directory and prints the command that replays it:
 
