@@ -48,7 +48,7 @@ require (
 	// (repo rule xvqj44e5mk: prefer an established upstream over a
 	// hand-rolled parser). Already resolved in go.sum and reached
 	// transitively today by cobra/doc and buf — no new module is fetched.
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.37.0-rc.1
