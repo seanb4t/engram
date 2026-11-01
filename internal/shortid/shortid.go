@@ -35,20 +35,21 @@ func New() (string, error) {
 }
 
 // Canonical normalizes a caller-supplied handle to the stored form for exact
-// comparison: trims whitespace, folds Crockford's confusable glyphs (i/I/l/L → 1,
-// o/O → 0), and lowercases everything else.
+// comparison: trims whitespace, lowercases every rune, then folds Crockford's
+// confusable glyphs (i/l → 1, o → 0), so a rune that lowercases to one of them
+// folds too.
 func Canonical(s string) string {
 	s = strings.TrimSpace(s)
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
-		switch r {
-		case 'i', 'I', 'l', 'L':
+		switch r = unicode.ToLower(r); r {
+		case 'i', 'l':
 			b.WriteByte('1')
-		case 'o', 'O':
+		case 'o':
 			b.WriteByte('0')
 		default:
-			b.WriteRune(unicode.ToLower(r))
+			b.WriteRune(r)
 		}
 	}
 	return b.String()
