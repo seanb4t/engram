@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.31.2](https://github.com/seanb4t/engram/compare/v0.31.1...v0.31.2) (2026-11-02)
+
+
+### Bug Fixes
+
+* **deps:** update dependency tailwind-variants to v4 ([#948](https://github.com/seanb4t/engram/issues/948)) ([b189819](https://github.com/seanb4t/engram/commit/b189819631da98e420934bfcc3a0a393c33ab9cc))
+* **deps:** update module github.com/cedar-policy/cedar-go to v1.9.0 ([#951](https://github.com/seanb4t/engram/issues/951)) ([1623ddd](https://github.com/seanb4t/engram/commit/1623ddd8e65e3c07fa41679b0e9fda8c7991560b))
+* **deps:** update module github.com/cenkalti/backoff/v7 to v7.0.2 ([#946](https://github.com/seanb4t/engram/issues/946)) ([edc2f35](https://github.com/seanb4t/engram/commit/edc2f35e61d30d943d7908ae1b9171e12772b737))
+
 ## [0.31.1](https://github.com/seanb4t/engram/compare/v0.31.0...v0.31.1) (2026-11-01)
 
 
