@@ -20,28 +20,28 @@ a subtest title with underscores, so match the underscore form of each scenario 
 
 ## 2. Translator
 
-- [ ] 2.1 Add the rule table and the translator in `internal/server/connectvalidate.go`, and return
+- [x] 2.1 Add the rule table and the translator in `internal/server/connectvalidate.go`, and return
   through `connectError`. Apply D1, D2 and D3. Correct the function comment that says a validation
   failure maps to `CodeInvalidArgument`. Verify: `go build ./...` passes.
-- [ ] 2.2 Add scenario tests for `A field constraint failure carries the envelope`, one subtest per
+- [x] 2.2 Add scenario tests for `A field constraint failure carries the envelope`, one subtest per
   scenario title, over the mounted chain with `newSpyDeps`. Verify: `go test -v ./internal/server
   -run 'TestConnectRejectionEnvelope'` prints a `--- PASS` line for each scenario.
-- [ ] 2.3 Add scenario tests for `An empty value reaches the core`, `A cross-field constraint failure
+- [x] 2.3 Add scenario tests for `An empty value reaches the core`, `A cross-field constraint failure
   carries the envelope`, `One rejection names one failure` and `A rejection never echoes the value`.
   Verify: the same command prints a `--- PASS` line for each scenario title.
-- [ ] 2.4 Add scenario tests for `A constraint with no mapped hint stays a client error`, with a fake
+- [x] 2.4 Add scenario tests for `A constraint with no mapped hint stays a client error`, with a fake
   validator that returns a `ValidationError` with an unknown rule id. Verify: a `--- PASS` line for
   both scenarios.
-- [ ] 2.5 Add a scenario test for each lane of `The category allowlist differs between lanes`. Verify:
+- [x] 2.5 Add a scenario test for each lane of `The category allowlist differs between lanes`. Verify:
   a `--- PASS` line for both scenarios.
-- [ ] 2.6 Add subtests for `An unauthenticated caller with an invalid request` and `A failed CSRF
+- [x] 2.6 Add subtests for `An unauthenticated caller with an invalid request` and `A failed CSRF
   check with an invalid request`. Each sends an invalid payload and asserts the code and that the
   message holds no `field=`. Verify: a `--- PASS` line for both scenarios.
-- [ ] 2.7 Run `TestWriteRPCNegativeMatrix` and the tests in `connectvalidate_test.go` as they stand.
+- [x] 2.7 Run `TestWriteRPCNegativeMatrix` and the tests in `connectvalidate_test.go` as they stand.
   Verify: `go test -v ./internal/server -run 'TestWriteRPCNegativeMatrix|Validate'` prints
   `--- PASS: TestWriteRPCNegativeMatrix`, and the change edits no cell of that matrix. If a cell must
   change, stop and record why in the PR.
-- [ ] 2.8 Update `docs-site/src/content/docs/reference/errors.md`: state that a declared constraint
+- [x] 2.8 Update `docs-site/src/content/docs/reference/errors.md`: state that a declared constraint
   failure carries the envelope, add the pseudo-field `request` beside `response`, and state that the
   category allowlist is Connect-only. Add an entry to the Unreleased section of
   `docs-site/src/content/docs/guides/upgrade.md` for the changed text and codes. Search with

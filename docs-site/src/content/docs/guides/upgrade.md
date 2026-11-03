@@ -45,6 +45,7 @@ one predictable, migration-safe contract.
 | run a bare `engram` from a script or an agent to read the self-describe catalog | §24 |
 | rely on a `401` from the MCP path carrying no `WWW-Authenticate` header, set `ENGRAM_MCP_RESOURCE_URL` to a value with userinfo or an unusual host, or compare the derived `resource` value byte for byte | §25 |
 | treat exit `7` as meaning only `spine-review verify --fail-on` findings | §26 |
+| branch on a Connect error code or the text of a Connect validation failure | §27 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -693,6 +694,28 @@ only command that exited with it.
 only `spine-review verify` findings.
 
 ---
+
+### 27. Connect validation failures now carry the field and hint envelope
+
+A Connect request that fails a constraint in `engram.proto` now returns the same
+`field=<name> hint=<code>: <detail>` envelope as a failure in the shared core. Before this
+release, the request returned the validation library's text, for example
+`validation error: content: must be at least 1 characters`.
+
+The Connect code now follows the failure's class on this path too:
+
+- A byte or item bound moves from `CodeInvalidArgument` to `CodeOutOfRange`.
+- A `ScheduleMemory` window in the wrong order moves from `CodeInvalidArgument` to
+  `CodeFailedPrecondition`.
+- `ScheduleMemory` with `category` set to `discovery` moves from `CodeInvalidArgument` to
+  `CodeFailedPrecondition`, with `hint=not_applicable`.
+- An empty `category` on `StoreMemory` or `ScheduleMemory`, and an empty `scope` on
+  `StoreDiscovery`, now give `hint=required`.
+
+**The `engram` CLI needs no change.** All of these codes give exit `2`. A Connect client
+that reads the old text, or that handles only `CodeInvalidArgument`, must change. Parse the
+`field=` and `hint=` prefix, and handle the three codes in the
+[class-to-code table](/reference/errors/#the-class-to-connect-code-mapping).
 
 ## v0.7.10 — Recall returns summaries by default
 
