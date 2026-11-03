@@ -10,13 +10,25 @@ the field, the machine-stable hint and the Connect code, in the envelope the MCP
 ### Requirement: A field constraint failure carries the envelope
 
 A Connect request that fails a constraint on one field SHALL be rejected with the message
-`field=<name> hint=<code>: <detail>`. The hint SHALL equal the hint the shared core gives for the
-same failure, and the Connect code SHALL follow the hint's class in `reference/errors.md`.
+`field=<name> hint=<code>: <detail>`. Where the shared core checks the same field, the hint SHALL
+equal the hint the core gives. The Connect code SHALL follow the failure's class, through the
+class-to-code table in `reference/errors.md`.
 
 #### Scenario: An empty required string
 
 - **WHEN** a caller sends `StoreMemory` with an empty `content`
 - **THEN** the call fails with `field=content hint=required` and `CodeInvalidArgument`
+
+#### Scenario: An empty scope on a memory write
+
+- **WHEN** a caller sends `StoreMemory` or `ScheduleMemory` with an empty `scope`
+- **THEN** the call fails with `field=scope hint=required` and `CodeInvalidArgument`
+
+#### Scenario: An empty id
+
+- **WHEN** a caller sends `UpdateMemory`, `DeleteMemory` or `SetVisibility` with an empty `id`, and
+  the request is otherwise valid
+- **THEN** the call fails with `field=id hint=required` and `CodeInvalidArgument`
 
 #### Scenario: A value outside an allowed set
 
@@ -49,9 +61,25 @@ same failure, and the Connect code SHALL follow the hint's class in `reference/e
 - **WHEN** a caller sends `StoreDiscovery` with one citation over the declared bound
 - **THEN** the call fails with `field=citations hint=too_many` and `CodeOutOfRange`
 
-#### Scenario: A nested citation field
+#### Scenario: A citation with a bad kind
 
 - **WHEN** a caller sends `StoreDiscovery` with a citation whose `kind` is not an allowed value
+- **THEN** the call fails with `field=citations[i].kind hint=enum` and `CodeInvalidArgument`
+
+#### Scenario: A citation with no ref
+
+- **WHEN** a caller sends `StoreDiscovery` with a citation whose `ref` is empty
+- **THEN** the call fails with `field=citations[i].ref hint=required` and `CodeInvalidArgument`
+
+#### Scenario: A citation excerpt over its byte bound
+
+- **WHEN** a caller sends `StoreDiscovery` with a citation whose `excerpt` is one byte over the
+  declared bound
+- **THEN** the call fails with `field=citations[i].excerpt hint=too_long` and `CodeOutOfRange`
+
+#### Scenario: A superseding record with a bad citation
+
+- **WHEN** a caller sends `SupersedeMemory` with a citation whose `kind` is not an allowed value
 - **THEN** the call fails with `field=citations[i].kind hint=enum` and `CodeInvalidArgument`
 
 #### Scenario: A missing update mask
@@ -72,6 +100,11 @@ on `StoreDiscovery`, SHALL be rejected as a missing field, not as a value outsid
 #### Scenario: An empty category
 
 - **WHEN** a caller sends `StoreMemory` with an empty `category`
+- **THEN** the call fails with `field=category hint=required` and `CodeInvalidArgument`
+
+#### Scenario: An empty category on a schedule
+
+- **WHEN** a caller sends `ScheduleMemory` with an empty `category` and a valid window
 - **THEN** the call fails with `field=category hint=required` and `CodeInvalidArgument`
 
 #### Scenario: An empty discovery scope
@@ -111,11 +144,10 @@ declared surface rule, or of the message rule where no surface rule exists.
 A Connect request that fails several constraints SHALL receive one envelope. A failure on a field
 SHALL take precedence over a failure across fields.
 
-#### Scenario: Both a field rule and a message rule fail
+#### Scenario: A field failure and a window failure
 
-- **WHEN** a caller sends `UpdateMemory` with an `id` and no `update_mask`, so that the field rule and
-  the message rule both fail
-- **THEN** the single envelope names `field=update_mask hint=required`
+- **WHEN** a caller sends `ScheduleMemory` with an empty `content` and no window
+- **THEN** the single envelope names `field=content hint=required`
 
 ### Requirement: A rejection never echoes the value
 
@@ -152,6 +184,11 @@ checks does not change.
 - **WHEN** an unauthenticated caller sends a request that fails a constraint
 - **THEN** the call fails with `CodeUnauthenticated` and the message names no request field
 
+#### Scenario: A failed CSRF check with an invalid request
+
+- **WHEN** an authenticated caller who fails the CSRF check sends a request that fails a constraint
+- **THEN** the call fails with `CodePermissionDenied` and the message names no request field
+
 ### Requirement: The category allowlist differs between lanes
 
 `StoreMemory` and `ScheduleMemory` on Connect SHALL reject an unlisted non-empty `category`.
@@ -159,10 +196,10 @@ checks does not change.
 
 #### Scenario: An unlisted category on Connect
 
-- **WHEN** a caller sends `StoreMemory` with `category` set to `handoff`
+- **WHEN** a caller sends `StoreMemory` or `ScheduleMemory` with `category` set to `handoff`
 - **THEN** the call fails with `field=category hint=enum` and `CodeInvalidArgument`
 
 #### Scenario: An unlisted category on MCP
 
-- **WHEN** a caller sends `store_memory` with `category` set to `handoff`
+- **WHEN** a caller sends `store_memory` or `schedule_memory` with `category` set to `handoff`
 - **THEN** the call succeeds and the record carries that category

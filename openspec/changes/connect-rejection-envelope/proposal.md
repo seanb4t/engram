@@ -4,10 +4,10 @@
 
 Originating issues: #942, a follow-up to #923.
 
-Issue #942 asks for lane-parity cases that derive from the constraints in the proto and the surface rules.
-The work found a defect that #942 did not name. The Connect validation interceptor rejects a request
-before the shared core runs, and its error has no `field=`/`hint=` envelope. An empty `content`
-returns `validation error: content: must be at least 1 characters` on Connect and
+Issue #942 asks for lane-parity cases that derive from the constraints in the proto and the surface
+rules. The work found a defect that #942 did not name. The Connect validation interceptor rejects a
+request before the shared core runs, and its error has no `field=`/`hint=` envelope. An empty
+`content` returns `validation error: content: must be at least 1 characters` on Connect and
 `field=content hint=required` on MCP. docs-site `reference/errors.md` promises the same envelope on
 both lanes.
 
@@ -35,7 +35,8 @@ envelope. The fix and the derived test ship together.
 
 ## Out of Scope
 
-- The remaining CI waste items in #923. That issue says they ship as their own PRs.
+- The remaining CI waste items in #923. That issue allows them to ship as their own PRs, and this
+  change leaves them to those PRs.
 - #924 (mutation testing) and the area gap issues #932 to #941.
 - #944 (MCP `supersede_memory` with an empty array). It is a gap in the same contract, but on the MCP
   lane, and it needs its own decision about the input schema.
@@ -54,20 +55,23 @@ envelope. The fix and the derived test ship together.
 
 ### Modified Capabilities
 
-- `test-practice`: Adds the requirement that lane-parity cases derive from the declared constraints.
+- `test-practice`: Adds two requirements: lane-parity cases derive from the declared constraints, and
+  derived cases assert the outcome that engram gives.
 
 ## Impact
 
 - **MCP tool schemas:** deliberately unchanged. The rejections on this lane stay as they are.
 - **Connect proto:** constraint options change on `StoreMemoryRequest`, `ScheduleMemoryRequest` and
-  `StoreDiscoveryRequest`. No field changes. This is a compatibility decision about error text and
-  codes, not about the message shapes. No client reads the old text: `rg 'validation error'` finds no
-  consumer in `internal/`, `cmd/`, `ui/src/` or `skill/`.
-- **Hint codes:** no new code. Connect now emits existing codes on more paths.
+  `StoreDiscoveryRequest`. `SupersedeMemoryRequest` changes only in its comment, but its rejections
+  change, because the `Citation` rules run on it. No field changes. This is a compatibility decision
+  about error text and codes, not about the message shapes. No client reads the old text:
+  `rg 'validation error'` finds no consumer in `internal/`, `cmd/`, `ui/src/` or `skill/`.
+- **Hint codes:** no new code. Connect now emits existing codes on more paths. The pseudo-field
+  `request` is new, for a message rule that has no mapped hint.
 - **CLI:** affected only in text. Connect-backed verbs print the envelope. Exit codes do not change.
-- **Console (`ui/`):** no source change. `ui/src/lib/errors/connect-error.ts` already parses the
-  envelope, so these rejections now reach its hint handling. Regenerated proto clients need a
-  `task ui:build`.
+- **Console (`ui/`):** no source change. The write forms show the error message through
+  `describeError`, so a caller sees the envelope as plain text in place of the old text. Regenerated
+  proto clients need a `task ui:build`.
 - **Helm chart:** deliberately unchanged. There are no new `ENGRAM_` keys and no stored payload keys.
-- **docs-site:** `reference/errors.md` and `contributing/testing.md` change.
+- **docs-site:** `reference/errors.md`, `guides/upgrade.md` and `contributing/testing.md` change.
 - **engram skill:** deliberately unchanged. Agents use the MCP lane.
