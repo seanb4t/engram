@@ -29,7 +29,9 @@ The test name prefix tells you what the test needs and which stage runs it.
 
 Every `TestModel` test uses its own collection on the shared CI Qdrant. Issue [#646](https://github.com/seanb4t/engram/issues/646) tracks the Qdrant testcontainer dying under heavy host load. A `TestModel` test compares the real store or server with a small in-memory model of the contract. A disagreement between the model and the code is a finding. Resolve it against the memory contract in `CLAUDE.md`. Never change the model only to match the code.
 
-Each new hint code needs a generator before the lane tests can draw it. `TestModelLaneParity` and `TestModelWriteBounds` in `internal/server` hold the generators.
+`TestModelLaneParity` builds a case for each protovalidate rule on a field that both lanes check, and for each surface rule on a request message. It sends these cases through the Connect handler chain that production mounts, and the MCP lane's answer is the expected result. A new rule of a known kind needs no test edit. A new rule kind needs a break value in `internal/server/model_derived_test.go`, and a new constrained request message needs a fixture there. A failure names the rule or the message.
+
+A hint that only the core gives, or a bound that comes from configuration, still needs a generator. `TestModelLaneParity` and `TestModelWriteBounds` in `internal/server` hold the generators.
 
 ## What runs when
 

@@ -66,7 +66,7 @@ a subtest title with underscores, so match the underscore form of each scenario 
   a breaking request, and its expected hint comes from the rule. Verify: the log lists a case for
   each of the five rules that apply, and no case for the four CLI-only rules. This covers `A surface
   rule for the CLI alone` and `A field with no MCP counterpart`.
-- [ ] 3.5 Commit, then record the tooling scenarios once on throwaway edits that are never committed.
+- [x] 3.5 Commit, then record the tooling scenarios once on throwaway edits that are never committed.
   For each proto edit, run `task proto:gen`. Run `TestModelLaneParity` after each edit:
   1. Add `string.min_len: 1` to `StoreMemoryRequest.source`. The test passes with a new case and no
      test edit (`A constraint added to a request message`).
@@ -81,7 +81,7 @@ a subtest title with underscores, so match the underscore form of each scenario 
 
   Revert with `git restore proto gen ui/src/lib/gen internal/server internal/webauth/static`. Verify: the PR body records each result, and `git status --short`
   lists no tracked file.
-- [ ] 3.6 Update `docs-site/src/content/docs/contributing/testing.md`. Narrow the sentence on new hint
+- [x] 3.6 Update `docs-site/src/content/docs/contributing/testing.md`. Narrow the sentence on new hint
   codes: a hint that only the core gives, or a configured bound, still needs a generator. A new proto
   rule on a known kind needs no test edit, and a new rule kind needs a break value in
   `TestModelLaneParity`. Verify: `task lint:markdown` shows no finding under `docs-site/`.
@@ -90,7 +90,7 @@ a subtest title with underscores, so match the underscore form of each scenario 
 
 ## 4. Integration
 
-- [ ] 4.1 Run the console tests against the regenerated clients. Verify: `cd ui && pnpm test` passes.
+- [x] 4.1 Run the console tests against the regenerated clients. Verify: `cd ui && pnpm test` passes.
 - [ ] 4.2 Run the quality gate. Verify: `task` passes, and `task license:check` passes. Also confirm
   that `task proto:gen` leaves `git status --short` unchanged, because `task` does not run the drift
   check. `charts/` does not change, so `task chart:validate` is not needed.
