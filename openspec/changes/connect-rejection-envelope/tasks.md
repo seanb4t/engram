@@ -50,19 +50,19 @@ a subtest title with underscores, so match the underscore form of each scenario 
 
 ## 3. Derived lane parity
 
-- [ ] 3.1 Add the wire client to `lanes` as in D6, and widen `envelopeRE` to admit `citations[i].kind`.
+- [x] 3.1 Add the wire client to `lanes` as in D6, and widen `envelopeRE` to admit `citations[i].kind`.
   Verify: `go test -v ./internal/server -run '^TestModelLaneParity$'` prints
   `--- PASS: TestModelLaneParity`.
-- [ ] 3.2 Add the derivation from D5: walk the request messages and their nested messages, and read
+- [x] 3.2 Add the derivation from D5: walk the request messages and their nested messages, and read
   MCP fields from the tool schemas. Add the fixtures, including `SupersedeMemoryRequest`, with a
   seeded target on each lane. Build break and meet cases for the six rule kinds. Fail on a message
   with no fixture, a rule that cannot be broken, or zero cases. Check that a non-empty break value is
   absent from the message. Verify: the subtest log lists a case for each rule value on a field that
   both lanes check, and none for `update_mask` or `visibility`.
-- [ ] 3.3 Add the subtests `A value that meets a constraint`, `A value at a declared bound`, `A value
+- [x] 3.3 Add the subtests `A value that meets a constraint`, `A value at a declared bound`, `A value
   that breaks a constraint` and `The category allowlist exception`. Verify: a `--- PASS` line for
   each subtest, with `ENGRAM_REQUIRE_QDRANT=1`.
-- [ ] 3.4 Add the surface rule cases. Each rule that has all of its `Fields` on a request message has
+- [x] 3.4 Add the surface rule cases. Each rule that has all of its `Fields` on a request message has
   a breaking request, and its expected hint comes from the rule. Verify: the log lists a case for
   each of the five rules that apply, and no case for the four CLI-only rules. This covers `A surface
   rule for the CLI alone` and `A field with no MCP counterpart`.

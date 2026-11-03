@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"slices"
 	"strings"
@@ -22,6 +24,8 @@ import (
 	"pgregory.net/rapid"
 
 	engramv1 "github.com/seanb4t/engram/gen/go/engram/v1"
+	"github.com/seanb4t/engram/gen/go/engram/v1/engramv1connect"
+	"github.com/seanb4t/engram/internal/auth"
 	"github.com/seanb4t/engram/internal/store"
 	"github.com/seanb4t/engram/internal/store/storetest"
 )
@@ -33,7 +37,9 @@ var modelCaps = memoryWriteCaps{contentBytes: 64, tags: 3, tagBytes: 8}
 const modelSummaryBytes = 16
 
 // lanes holds one MCP session and one Connect API, each on its own real
-// store, for the same owner and clock.
+// store, for the same owner and clock. api calls the Connect handlers
+// directly. wire reaches them through the handler chain that production
+// mounts, with an always-valid CSRF check.
 type lanes struct {
 	owner           string
 	now             time.Time
@@ -42,6 +48,7 @@ type lanes struct {
 	mcpCtx, connCtx context.Context
 	cs              *mcp.ClientSession
 	api             *engramAPI
+	wire            engramv1connect.EngramServiceClient
 }
 
 func newLanes(t *testing.T, name string) *lanes {
@@ -60,6 +67,16 @@ func newLanes(t *testing.T, name string) *lanes {
 	l.mcpCtx, l.cs = newLongMCPSession(t, l.mcpDeps, l.owner)
 	l.connCtx = parityConnectCtx(l.owner)
 	l.api = &engramAPI{d: l.conn}
+	resolve := func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, auth.Lane, error) {
+		return &mcpauth.TokenInfo{Extra: map[string]any{"owner_claim": l.owner}}, auth.LaneCookie, nil
+	}
+	mux := http.NewServeMux()
+	if err := l.conn.mountConnect(mux, resolve, func(_, _ string) bool { return true }, nil); err != nil {
+		t.Fatalf("mountConnect: %v", err)
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	l.wire = engramv1connect.NewEngramServiceClient(http.DefaultClient, srv.URL)
 	return l
 }
 
@@ -131,7 +148,7 @@ type outcome struct {
 	structured  map[string]any
 }
 
-var envelopeRE = regexp.MustCompile(`^field=([a-z_,]+) hint=([a-z_]+): `)
+var envelopeRE = regexp.MustCompile(`^field=([a-z_,.\[\]]+) hint=([a-z_]+): `)
 
 func outcomeOf(text string) outcome {
 	o := outcome{text: text}
@@ -397,4 +414,6 @@ func TestModelLaneParity(t *testing.T) {
 			t.Fatalf("%s: hint %q is not a HintCode constant", c.verb, m.hint)
 		}
 	})
+
+	testDerivedParity(t, l, hints)
 }
