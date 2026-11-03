@@ -2620,11 +2620,14 @@ func (x *SetVisibilityResponse) GetShortId() string {
 
 // ScheduleMemoryRequest is FLATTENED (D-05: no nested StoreMemoryRequest) — it
 // duplicates the StoreMemoryRequest fields inline plus the typed temporal window
-// (D-06). The message-level CEL below mirrors parseWindow's two SHAPE rules (at
-// least one bound set; not_after strictly after not_before when both are set).
-// It deliberately does NOT encode "not_after must be in the future" — that rule
-// is wall-clock/time-of-check dependent and is left to the Phase 17 handler,
-// matching parseWindow's own split between shape and clock validation.
+// (D-06). The two message-level CEL rules below mirror parseWindow's two SHAPE
+// rules (at least one bound set; not_after strictly after not_before when both
+// are set). Each rule's id is the matching internal/surfaces rule id, and the
+// validate interceptor renders the rejection from that surface rule. They
+// deliberately do NOT encode "not_after must be in the future" — that rule is
+// wall-clock/time-of-check dependent and is left to the handler, matching
+// parseWindow's own split between shape and clock validation. The category
+// allowlist holds discovery so that the core gives its not_applicable rejection.
 type ScheduleMemoryRequest struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Content string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
@@ -3098,10 +3101,11 @@ func (x *RestoreMemoryResponse) GetResults() []*ArchiveResult {
 // exactly as a real call would, but writes nothing: no record, no
 // superseded_by stamp, no idempotency ledger entry, no embed, no short-id
 // mint. It never consults or records idempotency_key, so it never reports a
-// replay. It is still a call on this write RPC, so CSRF applies. No
-// buf.validate rule is attached to this message: the single shared
-// server-side core validates, so both the MCP and Connect lanes return the
-// byte-identical field=/hint= rejection envelope (D-17/D-20).
+// replay. It is still a call on this write RPC, so CSRF applies. This
+// message carries no buf.validate rule of its own: the single shared
+// server-side core validates its fields. Each citation carries the Citation
+// rules, and the validate interceptor renders their failures in the same
+// field=/hint= rejection envelope, so both lanes name the same field and hint.
 type SupersedeMemoryRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Content        string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
@@ -4954,12 +4958,12 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\ffuture_total\x18\x04 \x01(\x04R\vfutureTotal\x12\x14\n" +
 	"\x05total\x18\x05 \x01(\x04R\x05total\x12'\n" +
 	"\x0fcurrent_version\x18\x06 \x01(\x05R\x0ecurrentVersion\x12\x18\n" +
-	"\apending\x18\a \x01(\x04R\apending\"\xd2\x02\n" +
+	"\apending\x18\a \x01(\x04R\apending\"\xd5\x02\n" +
 	"\x12StoreMemoryRequest\x12!\n" +
 	"\acontent\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\acontent\x12\x1d\n" +
 	"\x05scope\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05scope\x12\x16\n" +
-	"\x06source\x18\x03 \x01(\tR\x06source\x12K\n" +
-	"\bcategory\x18\x04 \x01(\tB/\xbaH,r*R\bdecisionR\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12N\n" +
+	"\bcategory\x18\x04 \x01(\tB2\xbaH/\xd8\x01\x01r*R\bdecisionR\n" +
 	"preferenceR\n" +
 	"conventionR\x06gotchaR\bcategory\x12\x12\n" +
 	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x12\n" +
@@ -4977,13 +4981,13 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\x03ref\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x03ref\x12\x18\n" +
 	"\alocator\x18\x03 \x01(\tR\alocator\x12\x10\n" +
 	"\x03pin\x18\x04 \x01(\tR\x03pin\x12#\n" +
-	"\aexcerpt\x18\x05 \x01(\tB\t\xbaH\x06r\x04(\x80\x80\x01R\aexcerpt\"\x8a\x02\n" +
+	"\aexcerpt\x18\x05 \x01(\tB\t\xbaH\x06r\x04(\x80\x80\x01R\aexcerpt\"\x8d\x02\n" +
 	"\x15StoreDiscoveryRequest\x12%\n" +
 	"\acontent\x18\x01 \x01(\tB\v\xbaH\br\x06\x10\x01(\x80\x80\x04R\acontent\x12$\n" +
 	"\x04kind\x18\x02 \x01(\tB\x10\xbaH\rr\vR\x03mapR\x04factR\x04kind\x12=\n" +
 	"\tcitations\x18\x03 \x03(\v2\x13.engram.v1.CitationB\n" +
-	"\xbaH\a\x92\x01\x04\b\x01\x102R\tcitations\x12'\n" +
-	"\x05scope\x18\x04 \x01(\tB\x11\xbaH\x0er\f:\n" +
+	"\xbaH\a\x92\x01\x04\b\x01\x102R\tcitations\x12*\n" +
+	"\x05scope\x18\x04 \x01(\tB\x14\xbaH\x11\xd8\x01\x01r\f:\n" +
 	"discovery:R\x05scope\x12\x12\n" +
 	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x18\n" +
 	"\asummary\x18\x06 \x01(\tR\asummary\x12\x0e\n" +
@@ -5022,14 +5026,14 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"visibility\"B\n" +
 	"\x15SetVisibilityResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
-	"\bshort_id\x18\x02 \x01(\tR\ashortId\"\x94\x06\n" +
+	"\bshort_id\x18\x02 \x01(\tR\ashortId\"\xb9\x06\n" +
 	"\x15ScheduleMemoryRequest\x12!\n" +
 	"\acontent\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\acontent\x12\x1d\n" +
 	"\x05scope\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05scope\x12\x16\n" +
-	"\x06source\x18\x03 \x01(\tR\x06source\x12K\n" +
-	"\bcategory\x18\x04 \x01(\tB/\xbaH,r*R\bdecisionR\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12Y\n" +
+	"\bcategory\x18\x04 \x01(\tB=\xbaH:\xd8\x01\x01r5R\bdecisionR\n" +
 	"preferenceR\n" +
-	"conventionR\x06gotchaR\bcategory\x12\x12\n" +
+	"conventionR\x06gotchaR\tdiscoveryR\bcategory\x12\x12\n" +
 	"\x04tags\x18\x05 \x03(\tR\x04tags\x12\x12\n" +
 	"\x04repo\x18\x06 \x01(\tR\x04repo\x12\x1c\n" +
 	"\tworkspace\x18\a \x01(\tR\tworkspace\x12\x1a\n" +
@@ -5040,8 +5044,9 @@ const file_engram_v1_engram_proto_rawDesc = "" +
 	"\n" +
 	"not_before\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tnotBefore\x127\n" +
 	"\tnot_after\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\x12'\n" +
-	"\x0fidempotency_key\x18\r \x01(\tR\x0eidempotencyKey:\x9f\x02\xbaH\x9b\x02\x1a\x98\x02\n" +
-	"\x16schedule_memory.window\x12wschedule_memory requires not_before and/or not_after, and not_after must be strictly after not_before when both are set\x1a\x84\x01(has(this.not_before) || has(this.not_after)) && (!has(this.not_before) || !has(this.not_after) || this.not_after > this.not_before)\"C\n" +
+	"\x0fidempotency_key\x18\r \x01(\tR\x0eidempotencyKey:\xb6\x02\xbaH\xb2\x02\x1a\x87\x01\n" +
+	"\"schedule-window-at-least-one-bound\x124schedule_memory requires not_before and/or not_after\x1a+has(this.not_before) || has(this.not_after)\x1a\xa5\x01\n" +
+	"\"window-not-before-before-not-after\x12,not_before must be strictly before not_after\x1aQ!has(this.not_before) || !has(this.not_after) || this.not_after > this.not_before\"C\n" +
 	"\x16ScheduleMemoryResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bshort_id\x18\x02 \x01(\tR\ashortId\"r\n" +

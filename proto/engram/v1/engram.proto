@@ -271,7 +271,10 @@ message StoreMemoryRequest {
   string content = 1 [(buf.validate.field).string.min_len = 1];
   string scope = 2 [(buf.validate.field).string.min_len = 1];
   string source = 3;
-  string category = 4 [(buf.validate.field).string = {in: ["decision", "preference", "convention", "gotcha"]}];
+  string category = 4 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string = {in: ["decision", "preference", "convention", "gotcha"]}
+  ];
   repeated string tags = 5;
   string repo = 6;
   string workspace = 7;
@@ -303,7 +306,10 @@ message StoreDiscoveryRequest {
     min_items: 1
     max_items: 50
   }];
-  string scope = 4 [(buf.validate.field).string.prefix = "discovery:"];
+  string scope = 4 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.prefix = "discovery:"
+  ];
   repeated string tags = 5;
   string summary = 6;
   string id = 7; // optional; supply to replace an existing discovery in place
@@ -381,16 +387,24 @@ message SetVisibilityResponse {
 
 // ScheduleMemoryRequest is FLATTENED (D-05: no nested StoreMemoryRequest) — it
 // duplicates the StoreMemoryRequest fields inline plus the typed temporal window
-// (D-06). The message-level CEL below mirrors parseWindow's two SHAPE rules (at
-// least one bound set; not_after strictly after not_before when both are set).
-// It deliberately does NOT encode "not_after must be in the future" — that rule
-// is wall-clock/time-of-check dependent and is left to the Phase 17 handler,
-// matching parseWindow's own split between shape and clock validation.
+// (D-06). The two message-level CEL rules below mirror parseWindow's two SHAPE
+// rules (at least one bound set; not_after strictly after not_before when both
+// are set). Each rule's id is the matching internal/surfaces rule id, and the
+// validate interceptor renders the rejection from that surface rule. They
+// deliberately do NOT encode "not_after must be in the future" — that rule is
+// wall-clock/time-of-check dependent and is left to the handler, matching
+// parseWindow's own split between shape and clock validation. The category
+// allowlist holds discovery so that the core gives its not_applicable rejection.
 message ScheduleMemoryRequest {
   option (buf.validate.message).cel = {
-    id: "schedule_memory.window"
-    message: "schedule_memory requires not_before and/or not_after, and not_after must be strictly after not_before when both are set"
-    expression: "(has(this.not_before) || has(this.not_after)) && (!has(this.not_before) || !has(this.not_after) || this.not_after > this.not_before)"
+    id: "schedule-window-at-least-one-bound"
+    message: "schedule_memory requires not_before and/or not_after"
+    expression: "has(this.not_before) || has(this.not_after)"
+  };
+  option (buf.validate.message).cel = {
+    id: "window-not-before-before-not-after"
+    message: "not_before must be strictly before not_after"
+    expression: "!has(this.not_before) || !has(this.not_after) || this.not_after > this.not_before"
   };
   string content = 1 [(buf.validate.field).string.min_len = 1];
   string scope = 2 [(buf.validate.field).string.min_len = 1];
@@ -398,7 +412,10 @@ message ScheduleMemoryRequest {
   // engram:rule:start discovery-not-schedulable
   // discovery is not schedulable; use store_discovery
   // engram:rule:end discovery-not-schedulable
-  string category = 4 [(buf.validate.field).string = {in: ["decision", "preference", "convention", "gotcha"]}];
+  string category = 4 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string = {in: ["decision", "preference", "convention", "gotcha", "discovery"]}
+  ];
   repeated string tags = 5;
   string repo = 6;
   string workspace = 7;
@@ -492,10 +509,11 @@ message RestoreMemoryResponse {
 // exactly as a real call would, but writes nothing: no record, no
 // superseded_by stamp, no idempotency ledger entry, no embed, no short-id
 // mint. It never consults or records idempotency_key, so it never reports a
-// replay. It is still a call on this write RPC, so CSRF applies. No
-// buf.validate rule is attached to this message: the single shared
-// server-side core validates, so both the MCP and Connect lanes return the
-// byte-identical field=/hint= rejection envelope (D-17/D-20).
+// replay. It is still a call on this write RPC, so CSRF applies. This
+// message carries no buf.validate rule of its own: the single shared
+// server-side core validates its fields. Each citation carries the Citation
+// rules, and the validate interceptor renders their failures in the same
+// field=/hint= rejection envelope, so both lanes name the same field and hint.
 message SupersedeMemoryRequest {
   string content = 1;
   string scope = 2;

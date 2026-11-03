@@ -7,14 +7,14 @@ a subtest title with underscores, so match the underscore form of each scenario 
 
 ## 1. Proto constraints
 
-- [ ] 1.1 Set `IGNORE_IF_ZERO_VALUE` on `category` in `StoreMemoryRequest` and
+- [x] 1.1 Set `IGNORE_IF_ZERO_VALUE` on `category` in `StoreMemoryRequest` and
   `ScheduleMemoryRequest`, and on `scope` in `StoreDiscoveryRequest`. Add `discovery` to the
   `ScheduleMemoryRequest` allowlist. Split the schedule CEL rule into
   `schedule-window-at-least-one-bound` and `window-not-before-before-not-after`. In the same edit,
   correct the `ScheduleMemoryRequest` comment that describes one CEL rule, and the
   `SupersedeMemoryRequest` comment that says no rule applies. Verify: `task proto:lint` passes, and
   `go tool buf breaking --against '.git#branch=main'` reports nothing.
-- [ ] 1.2 Regenerate with `task proto:gen`, then `task ui:build`. Verify: `git status --short` lists
+- [x] 1.2 Regenerate with `task proto:gen`, then `task ui:build`. Verify: `git status --short` lists
   changes only under `proto/`, `gen/`, `ui/src/lib/gen/` and `internal/webauth/static/`, and
   `go build ./...` passes.
 
