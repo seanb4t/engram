@@ -85,13 +85,13 @@ a subtest title with underscores, so match the underscore form of each scenario 
   codes: a hint that only the core gives, or a configured bound, still needs a generator. A new proto
   rule on a known kind needs no test edit, and a new rule kind needs a break value in
   `TestModelLaneParity`. Verify: `task lint:markdown` shows no finding under `docs-site/`.
-- [ ] 3.7 Measure the `Test (model tests)` step on the PR. Verify: the PR body records the step time
+- [x] 3.7 Measure the `Test (model tests)` step on the PR. Verify: the PR body records the step time
   against the 50 s budget.
 
 ## 4. Integration
 
 - [x] 4.1 Run the console tests against the regenerated clients. Verify: `cd ui && pnpm test` passes.
-- [ ] 4.2 Run the quality gate. Verify: `task` passes, and `task license:check` passes. Also confirm
+- [x] 4.2 Run the quality gate. Verify: `task` passes, and `task license:check` passes. Also confirm
   that `task proto:gen` leaves `git status --short` unchanged, because `task` does not run the drift
   check. `charts/` does not change, so `task chart:validate` is not needed.
 
