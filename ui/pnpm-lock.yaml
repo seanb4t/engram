@@ -270,8 +270,8 @@ importers:
         specifier: 1.64.1
         version: 1.64.1
       shadcn-svelte:
-        specifier: 1.7.2
-        version: 1.7.2(svelte@5.57.3)
+        specifier: 1.8.0
+        version: 1.8.0(svelte@5.57.3)
       svelte:
         specifier: 5.57.3
         version: 5.57.3
@@ -1400,8 +1400,8 @@ packages:
     resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
     engines: {node: '>=v12.22.7'}
 
-  shadcn-svelte@1.7.2:
-    resolution: {integrity: sha512-VcFgfCupRK58kVuNrobWz+Smv0wryxW1bNZYvrMqYbm7gOfTEIb/Jy7C6y0N8Ry3/d0oAzvTRPzFu2V8u0nhMA==}
+  shadcn-svelte@1.8.0:
+    resolution: {integrity: sha512-B9EEH85xYUdLP12Dyf6raqMbtOGLeg47wnSd7+dTCmWibO6jHZg85alBo0pQsJkAiQ8IolNU/5RBjyOxNl//HQ==}
     hasBin: true
     peerDependencies:
       svelte: ^5.0.0
@@ -2621,7 +2621,7 @@ snapshots:
       xmlchars: 2.2.0
     optional: true
 
-  shadcn-svelte@1.7.2(svelte@5.57.3):
+  shadcn-svelte@1.8.0(svelte@5.57.3):
     dependencies:
       cn: 0.3.0
       commander: 14.0.3
