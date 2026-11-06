@@ -6,7 +6,7 @@ description: The field-and-hint grammar every engram argument rejection (plus th
 Every argument-validation rejection engram produces, plus the one rejection that is not
 about an input at all ([a response too large to return](#response-too-large-resource_exhausted-and-exit-10))
 — on both the MCP tool-call lane and the Connect RPC lane — carries the same structured
-envelope: the field(s) that failed (or the fixed pseudo-field `response`), a machine-stable
+envelope: the field(s) that failed (or a fixed pseudo-field, `response` or `request`), a machine-stable
 hint code naming *why*, and a human-readable detail. This page is the complete,
 checked-off reference for that vocabulary.
 
@@ -60,6 +60,19 @@ prefix out of that string; there is no side channel.
 [Connect code mapping](#the-class-to-connect-code-mapping) below) — a Connect client can
 branch on the code alone and treat the string as detail, or parse the same `field=`/`hint=`
 prefix for parity with the MCP lane.
+
+**A Connect request that fails a declared constraint carries this envelope too.** The
+server checks each request against the constraints in `engram.proto` before the shared
+core runs. A failure gives the same `field=`/`hint=` prefix as the core, and its class
+selects the Connect code. A request that breaks several constraints gets one envelope, and
+a constraint on one field comes before a constraint across fields. With several invalid
+fields, the two lanes can name different fields, because each lane reports the first
+failure it finds. A constraint with no mapped hint gives `hint=format`. If that constraint
+has no single field, the envelope names the fixed pseudo-field `request`.
+
+**The `category` allowlist is Connect-only.** `StoreMemory` and `ScheduleMemory` reject a
+`category` outside the allowlist with `field=category hint=enum`. `store_memory` and
+`schedule_memory` on the MCP lane accept any non-empty `category`.
 
 ## Multi-target rejections
 
