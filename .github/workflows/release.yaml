@@ -24,7 +24,7 @@ permissions:
 env:
   # ci.yaml and release.yaml pin the same Renovate-tracked value.
   # renovate: datasource=github-releases depName=goreleaser/goreleaser
-  GORELEASER_VERSION: v2.19.0
+  GORELEASER_VERSION: v2.20.0
   # renovate: datasource=github-releases depName=go-task/task extractVersion=^v(?<version>.*)$
   TASK_VERSION: 3.54.0
 

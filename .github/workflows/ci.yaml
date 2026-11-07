@@ -18,7 +18,7 @@ concurrency:
 env:
   # ci.yaml and release.yaml pin the same Renovate-tracked value.
   # renovate: datasource=github-releases depName=goreleaser/goreleaser
-  GORELEASER_VERSION: v2.19.0
+  GORELEASER_VERSION: v2.20.0
 
 # CI installs each gate via its official action (the runner is bare; the local
 # `task lint`/`fmt` suite assumes the tools are already on PATH). `task` remains
