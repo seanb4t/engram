@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.32.0](https://github.com/seanb4t/engram/compare/v0.31.2...v0.32.0) (2026-11-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **server:** give Connect validation failures the shared envelope ([#971](https://github.com/seanb4t/engram/issues/971))
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#960](https://github.com/seanb4t/engram/issues/960)) ([5a09911](https://github.com/seanb4t/engram/commit/5a09911b8f3b17bc6bb5b98d7733a9664ec79392))
+* **deps:** update all non-major dependencies ([#963](https://github.com/seanb4t/engram/issues/963)) ([e98b9d5](https://github.com/seanb4t/engram/commit/e98b9d5d5854567a878742b64916e09a5c79a92b))
+* **deps:** update dependency d3-force to v3.0.1 ([#976](https://github.com/seanb4t/engram/issues/976)) ([635ca6f](https://github.com/seanb4t/engram/commit/635ca6f664a258c3abbe658b0b41232a6c7bf9c4))
+* **deps:** update module github.com/chromedp/cdproto to v0.159.0 ([#957](https://github.com/seanb4t/engram/issues/957)) ([89e2549](https://github.com/seanb4t/engram/commit/89e2549ecd79ed0e3d26fa2ffcb51c0bb5a9870d))
+* **deps:** update module github.com/chromedp/chromedp to v0.22.0 ([#984](https://github.com/seanb4t/engram/issues/984)) ([8109c2e](https://github.com/seanb4t/engram/commit/8109c2eb3da1dd04f344033bc2e42d504e150e63))
+* **server:** give Connect validation failures the shared envelope ([#971](https://github.com/seanb4t/engram/issues/971)) ([32f2ba3](https://github.com/seanb4t/engram/commit/32f2ba36860d0189fad2f2df2d09775148754109))
+
 ## [0.31.2](https://github.com/seanb4t/engram/compare/v0.31.1...v0.31.2) (2026-11-02)
 
 
