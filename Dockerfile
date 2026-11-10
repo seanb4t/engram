@@ -2,7 +2,7 @@
 # distroless. Base is golang:1.26 to satisfy go.mod's `go 1.26.3`.
 # Note: CI (goreleaser) builds the binary itself and injects the real version;
 # this Dockerfile is the standalone/local build path (VERSION defaults to dev).
-FROM golang:1.27@sha256:e519d3b0a5b285e5aa53ab9eef02bc6bbb9cb04608389b743a136a9ce75f0d1e AS build
+FROM golang:1.27@sha256:6dfa1388077c76e6bd57941c9435a281d9a0ef8971db7a527eaa4ebcf64119d5 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
