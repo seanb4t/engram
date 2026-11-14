@@ -1048,10 +1048,7 @@ func TestServeBothListeners(t *testing.T) {
 		t.Fatal("drain ran before the running request finished")
 	}
 	for _, b := range bound {
-		if conn, err := net.Dial("tcp", b.ln.Addr().String()); err == nil {
-			_ = conn.Close()
-			t.Fatalf("%s still accepts connections after shutdown", b.ln.Addr())
-		}
+		assertClosed(t, b.ln.Addr().String())
 	}
 }
 

@@ -131,12 +131,11 @@ func TestServeWaitsForQdrant(t *testing.T) {
 	}
 
 	proxy.open.Store(true)
-	deadline := time.Now().Add(10 * time.Second)
-	for get(t, srv.baseURL()+"/readyz") != http.StatusOK {
-		if time.Now().After(deadline) {
-			t.Fatalf("/readyz not 200 within 10s of Qdrant opening:\n%s", srv.logText())
+	srv.waitReady(t, 10*time.Second)
+	for line := range strings.SplitSeq(srv.logText(), "\n") {
+		if strings.Contains(line, attemptFailedLn) && !strings.Contains(line, `"level":"WARN"`) {
+			t.Errorf("failed attempt not logged at warn level: %s", line)
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
 	checkDocumentedTools(t, mcpConnectAt(t, srv.endpoint(), "", startupToken))
 }

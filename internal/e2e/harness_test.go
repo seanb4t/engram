@@ -284,7 +284,7 @@ func (s *serverProc) baseURL() string { return "http://" + s.addr }
 func startServer(t *testing.T, extraEnv map[string]string) *serverProc {
 	t.Helper()
 	srv := launchServer(t, extraEnv)
-	srv.waitReady(t)
+	srv.waitReady(t, 45*time.Second)
 	return srv
 }
 
@@ -338,13 +338,13 @@ func launchServer(t *testing.T, extraEnv map[string]string) *serverProc {
 	return srv
 }
 
-// waitReady polls GET /readyz on the primary listener until it answers 200,
-// then checks that the MCP-only listener, if any, no longer answers with the
-// startup gate's 503.
-func (s *serverProc) waitReady(t *testing.T) {
+// waitReady polls GET /readyz on the primary listener until it answers 200
+// within the given time, then checks that the MCP-only listener, if any, no
+// longer answers with the startup gate's 503.
+func (s *serverProc) waitReady(t *testing.T, within time.Duration) {
 	t.Helper()
 	client := &http.Client{Timeout: 2 * time.Second}
-	deadline := time.Now().Add(45 * time.Second)
+	deadline := time.Now().Add(within)
 	for {
 		select {
 		case <-s.done:
@@ -358,7 +358,7 @@ func (s *serverProc) waitReady(t *testing.T) {
 			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("engram serve was not ready on %s within 45s:\n%s", s.addr, s.logText())
+			t.Fatalf("engram serve was not ready on %s within %s:\n%s", s.addr, within, s.logText())
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

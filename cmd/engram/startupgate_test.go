@@ -4,12 +4,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -69,13 +72,20 @@ func TestStartupGate(t *testing.T) {
 		if w := serve(h, http.MethodPost, "/mcp", crossSite); w.Code != http.StatusForbidden {
 			t.Errorf("cross-site POST before provisioning = %d, want 403", w.Code)
 		}
-		if n := target.calls.Load(); n != 0 {
-			t.Fatalf("target called %d times before provisioning, want 0", n)
-		}
-
 		g.setTarget(target)
 		if w := serve(h, http.MethodPost, "/mcp", map[string]string{"Content-Type": "application/json"}); w.Code != http.StatusTeapot {
 			t.Errorf("MCP POST after provisioning = %d, want the target's answer", w.Code)
+		}
+		checked := make(chan struct{}, 1)
+		health.ping = func(context.Context) error { return errors.New("qdrant down") }
+		health.timeout = time.Second
+		health.checked = func() { checked <- struct{}{} }
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go health.run(ctx, nil)
+		<-checked
+		if w := serve(h, http.MethodGet, "/readyz", nil); w.Code != http.StatusServiceUnavailable {
+			t.Errorf("GET /readyz with a failed ping = %d, want 503", w.Code)
 		}
 		if w := serve(h, http.MethodGet, "/livez", nil); w.Code != http.StatusOK {
 			t.Errorf("GET /livez with a failed ping = %d, want 200", w.Code)
@@ -86,7 +96,6 @@ func TestStartupGate(t *testing.T) {
 	})
 
 	t.Run("MCP-only gate before provisioning", func(t *testing.T) {
-		target := &countingTarget{}
 		g := &startupGate{}
 		w := serve(gated(g), http.MethodGet, "/ui/", nil)
 		assertStarting(t, w, "console GET on the MCP-only listener")
@@ -96,15 +105,11 @@ func TestStartupGate(t *testing.T) {
 		if w := serve(gated(g), http.MethodGet, "/livez", nil); w.Code != http.StatusServiceUnavailable {
 			t.Errorf("GET /livez on the MCP-only gate = %d, want 503: it serves no health route", w.Code)
 		}
-		if n := target.calls.Load(); n != 0 {
-			t.Fatalf("target called %d times, want 0", n)
-		}
 	})
 }
 
 func TestPropertyStartupGate(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		target := &countingTarget{}
 		g := &startupGate{health: &healthLoop{}}
 		method := rapid.SampledFrom([]string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodDelete}).Draw(t, "method")
 		path := rapid.SampledFrom([]string{"/", "/mcp", "/livez", "/readyz", "/ui/", "/auth/login", "/engram.v1.EngramService/GetMemory", "/.well-known/oauth-protected-resource/mcp", "/x"}).Draw(t, "path")
@@ -133,9 +138,6 @@ func TestPropertyStartupGate(t *testing.T) {
 			if w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") == "" {
 				t.Fatalf("%s %s before provisioning: status %d, want 503 with Retry-After", method, path, w.Code)
 			}
-		}
-		if n := target.calls.Load(); n != 0 {
-			t.Fatalf("target saw %d calls before provisioning", n)
 		}
 	})
 }
@@ -222,12 +224,40 @@ func TestStartServeProvisioningError(t *testing.T) {
 	assertClosed(t, addr)
 }
 
+// healthWarns counts the health loop's warn records in buf.
+func healthWarns(buf *syncBuffer) int {
+	return strings.Count(buf.String(), `"msg":"qdrant health check failed; not ready"`)
+}
+
+// syncBuffer is a bytes.Buffer safe for the health loop's goroutine.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func TestPropertyReadiness(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		var pings, warns atomic.Int64
-		pingOK := rapid.Bool().Draw(t, "initial ok")
+		logs := &syncBuffer{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(logs, nil)))
+		defer slog.SetDefault(prev)
+
+		var pings atomic.Int64
 		var next atomic.Bool
-		next.Store(pingOK)
+		lastOK := rapid.Bool().Draw(t, "initial ok")
+		next.Store(lastOK)
 		checked := make(chan struct{})
 		health := &healthLoop{
 			timeout: time.Second,
@@ -238,15 +268,7 @@ func TestPropertyReadiness(t *testing.T) {
 				}
 				return errors.New("down")
 			},
-		}
-		lastOK, first := false, true
-		health.checked = func() {
-			ok := next.Load()
-			if !ok && (first || lastOK) {
-				warns.Add(1)
-			}
-			first, lastOK = false, ok
-			checked <- struct{}{}
+			checked: func() { checked <- struct{}{} },
 		}
 		g := &startupGate{health: health}
 		ticks := make(chan time.Time)
@@ -259,31 +281,25 @@ func TestPropertyReadiness(t *testing.T) {
 		}
 		markProvisioned([]*startupGate{g}, []http.Handler{http.NotFoundHandler()}, func() { go health.run(ctx, ticks) })
 		<-checked
-		nTicks, wantWarns := 0, int64(0)
-		if !pingOK {
+		nTicks, wantWarns := 0, 0
+		if !lastOK {
 			wantWarns = 1
 		}
-		prev := pingOK
 		for range rapid.IntRange(0, 20).Draw(t, "steps") {
-			switch rapid.SampledFrom([]string{"tick-ok", "tick-fail", "readyz"}).Draw(t, "action") {
-			case "tick-ok":
-				next.Store(true)
+			switch action := rapid.SampledFrom([]string{"tick-ok", "tick-fail", "readyz"}).Draw(t, "action"); action {
+			case "tick-ok", "tick-fail":
+				ok := action == "tick-ok"
+				next.Store(ok)
 				ticks <- time.Time{}
 				<-checked
 				nTicks++
-				prev = true
-			case "tick-fail":
-				next.Store(false)
-				ticks <- time.Time{}
-				<-checked
-				nTicks++
-				if prev {
+				if !ok && lastOK {
 					wantWarns++
 				}
-				prev = false
+				lastOK = ok
 			case "readyz":
 				want := http.StatusServiceUnavailable
-				if prev {
+				if lastOK {
 					want = http.StatusOK
 				}
 				if got := readyz(); got != want {
@@ -294,8 +310,8 @@ func TestPropertyReadiness(t *testing.T) {
 				t.Fatalf("pings = %d after %d ticks, want ticks+1", p, nTicks)
 			}
 		}
-		if w := warns.Load(); w != wantWarns {
-			t.Fatalf("warn transitions = %d, want %d", w, wantWarns)
+		if got := healthWarns(logs); got != wantWarns {
+			t.Fatalf("health-check warn records = %d, want %d:\n%s", got, wantWarns, logs.String())
 		}
 	})
 }

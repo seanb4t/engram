@@ -12,7 +12,7 @@ import (
 )
 
 func TestStartupConnectParams(t *testing.T) {
-	p := StartupConnectParams()
+	p := StartupConnectParams(5 * time.Second)
 	if p.Backoff.MaxDelay != 5*time.Second {
 		t.Errorf("MaxDelay = %s, want 5s", p.Backoff.MaxDelay)
 	}

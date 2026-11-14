@@ -230,20 +230,24 @@ func TestServeProvisionRetry(t *testing.T) {
 		}
 	})
 
-	t.Run("Qdrant up on the last attempt the budget allows", func(t *testing.T) {
-		policy := startupPolicy{timeout: time.Minute, newBackOff: func() backoff.BackOff {
-			return &backoff.ZeroBackOff{}
-		}}
+	t.Run("each attempt ends at its own budget while the startup budget is live", func(t *testing.T) {
+		policy := zeroPolicy(time.Minute)
+		policy.attempt = 20 * time.Millisecond
 		calls := 0
-		_, err := runRetry(context.Background(), policy, func(context.Context) error {
+		_, err := runRetry(context.Background(), policy, func(ctx context.Context) error {
 			calls++
-			if calls < 5 {
-				return unavailable
+			if calls == 1 {
+				deadline, ok := ctx.Deadline()
+				if !ok || time.Until(deadline) > policy.attempt {
+					t.Errorf("first attempt deadline in %s (set %v), want at most %s", time.Until(deadline), ok, policy.attempt)
+				}
+				<-ctx.Done()
+				return status.FromContextError(ctx.Err()).Err()
 			}
 			return nil
 		})
-		if err != nil {
-			t.Fatalf("err = %v, want nil", err)
+		if err != nil || calls != 2 {
+			t.Fatalf("err = %v after %d attempts, want nil after 2", err, calls)
 		}
 	})
 }
@@ -275,10 +279,49 @@ func TestServeSchemaNotCutByStartupTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadAndValidate: %v", err)
 	}
-	policy := servePolicy(100 * time.Millisecond)
-	policy.extraDial = []grpc.DialOption{grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 300*time.Millisecond))}
+	policy := servePolicy(2 * time.Second)
+	policy.extraDial = []grpc.DialOption{grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 3*time.Second))}
 	if _, err := ensureStoreFromConfig(context.Background(), cfg, policy); err != nil {
 		t.Fatalf("ensureStoreFromConfig: %v", err)
+	}
+}
+
+func TestVersionCheckTimeout(t *testing.T) {
+	for _, tc := range []struct{ timeout, want time.Duration }{
+		{time.Nanosecond, time.Nanosecond},
+		{14999 * time.Millisecond, 14999 * time.Millisecond},
+		{15 * time.Second, 15 * time.Second},
+		{15001 * time.Millisecond, 15 * time.Second},
+		{time.Minute, 15 * time.Second},
+	} {
+		if got := servePolicy(tc.timeout).versionCheckTimeout(); got != tc.want {
+			t.Errorf("versionCheckTimeout with timeout %s = %s, want %s", tc.timeout, got, tc.want)
+		}
+	}
+}
+
+// TestServeCreateErrorText drives ensureStoreFromConfig's serve path: a
+// create error that is not transient keeps the create step's text.
+func TestServeCreateErrorText(t *testing.T) {
+	collection := provisionCollection(t, "provision_serve_create_rejected")
+	t.Setenv("ENGRAM_QDRANT_ADDR", storetest.Addr())
+	t.Setenv("ENGRAM_QDRANT_COLLECTION", collection)
+	t.Setenv("ENGRAM_EMBED_DIM", "3")
+	cfg, err := loadAndValidate()
+	if err != nil {
+		t.Fatalf("loadAndValidate: %v", err)
+	}
+	policy := servePolicy(time.Minute)
+	policy.extraDial = []grpc.DialOption{grpc.WithChainUnaryInterceptor(rejectMethod("/qdrant.Collections/Create"))}
+	_, err = ensureStoreFromConfig(context.Background(), cfg, policy)
+	if err == nil {
+		t.Fatal("ensureStoreFromConfig = nil, want the rejected create")
+	}
+	if want := "create collection (budget 15s): "; !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("error %q, want the prefix %q", err, want)
+	}
+	if st, _ := status.FromError(err); st.Code() != codes.InvalidArgument {
+		t.Errorf("error code %s, want InvalidArgument", st.Code())
 	}
 }
 

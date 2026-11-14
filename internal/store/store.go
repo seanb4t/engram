@@ -557,17 +557,13 @@ func NewQdrantClient(host string, port int, versionCheckTimeout time.Duration, o
 	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: qdrantDialOptions(opts), VersionCheckTimeout: versionCheckTimeout})
 }
 
-// startupReconnectMaxDelay caps gRPC's reconnect backoff on the serve client.
-// It matches the serve startup retry's maximum interval, so a Qdrant that
-// comes up during startup is dialed again within one retry interval.
-const startupReconnectMaxDelay = 5 * time.Second
-
 // StartupConnectParams returns the gRPC connect parameters for the serve
 // client. grpc.WithConnectParams replaces the whole backoff configuration,
-// so every field starts from gRPC's defaults and only MaxDelay changes.
-func StartupConnectParams() grpc.ConnectParams {
+// so every field starts from gRPC's defaults and only MaxDelay changes, to
+// maxDelay.
+func StartupConnectParams(maxDelay time.Duration) grpc.ConnectParams {
 	b := backoff.DefaultConfig
-	b.MaxDelay = startupReconnectMaxDelay
+	b.MaxDelay = maxDelay
 	return grpc.ConnectParams{Backoff: b, MinConnectTimeout: 20 * time.Second}
 }
 

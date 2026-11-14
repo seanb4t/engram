@@ -5,7 +5,7 @@
 - [x] 1.1 In `internal/config/validate.go`, add an exported `ParsePositiveDuration` and a `validatePositiveDuration(value, envName, example string) error` that calls it, next to `validatePositiveCap`. Use them for `ENGRAM_QDRANT_SCHEMA_TIMEOUT`. Add `TestValidatePositiveDurationText`, which pins the full error text for a zero and a malformed value. Make sure that `go test ./internal/config` passes, including the existing schema-timeout cases in `TestValidateFieldRules`.
 - [x] 1.2 Add the startup timeout configuration key `qdrant.startup_timeout` (`ENGRAM_QDRANT_STARTUP_TIMEOUT`, default `60s`) to `registry.go` and `config.go`. Validate it with `validatePositiveDuration` in `Config.Validate`. Add cases to `TestValidateFieldRules`, the defaults test and `TestValidatePositiveDurationText`: unset gives `60s`, `1ns` and `1s` pass, and `0`, `-1s` and `abc` fail naming the variable. Make sure that `go test ./internal/config` passes.
 - [x] 1.3 Add `TestPropertyValidatePositiveDuration`, a rapid property over any `int64` duration. Make sure that `go test ./internal/config -run TestPropertyValidatePositiveDuration` passes.
-- [x] 1.4 Open a GitHub issue to move the other inline positive-duration checks in `Config.Validate`, and the runtime positive-duration parsers in `internal/server`, to the new helpers. List each key in the issue, and name the issue in the PR.
+- [x] 1.4 Open a GitHub issue to move the other inline positive-duration checks in `Config.Validate`, and the runtime positive-duration parsers in `internal/server`, to the new helpers. List each key in the issue, and name the issue in the PR. Opened as #1019.
 - [x] 1.5 Document `ENGRAM_QDRANT_STARTUP_TIMEOUT` in docs-site `guides/configure.md`. In the `ENGRAM_QDRANT_SCHEMA_TIMEOUT` row, remove "The server opens its port only after both finish". Also remove the claim that the chart derives its startup probe from it. Make sure that `task lint:markdown` passes.
 
 ## 2. Connect-and-create retry while Qdrant is unavailable
@@ -50,7 +50,7 @@
 
 ## 7. Integration check
 
-- [ ] 7.1 Run `task` (lint and test), `task test:e2e`, `task chart:validate` and `openspec validate serve-qdrant-startup-retry --strict`. Make sure that all four pass.
+- [x] 7.1 Run `task` (lint and test), `task test:e2e`, `task chart:validate` and `openspec validate serve-qdrant-startup-retry --strict`. Make sure that all four pass.
 - [x] 7.2 Commit the behavior change with a `BREAKING CHANGE:` footer that tells operators to switch a TCP readiness check to `GET /readyz`. Make sure that `git log -1` shows the footer.
 
 ## Workflow follow-up

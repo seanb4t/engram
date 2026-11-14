@@ -20,6 +20,7 @@ import (
 
 // The serve startup retry's backoff intervals. With backoff's default
 // randomization factor of 0.5, the longest wait is 1.5 × serveRetryMaxInterval.
+// serveRetryMaxInterval is also the serve client's gRPC reconnect cap.
 const (
 	serveRetryInitialInterval = 500 * time.Millisecond
 	serveRetryMaxInterval     = 5 * time.Second
@@ -34,6 +35,9 @@ type startupPolicy struct {
 	// extraDial is appended to the client's dial options; tests use it to
 	// install interceptors.
 	extraDial []grpc.DialOption
+	// attempt bounds one connect-and-create attempt; zero means
+	// collectionCreateBudget.
+	attempt time.Duration
 }
 
 func servePolicy(timeout time.Duration) startupPolicy {
@@ -47,6 +51,13 @@ func newServeBackOff() backoff.BackOff {
 
 func (p startupPolicy) retry() bool { return p.timeout > 0 }
 
+func (p startupPolicy) attemptBudget() time.Duration {
+	if p.attempt > 0 {
+		return p.attempt
+	}
+	return collectionCreateBudget
+}
+
 // versionCheckTimeout bounds the client's construction-time version check by
 // the smaller of the startup timeout and one attempt's budget.
 func (p startupPolicy) versionCheckTimeout() time.Duration {
@@ -55,7 +66,7 @@ func (p startupPolicy) versionCheckTimeout() time.Duration {
 
 func (p startupPolicy) dialOptions() []grpc.DialOption {
 	return append([]grpc.DialOption{
-		grpc.WithConnectParams(store.StartupConnectParams()),
+		grpc.WithConnectParams(store.StartupConnectParams(serveRetryMaxInterval)),
 		grpc.WithChainUnaryInterceptor(store.WaitForReadyInterceptor()),
 	}, p.extraDial...)
 }
@@ -72,7 +83,7 @@ func isTransientStartupErr(err error) bool {
 
 // retryConnectAndCreate runs attempt with backoff while Qdrant is unavailable.
 // sigCtx is the signal context; parent is the startup budget derived from it.
-// Each attempt runs under its own collectionCreateBudget, capped by parent.
+// Each attempt runs under its own policy.attemptBudget(), capped by parent.
 //
 // The result is decided from the contexts, not from the error's cause: a
 // done sigCtx returns sigCtx's error; a spent budget returns an Unavailable
@@ -83,7 +94,7 @@ func retryConnectAndCreate(sigCtx, parent context.Context, policy startupPolicy,
 	n := 0
 	_, err := backoff.Retry(parent, func() (struct{}, error) {
 		n++
-		actx, cancel := context.WithTimeout(parent, collectionCreateBudget)
+		actx, cancel := context.WithTimeout(parent, policy.attemptBudget())
 		defer cancel()
 		err := attempt(actx)
 		if err == nil {

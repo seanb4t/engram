@@ -310,7 +310,10 @@ func ensureStoreFromConfig(ctx context.Context, cfg *config.Config, policy start
 	}
 	create := func(sigCtx context.Context, st *store.Store, dim uint64) error {
 		return retryConnectAndCreate(sigCtx, parent, policy, func(actx context.Context) error {
-			return st.CreateCollectionIfAbsent(actx, dim)
+			if err := st.CreateCollectionIfAbsent(actx, dim); err != nil {
+				return fmt.Errorf("create collection (budget %s): %w", policy.attemptBudget(), err)
+			}
+			return nil
 		})
 	}
 	// The client pools several connections, and one create attempt proves

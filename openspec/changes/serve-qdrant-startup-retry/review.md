@@ -1,25 +1,201 @@
 ---
-verdict: approve-with-notes
-phase: plan
-reviewed_at: 2026-11-14T19:23:47+00:00
-head: 33dd9c763325381e94d2bb9d09875dd9cd713307
+verdict: changes-requested
+phase: implementation
+reviewed_at: 2026-11-14T20:32:05+00:00
+head: 0e42d4ccbd0f423859f01a6e7c6eb80ea26d22c1
 lenses:
-  spec-lint: ok
+  spec-lint: not-applicable
   approach: ok
-  fit: partial
+  fit: ok
   test-coverage: ok
-  test-honesty: not-applicable
+  test-honesty: partial
   invariants: ok
 ---
 # Review
 
 ## Incomplete lenses
 
-- fit: partial, gaps: 1
+- test-honesty: partial, gaps: 1
 
 The verdict covers only what the lenses checked.
 
 ## Findings
+
+| id | lens | severity | claim | evidence | action |
+|---|---|---|---|---|---|
+| fit-5 | fit | blocker | The new assertClosed helper is a third copy of the dial-and-fail closed-listener check that serve_test.go already writes inline twice in the same package. | cmd/engram/startupgate_test.go:172 — "if conn, err := net.Dial("tcp", addr); err == nil {" | Call assertClosed from TestServeBothListeners and TestServeAllServeFailure instead of the inline dial checks. |
+| tes-1 | test-coverage | blocker | No test cancels the signal context while schema convergence (index build) runs and asserts a prompt exit 0. | specs/collection-provisioning/spec.md > Requirement: Shutdown signal during startup is a normal stop — "SIGTERM arrives while `engram serve` builds payload indexes" | Add a subtest to TestProvisionStoreBudgets in internal/server/provision_test.go: cancel ctx during a stalled createFieldIndex (stallFirst) and assert provisionStore returns context.Canceled well before ENGRAM_QDRANT_SCHEMA_TIMEOUT; or an e2e case in internal/e2e/startup_test.go. |
+| app-1 | approach | should-fix | D2 says startServe holds steps 3 and 4 and returns the gate targets. In the code startServe returns only the drain, and route mounting, the gate targets and the health-loop start run inside the register closure (serveSetup.provision). design.md records no deviation. | design.md > D2. Bind first, then start up behind the gate — "It takes the register-and-provision step as a function parameter and returns the gate targets, so tests drive it without" | Either record in D2 that startServe returns the drain and that the register step (serveSetup.provision) mounts the routes, sets the gate targets and starts the health loop, or move step 4 into startServe and return the targets as D2 says. |
+| app-2 | approach | should-fix | D2 names a leading ctx as Register's only signature change. The code also adds a second result, the ping function behind /readyz. design.md records no deviation. | design.md > D2. Bind first, then start up behind the gate — "`Register` gains a leading `ctx context.Context` parameter and passes it to `buildDepsFromEnv`." | Record in D2 or D4 that Register also returns the Store's HealthCheck as the ping function of the health loop. |
+| app-3+inv-2 | approach,invariants | should-fix | app-3: D3 rule 3 says a non-transient create error keeps today's text. On the serve path the retry returns the bare CreateCollectionIfAbsent error, without the create collection (budget 15s) prefix that the one-attempt step still adds, so the serve error text changes.; inv-2: Design D3 rule 3 says a non-transient create error keeps today's text, but the serve path no longer wraps it with the create-collection step and budget; only singleCreate (the CLI path) still adds that prefix, and no test pins the serve-path text end to end. | design.md > D3. Retry in the serve provisioning path only — "so the retry returns that wrapper's `LastErr`, the create step's own error. Its text and its exit code stay what they ar" | app-3: Wrap the serve attempt's error with the same create collection (budget ...) text that singleCreate uses, or record in D3 that the serve path's permanent-error text loses that prefix.; inv-2: Wrap the permanent create error in the serve create closure with the same create-collection step text singleCreate uses, and pin the full serve-path error text for a PermissionDenied create in a test through ensureStoreFromConfig. |
+| fit-1+inv-7 | fit,invariants | should-fix | fit-1: The 5 s gRPC reconnect cap and the 5 s retry maximum interval are two named constants in two packages for one value, kept equal only by a comment.; inv-7: The 7.5 s reach promise assumes a redial within one retry interval, but gRPC jitters the 5 s MaxDelay by 0.2 (up to 6 s) and the client round-robins three pooled connections, so an attempt after Qdrant comes up can still fail fast on a subchannel that has not redialed. | internal/store/store.go:563 — "const startupReconnectMaxDelay = 5 * time.Second" | fit-1: Give store.StartupConnectParams a maxDelay parameter and pass serveRetryMaxInterval from startupPolicy.dialOptions, then delete startupReconnectMaxDelay.; inv-7: Restate the promise as the backoff bound plus the jittered reconnect delay (7.5 s + 6 s), or lower the reconnect MaxDelay so the jittered maximum fits the shortest retry wait, and put the corrected number in the spec scenario and deploy.md. |
+| fit-3 | fit | should-fix | server.Register grows a third positional return, the ping function, which design D2 does not name; the design describes only a leading ctx parameter. | internal/server/tools.go:2890 — "(shutdown func(context.Context), ping func(context.Context) error, err error) {" | Name the ping return of Register in design D2 or D4 with the reason, or return the readiness source through an existing value instead of a new positional result. |
+| inv-1+hon-3 | invariants,test-honesty | should-fix | inv-1: The test named for Qdrant coming up on the last attempt the budget allows uses a one-minute budget, a zero backoff and success on call 5, a value deep inside the range; the 7.5 s edge of the spec scenario is never exercised.; hon-3: Subtest 'Qdrant up on the last attempt the budget allows' uses a one-minute budget and zero backoff, so it never reaches the budget edge its name claims; it only asserts err == nil, same as the first subtest. | internal/server/startup_test.go:233 — "t.Run("Qdrant up on the last attempt the budget allows", func(t *testing.T) {" | inv-1: Inject a BackOff with a fixed wait and a budget sized so the success lands on the final attempt that backoff's elapsed-time check still admits, and add the twin case one wait later that must end in the budget error.; hon-3: Make the budget bind (short timeout, success on the final attempt that fits) or remove the duplicate. |
+| inv-3 | invariants | should-fix | Signal during schema convergence returns the context error from provisionStore instead of the schema message, but no test cancels the context passed to provisionStore while EnsureSchema runs; TestStartServeSignal uses a fake register step. | internal/server/tools.go:347 — "if ctx.Err() != nil {" | Add a TestProvisionStoreBudgets subtest that stalls createFieldIndex, cancels the provisionStore context mid-stall with a long schema budget, and asserts errors.Is(err, context.Canceled), a return well before the budget, and no schema-provisioning text. |
+| inv-4 | invariants | should-fix | The health loop warns on the initial failed ping and on an ok-to-fail change only, but TestPropertyReadiness counts warns in its own checked hook from the test's model, so the slog.Warn branch of run is never observed at either edge. | cmd/engram/startupgate.go:76 — "case err != nil && (first \|\| last):" | Capture slog output in TestPropertyReadiness and count the qdrant health check failed warn records emitted by run, then compare that count with the model, covering an initial failure and two failures in a row. |
+| inv-5 | invariants | should-fix | The version-check bound is min(startup timeout, 15 s), and no test checks either side of the 15 s equality; only the e2e 2 s run exercises the lower side indirectly through its exit deadline. | internal/server/startup.go:53 — "return min(p.timeout, collectionCreateBudget)" | Add a table test of startupPolicy.versionCheckTimeout for 1ns, 14.999s, 15s, 15.001s and 60s. |
+| inv-6 | invariants | should-fix | Each attempt is capped at the 15 s per-attempt budget while the parent is live, but collectionCreateBudget is a constant and no test sees an attempt end at its own budget; the cut-off test returns a fake DeadlineExceeded at once. | internal/server/startup.go:86 — "actx, cancel := context.WithTimeout(parent, collectionCreateBudget)" | Carry the per-attempt budget in startupPolicy so a test can set it to 20 ms under a 1 s parent, block the attempt on ctx.Done, and assert the attempt ends near 20 ms and a second attempt runs. |
+| ctl-not-run | test-coverage | should-fix | covered row 'Live during provisioning' has no verification run | review > not-run — "cmd/engram/startupgate_test.go: TestStartupGate/primary gate before and after provisioning; internal/e2e/startup_test.go" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Not ready during provisioning' has no verification run | review > not-run — "cmd/engram/startupgate_test.go: TestStartupGate; internal/e2e/startup_test.go: TestServeWaitsForQdrant" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Not ready before the first background check' has no verification run | review > not-run — "cmd/engram/startupgate_test.go: TestReadinessInitialPing/not ready while the initial ping is open" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Ready after provisioning' has no verification run | review > not-run — "cmd/engram/startupgate_test.go: TestReadinessInitialPing/ready after the initial ping, with no tick" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Ready again after Qdrant recovers' has no verification run | review > not-run — "cmd/engram/startupgate_test.go: TestPropertyReadiness (tick-fail then tick-ok)" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Many probes, no Qdrant traffic' has no verification run | review > not-run — "cmd/engram/startupgate_test.go: TestPropertyReadiness (pings == ticks+1 invariant)" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Default render' has no verification run | review > not-run — "Taskfile.yaml: chart:validate (probe awk checks, lines 461-466); probes not asserted via a Go test" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Budget runs out' has no verification run | review > not-run — "internal/e2e/startup_test.go: TestServeStartupTimeout; internal/server/startup_test.go: TestServeProvisionRetry" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Error that is not transient' has no verification run | review > not-run — "internal/server/startup_test.go: TestServeProvisionRetry/an error that is not transient fails at once, unchanged" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Three failures then success' has no verification run | review > not-run — "internal/server/startup_test.go: TestServeProvisionRetry/unavailable then success logs each failure" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Smallest positive value' has no verification run | review > not-run — "internal/config/duration_test.go: 1ns case" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Request during provisioning' has no verification run | review > not-run — "internal/e2e/startup_test.go: TestServeWaitsForQdrant; cmd/engram/startupgate_test.go: TestStartupGate" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Cross-origin request during provisioning' has no verification run | review > not-run — "cmd/engram/startupgate_test.go: TestStartupGate; TestPropertyStartupGate" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Request after provisioning' has no verification run | review > not-run — "internal/e2e/startup_test.go: TestServeWaitsForQdrant (checkDocumentedTools)" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Quantization rejected by Qdrant' has no verification run | review > not-run — "internal/server/provision_test.go: TestProvisionStoreBudgets/a rejected quantization update fails provisioning; cmd/engr" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Signal during an attempt' has no verification run | review > not-run — "internal/server/startup_test.go: TestServeProvisionRetry; internal/e2e/startup_test.go: TestServeSignalDuringStartup" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Signal during the backoff wait' has no verification run | review > not-run — "internal/server/startup_test.go: TestServeProvisionRetry/a signal during the backoff wait stops the retry" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Schema budget exceeded' has no verification run | review > not-run — "internal/server/provision_test.go: TestProvisionStoreBudgets/exceeding the schema budget names the step and the variable" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Startup timeout shorter than one attempt' has no verification run | review > not-run — "internal/e2e/startup_test.go: TestServeStartupTimeout/silent listener" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Raised schema timeout' has no verification run | review > not-run — "Taskfile.yaml: chart:validate (line 469)" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Raised startup timeout' has no verification run | review > not-run — "Taskfile.yaml: chart:validate (line 469)" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Invalid startup timeout value' has no verification run | review > not-run — "Taskfile.yaml: chart:validate (line 475 loop)" | run the covering test and record it in verification-runs.txt |
+| ctl-not-run | test-coverage | should-fix | covered row 'Console path during provisioning' has no verification run | review > not-run — "cmd/engram/startupgate_test.go: TestStartupGate/MCP-only gate before provisioning" | run the covering test and record it in verification-runs.txt |
+| tes-2 | test-coverage | should-fix | Qdrant-comes-up scenario asserts attempt logs only by wait and not that each failed attempt is a warn-level entry; log level unchecked in e2e. | internal/e2e/startup_test.go:115 — "waitForLog(t, srv, attemptFailedLn, 2)" | In TestServeWaitsForQdrant assert the logged attempt lines carry level=WARN and count matches failed attempts (or rely on the unit test and name it). |
+| tes-3 | test-coverage | should-fix | Mid-run Qdrant outage for /livez is asserted only with a fake failed ping, not a stopped Qdrant after provisioning. | cmd/engram/startupgate_test.go:81 — "GET /livez with a failed ping = %d, want 200" | The failed-ping assertion never sets a failing ping on the health loop; make the ping fail before the /livez check. |
+| ctl-lens | test-honesty | should-fix | lens test-honesty reported partial, gaps: 1 | review > lens-status — "partial" | rerun the lens or accept the gap in the review |
+| hon-1 | test-honesty | should-fix | TestPropertyReadiness warn-count invariant compares the test's own re-implementation of the warn rule (in its checked hook) against its model; the production warn log is never captured. | cmd/engram/startupgate_test.go:243 — "health.checked = func() {" | Capture the slog output of healthLoop (as captureAttempts does) and count its real warn lines; drop the hook-side counter. |
+| hon-2 | test-honesty | should-fix | TestPropertyStartupGate asserts the target saw 0 calls, but the target is never attached to the gate, so that check cannot fail; the same holds for the MCP-only subtest of TestStartupGate. | cmd/engram/startupgate_test.go:107 — "target := &countingTarget{}" | Call g.setTarget(target) in a variant so the pre-provisioning check can fail if the gate leaks, or drop the dead assertion. |
+| fit-2 | fit | note | ParsePositiveDuration adds a further positive-duration check beside the inline ones in Config.Validate and the runtime parsers; design names it and task 1.4 tracks the collapse, but no issue number is recorded in the artifacts. | internal/config/validate.go:124 — "case d <= 0:" | Record the issue number opened by task 1.4 in tasks.md or design.md D5, so the collapse is traceable. |
+| fit-4 | fit | note | TestServeWaitsForQdrant repeats the /readyz poll loop of serverProc.waitReady inline with a 10 s deadline instead of 45 s. | internal/e2e/startup_test.go:135 — "for get(t, srv.baseURL()+"/readyz") != http.StatusOK {" | Give waitReady a deadline parameter and call srv.waitReady(t, 10*time.Second) from TestServeWaitsForQdrant. |
+
+## Coverage matrix
+
+| scenario | covered by | status | verified |
+|---|---|---|---|
+| Live during provisioning | cmd/engram/startupgate_test.go: TestStartupGate/primary gate before and after provisioning; internal/e2e/startup_test.go: TestServeWaitsForQdrant | covered | not-run |
+| Live while Qdrant is down after start | cmd/engram/startupgate_test.go: TestStartupGate (livez after setTarget; ping not actually failed) | partial | not-run |
+| Not ready during provisioning | cmd/engram/startupgate_test.go: TestStartupGate; internal/e2e/startup_test.go: TestServeWaitsForQdrant | covered | not-run |
+| Not ready before the first background check | cmd/engram/startupgate_test.go: TestReadinessInitialPing/not ready while the initial ping is open | covered | not-run |
+| Ready after provisioning | cmd/engram/startupgate_test.go: TestReadinessInitialPing/ready after the initial ping, with no tick | covered | not-run |
+| Not ready after a failed health check | cmd/engram/startupgate_test.go: TestPropertyReadiness | covered | pass |
+| Ready again after Qdrant recovers | cmd/engram/startupgate_test.go: TestPropertyReadiness (tick-fail then tick-ok) | covered | not-run |
+| Many probes, no Qdrant traffic | cmd/engram/startupgate_test.go: TestPropertyReadiness (pings == ticks+1 invariant) | covered | not-run |
+| Default render | Taskfile.yaml: chart:validate (probe awk checks, lines 461-466); probes not asserted via a Go test | covered | not-run |
+| Qdrant comes up within the budget | internal/e2e/startup_test.go: TestServeWaitsForQdrant | partial | pass |
+| Attempt runs out of its own budget | internal/server/startup_test.go: TestServeProvisionRetry/an attempt cut off by its own budget is retried | partial | not-run |
+| Budget runs out | internal/e2e/startup_test.go: TestServeStartupTimeout; internal/server/startup_test.go: TestServeProvisionRetry | covered | not-run |
+| Error that is not transient | internal/server/startup_test.go: TestServeProvisionRetry/an error that is not transient fails at once, unchanged | covered | not-run |
+| CLI verb against an unreachable Qdrant | internal/server/startup_test.go: TestStoreFromEnvSingleAttempt | covered | pass |
+| Three failures then success | internal/server/startup_test.go: TestServeProvisionRetry/unavailable then success logs each failure | covered | not-run |
+| Exhaustion | internal/server/startup_test.go: TestPropertyServeProvisionRetryLog | covered | pass |
+| Unset | internal/config/config_test.go: TestQdrantProvisioningDefaultsAndEnv | covered | pass |
+| Smallest positive value | internal/config/duration_test.go: 1ns case | covered | not-run |
+| Invalid startup timeout | internal/config/duration_test.go; internal/config/validate_test.go: TestValidateFieldRules | covered | pass |
+| Port accepts connections during provisioning | internal/e2e/startup_test.go: TestServeWaitsForQdrant | covered | pass |
+| Request during provisioning | internal/e2e/startup_test.go: TestServeWaitsForQdrant; cmd/engram/startupgate_test.go: TestStartupGate | covered | not-run |
+| Cross-origin request during provisioning | cmd/engram/startupgate_test.go: TestStartupGate; TestPropertyStartupGate | covered | not-run |
+| Request after provisioning | internal/e2e/startup_test.go: TestServeWaitsForQdrant (checkDocumentedTools) | covered | not-run |
+| Quantization rejected by Qdrant | internal/server/provision_test.go: TestProvisionStoreBudgets/a rejected quantization update fails provisioning; cmd/engram/startupgate_test.go: TestStartServeProvisioningError | covered | not-run |
+| Signal during an attempt | internal/server/startup_test.go: TestServeProvisionRetry; internal/e2e/startup_test.go: TestServeSignalDuringStartup | covered | not-run |
+| Signal during schema convergence | none | missing | not-run |
+| Signal during the backoff wait | internal/server/startup_test.go: TestServeProvisionRetry/a signal during the backoff wait stops the retry | covered | not-run |
+| Slow index build within the schema budget | internal/server/provision_test.go: TestProvisionStoreBudgets | covered | pass |
+| Schema budget exceeded | internal/server/provision_test.go: TestProvisionStoreBudgets/exceeding the schema budget names the step and the variable | covered | not-run |
+| Invalid schema timeout | internal/config/duration_test.go; validate_test.go: TestValidateFieldRules | covered | pass |
+| Startup timeout shorter than one attempt | internal/e2e/startup_test.go: TestServeStartupTimeout/silent listener | covered | not-run |
+| Raised schema timeout | Taskfile.yaml: chart:validate (line 469) | covered | not-run |
+| Raised startup timeout | Taskfile.yaml: chart:validate (line 469) | covered | not-run |
+| Invalid startup timeout value | Taskfile.yaml: chart:validate (line 475 loop) | covered | not-run |
+| Console path is refused | internal/e2e/mcp_listener_test.go: TestMCPOnlyListenerWithConsole | covered | pass |
+| Login path is refused | internal/e2e/mcp_listener_test.go: TestMCPOnlyListenerWithConsole | covered | pass |
+| Connect route is refused | internal/e2e/mcp_listener_test.go: TestMCPOnlyListener | covered | pass |
+| Bare root is refused | internal/e2e/mcp_listener_test.go: TestMCPOnlyListenerWithConsole | covered | pass |
+| Root MCP path has no catch-all on the second listener | cmd/engram/mcproute_test.go (not verified by name) | partial | not-run |
+| Console path during provisioning | cmd/engram/startupgate_test.go: TestStartupGate/MCP-only gate before provisioning | covered | not-run |
+
+### Not run
+
+- Live during provisioning: no verification run names this row
+- Live while Qdrant is down after start: no verification run names this row
+- Not ready during provisioning: no verification run names this row
+- Not ready before the first background check: no verification run names this row
+- Ready after provisioning: no verification run names this row
+- Ready again after Qdrant recovers: no verification run names this row
+- Many probes, no Qdrant traffic: no verification run names this row
+- Default render: no verification run names this row
+- Attempt runs out of its own budget: asserts retry only, not the warn log entry
+- Budget runs out: no verification run names this row
+- Error that is not transient: no verification run names this row
+- Three failures then success: no verification run names this row
+- Smallest positive value: no verification run names this row
+- Request during provisioning: no verification run names this row
+- Cross-origin request during provisioning: no verification run names this row
+- Request after provisioning: no verification run names this row
+- Quantization rejected by Qdrant: no verification run names this row
+- Signal during an attempt: no verification run names this row
+- Signal during schema convergence: no verification run names this row
+- Signal during the backoff wait: no verification run names this row
+- Schema budget exceeded: no verification run names this row
+- Startup timeout shorter than one attempt: no verification run names this row
+- Raised schema timeout: no verification run names this row
+- Raised startup timeout: no verification run names this row
+- Invalid startup timeout value: no verification run names this row
+- Root MCP path has no catch-all on the second listener: matched by name only; not read
+- Console path during provisioning: no verification run names this row
+
+## Verification runs
+
+- exit 0: `go test ./cmd/engram -count=1 -run '^(TestPropertyReadiness|TestReadinessInitialPing|TestStartServeProvisioningError|TestStartupGate|TestPropertyStartupGate|TestResolveMCPPath)$'`
+- exit 0: `go test ./internal/config -count=1 -run '^(TestQdrantProvisioningDefaultsAndEnv|TestValidateFieldRules|TestValidatePositiveDurationText|TestValidateStartupTimeoutAccepted|TestPropertyValidatePositiveDuration)$'`
+- exit 0: `go test ./internal/server -count=1 -run '^(TestProvisionStoreBudgets|TestPropertyServeProvisionRetryLog|TestServeProvisionRetry|TestStoreFromEnvSingleAttempt)$'`
+- exit 0: `go test ./internal/e2e -count=1 -run '^(TestMCPOnlyListener|TestMCPOnlyListenerWithConsole|TestServeSignalDuringStartup|TestServeStartupTimeout|TestServeWaitsForQdrant)$'`
+- exit 0: `task chart:validate`
+
+## Dropped
+
+None.
+
+## Lens notes
+
+- approach: Every requirement of the three spec deltas has a producing decision and code at head: startupGate and healthLoop in cmd/engram/startupgate.go, retryConnectAndCreate in internal/server/startup.go, the ENGRAM_QDRANT_STARTUP_TIMEOUT key and ParsePositiveDuration in internal/config, the positiveSeconds helper and httpGet probes in the chart.
+- approach: Library facts cited in D3 hold at the pinned versions: backoff/v7@v7.0.3 refuses a wait longer than the time left, does not call Notify for the final attempt, and returns *RetryError with LastErr and Cause; qdrant/go-client@v1.20.1 has VersionCheckTimeout with a 1 minute default and a pool size of 3.
+- approach: The D6 test names were matched by name only: every named test function exists at head.
+- approach: app-3 rests on singleCreate's wrapper being today's serve text; the prior text at main was not read, because this lens has no git access.
+- approach: healthLoop also logs an info line on recovery, which D4 does not name; it is additive and not reported as a deviation.
+- fit: openspec/config.yaml context has one library-preference row: prefer an established OSS or idiomatic solution over a hand-rolled one. The retry uses cenkalti/backoff/v7 through the existing newRetryBackOff, and store.IsUnavailable replaces the CLI classifier's copy rather than adding one; both fit.
+- fit: newRetryBackOff is now shared by the summary queue and the serve startup retry but still lives in summaryqueue.go.
+- fit: Design D2 says startServe returns the gate targets; at head startServe returns the drain and the register closure (serveSetup.provision) sets the targets through markProvisioned. Left to the controller as a design-to-code drift rather than a fit finding.
+- fit: fit-5 is classed third-copy on the reading that the two serve_test.go checks predate the change; if both were added by this change, the kind is change-internal at should-fix.
+- fit: The chart helper engram.positiveSeconds and the chart:validate loops are parameterized over both timeouts; no copy found. ENGRAM_QDRANT_STARTUP_TIMEOUT appears in the same file set as ENGRAM_QDRANT_SCHEMA_TIMEOUT.
+- invariants: I1: ENGRAM_QDRANT_STARTUP_TIMEOUT and ENGRAM_QDRANT_SCHEMA_TIMEOUT are always > 0 \| enforced at internal/config/validate.go ParsePositiveDuration, shared with runtime parse in internal/server/tools.go \| boundary test TestPropertyValidatePositiveDuration (any int64), TestValidateStartupTimeoutAccepted (1ns), TestValidateFieldRules (0, -1s, abc)
+- invariants: I2: No MCP, Connect or console handler runs before every gate target is set \| enforced at cmd/engram/startupgate.go ServeHTTP nil-target branch \| boundary test TestStartupGate, TestPropertyStartupGate
+- invariants: I3: A cross-origin-refused request gets 403 in every state \| enforced at newHTTPServer wrapping the gate in newCrossOriginProtection \| boundary test TestStartupGate before and after setTarget, TestPropertyStartupGate
+- invariants: I4: /readyz is 200 only when provisioned and last ping ok \| enforced at startupGate.ServeHTTP provisioned() && health.ok \| boundary test TestPropertyReadiness, TestReadinessInitialPing (initial ping held open)
+- invariants: I5: /readyz never calls Qdrant; pings == ticks + 1 \| enforced at healthLoop.run \| boundary test TestPropertyReadiness ping-count invariant
+- invariants: I6: Every gate target is set before the health loop starts \| enforced at markProvisioned \| boundary test TestMarkProvisioned
+- invariants: I7: Each failed attempt logs a numbered warn, the last included \| enforced at retryConnectAndCreate closure \| boundary test TestPropertyServeProvisionRetryLog (0 to 6 transient, four outcomes)
+- invariants: I8: Longest serve backoff wait <= 7.5 s \| enforced at newServeBackOff (5 s MaxInterval, factor 0.5) \| boundary test TestPropertyServeBackOffBound
+- invariants: I9: No attempt runs past the startup timeout \| enforced at context.WithTimeout(parent, collectionCreateBudget) \| boundary test TestServeProvisionRetry blocked-attempt case, e2e TestServeStartupTimeout 2s
+- invariants: I10: Per-attempt budget 15 s \| enforced at startup.go:86 \| boundary test none (inv-6)
+- invariants: I11: versionCheckTimeout = min(timeout, 15 s) \| enforced at startup.go:53 \| boundary test none (inv-5)
+- invariants: I12: Signal during startup exits 0 \| enforced at startupResult and retryConnectAndCreate sigCtx check \| boundary test TestStartupResult, TestServeProvisionRetry signal cases, e2e TestServeSignalDuringStartup; schema-convergence branch none (inv-3)
+- invariants: I13: Non-serve verbs make one create attempt \| enforced at ensureStoreFromConfig !policy.retry() branch with singleCreate \| boundary test TestStoreFromEnvSingleAttempt
+- invariants: I14: Chart timeouts are whole seconds in [1, 9223372036] \| enforced at _helpers.tpl engram.positiveSeconds \| boundary test chart:validate (1, 9223372036, 0, -1, 0.5, 1.9, true, 9223372037 via --set-json)
+- invariants: I15: ENGRAM_MCP_PATH never names /livez or /readyz \| enforced at reservedMCPRoots in cmd/engram/mcproute.go \| boundary test TestResolveMCPPath exact-root cases; the /livez/x prefix case and a /livezz lookalike are not tested
+- invariants: I16: create attempts and post-startup requests are not wait-for-ready \| enforced at parent derived from the unmarked ctx before store.WithWaitForReady in ensureStoreFromConfig \| boundary test TestWaitForReadyInterceptor (marked vs unmarked)
+- invariants: Probe: helm template with a values file for startupTimeoutSeconds 9223372036 renders 9223372036s; 9223372037, "60" (string), null and 9223372036.4 fail naming the path; 1e3 renders 1000s and 1.0 renders 1s. --set 0 and --set 1.5 fail. Inputs are under probes/ in the handoff directory.
+- invariants: Probe: backoff v7.0.3 ExponentialBackOff never returns Stop, so in production the retry only stops on a permanent error, the parent deadline, ErrMaxElapsedTime or a signal.
+- invariants: Read internal/e2e/harness_test.go waitReady: it polls /readyz for 200 under a 45 s deadline and fails fast if the process exits, then checks the MCP-only listener is not 503.
+- invariants: Not weakened: newRetryBackOff keeps the summary queue at backoff.DefaultInitialInterval and summaryQueueMaxInterval, the same values as before; store.IsUnavailable has the same body as the removed isUnavailableTransportErr.
+- test-coverage: Task 7.1 integration check is unchecked in tasks.md.
+- test-coverage: The BREAKING removal has a migration note and the gate/readyz scenarios cover it.
+- test-honesty: No new unconditional t.Skip found in the cmd/engram test files grepped; internal/e2e TestServeWaitsForQdrant uses the existing SkipOrFailNoQdrant helper.
+- test-coverage gap: Test bodies for e2e mcp_listener and mcproute not read in full; chart:validate shell not read beyond grep.
+- test-honesty gap: Not read: TestServeBothListeners, config tests, store tests, chart:validate Taskfile gate, provision_test, harness_test, mcp_listener_test, operror/mcproute tests.
+
+## Plan review (2026-11-14)
+
+Verdict approve-with-notes at head 33dd9c763325381e94d2bb9d09875dd9cd713307.
+
+### Findings
 
 | id | lens | severity | claim | evidence | action |
 |---|---|---|---|---|---|
@@ -37,7 +213,7 @@ The verdict covers only what the lenses checked.
 | tes-1 | test-coverage | should-fix | The BREAKING removal of 'Server listens only after provisioning completes' has no scenario for the removal or the migration to /readyz. | specs/collection-provisioning/spec.md > Requirement: Server listens only after provisioning completes — "A check that relied on the port being closed during provisioning must use `GET /readyz` instead." | Add a scenario under the REMOVED requirement or the gate requirement: a TCP check passes during provisioning while GET /readyz returns 503. Name the e2e test TestServeWaitsForQdrant in internal/e2e as its proof, run by task test:e2e. |
 | inv-7 | invariants | note | The retry's result decision (D3 rules 1 to 3) is a function over any sequence of attempt errors, backoff causes and context states. The planned log property draws terminal outcomes but asserts only the log numbering, not the returned error class. | design.md > D6. Tests — "The warn entries are numbered 1 to the number of failed attempts." | Extend TestPropertyServeProvisionRetryLog (pgregory.net/rapid, as in the planned internal/server property) to assert per outcome: a signal gives context.Canceled, exhaustion gives an Unavailable status naming ENGRAM_QDRANT_STARTUP_TIMEOUT, and a permanent error satisfies errors.Is with the create error. |
 
-## Coverage matrix
+### Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
@@ -79,53 +255,3 @@ The verdict covers only what the lenses checked.
 ### Not run
 
 Plan phase: no verification runs.
-
-## Verification runs
-
-None.
-
-## Dropped
-
-- spe-2 (spec-lint, confidence 0.6): THEN step 'startup completes without a process restart' names no observable such as a restart count, an exit code or a /readyz status.
-
-## Lens notes
-
-- approach: I checked these citations at head and they hold: the runServe order and the bind after server.Register (cmd/engram/serve.go), newHTTPServer wrapping the mux in newCrossOriginProtection, reservedMCPRoots and resolveMCPPath, the TCP-connect readiness wait in internal/e2e startServer, the 615 s startup-window check and the containerEnv checksum in Taskfile.yaml, the tcpSocket probes and the int coercion of schemaTimeoutSeconds in the chart, collectionCreateBudget, provisionStore, storeFromConfig, ensureStoreFromConfig and its CLI callers, NewQdrantClient as the only qdrant.NewClient caller, isUnavailableTransportErr and classifyOperatorErrConstruction, and newRetryBackOff in summaryqueue.go.
-- approach: The dependency behavior the design relies on holds. In backoff v7.0.3, Notify is not called for the final error, the elapsed-time limit refuses a wait longer than the time left, and a permanent error comes back as a *RetryError with LastErr set. The defaults are a 500 ms initial interval and a 0.5 randomization factor. In qdrant go-client v1.20.1, the version check runs during NewGrpcClient with a 1 minute default VersionCheckTimeout and no context, and a failed check only logs a warning. RetryConfig is bounded by MaxRetries. In grpc v1.85.0, WithConnectParams replaces both the backoff config and minConnectTimeout, DefaultConfig.MaxDelay is 120 s and the default minConnectTimeout is 20 s.
-- approach: Not a finding, for the controller: D2 says a step 3 or step 4 failure shuts the listeners down 'through the wait-and-shutdown step'. At head, serveAll's wait blocks until a serve error or the signal context. The design does not say how the startup-error path skips that wait, for example by handing it an already-done context. Without that, the scenario 'Quantization rejected by Qdrant' (exit non-zero) would hang until a signal. TestStartServeProvisioningError checks only that the error comes back unchanged.
-- approach: Not verified: the 15 s budget of the bearer-chain OIDC discovery in buildAuthChain. I read the 15 s budget of the web UI discovery in serve.go only.
-- approach: The halfway envelope was not written at the halfway turn. This final envelope replaces it.
-- fit: openspec/config.yaml context has no library-preference rows; only the generic rows and its 'Prefer an established OSS or idiomatic solution' line apply.
-- fit: D3 reuses cenkalti/backoff/v7 through newRetryBackOff, as internal/server/summaryqueue.go already does; no bespoke retry loop.
-- fit: D3 moves isUnavailableTransportErr (cmd/engram/operror.go:41) to store.IsUnavailable, so the CLI classifier and the retry share one predicate; the gRPC DeadlineExceeded rule stays local to the retry with a stated reason.
-- fit: D3 passes the connect parameters through the existing opts ...grpc.DialOption of store.NewQdrantClient (internal/store/store.go:550), keeping one qdrant.NewClient site.
-- fit: D4 departs from the span-and-RecordStoreOp pattern of sibling Store methods (internal/store/provision.go:66) and names the reason; no existing Store ping or health method exists to reuse.
-- fit: D5's ParsePositiveDuration and validatePositiveDuration mirror the existing ParsePositiveIntCap and validatePositiveCap pair (internal/config/validate.go:520-534).
-- fit: D5's chart probes follow the httpGet /livez and /readyz shape the chart already uses for Qdrant (charts/engram/templates/qdrant.yaml:64-68).
-- fit: The repository has no existing HTTP health library or swappable-handler helper; go.mod lists none.
-- invariants: I1: ENGRAM_QDRANT_STARTUP_TIMEOUT is always a positive Go duration \| enforced at planned validatePositiveDuration in Config.Validate (internal/config/validate.go) \| boundary test TestValidateFieldRules cases 1ns, 0, -1s, abc and TestPropertyValidatePositiveDuration (int64 round trip probed sound, MinInt64 to MaxInt64)
-- invariants: I2: runtime and validation parse both Qdrant budgets with one parser \| enforced at planned config.ParsePositiveDuration (today tools.go:282 uses time.ParseDuration) \| boundary test TestValidatePositiveDurationText
-- invariants: I3: no connect-and-create attempt runs past the startup timeout \| enforced at planned per-attempt context.WithTimeout(parent, 15s) plus version-check bound min(startup, 15s) \| boundary test TestServeProvisionRetry 50 ms budget and TestServeStartupTimeout (2s, accepting listener)
-- invariants: I4: only serve retries; every other verb makes one attempt \| enforced at the zero startupPolicy \| boundary test TestStoreFromEnvSingleAttempt
-- invariants: I5: budget exhaustion always exits 5 \| enforced at rule 2 status.Error(codes.Unavailable) plus classifyOperatorErrConstruction (operror.go:184) \| boundary test TestServeProvisionRetry exhaustion cases, including ErrMaxElapsedTime while the parent is live
-- invariants: I6: a signal during startup always exits 0 \| enforced at planned startupResult(sigCtx, err) \| boundary test TestStartupResult, TestStartServeSignal, TestServeSignalDuringStartup. OIDC discovery takes no ctx, so a signal during it waits up to its 15 s budget before exit 0
-- invariants: I7: no MCP, Connect or console handler runs before every gate target is set \| enforced at the planned gate atomic.Pointer \| boundary test TestStartupGate and TestPropertyStartupGate
-- invariants: I8: a cross-origin refused request gets 403 in every state \| enforced at newCrossOriginProtection wrapping the gate (csrf.go:26) \| boundary test TestStartupGate cross-site POST before and after
-- invariants: I9: primary /readyz 200 implies every gate target is set \| enforced at planned markProvisioned order \| boundary test TestMarkProvisioned
-- invariants: I10: /readyz is 200 only when the target is set and the last finished ping succeeded \| enforced at the atomic.Bool starting false \| boundary test TestPropertyReadiness. The initial-ping edge is missing, see inv-6
-- invariants: I11: /readyz never calls Qdrant \| enforced structurally, since the loop owns the only ping \| boundary test TestPropertyReadiness ping count = ticks + 1
-- invariants: I12: the longest backoff wait is 7.5 s \| enforced at newRetryBackOff(500ms, 5s) with default randomization 0.5 (backoff v7.0.3 exponential.go). No boundary test, see inv-5
-- invariants: I13: chart timeouts render only as positive whole seconds \| enforced at planned engram.positiveSeconds \| boundary test chart:validate 1, 0, -1, 0.5, 1.9. Probes under inv-probe/ show that true and 9223372036854775807 pass, see inv-3 and inv-4. Today's int coercion was probed too: 1.9 renders 1s and 0.5 fails, which confirms D5
-- invariants: I14: /livez and /readyz cannot be ENGRAM_MCP_PATH \| enforced at reservedMCPRoots prefix loop (mcproute.go:46) \| boundary test planned resolveMCPPath case
-- invariants: Backoff v7 Retry returns ErrExhausted when an injected BackOff returns Stop. D3 rule 3 would then return a transient LastErr as if it were not transient. The production ExponentialBackOff never returns Stop, so only injected test BackOffs can reach this.
-- invariants: Backoff v7 Retry always runs the operation once, even under a done context (retry.go:131-133). So with a 1ns startup timeout, serve makes one logged attempt and then exits 5.
-- invariants: D4 says the health goroutine stops when the signal context ends. No D6 row tests that stop.
-- invariants: Probe inputs were written under the handoff directory, in inv-probe/ (chart/, dur/, vals.yaml).
-- spec-lint: All Taskfile targets named in tasks.md exist: task, lint:markdown, test:e2e, chart:validate.
-- spec-lint: BREAKING is present in the proposal and in the REMOVED requirement of collection-provisioning, so the BREAKING check passes.
-- spec-lint: Every ADDED, MODIFIED and REMOVED requirement has at least one scenario with WHEN or GIVEN and THEN lines.
-- spec-lint: Every requirement heading shares two or more distinctive words with a task line; no untasked-requirement finding.
-- spec-lint: Every tracked task names a command, test, file or observable; no unverifiable-task finding.
-- spec-lint: design.md Open Questions reads None, so no assumed-answer finding.
-- test-coverage: Two scenarios are both named 'Default render' and 'Invalid startup timeout' in different capabilities; each is graded once per heading text.
-- fit gap: Issue #684, the source of the remaining telemetry work, is not in the repository and this lens has no GitHub access, so forward fit against it is not judged.

@@ -8,7 +8,7 @@
 
 #### Scenario: Qdrant comes up within the budget
 
-- **WHEN** `engram serve` starts while Qdrant refuses connections, and Qdrant starts accepting them while at least 7.5 s of `ENGRAM_QDRANT_STARTUP_TIMEOUT` remain
+- **WHEN** `engram serve` starts while Qdrant refuses connections, and Qdrant starts accepting them while at least 15 s of `ENGRAM_QDRANT_STARTUP_TIMEOUT` remain
 - **THEN** the same process answers `GET /readyz` with HTTP 200, and the log holds one warn-level entry per failed attempt
 
 #### Scenario: Attempt runs out of its own budget

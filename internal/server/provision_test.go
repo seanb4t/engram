@@ -35,6 +35,20 @@ func stallFirst(method string, d time.Duration) grpc.UnaryClientInterceptor {
 	}
 }
 
+// cancelOn calls cancel on the first call to method, then holds that call
+// until its context ends.
+func cancelOn(method string, cancel context.CancelFunc) grpc.UnaryClientInterceptor {
+	var seen atomic.Bool
+	return func(ctx context.Context, m string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if m == method && !seen.Swap(true) {
+			cancel()
+			<-ctx.Done()
+			return status.FromContextError(ctx.Err()).Err()
+		}
+		return invoker(ctx, m, req, reply, cc, opts...)
+	}
+}
+
 // rejectMethod fails every call to method with InvalidArgument.
 func rejectMethod(method string) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, m string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
@@ -64,9 +78,9 @@ const createFieldIndex = "/qdrant.Points/CreateFieldIndex"
 func TestProvisionStoreBudgets(t *testing.T) {
 	t.Run("a slow index build within the schema budget succeeds although it outlasts the create budget", func(t *testing.T) {
 		collection := provisionCollection(t, "provision_slow_index_ok")
-		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 600*time.Millisecond)))
+		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 3*time.Second)))
 		st := newTestStore(t, c, collection)
-		if err := provisionStore(context.Background(), st, 3, singleCreate(300*time.Millisecond), 10*time.Second); err != nil {
+		if err := provisionStore(context.Background(), st, 3, singleCreate(2*time.Second), 10*time.Second); err != nil {
 			t.Fatalf("provisionStore: %v", err)
 		}
 	})
@@ -86,6 +100,21 @@ func TestProvisionStoreBudgets(t *testing.T) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error %q does not name %q", err, want)
 			}
+		}
+	})
+
+	t.Run("a signal during an index build returns the signal's error, not the schema error", func(t *testing.T) {
+		collection := provisionCollection(t, "provision_schema_signal")
+		sig, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(cancelOn(createFieldIndex, cancel)))
+		st := newTestStore(t, c, collection)
+		err := provisionStore(sig, st, 3, singleCreate(10*time.Second), time.Hour)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("provisionStore = %v, want context.Canceled", err)
+		}
+		if strings.Contains(err.Error(), "schema provisioning") {
+			t.Errorf("error %q names schema provisioning, want the signal's error alone", err)
 		}
 	})
 
