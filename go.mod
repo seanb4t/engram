@@ -8,7 +8,7 @@ require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.1
 	charm.land/glamour/v2 v2.0.1
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.0
 	connectrpc.com/connect v1.21.1
 	connectrpc.com/otelconnect v0.12.0
 	github.com/cedar-policy/cedar-go v1.9.0
@@ -27,7 +27,7 @@ require (
 	github.com/qdrant/go-client v1.20.1
 	github.com/sahilm/fuzzy v0.1.3
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	github.com/testcontainers/testcontainers-go/modules/qdrant v0.45.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.72.0
@@ -49,7 +49,7 @@ require (
 	// hand-rolled parser). Already resolved in go.sum and reached
 	// transitively today by cobra/doc and buf — no new module is fetched.
 	go.yaml.in/yaml/v3 v3.0.6
-	golang.org/x/oauth2 v0.37.0
+	golang.org/x/oauth2 v0.38.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.37.0-rc.1
 	pgregory.net/rapid v1.3.0
