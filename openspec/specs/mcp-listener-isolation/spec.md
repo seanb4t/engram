@@ -30,7 +30,7 @@ nothing else. The primary listener on `ENGRAM_LISTEN_ADDR` SHALL keep every rout
 
 ### Requirement: The second listener refuses every other path
 
-A request to the second listener for any path other than the MCP path and the two well-known paths
+After provisioning completes, a request to the second listener for any path other than the MCP path and the two well-known paths
 SHALL receive 404 with no redirect, no console content, no login flow and no Connect response. The
 bare root SHALL also be 404, even when the console is enabled, unless the MCP path is `/`: the
 transport then answers the bare root and no other path.
@@ -59,6 +59,15 @@ transport then answers the bare root and no other path.
 
 - **WHEN** `ENGRAM_MCP_PATH` is `/` and a client requests `/ui/` on port 8081
 - **THEN** the response is 404, while a POST to `/` reaches the MCP transport
+
+### Requirement: The second listener answers 503 before provisioning completes
+
+Before provisioning completes, the startup gate on the second listener SHALL answer every request that passes the cross-origin check with 503 and a `Retry-After` header. No console, login or Connect handler SHALL run.
+
+#### Scenario: Console path during provisioning
+
+- **WHEN** `engram serve` is still provisioning and a browser GETs `/ui/` on port 8081
+- **THEN** the response is 503 with a `Retry-After` header, and no console content is served
 
 ### Requirement: The second listener applies the same bearer gate and cross-origin rules
 
