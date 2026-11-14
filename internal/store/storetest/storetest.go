@@ -261,7 +261,7 @@ func Dial(t testing.TB, recvLimit int, opts ...grpc.DialOption) *qdrant.Client {
 	// An assignment, not a direct return: the client-holder gate's
 	// never-writes check (D-13) needs a client-bound identifier in this
 	// file to verify against.
-	c, err := store.NewQdrantClient(host, port, dialOpts...)
+	c, err := store.NewQdrantClient(host, port, 0, dialOpts...)
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}

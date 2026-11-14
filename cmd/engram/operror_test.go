@@ -211,7 +211,7 @@ var operatorCommandFiles = []string{
 // operatorCommandFiles must carry, on the SAME line, to be exempted from
 // TestNoBareOperatorErrorReturns below.
 //
-// serve.go's listenAll and serveAll return their bind, serve and shutdown
+// serve.go's listenAll and the serve steps return their bind, serve and shutdown
 // failures untyped so they exit 1 (see the comment at the listenAll call
 // site in runServe), but never as a bare `return fmt.Errorf(`, so they need
 // no marker. The marker records a genuinely exceptional site explicitly in

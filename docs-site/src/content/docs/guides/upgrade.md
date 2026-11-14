@@ -46,6 +46,7 @@ one predictable, migration-safe contract.
 | rely on a `401` from the MCP path carrying no `WWW-Authenticate` header, set `ENGRAM_MCP_RESOURCE_URL` to a value with userinfo or an unusual host, or compare the derived `resource` value byte for byte | §25 |
 | treat exit `7` as meaning only `spine-review verify --fail-on` findings | §26 |
 | branch on a Connect error code or the text of a Connect validation failure | §27 |
+| check engram's readiness with a TCP connect, or start engram before Qdrant is up | §28 |
 | only run `engram` interactively | nothing — no action |
 
 ### 1. Framework flag errors now exit 2, not 1
@@ -603,12 +604,9 @@ original vectors. It costs about 3 KB of Qdrant memory per record.
 Startup also splits its time budget (#683). Connecting to Qdrant and creating
 the collection keep their 15 seconds; applying the quantization setting and
 building any missing payload index now get their own budget,
-`ENGRAM_QDRANT_SCHEMA_TIMEOUT` (default `2m`). The server still opens its
-port only after both finish, and logs each index it actually builds with its
-duration. The Helm chart adds a `startupProbe` on `memory-mcp` sized from the
-same value (`memory.qdrant.schemaTimeoutSeconds`, default `120`), so the
-liveness probe no longer starts while a large collection is still being
-indexed.
+`ENGRAM_QDRANT_SCHEMA_TIMEOUT` (default `2m`). The server logs each index it
+actually builds with its duration. For when the server opens its port and
+how the chart probes it, see §28.
 
 Two new environment variables (and Helm values), documented in the
 [configuration guide](/guides/configure/#qdrant-vector-store):
@@ -716,6 +714,45 @@ The Connect code now follows the failure's class on this path too:
 that reads the old text, or that handles only `CodeInvalidArgument`, must change. Parse the
 `field=` and `hint=` prefix, and handle the three codes in the
 [class-to-code table](/reference/errors/#the-class-to-connect-code-mapping).
+
+### 28. `engram serve` waits for Qdrant and opens its port before provisioning
+
+`engram serve` now retries the connection to Qdrant at startup (#1013). While
+Qdrant is unavailable, the server retries connecting and creating its
+collection with backoff, for up to `ENGRAM_QDRANT_STARTUP_TIMEOUT` (default
+`60s`, Helm `memory.qdrant.startupTimeoutSeconds`). It logs each failed
+attempt at warn level. When that time runs out, it exits with code 5, as it
+did before on the first failure. Any other error still stops it at once. A
+SIGTERM or SIGINT during startup stops the retry, and the server exits with
+code 0.
+
+The server now opens its HTTP port before it contacts Qdrant or an OIDC
+issuer. Until provisioning completes, it answers every request with HTTP 503
+and a `Retry-After` header. Two new routes on the primary listener need no
+credentials:
+
+- `GET /livez` answers HTTP 200 while the process runs.
+- `GET /readyz` answers HTTP 200 after provisioning completes and while the
+  last background Qdrant health check passed. In every other state, it
+  answers HTTP 503.
+
+The Helm chart's `startupProbe` and `livenessProbe` on `memory-mcp` are now
+HTTP GET probes on `/livez`, and its `readinessProbe` is an HTTP GET probe on
+`/readyz`. The startup probe is no longer sized from
+`memory.qdrant.schemaTimeoutSeconds`. `/livez` and `/readyz` are now reserved
+paths, so `ENGRAM_MCP_PATH` cannot use them. The
+[deploy guide](/guides/deploy/#startup-and-health-probes) describes the
+probes.
+
+**Who should act:**
+
+- Operators who check engram's readiness with a TCP connect, for example a
+  custom `tcpSocket` readiness probe or a load-balancer health check: change
+  the check to `GET /readyz`. The port now accepts connections during
+  provisioning, so a TCP check reports the server ready too early.
+- Operators who start engram and Qdrant together: nothing to do. If Qdrant
+  takes longer than 60 seconds to start, raise
+  `ENGRAM_QDRANT_STARTUP_TIMEOUT`.
 
 ## v0.7.10 — Recall returns summaries by default
 

@@ -6,7 +6,8 @@
 - { name: ENGRAM_QDRANT_ADDR, value: "qdrant.{{ .Release.Namespace }}.svc.cluster.local:6334" }
 - { name: ENGRAM_QDRANT_COLLECTION, value: "{{ .Values.memory.qdrant.collection }}" }
 - { name: ENGRAM_QDRANT_QUANTIZATION, value: "{{ .Values.memory.qdrant.quantization }}" }
-- { name: ENGRAM_QDRANT_SCHEMA_TIMEOUT, value: "{{ int .Values.memory.qdrant.schemaTimeoutSeconds }}s" }
+- { name: ENGRAM_QDRANT_SCHEMA_TIMEOUT, value: "{{ include "engram.positiveSeconds" (list "memory.qdrant.schemaTimeoutSeconds" .Values.memory.qdrant.schemaTimeoutSeconds) }}s" }
+- { name: ENGRAM_QDRANT_STARTUP_TIMEOUT, value: "{{ include "engram.positiveSeconds" (list "memory.qdrant.startupTimeoutSeconds" .Values.memory.qdrant.startupTimeoutSeconds) }}s" }
 - { name: ENGRAM_OPENAI_BASE_URL, value: "{{ .Values.memory.openai.baseURL }}" }
 - { name: ENGRAM_EMBED_MODEL, value: "{{ .Values.memory.embed.model }}" }
 - { name: ENGRAM_EMBED_DIM, value: "{{ .Values.memory.embed.dim }}" }
@@ -267,4 +268,25 @@ memory.listenAddr. */}}
 {{- fail (printf "memory.mcpListenAddr %q uses the port of the http listener; choose another port, e.g. \":8081\"" $addr) -}}
 {{- end -}}
 {{- $port -}}
+{{- end -}}
+
+{{/*
+engram.positiveSeconds renders a value given in whole seconds, as an integer.
+It takes (list "<value path>" <value>) and fails the render, naming the path,
+unless the value is a number, a whole number, positive, and at most
+9223372036 (the largest whole-second Go duration).
+*/}}
+{{- define "engram.positiveSeconds" -}}
+{{- $path := index . 0 -}}
+{{- $v := index . 1 -}}
+{{- if not (or (kindIs "int" $v) (kindIs "int64" $v) (kindIs "float64" $v)) -}}
+{{- fail (printf "%s must be a positive whole number of seconds, got %v" $path $v) -}}
+{{- end -}}
+{{- if ne (float64 $v) (float64 (int64 $v)) -}}
+{{- fail (printf "%s must be a whole number of seconds, got %v" $path $v) -}}
+{{- end -}}
+{{- if or (le (float64 $v) (float64 0)) (gt (float64 $v) (float64 9223372036)) -}}
+{{- fail (printf "%s must be between 1 and 9223372036 seconds, got %v" $path $v) -}}
+{{- end -}}
+{{- int64 $v -}}
 {{- end -}}

@@ -953,7 +953,7 @@ func TestServeBothListeners(t *testing.T) {
 	mountWellKnownRoutes(primary, prm, "/mcp")
 	mountMCPRoutes(primary, h, true, "/mcp")
 	var releaseOnce sync.Once
-	listeners := newListeners(config.ServerConfig{ListenAddr: "127.0.0.1:0", MCPListenAddr: "127.0.0.1:0"}, primary, h, prm, "/mcp", func() {
+	listeners := newListeners(config.ServerConfig{ListenAddr: "127.0.0.1:0", MCPListenAddr: "127.0.0.1:0"}, &healthLoop{}, func() {
 		endStreams()
 		releaseOnce.Do(func() { close(release) })
 	})
@@ -964,6 +964,8 @@ func TestServeBothListeners(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listenAll: %v", err)
 	}
+	sv := startServing(bound)
+	markProvisioned(gatesOf(listeners), []http.Handler{primary, newMCPOnlyMux(h, prm, "/mcp")}, func() {})
 	bases := make([]string, len(bound))
 	for i, b := range bound {
 		bases[i] = "http://" + b.ln.Addr().String()
@@ -974,7 +976,7 @@ func TestServeBothListeners(t *testing.T) {
 	var drainSawFinished bool
 	done := make(chan error, 1)
 	go func() {
-		done <- serveAll(sigCtx, bound, shutdownGrace, func(context.Context) { drainSawFinished = finished.Load() })
+		done <- sv.waitAndShutdown(sigCtx, shutdownGrace, func(context.Context) { drainSawFinished = finished.Load() })
 	}()
 
 	for _, base := range bases {
@@ -1037,7 +1039,7 @@ func TestServeBothListeners(t *testing.T) {
 
 	stop()
 	if err := <-done; err != nil {
-		t.Fatalf("serveAll with open event streams: %v", err)
+		t.Fatalf("waitAndShutdown with open event streams: %v", err)
 	}
 	if err := <-slow; err != nil {
 		t.Fatalf("the running request failed during shutdown: %v", err)
@@ -1084,7 +1086,7 @@ func TestEndGETWith(t *testing.T) {
 }
 
 func TestNewListenersDefaultIsOnePort(t *testing.T) {
-	listeners := newListeners(config.ServerConfig{ListenAddr: ":8080"}, http.NewServeMux(), http.NotFoundHandler(), http.NotFoundHandler(), "/mcp", func() {})
+	listeners := newListeners(config.ServerConfig{ListenAddr: ":8080"}, &healthLoop{}, func() {})
 	if len(listeners) != 1 || listeners[0].setting != "ENGRAM_LISTEN_ADDR" {
 		t.Fatalf("newListeners without ENGRAM_MCP_LISTEN_ADDR = %d listeners, want only ENGRAM_LISTEN_ADDR", len(listeners))
 	}
@@ -1135,15 +1137,15 @@ func TestServeAllServeFailure(t *testing.T) {
 	_ = bound[1].ln.Close()
 
 	var drained bool
-	err = serveAll(context.Background(), bound, shutdownGrace, func(context.Context) { drained = true })
+	err = startServing(bound).waitAndShutdown(context.Background(), shutdownGrace, func(context.Context) { drained = true })
 	if err == nil || !strings.Contains(err.Error(), "serve ENGRAM_MCP_LISTEN_ADDR") {
-		t.Fatalf("serveAll=%v, want the serve failure named with ENGRAM_MCP_LISTEN_ADDR", err)
+		t.Fatalf("waitAndShutdown=%v, want the serve failure named with ENGRAM_MCP_LISTEN_ADDR", err)
 	}
 	if got := exitCodeFromError(err); got != exitGeneric {
 		t.Fatalf("exit code %d, want exitGeneric", got)
 	}
 	if !drained {
-		t.Fatal("serveAll returned without running drain")
+		t.Fatal("waitAndShutdown returned without running drain")
 	}
 	if conn, dialErr := net.Dial("tcp", bound[0].ln.Addr().String()); dialErr == nil {
 		_ = conn.Close()
@@ -1166,7 +1168,7 @@ func TestServeAllShutdownDeadline(t *testing.T) {
 	sigCtx, stop := context.WithCancel(context.Background())
 	defer stop()
 	done := make(chan error, 1)
-	go func() { done <- serveAll(sigCtx, bound, time.Nanosecond, func(context.Context) {}) }()
+	go func() { done <- startServing(bound).waitAndShutdown(sigCtx, time.Nanosecond, func(context.Context) {}) }()
 	held := make(chan error, 1)
 	go func() {
 		r, err := http.Get("http://" + bound[0].ln.Addr().String() + "/hold")
@@ -1180,7 +1182,7 @@ func TestServeAllShutdownDeadline(t *testing.T) {
 	stop()
 	err = <-done
 	if err == nil || !strings.Contains(err.Error(), "shut down ENGRAM_LISTEN_ADDR") || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("serveAll=%v, want the deadline named with ENGRAM_LISTEN_ADDR", err)
+		t.Fatalf("waitAndShutdown=%v, want the deadline named with ENGRAM_LISTEN_ADDR", err)
 	}
 	if got := exitCodeFromError(err); got != exitGeneric {
 		t.Fatalf("exit code %d, want exitGeneric", got)

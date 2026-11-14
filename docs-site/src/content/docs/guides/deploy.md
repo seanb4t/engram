@@ -35,7 +35,8 @@ The chart sets `ENGRAM_*` environment variables from these Helm values. Supply t
 | `memory.summarize.maxChars` | `ENGRAM_SUMMARY_MAX_CHARS` | Max generated-summary length (default `280`) |
 | `memory.qdrant.collection` | `ENGRAM_QDRANT_COLLECTION` | Qdrant collection name (default `memory`) |
 | `memory.qdrant.quantization` | `ENGRAM_QDRANT_QUANTIZATION` | Vector quantization of the collection: `int8` (default), `off`, or `unmanaged` |
-| `memory.qdrant.schemaTimeoutSeconds` | `ENGRAM_QDRANT_SCHEMA_TIMEOUT` | Startup schema-provisioning budget in whole seconds (default `120`); also sizes the startup probe |
+| `memory.qdrant.schemaTimeoutSeconds` | `ENGRAM_QDRANT_SCHEMA_TIMEOUT` | Startup schema-provisioning budget in whole seconds (default `120`) |
+| `memory.qdrant.startupTimeoutSeconds` | `ENGRAM_QDRANT_STARTUP_TIMEOUT` | How long `engram serve` retries connecting to Qdrant and creating its collection at startup, in whole seconds (default `60`) |
 | `memory.oidc.issuer` | `ENGRAM_OIDC_ISSUER` | OIDC issuer URL; setting it enables bearer-token enforcement |
 | `memory.oidc.audience` | `ENGRAM_OIDC_AUDIENCE` | Expected OIDC audience (optional) |
 | `memory.oidc.resourceMetadata` | `ENGRAM_OIDC_RESOURCE_METADATA` | WWW-Authenticate resource metadata URL (optional) |
@@ -138,17 +139,43 @@ read-only root filesystem.
 | `memory.summarize.cronjob.backoffLimit` | `2` | Retries of a failed sweep within one scheduled run. A sweep that reaches `timeout` leaves no time for a retry |
 | `memory.summarize.cronjob.resources` | requests `25m`/`64Mi`, limits `200m`/`128Mi` | Resources of the sweep container |
 
-### Startup probe
+### Startup and health probes
 
-The server opens its HTTP port only after it has provisioned its Qdrant
-collection: up to 15 seconds to connect and create the collection, then up to
-`memory.qdrant.schemaTimeoutSeconds` to apply the quantization setting and
-build any missing payload index. The `memory-mcp` container's `startupProbe`
-is sized from that same value (15 s + the schema timeout + 15 s for process
-start, rounded up to its 5 s period), and Kubernetes holds the liveness and
-readiness probes until it passes. If index builds on a large collection need
-longer, raise `memory.qdrant.schemaTimeoutSeconds`; the probe follows. A value
-of zero or less fails the render.
+The server opens its HTTP port before it contacts Qdrant. It then provisions
+its Qdrant collection in two steps:
+
+1. It connects to Qdrant and creates the collection if it is absent. Each
+   attempt has 15 seconds. While Qdrant is unavailable, the server retries
+   with backoff for up to `memory.qdrant.startupTimeoutSeconds` and logs each
+   failed attempt at warn level. When that time runs out, the server exits
+   with code 5. Any other error stops the server at once.
+2. It applies the quantization setting and builds any missing payload index,
+   within `memory.qdrant.schemaTimeoutSeconds`.
+
+Until both steps complete, the server answers every request with HTTP 503
+and a `Retry-After` header, except two health routes. The two routes need no
+credentials and are on the primary listener only:
+
+| Route | Answer |
+| --- | --- |
+| `GET /livez` | HTTP 200 while the process runs |
+| `GET /readyz` | HTTP 200 after provisioning completes and while the last background Qdrant health check passed, else HTTP 503 |
+
+The server runs the Qdrant health check every 5 seconds, with a 2 second
+timeout. A `/readyz` request never sends a request to Qdrant.
+
+The `memory-mcp` container's `startupProbe` and `livenessProbe` are HTTP GET
+probes on `/livez`, and its `readinessProbe` is an HTTP GET probe on
+`/readyz`. The startup probe covers process start only, because `/livez`
+answers during provisioning. If a load balancer or an external monitor checks
+engram, point it at `/readyz`, not at the TCP port. The port accepts
+connections during provisioning, so a TCP check reports the server ready too
+early.
+
+The serve client keeps a 5 second cap on its gRPC reconnect backoff after
+startup too, so after a Qdrant outage it reconnects within about 5 seconds.
+A timeout value that is not a positive whole number of seconds fails the
+render.
 
 ### Upgrade
 

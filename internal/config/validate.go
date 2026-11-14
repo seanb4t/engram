@@ -58,11 +58,11 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("ENGRAM_QDRANT_QUANTIZATION %q: must be int8, off, or unmanaged", c.Qdrant.Quantization))
 	}
 
-	switch d, err := time.ParseDuration(c.Qdrant.SchemaTimeout); {
-	case err != nil:
-		errs = append(errs, fmt.Errorf("ENGRAM_QDRANT_SCHEMA_TIMEOUT %q: must be a Go duration (e.g. 30s, 2m): %w", c.Qdrant.SchemaTimeout, err))
-	case d <= 0:
-		errs = append(errs, fmt.Errorf("ENGRAM_QDRANT_SCHEMA_TIMEOUT %q: must be a positive duration", c.Qdrant.SchemaTimeout))
+	if err := validatePositiveDuration(c.Qdrant.SchemaTimeout, "ENGRAM_QDRANT_SCHEMA_TIMEOUT"); err != nil {
+		errs = append(errs, err)
+	}
+	if err := validatePositiveDuration(c.Qdrant.StartupTimeout, "ENGRAM_QDRANT_STARTUP_TIMEOUT"); err != nil {
+		errs = append(errs, err)
 	}
 
 	if c.Embed.Model == "" {
@@ -540,6 +540,36 @@ func ParsePositiveIntCap(value string) (int, error) {
 		return 0, errors.New("must be greater than 0")
 	}
 	return n, nil
+}
+
+// errNotPositiveDuration is ParsePositiveDuration's error for a duration
+// that parses but is zero or negative.
+var errNotPositiveDuration = errors.New("must be a positive duration")
+
+// validatePositiveDuration validates a duration that must be greater than
+// zero, and names envName in its error.
+func validatePositiveDuration(value, envName string) error {
+	if _, err := ParsePositiveDuration(value); err != nil {
+		if errors.Is(err, errNotPositiveDuration) {
+			return fmt.Errorf("%s %q: %w", envName, value, err)
+		}
+		return fmt.Errorf("%s %q: must be a Go duration (e.g. 30s, 2m): %w", envName, value, err)
+	}
+	return nil
+}
+
+// ParsePositiveDuration parses value as a duration greater than zero. It is
+// the one parser both Config.Validate and the runtime use for these keys, so
+// the validated range and the enforced range cannot differ.
+func ParsePositiveDuration(value string) (time.Duration, error) {
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, errNotPositiveDuration
+	}
+	return d, nil
 }
 
 // ParseProbability parses value as a probability in [0, 1], using

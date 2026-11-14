@@ -151,6 +151,66 @@ func runServe(cmd *cobra.Command) error {
 		return usageErrorf("%w", err)
 	}
 
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	// streams ends every MCP event stream when a server shuts down, so
+	// Shutdown waits only for requests that finish on their own.
+	streams, endStreams := context.WithCancel(context.Background())
+	defer endStreams()
+
+	// The listeners bind before anything contacts an OIDC issuer or Qdrant,
+	// so /livez and /readyz answer while startup waits; every other request
+	// gets the startup gate's 503 until provisioning completes.
+	//
+	// A bind failure (e.g. "address already in use") here exits 1, the
+	// documented exception in guides/cli.md and guides/upgrade.md, alongside
+	// root.go's mistyped-verb path. A serve or shutdown failure from the serve
+	// steps below is returned the same way and also exits 1. Return each as an
+	// untyped error: never wrap it in usageErrorf, classifyOperatorErr or any
+	// other error that carries an exit code.
+	health := &healthLoop{timeout: healthPingTimeout}
+	listeners := newListeners(cfg.Server, health, endStreams)
+	bound, err := listenAll(listeners)
+	if err != nil {
+		slog.Error("listen failed", "err", err)
+		return err
+	}
+	listening := []any{"version", resolvedVersion(), "addr", bound[0].ln.Addr().String()}
+	if len(bound) > 1 {
+		listening = append(listening, "mcp_addr", bound[1].ln.Addr().String())
+	}
+	slog.Info("engram listening; provisioning", listening...)
+	sv := startServing(bound)
+	drain, err := startServe(sigCtx, sv, func(ctx context.Context) (func(context.Context), error) {
+		return serveSetup{cfg: cfg, tm: tm, sqm: sqm, uqm: uqm, mcpPath: resolvedMCPPath, resource: resource, streams: streams, listeners: listeners, health: health}.provision(ctx)
+	})
+	if err != nil {
+		return startupResult(sigCtx, err)
+	}
+	return sv.waitAndShutdown(sigCtx, shutdownGrace, drain)
+}
+
+// serveSetup is what runServe resolved before it bound its listeners, and
+// what provision needs to finish startup. streams ends every MCP event
+// stream at shutdown.
+type serveSetup struct {
+	cfg       *config.Config
+	tm        *telemetry.ToolMetrics
+	sqm       *telemetry.SummaryQueueMetrics
+	uqm       *telemetry.UsageQueueMetrics
+	mcpPath   string
+	resource  *protectedResource
+	streams   context.Context
+	listeners []listener
+	health    *healthLoop
+}
+
+// provision builds everything that contacts an OIDC issuer or Qdrant:
+// the auth chain, the console lane, the store (with its startup retry) and
+// the routes. It then sets every gate's target and starts the health loop.
+// ctx is the signal context. It returns the queue drain.
+func (in serveSetup) provision(ctx context.Context) (func(context.Context), error) {
+	cfg, tm, sqm, uqm, resolvedMCPPath, resource, streams, listeners, health := in.cfg, in.tm, in.sqm, in.uqm, in.mcpPath, in.resource, in.streams, in.listeners, in.health
 	mux := http.NewServeMux()
 
 	uiCfg, err := resolveUIConfig(uiRaw{
@@ -168,7 +228,7 @@ func runServe(cmd *cobra.Command) error {
 		// file scope, so its bare error is classified here at the call
 		// site rather than at its source, mirroring migrate.go's
 		// buildRemapSource "wrap, don't reword" discipline.
-		return usageErrorf("%w", err)
+		return nil, usageErrorf("%w", err)
 	}
 	// Parse the comma-list once (parsing is separate from defaulting: the
 	// registry already supplies "email" when unset). A malformed list
@@ -178,12 +238,12 @@ func runServe(cmd *cobra.Command) error {
 	if err != nil {
 		slog.Error("owner-claim config invalid", "err", err)
 		// Bucket 1: a malformed --owner-claim comma-list.
-		return usageErrorf("%w", err)
+		return nil, usageErrorf("%w", err)
 	}
 	if err := ownerClaimGuard(cfg.OIDC.Issuer, uiCfg.Enabled, ownerClaims); err != nil {
 		slog.Error("owner-claim config invalid", "err", err)
 		// ownerClaimGuard already returns a usageErrorf-typed error below.
-		return err
+		return nil, err
 	}
 
 	// D-06: build the verifier chain exactly ONCE here. The same chain value
@@ -196,25 +256,25 @@ func runServe(cmd *cobra.Command) error {
 		// (bucket 1: OIDC discovery misconfiguration and service-auth
 		// config, D-03).
 		slog.Error("oidc verifier init failed", "err", err, "issuer", cfg.OIDC.Issuer)
-		return err
+		return nil, err
 	}
 	headless, err := strconv.ParseBool(cfg.Connect.Headless)
 	if err != nil {
 		// Bucket 1: a malformed --connect-headless boolean.
 		err = usageErrorf("ENGRAM_CONNECT_HEADLESS (or --connect-headless) %q: must be a boolean: %w", cfg.Connect.Headless, err)
 		slog.Error("connect-headless config invalid", "err", err)
-		return err
+		return nil, err
 	}
 	if err := connectHeadlessGuard(headless, chain); err != nil {
 		// connectHeadlessGuard already returns a usageErrorf-typed error
 		// below (bucket 1: headless without a configured auth lane).
 		slog.Error("connect-headless config invalid", "err", err)
-		return err
+		return nil, err
 	}
 	if err := mcpListenerGuard(cfg.Server.MCPListenAddr, chain); err != nil {
 		// Bucket 1: the MCP-only listener without a configured auth lane.
 		slog.Error("MCP listener config invalid", "err", err)
-		return err
+		return nil, err
 	}
 
 	var cookieResolve func(context.Context, connect.AnyRequest) (*mcpauth.TokenInfo, error)
@@ -229,25 +289,25 @@ func runServe(cmd *cobra.Command) error {
 		// values) for every error below through the OIDC discovery call.
 		key, err := decodeCookieKey(uiCfg.CookieKey)
 		if err != nil {
-			return usageErrorf("%w", err)
+			return nil, usageErrorf("%w", err)
 		}
 		codec, err := webauth.NewSessionCodec(key)
 		if err != nil {
-			return usageErrorf("session cookie key: %w", err)
+			return nil, usageErrorf("session cookie key: %w", err)
 		}
 		kcsrf, err := webauth.DeriveCSRFKey(key)
 		if err != nil {
-			return usageErrorf("derive csrf key: %w", err)
+			return nil, usageErrorf("derive csrf key: %w", err)
 		}
 		csrfSigner, err := webauth.NewCSRFSigner(kcsrf)
 		if err != nil {
-			return usageErrorf("csrf signer: %w", err)
+			return nil, usageErrorf("csrf signer: %w", err)
 		}
 		oidcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		authr, err := webauth.NewAuthenticator(oidcCtx, uiCfg.Issuer, uiCfg.ClientID, uiCfg.ClientSecret, uiCfg.RedirectURL, ownerClaims)
 		cancel()
 		if err != nil {
-			return usageErrorf("web UI OIDC discovery: %w", err)
+			return nil, usageErrorf("web UI OIDC discovery: %w", err)
 		}
 		webHandler = webauth.NewHandler(authr, codec, true, csrfSigner)
 		// internal/webauth is not modified (D-07); webauth.NewResolver(codec).Resolve
@@ -270,7 +330,7 @@ func runServe(cmd *cobra.Command) error {
 	connectResolve := connectResolverFor(chain, headless, cookieResolve)
 
 	srv := newMCPServer(resolvedVersion())
-	drain, err := server.Register(srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify, connectReseal)
+	drain, ping, err := server.Register(ctx, srv, mux, tm, sqm, uqm, connectResolve, connectCSRFVerify, connectReseal)
 	if err != nil {
 		slog.Error("server registration failed", "err", err)
 		// D-03 bucket 2 (backend construction). server.Register's dominant
@@ -282,7 +342,7 @@ func runServe(cmd *cobra.Command) error {
 		// anything else reaching the classifier's default is config-shaped
 		// by elimination. Reused here rather than re-deciding at this
 		// fifth call site.
-		return classifyOperatorErrConstruction(err)
+		return nil, classifyOperatorErrConstruction(err)
 	}
 
 	if uiCfg.Enabled {
@@ -294,10 +354,6 @@ func runServe(cmd *cobra.Command) error {
 		mux.Handle("/ui/", http.StripPrefix("/ui/", webauth.StaticHandler()))
 	}
 
-	// streams ends every MCP event stream when a server shuts down, so
-	// Shutdown waits only for requests that finish on their own.
-	streams, endStreams := context.WithCancel(context.Background())
-	defer endStreams()
 	// The 401 challenge names ENGRAM_OIDC_RESOURCE_METADATA when set, else the
 	// document on ENGRAM_MCP_RESOURCE_URL's origin when that is set, else the
 	// path-suffix document on each request's own derived origin, or none when
@@ -319,33 +375,31 @@ func runServe(cmd *cobra.Command) error {
 	mountMCPRoutes(mux, handler, uiCfg.Enabled, resolvedMCPPath)
 	slog.Info("MCP transport mounted", "path", resolvedMCPPath, "ui_enabled", uiCfg.Enabled)
 
-	listeners := newListeners(cfg.Server, mux, handler, prmHandler, resolvedMCPPath, endStreams)
-
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	// A bind failure (e.g. "address already in use") here exits 1, the
-	// documented exception in guides/cli.md and guides/upgrade.md, alongside
-	// root.go's mistyped-verb path. A serve or shutdown failure from serveAll
-	// below is returned the same way and also exits 1. Return each as an
-	// untyped error: never wrap it in usageErrorf, classifyOperatorErr or any
-	// other error that carries an exit code.
-	bound, err := listenAll(listeners)
-	if err != nil {
-		slog.Error("listen failed", "err", err)
-		return err
+	targets := []http.Handler{mux}
+	if len(listeners) > 1 {
+		targets = append(targets, newMCPOnlyMux(handler, prmHandler, resolvedMCPPath))
 	}
-	listening := []any{"version", resolvedVersion(), "addr", bound[0].ln.Addr().String()}
-	if len(bound) > 1 {
-		listening = append(listening, "mcp_addr", bound[1].ln.Addr().String())
-	}
-	slog.Info("engram listening", listening...)
-	return serveAll(sigCtx, bound, shutdownGrace, drain)
+	health.ping = ping
+	markProvisioned(gatesOf(listeners), targets, func() {
+		ticker := time.NewTicker(healthInterval)
+		go func() {
+			defer ticker.Stop()
+			health.run(ctx, ticker.C)
+		}()
+	})
+	slog.Info("engram provisioned; serving requests")
+	return drain, nil
 }
 
-// shutdownGrace bounds how long serveAll waits for the servers to shut down
+// shutdownGrace bounds how long shutdown waits for the servers to shut down
 // and the queues to drain.
 const shutdownGrace = 15 * time.Second
+
+// The readiness health loop's interval and per-ping timeout.
+const (
+	healthInterval    = 5 * time.Second
+	healthPingTimeout = 2 * time.Second
+)
 
 // newMCPServer is the MCP server of engram serve, at version, for the
 // protocol versions of servedProtocolVersions. It advertises only the tools
@@ -402,22 +456,30 @@ func endGETWith(ctx context.Context, next http.Handler) http.Handler {
 	})
 }
 
-// newListeners returns the primary listener on mux and, when
-// cfg.MCPListenAddr is set, the MCP-only listener with mcpHandler and
-// prmHandler (newMCPOnlyMux). Each server calls onShutdown when it begins to
-// shut down.
-func newListeners(cfg config.ServerConfig, mux *http.ServeMux, mcpHandler, prmHandler http.Handler, mcpPath string, onShutdown func()) []listener {
-	listeners := []listener{{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer(cfg.ListenAddr, mux)}}
+// newListeners returns the primary listener and, when cfg.MCPListenAddr is
+// set, the MCP-only listener. Each serves its startup gate; the primary
+// gate also serves /livez and /readyz from health. Each server calls
+// onShutdown when it begins to shut down.
+func newListeners(cfg config.ServerConfig, health *healthLoop, onShutdown func()) []listener {
+	primary := &startupGate{health: health}
+	listeners := []listener{{setting: "ENGRAM_LISTEN_ADDR", srv: newHTTPServer(cfg.ListenAddr, primary), gate: primary}}
 	if cfg.MCPListenAddr != "" {
-		listeners = append(listeners, listener{
-			setting: "ENGRAM_MCP_LISTEN_ADDR",
-			srv:     newHTTPServer(cfg.MCPListenAddr, newMCPOnlyMux(mcpHandler, prmHandler, mcpPath)),
-		})
+		gate := &startupGate{}
+		listeners = append(listeners, listener{setting: "ENGRAM_MCP_LISTEN_ADDR", srv: newHTTPServer(cfg.MCPListenAddr, gate), gate: gate})
 	}
 	for _, l := range listeners {
 		l.srv.RegisterOnShutdown(onShutdown)
 	}
 	return listeners
+}
+
+// gatesOf returns the startup gate of each listener, in order.
+func gatesOf(listeners []listener) []*startupGate {
+	gates := make([]*startupGate, len(listeners))
+	for i, l := range listeners {
+		gates[i] = l.gate
+	}
+	return gates
 }
 
 // newHTTPServer is the http.Server for one engram listener.
@@ -426,7 +488,7 @@ func newListeners(cfg config.ServerConfig, mux *http.ServeMux, mcpHandler, prmHa
 // unset (0): the streamable-HTTP / SSE transport holds connections open
 // indefinitely and the go-sdk never clears write deadlines, so either
 // timeout would sever long-lived SSE streams.
-func newHTTPServer(addr string, mux *http.ServeMux) *http.Server {
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr: addr,
 		// CrossOriginProtection wraps the whole mux of the listener, so
@@ -434,17 +496,18 @@ func newHTTPServer(addr string, mux *http.ServeMux) *http.Server {
 		// no-Origin/no-Sec-Fetch-Site traffic (the MCP transport) pass
 		// Check() untouched; only cross-origin unsafe-method requests are
 		// rejected, before any handler (Connect included) parses them.
-		Handler:           newCrossOriginProtection().Handler(mux),
+		Handler:           newCrossOriginProtection().Handler(handler),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 }
 
 // listener is one engram serve listener: the setting that names its
-// address, and its server.
+// address, its server, and its startup gate (nil when built directly).
 type listener struct {
 	setting string
 	srv     *http.Server
+	gate    *startupGate
 }
 
 // boundListener is a listener with the socket listenAll bound for it.
@@ -471,37 +534,52 @@ func listenAll(listeners []listener) ([]boundListener, error) {
 	return bound, nil
 }
 
-// serveAll serves each bound listener until sigCtx is done or one of them
-// fails to serve. Either way it then shuts every server down in parallel
-// within grace, closes the open connections of any server whose Shutdown
-// runs out of grace, runs drain within the same deadline, and waits for
-// every serve call to return. It returns every serve failure and every
-// shutdown error, joined and named with the listener's setting, or nil
-// after a clean stop.
-func serveAll(sigCtx context.Context, bound []boundListener, grace time.Duration, drain func(context.Context)) error {
-	serveErr := make(chan error, len(bound))
-	var serving sync.WaitGroup
+// serving is the set of listeners being served, from startServing until
+// shutdown returns.
+type serving struct {
+	bound    []boundListener
+	serveErr chan error
+	wg       sync.WaitGroup
+}
+
+// startServing starts serving each bound listener.
+func startServing(bound []boundListener) *serving {
+	s := &serving{bound: bound, serveErr: make(chan error, len(bound))}
 	for _, b := range bound {
-		serving.Go(func() {
+		s.wg.Go(func() {
 			if err := b.srv.Serve(b.ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				serveErr <- fmt.Errorf("serve %s: %w", b.setting, err)
+				s.serveErr <- fmt.Errorf("serve %s: %w", b.setting, err)
 			}
 		})
 	}
+	return s
+}
 
+// waitAndShutdown waits until sigCtx is done or a listener fails to serve,
+// then shuts down.
+func (s *serving) waitAndShutdown(sigCtx context.Context, grace time.Duration, drain func(context.Context)) error {
 	var errs []error
 	select {
-	case err := <-serveErr:
+	case err := <-s.serveErr:
 		slog.Error("listener failed; shutting down", "err", err)
 		errs = append(errs, err)
 	case <-sigCtx.Done():
 		slog.Info("shutdown signal received; draining")
 	}
+	return s.shutdown(errs, grace, drain)
+}
+
+// shutdown shuts every server down in parallel within grace, closes the open
+// connections of any server whose Shutdown runs out of grace, runs drain
+// within the same deadline, and waits for every serve call to return. It
+// returns errs, every serve failure and every shutdown error, joined and
+// named with the listener's setting, or nil after a clean stop.
+func (s *serving) shutdown(errs []error, grace time.Duration, drain func(context.Context)) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), grace)
 	defer cancel()
-	shutdownErrs := make([]error, len(bound))
+	shutdownErrs := make([]error, len(s.bound))
 	var shuttingDown sync.WaitGroup
-	for i, b := range bound {
+	for i, b := range s.bound {
 		shuttingDown.Go(func() {
 			err := b.srv.Shutdown(shutdownCtx)
 			switch {
@@ -524,12 +602,37 @@ func serveAll(sigCtx context.Context, bound []boundListener, grace time.Duration
 	// running, so both queues also guard the close against a late enqueue.
 	slog.Info("draining summary and usage queues")
 	drain(shutdownCtx)
-	serving.Wait()
-	close(serveErr)
-	for err := range serveErr {
+	s.wg.Wait()
+	close(s.serveErr)
+	for err := range s.serveErr {
 		errs = append(errs, err)
 	}
 	return errors.Join(append(errs, shutdownErrs...)...)
+}
+
+// startServe runs the register step under sigCtx while sv already serves the
+// startup gates. On a register error it skips the wait, shuts the listeners
+// down with no drain (register returned none), and returns that error.
+func startServe(sigCtx context.Context, sv *serving, register func(context.Context) (func(context.Context), error)) (func(context.Context), error) {
+	drain, err := register(sigCtx)
+	if err == nil {
+		return drain, nil
+	}
+	if serr := sv.shutdown(nil, shutdownGrace, func(context.Context) {}); serr != nil {
+		slog.Warn("listeners did not shut down cleanly after a startup failure", "err", serr)
+	}
+	return nil, err
+}
+
+// startupResult is runServe's return value for a startup error: nil when
+// sigCtx is done, so a signal during startup exits 0 like a normal stop, and
+// err unchanged otherwise, so its exit code stays what it is today.
+func startupResult(sigCtx context.Context, err error) error {
+	if sigCtx.Err() != nil {
+		slog.Info("shutdown signal received during startup; stopped", "err", err)
+		return nil
+	}
+	return err
 }
 
 // checkMCPListenAddr refuses an ENGRAM_MCP_LISTEN_ADDR that is not

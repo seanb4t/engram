@@ -229,7 +229,7 @@ func (q *summaryQueue) process(ctx context.Context, id string) {
 		defer cancel()
 		return struct{}{}, q.fill(attemptCtx, id)
 	},
-		backoff.WithBackOff(newRetryBackOff()),
+		backoff.WithBackOff(newRetryBackOff(backoff.DefaultInitialInterval, summaryQueueMaxInterval)),
 		backoff.WithMaxTries(summaryQueueMaxTries),
 		backoff.WithMaxElapsedTime(q.maxElapsed),
 		backoff.WithNotify(func(err error, d time.Duration) {
@@ -260,12 +260,13 @@ func (q *summaryQueue) itemDone() {
 	q.inFlight.Done()
 }
 
-// newRetryBackOff builds the ExponentialBackOff used by every fill retry,
-// with an explicit low MaxInterval rather than the library's 60s default
-// (Open Question 1, resolved).
-func newRetryBackOff() *backoff.ExponentialBackOff {
+// newRetryBackOff builds an ExponentialBackOff with the given initial and
+// maximum intervals; the summary queue and the serve startup retry each pass
+// their own, rather than the library's 60s default maximum.
+func newRetryBackOff(initial, maxInterval time.Duration) *backoff.ExponentialBackOff {
 	b := backoff.NewExponentialBackOff()
-	b.MaxInterval = summaryQueueMaxInterval
+	b.InitialInterval = initial
+	b.MaxInterval = maxInterval
 	return b
 }
 

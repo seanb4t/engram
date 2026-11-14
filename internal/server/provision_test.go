@@ -66,7 +66,7 @@ func TestProvisionStoreBudgets(t *testing.T) {
 		collection := provisionCollection(t, "provision_slow_index_ok")
 		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 600*time.Millisecond)))
 		st := newTestStore(t, c, collection)
-		if err := provisionStore(st, 3, 300*time.Millisecond, 10*time.Second); err != nil {
+		if err := provisionStore(context.Background(), st, 3, singleCreate(300*time.Millisecond), 10*time.Second); err != nil {
 			t.Fatalf("provisionStore: %v", err)
 		}
 	})
@@ -75,7 +75,7 @@ func TestProvisionStoreBudgets(t *testing.T) {
 		collection := provisionCollection(t, "provision_schema_timeout")
 		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 10*time.Second)))
 		st := newTestStore(t, c, collection)
-		err := provisionStore(st, 3, 10*time.Second, 300*time.Millisecond)
+		err := provisionStore(context.Background(), st, 3, singleCreate(10*time.Second), 300*time.Millisecond)
 		if err == nil {
 			t.Fatal("provisionStore = nil, want a schema deadline error")
 		}
@@ -97,7 +97,7 @@ func TestProvisionStoreBudgets(t *testing.T) {
 		}
 		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(rejectMethod("/qdrant.Collections/Update")))
 		st := newTestStore(t, c, collection, store.WithQuantization(store.QuantizationInt8))
-		err := provisionStore(st, 3, 10*time.Second, 10*time.Second)
+		err := provisionStore(context.Background(), st, 3, singleCreate(10*time.Second), 10*time.Second)
 		if err == nil {
 			t.Fatal("provisionStore = nil, want the rejected quantization update")
 		}
@@ -136,7 +136,7 @@ func TestOnlyServerReconcilesQuantization(t *testing.T) {
 	}
 
 	t.Setenv("ENGRAM_QDRANT_QUANTIZATION", "off")
-	if _, err := buildDepsFromEnv(nil, nil); err != nil {
+	if _, err := buildDepsFromEnv(context.Background(), nil, nil); err != nil {
 		t.Fatalf("server build (off): %v", err)
 	}
 	if got := quantization(); got != nil {
@@ -152,7 +152,7 @@ func TestOnlyServerReconcilesQuantization(t *testing.T) {
 		t.Fatalf("after a CLI verb with the default env: quantization = %v, want none (CLI must not reconcile)", got)
 	}
 
-	if _, err := buildDepsFromEnv(nil, nil); err != nil {
+	if _, err := buildDepsFromEnv(context.Background(), nil, nil); err != nil {
 		t.Fatalf("server build (default int8): %v", err)
 	}
 	sc := quantization().GetScalar()

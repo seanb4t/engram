@@ -106,7 +106,7 @@ func dialTestClient(t testing.TB, opts ...grpc.DialOption) *qdrant.Client {
 	if err != nil || port <= 0 {
 		t.Fatalf("invalid Qdrant port %q (from %q): %v", portStr, addr, err)
 	}
-	c, err := NewQdrantClient(host, port, opts...)
+	c, err := NewQdrantClient(host, port, 0, opts...)
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}

@@ -5108,7 +5108,7 @@ func TestRegisterReturnsErrorOnStoreInitFailure(t *testing.T) {
 	t.Setenv("ENGRAM_EMBED_DIM", "not-a-number") // forces StoreFromEnv error pre-dial
 	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
 	tm := telemetry.NewToolMetrics(otel.Meter("test"))
-	if _, err := Register(s, http.NewServeMux(), tm, nil, nil, nil, nil, nil); err == nil {
+	if _, _, err := Register(context.Background(), s, http.NewServeMux(), tm, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("Register must return an error when store init fails, not exit")
 	}
 }
@@ -5211,7 +5211,7 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 	}
 	t.Cleanup(func() { configLoad = orig })
 
-	d, err := buildDepsFromEnv(nil, nil)
+	d, err := buildDepsFromEnv(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("buildDepsFromEnv: %v", err)
 	}
@@ -5247,7 +5247,7 @@ func TestBuildDepsFromEnvLoadsConfigOnce(t *testing.T) {
 func TestBuildDepsFromEnvRejectsUnknownProvider(t *testing.T) {
 	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "bogus")
 
-	_, err := buildDepsFromEnv(nil, nil)
+	_, err := buildDepsFromEnv(context.Background(), nil, nil)
 	if err == nil {
 		t.Fatal("buildDepsFromEnv with ENGRAM_DECISIONS_PROVIDER=bogus = nil error, want an error naming ENGRAM_DECISIONS_PROVIDER")
 	}
@@ -5281,7 +5281,7 @@ func TestBuildDepsFromEnvConstructsDecider(t *testing.T) {
 	t.Setenv("ENGRAM_DECISIONS_BASE_URL", srv.URL+"/api")
 	t.Setenv("ENGRAM_DECISIONS_API_KEY", "k")
 
-	d, err := buildDepsFromEnv(nil, nil)
+	d, err := buildDepsFromEnv(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("buildDepsFromEnv: %v", err)
 	}
@@ -5328,7 +5328,7 @@ func TestBuildDepsFromEnvRankerDefaultIsInert(t *testing.T) {
 	t.Setenv("ENGRAM_DECISIONS_API_KEY", "k")
 	t.Setenv("ENGRAM_SEARCH_RANKER", "")
 
-	d, err := buildDepsFromEnv(nil, nil)
+	d, err := buildDepsFromEnv(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("buildDepsFromEnv: %v", err)
 	}
@@ -5438,7 +5438,7 @@ func TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider(t *testing.T) {
 		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "")
 		buf := captureLog(t)
 
-		d, err := buildDepsFromEnv(nil, nil)
+		d, err := buildDepsFromEnv(context.Background(), nil, nil)
 		if err != nil {
 			t.Fatalf("buildDepsFromEnv: %v", err)
 		}
@@ -5468,7 +5468,7 @@ func TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider(t *testing.T) {
 		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "jev")
 		buf := captureLog(t)
 
-		d, err := buildDepsFromEnv(nil, nil)
+		d, err := buildDepsFromEnv(context.Background(), nil, nil)
 		if err != nil {
 			t.Fatalf("buildDepsFromEnv: %v", err)
 		}
@@ -5491,7 +5491,7 @@ func TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider(t *testing.T) {
 		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "off")
 		buf := captureLog(t)
 
-		d, err := buildDepsFromEnv(nil, nil)
+		d, err := buildDepsFromEnv(context.Background(), nil, nil)
 		if err != nil {
 			t.Fatalf("buildDepsFromEnv: %v", err)
 		}
@@ -5522,7 +5522,7 @@ func TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider(t *testing.T) {
 		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING_AUDIT", "true")
 		buf := captureLog(t)
 
-		d, err := buildDepsFromEnv(nil, nil)
+		d, err := buildDepsFromEnv(context.Background(), nil, nil)
 		if err != nil {
 			t.Fatalf("buildDepsFromEnv: %v", err)
 		}
@@ -5539,7 +5539,7 @@ func TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider(t *testing.T) {
 		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING_AUDIT", "true")
 		buf := captureLog(t)
 
-		d, err := buildDepsFromEnv(nil, nil)
+		d, err := buildDepsFromEnv(context.Background(), nil, nil)
 		if err != nil {
 			t.Fatalf("buildDepsFromEnv: %v", err)
 		}
@@ -5556,7 +5556,7 @@ func TestBuildDepsFromEnvUnderstandingDefaultFollowsProvider(t *testing.T) {
 		t.Setenv("ENGRAM_SEARCH_UNDERSTANDING", "")
 		buf := captureLog(t)
 
-		d, err := buildDepsFromEnv(nil, nil)
+		d, err := buildDepsFromEnv(context.Background(), nil, nil)
 		if err != nil {
 			t.Fatalf("buildDepsFromEnv: %v", err)
 		}
@@ -5597,7 +5597,7 @@ func TestBuildDepsFromEnvRankerJev(t *testing.T) {
 	t.Setenv("ENGRAM_SEARCH_RANKER", "jev")
 	t.Setenv("ENGRAM_SEARCH_RERANK_TIMEOUT", "2s")
 
-	d, err := buildDepsFromEnv(nil, nil)
+	d, err := buildDepsFromEnv(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("buildDepsFromEnv: %v", err)
 	}
@@ -5618,7 +5618,7 @@ func TestBuildDepsFromEnvRejectsJevRankerWithoutProvider(t *testing.T) {
 	t.Setenv("ENGRAM_DECISIONS_PROVIDER", "")
 	t.Setenv("ENGRAM_SEARCH_RANKER", "jev")
 
-	_, err := buildDepsFromEnv(nil, nil)
+	_, err := buildDepsFromEnv(context.Background(), nil, nil)
 	if err == nil {
 		t.Fatal("buildDepsFromEnv with ENGRAM_SEARCH_RANKER=jev and no provider = nil error, want an error naming ENGRAM_SEARCH_RANKER")
 	}

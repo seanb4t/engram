@@ -7,10 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-
-	grpccodes "google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/seanb4t/engram/internal/store"
 )
@@ -28,22 +24,6 @@ func unavailableErrorf(format string, a ...any) error {
 
 func authErrorf(format string, a ...any) error {
 	return &cliError{code: exitAuth, err: fmt.Errorf(format, a...)}
-}
-
-// isUnavailableTransportErr reports whether err represents a transport
-// failure reaching Qdrant: a gRPC status carrying grpccodes.Unavailable, or
-// (defensively) a raw net.Error reaching this function without ever
-// becoming a *status.Status. status.FromError unwraps through any
-// fmt.Errorf("...: %w", err) chain -- grpc-go's status.FromError uses
-// errors.As internally -- so this reaches through EnsureCollection's and
-// Reindex's own wrapping (internal/server/tools.go, internal/store/store.go)
-// without needing a bespoke unwrap here.
-func isUnavailableTransportErr(err error) bool {
-	if st, ok := status.FromError(err); ok && st.Code() == grpccodes.Unavailable {
-		return true
-	}
-	var netErr net.Error
-	return errors.As(err, &netErr)
 }
 
 // classifyOperatorErr is the single CLI-side classifier from a store/
@@ -94,8 +74,8 @@ func classifyOperatorErr(err error) error {
 
 	// A gRPC-level dial/RPC failure reaching Qdrant -- covers both "gRPC
 	// codes.Unavailable" and "a raw dial failure" from the plan's behavior
-	// table; see isUnavailableTransportErr.
-	case isUnavailableTransportErr(err):
+	// table; see store.IsUnavailable.
+	case store.IsUnavailable(err):
 		return unavailableErrorf("%w", err)
 
 	// Store sentinels (internal/store/store.go), mirroring connectError's
