@@ -35,6 +35,20 @@ func stallFirst(method string, d time.Duration) grpc.UnaryClientInterceptor {
 	}
 }
 
+// cancelOn calls cancel on the first call to method, then holds that call
+// until its context ends.
+func cancelOn(method string, cancel context.CancelFunc) grpc.UnaryClientInterceptor {
+	var seen atomic.Bool
+	return func(ctx context.Context, m string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if m == method && !seen.Swap(true) {
+			cancel()
+			<-ctx.Done()
+			return status.FromContextError(ctx.Err()).Err()
+		}
+		return invoker(ctx, m, req, reply, cc, opts...)
+	}
+}
+
 // rejectMethod fails every call to method with InvalidArgument.
 func rejectMethod(method string) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, m string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
@@ -64,9 +78,9 @@ const createFieldIndex = "/qdrant.Points/CreateFieldIndex"
 func TestProvisionStoreBudgets(t *testing.T) {
 	t.Run("a slow index build within the schema budget succeeds although it outlasts the create budget", func(t *testing.T) {
 		collection := provisionCollection(t, "provision_slow_index_ok")
-		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 600*time.Millisecond)))
+		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 3*time.Second)))
 		st := newTestStore(t, c, collection)
-		if err := provisionStore(st, 3, 300*time.Millisecond, 10*time.Second); err != nil {
+		if err := provisionStore(context.Background(), st, 3, singleCreate(2*time.Second), 10*time.Second); err != nil {
 			t.Fatalf("provisionStore: %v", err)
 		}
 	})
@@ -75,7 +89,7 @@ func TestProvisionStoreBudgets(t *testing.T) {
 		collection := provisionCollection(t, "provision_schema_timeout")
 		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(stallFirst(createFieldIndex, 10*time.Second)))
 		st := newTestStore(t, c, collection)
-		err := provisionStore(st, 3, 10*time.Second, 300*time.Millisecond)
+		err := provisionStore(context.Background(), st, 3, singleCreate(10*time.Second), 300*time.Millisecond)
 		if err == nil {
 			t.Fatal("provisionStore = nil, want a schema deadline error")
 		}
@@ -89,6 +103,21 @@ func TestProvisionStoreBudgets(t *testing.T) {
 		}
 	})
 
+	t.Run("a signal during an index build returns the signal's error, not the schema error", func(t *testing.T) {
+		collection := provisionCollection(t, "provision_schema_signal")
+		sig, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(cancelOn(createFieldIndex, cancel)))
+		st := newTestStore(t, c, collection)
+		err := provisionStore(sig, st, 3, singleCreate(10*time.Second), time.Hour)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("provisionStore = %v, want context.Canceled", err)
+		}
+		if strings.Contains(err.Error(), "schema provisioning") {
+			t.Errorf("error %q names schema provisioning, want the signal's error alone", err)
+		}
+	})
+
 	t.Run("a rejected quantization update fails provisioning naming the step", func(t *testing.T) {
 		collection := provisionCollection(t, "provision_quant_rejected")
 		plain := newTestStore(t, storetest.Dial(t, storetest.RecvLimit), collection)
@@ -97,7 +126,7 @@ func TestProvisionStoreBudgets(t *testing.T) {
 		}
 		c := storetest.Dial(t, storetest.RecvLimit, grpc.WithChainUnaryInterceptor(rejectMethod("/qdrant.Collections/Update")))
 		st := newTestStore(t, c, collection, store.WithQuantization(store.QuantizationInt8))
-		err := provisionStore(st, 3, 10*time.Second, 10*time.Second)
+		err := provisionStore(context.Background(), st, 3, singleCreate(10*time.Second), 10*time.Second)
 		if err == nil {
 			t.Fatal("provisionStore = nil, want the rejected quantization update")
 		}
@@ -136,7 +165,7 @@ func TestOnlyServerReconcilesQuantization(t *testing.T) {
 	}
 
 	t.Setenv("ENGRAM_QDRANT_QUANTIZATION", "off")
-	if _, err := buildDepsFromEnv(nil, nil); err != nil {
+	if _, err := buildDepsFromEnv(context.Background(), nil, nil); err != nil {
 		t.Fatalf("server build (off): %v", err)
 	}
 	if got := quantization(); got != nil {
@@ -152,7 +181,7 @@ func TestOnlyServerReconcilesQuantization(t *testing.T) {
 		t.Fatalf("after a CLI verb with the default env: quantization = %v, want none (CLI must not reconcile)", got)
 	}
 
-	if _, err := buildDepsFromEnv(nil, nil); err != nil {
+	if _, err := buildDepsFromEnv(context.Background(), nil, nil); err != nil {
 		t.Fatalf("server build (default int8): %v", err)
 	}
 	sc := quantization().GetScalar()

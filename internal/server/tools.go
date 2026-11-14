@@ -23,6 +23,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"google.golang.org/grpc"
 
 	"github.com/seanb4t/engram/internal/config"
 	"github.com/seanb4t/engram/internal/decide"
@@ -35,6 +36,8 @@ import (
 )
 
 type deps struct {
+	// ping is the Qdrant health check behind serve's readiness route.
+	ping func(context.Context) error
 	// st is the narrow memStore interface (not the concrete *store.Store) so a
 	// fake can substitute for it in tests without a live Qdrant (D-10
 	// prerequisite). buildDepsFromEnv still constructs and assigns a concrete
@@ -246,7 +249,10 @@ func loadAndValidate() (*config.Config, error) {
 // the WithRecordCaps option below (D-02/D-09) — plan 03-02's read-side
 // per-record ceiling is derived from exactly the caps this same config
 // enforces on write, not a second, independent read.
-func storeFromConfig(cfg *config.Config, opts ...store.Option) (*store.Store, uint64, error) {
+//
+// versionCheckTimeout and dialOpts reach store.NewQdrantClient unchanged;
+// zero and nil keep the client's defaults.
+func storeFromConfig(cfg *config.Config, versionCheckTimeout time.Duration, dialOpts []grpc.DialOption, opts ...store.Option) (*store.Store, uint64, error) {
 	embedDim, err := strconv.ParseUint(cfg.Embed.Dim, 10, 64)
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid ENGRAM_EMBED_DIM %q: %w", cfg.Embed.Dim, err)
@@ -259,7 +265,7 @@ func storeFromConfig(cfg *config.Config, opts ...store.Option) (*store.Store, ui
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid port in ENGRAM_QDRANT_ADDR %q: %w", cfg.Qdrant.Addr, err)
 	}
-	qc, err := store.NewQdrantClient(host, port)
+	qc, err := store.NewQdrantClient(host, port, versionCheckTimeout, dialOpts...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("qdrant client: %w", err)
 	}
@@ -278,32 +284,74 @@ const collectionCreateBudget = 15 * time.Second
 // absent, then its schema ensured. opts are passed to the Store; only the
 // server's construction path passes store.WithQuantization, so every CLI
 // verb's Store leaves an existing collection's quantization alone.
-func ensureStoreFromConfig(cfg *config.Config, opts ...store.Option) (*store.Store, error) {
-	schemaBudget, err := time.ParseDuration(cfg.Qdrant.SchemaTimeout)
+//
+// The zero startupPolicy makes one create attempt with the client's default
+// version check. A serve policy retries the create step while Qdrant is
+// unavailable (see retryConnectAndCreate); its clock starts before the
+// client is built and bounds only construction and the create attempts,
+// never schema convergence, which runs under ctx.
+func ensureStoreFromConfig(ctx context.Context, cfg *config.Config, policy startupPolicy, opts ...store.Option) (*store.Store, error) {
+	schemaBudget, err := config.ParsePositiveDuration(cfg.Qdrant.SchemaTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("invalid ENGRAM_QDRANT_SCHEMA_TIMEOUT %q: %w", cfg.Qdrant.SchemaTimeout, err)
 	}
-	st, embedDim, err := storeFromConfig(cfg, opts...)
+	if !policy.retry() {
+		st, embedDim, err := storeFromConfig(cfg, 0, nil, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return st, provisionStore(ctx, st, embedDim, singleCreate(collectionCreateBudget), schemaBudget)
+	}
+	parent, cancel := context.WithTimeout(ctx, policy.timeout)
+	defer cancel()
+	st, embedDim, err := storeFromConfig(cfg, policy.versionCheckTimeout(), policy.dialOptions(), opts...)
 	if err != nil {
 		return nil, err
 	}
-	if err := provisionStore(st, embedDim, collectionCreateBudget, schemaBudget); err != nil {
-		return nil, err
+	create := func(sigCtx context.Context, st *store.Store, dim uint64) error {
+		return retryConnectAndCreate(sigCtx, parent, policy, func(actx context.Context) error {
+			return createCollection(actx, st, dim, policy.attemptBudget())
+		})
 	}
-	return st, nil
+	// The client pools several connections, and one create attempt proves
+	// only one of them up. Schema calls wait for a ready connection, within
+	// the schema budget, instead of failing on one that is reconnecting.
+	return st, provisionStore(store.WithWaitForReady(ctx), st, embedDim, create, schemaBudget)
 }
 
-// provisionStore runs the two startup provisioning steps, each under its own
-// budget, and names the step and budget in any error.
-func provisionStore(st *store.Store, dim uint64, createBudget, schemaBudget time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), createBudget)
-	defer cancel()
-	if err := st.CreateCollectionIfAbsent(ctx, dim); err != nil {
-		return fmt.Errorf("create collection (budget %s): %w", createBudget, err)
+// createStep runs the connect-and-create provisioning step under ctx.
+type createStep func(ctx context.Context, st *store.Store, dim uint64) error
+
+// singleCreate is the one-attempt create step every non-serve caller uses.
+func singleCreate(budget time.Duration) createStep {
+	return func(ctx context.Context, st *store.Store, dim uint64) error {
+		actx, cancel := context.WithTimeout(ctx, budget)
+		defer cancel()
+		return createCollection(actx, st, dim, budget)
 	}
-	sctx, scancel := context.WithTimeout(context.Background(), schemaBudget)
+}
+
+// createCollection runs one create and names the step and its budget.
+func createCollection(ctx context.Context, st *store.Store, dim uint64, budget time.Duration) error {
+	if err := st.CreateCollectionIfAbsent(ctx, dim); err != nil {
+		return fmt.Errorf("create collection (budget %s): %w", budget, err)
+	}
+	return nil
+}
+
+// provisionStore runs the two startup provisioning steps: create, then
+// schema convergence under its own budget derived from ctx. It names the
+// step and budget in any error.
+func provisionStore(ctx context.Context, st *store.Store, dim uint64, create createStep, schemaBudget time.Duration) error {
+	if err := create(ctx, st, dim); err != nil {
+		return err
+	}
+	sctx, scancel := context.WithTimeout(ctx, schemaBudget)
 	defer scancel()
 	if err := st.EnsureSchema(sctx); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("schema provisioning (ENGRAM_QDRANT_SCHEMA_TIMEOUT=%s): %w", schemaBudget, err)
 	}
 	return nil
@@ -318,7 +366,7 @@ func StoreFromEnv() (*store.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ensureStoreFromConfig(cfg)
+	return ensureStoreFromConfig(context.Background(), cfg, startupPolicy{})
 }
 
 // StoreAndEmbedderFromEnvNoEnsure builds the no-ensure source Store (with its
@@ -338,7 +386,7 @@ func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, str
 	if err != nil {
 		return nil, 0, nil, "", nil, err
 	}
-	st, dim, err := storeFromConfig(cfg)
+	st, dim, err := storeFromConfig(cfg, 0, nil)
 	if err != nil {
 		return nil, 0, nil, "", nil, err
 	}
@@ -362,7 +410,7 @@ func StoreAndEmbedderFromEnvNoEnsure() (*store.Store, uint64, *embed.Client, str
 // path. uqm is the pre-built static UsageQueueMetrics (also from serve.go),
 // used only when ENGRAM_USAGE_SIGNALS enables the async usage-signal worker
 // (buildUsageQueue); may also be nil in tests exercising the disabled path.
-func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics) (*deps, error) {
+func buildDepsFromEnv(ctx context.Context, sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics) (*deps, error) {
 	cfg, err := loadAndValidate()
 	if err != nil {
 		return nil, err
@@ -371,13 +419,19 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 	if err != nil {
 		return nil, fmt.Errorf("ENGRAM_QDRANT_QUANTIZATION: %w", err)
 	}
-	// The server is the only caller that reconciles quantization (#698).
-	st, err := ensureStoreFromConfig(cfg, store.WithQuantization(quantization))
+	startupTimeout, err := config.ParsePositiveDuration(cfg.Qdrant.StartupTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ENGRAM_QDRANT_STARTUP_TIMEOUT %q: %w", cfg.Qdrant.StartupTimeout, err)
+	}
+	// The server is the only caller that reconciles quantization (#698) and
+	// the only one that retries the create step.
+	st, err := ensureStoreFromConfig(ctx, cfg, servePolicy(startupTimeout), store.WithQuantization(quantization))
 	if err != nil {
 		return nil, err
 	}
 	warnOwnerlessRecords(st)
 	warnPendingMigrations(st)
+	ping := st.HealthCheck
 	em, err := embedderFromConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -417,6 +471,7 @@ func buildDepsFromEnv(sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQu
 		logUnderstandingAuditEnabled(udec != nil)
 	}
 	return &deps{
+		ping:             ping,
 		st:               st,
 		em:               em,
 		summaryMaxChars:  summaryMaxChars(cfg),
@@ -788,7 +843,7 @@ func StoreAndSummarizerFromEnv() (*store.Store, *summarize.Client, string, int, 
 	if cfg.Summarize.Model == "" {
 		return nil, nil, "", 0, fmt.Errorf("ENGRAM_SUMMARY_MODEL is empty: auto-summary is disabled")
 	}
-	st, err := ensureStoreFromConfig(cfg)
+	st, err := ensureStoreFromConfig(context.Background(), cfg, startupPolicy{})
 	if err != nil {
 		return nil, nil, "", 0, err
 	}
@@ -2834,19 +2889,22 @@ func (d *deps) supersedeMemory(ctx context.Context, c caller, a supersedeArgs) (
 // queue — a no-op for either queue that is disabled (nil) — and an error if
 // dependency construction (store/embedder) fails, so the caller can flush
 // telemetry and exit cleanly rather than aborting via log.Fatal.
-func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics, resolve connectResolver, csrfVerify func(owner, token string) bool, reseal resealFunc) (shutdown func(context.Context), err error) {
-	d, err := buildDepsFromEnv(sqm, uqm)
+//
+// ctx is serve's signal context: a signal stops the startup retry and
+// schema convergence. ping is the Qdrant health check behind /readyz.
+func Register(ctx context.Context, s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm *telemetry.SummaryQueueMetrics, uqm *telemetry.UsageQueueMetrics, resolve connectResolver, csrfVerify func(owner, token string) bool, reseal resealFunc) (shutdown func(context.Context), ping func(context.Context) error, err error) {
+	d, err := buildDepsFromEnv(ctx, sqm, uqm)
 	if err != nil {
-		return nil, fmt.Errorf("build deps: %w", err)
+		return nil, nil, fmt.Errorf("build deps: %w", err)
 	}
 	if err := d.mountConnect(mux, resolve, csrfVerify, reseal); err != nil {
-		return nil, fmt.Errorf("mount connect: %w", err)
+		return nil, nil, fmt.Errorf("mount connect: %w", err)
 	}
 
 	addToolMiddleware(s, tm.Record)
 
 	if err := registerTools(s, d); err != nil {
-		return nil, fmt.Errorf("register tools: %w", err)
+		return nil, nil, fmt.Errorf("register tools: %w", err)
 	}
 
 	// Compose both queues' shutdown into a single closure: the caller
@@ -2856,7 +2914,7 @@ func Register(s *mcp.Server, mux *http.ServeMux, tm *telemetry.ToolMetrics, sqm 
 	return func(ctx context.Context) {
 		d.summaryQueue.Shutdown(ctx)
 		d.usageQueue.Shutdown(ctx)
-	}, nil
+	}, d.ping, nil
 }
 
 // supersedeMemoryInputSchema builds supersede_memory's advertised input

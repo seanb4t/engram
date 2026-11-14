@@ -80,6 +80,10 @@ type QdrantConfig struct {
 	// connect-and-create budget (ENGRAM_QDRANT_SCHEMA_TIMEOUT, default "2m";
 	// always positive).
 	SchemaTimeout string `koanf:"schema_timeout"`
+	// StartupTimeout bounds the total time `engram serve` spends retrying
+	// the connect-and-create step while Qdrant is unavailable
+	// (ENGRAM_QDRANT_STARTUP_TIMEOUT, default "60s"; always positive).
+	StartupTimeout string `koanf:"startup_timeout"`
 }
 
 // EmbedConfig selects the embedding model and the vector dimension the memory

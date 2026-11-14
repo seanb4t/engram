@@ -90,7 +90,7 @@ func TestStoreFromConfigCarriesRecordCaps(t *testing.T) {
 		t.Fatalf("config.Load: %v", err)
 	}
 
-	st, _, err := storeFromConfig(cfg)
+	st, _, err := storeFromConfig(cfg, 0, nil)
 	if err != nil {
 		t.Fatalf("storeFromConfig: %v", err)
 	}
@@ -100,6 +100,6 @@ func TestStoreFromConfigCarriesRecordCaps(t *testing.T) {
 		Citations: maxDiscoveryCitations, CitationExcerptBytes: maxCitationExcerptBytes,
 	}
 	if got := st.RecordCaps(); got != want {
-		t.Errorf("storeFromConfig(cfg).RecordCaps() = %+v, want %+v", got, want)
+		t.Errorf("storeFromConfig(cfg, 0, nil).RecordCaps() = %+v, want %+v", got, want)
 	}
 }

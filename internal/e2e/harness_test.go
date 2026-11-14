@@ -15,6 +15,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"maps"
@@ -231,8 +232,42 @@ func unitVector(s string, dim int) []float32 {
 
 // serverProc is a running engram subprocess.
 type serverProc struct {
-	addr string    // host:port
-	cmd  *exec.Cmd // the running `engram serve`
+	addr    string    // host:port of the primary listener
+	mcpAddr string    // host:port of the MCP-only listener, or ""
+	cmd     *exec.Cmd // the running `engram serve`
+	log     string    // path of the file that holds its stdout and stderr
+	done    chan struct{}
+	waitErr error
+}
+
+// wait returns the result of the process once it exits.
+func (s *serverProc) wait() error {
+	<-s.done
+	return s.waitErr
+}
+
+// exitCode waits up to within for the process to exit and returns its exit
+// code; the test fails if it does not exit in time.
+func (s *serverProc) exitCode(t *testing.T, within time.Duration) int {
+	t.Helper()
+	select {
+	case <-s.done:
+	case <-time.After(within):
+		t.Fatalf("engram serve did not exit within %s:\n%s", within, s.logText())
+	}
+	if s.waitErr == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(s.waitErr, &exitErr) {
+		t.Fatalf("engram serve: %v", s.waitErr)
+	}
+	return exitErr.ExitCode()
+}
+
+func (s *serverProc) logText() string {
+	b, _ := os.ReadFile(s.log)
+	return string(b)
 }
 
 // endpoint is the MCP transport URL.
@@ -247,6 +282,16 @@ func (s *serverProc) baseURL() string { return "http://" + s.addr }
 // for it to accept connections. extraEnv is merged over the baseline (and may
 // override it) so a test can vary a single variable.
 func startServer(t *testing.T, extraEnv map[string]string) *serverProc {
+	t.Helper()
+	srv := launchServer(t, extraEnv)
+	srv.waitReady(t, 45*time.Second)
+	return srv
+}
+
+// launchServer starts `engram serve` against the test Qdrant (unless
+// extraEnv overrides ENGRAM_QDRANT_ADDR) and returns without waiting for it
+// to be ready.
+func launchServer(t *testing.T, extraEnv map[string]string) *serverProc {
 	t.Helper()
 	qdrantAddr := storetest.Addr()
 	if qdrantAddr == "" {
@@ -276,44 +321,56 @@ func startServer(t *testing.T, extraEnv map[string]string) *serverProc {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start engram serve: %v", err)
 	}
+	srv := &serverProc{addr: addr, mcpAddr: env["ENGRAM_MCP_LISTEN_ADDR"], cmd: cmd, log: logFile.Name(), done: make(chan struct{})}
+	go func() {
+		srv.waitErr = cmd.Wait()
+		close(srv.done)
+	}()
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		<-srv.done
 		// Surface the server log on failure — a subprocess that died during
 		// startup is otherwise invisible.
 		if t.Failed() {
-			if b, rerr := os.ReadFile(logFile.Name()); rerr == nil {
-				t.Logf("engram serve log:\n%s", b)
-			}
+			t.Logf("engram serve log:\n%s", srv.logText())
 		}
 	})
+	return srv
+}
 
-	// The server is ready when every address it listens on accepts.
-	listening := []string{addr}
-	if mcpAddr := env["ENGRAM_MCP_LISTEN_ADDR"]; mcpAddr != "" {
-		listening = append(listening, mcpAddr)
-	}
-	deadline := time.Now().Add(45 * time.Second)
-	for time.Now().Before(deadline) {
-		up := true
-		for _, a := range listening {
-			c, derr := net.DialTimeout("tcp", a, 500*time.Millisecond)
-			if derr != nil {
-				up = false
+// waitReady polls GET /readyz on the primary listener until it answers 200
+// within the given time, then checks that the MCP-only listener, if any, no
+// longer answers with the startup gate's 503.
+func (s *serverProc) waitReady(t *testing.T, within time.Duration) {
+	t.Helper()
+	client := &http.Client{Timeout: 2 * time.Second}
+	deadline := time.Now().Add(within)
+	for {
+		select {
+		case <-s.done:
+			t.Fatalf("engram serve exited during startup:\n%s", s.logText())
+		default:
+		}
+		if resp, err := client.Get(s.baseURL() + "/readyz"); err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
 				break
 			}
-			_ = c.Close()
 		}
-		if up {
-			return &serverProc{addr: addr, cmd: cmd}
-		}
-		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			b, _ := os.ReadFile(logFile.Name())
-			t.Fatalf("engram serve exited during startup:\n%s", b)
+		if time.Now().After(deadline) {
+			t.Fatalf("engram serve was not ready on %s within %s:\n%s", s.addr, within, s.logText())
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	b, _ := os.ReadFile(logFile.Name())
-	t.Fatalf("engram serve did not listen on %s within 45s:\n%s", addr, b)
-	return nil
+	if s.mcpAddr == "" {
+		return
+	}
+	resp, err := client.Get("http://" + s.mcpAddr + "/")
+	if err != nil {
+		t.Fatalf("GET the MCP-only listener: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		t.Fatalf("MCP-only listener still answers 503 after the primary listener is ready")
+	}
 }

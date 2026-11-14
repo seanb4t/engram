@@ -179,7 +179,7 @@ func TestMCPOnlyListener(t *testing.T) {
 		if err := srv.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			t.Fatalf("SIGTERM: %v", err)
 		}
-		if err := srv.cmd.Wait(); err != nil {
+		if err := srv.wait(); err != nil {
 			t.Fatalf("engram serve after SIGTERM: %v, want exit 0", err)
 		}
 		if elapsed := time.Since(signalled); elapsed >= 15*time.Second {

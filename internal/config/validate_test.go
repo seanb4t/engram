@@ -12,7 +12,7 @@ import (
 // Tests mutate one field to exercise a single rule.
 func validConfig() *Config {
 	return &Config{
-		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval", Quantization: "int8", SchemaTimeout: "2m"},
+		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "mem_eval", Quantization: "int8", SchemaTimeout: "2m", StartupTimeout: "60s"},
 		Embed:     EmbedConfig{Model: "ollama/bge-m3", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
 		Memory:    MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
@@ -46,6 +46,9 @@ func TestValidateFieldRules(t *testing.T) {
 		{"qdrant schema timeout not a duration", func(c *Config) { c.Qdrant.SchemaTimeout = "120" }, "ENGRAM_QDRANT_SCHEMA_TIMEOUT"},
 		{"qdrant schema timeout zero", func(c *Config) { c.Qdrant.SchemaTimeout = "0s" }, "ENGRAM_QDRANT_SCHEMA_TIMEOUT"},
 		{"qdrant schema timeout negative", func(c *Config) { c.Qdrant.SchemaTimeout = "-1m" }, "ENGRAM_QDRANT_SCHEMA_TIMEOUT"},
+		{"qdrant startup timeout zero", func(c *Config) { c.Qdrant.StartupTimeout = "0" }, "ENGRAM_QDRANT_STARTUP_TIMEOUT"},
+		{"qdrant startup timeout negative", func(c *Config) { c.Qdrant.StartupTimeout = "-1s" }, "ENGRAM_QDRANT_STARTUP_TIMEOUT"},
+		{"qdrant startup timeout not a duration", func(c *Config) { c.Qdrant.StartupTimeout = "abc" }, "ENGRAM_QDRANT_STARTUP_TIMEOUT"},
 		{"embed model empty", func(c *Config) { c.Embed.Model = "" }, "ENGRAM_EMBED_MODEL"},
 		{"embed dim empty", func(c *Config) { c.Embed.Dim = "" }, "ENGRAM_EMBED_DIM"},
 		{"embed dim non-numeric", func(c *Config) { c.Embed.Dim = "abc" }, "ENGRAM_EMBED_DIM"},

@@ -34,11 +34,12 @@ var registry = []field{
 	{Key: "server.mcp_resource_origins", Env: "ENGRAM_MCP_RESOURCE_ORIGINS"},
 	{Key: "qdrant.addr", Env: "ENGRAM_QDRANT_ADDR", Legacy: "MEM_QDRANT_ADDR", Default: "localhost:6334"},
 	{Key: "qdrant.collection", Env: "ENGRAM_QDRANT_COLLECTION", Legacy: "MEM_QDRANT_COLLECTION", Default: "mem_eval"},
-	// qdrant.quantization / qdrant.schema_timeout (#698, #683): brand-new
+	// qdrant.quantization / qdrant.schema_timeout / qdrant.startup_timeout: brand-new
 	// keys, no Legacy value and no Flag (deployment values, never typed at a
 	// prompt).
 	{Key: "qdrant.quantization", Env: "ENGRAM_QDRANT_QUANTIZATION", Default: "int8"},
 	{Key: "qdrant.schema_timeout", Env: "ENGRAM_QDRANT_SCHEMA_TIMEOUT", Default: "2m"},
+	{Key: "qdrant.startup_timeout", Env: "ENGRAM_QDRANT_STARTUP_TIMEOUT", Default: "60s"},
 	{Key: "embed.model", Env: "ENGRAM_EMBED_MODEL", Legacy: "MEM_EMBED_MODEL", Default: "ollama/bge-m3"},
 	{Key: "embed.dim", Env: "ENGRAM_EMBED_DIM", Legacy: "MEM_EMBED_DIM", Default: "1024"},
 	{Key: "embed.query_instruction", Env: "ENGRAM_EMBED_QUERY_INSTRUCTION"},

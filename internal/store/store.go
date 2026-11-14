@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"slices"
 	"sort"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -547,8 +549,33 @@ func WithTargetLocker(l TargetLocker) Option {
 // depends on it (REQ-recv-limit-backstop). It is appended before opts,
 // exactly like the two base options above it, so a caller naming its own
 // receive limit in the upstream vocabulary above still wins.
-func NewQdrantClient(host string, port int, opts ...grpc.DialOption) (*qdrant.Client, error) {
-	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: qdrantDialOptions(opts)})
+//
+// versionCheckTimeout bounds the compatibility version check that
+// qdrant.NewClient runs while it builds the client; zero keeps the client's
+// own default.
+func NewQdrantClient(host string, port int, versionCheckTimeout time.Duration, opts ...grpc.DialOption) (*qdrant.Client, error) {
+	return qdrant.NewClient(&qdrant.Config{Host: host, Port: port, GrpcOptions: qdrantDialOptions(opts), VersionCheckTimeout: versionCheckTimeout})
+}
+
+// StartupConnectParams returns the gRPC connect parameters for the serve
+// client. grpc.WithConnectParams replaces the whole backoff configuration,
+// so every field starts from gRPC's defaults and only MaxDelay changes, to
+// maxDelay.
+func StartupConnectParams(maxDelay time.Duration) grpc.ConnectParams {
+	b := backoff.DefaultConfig
+	b.MaxDelay = maxDelay
+	return grpc.ConnectParams{Backoff: b, MinConnectTimeout: 20 * time.Second}
+}
+
+// IsUnavailable reports whether err is a transport failure reaching Qdrant:
+// a gRPC status carrying codes.Unavailable, or a raw net.Error that never
+// became a status. status.FromError unwraps through fmt.Errorf %w chains.
+func IsUnavailable(err error) bool {
+	if st, ok := status.FromError(err); ok && st.Code() == grpccodes.Unavailable {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
 }
 
 // productionRecvLimit raises the production gRPC client's default receive
@@ -3914,4 +3941,33 @@ func (s *Store) reindexTargetContents(ctx context.Context, target string, pts []
 		}
 	}
 	return out, nil
+}
+
+// HealthCheck sends Qdrant's health check RPC. It records no span of its own
+// and no store-op metric, because `engram serve` calls it on a fixed interval
+// for readiness.
+func (s *Store) HealthCheck(ctx context.Context) error {
+	_, err := s.client.HealthCheck(ctx)
+	return err
+}
+
+type waitForReadyKey struct{}
+
+// WithWaitForReady marks ctx so that each call made under it on a client
+// dialed with WaitForReadyInterceptor waits for a ready connection instead of
+// failing at once on a connection that is reconnecting. ctx's deadline still
+// bounds the wait.
+func WithWaitForReady(ctx context.Context) context.Context {
+	return context.WithValue(ctx, waitForReadyKey{}, true)
+}
+
+// WaitForReadyInterceptor adds grpc.WaitForReady(true) to each unary call
+// whose context carries WithWaitForReady. Other calls are unchanged.
+func WaitForReadyInterceptor() grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if ctx.Value(waitForReadyKey{}) != nil {
+			opts = append(opts, grpc.WaitForReady(true))
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
 }

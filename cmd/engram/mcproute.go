@@ -21,8 +21,9 @@ const defaultMCPPath = "/mcp"
 // the bearer-gated MCP transport shadow a document clients must read
 // unauthenticated to discover how to authenticate (T-526-03), so
 // resolveMCPPath rejects them up front with a clear error. Keep in sync with
-// the explicit mounts in runServe (mountMCPRoutes and mountWellKnownRoutes).
-var reservedMCPRoots = []string{"/ui", "/auth", "/engram.v1.EngramService", "/.well-known"}
+// the explicit mounts in runServe (mountMCPRoutes and mountWellKnownRoutes)
+// and the startup gate's health routes (startupgate.go).
+var reservedMCPRoots = []string{"/ui", "/auth", "/engram.v1.EngramService", "/.well-known", "/livez", "/readyz"}
 
 // resolveMCPPath normalizes the configured MCP transport path. An empty value
 // defaults to /mcp; the path MUST be absolute (leading "/") and MUST NOT fall

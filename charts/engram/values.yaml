@@ -208,9 +208,11 @@ memory:
     # the server on each start.
     quantization: "int8"
     # ENGRAM_QDRANT_SCHEMA_TIMEOUT, in whole seconds: the startup budget for
-    # the quantization change plus building any missing payload index. The
-    # startupProbe below is sized from it, so raise this rather than the probe.
+    # the quantization change plus building any missing payload index.
     schemaTimeoutSeconds: 120
+    # ENGRAM_QDRANT_STARTUP_TIMEOUT, in whole seconds: how long `engram serve`
+    # retries connecting to Qdrant and creating its collection at startup.
+    startupTimeoutSeconds: 60
   oidc:
     issuer: "" # set → enables bearer-token enforcement (signature/issuer/expiry)
     audience: "" # ENGRAM_OIDC_AUDIENCE (optional aud pin)

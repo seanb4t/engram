@@ -5,6 +5,7 @@ package server
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -537,7 +538,7 @@ func StoreAndDeciderFromEnv() (*store.Store, decide.Decider, VerdictSettings, er
 	if err != nil {
 		return nil, nil, VerdictSettings{}, err
 	}
-	st, err := ensureStoreFromConfig(cfg)
+	st, err := ensureStoreFromConfig(context.Background(), cfg, startupPolicy{})
 	if err != nil {
 		return nil, nil, VerdictSettings{}, err
 	}

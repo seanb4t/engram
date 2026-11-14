@@ -177,6 +177,7 @@ func TestMemoryCapDefaultsAndEnv(t *testing.T) {
 func TestQdrantProvisioningDefaultsAndEnv(t *testing.T) {
 	t.Setenv("ENGRAM_QDRANT_QUANTIZATION", "")
 	t.Setenv("ENGRAM_QDRANT_SCHEMA_TIMEOUT", "")
+	t.Setenv("ENGRAM_QDRANT_STARTUP_TIMEOUT", "")
 	c, err := Load(nil)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -186,6 +187,9 @@ func TestQdrantProvisioningDefaultsAndEnv(t *testing.T) {
 	}
 	if c.Qdrant.SchemaTimeout != "2m" {
 		t.Errorf("Qdrant.SchemaTimeout default = %q, want 2m", c.Qdrant.SchemaTimeout)
+	}
+	if c.Qdrant.StartupTimeout != "60s" {
+		t.Errorf("Qdrant.StartupTimeout default = %q, want 60s", c.Qdrant.StartupTimeout)
 	}
 
 	t.Setenv("ENGRAM_QDRANT_QUANTIZATION", "unmanaged")
@@ -271,7 +275,7 @@ func TestValidateRejectsBadSummaryMaxCharsWhenEnabled(t *testing.T) {
 
 func TestValidateIgnoresSummaryWhenDisabled(t *testing.T) {
 	c := &Config{
-		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c", Quantization: "int8", SchemaTimeout: "2m"},
+		Qdrant:    QdrantConfig{Addr: "localhost:6334", Collection: "c", Quantization: "int8", SchemaTimeout: "2m", StartupTimeout: "60s"},
 		Embed:     EmbedConfig{Model: "m", Dim: "1024", Timeout: "30s", DrainBytes: "262144", DrainTimeout: "2s", MaxTimeout: "10m"},
 		Memory:    MemoryConfig{MaxSummaryBytes: "512", MaxContentBytes: "65536", MaxTags: "128", MaxTagBytes: "128"},
 		OpenAI:    OpenAIConfig{BaseURL: "http://localhost:4000"},
