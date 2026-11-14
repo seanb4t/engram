@@ -310,10 +310,7 @@ func ensureStoreFromConfig(ctx context.Context, cfg *config.Config, policy start
 	}
 	create := func(sigCtx context.Context, st *store.Store, dim uint64) error {
 		return retryConnectAndCreate(sigCtx, parent, policy, func(actx context.Context) error {
-			if err := st.CreateCollectionIfAbsent(actx, dim); err != nil {
-				return fmt.Errorf("create collection (budget %s): %w", policy.attemptBudget(), err)
-			}
-			return nil
+			return createCollection(actx, st, dim, policy.attemptBudget())
 		})
 	}
 	// The client pools several connections, and one create attempt proves
@@ -330,11 +327,16 @@ func singleCreate(budget time.Duration) createStep {
 	return func(ctx context.Context, st *store.Store, dim uint64) error {
 		actx, cancel := context.WithTimeout(ctx, budget)
 		defer cancel()
-		if err := st.CreateCollectionIfAbsent(actx, dim); err != nil {
-			return fmt.Errorf("create collection (budget %s): %w", budget, err)
-		}
-		return nil
+		return createCollection(actx, st, dim, budget)
 	}
+}
+
+// createCollection runs one create and names the step and its budget.
+func createCollection(ctx context.Context, st *store.Store, dim uint64, budget time.Duration) error {
+	if err := st.CreateCollectionIfAbsent(ctx, dim); err != nil {
+		return fmt.Errorf("create collection (budget %s): %w", budget, err)
+	}
+	return nil
 }
 
 // provisionStore runs the two startup provisioning steps: create, then

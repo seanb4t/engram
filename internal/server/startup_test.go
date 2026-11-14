@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -92,18 +93,6 @@ func numbered(n int) []int {
 	return out
 }
 
-func equalInts(a, b []int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func isUnavailableStatus(err error) bool {
 	st, ok := status.FromError(err)
 	return ok && st.Code() == codes.Unavailable
@@ -137,7 +126,7 @@ func TestServeProvisionRetry(t *testing.T) {
 		if err != nil {
 			t.Fatalf("err = %v, want nil", err)
 		}
-		if got := log.attempts(t); !equalInts(got, numbered(3)) {
+		if got := log.attempts(t); !slices.Equal(got, numbered(3)) {
 			t.Errorf("logged attempts = %v, want [1 2 3]", got)
 		}
 	})
@@ -405,7 +394,7 @@ func TestPropertyServeProvisionRetryLog(t *testing.T) {
 				rt.Fatalf("exhausted: err = %v, want an Unavailable status naming the timeout", err)
 			}
 		}
-		if got := log.attempts(t); !equalInts(got, numbered(wantFailed)) {
+		if got := log.attempts(t); !slices.Equal(got, numbered(wantFailed)) {
 			rt.Fatalf("logged attempts = %v, want 1..%d", got, wantFailed)
 		}
 	})
