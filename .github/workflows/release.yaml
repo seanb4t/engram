@@ -42,7 +42,7 @@ jobs:
       contents: read
       packages: write # push image + chart to GHCR via GITHUB_TOKEN
     steps:
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_APP }}
@@ -71,7 +71,7 @@ jobs:
       # client-id, not app-id: the action deprecated app-id in favour of
       # client-id. The release-App mint above still uses app-id and still warns,
       # because no RELEASE_APP_CLIENT_ID secret exists yet.
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3
         id: tap-token
         with:
           client-id: ${{ secrets.TAP_PUBLISHER_CLIENT_ID }}
