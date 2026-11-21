@@ -4,19 +4,19 @@ go 1.26.7
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
-	buf.build/go/protovalidate v1.4.0
+	buf.build/go/protovalidate v1.4.1
 	charm.land/bubbles/v2 v2.2.1
-	charm.land/bubbletea/v2 v2.1.1
+	charm.land/bubbletea/v2 v2.1.2
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
 	connectrpc.com/connect v1.21.1
 	connectrpc.com/otelconnect v0.12.0
-	github.com/cedar-policy/cedar-go v1.9.0
+	github.com/cedar-policy/cedar-go v1.9.3
 	github.com/cenkalti/backoff/v7 v7.0.3
 	github.com/charmbracelet/colorprofile v0.4.3
-	github.com/charmbracelet/x/ansi v0.11.9
-	github.com/chromedp/cdproto v0.159.0
-	github.com/chromedp/chromedp v0.23.0
+	github.com/charmbracelet/x/ansi v0.11.10
+	github.com/chromedp/cdproto v0.160.1
+	github.com/chromedp/chromedp v0.23.1
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
@@ -68,7 +68,7 @@ require (
 	buf.build/go/protoyaml v0.7.0 // indirect
 	buf.build/go/spdx v0.3.0 // indirect
 	buf.build/go/standard v0.1.1-0.20260325175353-2b287e071df5 // indirect
-	cel.dev/cel-go v0.32.0 // indirect
+	cel.dev/cel-go v0.33.2 // indirect
 	cel.dev/expr v0.25.3 // indirect
 	connectrpc.com/connect/v2 v2.0.2 // indirect
 	dario.cat/mergo v1.0.2 // indirect
@@ -107,7 +107,7 @@ require (
 	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
-	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3 // indirect
+	github.com/go-json-experiment/json v1.27.2 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
