@@ -56,7 +56,7 @@ jobs:
     services:
       qdrant:
         # The same image ci.yaml pins for its test job.
-        image: qdrant/qdrant:v1.20.0
+        image: qdrant/qdrant:v1.20.2
         ports:
           - 6334:6334
         options: >-
