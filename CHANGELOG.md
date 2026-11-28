@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.33.0](https://github.com/seanb4t/engram/compare/v0.32.0...v0.33.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **serve:** retry Qdrant at startup and serve /livez and /readyz ([#1020](https://github.com/seanb4t/engram/issues/1020))
+
+### Features
+
+* **serve:** retry Qdrant at startup and serve /livez and /readyz ([#1020](https://github.com/seanb4t/engram/issues/1020)) ([1e0b689](https://github.com/seanb4t/engram/commit/1e0b6896cf6befcd98e9c8a970a42d4f87ced72c))
+
 ## [0.32.0](https://github.com/seanb4t/engram/compare/v0.31.2...v0.32.0) (2026-11-13)
 
 
